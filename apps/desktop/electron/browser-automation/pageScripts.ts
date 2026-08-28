@@ -15,6 +15,10 @@ export interface PageSnapshotScriptResult {
     role: string | null
     name: string
     selector: string
+    x: number
+    y: number
+    width: number
+    height: number
   }>
 }
 
@@ -132,11 +136,17 @@ export function buildSnapshotScript(): string {
       if (!(el instanceof HTMLElement)) continue;
       const style = window.getComputedStyle(el);
       if (style.display === "none" || style.visibility === "hidden") continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
       interactiveElements.push({
         tag: el.tagName.toLowerCase(),
         role: el.getAttribute("role"),
         name: accessibleName(el),
         selector: buildSelector(el),
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
       });
     }
   } catch {

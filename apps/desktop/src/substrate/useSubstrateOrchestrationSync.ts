@@ -81,7 +81,11 @@ export function useSubstrateOrchestrationSync(input: SubstrateOrchestrationSyncI
             await client.close();
           };
 
-          const snapshot = await client.getArchivedShellSnapshot();
+          // The archived snapshot intentionally omits active threads and any
+          // projects referenced only by them. Hydrate from the live shell
+          // snapshot so tiles restored from the current workbench bind to the
+          // existing server project instead of attempting a duplicate create.
+          const snapshot = await client.getSnapshot();
           if (!cancelled && snapshot && typeof snapshot === "object") {
             const record = snapshot as Record<string, unknown>;
             if (Array.isArray(record.threads) && Array.isArray(record.projects)) {

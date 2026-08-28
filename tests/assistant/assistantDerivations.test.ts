@@ -208,4 +208,55 @@ describe("assistant timeline derivations", () => {
     expect(summaries.get(assistantOne)).toBe("Worked for 3.0s")
     expect(summaries.get(assistantTwo)).toBe("Worked for 4.0s")
   })
+
+  it("reports one duration for the whole turn across assistant generations", () => {
+    const turnId = TurnId.makeUnsafe("turn-multi")
+    const firstAssistant = MessageId.makeUnsafe("assistant-preamble")
+    const finalAssistant = MessageId.makeUnsafe("assistant-final")
+    const summaries = deriveCompletionSummariesByMessageId({
+      messages: [
+        {
+          id: MessageId.makeUnsafe("user-multi"),
+          role: "user",
+          text: "run it",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          streaming: false,
+        },
+        {
+          id: firstAssistant,
+          role: "assistant",
+          text: "Starting.",
+          turnId,
+          createdAt: "2026-01-01T00:00:01.000Z",
+          completedAt: "2026-01-01T00:00:01.001Z",
+          streaming: false,
+        },
+        {
+          id: finalAssistant,
+          role: "assistant",
+          text: "Done.",
+          turnId,
+          createdAt: "2026-01-01T00:00:07.000Z",
+          completedAt: "2026-01-01T00:00:08.000Z",
+          streaming: false,
+        },
+      ],
+      activities: [
+        {
+          id: EventId.makeUnsafe("tool-multi"),
+          kind: "tool.completed",
+          summary: "Ran command",
+          tone: "tool",
+          payload: {},
+          turnId,
+          createdAt: "2026-01-01T00:00:06.000Z",
+        },
+      ],
+      activeTurn: null,
+      latestTurnSettled: true,
+    })
+
+    expect(summaries.has(firstAssistant)).toBe(false)
+    expect(summaries.get(finalAssistant)).toBe("Worked for 8.0s")
+  })
 })

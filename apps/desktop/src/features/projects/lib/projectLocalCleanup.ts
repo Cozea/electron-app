@@ -5,12 +5,8 @@ import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWork
 const WORKSPACE_LOOKUP_TIMEOUT_MS = 3_000
 const SESSION_CLEANUP_TIMEOUT_MS = 3_000
 const STORAGE_DELETE_TIMEOUT_MS = 30_000
-const FALLBACK_PROJECT_PATH_ID_PREFIX = "path:"
 
 export interface DeletedProjectLocalCleanupOptions {
-  projectName?: string | null
-  projectSlug?: string | null
-  managedProjectPaths?: Array<string | null | undefined>
   /** When true (default for UI), skip trashing local folders. */
   keepLocalFiles?: boolean
 }
@@ -18,21 +14,6 @@ export interface DeletedProjectLocalCleanupOptions {
 function normalizeId(value: string | null | undefined): string | null {
   const trimmed = value?.trim()
   return trimmed || null
-}
-
-function buildFilesystemSlug(value: string | null | undefined): string | null {
-  const slug = value
-    ?.trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 50)
-  return slug || null
-}
-
-function joinManagedPath(rootPath: string, childName: string): string {
-  const separator = rootPath.includes("\\") ? "\\" : "/"
-  return `${rootPath.replace(/[\\/]+$/, "")}${separator}${childName.replace(/^[/\\]+|[/\\]+$/g, "")}`
 }
 
 async function withTimeout<T>(
@@ -55,53 +36,6 @@ async function withTimeout<T>(
       clearTimeout(timeoutId)
     }
   }
-}
-
-async function collectFallbackManagedProjectPaths(
-  options: DeletedProjectLocalCleanupOptions,
-): Promise<string[]> {
-  const managedProjectPaths = new Set<string>()
-
-  for (const projectPath of options.managedProjectPaths ?? []) {
-    const normalizedPath = normalizeId(projectPath)
-    if (normalizedPath) {
-      managedProjectPaths.add(normalizedPath)
-    }
-  }
-
-  const settingsApi = window.electronAPI?.settings
-  if (!settingsApi) return Array.from(managedProjectPaths)
-
-  let projectsDirectory: string | null = null
-  try {
-    const settings = await withTimeout(
-      settingsApi.get(),
-      WORKSPACE_LOOKUP_TIMEOUT_MS,
-      "Loading projects directory",
-    )
-    projectsDirectory = normalizeId(settings.projectsDirectory)
-  } catch (error) {
-    console.warn("[ProjectDelete] Failed to load projects directory for local cleanup.", error)
-  }
-
-  if (!projectsDirectory) return Array.from(managedProjectPaths)
-
-  const slugCandidates = new Set<string>()
-  const explicitSlug = normalizeId(options.projectSlug)
-  if (explicitSlug) {
-    slugCandidates.add(explicitSlug)
-  }
-
-  const slugFromName = buildFilesystemSlug(options.projectName)
-  if (slugFromName) {
-    slugCandidates.add(slugFromName)
-  }
-
-  for (const slug of slugCandidates) {
-    managedProjectPaths.add(joinManagedPath(projectsDirectory, slug))
-  }
-
-  return Array.from(managedProjectPaths)
 }
 
 async function closeProjectWorkbenchSessions(
@@ -158,46 +92,35 @@ function closeProjectRuntimes(projectId: string, workspaceIds: Set<string>): voi
   }
 }
 
-async function deleteManagedProjectPaths(
-  projectPathsByWorkspaceId: Map<string, string>,
+async function trashManagedWorkspaces(
+  managedWorkspaceIds: Set<string>,
 ): Promise<Set<string>> {
   const deletedWorkspaceIds = new Set<string>()
-  const storageApi = window.electronAPI?.storage
-  if (!storageApi) {
-    if (projectPathsByWorkspaceId.size > 0) {
-      console.warn("[ProjectDelete] Local storage API is unavailable; managed project folders were not deleted.")
+  const workspaceApi = window.electronAPI?.workspace
+  if (!workspaceApi) {
+    if (managedWorkspaceIds.size > 0) {
+      console.warn("[ProjectDelete] Workspace API is unavailable; managed project folders were not moved to Trash.")
     }
     return deletedWorkspaceIds
   }
 
-  const workspaceIdsByProjectPath = new Map<string, string[]>()
-  for (const [workspaceId, projectPath] of projectPathsByWorkspaceId) {
-    const workspaceIds = workspaceIdsByProjectPath.get(projectPath) ?? []
-    workspaceIds.push(workspaceId)
-    workspaceIdsByProjectPath.set(projectPath, workspaceIds)
-  }
-
   const deleteResults = await Promise.allSettled(
-    Array.from(workspaceIdsByProjectPath, async ([projectPath, workspaceIds]) => {
+    Array.from(managedWorkspaceIds, async (workspaceId) => {
       const result = await withTimeout(
-        storageApi.deleteProject({ projectPath }),
+        workspaceApi.trashManagedWorkspace(workspaceId),
         STORAGE_DELETE_TIMEOUT_MS,
-        `Moving local project folder to Trash ${projectPath}`,
+        `Moving managed workspace ${workspaceId} to Trash`,
       )
       if (!result.success) {
-        throw new Error(result.error || `Failed to move local project folder to Trash: ${projectPath}`)
+        throw new Error(result.error || "Failed to move the managed workspace to Trash.")
       }
-      return workspaceIds
+      return workspaceId
     }),
   )
 
   for (const result of deleteResults) {
     if (result.status === "fulfilled") {
-      for (const workspaceId of result.value) {
-        if (!workspaceId.startsWith(FALLBACK_PROJECT_PATH_ID_PREFIX)) {
-          deletedWorkspaceIds.add(workspaceId)
-        }
-      }
+      deletedWorkspaceIds.add(result.value)
     } else {
       console.warn("[ProjectDelete] Failed to delete a managed local project folder.", result.reason)
     }
@@ -214,7 +137,7 @@ export async function cleanupDeletedProjectLocally(
   if (!normalizedProjectId) return
 
   const workspaceIds = new Set<string>()
-  const projectPathsByWorkspaceId = new Map<string, string>()
+  const managedWorkspaceIds = new Set<string>()
   const workspaceApi = window.electronAPI?.workspace
 
   try {
@@ -228,21 +151,12 @@ export async function cleanupDeletedProjectLocally(
       if (workspaceId) {
         workspaceIds.add(workspaceId)
       }
-      const projectRootPath = normalizeId(workspace.projectRootPath)
-      if (workspaceId && projectRootPath) {
-        projectPathsByWorkspaceId.set(workspaceId, projectRootPath)
+      if (workspaceId && workspace.storageOwnership === "managed") {
+        managedWorkspaceIds.add(workspaceId)
       }
     }
   } catch (error) {
     console.warn("[ProjectDelete] Failed to list local workspaces.", error)
-  }
-
-  const fallbackProjectPaths = await collectFallbackManagedProjectPaths(options)
-  for (const projectPath of fallbackProjectPaths) {
-    const fallbackWorkspaceId = `${FALLBACK_PROJECT_PATH_ID_PREFIX}${projectPath}`
-    if (!projectPathsByWorkspaceId.has(fallbackWorkspaceId)) {
-      projectPathsByWorkspaceId.set(fallbackWorkspaceId, projectPath)
-    }
   }
 
   const closeSessionsTask = closeProjectWorkbenchSessions(normalizedProjectId, workspaceIds)
@@ -253,25 +167,16 @@ export async function cleanupDeletedProjectLocally(
     clearCachedProjectLaneState(normalizedProjectId, workspaceId)
   }
 
-  const keepLocalFiles = options.keepLocalFiles === true
+  const keepLocalFiles = options.keepLocalFiles !== false
+  await closeSessionsTask
   const workspaceIdsToForget = keepLocalFiles
     ? new Set<string>()
-    : await deleteManagedProjectPaths(projectPathsByWorkspaceId)
+    : await trashManagedWorkspaces(managedWorkspaceIds)
   for (const workspaceId of workspaceIds) {
     // Always forget workspace bindings so Cozea stops hosting the deleted project,
     // even when the on-disk folder is intentionally preserved.
     workspaceIdsToForget.add(workspaceId)
   }
-  if (keepLocalFiles) {
-    for (const workspaceId of projectPathsByWorkspaceId.keys()) {
-      if (!workspaceId.startsWith(FALLBACK_PROJECT_PATH_ID_PREFIX)) {
-        workspaceIdsToForget.add(workspaceId)
-      }
-    }
-  }
-
-  await closeSessionsTask
-
   if (!workspaceApi) return
 
   await Promise.allSettled(

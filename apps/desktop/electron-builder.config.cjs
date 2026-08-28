@@ -82,6 +82,14 @@ module.exports = {
         "runtime-public-key.pem",
       ],
     },
+    {
+      from: "../../build/local-automation",
+      to: "local-automation",
+      filter: [
+        "cozea-local-automation-helper",
+        "DevCommandRanker.mlmodel",
+      ],
+    },
   ],
   mac: {
     category: "public.app-category.developer-tools",

@@ -15,7 +15,7 @@ import type { WorkbenchTileType } from "@/stores/useProjectWorkbenchStore"
 
 export interface WorkbenchIntent {
   laneId?: string | null
-  openTile?: Extract<WorkbenchTileType, "assistantChat" | "terminal">
+  openTile?: Extract<WorkbenchTileType, "assistantChat" | "devServer" | "terminal">
   focusTileId?: string | null
 }
 

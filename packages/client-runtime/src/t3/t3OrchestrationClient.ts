@@ -1,4 +1,8 @@
-import { ORCHESTRATION_WS_METHODS } from "@cozea/contracts";
+import {
+  ORCHESTRATION_WS_METHODS,
+  WS_METHODS,
+} from "@cozea/contracts";
+import type { AssetCreateUrlResult, AssetResource } from "@cozea/contracts/t3";
 import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 
 import { T3EffectRpcClient } from "./effectRpcClient";
@@ -33,11 +37,13 @@ function shellEventToDomainEvent(value: unknown): OrchestrationEvent | null {
 export class T3OrchestrationClient {
   private readonly client: T3EffectRpcClient;
   private readonly ownsClient: boolean;
+  private readonly requestTimeoutMs: number;
   private shellUnsubscribe: (() => Promise<void>) | null = null;
   private readonly shellListeners = new Set<(event: OrchestrationEvent) => void>();
   private readonly snapshotListeners = new Set<(snapshot: unknown) => void>();
 
   constructor(options: T3OrchestrationClientOptions) {
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 60_000;
     if (options.client) {
       this.client = options.client;
       this.ownsClient = false;
@@ -88,8 +94,60 @@ export class T3OrchestrationClient {
     return this.client.callUnary(ORCHESTRATION_WS_METHODS.getFullThreadDiff, params);
   }
 
+  async createAssetUrl(resource: AssetResource): Promise<AssetCreateUrlResult> {
+    const result = asRecord(
+      await this.client.callUnary(WS_METHODS.assetsCreateUrl, { resource }),
+    );
+    if (
+      !result ||
+      typeof result.relativeUrl !== "string" ||
+      typeof result.expiresAt !== "number"
+    ) {
+      throw new Error("T3 returned an invalid asset URL response");
+    }
+    return {
+      relativeUrl: result.relativeUrl,
+      expiresAt: result.expiresAt,
+      ...(typeof result.sourcePath === "string" ? { sourcePath: result.sourcePath } : {}),
+    };
+  }
+
   async getSnapshot(): Promise<unknown> {
-    return this.getArchivedShellSnapshot();
+    let resolveSnapshot: (snapshot: unknown) => void = () => {};
+    let rejectSnapshot: (error: Error) => void = () => {};
+    const snapshotPromise = new Promise<unknown>((resolve, reject) => {
+      resolveSnapshot = resolve;
+      rejectSnapshot = reject;
+    });
+    const timeout = setTimeout(() => {
+      rejectSnapshot(
+        new Error(`T3 shell snapshot timed out after ${this.requestTimeoutMs}ms`),
+      );
+    }, this.requestTimeoutMs);
+    let unsubscribe: (() => Promise<void>) | null = null;
+
+    try {
+      unsubscribe = await this.client.openStream(
+        ORCHESTRATION_WS_METHODS.subscribeShell,
+        { requestCompletionMarker: true },
+        (item) => {
+          const row = asRecord(item);
+          if (row?.kind !== "snapshot" || !row.snapshot) {
+            return;
+          }
+          clearTimeout(timeout);
+          resolveSnapshot(row.snapshot);
+        },
+        () => {
+          clearTimeout(timeout);
+          rejectSnapshot(new Error("T3 shell snapshot stream disconnected"));
+        },
+      );
+      return await snapshotPromise;
+    } finally {
+      clearTimeout(timeout);
+      await unsubscribe?.().catch(() => {});
+    }
   }
 
   private async ensureShellSubscription(): Promise<void> {

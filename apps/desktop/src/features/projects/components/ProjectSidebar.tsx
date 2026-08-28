@@ -218,7 +218,6 @@ export function ProjectSidebar({
           slug: project.slug,
           updatedAt: project.updatedAt,
           createdBy: project.createdBy ?? null,
-          localPath: project.localPath ?? null,
           sourceControl: project.sourceControl ?? undefined,
           gitRepository: project.gitRepository ?? undefined,
           importedFrom: project.importedFrom ?? null,
@@ -356,7 +355,7 @@ export function ProjectSidebar({
       project: SidebarProjectItem,
       laneId: string,
       options?: {
-        openTile?: "assistantChat" | "terminal";
+        openTile?: "assistantChat" | "devServer" | "terminal";
         focusTileId?: string;
         workspaceId?: string | null;
       },
@@ -424,13 +423,23 @@ export function ProjectSidebar({
           return;
         }
         if (nextOptions?.openTile) {
-          workbenchStore.actions.addTile(
-            project.id,
-            laneId,
-            nextOptions.openTile,
-            undefined,
-            workbenchWorkspaceId,
-          );
+          if (nextOptions.openTile === "devServer") {
+            workbenchStore.actions.openSingletonTile(
+              project.id,
+              laneId,
+              "devServer",
+              undefined,
+              workbenchWorkspaceId,
+            );
+          } else {
+            workbenchStore.actions.addTile(
+              project.id,
+              laneId,
+              nextOptions.openTile,
+              undefined,
+              workbenchWorkspaceId,
+            );
+          }
           return;
         }
         return;
@@ -828,9 +837,6 @@ export function ProjectSidebar({
         navigate("/projects", { replace: true });
 
         await cleanupDeletedProjectLocally(deletedProjectId, {
-          projectName: deletedProject.name,
-          projectSlug: deletedProject.slug,
-          managedProjectPaths: [deletedProject.localPath],
           keepLocalFiles,
         });
       } catch (error) {
@@ -1029,6 +1035,7 @@ export function ProjectSidebar({
                 setDeleteError(null);
               }
             }}
+            projectId={String(projectPendingDelete._id)}
             projectName={projectPendingDelete.name}
             onConfirm={handleConfirmDeleteProject}
             isDeleting={isDeletingProject}

@@ -61,6 +61,13 @@ export class T3ServerConfigClient {
     await this.client.callUnary(WS_METHODS.serverRefreshProviders, {});
   }
 
+  async updateProvider(provider: string, instanceId?: string): Promise<void> {
+    await this.client.callUnary(WS_METHODS.serverUpdateProvider, {
+      provider,
+      ...(instanceId ? { instanceId } : {}),
+    });
+  }
+
   private async ensureConfigSubscription(): Promise<void> {
     if (this.configUnsubscribe) {
       return;

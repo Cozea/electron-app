@@ -22,21 +22,29 @@ const SYSTEM_MANAGED_RUNTIMES = new Set<RuntimeKind>([
   'go',
 ])
 
-function getExecutableName(runtime: RuntimeKind): string {
+function getExecutableNames(runtime: RuntimeKind, commandToken?: string): string[] {
   if (process.platform !== 'win32') {
-    if (runtime === 'rust') return 'cargo'
-    return runtime
+    if (runtime === 'rust') return ['cargo']
+    if (runtime === 'python') {
+      if (commandToken === 'python3') return ['python3']
+      if (commandToken === 'python') return ['python']
+      return ['python3', 'python']
+    }
+    return [runtime]
   }
 
-  if (runtime === 'npm') return 'npm.cmd'
-  if (runtime === 'pnpm') return 'pnpm.cmd'
-  if (runtime === 'yarn') return 'yarn.cmd'
-  if (runtime === 'corepack') return 'corepack.cmd'
-  if (runtime === 'rust') return 'cargo.exe'
-  if (runtime === 'go') return 'go.exe'
-  if (runtime === 'python') return 'python.exe'
-  if (runtime === 'bun') return 'bun.exe'
-  return `${runtime}.exe`
+  if (runtime === 'npm') return ['npm.cmd']
+  if (runtime === 'pnpm') return ['pnpm.cmd']
+  if (runtime === 'yarn') return ['yarn.cmd']
+  if (runtime === 'corepack') return ['corepack.cmd']
+  if (runtime === 'rust') return ['cargo.exe']
+  if (runtime === 'go') return ['go.exe']
+  if (runtime === 'python') {
+    if (commandToken === 'python3') return ['python3.exe']
+    return ['python.exe']
+  }
+  if (runtime === 'bun') return ['bun.exe']
+  return [`${runtime}.exe`]
 }
 
 export function getRuntimeTarget(): RuntimeTarget {
@@ -99,7 +107,11 @@ function resolveSystemPath(binary: string): string | null {
   return null
 }
 
-export function resolveRuntimeHealth(runtime: RuntimeKind, target = getRuntimeTarget()): RuntimeHealth {
+export function resolveRuntimeHealth(
+  runtime: RuntimeKind,
+  target = getRuntimeTarget(),
+  commandToken?: string,
+): RuntimeHealth {
   const override = resolveOverridePath(runtime)
   if (override) {
     return {
@@ -111,7 +123,9 @@ export function resolveRuntimeHealth(runtime: RuntimeKind, target = getRuntimeTa
     }
   }
 
-  const system = resolveSystemPath(getExecutableName(runtime))
+  const system = getExecutableNames(runtime, commandToken)
+    .map((binary) => resolveSystemPath(binary))
+    .find((candidate): candidate is string => candidate !== null)
   if (system) {
     return {
       runtime,
@@ -166,7 +180,7 @@ export function resolveCommandWithRuntime(command: string, target = getRuntimeTa
     }
   }
 
-  const runtime = resolveRuntimeHealth(intent.runtime, target)
+  const runtime = resolveRuntimeHealth(intent.runtime, target, intent.token)
   if (!runtime.available || !runtime.executablePath) {
     return {
       success: false,

@@ -57,6 +57,10 @@ describe("Org DevApp #114 port completeness", () => {
     });
   });
 
+  it("keeps an assistant mounted while a background Dev Server tab is active", () => {
+    expect(getPanelRendererForTile("assistantChat")).toBe("always");
+  });
+
   it("forwards the isolated partition and navigation policy to Electron", async () => {
     const ensureTile = vi.fn(async () => createBrowserState("org-devapp-tile"));
     const destroyTile = vi.fn(async () => undefined);

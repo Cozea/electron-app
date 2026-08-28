@@ -7,6 +7,8 @@ import * as ServiceMap from "effect/ServiceMap"
 import * as SqlClient from "@effect/sql/SqlClient"
 
 import type {
+  AttachExistingFolderRequest,
+  AttachExistingFolderResult,
   BindExistingFolderRequest,
   BindExistingFolderResult,
   CloneWorkspaceForProjectRequest,
@@ -17,6 +19,8 @@ import type {
   ImportExistingFolderResult,
   LocalWorkspaceDTO,
   LocalWorkspaceRecord,
+  PreflightExistingFolderRequest,
+  PreflightExistingFolderResult,
   RepoIdentity,
   ResolveProjectWorkspaceRequest,
   ResolveProjectWorkspaceResult,
@@ -26,22 +30,33 @@ import type {
   WorkspaceConflictDTO,
   WorkspaceLaneDTO,
   WorkspaceLaneRecord,
+  WorkspaceMarkerPolicy,
   WorkspaceResolutionAction,
+  WorkspaceStorageOwnership,
   WorkspaceVerificationStatus,
 } from "../../../../shared/workspaceTypes.ts"
 import { deleteWorkspaceMarker, readWorkspaceMarker, writeWorkspaceMarker } from "./markers.ts"
-import { parseRepoIdentity, readGitRepoIdentity, repoIdentitiesMatch } from "./repoIdentity.ts"
+import {
+  parseRepoIdentity,
+  readGitBranch,
+  readGitDirPath,
+  readGitRepoIdentity,
+  repoIdentitiesMatch,
+} from "./repoIdentity.ts"
 import { verifyWorkspacePath } from "./verification.ts"
 import { scanForCandidates } from "./candidates.ts"
 import { runGitCommand } from "../gitRuntime.ts"
-import {
-  shouldExcludeGeneratedDirectory,
-  shouldExcludeGeneratedFile,
-} from "../services/generatedArtifactFilters.ts"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const RECENT_VERIFICATION_TTL_MS = 30_000
+
+interface InternalBindExistingFolderRequest extends BindExistingFolderRequest {
+  forceBind?: boolean
+  storageOwnership?: WorkspaceStorageOwnership
+  managedRootId?: string | null
+  markerPolicy?: WorkspaceMarkerPolicy
+}
 
 function newId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`
@@ -126,19 +141,6 @@ function formatWorkspaceCatalogError(error: unknown): string {
   return String(error)
 }
 
-function shouldExcludeImportCopyPath(sourceRoot: string, sourcePath: string): boolean {
-  const relativePath = path.relative(sourceRoot, sourcePath)
-  if (!relativePath) return false
-
-  const normalizedPath = relativePath.replace(/\\/g, "/")
-  if (normalizedPath === ".cozea/workspace.json") return true
-  if (normalizedPath === ".git/cozea/workspace.json") return true
-
-  const entryName = path.basename(sourcePath)
-  if (shouldExcludeGeneratedDirectory(entryName)) return true
-  return shouldExcludeGeneratedFile(normalizedPath)
-}
-
 function recordToDTO(r: LocalWorkspaceRecord): LocalWorkspaceDTO {
   const home = process.env["HOME"] ?? process.env["USERPROFILE"] ?? ""
   const displayPath = r.projectRootPath.startsWith(home)
@@ -162,6 +164,9 @@ function recordToDTO(r: LocalWorkspaceRecord): LocalWorkspaceDTO {
     verificationReason: r.verificationReason,
     verifiedAt: r.verifiedAt,
     source: r.source,
+    storageOwnership: r.storageOwnership,
+    managedRootId: r.managedRootId,
+    markerPolicy: r.markerPolicy,
     isActive: r.isActive === 1,
     workspaceRevision: r.workspaceRevision,
     createdAt: r.createdAt,
@@ -242,6 +247,14 @@ export interface WorkspaceCatalogInterface {
     req: BindExistingFolderRequest,
   ) => Effect.Effect<BindExistingFolderResult>
 
+  readonly preflightExistingFolder: (
+    req: PreflightExistingFolderRequest,
+  ) => Effect.Effect<PreflightExistingFolderResult>
+
+  readonly attachExistingFolder: (
+    req: AttachExistingFolderRequest,
+  ) => Effect.Effect<AttachExistingFolderResult>
+
   readonly createForProject: (
     req: CreateWorkspaceForProjectRequest,
   ) => Effect.Effect<CreateWorkspaceForProjectResult>
@@ -261,6 +274,24 @@ export interface WorkspaceCatalogInterface {
   readonly getById: (
     workspaceId: string,
   ) => Effect.Effect<LocalWorkspaceDTO | null>
+
+  readonly findByPath: (folderPath: string) => Effect.Effect<LocalWorkspaceDTO | null>
+
+  readonly getManagedDeletionTarget: (
+    workspaceId: string,
+  ) => Effect.Effect<{
+    workspaceId: string
+    projectId: string
+    projectRootPath: string
+    managedRootPath: string
+  } | null>
+
+  readonly listManagedDeletionTargets: () => Effect.Effect<Array<{
+    workspaceId: string
+    projectId: string
+    projectRootPath: string
+    managedRootPath: string
+  }>>
 
   readonly getLane: (
     workspaceId: string,
@@ -513,11 +544,12 @@ export const WorkspaceCatalogLive = Layer.effect(
         )
       })
 
-    const cleanupMissingWorkspaceBindingsUnderRoot = (rootPath: string) =>
+    const cleanupMissingWorkspaceBindingsUnderRoot = (rootId: string, rootPath: string) =>
       Effect.gen(function* () {
         const rows = yield* sql`
           SELECT workspace_id, project_root_path, real_path
           FROM local_workspaces
+          WHERE storage_ownership = 'managed' AND managed_root_id = ${rootId}
         `
 
         for (const row of rows as Array<Record<string, unknown>>) {
@@ -679,6 +711,100 @@ export const WorkspaceCatalogLive = Layer.effect(
         }).pipe(Effect.orElseSucceed(() => []))
       })
 
+    const resolveExistingFolder = (
+      req: PreflightExistingFolderRequest,
+    ) =>
+      Effect.gen(function* () {
+        const folderPath = req.folderPath?.trim()
+        if (!folderPath || !path.isAbsolute(folderPath)) {
+          throw new Error("Choose a valid absolute folder path.")
+        }
+
+        const stat = yield* Effect.tryPromise({
+          try: () => fs.stat(folderPath),
+          catch: () => new Error("Path does not exist or is not accessible"),
+        })
+        if (!stat.isDirectory()) {
+          throw new Error("Path is not a directory")
+        }
+
+        const realPath = yield* Effect.tryPromise({
+          try: () => fs.realpath(folderPath),
+          catch: () => new Error("Path does not exist or is not accessible"),
+        })
+        const requestedRelativePath = req.projectRootRelativePath?.trim() || "."
+        if (path.isAbsolute(requestedRelativePath)) {
+          throw new Error("The nested project root must be relative to the selected folder.")
+        }
+
+        const requestedProjectRootPath = path.resolve(realPath, requestedRelativePath)
+        if (!isSameOrNestedDirectory(realPath, requestedProjectRootPath)) {
+          throw new Error("The nested project root must stay inside the selected folder.")
+        }
+
+        const projectRootPath = yield* Effect.tryPromise({
+          try: () => fs.realpath(requestedProjectRootPath),
+          catch: () => new Error("The project root does not exist or is not accessible"),
+        })
+        if (!isSameOrNestedDirectory(realPath, projectRootPath)) {
+          throw new Error("The nested project root resolves outside the selected folder.")
+        }
+        const projectRootStat = yield* Effect.tryPromise({
+          try: () => fs.stat(projectRootPath),
+          catch: () => new Error("The project root is not accessible"),
+        })
+        if (!projectRootStat.isDirectory()) {
+          throw new Error("The project root is not a directory")
+        }
+
+        return {
+          folderPath,
+          realPath,
+          projectRootPath,
+          projectRootRelativePath: path.relative(realPath, projectRootPath) || ".",
+          stat,
+        }
+      })
+
+    const preflightExistingFolder = (
+      req: PreflightExistingFolderRequest,
+    ): Effect.Effect<PreflightExistingFolderResult> =>
+      Effect.gen(function* () {
+        const resolved = yield* resolveExistingFolder(req)
+        const [gitDirPath, repoIdentity, branch] = yield* Effect.tryPromise({
+          try: () => Promise.all([
+            readGitDirPath(resolved.projectRootPath),
+            readGitRepoIdentity(resolved.projectRootPath),
+            readGitBranch(resolved.projectRootPath),
+          ]),
+          catch: () => new Error("Failed to inspect the selected folder"),
+        }).pipe(Effect.orElseSucceed(() => [null, null, null] as const))
+
+        const existing = yield* sql`
+          SELECT * FROM local_workspaces
+          WHERE real_path = ${resolved.realPath}
+            AND project_root_relative_path = ${resolved.projectRootRelativePath}
+          LIMIT 1
+        `.pipe(
+          Effect.map((rows) =>
+            rows.length > 0 ? mapRow(rows[0] as Record<string, unknown>) : null,
+          ),
+        )
+
+        return {
+          success: true,
+          realPath: resolved.realPath,
+          isRepo: gitDirPath !== null,
+          branch: branch ?? "main",
+          repoIdentity,
+          existingWorkspace: existing ? recordToDTO(existing) : null,
+        }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(error) }),
+        ),
+      )
+
     // ── resolveProject ──────────────────────────────────────────────────────
 
     const resolveProject = (
@@ -827,43 +953,48 @@ export const WorkspaceCatalogLive = Layer.effect(
     // ── bindExistingFolder ──────────────────────────────────────────────────
 
     const bindExistingFolder = (
-      req: BindExistingFolderRequest,
+      req: InternalBindExistingFolderRequest,
     ): Effect.Effect<BindExistingFolderResult> =>
       Effect.gen(function* () {
-        console.log("[WorkspaceCatalog] bindExistingFolder started:", req)
         const {
           projectId,
-          folderPath,
-          projectRootRelativePath = ".",
           expectedRepo = null,
-          writeMarker: shouldWriteMarker = true,
+          writeMarker,
           setActive = true,
           forceBind = false,
           source = "import",
+          storageOwnership = "attached",
+          managedRootId = null,
+          markerPolicy: requestedMarkerPolicy,
         } = req
 
-        const statResult = yield* Effect.result(
-          Effect.tryPromise({ try: () => fs.stat(folderPath), catch: (e) => e }),
-        )
-        if (statResult._tag === "Failure") {
-          return { success: false, error: "Path does not exist or is not accessible" }
-        }
-        if (!(statResult.success as { isDirectory(): boolean }).isDirectory()) {
-          return { success: false, error: "Path is not a directory" }
+        if (storageOwnership === "managed" && !managedRootId) {
+          return { success: false, error: "Managed workspaces require a recorded managed root." }
         }
 
-        const realPathResult = yield* Effect.result(
-          Effect.tryPromise({ try: () => fs.realpath(folderPath), catch: (e) => e }),
-        )
-        if (realPathResult._tag === "Failure") {
-          return { success: false, error: "Path does not exist or is not accessible" }
-        }
-        const realPath = realPathResult.success as string
-
-        const projectRootPath =
-          projectRootRelativePath === "."
-            ? realPath
-            : path.join(realPath, projectRootRelativePath)
+        const resolved = yield* resolveExistingFolder(req)
+        const {
+          folderPath,
+          realPath,
+          projectRootPath,
+          projectRootRelativePath,
+          stat,
+        } = resolved
+        const gitDirPath = yield* Effect.tryPromise({
+          try: () => readGitDirPath(projectRootPath),
+          catch: () => null,
+        }).pipe(Effect.orElseSucceed(() => null))
+        const hasGit = gitDirPath !== null
+        const markerPolicy: WorkspaceMarkerPolicy =
+          requestedMarkerPolicy ??
+          (storageOwnership === "managed"
+            ? "required"
+            : writeMarker === false
+              ? "none"
+              : hasGit
+                ? "git_private"
+                : "required")
+        const shouldWriteMarker = writeMarker ?? markerPolicy !== "none"
 
         // Check if realPath is already claimed by a different workspace
         const existing = yield* sql`
@@ -1034,29 +1165,55 @@ export const WorkspaceCatalogLive = Layer.effect(
         }
         const ts = now()
 
-        const gitDirCandidate = path.join(projectRootPath, ".git")
-        const hasGit = yield* Effect.tryPromise({
-          try: () => fs.access(gitDirCandidate).then(() => true),
-          catch: () => false as const,
-        }).pipe(Effect.orElseSucceed(() => false as const))
-
         yield* sql`
           INSERT INTO local_workspaces (
-            workspace_id, project_id, root_id, root_path, real_path,
+            workspace_id, project_id, root_id, managed_root_id,
+            storage_ownership, marker_policy,
+            root_path, real_path,
             project_root_relative_path, project_root_path,
             git_root_path, git_dir_path,
             git_origin_url, git_repo_identity_json,
+            filesystem_device, filesystem_inode,
+            filesystem_birthtime_ms, filesystem_mtime_ms,
             verification_status, source,
             is_active, workspace_revision, created_at, updated_at
           ) VALUES (
-            ${workspaceId}, ${projectId}, ${null}, ${folderPath}, ${realPath},
+            ${workspaceId}, ${projectId}, ${managedRootId}, ${managedRootId},
+            ${storageOwnership}, ${markerPolicy},
+            ${realPath}, ${realPath},
             ${projectRootRelativePath}, ${projectRootPath},
-            ${hasGit ? projectRootPath : null}, ${hasGit ? gitDirCandidate : null},
+            ${hasGit ? projectRootPath : null}, ${gitDirPath},
             ${repoIdentity ? repoIdentity.url : null}, ${repoIdentity ? JSON.stringify(repoIdentity) : null},
+            ${String(stat.dev)}, ${String(stat.ino)},
+            ${Number.isFinite(stat.birthtimeMs) ? stat.birthtimeMs : null},
+            ${Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : null},
             ${"untrusted"}, ${source},
             ${0}, ${1}, ${ts}, ${ts}
           )
         `
+
+        if (shouldWriteMarker) {
+          const markerWrite = yield* Effect.result(
+            Effect.tryPromise({
+              try: () =>
+                writeWorkspaceMarker(projectRootPath, {
+                  version: 1,
+                  workspaceId,
+                  projectId,
+                  createdBy: "cozea",
+                  createdAt: ts,
+                }),
+              catch: () => new Error("Failed to write workspace marker"),
+            }),
+          )
+          if (markerWrite._tag === "Failure" && markerPolicy === "required") {
+            yield* sql`DELETE FROM local_workspaces WHERE workspace_id = ${workspaceId}`
+            return {
+              success: false,
+              error: "Cozea could not write the required workspace marker.",
+            }
+          }
+        }
 
         // local_workspaces_active_unique_idx allows one active row per project,
         // so the row must land inactive and be promoted by doSetActive, which
@@ -1065,21 +1222,10 @@ export const WorkspaceCatalogLive = Layer.effect(
           yield* doSetActive(workspaceId, projectId)
         }
 
-        if (shouldWriteMarker) {
-          yield* Effect.tryPromise({
-            try: () =>
-              writeWorkspaceMarker(projectRootPath, {
-                version: 1,
-                workspaceId,
-                projectId,
-                createdBy: "cozea",
-                createdAt: ts,
-              }),
-            catch: () => new Error("Failed to write marker"),
-          }).pipe(Effect.catch(() => Effect.void))
-        }
-
-        yield* emitEvent(workspaceId, projectId, "workspace.imported").pipe(
+        yield* emitEvent(workspaceId, projectId, "workspace.bound", {
+          storageOwnership,
+          source,
+        }).pipe(
           Effect.catch(() => Effect.void),
         )
 
@@ -1109,7 +1255,7 @@ export const WorkspaceCatalogLive = Layer.effect(
 
         const resolvedRoot = yield* resolveLocalRoot(rootId, rootPathOverride)
         const baseDir = resolvedRoot.realPath
-        yield* cleanupMissingWorkspaceBindingsUnderRoot(baseDir).pipe(
+        yield* cleanupMissingWorkspaceBindingsUnderRoot(resolvedRoot.rootId, baseDir).pipe(
           Effect.catch(() => Effect.void),
         )
 
@@ -1145,6 +1291,9 @@ export const WorkspaceCatalogLive = Layer.effect(
           writeMarker: true,
           setActive,
           source: "create",
+          storageOwnership: "managed",
+          managedRootId: resolvedRoot.rootId,
+          markerPolicy: "required",
         })
 
         if (!bindResult.success) {
@@ -1163,92 +1312,67 @@ export const WorkspaceCatalogLive = Layer.effect(
         ),
       )
 
-    // ── importExistingFolder ────────────────────────────────────────────────
+    // ── attachExistingFolder ────────────────────────────────────────────────
+
+    const attachExistingFolder = (
+      req: AttachExistingFolderRequest,
+    ): Effect.Effect<AttachExistingFolderResult> =>
+      Effect.gen(function* () {
+        const preflight = yield* preflightExistingFolder(req)
+        if (!preflight.success) {
+          return { success: false, error: preflight.error ?? "Folder preflight failed." }
+        }
+
+        const bindResult = yield* bindExistingFolder({
+          projectId: req.projectId,
+          folderPath: req.folderPath,
+          projectRootRelativePath: req.projectRootRelativePath,
+          expectedRepo: req.expectedRepo,
+          setActive: req.setActive,
+          writeMarker: preflight.isRepo === true,
+          source: "import",
+          storageOwnership: "attached",
+          managedRootId: null,
+          markerPolicy: preflight.isRepo === true ? "git_private" : "none",
+        })
+
+        if (!bindResult.success || !bindResult.workspace) {
+          return bindResult
+        }
+
+        yield* emitEvent(
+          bindResult.workspace.workspaceId,
+          req.projectId,
+          "workspace.attached",
+          { hasGit: preflight.isRepo === true },
+        ).pipe(Effect.catch(() => Effect.void))
+
+        return {
+          ...bindResult,
+          attachedPath: bindResult.workspace.projectRootPath,
+        }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(error) }),
+        ),
+      )
+
+    // ── importExistingFolder (compatibility alias; never copies) ────────────
 
     const importExistingFolder = (
       req: ImportExistingFolderRequest,
     ): Effect.Effect<ImportExistingFolderResult> =>
       Effect.gen(function* () {
-        const {
-          projectId,
-          sourceFolderPath,
-          slug,
-          rootId,
-          rootPathOverride,
-          setActive = true,
-        } = req
-
-        const sourceStatResult = yield* Effect.result(
-          Effect.tryPromise({ try: () => fs.stat(sourceFolderPath), catch: (e) => e }),
-        )
-        if (sourceStatResult._tag === "Failure") {
-          return { success: false, error: "Source folder does not exist or is not accessible" }
-        }
-        if (!(sourceStatResult.success as { isDirectory(): boolean }).isDirectory()) {
-          return { success: false, error: "Source path is not a directory" }
-        }
-
-        const sourceRealPath = yield* Effect.tryPromise({
-          try: () => fs.realpath(sourceFolderPath),
-          catch: (e) => new Error(String(e)),
+        const attached = yield* attachExistingFolder({
+          projectId: req.projectId,
+          folderPath: req.sourceFolderPath,
+          setActive: req.setActive,
         })
-        const resolvedRoot = yield* resolveLocalRoot(rootId, rootPathOverride)
-        const baseDir = resolvedRoot.realPath
-
-        if (sourceRealPath === baseDir) {
-          return { success: false, error: "Choose a project folder, not the Cozea projects directory." }
-        }
-        yield* cleanupMissingWorkspaceBindingsUnderRoot(baseDir).pipe(
-          Effect.catch(() => Effect.void),
-        )
-
-        const targetPath = yield* Effect.tryPromise({
-          try: () => findAvailablePath(baseDir, slug),
-          catch: (e) => new Error(String(e)),
-        })
-
-        if (isNestedDirectory(sourceRealPath, targetPath)) {
-          return { success: false, error: "Source and imported project folders cannot be nested." }
-        }
-
-        yield* Effect.tryPromise({
-          try: () =>
-            fs.cp(sourceRealPath, targetPath, {
-              recursive: true,
-              force: false,
-              errorOnExist: true,
-              filter: (sourcePath) => !shouldExcludeImportCopyPath(sourceRealPath, sourcePath),
-            }),
-          catch: (e) => new Error(`Failed to copy project folder: ${String(e)}`),
-        })
-
-        const bindResult = yield* bindExistingFolder({
-          projectId,
-          folderPath: targetPath,
-          writeMarker: true,
-          setActive,
-          forceBind: true,
-          source: "import",
-        })
-
-        if (!bindResult.success) {
-          yield* Effect.tryPromise({
-            try: () => fs.rm(targetPath, { recursive: true, force: true }),
-            catch: () => undefined,
-          }).pipe(Effect.catch(() => Effect.void))
-          return { success: false, error: bindResult.error ?? "bind failed" }
-        }
-
-        yield* emitEvent(bindResult.workspace?.workspaceId ?? null, projectId, "workspace.imported.copy", {
-          sourceFolderPath: sourceRealPath,
-          targetPath,
-        }).pipe(Effect.catch(() => Effect.void))
-
         return {
-          success: true,
-          workspace: bindResult.workspace,
-          importedFrom: sourceRealPath,
-          copiedTo: targetPath,
+          success: attached.success,
+          workspace: attached.workspace,
+          importedFrom: attached.attachedPath,
+          error: attached.error,
         }
       }).pipe(
         Effect.catch((e) =>
@@ -1274,7 +1398,7 @@ export const WorkspaceCatalogLive = Layer.effect(
 
         const resolvedRoot = yield* resolveLocalRoot(rootId, rootPathOverride)
         const baseDir = resolvedRoot.realPath
-        yield* cleanupMissingWorkspaceBindingsUnderRoot(baseDir).pipe(
+        yield* cleanupMissingWorkspaceBindingsUnderRoot(resolvedRoot.rootId, baseDir).pipe(
           Effect.catch(() => Effect.void),
         )
 
@@ -1310,6 +1434,9 @@ export const WorkspaceCatalogLive = Layer.effect(
           setActive,
           source: "clone",
           expectedRepo,
+          storageOwnership: "managed",
+          managedRootId: resolvedRoot.rootId,
+          markerPolicy: "required",
         })
 
         if (!bindResult.success) {
@@ -1357,6 +1484,85 @@ export const WorkspaceCatalogLive = Layer.effect(
     const forget = (workspaceId: string) =>
       forgetWorkspaceBinding(workspaceId)
 
+    const findByPath = (folderPath: string) =>
+      Effect.gen(function* () {
+        const preflight = yield* preflightExistingFolder({ folderPath })
+        return preflight.success ? (preflight.existingWorkspace ?? null) : null
+      })
+
+    const getManagedDeletionTarget = (workspaceId: string) =>
+      Effect.gen(function* () {
+        const workspace = yield* queryWorkspaceById(workspaceId)
+        if (
+          !workspace ||
+          workspace.storageOwnership !== "managed" ||
+          !workspace.managedRootId ||
+          workspace.markerPolicy !== "required"
+        ) {
+          return null
+        }
+
+        const root = yield* sql`
+          SELECT real_path FROM local_roots
+          WHERE root_id = ${workspace.managedRootId}
+          LIMIT 1
+        `.pipe(
+          Effect.map((rows) => rows[0] as { realPath: string } | undefined),
+        )
+        if (!root?.realPath) return null
+
+        const marker = yield* Effect.tryPromise({
+          try: () => readWorkspaceMarker(workspace.projectRootPath),
+          catch: () => null,
+        }).pipe(Effect.orElseSucceed(() => null))
+        if (
+          !marker ||
+          marker.marker.workspaceId !== workspace.workspaceId ||
+          marker.marker.projectId !== workspace.projectId
+        ) {
+          return null
+        }
+
+        const otherClaims = yield* sql`
+          SELECT project_root_path FROM local_workspaces
+          WHERE workspace_id != ${workspace.workspaceId}
+        `
+        for (const claim of otherClaims as Array<{ projectRootPath?: string }>) {
+          if (
+            claim.projectRootPath &&
+            isSameOrNestedDirectory(workspace.projectRootPath, claim.projectRootPath)
+          ) {
+            return null
+          }
+        }
+
+        return {
+          workspaceId: workspace.workspaceId,
+          projectId: workspace.projectId,
+          projectRootPath: workspace.projectRootPath,
+          managedRootPath: root.realPath,
+        }
+      })
+
+    const listManagedDeletionTargets = () =>
+      Effect.gen(function* () {
+        const rows = yield* sql`
+          SELECT workspace_id FROM local_workspaces
+          WHERE storage_ownership = 'managed'
+        `
+        const targets: Array<{
+          workspaceId: string
+          projectId: string
+          projectRootPath: string
+          managedRootPath: string
+        }> = []
+        for (const row of rows as Array<{ workspaceId: string }>) {
+          const target = yield* getManagedDeletionTarget(row.workspaceId)
+          if (target) targets.push(target)
+        }
+        return targets
+      })
+
     // ── listCandidates ────────────────────────────────────────────────────────
 
     const listCandidates = (
@@ -1376,6 +1582,7 @@ export const WorkspaceCatalogLive = Layer.effect(
       "missing",
       "not-directory",
       "unreadable",
+      "marker-missing",
       "marker-mismatched-project",
       "marker-mismatched-workspace",
       "repo-mismatched",
@@ -1458,6 +1665,8 @@ export const WorkspaceCatalogLive = Layer.effect(
           Effect.orDie,
         ),
       bindExistingFolder: (req) => bindExistingFolder(req).pipe(Effect.orDie),
+      preflightExistingFolder: (req) => preflightExistingFolder(req).pipe(Effect.orDie),
+      attachExistingFolder: (req) => attachExistingFolder(req).pipe(Effect.orDie),
       createForProject: (req) => createForProject(req).pipe(Effect.orDie),
       importExistingFolder: (req) => importExistingFolder(req).pipe(Effect.orDie),
       cloneForProject: (req) => cloneForProject(req).pipe(Effect.orDie),
@@ -1471,6 +1680,10 @@ export const WorkspaceCatalogLive = Layer.effect(
           const w = yield* queryWorkspaceById(workspaceId)
           return w ? recordToDTO(w) : null
         }).pipe(Effect.orDie),
+      findByPath: (folderPath: string) => findByPath(folderPath).pipe(Effect.orDie),
+      getManagedDeletionTarget: (workspaceId: string) =>
+        getManagedDeletionTarget(workspaceId).pipe(Effect.orDie),
+      listManagedDeletionTargets: () => listManagedDeletionTargets().pipe(Effect.orDie),
       getLane: (workspaceId: string, laneId?: string | null) =>
         Effect.gen(function* () {
           let l = laneId ? yield* queryLaneById(laneId) : yield* queryActiveLane(workspaceId)

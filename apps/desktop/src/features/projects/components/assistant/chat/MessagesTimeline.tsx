@@ -22,7 +22,24 @@ import {
   type OnViewableItemsChangedInfo,
 } from "@legendapp/list/react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AlertCircleIcon as __CircleAlertIconHugeIcon, ArrowDown01Icon as __WorkLogExpandHugeIcon, ArrowDownLeft01Icon as __Undo2IconHugeIcon, ArrowLeftRightIcon as __MessageSquareIconHugeIcon, ArrowUp01Icon as __WorkLogCollapseHugeIcon, ArrowUpDownIcon as __ChevronsUpDownHugeIcon, CheckmarkCircle02Icon as __CheckIconHugeIcon, CommandLineIcon as __TerminalIconHugeIcon, CpuChargeIcon as __BotIconHugeIcon, Edit01Icon as __SquarePenIconHugeIcon, EyeIcon as __EyeIconHugeIcon, FirstBracketCircleIcon as __ZapIconHugeIcon, Globe02Icon as __GlobeIconHugeIcon, Wrench01Icon as __HammerIconHugeIcon, Wrench01Icon as __WrenchIconHugeIcon, Image01Icon as __ImageIconHugeIcon } from '@hugeicons/core-free-icons'
+import {
+  AlertCircleIcon as __CircleAlertIconHugeIcon,
+  ArrowDown01Icon as __WorkLogExpandHugeIcon,
+  ArrowDownLeft01Icon as __Undo2IconHugeIcon,
+  ArrowLeftRightIcon as __MessageSquareIconHugeIcon,
+  ArrowUp01Icon as __WorkLogCollapseHugeIcon,
+  ArrowUpDownIcon as __ChevronsUpDownHugeIcon,
+  CheckmarkCircle02Icon as __CheckIconHugeIcon,
+  CommandLineIcon as __TerminalIconHugeIcon,
+  CpuChargeIcon as __BotIconHugeIcon,
+  Edit01Icon as __SquarePenIconHugeIcon,
+  EyeIcon as __EyeIconHugeIcon,
+  FirstBracketCircleIcon as __ZapIconHugeIcon,
+  Globe02Icon as __GlobeIconHugeIcon,
+  HammerIcon as __HammerIconHugeIcon,
+  Wrench01Icon as __WrenchIconHugeIcon,
+  Image01Icon as __ImageIconHugeIcon,
+} from "@hugeicons/core-free-icons";
 import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/stores/types";
@@ -35,10 +52,9 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { asHugeIcon } from '@/lib/icons/asHugeIcon'
-type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>
+import { asHugeIcon } from "@/lib/icons/asHugeIcon";
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
@@ -47,7 +63,11 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesTree } from "./ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
-import { computeMessageDurationStart, normalizeCompactToolLabel } from "./MessagesTimeline.logic";
+import {
+  computeMessageDurationStart,
+  normalizeCompactToolLabel,
+  type GenerationStatusPhase,
+} from "./MessagesTimeline.logic";
 import { PersistedFilesList } from "./PersistedFilesList";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import {
@@ -62,18 +82,18 @@ import {
 } from "./userMessageTerminalContexts";
 import { ClaudeAI, CursorIcon, OpenAI, OpenCodeIcon } from "../Icons";
 
-const ZapIcon = asHugeIcon(__ZapIconHugeIcon)
-const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon)
-const CheckIcon = asHugeIcon(__CheckIconHugeIcon)
-const TerminalIcon = asHugeIcon(__TerminalIconHugeIcon)
-const BotIcon = asHugeIcon(__BotIconHugeIcon)
-const CircleAlertIcon = asHugeIcon(__CircleAlertIconHugeIcon)
-const EyeIcon = asHugeIcon(__EyeIconHugeIcon)
-const GlobeIcon = asHugeIcon(__GlobeIconHugeIcon)
-const SquarePenIcon = asHugeIcon(__SquarePenIconHugeIcon)
-const HammerIcon = asHugeIcon(__HammerIconHugeIcon)
-const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon)
-const ImageIcon = asHugeIcon(__ImageIconHugeIcon)
+const ZapIcon = asHugeIcon(__ZapIconHugeIcon);
+const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon);
+const CheckIcon = asHugeIcon(__CheckIconHugeIcon);
+const TerminalIcon = asHugeIcon(__TerminalIconHugeIcon);
+const BotIcon = asHugeIcon(__BotIconHugeIcon);
+const CircleAlertIcon = asHugeIcon(__CircleAlertIconHugeIcon);
+const EyeIcon = asHugeIcon(__EyeIconHugeIcon);
+const GlobeIcon = asHugeIcon(__GlobeIconHugeIcon);
+const SquarePenIcon = asHugeIcon(__SquarePenIconHugeIcon);
+const HammerIcon = asHugeIcon(__HammerIconHugeIcon);
+const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon);
+const ImageIcon = asHugeIcon(__ImageIconHugeIcon);
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
@@ -90,6 +110,7 @@ interface MessagesTimelineProps {
   activeWorkStartedAt: string | null;
   activeWorkCompletedAt: string | null;
   isWorkActive: boolean;
+  generationStatusPhase: GenerationStatusPhase;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
@@ -108,6 +129,8 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   workspaceId: string | undefined;
   workspaceRoot: string | undefined;
+  artifactUrlsById?: Readonly<Record<string, string>>;
+  onOpenArtifact?: (artifactId: string) => void;
 }
 
 const LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY = "cozea:legend-list-agent-timeline:debug";
@@ -129,10 +152,7 @@ function readLegendListBooleanPreference(key: string, fallback: boolean): boolea
 }
 
 function shouldLogLegendListDiagnostics(): boolean {
-  return readLegendListBooleanPreference(
-    LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY,
-    false,
-  );
+  return readLegendListBooleanPreference(LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY, false);
 }
 
 function shouldRecycleLegendListItems(): boolean {
@@ -142,15 +162,15 @@ function shouldRecycleLegendListItems(): boolean {
 function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined): LucideIcon {
   switch (provider) {
     case "claudeAgent":
-      return ClaudeAI
+      return ClaudeAI;
     case "cursor":
-      return CursorIcon
+      return CursorIcon;
     case "opencode":
-      return OpenCodeIcon
+      return OpenCodeIcon;
     case "codex":
-      return OpenAI
+      return OpenAI;
     default:
-      return MessageSquareIcon
+      return MessageSquareIcon;
   }
 }
 
@@ -163,6 +183,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeWorkStartedAt,
   activeWorkCompletedAt,
   isWorkActive,
+  generationStatusPhase,
   scrollContainerRef,
   timelineEntries,
   completionDividerBeforeEntryId,
@@ -180,6 +201,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   dockedComposerScrollInsetPx = 0,
   resolvedTheme,
   workspaceRoot,
+  artifactUrlsById,
+  onOpenArtifact,
 }: MessagesTimelineProps) {
   const { t } = useTranslation();
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
@@ -286,8 +309,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
       const inlineCompletionSummary =
         timelineEntry.message.role === "assistant"
-          ? completionSummariesByMessageId.get(timelineEntry.message.id) ??
-            (completionDividerBeforeEntryId === timelineEntry.id ? completionSummary : null)
+          ? (completionSummariesByMessageId.get(timelineEntry.message.id) ??
+            (completionDividerBeforeEntryId === timelineEntry.id ? completionSummary : null))
           : null;
       if (
         inlineCompletionSummary &&
@@ -327,6 +350,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         kind: "working",
         id: "working-indicator-row",
         createdAt: activeWorkStartedAt,
+        phase: generationStatusPhase,
       });
     }
 
@@ -339,6 +363,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     completionSummariesByMessageId,
     completionSummary,
     isWorkActive,
+    generationStatusPhase,
     timelineEntries,
   ]);
 
@@ -446,6 +471,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking,
       resolvedTheme,
       turnDiffSummaryVersion: turnDiffSummaryByAssistantMessageId.size,
+      artifactMediaVersion: Object.keys(artifactUrlsById ?? {}).join("|"),
     }),
     [
       allDirectoriesExpandedByTurnId,
@@ -457,6 +483,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking,
       resolvedTheme,
       turnDiffSummaryByAssistantMessageId.size,
+      artifactUrlsById,
     ],
   );
   const getEstimatedItemSize = useCallback(
@@ -465,7 +492,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const getItemType = useCallback((row: TimelineRow): TimelineRow["kind"] => row.kind, []);
   const keyExtractor = useCallback((row: TimelineRow) => row.id, []);
-  const shouldRestoreVisiblePosition = useCallback((row: TimelineRow) => row.kind !== "working", []);
+  const shouldRestoreVisiblePosition = useCallback(
+    (row: TimelineRow) => row.kind !== "working",
+    [],
+  );
   const itemsAreEqual = useCallback(
     (previousRow: TimelineRow, nextRow: TimelineRow) =>
       areTimelineRowsEquivalent(previousRow, nextRow),
@@ -602,7 +632,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   "space-y-0.5 overflow-y-auto flex flex-col [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
                   !isExpanded && hasOverflow
                     ? "max-h-[160px] [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)] [-webkit-mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]"
-                    : "max-h-none"
+                    : "max-h-none",
                 )}
                 ref={(node) => {
                   if (node && !isExpanded) {
@@ -616,6 +646,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     workEntry={workEntry}
                     workspaceRoot={workspaceRoot}
                     resolvedTheme={resolvedTheme}
+                    artifactUrl={workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined}
+                    onOpenArtifact={onOpenArtifact}
                   />
                 ))}
               </div>
@@ -651,6 +683,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       workEntry={workEntry}
                       workspaceRoot={workspaceRoot}
                       resolvedTheme={resolvedTheme}
+                      artifactUrl={workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined}
+                      onOpenArtifact={onOpenArtifact}
                     />
                   ))}
                 </div>
@@ -680,110 +714,113 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <div className="w-full min-w-0">
               <div className="group flex w-full min-w-0 flex-col gap-1">
-                  {userImages.length > 0 && (
-                    <div className="mb-1 flex w-full flex-wrap justify-end gap-2 pl-12">
-                      {userImages.map(
-                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => {
-                          const isFailed = failedImageIds.has(image.id);
-                          return (
-                            <div
-                              key={image.id}
-                              className="relative overflow-hidden rounded-md border border-border/40 bg-transparent h-24 w-32 shrink-0"
-                            >
-                              {image.previewUrl && !isFailed ? (
-                                <button
-                                  type="button"
-                                  className="h-full w-full cursor-zoom-in"
-                                  aria-label={`Preview ${image.name}`}
-                                  onClick={() => {
-                                    const preview = buildExpandedImagePreview(userImages, image.id);
-                                    if (!preview) return;
-                                    onImageExpand(preview);
-                                  }}
-                                >
-                                  <img
-                                    src={image.previewUrl}
-                                    alt={image.name}
-                                    className="h-full w-full object-cover"
-                                    onLoad={onTimelineImageLoad}
-                                    onError={() => onTimelineImageError(image.id)}
-                                  />
-                                </button>
-                              ) : (
-                                <div className="flex h-full w-full flex-col items-center justify-center border border-dashed border-border/70 bg-secondary/30 px-2 py-2 text-center text-muted-foreground">
-                                  <ImageIcon className="mb-1.5 size-5 opacity-50" />
-                                  <span className="truncate w-full text-[9px] font-medium leading-tight">
-                                    {image.name}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        },
+                {userImages.length > 0 && (
+                  <div className="mb-1 flex w-full flex-wrap justify-end gap-2 pl-12">
+                    {userImages.map(
+                      (image: NonNullable<TimelineMessage["attachments"]>[number]) => {
+                        const isFailed = failedImageIds.has(image.id);
+                        return (
+                          <div
+                            key={image.id}
+                            className="relative overflow-hidden rounded-md border border-border/40 bg-transparent h-24 w-32 shrink-0"
+                          >
+                            {image.previewUrl && !isFailed ? (
+                              <button
+                                type="button"
+                                className="h-full w-full cursor-zoom-in"
+                                aria-label={`Preview ${image.name}`}
+                                onClick={() => {
+                                  const preview = buildExpandedImagePreview(userImages, image.id);
+                                  if (!preview) return;
+                                  onImageExpand(preview);
+                                }}
+                              >
+                                <img
+                                  src={image.previewUrl}
+                                  alt={image.name}
+                                  className="h-full w-full object-cover"
+                                  onLoad={onTimelineImageLoad}
+                                  onError={() => onTimelineImageError(image.id)}
+                                />
+                              </button>
+                            ) : (
+                              <div className="flex h-full w-full flex-col items-center justify-center border border-dashed border-border/70 bg-secondary/30 px-2 py-2 text-center text-muted-foreground">
+                                <ImageIcon className="mb-1.5 size-5 opacity-50" />
+                                <span className="truncate w-full text-[9px] font-medium leading-tight">
+                                  {image.name}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      },
+                    )}
+                  </div>
+                )}
+                {(displayedUserMessage.visibleText.trim().length > 0 ||
+                  terminalContexts.length > 0) && (
+                  <div className="relative w-full min-w-0 rounded-md bg-surface-raised px-3.5 py-2.5">
+                    <div className="flex w-full min-w-0 items-start gap-1">
+                      <div
+                        className={cn(
+                          "min-w-0 flex-1 text-left",
+                          needsUserBodyTruncate &&
+                            !userMessageExpanded &&
+                            "line-clamp-6 overflow-hidden",
+                        )}
+                      >
+                        <UserMessageBody
+                          text={displayedUserMessage.visibleText}
+                          terminalContexts={terminalContexts}
+                        />
+                      </div>
+                      {needsUserBodyTruncate ? (
+                        <button
+                          type="button"
+                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground/80"
+                          aria-expanded={userMessageExpanded}
+                          aria-label={
+                            userMessageExpanded ? "Collapse user message" : "Expand user message"
+                          }
+                          title={userMessageExpanded ? "Show less" : "Show full message"}
+                          onClick={() => toggleUserMessageExpanded(messageId)}
+                        >
+                          <HugeiconsIcon
+                            icon={
+                              userMessageExpanded
+                                ? __WorkLogCollapseHugeIcon
+                                : __WorkLogExpandHugeIcon
+                            }
+                            className="size-3.5 stroke-[2.1]"
+                          />
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="absolute right-1.5 top-1.5 flex items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
+                      {displayedUserMessage.copyText && (
+                        <MessageCopyButton text={displayedUserMessage.copyText} />
+                      )}
+                      {canRevertAgentWork && (
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          className="rounded-md border border-transparent bg-secondary/80 text-muted-foreground hover:bg-accent hover:text-foreground"
+                          disabled={isRevertingCheckpoint || isWorking}
+                          onClick={() => onRevertUserMessage(row.message.id)}
+                          title="Revert to this message"
+                          aria-label="Revert to this message"
+                        >
+                          <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
+                        </Button>
                       )}
                     </div>
-                  )}
-                  {(displayedUserMessage.visibleText.trim().length > 0 ||
-                    terminalContexts.length > 0) && (
-                    <div className="relative w-full min-w-0 rounded-md bg-surface-raised px-3.5 py-2.5">
-                      <div className="flex w-full min-w-0 items-start gap-1">
-                        <div
-                          className={cn(
-                            "min-w-0 flex-1 text-left",
-                            needsUserBodyTruncate &&
-                              !userMessageExpanded &&
-                              "line-clamp-6 overflow-hidden",
-                          )}
-                        >
-                          <UserMessageBody
-                            text={displayedUserMessage.visibleText}
-                            terminalContexts={terminalContexts}
-                          />
-                        </div>
-                        {needsUserBodyTruncate ? (
-                          <button
-                            type="button"
-                            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground/80"
-                            aria-expanded={userMessageExpanded}
-                            aria-label={
-                              userMessageExpanded ? "Collapse user message" : "Expand user message"
-                            }
-                            title={userMessageExpanded ? "Show less" : "Show full message"}
-                            onClick={() => toggleUserMessageExpanded(messageId)}
-                          >
-                            <HugeiconsIcon
-                              icon={
-                                userMessageExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon
-                              }
-                              className="size-3.5 stroke-[2.1]"
-                            />
-                          </button>
-                        ) : null}
-                      </div>
-                      <div className="absolute right-1.5 top-1.5 flex items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
-                        {displayedUserMessage.copyText && (
-                          <MessageCopyButton text={displayedUserMessage.copyText} />
-                        )}
-                        {canRevertAgentWork && (
-                          <Button
-                            type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            className="rounded-md border border-transparent bg-secondary/80 text-muted-foreground hover:bg-accent hover:text-foreground"
-                            disabled={isRevertingCheckpoint || isWorking}
-                            onClick={() => onRevertUserMessage(row.message.id)}
-                            title="Revert to this message"
-                            aria-label="Revert to this message"
-                          >
-                            <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  </div>
+                )}
 
-                {!(displayedUserMessage.visibleText.trim().length > 0 ||
-                  terminalContexts.length > 0) &&
+                {!(
+                  displayedUserMessage.visibleText.trim().length > 0 || terminalContexts.length > 0
+                ) &&
                   canRevertAgentWork && (
                     <div className="mt-0.5 flex w-full min-w-0 items-center justify-end gap-2 px-1">
                       <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
@@ -813,9 +850,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
           return (
             <>
-              {row.completionSummary && (
-                <CompletionSummaryRow summary={row.completionSummary} />
-              )}
+              {row.completionSummary && <CompletionSummaryRow summary={row.completionSummary} />}
               <div className="min-w-0 px-1 py-0.5">
                 <ChatMarkdown
                   text={messageText}
@@ -888,7 +923,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       {row.kind === "completion" && <CompletionSummaryRow summary={row.summary} />}
 
       {row.kind === "working" && (
-        <WorkingIndicatorRow startedAtIso={row.createdAt} />
+        <WorkingIndicatorRow startedAtIso={row.createdAt} phase={row.phase} />
       )}
     </div>
   );
@@ -901,10 +936,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
               <EmptyAssistantIcon className="h-7 w-7" />
             </EmptyMedia>
-            <EmptyTitle className="text-base font-medium">{t("assistant.chat.readyToAssist")}</EmptyTitle>
-            <EmptyDescription>
-              {t("assistant.chat.readyToAssistDesc")}
-            </EmptyDescription>
+            <EmptyTitle className="text-base font-medium">
+              {t("assistant.chat.readyToAssist")}
+            </EmptyTitle>
+            <EmptyDescription>{t("assistant.chat.readyToAssistDesc")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -1022,7 +1057,12 @@ type TimelineRow =
       createdAt: string;
       summary: string;
     }
-  | { kind: "working"; id: string; createdAt: string | null };
+  | {
+      kind: "working";
+      id: string;
+      createdAt: string | null;
+      phase: "thinking" | "working";
+    };
 
 function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan): number {
   const estimatedLines = Math.max(1, Math.ceil(proposedPlan.planMarkdown.length / 72));
@@ -1110,7 +1150,7 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
   }
 
   if (previousRow.kind === "working" && nextRow.kind === "working") {
-    return previousRow.createdAt === nextRow.createdAt;
+    return previousRow.createdAt === nextRow.createdAt && previousRow.phase === nextRow.phase;
   }
 
   return false;
@@ -1128,58 +1168,73 @@ function formatLiveElapsed(startIso: string, nowMs: number): string | null {
   return formatDuration(elapsedMs);
 }
 
-const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
-  startedAtIso: string | null;
-}) {
-  const { startedAtIso } = props;
-  const [nowMs, setNowMs] = useState(() => Date.now());
+const WorkingTimer = memo(function WorkingTimer(props: { startedAtIso: string }) {
+  const textRef = useRef<HTMLSpanElement | null>(null);
+  const initialText = formatLiveElapsed(props.startedAtIso, Date.now());
 
   useEffect(() => {
-    if (!startedAtIso) {
-      return;
-    }
-    setNowMs(Date.now());
-    const intervalId = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 250);
-    return () => {
-      window.clearInterval(intervalId);
+    const updateText = () => {
+      if (textRef.current) {
+        textRef.current.textContent = formatLiveElapsed(props.startedAtIso, Date.now()) ?? "";
+      }
     };
-  }, [startedAtIso]);
+    updateText();
+    const intervalId = window.setInterval(updateText, 1_000);
+    return () => window.clearInterval(intervalId);
+  }, [props.startedAtIso]);
 
-  const elapsedLabel = startedAtIso ? formatLiveElapsed(startedAtIso, nowMs) : null;
+  return <span ref={textRef}>{initialText}</span>;
+});
+
+const LiveShimmerText = memo(function LiveShimmerText(props: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={cn("cozea-live-shimmer relative inline-block max-w-full overflow-hidden", props.className)}>
+      <span className="text-muted-foreground/75">{props.children}</span>
+      <span aria-hidden className="cozea-live-shimmer-focus pointer-events-none absolute inset-y-0 select-none">
+        <span className="cozea-live-shimmer-counter block">
+          <span className="cozea-live-shimmer-aligned block text-foreground">{props.children}</span>
+        </span>
+      </span>
+    </span>
+  );
+});
+
+const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
+  startedAtIso: string | null;
+  phase: "thinking" | "working";
+}) {
+  const { phase, startedAtIso } = props;
 
   return (
-    <div className="py-0.5 pl-1.5">
-      <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
-        <div
-          className="preview-loading-spinner"
-          style={
-            {
-              "--square": "3.5px",
-              "--offset": "4.5px",
-              margin: "0",
-              width: "calc(3 * var(--offset) + var(--square))",
-              height: "calc(2 * var(--offset) + var(--square))",
-              opacity: 0.7,
-            } as React.CSSProperties
-          }
-        >
-          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
-          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
-          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
-          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
-          <div className="preview-loading-spinner-square bg-muted-foreground rounded-none" />
+    <div role="status" aria-live="polite" data-assistant-generation-phase={phase}>
+      {phase === "thinking" ? (
+        <div className="flex min-h-8 items-center gap-1.5 border-b border-border/60 px-1 pb-2 pt-1 text-sm text-muted-foreground">
+          <span
+            className="cozea-wave-loader inline-flex h-4 w-4 shrink-0 items-center justify-between"
+            aria-hidden="true"
+          >
+            <span className="cozea-wave-loader-dot" />
+            <span className="cozea-wave-loader-dot" />
+            <span className="cozea-wave-loader-dot" />
+          </span>
+          <span>Thinking</span>
         </div>
-        <span>{elapsedLabel ? `Working for ${elapsedLabel}` : "Working..."}</span>
-      </div>
+      ) : (
+        <div className="min-h-8 border-b border-border/60 px-1 pb-2 pt-1 text-sm leading-relaxed tabular-nums">
+          <LiveShimmerText>Working</LiveShimmerText>
+          {startedAtIso ? (
+            <span className="text-muted-foreground/75"> for <WorkingTimer startedAtIso={startedAtIso} /></span>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 });
 
-const CompletionSummaryRow = memo(function CompletionSummaryRow(props: {
-  summary: string;
-}) {
+const CompletionSummaryRow = memo(function CompletionSummaryRow(props: { summary: string }) {
   return (
     <div className="my-4 px-1">
       <div className="text-[13px] text-muted-foreground/88">
@@ -1311,7 +1366,10 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   );
 });
 
-function workToneIcon(tone: TimelineWorkEntry["tone"], status?: TimelineWorkEntry["status"]): {
+function workToneIcon(
+  tone: TimelineWorkEntry["tone"],
+  status?: TimelineWorkEntry["status"],
+): {
   icon: LucideIcon;
   className: string;
 } {
@@ -1343,14 +1401,6 @@ function workToneIcon(tone: TimelineWorkEntry["tone"], status?: TimelineWorkEntr
     icon: ZapIcon,
     className: "text-foreground/92",
   };
-}
-
-function workToneClass(tone: "thinking" | "tool" | "info" | "error", status?: TimelineWorkEntry["status"]): string {
-  if (status === "failed") return "text-destructive";
-  if (tone === "error") return "text-destructive";
-  if (tone === "tool") return "text-muted-foreground/70";
-  if (tone === "thinking") return "text-muted-foreground/50";
-  return "text-muted-foreground/40";
 }
 
 function workEntryPreview(
@@ -1413,6 +1463,7 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   }
   if (workEntry.itemType === "web_search") return GlobeIcon;
   if (workEntry.itemType === "image_view") return EyeIcon;
+  if (workEntry.itemType === "image_generation") return ImageIcon;
 
   switch (workEntry.itemType) {
     case "mcp_tool_call":
@@ -1425,7 +1476,9 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   return workToneIcon(workEntry.tone).icon;
 }
 
-function isRunningWorkEntry(workEntry: Pick<TimelineWorkEntry, "activityKind" | "status">): boolean {
+function isRunningWorkEntry(
+  workEntry: Pick<TimelineWorkEntry, "activityKind" | "status">,
+): boolean {
   return workEntry.activityKind === "tool.progress" || workEntry.status === "inProgress";
 }
 
@@ -1448,8 +1501,10 @@ function capitalizePhrase(value: string): string {
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
-  if (isRunningWorkEntry(workEntry) && isCommandLikeWorkEntry(workEntry)) {
-    return "Running command";
+  if (isCommandLikeWorkEntry(workEntry)) {
+    if (isRunningWorkEntry(workEntry)) return "Running command";
+    if (workEntry.status === "failed") return "Command failed";
+    return "Ran command";
   }
   if (workEntry.status === "failed") {
     if (!workEntry.toolTitle) {
@@ -1484,8 +1539,7 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
   if (workEntry.status === "cancelled") {
     return {
       label: "Cancelled",
-      className:
-        "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+      className: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
     };
   }
   if (
@@ -1495,8 +1549,7 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
   ) {
     return {
       label: "Warning",
-      className:
-        "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+      className: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
     };
   }
   if (workEntry.activityKind === "runtime.error") {
@@ -1517,15 +1570,38 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
   return null;
 }
 
+function buildWorkEntryExpandedBody(
+  workEntry: TimelineWorkEntry,
+  workspaceRoot: string | undefined,
+): string | null {
+  const blocks: string[] = [];
+  const command = workEntryRawCommand(workEntry) ?? workEntry.command?.trim() ?? null;
+  if (command) blocks.push(command);
+  const detail = workEntry.detail?.trim();
+  if (detail && detail !== command) blocks.push(detail);
+  if ((workEntry.changedFiles?.length ?? 0) > 0) {
+    blocks.push(
+      workEntry
+        .changedFiles!.map((filePath) => formatWorkspaceRelativePath(filePath, workspaceRoot))
+        .join("\n"),
+    );
+  }
+  return blocks.length > 0 ? blocks.join("\n\n") : null;
+}
+
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
   resolvedTheme: "light" | "dark";
+  artifactUrl?: string;
+  onOpenArtifact?: (artifactId: string) => void;
 }) {
-  const { workEntry, workspaceRoot, resolvedTheme } = props;
+  const { workEntry, workspaceRoot, resolvedTheme, artifactUrl, onOpenArtifact } = props;
+  const [expanded, setExpanded] = useState(false);
   const iconConfig = workToneIcon(workEntry.tone, workEntry.status);
   const EntryIcon = workEntryIcon(workEntry);
-  const showRunningCommandSpinner = isRunningWorkEntry(workEntry);
+  const isLive = isRunningWorkEntry(workEntry);
+  const isCommand = isCommandLikeWorkEntry(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const rawPreview = workEntryPreview(workEntry, workspaceRoot);
   const preview =
@@ -1536,7 +1612,14 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       : rawPreview;
   const rawCommand = workEntryRawCommand(workEntry);
   const statusBadge = workEntryStatusBadge(workEntry);
-  const displayText = preview ? `${heading} - ${preview}` : heading;
+  const displayText =
+    isCommand && !isLive && workEntry.status !== "failed" && preview
+      ? preview
+      : preview
+        ? `${heading} — ${preview}`
+        : heading;
+  const expandedBody = buildWorkEntryExpandedBody(workEntry, workspaceRoot);
+  const canExpand = expandedBody !== null;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const hasPersistedFileGroups =
     (workEntry.savedFiles?.length ?? 0) > 0 || (workEntry.failedFiles?.length ?? 0) > 0;
@@ -1549,92 +1632,86 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
 
   return (
     <div className="rounded-lg px-1 py-1">
-      <div className="flex items-center gap-2 transition-[opacity,translate] duration-200">
+      <div
+        className={cn(
+          "flex items-center gap-2 rounded-md transition-[background-color,opacity,translate] duration-200",
+          canExpand &&
+            "cursor-pointer hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+        )}
+        role={canExpand ? "button" : undefined}
+        tabIndex={canExpand ? 0 : undefined}
+        aria-expanded={canExpand ? expanded : undefined}
+        aria-label={displayText}
+        onClick={canExpand ? () => setExpanded((current) => !current) : undefined}
+        onKeyDown={
+          canExpand
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setExpanded((current) => !current);
+                }
+              }
+            : undefined
+        }
+      >
         <span
           className={cn("flex size-5 shrink-0 items-center justify-center", iconConfig.className)}
+          data-tool-icon={isCommand ? "terminal" : (workEntry.itemType ?? workEntry.requestKind)}
         >
-          {showRunningCommandSpinner ? (
-            <div className="loader" aria-hidden="true" />
-          ) : (
-            <EntryIcon className="size-3" />
-          )}
+          <EntryIcon className="size-3.5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1 overflow-hidden">
-          {rawCommand ? (
-            <div className="max-w-full">
-              <p
-                className={cn(
-                  "truncate text-[11px] leading-5",
-                  workToneClass(workEntry.tone, workEntry.status),
-                  preview ? "text-muted-foreground/70" : "",
-                )}
-                title={displayText}
-              >
-                <span className={cn(workEntry.status === "failed" ? "text-destructive" : "text-foreground/80", workToneClass(workEntry.tone, workEntry.status))}>
-                  {heading}
-                </span>
-                {preview && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
-                        {" "}
-                        - {preview}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      align="start"
-                      side="top"
-                      className="max-w-[min(56rem,calc(100vw-2rem))] border-border/60 bg-popover px-1.5 py-1 text-popover-foreground shadow-md"
-                    >
-                      <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto font-mono text-[11px] leading-4 whitespace-nowrap">
-                        {rawCommand}
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </p>
-            </div>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  className="block min-w-0 w-full cursor-default text-left"
-                  title={displayText}
-                  aria-label={displayText}
-                >
-                  <p
-                    className={cn(
-                      "truncate text-[11px] leading-5",
-                      workToneClass(workEntry.tone, workEntry.status),
-                      preview ? "text-muted-foreground/70" : "",
-                    )}
-                  >
-                    <span className="inline-flex min-w-0 items-center gap-1.5">
-                      <span className={cn("truncate", workEntry.status === "failed" ? "text-destructive" : "text-foreground/80", workToneClass(workEntry.tone, workEntry.status))}>
-                        {heading}
-                      </span>
-                      {statusBadge ? (
-                        <span
-                          className={cn(
-                            "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-[9px] font-medium leading-4",
-                            statusBadge.className,
-                          )}
-                        >
-                          {statusBadge.label}
-                        </span>
-                      ) : null}
-                    </span>
-                    {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
-                  </p>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-[min(720px,calc(100vw-2rem))]">
-                <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">{displayText}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <p
+            className={cn(
+              "truncate text-[11px] leading-5",
+              workEntry.status === "failed"
+                ? "text-destructive"
+                : "text-muted-foreground/75",
+              isCommand && "font-mono",
+            )}
+            title={rawCommand ?? displayText}
+          >
+            {isLive ? <LiveShimmerText className="w-full truncate">{displayText}</LiveShimmerText> : displayText}
+          </p>
         </div>
+        {statusBadge ? (
+          <span
+            className={cn(
+              "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-[9px] font-medium leading-4",
+              statusBadge.className,
+            )}
+          >
+            {statusBadge.label}
+          </span>
+        ) : null}
+        {canExpand ? (
+          <HugeiconsIcon
+            icon={__WorkLogExpandHugeIcon}
+            className={cn(
+              "mr-1 size-3.5 shrink-0 text-muted-foreground/55 transition-transform duration-200",
+              expanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
+      {workEntry.itemType === "image_generation" && artifactUrl && workEntry.toolCallId ? (
+        <button
+          type="button"
+          className="ml-7 mt-1.5 block h-20 w-28 overflow-hidden rounded-md border border-border/60 bg-secondary/30 transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => onOpenArtifact?.(workEntry.toolCallId!)}
+          aria-label={`Open ${heading} in artifacts`}
+        >
+          <img src={artifactUrl} alt={heading} className="h-full w-full object-cover" />
+        </button>
+      ) : null}
+      {expanded && expandedBody ? (
+        <div className="mt-1 ml-7 border-l border-border/45 pl-3 pt-0.5">
+          <pre className="max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/75 select-text">
+            {expandedBody}
+          </pre>
+        </div>
+      ) : null}
       {hasPersistedFileGroups ? (
         <PersistedFilesList
           savedFiles={workEntry.savedFiles}

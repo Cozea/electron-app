@@ -25,7 +25,7 @@ function resolveFileSystemPath(
 
 /**
  * Resolve a single local folder path from a drag-and-drop DataTransfer.
- * Mirrors "Import local folder": only directories are accepted.
+ * Mirrors "Open existing folder": only directories are accepted.
  */
 export function resolveDroppedLocalFolderPath(
   dataTransfer: DataTransfer,

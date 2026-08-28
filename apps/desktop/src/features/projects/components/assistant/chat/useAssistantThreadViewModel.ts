@@ -23,6 +23,7 @@ import {
   formatElapsed,
   hasToolActivityForTurn,
 } from "@/features/projects/components/assistant/chat/workLogDerivations"
+import { deriveGenerationStatusPhase } from "@/features/projects/components/assistant/chat/MessagesTimeline.logic"
 import type { Thread } from "@/stores/types"
 
 interface UseAssistantThreadViewModelInput {
@@ -50,7 +51,19 @@ export function useAssistantThreadViewModel({
   const latestTurnSettled = isLatestTurnSettled(activeTurn, thread?.session ?? null)
   const phase = thread ? derivePhase(thread.session ?? null) : "disconnected"
   const isWorking = isRunning || isSending || isInterrupting || Boolean(isRevertingCheckpoint)
+  // The merged live-running signal spans message checkpoints and provider
+  // generations. Once it is idle, historical timeline boundaries can safely
+  // produce one completion fold even if latestTurn/session projection lags.
+  const completionTurnSettled = !isWorking
   const threadActivities = thread?.activities ?? []
+  const generationStatusPhase = useMemo(
+    () =>
+      deriveGenerationStatusPhase(
+        threadActivities,
+        latestTurnSettled ? null : activeTurn?.turnId,
+      ),
+    [activeTurn?.turnId, latestTurnSettled, threadActivities],
+  )
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, undefined),
     [threadActivities],
@@ -71,7 +84,8 @@ export function useAssistantThreadViewModel({
     [activeTurn, isWorking, latestTurnSettled, pendingTurnStartStartedAtIso, thread?.session],
   )
   const timelineEntries = useMemo(
-    () => deriveTimelineEntries(thread?.messages ?? [], thread?.proposedPlans ?? [], workLogEntries),
+    () =>
+      deriveTimelineEntries(thread?.messages ?? [], thread?.proposedPlans ?? [], workLogEntries),
     [thread?.messages, thread?.proposedPlans, workLogEntries],
   )
   const inferredCheckpointTurnCountByTurnId = useMemo(
@@ -92,7 +106,7 @@ export function useAssistantThreadViewModel({
     [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId],
   )
   const completionSummary = useMemo(() => {
-    if (!latestTurnSettled) return null
+    if (!completionTurnSettled) return null
     if (!latestTurnHasToolActivity) return null
     if (!activeTurn?.startedAt || !activeTurn.completedAt) return null
 
@@ -110,7 +124,7 @@ export function useAssistantThreadViewModel({
     activeTurn?.startedAt,
     activeTurn?.state,
     latestTurnHasToolActivity,
-    latestTurnSettled,
+    completionTurnSettled,
   ])
   const completionSummariesByMessageId = useMemo(
     () =>
@@ -118,14 +132,14 @@ export function useAssistantThreadViewModel({
         messages: thread?.messages ?? [],
         activities: threadActivities,
         activeTurn,
-        latestTurnSettled,
+        latestTurnSettled: completionTurnSettled,
       }),
-    [activeTurn, latestTurnSettled, thread?.messages, threadActivities],
+    [activeTurn, completionTurnSettled, thread?.messages, threadActivities],
   )
   const completionDividerBeforeEntryId = useMemo(
     () =>
       deriveCompletionDividerBeforeEntryId({
-        latestTurnSettled,
+        latestTurnSettled: completionTurnSettled,
         activeTurnStartedAt: activeTurn?.startedAt ?? null,
         activeTurnCompletedAt: activeTurn?.completedAt ?? null,
         assistantMessageId: activeTurn?.assistantMessageId ?? null,
@@ -137,7 +151,7 @@ export function useAssistantThreadViewModel({
       activeTurn?.completedAt,
       activeTurn?.startedAt,
       completionSummary,
-      latestTurnSettled,
+      completionTurnSettled,
       timelineEntries,
     ],
   )
@@ -158,7 +172,12 @@ export function useAssistantThreadViewModel({
     isWorking,
     activeWorkStartedAt,
     activeWorkCompletedAt: completionSummary ? (activeTurn?.completedAt ?? null) : null,
-    isWorkActive: isWorking && !latestTurnSettled,
+    // A newly submitted turn starts before the shell projection replaces the
+    // previous settled latestTurn. Treat every explicit busy state as active
+    // so the timeline shows feedback immediately instead of waiting for that
+    // projection to catch up.
+    isWorkActive: isWorking,
+    generationStatusPhase,
     timelineEntries,
     completionDividerBeforeEntryId,
     completionSummary,

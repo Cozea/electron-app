@@ -90,6 +90,10 @@ function asSnapshotResult(value: unknown): PageSnapshotScriptResult | null {
       role: typeof item.role === "string" ? item.role : null,
       name: typeof item.name === "string" ? item.name : "",
       selector: typeof item.selector === "string" ? item.selector : "",
+      x: typeof item.x === "number" ? item.x : 0,
+      y: typeof item.y === "number" ? item.y : 0,
+      width: typeof item.width === "number" ? item.width : 0,
+      height: typeof item.height === "number" ? item.height : 0,
     }))
   return {
     url: record.url,

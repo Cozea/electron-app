@@ -77,6 +77,7 @@ import {
 } from './substrate/ShadowServerManager'
 
 import { DevServerService } from './services/DevServerService'
+import { LocalAutomationResolverService } from './runtime/LocalAutomationResolverService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
 import { WorkbenchBrowserService } from './services/WorkbenchBrowserService'
 import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
@@ -600,6 +601,8 @@ function logSubstrateShadow(event: string, details?: Record<string, unknown>): v
 }
 
 async function ensureSubstrateShadowServerStarted(): Promise<void> {
+  // The shadow owns the T3 process that serves orchestration streams, preview
+  // automation brokering, and short-lived signed media URLs for thread artifacts.
   const flags = readSubstrateShadowServerFlags()
   const obs = getSharedSubstrateNdjsonWriter()
   if (!flags.enabled) {
@@ -627,10 +630,17 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
       entryPath,
       logsRootDirectory,
       pool: true,
+      previewAutomation: true,
     })
     obs.writeSpan({
       name: 'substrate.shadow.start',
-      attrs: { host: flags.host, port: flags.port, logsRootDirectory, pool: true },
+      attrs: {
+        host: flags.host,
+        port: flags.port,
+        logsRootDirectory,
+        pool: true,
+        previewAutomation: true,
+      },
     })
     const status = await pool.register({
       id: PRIMARY_BACKEND_INSTANCE_ID,
@@ -1060,6 +1070,9 @@ let win: AppBrowserWindow | null = null
 let canCreateMainWindow = false
 const workbenchBrowserService = new WorkbenchBrowserService({
   getMainWindow: () => win,
+  // Match the main renderer: native preview child surfaces remain paintable
+  // for development UI automation while packaged builds retain throttling.
+  backgroundThrottling: app.isPackaged,
 })
 const orgDevAppArtifactService = new OrgDevAppArtifactService(
   () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
@@ -1418,7 +1431,9 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      backgroundThrottling: true,
+      // Keep development windows paintable while macOS UI automation owns
+      // foreground focus. Production retains Electron's power-saving default.
+      backgroundThrottling: isReleaseBuild,
       devTools: !isReleaseBuild,
       additionalArguments: [
         '--cozea-window=main',
@@ -1713,6 +1728,8 @@ app.on('window-all-closed', () => {
   // Kill all DevServer background processes
   DevServerService.getInstance().killAll()
   PreviewSnapshotService.getInstance().dispose()
+  // The native ranker is a long-lived child; never leave it behind after Electron exits.
+  LocalAutomationResolverService.getInstance().dispose()
 
   // Kill all terminal instances when app closes
   TerminalService.getInstance().killAll()
@@ -1728,6 +1745,7 @@ app.on('before-quit', () => {
   logAssistantBridge('app-before-quit')
   workbenchBrowserService.dispose()
   PreviewSnapshotService.getInstance().dispose()
+  LocalAutomationResolverService.getInstance().dispose()
   void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
   void stopSubstrateShadowServer()
@@ -1752,7 +1770,7 @@ app.whenReady().then(() => {
 
   // Register workspace IPC handlers synchronously so they're available as soon
   // as the renderer loads. Internally each handler awaits catalog readiness.
-  registerWorkspaceHandlers(ipcMain)
+  registerWorkspaceHandlers(ipcMain, { loadSettings, saveSettings })
 
   scheduleBootWork('workspace-catalog-initialized', async () => {
     await initWorkspaceCatalogRuntime(app.getPath('userData'))

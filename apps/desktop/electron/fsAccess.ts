@@ -66,3 +66,24 @@ export function rememberApprovedExternalReadRoot(
     approvedExternalReadRoots: nextRoots,
   }
 }
+
+export function forgetApprovedExternalReadRoot(
+  settings: AppSettings,
+  candidatePath: string,
+): Pick<AppSettings, 'approvedExternalReadRoots'> | null {
+  if (typeof candidatePath !== 'string' || candidatePath.trim().length === 0) {
+    return null
+  }
+
+  const normalizedCandidate = normalizeAbsolutePath(candidatePath)
+  const current = settings.approvedExternalReadRoots ?? []
+  const nextRoots = current.filter(
+    (value) =>
+      typeof value === 'string' &&
+      value.trim().length > 0 &&
+      normalizeAbsolutePath(value) !== normalizedCandidate,
+  )
+  return nextRoots.length === current.length
+    ? null
+    : { approvedExternalReadRoots: nextRoots }
+}

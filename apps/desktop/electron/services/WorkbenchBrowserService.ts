@@ -21,6 +21,7 @@ interface WorkbenchBrowserRecord {
 
 interface WorkbenchBrowserServiceOptions {
   getMainWindow: () => BrowserWindow | null
+  backgroundThrottling?: boolean
 }
 
 interface EnsureWorkbenchBrowserTileOptions {
@@ -269,6 +270,11 @@ export class WorkbenchBrowserService {
     if (!mainWindow || mainWindow.isDestroyed()) return
 
     mainWindow.contentView.addChildView(view)
+    // Adding a native child view can make it visible even when it was hidden
+    // before attachment. Re-assert the invariant after attachment so a newly
+    // acquired or renderer-reloaded preview cannot cover the workbench before
+    // its host has supplied measured bounds and explicitly made it visible.
+    view.setVisible(false)
     view.webContents.setWindowOpenHandler(({ url }) => {
       const record = this.records.get(tileId)
       if (record?.navigationPolicy === 'orgDevApp') {
@@ -571,7 +577,7 @@ export class WorkbenchBrowserService {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        backgroundThrottling: true,
+        backgroundThrottling: this.options.backgroundThrottling ?? true,
         session: this.resolveSession(tileId, storageScope, sessionKey ?? null),
       },
     })
@@ -646,6 +652,49 @@ export class WorkbenchBrowserService {
       throw new Error(`Browser tile "${tileId}" webContents is destroyed.`)
     }
     return record.view.webContents.executeJavaScript(script, true)
+  }
+
+  sendAutomationClick(tileId: string, x: number, y: number): boolean {
+    const record = this.records.get(tileId)
+    if (!record || record.view.webContents.isDestroyed()) return false
+    const point = { x: Math.round(x), y: Math.round(y) }
+    record.view.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point })
+    record.view.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point })
+    return true
+  }
+
+  sendAutomationKey(
+    tileId: string,
+    key: string,
+    modifiers: Array<'Alt' | 'Control' | 'Meta' | 'Shift'> = [],
+  ): boolean {
+    const record = this.records.get(tileId)
+    if (!record || record.view.webContents.isDestroyed()) return false
+    const modifierMap = {
+      Alt: 'alt',
+      Control: 'control',
+      Meta: 'meta',
+      Shift: 'shift',
+    } as const
+    const electronModifiers = modifiers.map((modifier) => modifierMap[modifier])
+    record.view.webContents.sendInputEvent({
+      type: 'keyDown',
+      keyCode: key,
+      modifiers: electronModifiers,
+    })
+    if (key.length === 1) {
+      record.view.webContents.sendInputEvent({
+        type: 'char',
+        keyCode: key,
+        modifiers: electronModifiers,
+      })
+    }
+    record.view.webContents.sendInputEvent({
+      type: 'keyUp',
+      keyCode: key,
+      modifiers: electronModifiers,
+    })
+    return true
   }
 
   /** Actual native view geometry — diagnostic ground truth for bounds-sync issues. */
@@ -814,6 +863,27 @@ export class WorkbenchBrowserService {
       const image = await record.view.webContents.capturePage(undefined, { stayHidden: true })
       const buffer = image.toJPEG(100)
       return `data:image/jpeg;base64,${buffer.toString('base64')}`
+    } catch {
+      return null
+    }
+  }
+
+  async capturePngScreenshot(tileId: string): Promise<{
+    data: string
+    width: number
+    height: number
+  } | null> {
+    const record = this.records.get(tileId)
+    if (!record) return null
+
+    try {
+      const image = await record.view.webContents.capturePage(undefined, { stayHidden: true })
+      const size = image.getSize()
+      return {
+        data: image.toPNG().toString('base64'),
+        width: size.width,
+        height: size.height,
+      }
     } catch {
       return null
     }

@@ -60,6 +60,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
   
   const selectedModel =
     selectedProviderOptions?.find((option) => option.slug === props.model) ??
+    selectedProviderOptions?.find((option) => option.isDefault && !option.isLegacy) ??
+    selectedProviderOptions?.find((option) => !option.isLegacy) ??
     selectedProviderOptions?.[0];
   const duplicateDriverCount = instanceEntries.filter(
     (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,

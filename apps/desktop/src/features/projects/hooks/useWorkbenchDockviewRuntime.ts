@@ -43,6 +43,12 @@ import {
 } from "@/features/projects/lib/changesTileSizing";
 import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime";
 import { releaseProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntimeLifecycle";
+import {
+  claimDevServerSurface,
+  releaseDevServerSurfaceLease,
+  registerDevServerSurfaceController,
+  type DevServerSurfaceHandle,
+} from "@/features/projects/devserver/devServerSurfaceController";
 
 const CHANGES_PANEL_ID = "cozea-changes-panel";
 
@@ -516,6 +522,143 @@ export function useWorkbenchDockviewRuntime(
 
   useEffect(() => {
     const api = dockviewApiRef.current;
+    const scopeKey = input.workbenchScopeKey;
+    if (
+      !api ||
+      !scopeKey ||
+      !input.projectId ||
+      dockviewReadyScopeKey !== scopeKey
+    ) {
+      return;
+    }
+
+    return registerDevServerSurfaceController(scopeKey, {
+      ensureSurface: async (request): Promise<DevServerSurfaceHandle> => {
+        const liveWorkbench = getLiveWorkbench();
+        const liveApi = dockviewApiRef.current;
+        if (!liveWorkbench || !liveApi) {
+          throw new Error("The project workbench closed before the Dev Server surface was ready.");
+        }
+
+        const reusableTileIds = liveWorkbench.order.filter((tileId) => {
+          const tile = liveWorkbench.tiles[tileId];
+          return tile?.type === "devServer" && !tile.devAppId;
+        });
+        if (request.preferredTileId && reusableTileIds.includes(request.preferredTileId)) {
+          reusableTileIds.splice(reusableTileIds.indexOf(request.preferredTileId), 1);
+          reusableTileIds.unshift(request.preferredTileId);
+        }
+        let lease = request.forceNew
+          ? null
+          : claimDevServerSurface(reusableTileIds, request.ownerId);
+        let created = false;
+        let tileId = lease?.tileId ?? null;
+
+        if (!lease || !tileId) {
+          tileId = workbenchActions.addTile(
+            request.projectId,
+            request.laneId,
+            "devServer",
+            {
+              title: "Dev Server",
+              activate: false,
+              agentManaged: true,
+            },
+            request.workspaceId,
+          );
+          lease = claimDevServerSurface([tileId], request.ownerId);
+          created = true;
+        }
+
+        if (!lease || !tileId) {
+          throw new Error("Unable to reserve a Dev Server surface for this agent.");
+        }
+
+        const nextWorkbench = getLiveWorkbench();
+        const nextTile = nextWorkbench?.tiles[tileId];
+        if (!nextTile || nextTile.type !== "devServer") {
+          throw new Error("The reserved Dev Server surface is no longer available.");
+        }
+
+        let panel = liveApi.getPanel(tileId);
+        if (!panel) {
+          // addPanel(within) activates the new tab. Restore the requesting
+          // assistant in this exact group, not Dockview's globally active
+          // panel, which may belong to another tile group entirely.
+          const previousActivePanelId = request.assistantTileId;
+          const referencePanel = liveApi.getPanel(request.assistantTileId);
+          panel = liveApi.addPanel({
+            id: nextTile.id,
+            title: nextTile.title,
+            component: getDockComponentName(nextTile.type),
+            params: getPanelParams(request.projectId, request.laneId, nextTile.id),
+            renderer: getPanelRendererForTile(nextTile.type),
+            ...getPanelConstraintsForTile(nextTile.type),
+            ...(referencePanel
+              ? {
+                  position: {
+                    referencePanel: referencePanel.id,
+                    direction: "within" as const,
+                  },
+                }
+              : {}),
+          });
+
+          if (!request.focus) {
+            const previousPanel = liveApi.getPanel(previousActivePanelId);
+            previousPanel?.api.setActive();
+            workbenchActions.setActiveTile(
+              request.projectId,
+              request.laneId,
+              previousPanel?.id ?? null,
+              request.workspaceId,
+            );
+          }
+        }
+
+        if (request.focus) {
+          panel?.api.setActive();
+          workbenchActions.setActiveTile(
+            request.projectId,
+            request.laneId,
+            tileId,
+            request.workspaceId,
+          );
+        }
+
+        return {
+          scopeKey,
+          tileId,
+          leaseToken: lease.token,
+          created,
+          focused: Boolean(request.focus),
+        };
+      },
+      focusSurface: (tileId) => {
+        const panel = dockviewApiRef.current?.getPanel(tileId);
+        if (!panel || !input.projectId) return false;
+        panel.api.setActive();
+        workbenchActions.setActiveTile(
+          input.projectId,
+          input.activeLaneId,
+          tileId,
+          input.workspaceId,
+        );
+        return true;
+      },
+    });
+  }, [
+    dockviewReadyScopeKey,
+    getLiveWorkbench,
+    input.activeLaneId,
+    input.projectId,
+    input.workbenchScopeKey,
+    input.workspaceId,
+    workbenchActions,
+  ]);
+
+  useEffect(() => {
+    const api = dockviewApiRef.current;
     if (
       !api ||
       !input.projectId ||
@@ -941,6 +1084,9 @@ export function useWorkbenchDockviewRuntime(
 
         const liveProject = getLiveWorkbench();
         const removedTile = liveProject?.tiles[panel.id] ?? null;
+        if (removedTile?.type === "devServer") {
+          releaseDevServerSurfaceLease(panel.id);
+        }
         if (removedTile?.type === "browser") {
           void window.electronAPI.workbenchSession
             .releaseBrowser({
@@ -1005,12 +1151,26 @@ export function useWorkbenchDockviewRuntime(
                 projectId: input.projectId,
                 laneId: input.activeLaneId,
                 tileId: panel.id,
-                close: true,
+                close: removedTile.type !== "devServer",
               })
-              .then((result) => {
-                if (result.terminalId) {
-                  useTerminalStore.getState().actions.removeTerminal(result.terminalId);
+              .then(async (result) => {
+                if (!result.terminalId) return;
+
+                if (removedTile.type === "devServer") {
+                  const detached = input.workspaceId
+                    ? await window.electronAPI.devServer.detachSurface({
+                        workspaceId: input.workspaceId,
+                        laneId: input.activeLaneId,
+                        terminalId: result.terminalId,
+                      })
+                    : { success: true, ownsRuntime: false };
+
+                  if (!detached.ownsRuntime) {
+                    await window.electronAPI.terminal.kill({ terminalId: result.terminalId });
+                  }
                 }
+
+                useTerminalStore.getState().actions.removeTerminal(result.terminalId);
               })
               .catch((error) => {
                 console.warn("[WorkbenchSession] Failed to release runtime terminal", error);

@@ -33,7 +33,6 @@ import {
   browseForDirectory,
   buildFilesystemSlug,
   deriveNameFromPath,
-  deriveProviderFromRepoUrl,
   inspectLocalGitState,
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
@@ -43,6 +42,7 @@ import {
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
 import { useTranslation } from "@/lib/i18n"
+import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Folder01Icon } from '@hugeicons/core-free-icons'
@@ -52,12 +52,6 @@ interface CreateProjectDialogProps {
   mode: CreateProjectDialogMode
   initialLocalFolderPath?: string
   onOpenChange: (open: boolean) => void
-}
-
-interface DialogCopy {
-  title: string
-  description: string
-  submitLabel: string
 }
 
 interface DialogCopy {
@@ -111,6 +105,7 @@ export function CreateProjectDialog({
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
+  const { importPickedLocalFolder } = useLocalProjectImport()
 
   const [name, setName] = useState("")
   const [parentDirectory, setParentDirectory] = useState("")
@@ -258,13 +253,13 @@ export function CreateProjectDialog({
       return
     }
 
-    if ((mode === "empty" || mode === "local") && !trimmedParentDirectory) {
+    if (mode === "empty" && !trimmedParentDirectory) {
       setError("Choose a project location.")
       return
     }
 
     if (mode === "local" && !trimmedLocalFolderPath) {
-      setError("Choose a local folder to import.")
+      setError("Choose a local folder to open.")
       return
     }
 
@@ -339,64 +334,12 @@ export function CreateProjectDialog({
       }
 
       if (mode === "local") {
-        const existingRemoteUrl = localGitState?.remoteUrl?.trim() || ""
-        const normalizedBranch = localGitState?.branch || "main"
-        const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
-        const result = await createProject({
-          userId: convexUserId,
-          name: trimmedName,
-          template: "blank",
-          creationPath: "repo",
-          sourceControl: existingRemoteUrl && provider
-            ? {
-                provider,
-                repoUrl: existingRemoteUrl,
-                defaultBranch: normalizedBranch,
-                workingCopyMode: "attached",
-                setupMode: "personal",
-              }
-            : undefined,
-          repoSource: existingRemoteUrl && provider
-            ? {
-                provider,
-                repoUrl: existingRemoteUrl,
-                branch: normalizedBranch,
-              }
-            : undefined,
-        })
-
-        console.log("[CreateProjectDialog] Calling workspace.importExistingFolder with:", {
-          projectId: result.projectId,
-          sourceFolderPath: trimmedLocalFolderPath,
-          rootPathOverride: trimmedParentDirectory,
-        })
-        const importResult = await window.electronAPI.workspace!.importExistingFolder({
-          projectId: result.projectId,
-          sourceFolderPath: trimmedLocalFolderPath,
-          slug: buildFilesystemSlug(trimmedName),
-          rootPathOverride: trimmedParentDirectory,
-          setActive: true,
-        })
-        console.log("[CreateProjectDialog] importResult:", importResult)
-
-        if (!importResult.success || !importResult.workspace) {
-          throw new Error(importResult.error || "Failed to import local folder.")
+        const outcome = await importPickedLocalFolder(trimmedLocalFolderPath)
+        if (outcome === "imported") {
+          closeDialog()
+        } else if (outcome === "error") {
+          setError("Cozea could not attach that folder. Review the error and try again.")
         }
-        
-        createdWorkspaceId = importResult.workspace.workspaceId
-
-        await updateProjectStatus({
-          projectId: result.projectId,
-          userId: convexUserId,
-          status: "active",
-        })
-
-        navigateToProjectWorkbench(
-          String(result.projectId),
-          result.slug,
-          createdWorkspaceId,
-          trimmedName,
-        )
         return
       }
     } catch (nextError) {
@@ -409,12 +352,12 @@ export function CreateProjectDialog({
     createGitHubRepo,
     createProject,
     isSubmitting,
+    importPickedLocalFolder,
     localFolderPath,
-    localGitState?.branch,
-    localGitState?.remoteUrl,
     mode,
     name,
     navigateToProjectWorkbench,
+    closeDialog,
     parentDirectory,
     updateProjectStatus,
   ])

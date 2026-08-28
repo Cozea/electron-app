@@ -6,8 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Effect from 'effect/Effect'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 
-// gitRuntime imports `electron`; the catalog only touches it in
-// createForProject/cloneForProject which these tests do not exercise.
+// gitRuntime imports `electron`; tests keep its effects deterministic.
 vi.mock('../../apps/desktop/electron/gitRuntime.ts', () => ({
   runGitCommand: vi.fn(async () => ({
     success: true,
@@ -198,6 +197,109 @@ describe('WorkspaceCatalog.bindExistingFolder', () => {
     const active = all.filter((w) => Number(w.isActive) === 1)
     expect(active).toHaveLength(1)
     expect(active[0]?.workspaceId).toBe(second.workspace?.workspaceId)
+  })
+})
+
+describe('WorkspaceCatalog.attachExistingFolder', () => {
+  it('attaches a non-Git folder in place without creating a copy or source marker', async () => {
+    const dir = await makeProjectDir('nihao original')
+    const before = await fs.stat(dir)
+
+    const result = await call((c) =>
+      c.attachExistingFolder({ projectId: 'proj_attached', folderPath: dir }),
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.workspace?.projectRootPath).toBe(dir)
+    expect(result.workspace?.storageOwnership).toBe('attached')
+    expect(result.workspace?.managedRootId).toBeNull()
+    expect(result.workspace?.markerPolicy).toBe('none')
+    expect(await readMarker(dir)).toBeNull()
+
+    const after = await fs.stat(dir)
+    expect(String(after.ino)).toBe(String(before.ino))
+    expect((await fs.readdir(tmpRoot)).sort()).toEqual(['nihao original'])
+  })
+
+  it('returns the same attached workspace when the same project reopens the same path', async () => {
+    const dir = await makeProjectDir('same-folder')
+    const first = await call((c) =>
+      c.attachExistingFolder({ projectId: 'proj_attached', folderPath: dir }),
+    )
+    const second = await call((c) =>
+      c.attachExistingFolder({ projectId: 'proj_attached', folderPath: dir }),
+    )
+
+    expect(second.success).toBe(true)
+    expect(second.workspace?.workspaceId).toBe(first.workspace?.workspaceId)
+  })
+
+  it('preflights a path already owned by another project instead of duplicating it', async () => {
+    const dir = await makeProjectDir('existing-folder')
+    const attached = await call((c) =>
+      c.attachExistingFolder({ projectId: 'proj_existing', folderPath: dir }),
+    )
+
+    const preflight = await call((c) => c.preflightExistingFolder({ folderPath: dir }))
+    expect(preflight.success).toBe(true)
+    expect(preflight.existingWorkspace?.workspaceId).toBe(attached.workspace?.workspaceId)
+    expect(preflight.existingWorkspace?.projectId).toBe('proj_existing')
+  })
+
+  it('keeps the legacy import IPC as a no-copy compatibility alias', async () => {
+    const source = await makeProjectDir('legacy-import-source')
+    const destinationRoot = await makeProjectDir('managed-destination')
+
+    const result = await call((c) =>
+      c.importExistingFolder({
+        projectId: 'proj_legacy_import',
+        sourceFolderPath: source,
+        slug: 'would-have-been-copied',
+        rootPathOverride: destinationRoot,
+      }),
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.workspace?.projectRootPath).toBe(source)
+    expect(result.workspace?.storageOwnership).toBe('attached')
+    expect(result.copiedTo).toBeUndefined()
+    expect(await fs.readdir(destinationRoot)).toEqual([])
+  })
+})
+
+describe('WorkspaceCatalog managed ownership', () => {
+  it('records Cozea-created folders as managed and exposes a guarded deletion target', async () => {
+    const result = await call((c) =>
+      c.createForProject({
+        projectId: 'proj_managed',
+        slug: 'managed-project',
+        rootPathOverride: tmpRoot,
+        initGit: false,
+      }),
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.workspace?.storageOwnership).toBe('managed')
+    expect(result.workspace?.managedRootId).toBeTruthy()
+    expect(result.workspace?.markerPolicy).toBe('required')
+
+    const deletionTarget = await call((c) =>
+      c.getManagedDeletionTarget(result.workspace!.workspaceId),
+    )
+    expect(deletionTarget?.projectRootPath).toBe(result.workspace?.projectRootPath)
+    expect(deletionTarget?.managedRootPath).toBe(await fs.realpath(tmpRoot))
+  })
+
+  it('never exposes an attached workspace as a managed deletion target', async () => {
+    const dir = await makeProjectDir('attached-under-managed-root')
+    const attached = await call((c) =>
+      c.attachExistingFolder({ projectId: 'proj_attached', folderPath: dir }),
+    )
+
+    const deletionTarget = await call((c) =>
+      c.getManagedDeletionTarget(attached.workspace!.workspaceId),
+    )
+    expect(deletionTarget).toBeNull()
   })
 })
 

@@ -1,13 +1,20 @@
 import { useSyncExternalStore } from "react";
 
+const activeOwners = new Set<symbol>();
 let active = false;
 const listeners = new Set<() => void>();
 
-export function setT3CutoverActive(next: boolean): void {
-  if (active === next) {
+export function setT3CutoverActive(owner: symbol, next: boolean): void {
+  if (next) {
+    activeOwners.add(owner);
+  } else {
+    activeOwners.delete(owner);
+  }
+  const nextActive = activeOwners.size > 0;
+  if (active === nextActive) {
     return;
   }
-  active = next;
+  active = nextActive;
   for (const listener of listeners) {
     listener();
   }

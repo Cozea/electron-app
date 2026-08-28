@@ -1,8 +1,15 @@
 import type { IpcMain } from 'electron'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
-import type { DevCommandSuggestion, ProjectRuntimeProfile, RuntimeHealth, RuntimeKind } from '../runtime/runtimeTypes'
+import type {
+  DevCommandSuggestion,
+  ProjectRuntimeProfile,
+  RuntimeHealth,
+  RuntimeKind,
+} from '../runtime/runtimeTypes'
 import { loadCapabilityCatalog } from '../runtime/capabilityCatalog'
 import { resolveCommandIntent } from '../runtime/commandResolver'
+import { buildDevCommandCandidates, buildDevCommandFingerprint } from '../runtime/devCommandCandidates'
+import { LocalAutomationResolverService } from '../runtime/LocalAutomationResolverService'
 import { collectProjectEvidence } from '../runtime/projectEvidence'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { getRuntimeTarget, resolveCommandWithRuntime, resolveRuntimeHealth } from '../runtime/runtimeResolver'
@@ -19,37 +26,35 @@ const TRACKED_RUNTIMES: RuntimeKind[] = [
   'go',
 ]
 
-function buildSuggestions(projectPath: string): ProjectRuntimeProfile {
+async function buildSuggestions(
+  workspaceId: string,
+  projectPath: string,
+): Promise<ProjectRuntimeProfile> {
   const evidence = collectProjectEvidence(projectPath)
   const catalog = loadCapabilityCatalog()
-  const suggestions: DevCommandSuggestion[] = []
-
-  for (const rule of catalog.rules) {
-    const fileMatch = (rule.matchAnyFile ?? []).some((candidate) => evidence.files.includes(candidate))
-    const scriptMatch = (rule.matchAnyScript ?? []).some((script) => evidence.scripts.includes(script))
-    if (!fileMatch && !scriptMatch) continue
-
-    for (const suggestion of rule.suggestedCommands) {
-      suggestions.push({
-        command: suggestion.command,
-        runtime: suggestion.runtime,
-        confidence: suggestion.confidence,
-        reason: suggestion.reason,
-      })
-    }
-  }
-
-  suggestions.sort((a, b) => b.confidence - a.confidence)
-
-  const selected = suggestions.find((suggestion) => suggestion.confidence >= 0.8)?.command
   const runtimes: RuntimeHealth[] = TRACKED_RUNTIMES.map((runtime) => resolveRuntimeHealth(runtime))
+  const candidates = buildDevCommandCandidates({ evidence, catalog, runtimeHealth: runtimes })
+  const resolution = await LocalAutomationResolverService.getInstance().rankDevCommands({
+    workspaceId,
+    fingerprint: buildDevCommandFingerprint(evidence, candidates),
+    candidates,
+  })
+  const scoresById = new Map(resolution.scores.map((score) => [score.candidateId, score.score]))
+  const suggestions: DevCommandSuggestion[] = candidates
+    .map((candidate) => ({
+      command: candidate.command,
+      runtime: candidate.runtime,
+      confidence: scoresById.get(candidate.id) ?? candidate.confidence,
+      reason: candidate.reason,
+    }))
+    .sort((left, right) => right.confidence - left.confidence)
 
   return {
     runtimes,
     devServer: {
       suggestions,
-      selectedCommand: selected,
-      requiresUserSelection: !selected,
+      selectedCommand: resolution.selected?.command,
+      requiresUserSelection: !resolution.selected,
     },
     evidence,
   }
@@ -59,12 +64,12 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('runtime:getProjectCapabilities', async (_event, options: { workspaceId: string }) => {
     try {
       const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'runtime-detect' })
-      return buildSuggestions(access.projectRootPath)
+      return await buildSuggestions(options.workspaceId, access.projectRootPath)
     } catch {
       return {
         runtimes: [],
         devServer: { suggestions: [], requiresUserSelection: true },
-        evidence: { files: [], scripts: [], lockfiles: [] }
+        evidence: { files: [], scripts: [], lockfiles: [], packageScripts: {}, readmeCommands: [] },
       }
     }
   })
@@ -72,12 +77,12 @@ export function registerRuntimeHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('runtime:detectProjectRuntime', async (_event, options: { workspaceId: string }) => {
     try {
       const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'runtime-detect' })
-      return buildSuggestions(access.projectRootPath)
+      return await buildSuggestions(options.workspaceId, access.projectRootPath)
     } catch {
       return {
         runtimes: [],
         devServer: { suggestions: [], requiresUserSelection: true },
-        evidence: { files: [], scripts: [], lockfiles: [] }
+        evidence: { files: [], scripts: [], lockfiles: [], packageScripts: {}, readmeCommands: [] },
       }
     }
   })

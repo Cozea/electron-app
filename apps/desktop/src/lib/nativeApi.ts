@@ -8,18 +8,31 @@ function readCachedApi(): NativeApi | undefined {
   return (window as Window & { __cozeaCachedNativeApi?: NativeApi }).__cozeaCachedNativeApi;
 }
 
+const t3NativeApiOverlays = new Map<symbol, NativeApi>();
 let t3NativeApiOverlay: NativeApi | null = null;
 
-/** Phase T5 — when T3 cutover is active, route NativeApi calls through T3 Effect RPC. */
-export function registerT3NativeApiOverlay(api: NativeApi | null): void {
-  t3NativeApiOverlay = api;
-  if (typeof window !== "undefined") {
-    if (api) {
-      (window as Window & { __cozeaCachedNativeApi?: NativeApi }).__cozeaCachedNativeApi = api;
-    } else {
-      delete (window as Window & { __cozeaCachedNativeApi?: NativeApi }).__cozeaCachedNativeApi;
-    }
+function latestT3NativeApiOverlay(): NativeApi | null {
+  return Array.from(t3NativeApiOverlays.values()).at(-1) ?? null;
+}
+
+function syncT3NativeApiOverlay(): void {
+  t3NativeApiOverlay = latestT3NativeApiOverlay();
+  if (typeof window === "undefined") return;
+  if (t3NativeApiOverlay) {
+    (window as Window & { __cozeaCachedNativeApi?: NativeApi }).__cozeaCachedNativeApi =
+      t3NativeApiOverlay;
+    return;
   }
+  delete (window as Window & { __cozeaCachedNativeApi?: NativeApi }).__cozeaCachedNativeApi;
+}
+
+/** Phase T5 — when T3 cutover is active, route NativeApi calls through T3 Effect RPC. */
+export function registerT3NativeApiOverlay(owner: symbol, api: NativeApi | null): void {
+  t3NativeApiOverlays.delete(owner);
+  if (api) {
+    t3NativeApiOverlays.set(owner, api);
+  }
+  syncT3NativeApiOverlay();
 }
 
 function writeCachedApi(api: NativeApi): NativeApi {
@@ -47,6 +60,16 @@ export function readNativeApi(): NativeApi | undefined {
 }
 
 function createDeferredNativeApi(): NativeApi {
+  const waitForNativeApi = async (): Promise<NativeApi> => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 10_000) {
+      const activeApi = t3NativeApiOverlay ?? readNativeApi();
+      if (activeApi) return activeApi;
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 25));
+    }
+    throw new Error("Native API did not become ready. Please retry in a moment");
+  };
+
   const handler: ProxyHandler<Record<string, unknown>> = {
     get(_target, prop: string) {
       if (t3NativeApiOverlay) {
@@ -66,14 +89,44 @@ function createDeferredNativeApi(): NativeApi {
             return ((activeApi as unknown as Record<string, unknown>)[prop] as Record<string, unknown>)?.[subProp];
           }
           if (subProp.startsWith("on") || subProp.startsWith("subscribe")) {
-            return () => () => {};
+            return (...args: unknown[]) => {
+              let cancelled = false;
+              let unsubscribe: (() => void) | null = null;
+              void waitForNativeApi()
+                .then(async (api) => {
+                  if (cancelled) return;
+                  const namespace = (api as unknown as Record<string, unknown>)[prop] as Record<
+                    string,
+                    unknown
+                  >;
+                  const method = namespace?.[subProp];
+                  if (typeof method !== "function") return;
+                  const cleanup = await method.apply(namespace, args);
+                  if (typeof cleanup !== "function") return;
+                  if (cancelled) {
+                    cleanup();
+                  } else {
+                    unsubscribe = cleanup;
+                  }
+                })
+                .catch(() => undefined);
+              return () => {
+                cancelled = true;
+                unsubscribe?.();
+              };
+            };
           }
-          return async () => {
-            if (t3NativeApiOverlay) {
-              const method = ((t3NativeApiOverlay as unknown as Record<string, unknown>)[prop] as Record<string, Function>)?.[subProp];
-              if (method) return method();
+          return async (...args: unknown[]) => {
+            const api = await waitForNativeApi();
+            const namespace = (api as unknown as Record<string, unknown>)[prop] as Record<
+              string,
+              unknown
+            >;
+            const method = namespace?.[subProp];
+            if (typeof method !== "function") {
+              throw new Error(`Native API method ${prop}.${subProp} is unavailable`);
             }
-            throw new Error("Native API is connecting, please retry in a moment");
+            return method.apply(namespace, args);
           };
         },
         apply(_fn, _thisArg, args) {
@@ -84,9 +137,13 @@ function createDeferredNativeApi(): NativeApi {
           if (activeApi) {
             return ((activeApi as unknown as Record<string, unknown>)[prop] as Function)(...args);
           }
-          return async () => {
-            throw new Error("Native API is connecting, please retry in a moment");
-          };
+          return waitForNativeApi().then((api) => {
+            const method = (api as unknown as Record<string, unknown>)[prop];
+            if (typeof method !== "function") {
+              throw new Error(`Native API method ${prop} is unavailable`);
+            }
+            return method.apply(api, args);
+          });
         },
       });
     },

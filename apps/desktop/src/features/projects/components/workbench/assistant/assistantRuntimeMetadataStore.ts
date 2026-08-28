@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react"
 
-import type { ServerConfig } from "@cozea/assistant-contracts"
+import type { ProviderDriverKind, ProviderInstanceId, ServerConfig } from "@cozea/assistant-contracts"
 
 import {
   createFallbackAssistantRuntimeStatus,
@@ -39,6 +39,7 @@ let serverConfigUnsubscribe: (() => void) | null = null
 let serverProvidersUnsubscribe: (() => void) | null = null
 let t3ConfigBridgeUnsubscribe: (() => void) | null = null
 let t3ConfigBridge: T3ServerConfigBridge | null = null
+const t3ConfigBridges = new Map<symbol, T3ServerConfigBridge>()
 let activeConfigLoad: Promise<void> | null = null
 let hasLoadedConfig = false
 
@@ -46,6 +47,19 @@ export interface T3ServerConfigBridge {
   getConfig(): Promise<ServerConfig>
   subscribe(listener: (config: ServerConfig) => void): () => void
   refreshProviders?(): Promise<void>
+  updateProvider?(provider: ProviderDriverKind, instanceId?: ProviderInstanceId): Promise<void>
+}
+
+export async function updateAssistantProvider(
+  provider: ProviderDriverKind,
+  instanceId?: ProviderInstanceId,
+): Promise<void> {
+  if (!t3ConfigBridge?.updateProvider) {
+    throw new Error("Provider updates require the local T3 runtime.")
+  }
+  await t3ConfigBridge.updateProvider(provider, instanceId)
+  await t3ConfigBridge.refreshProviders?.()
+  await maybeLoadServerConfig({ showLoading: false })
 }
 
 function createFallbackStatus(): AssistantRuntimeStatus {
@@ -193,7 +207,10 @@ function ensureLegacyServerConfigSubscriptions() {
   })
 }
 
-export function connectT3ServerConfigBridge(bridge: T3ServerConfigBridge): void {
+function activateT3ServerConfigBridge(bridge: T3ServerConfigBridge): void {
+  if (t3ConfigBridge === bridge) {
+    return
+  }
   releaseT3ServerConfigBridge()
   releaseLegacyServerConfigSubscriptions()
   t3ConfigBridge = bridge
@@ -209,7 +226,26 @@ export function connectT3ServerConfigBridge(bridge: T3ServerConfigBridge): void 
   void maybeLoadServerConfig({ showLoading: !hasLoadedConfig }).catch(() => undefined)
 }
 
-export function disconnectT3ServerConfigBridge(): void {
+export function connectT3ServerConfigBridge(
+  owner: symbol,
+  bridge: T3ServerConfigBridge,
+): void {
+  t3ConfigBridges.delete(owner)
+  t3ConfigBridges.set(owner, bridge)
+  activateT3ServerConfigBridge(bridge)
+}
+
+export function disconnectT3ServerConfigBridge(owner: symbol): void {
+  const removedBridge = t3ConfigBridges.get(owner)
+  t3ConfigBridges.delete(owner)
+  if (!removedBridge || removedBridge !== t3ConfigBridge) {
+    return
+  }
+  const fallbackBridge = Array.from(t3ConfigBridges.values()).at(-1) ?? null
+  if (fallbackBridge) {
+    activateT3ServerConfigBridge(fallbackBridge)
+    return
+  }
   const hadBridge = t3ConfigBridge !== null
   releaseT3ServerConfigBridge()
   if (!hadBridge) {
