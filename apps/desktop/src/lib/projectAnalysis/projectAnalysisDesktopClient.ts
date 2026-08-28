@@ -3,10 +3,8 @@ export const projectAnalysisDesktopClient = {
     window.electronAPI.project.listFiles(options),
   readFile: (options: Parameters<typeof window.electronAPI.project.readFile>[0]) =>
     window.electronAPI.project.readFile(options),
-  readAbsoluteFile: (path: Parameters<typeof window.electronAPI.fs.readFile>[0]) =>
-    window.electronAPI.fs.readFile(path),
-  readDir: (path: Parameters<typeof window.electronAPI.fs.readDir>[0]) =>
-    window.electronAPI.fs.readDir(path),
+  listDirectory: (options: Parameters<typeof window.electronAPI.project.listDirectory>[0]) =>
+    window.electronAPI.project.listDirectory(options),
   resolveRoot: (workspaceId: Parameters<typeof window.electronAPI.project.resolveRoot>[0]) =>
     window.electronAPI.project.resolveRoot(workspaceId),
   getProjectCapabilities: (

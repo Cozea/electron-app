@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Regression coverage for the workspaceId-vs-path bug: detectPackageManager /
-// checkDependenciesInstalled receive an opaque catalog workspace id and must resolve it to a real
-// filesystem path before performing path-based reads. Before the fix they fed the opaque id
-// straight to fs:readDir, so detection silently always returned 'npm' / "not installed".
+// Package detection must remain scoped to an authorized workspace id. Attached
+// folders are deliberately absent from the global fs allowlist, so these tests
+// fail if detection ever falls back to absolute-path fs:readDir/fs:readFile.
 
-const resolveRoot = vi.fn<(workspaceId: string) => Promise<string | null>>()
-const readDir = vi.fn<(path: string) => Promise<Array<{ name: string; type: string }>>>()
-const readAbsoluteFile = vi.fn<(path: string) => Promise<string | null>>()
+const listDirectory = vi.fn<
+  (options: { workspaceId: string; directory?: string | null }) => Promise<{
+    success: boolean
+    entries?: Array<{ name: string; type: 'file' | 'directory' }>
+    error?: string
+  }>
+>()
 const readFile = vi.fn<
   (options: { workspaceId: string; filePath: string }) => Promise<{
     success: boolean
@@ -28,18 +31,11 @@ const getProjectCapabilities = vi.fn(async () => ({
 
 vi.mock('@/lib/projectAnalysis/projectAnalysisDesktopClient', () => ({
   projectAnalysisDesktopClient: {
-    resolveRoot: (workspaceId: string) => resolveRoot(workspaceId),
-    readDir: (path: string) => readDir(path),
-    readAbsoluteFile: (path: string) => readAbsoluteFile(path),
+    listDirectory: (options: { workspaceId: string; directory?: string | null }) =>
+      listDirectory(options),
     readFile: (options: { workspaceId: string; filePath: string }) => readFile(options),
     listFiles: (options: { workspaceId: string }) => listFiles(options),
     getProjectCapabilities: () => getProjectCapabilities(),
-  },
-}))
-
-vi.mock('@/lib/settings/settingsDesktopClient', () => ({
-  settingsDesktopClient: {
-    get: vi.fn(async () => ({ projectsDirectory: '/projects', approvedExternalReadRoots: ['/repo'] })),
   },
 }))
 
@@ -54,13 +50,11 @@ import {
 const WORKSPACE_ID = 'lws_3f2a1b00-0000-4000-8000-000000000000'
 
 beforeEach(() => {
-  resolveRoot.mockReset()
-  readDir.mockReset()
-  readAbsoluteFile.mockReset()
+  listDirectory.mockReset()
   readFile.mockReset()
   listFiles.mockReset()
   getProjectCapabilities.mockReset()
-  readAbsoluteFile.mockResolvedValue(null)
+  listDirectory.mockResolvedValue({ success: true, entries: [] })
   readFile.mockResolvedValue({ success: false })
   listFiles.mockResolvedValue({ success: false })
   getProjectCapabilities.mockResolvedValue({
@@ -72,8 +66,6 @@ beforeEach(() => {
 
 describe('Core ML command resolution handoff', () => {
   it('uses the bounded command selected by the main-process resolver', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([])
     getProjectCapabilities.mockResolvedValue({
       runtimes: [],
       devServer: {
@@ -102,68 +94,114 @@ describe('Core ML command resolution handoff', () => {
   })
 })
 
-describe('detectPackageManager (workspace id resolution)', () => {
-  it('resolves the opaque workspace id to a path and detects pnpm from the lockfile', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([
-      { name: 'package.json', type: 'file' },
-      { name: 'pnpm-lock.yaml', type: 'file' },
-    ])
+describe('detectPackageManager (workspace-scoped inspection)', () => {
+  it('detects pnpm from an attached workspace without any global path read', async () => {
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [
+        { name: 'package.json', type: 'file' },
+        { name: 'pnpm-lock.yaml', type: 'file' },
+      ],
+    })
 
     const pm = await detectPackageManager(WORKSPACE_ID)
 
-    expect(resolveRoot).toHaveBeenCalledWith(WORKSPACE_ID)
-    // readDir must be called with the RESOLVED path, never the opaque id.
-    expect(readDir).toHaveBeenCalledWith('/repo')
-    expect(readDir).not.toHaveBeenCalledWith(WORKSPACE_ID)
+    expect(listDirectory).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_ID,
+      directory: null,
+    })
     expect(pm).toBe('pnpm')
   })
 
   it('detects bun and yarn from their lockfiles', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([{ name: 'bun.lock', type: 'file' }])
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [{ name: 'bun.lock', type: 'file' }],
+    })
     expect(await detectPackageManager(WORKSPACE_ID)).toBe('bun')
 
-    readDir.mockResolvedValue([{ name: 'yarn.lock', type: 'file' }])
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [{ name: 'yarn.lock', type: 'file' }],
+    })
     expect(await detectPackageManager(WORKSPACE_ID)).toBe('yarn')
   })
 
-  it('falls back to npm when the workspace id cannot be resolved (instead of misreading the id as a path)', async () => {
-    resolveRoot.mockResolvedValue(null)
+  it('falls back to npm when workspace inspection is denied', async () => {
+    listDirectory.mockResolvedValue({ success: false, error: 'Workspace not found' })
     expect(await detectPackageManager(WORKSPACE_ID)).toBe('npm')
-    expect(readDir).not.toHaveBeenCalled()
+  })
+
+  it('builds the pnpm command consumed by Dev Server and Project DevApp publishing', async () => {
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [
+        { name: 'node_modules', type: 'directory' },
+        { name: 'package.json', type: 'file' },
+        { name: 'pnpm-lock.yaml', type: 'file' },
+      ],
+    })
+    readFile.mockImplementation(async ({ filePath }) =>
+      filePath === 'package.json'
+        ? {
+            success: true,
+            content: JSON.stringify({
+              scripts: { dev: 'next dev' },
+              dependencies: { next: '^16.0.0' },
+            }),
+          }
+        : { success: false },
+    )
+
+    const config = await getDevServerConfig(WORKSPACE_ID)
+
+    expect(config).toMatchObject({
+      command: 'pnpm run dev',
+      packageDirectory: null,
+      commandVerified: true,
+    })
+    await expect(checkDependenciesInstalled(WORKSPACE_ID, 'pnpm')).resolves.toBe(true)
   })
 })
 
-describe('checkDependenciesInstalled (workspace id resolution)', () => {
-  it('reports installed when node_modules exists at the resolved root', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([{ name: 'node_modules', type: 'directory' }])
+describe('checkDependenciesInstalled (workspace-scoped inspection)', () => {
+  it('reports installed when node_modules exists in the workspace root', async () => {
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [{ name: 'node_modules', type: 'directory' }],
+    })
 
     const installed = await checkDependenciesInstalled(WORKSPACE_ID, 'pnpm')
 
-    expect(readDir).toHaveBeenCalledWith('/repo')
+    expect(listDirectory).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_ID,
+      directory: null,
+    })
     expect(installed).toBe(true)
   })
 
-  it('reports not-installed (does not silently force install) when the id cannot be resolved', async () => {
-    resolveRoot.mockResolvedValue(null)
+  it('reports not-installed when workspace inspection is denied', async () => {
+    listDirectory.mockResolvedValue({ success: false, error: 'Workspace not found' })
     expect(await checkDependenciesInstalled(WORKSPACE_ID, 'pnpm')).toBe(false)
-    expect(readDir).not.toHaveBeenCalled()
   })
 })
 
 describe('nested runnable package detection', () => {
   it('launches the only runnable nested package from its own directory', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockImplementation(async (path) => {
-      if (path === '/repo/frontend') {
-        return [
-          { name: 'package-lock.json', type: 'file' },
-          { name: 'node_modules', type: 'directory' },
-        ]
+    listDirectory.mockImplementation(async ({ directory }) => {
+      if (directory === 'frontend') {
+        return {
+          success: true,
+          entries: [
+            { name: 'package-lock.json', type: 'file' },
+            { name: 'node_modules', type: 'directory' },
+          ],
+        }
       }
-      return [{ name: 'frontend', type: 'directory' }]
+      return {
+        success: true,
+        entries: [{ name: 'frontend', type: 'directory' }],
+      }
     })
     listFiles.mockResolvedValue({
       success: true,
@@ -202,16 +240,24 @@ describe('nested runnable package detection', () => {
     expect(await hasPackageJson(WORKSPACE_ID, 'frontend')).toBe(true)
     expect(await checkDependenciesInstalled(WORKSPACE_ID, 'npm', 'frontend')).toBe(true)
     expect(getInstallCommand('npm', 'frontend')).toBe('npm --prefix frontend install')
-    expect(readDir).toHaveBeenCalledWith('/repo/frontend')
+    expect(listDirectory).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_ID,
+      directory: 'frontend',
+    })
   })
 
   it('validates a stored nested DevApp command against its local package script', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockImplementation(async (path) => {
-      if (path === '/repo/frontend') {
-        return [{ name: 'package-lock.json', type: 'file' }]
+    listDirectory.mockImplementation(async ({ directory }) => {
+      if (directory === 'frontend') {
+        return {
+          success: true,
+          entries: [{ name: 'package-lock.json', type: 'file' }],
+        }
       }
-      return [{ name: 'frontend', type: 'directory' }]
+      return {
+        success: true,
+        entries: [{ name: 'frontend', type: 'directory' }],
+      }
     })
     readFile.mockImplementation(async ({ filePath }) => {
       if (filePath !== 'frontend/package.json') return { success: false }
@@ -237,8 +283,10 @@ describe('nested runnable package detection', () => {
   })
 
   it('never accepts shell syntax from a stored DevApp command', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [{ name: 'package-lock.json', type: 'file' }],
+    })
     readFile.mockImplementation(async ({ filePath }) => {
       if (filePath !== 'package.json') return { success: false }
       return {
@@ -263,8 +311,10 @@ describe('nested runnable package detection', () => {
   })
 
   it('hard fails a pinned DevApp command when the project changed package manager', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [{ name: 'package-lock.json', type: 'file' }],
+    })
     readFile.mockImplementation(async ({ filePath }) => {
       if (filePath !== 'package.json') return { success: false }
       return {
@@ -284,8 +334,10 @@ describe('nested runnable package detection', () => {
   })
 
   it('still falls back to detection for a merely detected stored command', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [{ name: 'package-lock.json', type: 'file' }],
+    })
     readFile.mockImplementation(async ({ filePath }) => {
       if (filePath !== 'package.json') return { success: false }
       return {
@@ -304,8 +356,10 @@ describe('nested runnable package detection', () => {
   })
 
   it('marks a framework fallback command unverified when package.json has no runnable script', async () => {
-    resolveRoot.mockResolvedValue('/repo')
-    readDir.mockResolvedValue([{ name: 'package-lock.json', type: 'file' }])
+    listDirectory.mockResolvedValue({
+      success: true,
+      entries: [{ name: 'package-lock.json', type: 'file' }],
+    })
     readFile.mockImplementation(async ({ filePath }) => {
       if (filePath !== 'package.json') return { success: false }
       return {
