@@ -76,4 +76,29 @@ describe("workspace markers", () => {
       },
     })
   })
+
+  it("keeps worktree markers in the private git directory instead of source files", async () => {
+    const projectRoot = await makeTempProject()
+    const gitDir = await makeTempProject()
+    await fs.writeFile(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n", "utf-8")
+    await fs.writeFile(path.join(projectRoot, ".git"), `gitdir: ${gitDir}\n`, "utf-8")
+
+    await writeWorkspaceMarker(projectRoot, {
+      version: 1,
+      projectId: "project_worktree",
+      workspaceId: "workspace_worktree",
+      createdBy: "cozea",
+      createdAt: 123,
+    })
+
+    await expect(
+      fs.readFile(path.join(gitDir, "cozea", "workspace.json"), "utf-8"),
+    ).resolves.toContain("workspace_worktree")
+    await expect(
+      fs.access(path.join(projectRoot, ".cozea", "workspace.json")),
+    ).rejects.toBeTruthy()
+    await expect(readWorkspaceMarker(projectRoot)).resolves.toMatchObject({
+      marker: { projectId: "project_worktree", workspaceId: "workspace_worktree" },
+    })
+  })
 })

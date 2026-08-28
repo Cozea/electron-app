@@ -9,6 +9,7 @@ import { useT3CutoverActive } from "./t3CutoverStore";
 
 const EMPTY_THREAD_RECORD: ThreadDetailRecord = {
   threadId: "",
+  lastSequence: 0,
   messages: [],
   activities: [],
   proposedPlans: [],

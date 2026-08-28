@@ -426,9 +426,6 @@ export function ProjectSettingsPage({
       navigate('/projects', { replace: true })
 
       await cleanupDeletedProjectLocally(deletedProjectId, {
-        projectName: project.name,
-        projectSlug: project.slug,
-        managedProjectPaths: [project.localPath],
         keepLocalFiles,
       })
     } catch (error) {
@@ -1205,6 +1202,7 @@ export function ProjectSettingsPage({
             setDeleteError(null)
           }
         }}
+        projectId={String(project._id)}
         projectName={project.name}
         onConfirm={handleDelete}
         isDeleting={isDeleting}

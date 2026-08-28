@@ -189,7 +189,7 @@ export const ModelCapabilities = Schema.Struct({
 export type ModelCapabilities = typeof ModelCapabilities.Type;
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
-  codex: "gpt-5.4",
+  codex: "gpt-5.6-sol",
   claudeAgent: "claude-sonnet-4-6",
   /** Cursor Agent CLI expects a bracketed token (e.g. `default[]`), not bare `auto`. */
   cursor: "default[]",
@@ -200,7 +200,7 @@ export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
 
 /** Per-provider text generation model defaults. */
 export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
-  codex: "gpt-5.4-mini",
+  codex: "gpt-5.6-luna",
   claudeAgent: "claude-haiku-4-5",
   cursor: "composer-2",
   opencode: "opencode-zen/minimax-m2.5-free",
@@ -208,6 +208,11 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, string>> = {
   codex: {
+    "5.6": "gpt-5.6-sol",
+    "gpt-5.6": "gpt-5.6-sol",
+    "5.6-sol": "gpt-5.6-sol",
+    "5.6-terra": "gpt-5.6-terra",
+    "5.6-luna": "gpt-5.6-luna",
     "5.4": "gpt-5.4",
     "5.3": "gpt-5.3-codex",
     "gpt-5.3": "gpt-5.3-codex",

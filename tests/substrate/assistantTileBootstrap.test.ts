@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deriveTitleSeed } from "../../apps/desktop/src/features/projects/components/workbench/assistant/workbenchAssistantShared";
+import {
+  deriveAssistantTurnRunning,
+  deriveTitleSeed,
+} from "../../apps/desktop/src/features/projects/components/workbench/assistant/workbenchAssistantShared";
 import { flushWorkbenchStorage } from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
 
 describe("assistantTileBootstrap", () => {
@@ -25,5 +28,26 @@ describe("assistantTileBootstrap", () => {
 
     expect(match).not.toBeNull();
     expect(match?.[1]).toBe("proj-abc-123");
+  });
+
+  it("treats the direct T3 thread stream as the live turn authority", () => {
+    expect(
+      deriveAssistantTurnRunning({
+        orchestrationStatus: "ready",
+        streamIsStreaming: true,
+      }),
+    ).toBe(true);
+    expect(
+      deriveAssistantTurnRunning({
+        orchestrationStatus: "starting",
+        streamIsStreaming: false,
+      }),
+    ).toBe(true);
+    expect(
+      deriveAssistantTurnRunning({
+        orchestrationStatus: "ready",
+        streamIsStreaming: false,
+      }),
+    ).toBe(false);
   });
 });

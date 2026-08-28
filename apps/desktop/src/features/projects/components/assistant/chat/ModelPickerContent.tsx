@@ -30,6 +30,8 @@ type ModelPickerItem = {
   name: string;
   shortName?: string;
   subProvider?: string;
+  isDefault?: boolean;
+  isLegacy?: boolean;
   provider: ProviderKind;
   instanceId: ProviderInstanceId;
   driverKind: ProviderDriverKind;
@@ -65,6 +67,8 @@ function toModelEsque(model: ModelEsque): ModelEsque {
     name: model.name,
     ...(model.shortName ? { shortName: model.shortName } : {}),
     ...(model.subProvider ? { subProvider: model.subProvider } : {}),
+    ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}),
+    ...(model.isLegacy !== undefined ? { isLegacy: model.isLegacy } : {}),
   };
 }
 
@@ -189,6 +193,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           name: model.name,
           ...(model.shortName ? { shortName: model.shortName } : {}),
           ...(model.subProvider ? { subProvider: model.subProvider } : {}),
+          ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}),
+          ...(model.isLegacy !== undefined ? { isLegacy: model.isLegacy } : {}),
           provider: entry.provider,
           instanceId,
           driverKind: entry.driverKind,
@@ -281,6 +287,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (aOrder !== undefined && bOrder !== undefined) return aOrder - bOrder;
       if (aOrder !== undefined) return -1;
       if (bOrder !== undefined) return 1;
+      if (a.isLegacy !== b.isLegacy) return a.isLegacy ? 1 : -1;
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
       if (selectedInstanceId === "favorites") {
         return instanceOrder.indexOf(a.instanceId) - instanceOrder.indexOf(b.instanceId);
       }

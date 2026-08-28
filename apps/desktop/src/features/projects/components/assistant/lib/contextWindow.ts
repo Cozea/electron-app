@@ -36,7 +36,7 @@ export function deriveLatestContextWindowSnapshot(
 
     const payload = asRecord(activity.payload);
     const usedTokens = asFiniteNumber(payload?.usedTokens);
-    if (usedTokens === null || usedTokens <= 0) {
+    if (usedTokens === null || usedTokens < 0) {
       continue;
     }
 
@@ -66,6 +66,7 @@ export function deriveLatestContextWindowSnapshot(
       toolUses: asFiniteNumber(payload?.toolUses),
       durationMs: asFiniteNumber(payload?.durationMs),
       compactsAutomatically: asBoolean(payload?.compactsAutomatically) ?? false,
+      autoCompactThreshold: asFiniteNumber(payload?.autoCompactThreshold),
       updatedAt: activity.createdAt,
     };
   }
@@ -86,5 +87,5 @@ export function formatContextWindowTokens(value: number | null): string {
   if (value < 1_000_000) {
     return `${Math.round(value / 1_000)}k`;
   }
-  return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+  return `${(value / 1_000_000).toFixed(2).replace(/\.00$/, "").replace(/0$/, "")}m`;
 }

@@ -157,11 +157,11 @@ const es: Record<TranslationKey, string> = {
     "Git es necesario para la sincronización de proyectos y control de código fuente. Instala Git y reinicia Cozea, o configura `COZEA_GIT_EXECUTABLE` con la ruta absoluta del binario de git.",
   "settings.tooling.available": "Disponible",
   "settings.tooling.notAvailable": "No disponible",
-  "settings.tooling.projectsDirectory": "Carpeta de proyectos",
+  "settings.tooling.projectsDirectory": "Ubicación de proyectos nuevos y clones",
   "settings.tooling.projectsDirectoryDesc":
-    "Cozea crea proyectos nuevos e importaciones gestionadas en esta carpeta local.",
+    "Cozea crea aquí proyectos nuevos y clones de repositorios. Las carpetas existentes permanecen donde están.",
   "settings.tooling.projectsDirectoryLoading": "Cargando ubicación de proyectos...",
-  "settings.tooling.projectsDirectoryPickerTitle": "Elegir carpeta de proyectos de Cozea",
+  "settings.tooling.projectsDirectoryPickerTitle": "Elegir dónde Cozea crea proyectos y clones",
   "settings.tooling.changeProjectsDirectory": "Cambiar",
   "settings.tooling.previewEmbedCompatibility":
     "Compatibilidad de vista previa",
@@ -197,13 +197,13 @@ const es: Record<TranslationKey, string> = {
   // ── Página de lanzamiento de proyectos ──────────────────────────────
   "projects.selectProject": "Selecciona un proyecto",
   "projects.selectProjectDesc":
-    "Elige un proyecto de la barra lateral, o suelta otro repositorio local aquí para importarlo.",
+    "Elige un proyecto de la barra lateral, o suelta otro repositorio local aquí para abrirlo en su ubicación actual.",
   "projects.dropRepoTitle": "Suelta una carpeta de repositorio",
-  "projects.dropRepoActive": "Suelta para importar",
-  "projects.dropRepoHint": "Importa la carpeta igual que Importar carpeta local. Haz clic para explorar.",
+  "projects.dropRepoActive": "Suelta para abrir",
+  "projects.dropRepoHint": "Abre la carpeta en su ubicación actual sin copiarla ni moverla. Haz clic para explorar.",
   "projects.dropRepoBrowse": "Explorar carpeta",
-  "projects.dropRepoImporting": "Importando proyecto…",
-  "projects.dropRepoAriaLabel": "Suelta una carpeta de repositorio para importar, o haz clic para explorar",
+  "projects.dropRepoImporting": "Abriendo proyecto…",
+  "projects.dropRepoAriaLabel": "Suelta una carpeta de repositorio para abrirla en su ubicación actual, o haz clic para explorar",
 
   // ── Menú de actualización ───────────────────────────────────────────
   "update.title": "Actualización de Cozea",
@@ -232,10 +232,10 @@ const es: Record<TranslationKey, string> = {
   "createProject.emptyTitle": "Proyecto vacío",
   "createProject.emptyDesc": "Crea un proyecto local en blanco y salta directamente al área de trabajo.",
   "createProject.createBtn": "Crear proyecto",
-  "createProject.localTitle": "Importar carpeta local",
-  "createProject.localDescFallback": "Adjunta una carpeta local existente y comienza a trabajar en Cozea. Git se mantiene exactamente como está en tu máquina.",
-  "createProject.localDescFormat": "Importa {folderName} en Cozea y mantén cualquier configuración de git en el disco exactamente como ya está.",
-  "createProject.importBtn": "Importar carpeta",
+  "createProject.localTitle": "Abrir carpeta existente",
+  "createProject.localDescFallback": "Usa una carpeta existente en su ubicación actual. Cozea no la copiará, renombrará, moverá ni asumirá su propiedad.",
+  "createProject.localDescFormat": "Abre {folderName} en su ubicación actual. Cozea no la copiará, renombrará, moverá ni asumirá su propiedad.",
+  "createProject.importBtn": "Abrir carpeta",
   "createProject.name": "Nombre",
   "createProject.namePlaceholder": "Mi proyecto",
   "createProject.path": "Ruta",
@@ -246,7 +246,7 @@ const es: Record<TranslationKey, string> = {
   "createProject.privateRepo": "Repositorio privado",
   "createProject.privateRepoDesc": "Solo tú y los colaboradores pueden verlo",
   "createProject.checkingFolder": "Comprobando la carpeta",
-  "createProject.checkingFolderDesc": "Preparando la importación local y leyendo cualquier detalle de git existente en el disco.",
+  "createProject.checkingFolderDesc": "Verificando la ruta seleccionada y leyendo cualquier detalle de git existente en el disco.",
 
   // ── Workbench Selection Tile (Add dev app) ───────────────────────────
   "workbench.selection.letsWorkOn": "Vamos a trabajar en",
@@ -546,7 +546,7 @@ const es: Record<TranslationKey, string> = {
   "settings.error.resetFailed": "Error al restablecer la sala de colaboración encriptada",
 
   "menu.emptyProject": "Proyecto vacío",
-  "menu.importLocalFolder": "Importar carpeta local",
+  "menu.importLocalFolder": "Abrir carpeta existente",
   "header.shareProject": "Compartir proyecto",
   "workbench.editor.openIn": "Abrir en {editor}",
   "workbench.editor.noEditor": "No se detectó un editor externo compatible",

@@ -16,6 +16,7 @@ import { WorkbenchTileChrome } from "@/features/projects/components/workbench/Wo
 import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import {
+  buildLocalDevServerUrl,
   DEV_SERVER_TILE_COMMAND_EVENT,
   isSameDevServerPreviewUrl,
   type DevServerTileCommand,
@@ -24,6 +25,7 @@ import {
   buildDevServerRunKey,
   useDevServerRunStore,
 } from "@/features/projects/devserver/devServerRunStore"
+import { interruptDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
 import { KeepAliveTerminalView } from "@/features/projects/terminals/KeepAliveTerminalView"
 import { useWorkbenchSessionTerminal } from "@/features/projects/terminals/useWorkbenchSessionTerminal"
@@ -339,7 +341,7 @@ function WorkbenchRuntimePreviewTile({
       void devServer.restart()
     }
   }, [devAppReleaseId, devServer.restart, devServer.status, runtimeRunKey])
-  const previewUrl = devServer.url ?? (devServer.port ? `http://localhost:${devServer.port}` : "")
+  const previewUrl = devServer.url ?? (devServer.port ? buildLocalDevServerUrl(devServer.port) : "")
   const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
   const nativePreview = useIosNativePreview({
     scopeKey: runtimeSessionKey ?? NATIVE_PREVIEW_PENDING_SCOPE,
@@ -353,7 +355,11 @@ function WorkbenchRuntimePreviewTile({
     devServer.status === "ready" || devServer.status === "unhealthy" || devServer.status === "starting"
 
   const previewOverrideUrl = tile.type === "devServer" ? tile.previewOverrideUrl ?? null : null
-  const displayUrl = previewOverrideUrl ?? previewUrl
+  const effectivePreviewOverrideUrl = isSameDevServerPreviewUrl(previewOverrideUrl, previewUrl)
+    ? null
+    : previewOverrideUrl
+  const displayUrl = effectivePreviewOverrideUrl ?? previewUrl
+  const activeDisplayUrl = previewServerActive ? displayUrl : ""
 
   const terminalShell = (
     <div
@@ -363,7 +369,9 @@ function WorkbenchRuntimePreviewTile({
   )
 
   const showEmbeddedPreview =
-    viewMode === "preview" && (isMobileSimulatorSurface || previewDestination === "cozea")
+    viewMode === "preview" &&
+    previewServerActive &&
+    (isMobileSimulatorSurface || previewDestination === "cozea")
   const showWebEmbeddedPreview = showEmbeddedPreview && !usesNativePreview
   const [suppressPreviewUrl, setSuppressPreviewUrl] = useState(false)
   const {
@@ -374,7 +382,7 @@ function WorkbenchRuntimePreviewTile({
     placeholderScreenshot,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
-    url: showWebEmbeddedPreview && !suppressPreviewUrl ? displayUrl : "",
+    url: showWebEmbeddedPreview && !suppressPreviewUrl ? activeDisplayUrl : "",
     sessionKey: runtimeSessionKey,
     projectId: runtimeProjectId,
     laneId: runtimeLaneId,
@@ -390,7 +398,7 @@ function WorkbenchRuntimePreviewTile({
         ? buildDevServerRunKey(runtimeWorkspaceId, runtimeLaneId)
         : null
       const run = runKey ? useDevServerRunStore.getState().runs[runKey] : undefined
-      const serverUrl = run?.url ?? (run?.port ? `http://localhost:${run.port}` : "")
+      const serverUrl = run?.url ?? (run?.port ? buildLocalDevServerUrl(run.port) : "")
       const nextOverride = isSameDevServerPreviewUrl(serverUrl, nextUrl) ? null : nextUrl
       workbenchActions.updateRuntimePreviewTile(
         projectId,
@@ -719,7 +727,7 @@ function WorkbenchRuntimePreviewTile({
 
   const webEmbeddedPreviewBody = (
     <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
-      {!previewUrl && !previewOverrideUrl ? (
+      {!activeDisplayUrl ? (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] flex items-center justify-center bg-content-surface p-6 text-center">
           <Empty className="w-full max-w-md py-8">
             <EmptyHeader>
@@ -749,7 +757,7 @@ function WorkbenchRuntimePreviewTile({
           </Empty>
         </div>
       ) : null}
-      {displayUrl && previewState.loadError ? (
+      {activeDisplayUrl && previewState.loadError ? (
         <div className="pointer-events-none absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
           <div className="max-w-md space-y-2">
             <div className="text-sm font-medium text-foreground">
@@ -759,7 +767,7 @@ function WorkbenchRuntimePreviewTile({
           </div>
         </div>
       ) : null}
-      {displayUrl && placeholderScreenshot && !previewState.loadError ? (
+      {activeDisplayUrl && placeholderScreenshot && !previewState.loadError ? (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
           <div
             className="absolute inset-0 bg-no-repeat"
@@ -768,12 +776,12 @@ function WorkbenchRuntimePreviewTile({
           />
         </div>
       ) : null}
-      {displayUrl && overlayPaused && !placeholderScreenshot && !previewState.loadError ? (
+      {activeDisplayUrl && overlayPaused && !placeholderScreenshot && !previewState.loadError ? (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
           <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
         </div>
       ) : null}
-      {displayUrl ? (
+      {activeDisplayUrl ? (
         <div
           ref={hostRef}
           className={cn(
@@ -843,7 +851,16 @@ function WorkbenchRuntimePreviewTile({
   )
 
   return (
-    <div className="h-full min-h-0" data-workbench-browser-tile="true">
+    <div
+      className="h-full min-h-0"
+      data-workbench-browser-tile="true"
+      onPointerDownCapture={() => {
+        if (tile.type === "devServer") interruptDevServerSurfaceLease(tile.id)
+      }}
+      onKeyDownCapture={() => {
+        if (tile.type === "devServer") interruptDevServerSurfaceLease(tile.id)
+      }}
+    >
       <WorkbenchTileChrome
         title={tile.title}
         panelApi={panelApi}

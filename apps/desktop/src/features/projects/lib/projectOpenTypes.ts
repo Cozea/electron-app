@@ -1,5 +1,3 @@
-import type { ConvexReactClient } from "convex/react";
-
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 export interface GitRepositoryMetadataLike {
@@ -31,31 +29,7 @@ export interface ProjectOpenGitProjectLike {
   name?: string | null;
   slug: string;
   createdBy?: Id<"users"> | string | null;
-  localPath?: string | null;
   gitRepository?: GitRepositoryMetadataLike | null;
   sourceControl?: ProjectOpenSourceControlLike | null;
   importedFrom?: ProjectImportedFromLike | null;
-}
-
-export interface PrepareGitProjectForOpenOptions {
-  convex: ConvexReactClient;
-  project: ProjectOpenGitProjectLike;
-  localPath: string | null;
-  userId: Id<"users"> | null | undefined;
-  onProgress?: (message: string) => void;
-  updateMemberLocalPath?: (args: {
-    projectId: Id<"projects">;
-    userId: Id<"users">;
-    localPath: string;
-  }) => Promise<unknown>;
-}
-
-export interface PrepareGitProjectForOpenResult {
-  localPath: string;
-  skipInitialSyncCheck: boolean;
-  changed: boolean;
-  currentBranch?: string;
-  cancelled?: boolean;
-  needsConflictResolution?: boolean;
-  conflictedPaths?: string[];
 }

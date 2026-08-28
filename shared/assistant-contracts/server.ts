@@ -63,6 +63,8 @@ export const ServerProviderModel = Schema.Struct({
   shortName: Schema.optional(TrimmedNonEmptyString),
   subProvider: Schema.optional(TrimmedNonEmptyString),
   isCustom: Schema.Boolean,
+  isDefault: Schema.optional(Schema.Boolean),
+  isLegacy: Schema.optional(Schema.Boolean),
   capabilities: Schema.NullOr(ModelCapabilities),
 });
 export interface ServerProviderModel {
@@ -71,6 +73,8 @@ export interface ServerProviderModel {
   shortName?: string;
   subProvider?: string;
   isCustom: boolean;
+  isDefault?: boolean;
+  isLegacy?: boolean;
   capabilities: ModelCapabilities | null;
 }
 
@@ -117,6 +121,8 @@ export const ServerProvider = Schema.Struct({
   driver: Schema.optional(ProviderDriverKind),
   displayName: Schema.optional(TrimmedNonEmptyString),
   accentColor: Schema.optional(TrimmedNonEmptyString),
+  badgeLabel: Schema.optional(TrimmedNonEmptyString),
+  requiresNewThreadForModelChange: Schema.optional(Schema.Boolean),
   availability: Schema.optional(Schema.Literals(["available", "unavailable"])),
   unavailableReason: Schema.optional(TrimmedNonEmptyString),
   enabled: Schema.Boolean,
@@ -126,6 +132,26 @@ export const ServerProvider = Schema.Struct({
   auth: ServerProviderAuth,
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  versionAdvisory: Schema.optional(
+    Schema.Struct({
+      status: Schema.Literals(["unknown", "current", "behind_latest"]),
+      currentVersion: Schema.NullOr(TrimmedNonEmptyString),
+      latestVersion: Schema.NullOr(TrimmedNonEmptyString),
+      updateCommand: Schema.NullOr(TrimmedNonEmptyString),
+      canUpdate: Schema.Boolean,
+      checkedAt: Schema.NullOr(IsoDateTime),
+      message: Schema.NullOr(TrimmedNonEmptyString),
+    }),
+  ),
+  updateState: Schema.optional(
+    Schema.Struct({
+      status: Schema.Literals(["idle", "queued", "running", "succeeded", "failed", "unchanged"]),
+      startedAt: Schema.NullOr(IsoDateTime),
+      finishedAt: Schema.NullOr(IsoDateTime),
+      message: Schema.NullOr(TrimmedNonEmptyString),
+      output: Schema.NullOr(Schema.String),
+    }),
+  ),
   models: Schema.Array(ServerProviderModel),
   slashCommands: Schema.Array(ServerProviderSlashCommand).pipe(
     Schema.withDecodingDefault(() => []),
@@ -138,6 +164,8 @@ export interface ServerProvider {
   driver?: ProviderDriverKind;
   displayName?: string;
   accentColor?: string;
+  badgeLabel?: string;
+  requiresNewThreadForModelChange?: boolean;
   availability?: "available" | "unavailable";
   unavailableReason?: string;
   enabled: boolean;
@@ -147,6 +175,22 @@ export interface ServerProvider {
   auth: ServerProviderAuth;
   checkedAt: string;
   message?: string;
+  versionAdvisory?: {
+    status: "unknown" | "current" | "behind_latest";
+    currentVersion: string | null;
+    latestVersion: string | null;
+    updateCommand: string | null;
+    canUpdate: boolean;
+    checkedAt: string | null;
+    message: string | null;
+  };
+  updateState?: {
+    status: "idle" | "queued" | "running" | "succeeded" | "failed" | "unchanged";
+    startedAt: string | null;
+    finishedAt: string | null;
+    message: string | null;
+    output: string | null;
+  };
   models: ReadonlyArray<ServerProviderModel>;
   slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
   skills: ReadonlyArray<ServerProviderSkill>;

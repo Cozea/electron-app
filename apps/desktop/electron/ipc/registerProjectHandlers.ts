@@ -165,46 +165,6 @@ function runGitCommand(
   })
 }
 
-function normalizeProjectLookup(
-  value: unknown,
-): { slug: string; projectId?: string; localPathHint?: string; attachedPathHint?: string } {
-  if (typeof value === 'string') {
-    return { slug: value }
-  }
-
-  if (!value || typeof value !== 'object') {
-    return { slug: '' }
-  }
-
-  const rawValue = value as {
-    slug?: unknown
-    projectId?: unknown
-    localPathHint?: unknown
-    attachedPathHint?: unknown
-  }
-
-  let slug = ''
-  if (typeof rawValue.slug === 'string') {
-    slug = rawValue.slug
-  } else if (
-    rawValue.slug &&
-    typeof rawValue.slug === 'object' &&
-    'slug' in rawValue.slug &&
-    typeof (rawValue.slug as { slug?: unknown }).slug === 'string'
-  ) {
-    slug = (rawValue.slug as { slug: string }).slug
-  }
-
-  const projectId = typeof rawValue.projectId === 'string' ? rawValue.projectId : undefined
-  const localPathHint =
-    typeof rawValue.localPathHint === 'string' ? rawValue.localPathHint : undefined
-  const attachedPathHint =
-    typeof rawValue.attachedPathHint === 'string' ? rawValue.attachedPathHint : undefined
-  return { slug, projectId, localPathHint, attachedPathHint }
-}
-
-
-
 export function registerProjectHandlers(
   ipcMain: IpcMain,
   deps: RegisterProjectHandlersDeps
@@ -358,29 +318,6 @@ export function registerProjectHandlers(
           error: error instanceof Error ? error.message : 'Failed to open project folder.',
         }
       }
-    },
-  )
-
-  ipcMain.handle(
-    'project:exists',
-    async (_event, value: string | { slug: string; projectId?: string }): Promise<boolean> => {
-      const { slug } = normalizeProjectLookup(value)
-      const settings = deps.loadSettings()
-      if (!slug || typeof settings.projectsDirectory !== 'string') {
-        console.warn('[ProjectPath] Invalid exists lookup payload', {
-          value,
-          normalizedSlug: slug,
-          projectsDirectoryType: typeof settings.projectsDirectory,
-        })
-        return false
-      }
-      const candidate = path.resolve(settings.projectsDirectory, slug)
-      const projectsDirectory = path.resolve(settings.projectsDirectory)
-      const relative = path.relative(projectsDirectory, candidate)
-      if (relative.startsWith('..') || path.isAbsolute(relative)) {
-        return false
-      }
-      return fs.existsSync(candidate)
     },
   )
 

@@ -30,6 +30,10 @@ export type WorkspaceSource =
   | "migrate_registry_attached_import"
   | "migrate_registry_slug_resolution"
 
+export type WorkspaceStorageOwnership = "managed" | "attached"
+
+export type WorkspaceMarkerPolicy = "required" | "git_private" | "none"
+
 export type WorkspaceLaneKind = "shared" | "branch" | "worktree" | "task" | "detached"
 
 export type WorkspaceConflictReason =
@@ -84,6 +88,12 @@ export interface LocalWorkspaceDTO {
   verifiedAt: number | null
 
   source: WorkspaceSource
+
+  /** Filesystem deletion authority on this device. */
+  storageOwnership: WorkspaceStorageOwnership
+  /** Root Cozea used to materialize a managed workspace; null for attachments. */
+  managedRootId: string | null
+  markerPolicy: WorkspaceMarkerPolicy
 
   isActive: boolean
   workspaceRevision: number
@@ -219,7 +229,6 @@ export interface BindExistingFolderRequest {
   expectedRepo?: RepoIdentity | null
   writeMarker?: boolean
   setActive?: boolean
-  forceBind?: boolean
   source?: WorkspaceSource
 }
 
@@ -227,6 +236,41 @@ export interface BindExistingFolderResult {
   success: boolean
   workspace?: LocalWorkspaceDTO
   conflicts?: WorkspaceConflictDTO[]
+  error?: string
+}
+
+// ─── workspace:preflightExistingFolder / attachExistingFolder ───────────────
+
+export interface PreflightExistingFolderRequest {
+  folderPath: string
+  projectRootRelativePath?: string
+}
+
+export interface PreflightExistingFolderResult {
+  success: boolean
+  realPath?: string
+  isRepo?: boolean
+  branch?: string
+  repoIdentity?: RepoIdentity | null
+  existingWorkspace?: LocalWorkspaceDTO | null
+  error?: string
+}
+
+export interface AttachExistingFolderRequest {
+  projectId: string
+  folderPath: string
+  projectRootRelativePath?: string
+  expectedRepo?: RepoIdentity | null
+  setActive?: boolean
+}
+
+export interface AttachExistingFolderResult extends BindExistingFolderResult {
+  attachedPath?: string
+}
+
+export interface TrashManagedWorkspaceResult {
+  success: boolean
+  movedToTrash?: boolean
   error?: string
 }
 
@@ -358,6 +402,9 @@ export interface LocalWorkspaceRecord {
   verificationReason: string | null
   verifiedAt: number | null
   source: WorkspaceSource
+  storageOwnership: WorkspaceStorageOwnership
+  managedRootId: string | null
+  markerPolicy: WorkspaceMarkerPolicy
   isActive: number
   workspaceRevision: number
   createdAt: number

@@ -8,6 +8,7 @@ import {
   hasPackageJson,
   type DevServerLaunchContext,
 } from '@/utils/projectDetector'
+import { buildLocalDevServerUrl } from './devServerTileCommands'
 import {
   initialDevServerLifecycle,
   transitionDevServerLifecycle,
@@ -18,7 +19,11 @@ import {
   createDevServerRestartScheduler,
   type DevServerRestartScheduler,
 } from '@/hooks/devServerRestartScheduler'
-import type { PreviewFailureReason } from '@shared/electronApiTypes'
+import type {
+  DevServerProcessState,
+  DevServerProcessStateEvent,
+  PreviewFailureReason,
+} from '@shared/electronApiTypes'
 
 export type DevServerStatus = 'idle' | 'starting' | 'ready' | 'unhealthy' | 'error' | 'stopped'
 
@@ -70,6 +75,11 @@ export interface DevServerRunContext {
   storedCommandSource: DevServerLaunchContext['storedCommandSource']
   previewMode: DevServerLaunchContext['previewMode']
   nativePlatform: DevServerLaunchContext['nativePlatform']
+}
+
+export interface DevServerEnsureOptions {
+  command?: string
+  port?: number
 }
 
 interface DevServerRunStoreState {
@@ -186,6 +196,76 @@ function isStaleRunEvent(key: string, runId: string | null | undefined): boolean
   return runId !== getRun(key).runId
 }
 
+function applyAuthoritativeProcessState(
+  key: string,
+  processState: DevServerProcessState,
+  options: { preserveIdle: boolean },
+): void {
+  if (processState.running && processState.ready && processState.port) {
+    const url = buildLocalDevServerUrl(processState.port)
+    runtime.lifecycles.set(key, {
+      ...initialDevServerLifecycle(),
+      runId: processState.runId,
+      state: 'ready',
+      readyAt: Date.now(),
+    })
+    setRun(key, (prev) => {
+      if (
+        prev.status === 'ready' &&
+        prev.port === processState.port &&
+        prev.runId === (processState.runId ?? prev.runId)
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        status: 'ready',
+        runId: processState.runId ?? prev.runId,
+        url,
+        port: processState.port,
+        reachable: true,
+        failureReason: null,
+        error: null,
+      }
+    })
+    return
+  }
+
+  if (processState.running) {
+    setRun(key, (prev) =>
+      prev.status === 'starting' && prev.runId === (processState.runId ?? prev.runId)
+        ? prev
+        : {
+            ...prev,
+            status: 'starting',
+            runId: processState.runId ?? prev.runId,
+            url: null,
+            port: processState.port,
+            reachable: false,
+            failureReason: null,
+            error: null,
+          },
+    )
+    return
+  }
+
+  setRun(key, (prev) => {
+    if (options.preserveIdle && prev.status === 'idle') return prev
+    if (runtime.pendingStarts.has(key)) return prev
+    const preserveError = prev.status === 'error'
+    return {
+      ...prev,
+      status: preserveError ? 'error' : 'stopped',
+      runId: null,
+      url: null,
+      port: null,
+      reachable: false,
+      failureReason: preserveError ? prev.failureReason : null,
+      error: preserveError ? prev.error : null,
+    }
+  })
+}
+
 export function registerDevServerRunContext(key: string, context: DevServerRunContext): void {
   runtime.store.setState((state) => {
     const prev = state.contexts[key]
@@ -219,6 +299,11 @@ export function ensureDevServerEventBridge(): void {
   if (runtime.bridgeInstalled) return
   if (typeof window === 'undefined' || !window.electronAPI?.devServer) return
   runtime.bridgeInstalled = true
+
+  window.electronAPI.devServer.onStateChange((processState: DevServerProcessStateEvent) => {
+    const key = buildDevServerRunKey(processState.workspaceId, processState.laneId)
+    applyAuthoritativeProcessState(key, processState, { preserveIdle: true })
+  })
 
   window.electronAPI.devServer.onOutput(({ workspaceId, laneId, output, runId }) => {
     const key = buildDevServerRunKey(workspaceId, laneId)
@@ -296,64 +381,14 @@ export async function reconcileDevServerRun(key: string): Promise<void> {
 
   if (runtime.pendingStarts.has(key)) return
 
-  if (processState.running && processState.ready && processState.port) {
-    const url = `http://localhost:${processState.port}`
-    runtime.lifecycles.set(key, {
-      ...initialDevServerLifecycle(),
-      runId: processState.runId,
-      state: 'ready',
-      readyAt: Date.now(),
-    })
-    setRun(key, (prev) => {
-      if (
-        prev.status === 'ready' &&
-        prev.port === processState.port &&
-        prev.runId === (processState.runId ?? prev.runId)
-      ) {
-        return prev
-      }
-      return {
-        ...prev,
-        status: 'ready',
-        runId: processState.runId ?? prev.runId,
-        url,
-        port: processState.port,
-        reachable: true,
-        failureReason: null,
-        error: null,
-      }
-    })
-    return
-  }
-
-  if (processState.running) {
-    // Launching/bootstrapping in main while this renderer has no start() in
-    // flight (e.g. fresh reload mid-launch): show the honest intermediate.
-    setRun(key, (prev) =>
-      prev.status === 'starting' && prev.runId === (processState.runId ?? prev.runId)
-        ? prev
-        : { ...prev, status: 'starting', runId: processState.runId ?? prev.runId, reachable: false },
-    )
-    return
-  }
-
-  setRun(key, (prev) => {
-    if (prev.status !== 'starting' && prev.status !== 'ready' && prev.status !== 'unhealthy') {
-      return prev
-    }
-    return {
-      ...prev,
-      status: 'stopped',
-      runId: null,
-      url: null,
-      port: null,
-      reachable: false,
-      failureReason: null,
-    }
-  })
+  applyAuthoritativeProcessState(key, processState, { preserveIdle: true })
 }
 
-export async function startDevServerRun(key: string): Promise<void> {
+async function launchDevServerRun(
+  key: string,
+  mode: 'start' | 'ensure',
+  ensureOptions?: DevServerEnsureOptions,
+): Promise<void> {
   const context = runtime.store.getState().contexts[key]
   if (!context?.workspaceId) return
   if (!context.terminalId) {
@@ -393,16 +428,33 @@ export async function startDevServerRun(key: string): Promise<void> {
 
   runtime.pendingStarts.add(key)
   try {
-    const config = await getDevServerConfig(
-      context.workspaceId,
-      context.storedDevCommand,
-      context.storedDevPort,
-      {
-        previewMode: context.previewMode,
-        nativePlatform: context.nativePlatform,
-        storedCommandSource: context.storedCommandSource,
-      },
-    )
+    const explicitCommand = ensureOptions?.command?.trim() || null
+    const config = explicitCommand
+      ? {
+          command: explicitCommand,
+          port:
+            typeof ensureOptions?.port === 'number' &&
+            Number.isInteger(ensureOptions.port) &&
+            ensureOptions.port > 0 &&
+            ensureOptions.port <= 65_535
+              ? ensureOptions.port
+              : (context.storedDevPort ?? 5173),
+          label: 'Agent Dev Server',
+          suggestions: [],
+          requiresUserSelection: false,
+          packageDirectory: null,
+          commandVerified: false,
+        }
+      : await getDevServerConfig(
+          context.workspaceId,
+          context.storedDevCommand,
+          context.storedDevPort,
+          {
+            previewMode: context.previewMode,
+            nativePlatform: context.nativePlatform,
+            storedCommandSource: context.storedCommandSource,
+          },
+        )
     if (config.requiresUserSelection) {
       throw new Error(
         'Dev server command selection is required. Open the Workbench dev-server tile and choose a command first.',
@@ -425,7 +477,10 @@ export async function startDevServerRun(key: string): Promise<void> {
 
     console.log('[DevServer] Starting with config:', { ...config, bootstrapCommand })
 
-    const result = await window.electronAPI.devServer.start({
+    const launch = mode === 'ensure'
+      ? window.electronAPI.devServer.ensure
+      : window.electronAPI.devServer.start
+    const result = await launch({
       workspaceId: context.workspaceId,
       laneId: context.laneId,
       command: config.command,
@@ -454,7 +509,7 @@ export async function startDevServerRun(key: string): Promise<void> {
     })
 
     if (result.port) {
-      const url = `http://localhost:${result.port}`
+      const url = buildLocalDevServerUrl(result.port)
       appendTimeline(key, { runId: resolvedRunId, type: 'ready_detected', message: `Ready on ${url}` })
       appendTimeline(key, {
         runId: resolvedRunId,
@@ -495,6 +550,19 @@ export async function startDevServerRun(key: string): Promise<void> {
   } finally {
     runtime.pendingStarts.delete(key)
   }
+}
+
+export async function startDevServerRun(key: string): Promise<void> {
+  await launchDevServerRun(key, 'start')
+}
+
+/** Agent/headless-safe launch: reuse the workspace/lane singleton if present. */
+export async function ensureDevServerRun(
+  key: string,
+  options?: DevServerEnsureOptions,
+): Promise<void> {
+  await reconcileDevServerRun(key)
+  await launchDevServerRun(key, 'ensure', options)
 }
 
 /**

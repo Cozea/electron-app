@@ -26,6 +26,8 @@ build/git/**
 build/runtime/**
 !build/runtime/
 !build/runtime/README.md
+build/local-automation/**
+native/**/.build/
 
 # Server (separate repo — root only; apps/server is in-tree)
 /server/

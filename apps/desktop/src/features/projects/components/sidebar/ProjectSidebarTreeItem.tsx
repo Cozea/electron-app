@@ -15,6 +15,11 @@ import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneSta
 import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
 import {
+  buildDevServerRunKey,
+  isDevServerRunActive,
+  useDevServerRunStore,
+} from "@/features/projects/devserver/devServerRunStore"
+import {
   resolveProjectCollabBranch,
   resolveSidebarDevAppMenuAction,
   areSidebarProjectItemsEqual,
@@ -89,6 +94,28 @@ export const ProjectSidebarTreeItem = React.memo(
       () => (activeLaneWorkbench ? buildWorkbenchLaneSidebarSummary(activeLaneWorkbench) : null),
       [activeLaneWorkbench],
     )
+    const activeDevServerRunKey = React.useMemo(() => {
+      const runtimeWorkspaceId = activeLane?.workspaceId ?? workspaceId
+      return activeLane && runtimeWorkspaceId
+        ? buildDevServerRunKey(runtimeWorkspaceId, activeLane.id)
+        : null
+    }, [activeLane, workspaceId])
+    const activeDevServerStatus = useDevServerRunStore(
+      React.useCallback(
+        (state) =>
+          activeDevServerRunKey
+            ? (state.runs[activeDevServerRunKey]?.status ?? "idle")
+            : "idle",
+        [activeDevServerRunKey],
+      ),
+    )
+    const hasBuiltInDevServerSurface = Boolean(
+      activeLaneSummary?.surfaces.some(
+        (surface) => surface.type === "devServer" && !surface.devAppId,
+      ),
+    )
+    const hasHeadlessDevServer =
+      isDevServerRunActive(activeDevServerStatus) && !hasBuiltInDevServerSurface
 
     const isLanesOpen = selection.isExpanded
     const { containerRef: projectRowRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
@@ -313,6 +340,7 @@ export const ProjectSidebarTreeItem = React.memo(
             activeLaneSummary={activeLaneSummary}
             activeSelectionLevel={selection.activeSelectionLevel}
             activeTileId={selection.activeTileId}
+            hasHeadlessDevServer={hasHeadlessDevServer}
             onOpenLaneWorkbench={(options) => {
               if (!activeLane) return
               void actions.openLaneWorkbench(project, activeLane.id, {

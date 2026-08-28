@@ -1,8 +1,4 @@
-import {
-  EventId,
-  type OrchestrationThreadActivity,
-  TurnId,
-} from "@cozea/assistant-contracts";
+import { EventId, type OrchestrationThreadActivity, TurnId } from "@cozea/assistant-contracts";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,7 +12,10 @@ import {
 import type { ThreadSession } from "@/stores/types";
 
 const globalWithCanvas = globalThis as typeof globalThis & {
-  OffscreenCanvas?: new (width: number, height: number) => {
+  OffscreenCanvas?: new (
+    width: number,
+    height: number,
+  ) => {
     getContext: (contextId: string) => { measureText: (text: string) => { width: number } } | null;
   };
 };
@@ -132,7 +131,72 @@ describe("pending request derivation", () => {
 });
 
 describe("deriveWorkLogEntries", () => {
-  it("omits tool started entries and keeps completed entries", () => {
+  it("folds image generation lifecycle rows and adopts the provider prompt title on completion", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "image-start",
+        createdAt: "2026-08-28T10:00:00.000Z",
+        kind: "tool.started",
+        summary: "Generating image",
+        payload: {
+          itemType: "image_generation",
+          toolCallId: "image-call-1",
+          status: "inProgress",
+          title: "Generating image",
+          data: {
+            artifact: {
+              id: "image-call-1",
+              kind: "image",
+              status: "inProgress",
+              available: false,
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "image-complete",
+        createdAt: "2026-08-28T10:00:23.000Z",
+        kind: "tool.completed",
+        summary: "Generating image",
+        payload: {
+          itemType: "image_generation",
+          toolCallId: "image-call-1",
+          status: "completed",
+          title: "Generating image",
+          data: {
+            artifact: {
+              id: "image-call-1",
+              kind: "image",
+              status: "completed",
+              title: "Shrimp shop hero",
+              available: true,
+            },
+          },
+        },
+      }),
+    ]
+
+    const entries = deriveWorkLogEntries(activities, undefined)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      id: "image-complete",
+      itemType: "image_generation",
+      toolCallId: "image-call-1",
+      status: "completed",
+      toolTitle: "Generated Shrimp shop hero",
+    })
+  })
+
+  it("keeps reasoning lifecycle markers out of the visible work log", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({ id: "reasoning-start", kind: "reasoning.started" }),
+      makeActivity({ id: "reasoning-complete", kind: "reasoning.completed" }),
+    ];
+
+    expect(deriveWorkLogEntries(activities, undefined)).toEqual([]);
+  });
+
+  it("collapses a live tool start into its completed entry", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
         id: "tool-complete",
@@ -150,6 +214,83 @@ describe("deriveWorkLogEntries", () => {
 
     const entries = deriveWorkLogEntries(activities, undefined);
     expect(entries.map((entry) => entry.id)).toEqual(["tool-complete"]);
+  });
+
+  it("keeps a running command visible until its completion arrives", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "tool-running",
+        summary: "Ran command started",
+        kind: "tool.started",
+        payload: {
+          itemType: "command_execution",
+          toolCallId: "call-running",
+          status: "inProgress",
+          detail: "/bin/zsh -lc 'sleep 8'",
+          data: {
+            item: {
+              command: "/bin/zsh -lc 'sleep 8'",
+            },
+          },
+        },
+      }),
+    ];
+
+    expect(deriveWorkLogEntries(activities, undefined)).toMatchObject([
+      {
+        id: "tool-running",
+        activityKind: "tool.started",
+        command: "sleep 8",
+        rawCommand: "/bin/zsh -lc 'sleep 8'",
+        itemType: "command_execution",
+        status: "inProgress",
+      },
+    ]);
+  });
+
+  it("folds interleaved lifecycle states into one row per tool call", () => {
+    const activities = [
+      makeActivity({
+        id: "call-a-start",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "tool.started",
+        turnId: "turn-1",
+        payload: { toolCallId: "call-a", status: "inProgress", itemType: "command_execution" },
+      }),
+      makeActivity({
+        id: "call-b-start",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "tool.started",
+        turnId: "turn-1",
+        payload: { toolCallId: "call-b", status: "inProgress", itemType: "file_read" },
+      }),
+      makeActivity({
+        id: "call-a-update",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "tool.updated",
+        turnId: "turn-1",
+        payload: { toolCallId: "call-a", status: "inProgress", itemType: "command_execution" },
+      }),
+      makeActivity({
+        id: "call-b-complete",
+        createdAt: "2026-02-23T00:00:04.000Z",
+        kind: "tool.completed",
+        turnId: "turn-1",
+        payload: { toolCallId: "call-b", status: "completed", itemType: "file_read" },
+      }),
+      makeActivity({
+        id: "call-a-complete",
+        createdAt: "2026-02-23T00:00:05.000Z",
+        kind: "tool.completed",
+        turnId: "turn-1",
+        payload: { toolCallId: "call-a", status: "completed", itemType: "command_execution" },
+      }),
+    ];
+
+    expect(deriveWorkLogEntries(activities, undefined)).toMatchObject([
+      { id: "call-a-complete", toolCallId: "call-a", toolLifecycleStatus: "completed" },
+      { id: "call-b-complete", toolCallId: "call-b", toolLifecycleStatus: "completed" },
+    ]);
   });
 
   it("omits task.started but shows task.progress and task.completed", () => {
@@ -504,10 +645,7 @@ describe("deriveWorkLogEntries", () => {
         "src/features/chat/MessagesTimeline.tsx",
         "src/features/chat/session-logic.ts",
       ],
-      savedFiles: [
-        "src/features/chat/MessagesTimeline.tsx",
-        "src/features/chat/session-logic.ts",
-      ],
+      savedFiles: ["src/features/chat/MessagesTimeline.tsx", "src/features/chat/session-logic.ts"],
     });
   });
 
@@ -520,7 +658,9 @@ describe("deriveWorkLogEntries", () => {
         tone: "tool",
         payload: {
           files: [{ filename: "src/features/chat/MessagesTimeline.tsx", fileId: "file-1" }],
-          failed: [{ filename: "src/features/chat/CozeaChatSurface.tsx", error: "permission denied" }],
+          failed: [
+            { filename: "src/features/chat/CozeaChatSurface.tsx", error: "permission denied" },
+          ],
         },
       }),
     ];
@@ -970,7 +1110,6 @@ describe("deriveWorkLogEntries", () => {
   });
 });
 
-
 describe("deriveWorkLogEntries context window handling", () => {
   it("excludes context window updates from the work log", () => {
     const entries = deriveWorkLogEntries(
@@ -1016,7 +1155,6 @@ describe("deriveWorkLogEntries context window handling", () => {
   });
 });
 
-
 describe("hasToolActivityForTurn", () => {
   it("returns false when turn id is missing", () => {
     const activities: OrchestrationThreadActivity[] = [
@@ -1044,11 +1182,7 @@ describe("derivePhase", () => {
       provider: "codex",
       status,
       orchestrationStatus:
-        status === "connecting"
-          ? "starting"
-          : status === "closed"
-            ? "idle"
-            : status,
+        status === "connecting" ? "starting" : status === "closed" ? "idle" : status,
       createdAt: "2026-02-23T00:00:00.000Z",
       updatedAt: "2026-02-23T00:00:00.000Z",
     };

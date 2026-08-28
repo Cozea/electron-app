@@ -23,6 +23,7 @@ export interface ProjectDeleteConfirmOptions {
 interface ProjectDeleteDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  projectId: string
   projectName: string
   onConfirm: (options: ProjectDeleteConfirmOptions) => void | Promise<void>
   isDeleting?: boolean
@@ -35,6 +36,7 @@ interface ProjectDeleteDialogProps {
 export function ProjectDeleteDialog({
   open,
   onOpenChange,
+  projectId,
   projectName,
   onConfirm,
   isDeleting = false,
@@ -45,12 +47,32 @@ export function ProjectDeleteDialog({
 }: ProjectDeleteDialogProps) {
   // Keep local files by default; user must opt out to send the folder to Trash.
   const [keepLocalFiles, setKeepLocalFiles] = useState(true)
+  const [hasManagedLocalWorkspace, setHasManagedLocalWorkspace] = useState(false)
 
   useEffect(() => {
     if (open) {
       setKeepLocalFiles(true)
+      setHasManagedLocalWorkspace(false)
+
+      let cancelled = false
+      void window.electronAPI.workspace
+        ?.listForProject(projectId)
+        .then((workspaces) => {
+          if (!cancelled) {
+            setHasManagedLocalWorkspace(
+              workspaces.some((workspace) => workspace.storageOwnership === 'managed'),
+            )
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setHasManagedLocalWorkspace(false)
+        })
+
+      return () => {
+        cancelled = true
+      }
     }
-  }, [open])
+  }, [open, projectId])
 
   return (
     <AlertDialog
@@ -75,26 +97,32 @@ export function ProjectDeleteDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-3">
-          <Checkbox
-            id="keep-local-files"
-            checked={keepLocalFiles}
-            disabled={isDeleting}
-            onCheckedChange={(checked) => {
-              setKeepLocalFiles(checked === true)
-            }}
-          />
-          <div className="space-y-1">
-            <Label htmlFor="keep-local-files" className="text-sm font-medium leading-none">
-              Keep local files
-            </Label>
-            <p className="text-xs leading-5 text-muted-foreground">
-              {keepLocalFiles
-                ? 'The project folder stays on disk. Only Cozea cloud data and local app bindings are removed.'
-                : 'Also move the local project folder to Trash after deleting from Cozea.'}
-            </p>
+        {hasManagedLocalWorkspace ? (
+          <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-3">
+            <Checkbox
+              id="keep-local-files"
+              checked={keepLocalFiles}
+              disabled={isDeleting}
+              onCheckedChange={(checked) => {
+                setKeepLocalFiles(checked === true)
+              }}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="keep-local-files" className="text-sm font-medium leading-none">
+                Keep managed local files
+              </Label>
+              <p className="text-xs leading-5 text-muted-foreground">
+                {keepLocalFiles
+                  ? 'Cozea-created and cloned folders stay on disk. Attached folders always stay on disk.'
+                  : 'Move only Cozea-managed folders to Trash. Attached folders always stay on disk.'}
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-3 text-xs leading-5 text-muted-foreground">
+            Attached folders stay on disk. Deleting this project only removes Cozea cloud data and local app bindings.
+          </div>
+        )}
 
         {errorMessage ? (
           <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">

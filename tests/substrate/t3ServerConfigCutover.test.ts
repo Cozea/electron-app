@@ -52,6 +52,7 @@ describe("T3 server config cutover client", () => {
 
     expect(typeof client.getConfig).toBe("function");
     expect(typeof client.refreshProviders).toBe("function");
+    expect(typeof client.updateProvider).toBe("function");
     expect(typeof client.subscribeServerConfig).toBe("function");
   });
 });

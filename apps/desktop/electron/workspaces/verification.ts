@@ -33,6 +33,7 @@ export async function verifyWorkspacePath(
     | "workspaceId"
     | "gitOriginUrl"
     | "gitRepoIdentityJson"
+    | "markerPolicy"
   >,
   expectedRepo?: RepoIdentity | null,
 ): Promise<WorkspaceVerificationResult> {
@@ -61,6 +62,17 @@ export async function verifyWorkspacePath(
   const markerWorkspaceId = markerResult?.marker.workspaceId ?? null
   const markerProjectId = markerResult?.marker.projectId ?? null
   const markerPath = markerResult?.markerPath ?? null
+
+  if (!markerResult && workspace.markerPolicy === "required") {
+    return {
+      status: "marker-missing",
+      reason: "The required Cozea workspace marker is missing.",
+      realPath,
+      markerWorkspaceId,
+      markerProjectId,
+      markerPath,
+    }
+  }
 
   if (markerResult) {
     if (markerResult.marker.projectId !== workspace.projectId) {

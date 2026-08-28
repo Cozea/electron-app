@@ -2,7 +2,10 @@ import net from 'node:net'
 
 import { DevServerPortBroker } from './DevServerPortBroker'
 import { TerminalService } from './TerminalService'
-import { applyDevServerPortOverride } from './devServerCommandPortOverride'
+import {
+  applyDevServerPortOverride,
+  applyDevServerPortPlaceholder,
+} from './devServerCommandPortOverride'
 
 export interface DevServerStartOptions {
   workspaceId: string
@@ -22,7 +25,17 @@ export interface DevServerStartResult {
   success: boolean
   port?: number
   runId?: string
+  existing?: boolean
   error?: string
+}
+
+export interface DevServerProcessState {
+  running: boolean
+  ready: boolean
+  port: number | null
+  runId: string | null
+  phase: 'bootstrapping' | 'launching' | 'running' | null
+  headless: boolean
 }
 
 interface ManagedDevServerRun {
@@ -41,6 +54,7 @@ interface ManagedDevServerRun {
   ready: boolean
   stopping: boolean
   disposed: boolean
+  terminalDetached: boolean
   phase: 'bootstrapping' | 'launching' | 'running'
   bootstrapOutput: string
   unsubscribeTerminal: (() => void) | null
@@ -93,12 +107,43 @@ export class DevServerService {
   private readonly terminalService = TerminalService.getInstance()
   private readonly portBroker = DevServerPortBroker.getInstance()
   private processes = new Map<string, ManagedDevServerRun>()
+  private ensureRequests = new Map<string, Promise<DevServerStartResult>>()
 
   public static getInstance(): DevServerService {
     if (!DevServerService.instance) {
       DevServerService.instance = new DevServerService()
     }
     return DevServerService.instance
+  }
+
+  /**
+   * Idempotently make a workspace/lane dev server available. Unlike start(),
+   * this never replaces an existing run: callers either join the launch in
+   * progress or receive the already-running process.
+   */
+  public async ensure(options: DevServerStartOptions): Promise<DevServerStartResult> {
+    const runKey = buildRunKey(options.workspaceId, options.laneId)
+    const existing = this.processes.get(runKey)
+    if (existing) {
+      return await this.waitForExistingRun(existing)
+    }
+
+    const pending = this.ensureRequests.get(runKey)
+    if (pending) {
+      const result = await pending
+      return result.success ? { ...result, existing: true } : result
+    }
+
+    let request: Promise<DevServerStartResult>
+    request = this.start(options)
+      .then((result) => ({ ...result, existing: false }))
+      .finally(() => {
+        if (this.ensureRequests.get(runKey) === request) {
+          this.ensureRequests.delete(runKey)
+        }
+      })
+    this.ensureRequests.set(runKey, request)
+    return await request
   }
 
   public async start(options: DevServerStartOptions): Promise<DevServerStartResult> {
@@ -155,7 +200,7 @@ export class DevServerService {
       }
 
       const effectiveCommand = applyDevServerPortOverride({
-        command,
+        command: applyDevServerPortPlaceholder(command, actualPort),
         framework,
         port: actualPort,
       })
@@ -176,6 +221,7 @@ export class DevServerService {
         ready: false,
         stopping: false,
         disposed: false,
+        terminalDetached: false,
         phase: bootstrapCommand?.trim() ? 'bootstrapping' : 'launching',
         bootstrapOutput: '',
         unsubscribeTerminal: null,
@@ -366,13 +412,32 @@ export class DevServerService {
     return this.processes.has(buildRunKey(workspaceId, laneId))
   }
 
-  public getState(workspaceId: string, laneId?: string | null): { running: boolean; ready: boolean; port: number | null; runId: string | null } {
+  /**
+   * Detach a closing surface from the PTY that owns the singleton run. The
+   * process keeps running; once it stops, its now-headless terminal is reaped.
+   */
+  public detachSurface(
+    workspaceId: string,
+    laneId: string | null | undefined,
+    terminalId: string,
+  ): { success: boolean; ownsRuntime: boolean } {
+    const entry = this.processes.get(buildRunKey(workspaceId, laneId))
+    if (!entry || entry.terminalId !== terminalId) {
+      return { success: true, ownsRuntime: false }
+    }
+    entry.terminalDetached = true
+    return { success: true, ownsRuntime: true }
+  }
+
+  public getState(workspaceId: string, laneId?: string | null): DevServerProcessState {
     const entry = this.processes.get(buildRunKey(workspaceId, laneId))
     return {
       running: Boolean(entry),
       ready: Boolean(entry?.ready),
       port: entry?.activePort ?? null,
       runId: entry?.runId ?? null,
+      phase: entry?.phase ?? null,
+      headless: Boolean(entry?.terminalDetached),
     }
   }
 
@@ -396,6 +461,46 @@ export class DevServerService {
     this.disposeRun(runKey, null)
   }
 
+  private async waitForExistingRun(entry: ManagedDevServerRun): Promise<DevServerStartResult> {
+    if (entry.ready && entry.activePort !== null) {
+      return {
+        success: true,
+        port: entry.activePort,
+        runId: entry.runId,
+        existing: true,
+      }
+    }
+
+    const deadline = Date.now() + BOOTSTRAP_TIMEOUT_MS + 30_000
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      const active = this.processes.get(entry.runKey)
+      if (!active || active.runId !== entry.runId) {
+        return {
+          success: false,
+          runId: entry.runId,
+          existing: true,
+          error: 'The existing dev server stopped before it became ready.',
+        }
+      }
+      if (active.ready && active.activePort !== null) {
+        return {
+          success: true,
+          port: active.activePort,
+          runId: active.runId,
+          existing: true,
+        }
+      }
+    }
+
+    return {
+      success: false,
+      runId: entry.runId,
+      existing: true,
+      error: 'The existing dev server did not become ready before the launch timeout.',
+    }
+  }
+
   private discardRun(runKey: string): void {
     const entry = this.processes.get(runKey)
     if (!entry) {
@@ -408,6 +513,9 @@ export class DevServerService {
     this.terminalService.setActivityTracking(entry.terminalId, 'off')
     this.processes.delete(runKey)
     this.portBroker.releasePort(entry.sessionKey, entry.workspaceId)
+    if (entry.terminalDetached) {
+      this.terminalService.killTerminal(entry.terminalId)
+    }
   }
 
   private disposeRun(runKey: string, exitCode: number | null): void {
@@ -423,6 +531,9 @@ export class DevServerService {
     this.processes.delete(runKey)
     this.portBroker.releasePort(entry.sessionKey, entry.workspaceId)
     entry.onExit(exitCode)
+    if (entry.terminalDetached) {
+      this.terminalService.killTerminal(entry.terminalId)
+    }
   }
 
   private waitForTerminalCommandToSettle(

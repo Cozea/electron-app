@@ -222,6 +222,8 @@ interface CozeaChatSurfaceProps {
    */
   workspaceRoot?: string | null
   thread: Thread | null
+  artifactUrlsById?: Readonly<Record<string, string>>
+  onOpenArtifact?: (artifactId: string) => void
   providerSnapshot: ServerProvider | null
   isRunning: boolean
   isBinding: boolean
@@ -439,6 +441,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     activeWorkStartedAt,
     activeWorkCompletedAt,
     isWorkActive,
+    generationStatusPhase,
     timelineEntries,
     completionDividerBeforeEntryId,
     completionSummary,
@@ -1551,7 +1554,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               ) : props.isRunning ? (
                 <button
                   type="button"
-                  className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/25 transition-all duration-150 hover:scale-105 hover:bg-destructive active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                   onClick={() => {
                     void props.onInterrupt()
                   }}
@@ -1573,7 +1576,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               ) : (
                 <button
                   type="submit"
-                  className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs shadow-primary/25 transition-all duration-150 enabled:cursor-pointer enabled:hover:scale-105 enabled:hover:bg-primary/90 enabled:active:scale-95 disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none"
                   disabled={
                     !isChatReady ||
                     (props.composer.trim().length === 0 && props.composerImages.length === 0) ||
@@ -1618,7 +1621,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     </form>
   )
 
-  const hasProviderBanner = props.providerSnapshot && props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled";
+  const hasProviderBanner =
+    props.providerSnapshot &&
+    (props.providerSnapshot.versionAdvisory?.status === "behind_latest" ||
+      (props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled"));
 
   return (
     <div
@@ -1685,6 +1691,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               activeWorkStartedAt={activeWorkStartedAt}
               activeWorkCompletedAt={activeWorkCompletedAt}
               isWorkActive={isWorkActive}
+              generationStatusPhase={generationStatusPhase}
               scrollContainerRef={props.timelineRef}
               timelineEntries={timelineEntries}
               completionDividerBeforeEntryId={completionDividerBeforeEntryId}
@@ -1703,6 +1710,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               resolvedTheme={resolvedTheme}
               workspaceId={workspaceIdForFileActions}
               workspaceRoot={props.workspaceRoot ?? undefined}
+              artifactUrlsById={props.artifactUrlsById}
+              onOpenArtifact={props.onOpenArtifact}
             />
           </div>
         )}
