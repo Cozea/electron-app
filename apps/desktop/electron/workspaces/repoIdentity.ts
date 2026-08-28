@@ -17,7 +17,7 @@ export function extractProjectIdFromRemoteUrl(
   }
 }
 
-async function readGitDirPath(projectPath: string): Promise<string | null> {
+export async function readGitDirPath(projectPath: string): Promise<string | null> {
   const gitEntryPath = path.join(projectPath, ".git")
 
   let stats: Awaited<ReturnType<typeof fs.stat>>
@@ -40,11 +40,45 @@ async function readGitDirPath(projectPath: string): Promise<string | null> {
   }
 }
 
+export async function readGitBranch(projectPath: string): Promise<string | null> {
+  const gitDirPath = await readGitDirPath(projectPath)
+  if (!gitDirPath) return null
+
+  try {
+    const head = await fs.readFile(path.join(gitDirPath, "HEAD"), "utf-8")
+    const branchMatch = head.match(/^ref:\s*refs\/heads\/(.+?)\s*$/i)
+    if (branchMatch?.[1]) return branchMatch[1].trim()
+  } catch {
+    return null
+  }
+
+  try {
+    const originHead = await fs.readFile(
+      path.join(gitDirPath, "refs", "remotes", "origin", "HEAD"),
+      "utf-8",
+    )
+    const remoteMatch = originHead.match(/^ref:\s*refs\/remotes\/origin\/(.+?)\s*$/i)
+    return remoteMatch?.[1]?.trim() || null
+  } catch {
+    return null
+  }
+}
+
 async function readOriginRemoteUrl(projectPath: string): Promise<string | null> {
   const gitDirPath = await readGitDirPath(projectPath)
   if (!gitDirPath) return null
 
-  const configPath = path.join(gitDirPath, "config")
+  let configPath = path.join(gitDirPath, "config")
+  try {
+    await fs.access(configPath)
+  } catch {
+    try {
+      const commonDir = (await fs.readFile(path.join(gitDirPath, "commondir"), "utf-8")).trim()
+      if (commonDir) configPath = path.resolve(gitDirPath, commonDir, "config")
+    } catch {
+      return null
+    }
+  }
 
   let raw: string
   try {

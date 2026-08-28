@@ -258,7 +258,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openProjectsDirectory: () => ipcRenderer.invoke('storage:openProjectsDirectory'),
     clearCache: () => ipcRenderer.invoke('storage:clearCache'),
     clearLogs: () => ipcRenderer.invoke('storage:clearLogs'),
-    deleteProject: (options: { projectPath: string }) => ipcRenderer.invoke('storage:deleteProject', options),
     clearAll: () => ipcRenderer.invoke('storage:clearAll'),
   },
   window: {
@@ -324,6 +323,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workbenchBrowser:getSelectedText', options),
     captureScreenshot: (options: { tileId: string }) =>
       ipcRenderer.invoke('workbenchBrowser:captureScreenshot', options),
+    devServerPreviewSnapshot: (options: { tileId: string }) =>
+      ipcRenderer.invoke('workbenchBrowser:devServerPreviewSnapshot', options),
+    devServerPreviewClick: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewClickInput) =>
+      ipcRenderer.invoke('workbenchBrowser:devServerPreviewClick', options),
+    devServerPreviewType: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewTypeInput) =>
+      ipcRenderer.invoke('workbenchBrowser:devServerPreviewType', options),
+    devServerPreviewPress: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewPressInput) =>
+      ipcRenderer.invoke('workbenchBrowser:devServerPreviewPress', options),
+    devServerPreviewScroll: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewScrollInput) =>
+      ipcRenderer.invoke('workbenchBrowser:devServerPreviewScroll', options),
+    devServerPreviewWaitFor: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewWaitForInput) =>
+      ipcRenderer.invoke('workbenchBrowser:devServerPreviewWaitFor', options),
     onStateChange: (callback: (state: import('../../../shared/electronApiTypes').WorkbenchBrowserViewState) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -520,8 +531,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('project:mergeLaneIntoCollab', options),
     openFolder: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('project:openFolder', options),
-    exists: (options: string | { slug: string; projectId?: string }) =>
-      ipcRenderer.invoke('project:exists', options),
     pathExists: (workspaceId: string) => ipcRenderer.invoke('project:pathExists', { workspaceId }),
     resolveRoot: (workspaceId: string) => ipcRenderer.invoke('project:resolveRoot', { workspaceId }),
     writeFile: (options: {
@@ -938,6 +947,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
       runId?: string
     }) =>
       ipcRenderer.invoke('devServer:start', options),
+    ensure: (options: {
+      workspaceId: string
+      laneId?: string | null
+      command: string
+      bootstrapCommand?: string | null
+      port: number
+      sessionKey?: string | null
+      framework?: string | null
+      terminalId: string
+      cols?: number
+      rows?: number
+      runId?: string
+    }) =>
+      ipcRenderer.invoke('devServer:ensure', options),
+    detachSurface: (options: {
+      workspaceId: string
+      laneId?: string | null
+      terminalId: string
+    }) => ipcRenderer.invoke('devServer:detachSurface', options),
     stop: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:stop', options),
     resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) =>
@@ -946,6 +974,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('devServer:isRunning', options),
     getState: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:getState', options),
+    onStateChange: (callback: (data: import('../../../shared/electronApiTypes').DevServerProcessStateEvent) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: import('../../../shared/electronApiTypes').DevServerProcessStateEvent,
+      ) => callback(data)
+      ipcRenderer.on('devServer:state', handler)
+      return () => ipcRenderer.removeListener('devServer:state', handler)
+    },
     onOutput: (callback: (data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; output: string; stream: 'stdout' | 'stderr'; runId?: string }) => callback(data)
       ipcRenderer.on('devServer:output', handler)
@@ -1057,10 +1093,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getActiveForProject: (projectId: string) => ipcRenderer.invoke('workspace:getActiveForProject', projectId),
     setActiveForProject: (req: unknown) => ipcRenderer.invoke('workspace:setActiveForProject', req),
     bindExistingFolder: (req: unknown) => ipcRenderer.invoke('workspace:bindExistingFolder', req),
+    preflightExistingFolder: (req: unknown) => ipcRenderer.invoke('workspace:preflightExistingFolder', req),
+    attachExistingFolder: (req: unknown) => ipcRenderer.invoke('workspace:attachExistingFolder', req),
     importExistingFolder: (req: unknown) => ipcRenderer.invoke('workspace:importExistingFolder', req),
     createForProject: (req: unknown) => ipcRenderer.invoke('workspace:createForProject', req),
     cloneForProject: (req: unknown) => ipcRenderer.invoke('workspace:cloneForProject', req),
     verify: (workspaceId: string) => ipcRenderer.invoke('workspace:verify', workspaceId),
+    findByPath: (folderPath: string) => ipcRenderer.invoke('workspace:findByPath', folderPath),
+    trashManagedWorkspace: (workspaceId: string) =>
+      ipcRenderer.invoke('workspace:trashManagedWorkspace', workspaceId),
     forget: (workspaceId: string) => ipcRenderer.invoke('workspace:forget', workspaceId),
     listCandidates: (req: unknown) => ipcRenderer.invoke('workspace:listCandidates', req),
     openInFinder: (folderPath: string) => ipcRenderer.invoke('workspace:openInFinder', folderPath),

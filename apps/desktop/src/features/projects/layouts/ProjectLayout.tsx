@@ -528,12 +528,10 @@ export function ProjectLayout({
           case "locate": {
             const folderPath = await window.desktopBridge?.pickFolder();
             if (folderPath) {
-              const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+              const bindResult = await window.electronAPI.workspace!.attachExistingFolder({
                 projectId,
                 folderPath,
-                writeMarker: true,
                 setActive: true,
-                source: "locate",
               });
               if (bindResult.success) {
                 refreshWorkspace();
@@ -547,12 +545,10 @@ export function ProjectLayout({
             break;
           }
           case "bind-candidate": {
-            const bindResult = await window.electronAPI.workspace!.bindExistingFolder({
+            const bindResult = await window.electronAPI.workspace!.attachExistingFolder({
               projectId,
               folderPath: action.folderPath,
-              writeMarker: true,
               setActive: true,
-              source: "repair",
             });
             if (bindResult.success) {
               refreshWorkspace();

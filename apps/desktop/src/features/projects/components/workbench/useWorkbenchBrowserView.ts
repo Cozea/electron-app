@@ -78,6 +78,26 @@ interface UseWorkbenchBrowserViewResult {
   }
 }
 
+interface ShouldLoadWorkbenchBrowserUrlOptions {
+  requestedUrl: string
+  lastRequestedUrl: string
+  currentUrl: string
+  loadError?: string | null
+}
+
+export function shouldLoadWorkbenchBrowserUrl({
+  requestedUrl,
+  lastRequestedUrl,
+  currentUrl,
+  loadError,
+}: ShouldLoadWorkbenchBrowserUrlOptions): boolean {
+  return Boolean(requestedUrl) && (
+    requestedUrl !== lastRequestedUrl ||
+    requestedUrl !== currentUrl ||
+    Boolean(loadError)
+  )
+}
+
 export function useWorkbenchBrowserView(
   options: UseWorkbenchBrowserViewOptions,
 ): UseWorkbenchBrowserViewResult {
@@ -243,6 +263,11 @@ export function useWorkbenchBrowserView(
     const model = acquireBrowserTileModel(tileId, { persistent: persistModel })
     modelRef.current = model
 
+    // A persistent native view can outlive the renderer that last positioned
+    // it. Request an immediate hide at re-acquisition so stale pre-reload
+    // bounds cannot cover the shell while this renderer measures the new host.
+    void model.setVisible(false)
+
     const unsubscribe = model.subscribe((nextState) => {
       setState(nextState)
       // Never push a failed navigation URL into the workbench — it would overwrite a newly typed address.
@@ -295,16 +320,39 @@ export function useWorkbenchBrowserView(
       return
     }
 
-    void model.initialize({
-      initialUrl: url,
-      storageScope,
-      workspaceId,
-      partitionKey,
-      navigationPolicy,
+    let cancelled = false
+    const synchronizeUrl = async (): Promise<void> => {
+      await model.initialize({
+        initialUrl: url,
+        storageScope,
+        workspaceId,
+        partitionKey,
+        navigationPolicy,
+      })
+      if (cancelled || committedWorkbenchUrlRef.current !== url) return
+
+      // Re-acquisition first hides any persistent native view. That hide can
+      // initialize the model without a URL before this effect runs. Compare
+      // against the authoritative native state as well as our request cache so
+      // a tile mounted around an already-ready server still navigates.
+      if (shouldLoadWorkbenchBrowserUrl({
+        requestedUrl: url,
+        lastRequestedUrl: lastRequestedUrlRef.current,
+        currentUrl: model.state.url,
+        loadError: model.state.loadError,
+      })) {
+        lastRequestedUrlRef.current = url
+        await model.loadURL(url)
+      }
+    }
+    void synchronizeUrl().catch((error) => {
+      if (!cancelled) {
+        console.warn("[WorkbenchBrowser] Failed to synchronize native view URL", error)
+      }
     })
-    if (url !== lastRequestedUrlRef.current) {
-      lastRequestedUrlRef.current = url
-      void model.loadURL(url)
+
+    return () => {
+      cancelled = true
     }
   }, [navigationPolicy, partitionKey, storageScope, tileId, url, workspaceId])
 

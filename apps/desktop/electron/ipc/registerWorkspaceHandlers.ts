@@ -5,10 +5,12 @@ import path from "node:path"
 import { realpath } from "node:fs/promises"
 
 import type {
+  AttachExistingFolderRequest,
   BindExistingFolderRequest,
   CloneWorkspaceForProjectRequest,
   CreateWorkspaceForProjectRequest,
   ImportExistingFolderRequest,
+  PreflightExistingFolderRequest,
   ResolveProjectWorkspaceRequest,
 } from "../../../../shared/workspaceTypes.ts"
 import { WorkspaceCatalog } from "../workspaces/WorkspaceCatalog.ts"
@@ -17,6 +19,13 @@ import {
   getCatalogSnapshot,
   notifyWorkspaceCatalogChanged,
 } from "../workspaces/CatalogSnapshot.ts"
+import type { AppSettings } from "../../../../shared/electronApiTypes.ts"
+import { forgetApprovedExternalReadRoot } from "../fsAccess.ts"
+
+interface RegisterWorkspaceHandlersDeps {
+  loadSettings: () => AppSettings
+  saveSettings: (settings: Partial<AppSettings>) => void
+}
 
 async function run<A>(eff: Effect.Effect<A, unknown, WorkspaceCatalog>): Promise<A> {
   const rt = await waitForWorkspaceCatalogRuntime()
@@ -30,7 +39,10 @@ async function runMutating<A>(eff: Effect.Effect<A, unknown, WorkspaceCatalog>):
   return result
 }
 
-export function registerWorkspaceHandlers(ipcMain: IpcMain): void {
+export function registerWorkspaceHandlers(
+  ipcMain: IpcMain,
+  deps: RegisterWorkspaceHandlersDeps,
+): void {
   ipcMain.handle(
     "workspace:resolveProject",
     async (_event, req: ResolveProjectWorkspaceRequest) =>
@@ -65,14 +77,42 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(
     "workspace:bindExistingFolder",
-    async (_event, req: BindExistingFolderRequest) =>
-      runMutating(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.bindExistingFolder(req))),
+    async (_event, req: BindExistingFolderRequest) => {
+      const { forceBind: _ignored, ...safeRequest } = req as BindExistingFolderRequest & {
+        forceBind?: unknown
+      }
+      return runMutating(
+        Effect.flatMap(Effect.service(WorkspaceCatalog), (c) =>
+          c.bindExistingFolder(safeRequest),
+        ),
+      )
+    },
+  )
+
+  ipcMain.handle(
+    "workspace:preflightExistingFolder",
+    async (_event, req: PreflightExistingFolderRequest) =>
+      run(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.preflightExistingFolder(req))),
+  )
+
+  ipcMain.handle(
+    "workspace:attachExistingFolder",
+    async (_event, req: AttachExistingFolderRequest) => {
+      const result = await runMutating(
+        Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.attachExistingFolder(req)),
+      )
+      if (result.success) {
+        const update = forgetApprovedExternalReadRoot(deps.loadSettings(), req.folderPath)
+        if (update) deps.saveSettings(update)
+      }
+      return result
+    },
   )
 
   ipcMain.handle(
     "workspace:importExistingFolder",
     async (_event, req: ImportExistingFolderRequest) =>
-      run(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.importExistingFolder(req))),
+      runMutating(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.importExistingFolder(req))),
   )
 
   ipcMain.handle(
@@ -90,6 +130,46 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain): void {
   ipcMain.handle("workspace:verify", async (_event, workspaceId: string) =>
     runMutating(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.verify(workspaceId))),
   )
+
+  ipcMain.handle("workspace:findByPath", async (_event, folderPath: string) =>
+    run(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.findByPath(folderPath))),
+  )
+
+  ipcMain.handle("workspace:trashManagedWorkspace", async (_event, workspaceId: string) => {
+    const target = await run(
+      Effect.flatMap(Effect.service(WorkspaceCatalog), (c) =>
+        c.getManagedDeletionTarget(workspaceId),
+      ),
+    )
+    if (!target) {
+      return {
+        success: false,
+        error: "This workspace is attached or its managed ownership could not be verified.",
+      }
+    }
+
+    try {
+      const [managedRootPath, projectRootPath] = await Promise.all([
+        realpath(target.managedRootPath),
+        realpath(target.projectRootPath),
+      ])
+      const relative = path.relative(managedRootPath, projectRootPath)
+      if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+        return {
+          success: false,
+          error: "The managed workspace path is outside its recorded managed root.",
+        }
+      }
+
+      await shell.trashItem(projectRootPath)
+      return { success: true, movedToTrash: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to move the workspace to Trash.",
+      }
+    }
+  })
 
   ipcMain.handle("workspace:forget", async (_event, workspaceId: string) =>
     runMutating(Effect.flatMap(Effect.service(WorkspaceCatalog), (c) => c.forget(workspaceId))),

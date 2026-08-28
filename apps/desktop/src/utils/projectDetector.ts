@@ -923,14 +923,17 @@ export async function getDevServerConfig(
 }> {
   let suggestions: DevCommandSuggestion[] = []
   let requiresUserSelection = false
+  let selectedCommand: string | null = null
 
   try {
     const profile = await projectAnalysisDesktopClient.getProjectCapabilities({ workspaceId })
     suggestions = profile?.devServer?.suggestions ?? []
     requiresUserSelection = Boolean(profile?.devServer?.requiresUserSelection)
+    selectedCommand = profile?.devServer?.selectedCommand?.trim() || null
   } catch {
     suggestions = []
     requiresUserSelection = false
+    selectedCommand = null
   }
 
   const inferPortFromCommand = (command: string, fallbackPort: number): number => {
@@ -1029,6 +1032,18 @@ export async function getDevServerConfig(
       command: selectedSuggestion.command,
       port: inferPortFromCommand(selectedSuggestion.command, fallbackPort),
       label: inferDevServerLabelFromCommand(selectedSuggestion.command),
+      suggestions,
+      requiresUserSelection: false,
+      packageDirectory: null,
+      commandVerified: true,
+    }
+  }
+
+  if (selectedCommand) {
+    return {
+      command: selectedCommand,
+      port: inferPortFromCommand(selectedCommand, storedDevPort ?? info.devPort),
+      label: inferDevServerLabelFromCommand(selectedCommand),
       suggestions,
       requiresUserSelection: false,
       packageDirectory: null,

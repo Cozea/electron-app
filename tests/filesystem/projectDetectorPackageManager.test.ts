@@ -20,6 +20,11 @@ const listFiles = vi.fn<
     files?: Array<{ path: string; sizeBytes: number }>
   }>
 >()
+const getProjectCapabilities = vi.fn(async () => ({
+  runtimes: [],
+  devServer: { suggestions: [], requiresUserSelection: true },
+  evidence: { files: [], scripts: [], lockfiles: [] },
+}))
 
 vi.mock('@/lib/projectAnalysis/projectAnalysisDesktopClient', () => ({
   projectAnalysisDesktopClient: {
@@ -28,11 +33,7 @@ vi.mock('@/lib/projectAnalysis/projectAnalysisDesktopClient', () => ({
     readAbsoluteFile: (path: string) => readAbsoluteFile(path),
     readFile: (options: { workspaceId: string; filePath: string }) => readFile(options),
     listFiles: (options: { workspaceId: string }) => listFiles(options),
-    getProjectCapabilities: vi.fn(async () => ({
-      runtimes: [],
-      devServer: { suggestions: [], requiresUserSelection: true },
-      evidence: { files: [], packageScripts: {}, nativeTargets: [] },
-    })),
+    getProjectCapabilities: () => getProjectCapabilities(),
   },
 }))
 
@@ -58,9 +59,47 @@ beforeEach(() => {
   readAbsoluteFile.mockReset()
   readFile.mockReset()
   listFiles.mockReset()
+  getProjectCapabilities.mockReset()
   readAbsoluteFile.mockResolvedValue(null)
   readFile.mockResolvedValue({ success: false })
   listFiles.mockResolvedValue({ success: false })
+  getProjectCapabilities.mockResolvedValue({
+    runtimes: [],
+    devServer: { suggestions: [], requiresUserSelection: true },
+    evidence: { files: [], scripts: [], lockfiles: [] },
+  })
+})
+
+describe('Core ML command resolution handoff', () => {
+  it('uses the bounded command selected by the main-process resolver', async () => {
+    resolveRoot.mockResolvedValue('/repo')
+    readDir.mockResolvedValue([])
+    getProjectCapabilities.mockResolvedValue({
+      runtimes: [],
+      devServer: {
+        suggestions: [
+          {
+            command: 'python3 -m http.server {port} --bind 127.0.0.1',
+            runtime: 'python',
+            confidence: 0.87,
+            reason: 'Found a root static HTML entry point.',
+          },
+        ],
+        selectedCommand: 'python3 -m http.server {port} --bind 127.0.0.1',
+        requiresUserSelection: false,
+      },
+      evidence: { files: ['index.html'], scripts: [], lockfiles: [] },
+    })
+
+    const config = await getDevServerConfig(WORKSPACE_ID, null, 4173)
+
+    expect(config).toMatchObject({
+      command: 'python3 -m http.server {port} --bind 127.0.0.1',
+      port: 4173,
+      requiresUserSelection: false,
+      commandVerified: true,
+    })
+  })
 })
 
 describe('detectPackageManager (workspace id resolution)', () => {

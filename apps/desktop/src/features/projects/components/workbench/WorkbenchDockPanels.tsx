@@ -33,6 +33,7 @@ import {
   useDevServerRunStore,
 } from "@/features/projects/devserver/devServerRunStore"
 import {
+  buildLocalDevServerUrl,
   dispatchDevServerTileCommand,
   isSameDevServerPreviewUrl,
 } from "@/features/projects/devserver/devServerTileCommands"
@@ -471,9 +472,12 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
   const run = useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined))
     ?? DEFAULT_DEV_SERVER_RUN
 
-  const serverUrl = run.url ?? (run.port ? `http://localhost:${run.port}` : "")
+  const serverUrl = run.url ?? (run.port ? buildLocalDevServerUrl(run.port) : "")
   const overrideUrl = tile?.type === "devServer" ? tile.previewOverrideUrl ?? null : null
-  const displayUrl = overrideUrl ?? serverUrl
+  const effectiveOverrideUrl = isSameDevServerPreviewUrl(overrideUrl, serverUrl)
+    ? null
+    : overrideUrl
+  const displayUrl = effectiveOverrideUrl ?? serverUrl
   const viewMode =
     tile?.type === "devServer" || tile?.type === "mobileSimulator"
       ? tile.viewMode ?? "preview"
@@ -620,7 +624,7 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
     return null
   }
 
-  const serverUrl = run.url ?? (run.port ? `http://localhost:${run.port}` : "")
+  const serverUrl = run.url ?? (run.port ? buildLocalDevServerUrl(run.port) : "")
 
   if (isDevServerRunActive(run.status)) {
     return (

@@ -135,8 +135,8 @@ export function getPanelRendererForTile(
     case "mobileSimulator":
     case "orgDevApp":
     case "terminal":
-      return "always"
     case "assistantChat":
+      return "always"
     case "selection":
     case "tasks":
     default:

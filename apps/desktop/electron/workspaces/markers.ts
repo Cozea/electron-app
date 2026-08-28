@@ -1,18 +1,22 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import type { WorkspaceMarker } from "../../../../shared/workspaceTypes.ts"
+import { readGitDirPath } from "./repoIdentity.ts"
 
 const GIT_MARKER_RELATIVE = path.join(".git", "cozea", "workspace.json")
 const PLAIN_MARKER_RELATIVE = path.join(".cozea", "workspace.json")
 
 /** Returns the marker path that exists for the given project root, or null. */
 async function resolveMarkerPath(projectRootPath: string): Promise<string | null> {
-  const gitMarker = path.join(projectRootPath, GIT_MARKER_RELATIVE)
-  try {
-    await fs.access(gitMarker)
-    return gitMarker
-  } catch {
-    // fall through to plain marker
+  const gitDirPath = await readGitDirPath(projectRootPath)
+  if (gitDirPath) {
+    const gitMarker = path.join(gitDirPath, "cozea", "workspace.json")
+    try {
+      await fs.access(gitMarker)
+      return gitMarker
+    } catch {
+      // fall through to plain marker
+    }
   }
 
   const plainMarker = path.join(projectRootPath, PLAIN_MARKER_RELATIVE)
@@ -52,18 +56,11 @@ export async function writeWorkspaceMarker(
   projectRootPath: string,
   marker: WorkspaceMarker,
 ): Promise<void> {
-  const gitDir = path.join(projectRootPath, ".git")
-  let useGitMarker = false
-
-  try {
-    const stat = await fs.stat(gitDir)
-    useGitMarker = stat.isDirectory()
-  } catch {
-    // no .git dir
-  }
+  const gitDirPath = await readGitDirPath(projectRootPath)
+  const useGitMarker = gitDirPath !== null
 
   const markerPath = useGitMarker
-    ? path.join(projectRootPath, GIT_MARKER_RELATIVE)
+    ? path.join(gitDirPath, "cozea", "workspace.json")
     : path.join(projectRootPath, PLAIN_MARKER_RELATIVE)
   const stalePath = useGitMarker
     ? path.join(projectRootPath, PLAIN_MARKER_RELATIVE)

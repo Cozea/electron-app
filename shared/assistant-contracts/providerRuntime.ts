@@ -114,6 +114,7 @@ export const TOOL_LIFECYCLE_ITEM_TYPES = [
   "dynamic_tool_call",
   "collab_agent_tool_call",
   "web_search",
+  "image_generation",
   "image_view",
 ] as const;
 
@@ -322,6 +323,7 @@ export const ThreadTokenUsageSnapshot = Schema.Struct({
   toolUses: Schema.optional(NonNegativeInt),
   durationMs: Schema.optional(NonNegativeInt),
   compactsAutomatically: Schema.optional(Schema.Boolean),
+  autoCompactThreshold: Schema.optional(PositiveInt),
 });
 export type ThreadTokenUsageSnapshot = typeof ThreadTokenUsageSnapshot.Type;
 

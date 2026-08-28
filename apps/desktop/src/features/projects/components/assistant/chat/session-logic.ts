@@ -52,6 +52,9 @@ export interface WorkLogEntry {
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   activityKind?: OrchestrationThreadActivity["kind"];
+  sourceActivityKind?: OrchestrationThreadActivity["kind"];
+  toolCallId?: string;
+  toolLifecycleStatus?: "inProgress" | "completed" | "failed" | "declined" | "stopped";
   status?: "inProgress" | "completed" | "failed" | "declined" | "cancelled";
 }
 
@@ -473,20 +476,18 @@ export function deriveWorkLogEntries(
   const ordered = [...activities].sort(compareActivitiesByOrder);
   const entries = ordered
     .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
-    .filter((activity) => activity.kind !== "tool.started")
     .filter((activity) => activity.kind !== "task.started")
+    .filter((activity) => activity.kind !== "tool.progress")
     .filter((activity) => activity.kind !== "context-window.updated")
     .filter((activity) => activity.kind !== "account.rate-limits.updated")
+    .filter(
+      (activity) =>
+        activity.kind !== "reasoning.started" && activity.kind !== "reasoning.completed",
+    )
     .filter((activity) => activity.summary !== "Checkpoint captured")
     .filter((activity) => !isPlanBoundaryToolActivity(activity))
     .map(toDerivedWorkLogEntry);
-  return collapseDerivedWorkLogEntries(entries).map(
-    ({
-      collapseKey: _collapseKey,
-      toolCallId: _toolCallId,
-      ...entry
-    }) => entry,
-  );
+  return collapseDerivedWorkLogEntries(entries).map(({ collapseKey: _collapseKey, ...entry }) => entry);
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -539,7 +540,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? extractToolProgressDetail(payload)
       : isPersistedFilesActivity
         ? extractPersistedFilesDetail(payload)
-        : runtimeDetail ?? extractToolDetail(payload, title ?? activity.summary);
+        : (runtimeDetail ?? extractToolDetail(payload, title ?? activity.summary));
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const label =
     taskLabel ??
@@ -556,15 +557,15 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     tone:
       activity.kind === "task.progress"
         ? "thinking"
-        : status === "failed" ||
-            (isPersistedFilesActivity && persistedFiles.failedFiles.length > 0)
+        : status === "failed" || (isPersistedFilesActivity && persistedFiles.failedFiles.length > 0)
           ? "error"
-        : status === "cancelled" || status === "declined"
-          ? "info"
-        : activity.tone === "approval"
-          ? "info"
-          : activity.tone,
+          : status === "cancelled" || status === "declined"
+            ? "info"
+            : activity.tone === "approval"
+              ? "info"
+              : activity.tone,
     activityKind: activity.kind,
+    sourceActivityKind: activity.kind,
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
@@ -594,6 +595,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (status) {
     entry.status = status;
+    entry.toolLifecycleStatus = status === "cancelled" ? "stopped" : status;
+  } else if (activity.kind === "tool.completed") {
+    entry.toolLifecycleStatus = "completed";
   }
   if (requestKind) {
     entry.requestKind = requestKind;
@@ -612,15 +616,55 @@ function collapseDerivedWorkLogEntries(
   entries: ReadonlyArray<DerivedWorkLogEntry>,
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
+  const toolLifecycleRowIndex = new Map<string, number>();
   for (const entry of entries) {
+    const lifecycleKey = toolLifecycleCollapseMapKey(entry);
+    if (lifecycleKey) {
+      const matchingIndex = toolLifecycleRowIndex.get(lifecycleKey);
+      const matchingEntry = matchingIndex === undefined ? undefined : collapsed[matchingIndex];
+      if (
+        matchingIndex !== undefined &&
+        matchingEntry &&
+        shouldCollapseToolLifecycleEntries(matchingEntry, entry)
+      ) {
+        collapsed[matchingIndex] = mergeDerivedWorkLogEntries(matchingEntry, entry);
+        if (entry.activityKind === "tool.completed") {
+          toolLifecycleRowIndex.delete(lifecycleKey);
+        }
+        continue;
+      }
+      toolLifecycleRowIndex.delete(lifecycleKey);
+    }
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
-      collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
+      const previousIndex = collapsed.length - 1;
+      const previousKey = toolLifecycleCollapseMapKey(previous);
+      if (previousKey) toolLifecycleRowIndex.delete(previousKey);
+      const merged = mergeDerivedWorkLogEntries(previous, entry);
+      collapsed[previousIndex] = merged;
+      const mergedKey = toolLifecycleCollapseMapKey(merged);
+      if (mergedKey && merged.activityKind !== "tool.completed") {
+        toolLifecycleRowIndex.set(mergedKey, previousIndex);
+      }
       continue;
     }
     collapsed.push(entry);
+    if (lifecycleKey && entry.activityKind !== "tool.completed") {
+      toolLifecycleRowIndex.set(lifecycleKey, collapsed.length - 1);
+    }
   }
   return collapsed;
+}
+
+function toolLifecycleCollapseMapKey(entry: DerivedWorkLogEntry): string | undefined {
+  if (
+    entry.activityKind !== "tool.started" &&
+    entry.activityKind !== "tool.updated" &&
+    entry.activityKind !== "tool.completed"
+  ) {
+    return undefined;
+  }
+  return entry.toolCallId ? `tool:${entry.turnId ?? "no-turn"}:${entry.toolCallId}` : undefined;
 }
 
 function shouldCollapseToolLifecycleEntries(
@@ -630,10 +674,18 @@ function shouldCollapseToolLifecycleEntries(
   if (previous.turnId !== next.turnId) {
     return false;
   }
-  if (previous.activityKind !== "tool.updated" && previous.activityKind !== "tool.completed") {
+  if (
+    previous.activityKind !== "tool.started" &&
+    previous.activityKind !== "tool.updated" &&
+    previous.activityKind !== "tool.completed"
+  ) {
     return false;
   }
-  if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
+  if (
+    next.activityKind !== "tool.started" &&
+    next.activityKind !== "tool.updated" &&
+    next.activityKind !== "tool.completed"
+  ) {
     return false;
   }
   if (previous.activityKind === "tool.completed") {
@@ -691,7 +743,11 @@ function mergeChangedFiles(
 }
 
 function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
-  if (entry.activityKind !== "tool.updated" && entry.activityKind !== "tool.completed") {
+  if (
+    entry.activityKind !== "tool.started" &&
+    entry.activityKind !== "tool.updated" &&
+    entry.activityKind !== "tool.completed"
+  ) {
     return undefined;
   }
   if (entry.toolCallId) {
@@ -940,7 +996,16 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
 
 function extractToolCallId(payload: Record<string, unknown> | null): string | null {
   const data = asRecord(payload?.data);
-  return asTrimmedString(data?.toolCallId);
+  const item = asRecord(data?.item);
+  return (
+    asTrimmedString(payload?.toolCallId) ??
+    asTrimmedString(payload?.callID) ??
+    asTrimmedString(data?.toolCallId) ??
+    asTrimmedString(data?.callID) ??
+    asTrimmedString(item?.toolCallId) ??
+    asTrimmedString(item?.callID) ??
+    asTrimmedString(item?.id)
+  );
 }
 
 function normalizeInlinePreview(value: string): string {
@@ -1053,6 +1118,16 @@ function extractToolDetail(
 }
 
 function extractToolTitle(payload: Record<string, unknown> | null): string | null {
+  if (payload?.itemType === "image_generation") {
+    const artifact = asRecord(asRecord(payload.data)?.artifact);
+    const artifactTitle = asTrimmedString(artifact?.title);
+    if (artifactTitle) {
+      const status = asTrimmedString(artifact?.status) ?? asTrimmedString(payload.status);
+      return status === "inProgress"
+        ? `Generating ${artifactTitle}`
+        : `Generated ${artifactTitle}`;
+    }
+  }
   return asTrimmedString(payload?.title);
 }
 
@@ -1294,7 +1369,7 @@ function extractRuntimeActivityDetail(
       const toModel = asTrimmedString(payload?.toModel);
       const reason = asTrimmedString(payload?.reason);
       const route =
-        fromModel && toModel ? `${fromModel} -> ${toModel}` : toModel ?? fromModel ?? null;
+        fromModel && toModel ? `${fromModel} -> ${toModel}` : (toModel ?? fromModel ?? null);
       if (route && reason) {
         return `${route} - ${reason}`;
       }

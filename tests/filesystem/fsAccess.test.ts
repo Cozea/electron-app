@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AppSettings } from '../../shared/electronApiTypes'
 import {
+  forgetApprovedExternalReadRoot,
   getApprovedReadRoots,
   isPathInsideRoot,
   isReadPathAllowed,
@@ -42,6 +43,23 @@ describe('fsAccess', () => {
 
     expect(deduped).toEqual({
       approvedExternalReadRoots: ['/Users/test/Downloads/import-me'],
+    })
+  })
+
+  it('forgets a picker grant after the folder becomes a catalog workspace', () => {
+    expect(
+      forgetApprovedExternalReadRoot(
+        {
+          ...baseSettings,
+          approvedExternalReadRoots: [
+            '/Users/test/Downloads/import-me',
+            '/Users/test/Documents/keep-me',
+          ],
+        },
+        '/Users/test/Downloads/import-me',
+      ),
+    ).toEqual({
+      approvedExternalReadRoots: ['/Users/test/Documents/keep-me'],
     })
   })
 })

@@ -1,5 +1,7 @@
 import type { Session } from './types'
 import type {
+  AttachExistingFolderRequest,
+  AttachExistingFolderResult,
   BindExistingFolderRequest,
   BindExistingFolderResult,
   CloneWorkspaceForProjectRequest,
@@ -11,10 +13,13 @@ import type {
   ImportExistingFolderResult,
   LocalWorkspaceDTO,
   LocalWorkspaceRecord,
+  PreflightExistingFolderRequest,
+  PreflightExistingFolderResult,
   ResolveProjectWorkspaceRequest,
   ResolveProjectWorkspaceResult,
   WorkspaceCandidate,
   WorkspaceCatalogSnapshot,
+  TrashManagedWorkspaceResult,
 } from './workspaceTypes'
 import type {
   NativePreviewActionResult,
@@ -1132,6 +1137,14 @@ export interface DevServerProcessState {
   ready: boolean
   port: number | null
   runId: string | null
+  phase: 'bootstrapping' | 'launching' | 'running' | null
+  headless: boolean
+}
+
+/** Authoritative main-process state pushed after a run lifecycle change. */
+export interface DevServerProcessStateEvent extends DevServerProcessState {
+  workspaceId: string
+  laneId?: string | null
 }
 
 export interface IntegrationKeyResult {
@@ -1418,7 +1431,6 @@ export interface ElectronAPI {
     openProjectsDirectory: () => Promise<StorageActionResult>
     clearCache: () => Promise<StorageActionResult>
     clearLogs: () => Promise<StorageActionResult>
-    deleteProject: (options: { projectPath: string }) => Promise<StorageActionResult>
     clearAll: () => Promise<StorageActionResult>
   }
   window: {
@@ -1463,6 +1475,12 @@ export interface ElectronAPI {
     stopFindInPage: (options: { tileId: string; keepSelection?: boolean }) => Promise<WorkbenchBrowserViewState | null>
     getSelectedText: (options: { tileId: string }) => Promise<string>
     captureScreenshot: (options: { tileId: string }) => Promise<string | null>
+    devServerPreviewSnapshot: (options: { tileId: string }) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewSnapshotResult | null>
+    devServerPreviewClick: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewClickInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
+    devServerPreviewType: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewTypeInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
+    devServerPreviewPress: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewPressInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
+    devServerPreviewScroll: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewScrollInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
+    devServerPreviewWaitFor: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewWaitForInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
     onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
     onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
     onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
@@ -1656,7 +1674,6 @@ export interface ElectronAPI {
       sourceBranch: string
     }) => Promise<{ success: boolean; error?: string }>
     openFolder: (options: { workspaceId: string }) => Promise<StorageActionResult>
-    exists: (options: string | { slug: string; projectId?: string }) => Promise<boolean>
     pathExists: (workspaceId: string) => Promise<boolean>
     /** Resolves an opaque workspace id to its absolute project root path (or null if unauthorized/unknown). */
     resolveRoot: (workspaceId: string) => Promise<string | null>
@@ -1988,10 +2005,17 @@ export interface ElectronAPI {
   }
   devServer: {
     start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
+    ensure: (options: DevServerStartOptions) => Promise<DevServerStartResult>
+    detachSurface: (options: {
+      workspaceId: string
+      laneId?: string | null
+      terminalId: string
+    }) => Promise<{ success: boolean; ownsRuntime: boolean; error?: string }>
     stop: (options: { workspaceId: string; laneId?: string | null }) => Promise<{ success: boolean; error?: string }>
     resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) => Promise<{ success: boolean }>
     isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
     getState: (options: { workspaceId: string; laneId?: string | null }) => Promise<DevServerProcessState>
+    onStateChange: (callback: (data: DevServerProcessStateEvent) => void) => () => void
     onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
     onExit: (callback: (data: DevServerExitEvent) => void) => () => void
   }
@@ -2051,10 +2075,14 @@ export interface ElectronAPI {
     getActiveForProject: (projectId: string) => Promise<LocalWorkspaceRecord | null>
     setActiveForProject: (req: { workspaceId: string; projectId: string }) => Promise<void>
     bindExistingFolder: (req: BindExistingFolderRequest) => Promise<BindExistingFolderResult>
+    preflightExistingFolder: (req: PreflightExistingFolderRequest) => Promise<PreflightExistingFolderResult>
+    attachExistingFolder: (req: AttachExistingFolderRequest) => Promise<AttachExistingFolderResult>
     importExistingFolder: (req: ImportExistingFolderRequest) => Promise<ImportExistingFolderResult>
     createForProject: (req: CreateWorkspaceForProjectRequest) => Promise<CreateWorkspaceForProjectResult>
     cloneForProject: (req: CloneWorkspaceForProjectRequest) => Promise<CloneWorkspaceForProjectResult>
     verify: (workspaceId: string) => Promise<{ status: string; workspace: LocalWorkspaceDTO | null }>
+    findByPath: (folderPath: string) => Promise<LocalWorkspaceDTO | null>
+    trashManagedWorkspace: (workspaceId: string) => Promise<TrashManagedWorkspaceResult>
     forget: (workspaceId: string) => Promise<void>
     listCandidates: (req: { projectId: string; slug: string; roots: string[]; expectedRepo?: unknown }) => Promise<WorkspaceCandidate[]>
     openInFinder: (folderPath: string) => Promise<void>

@@ -36,6 +36,28 @@ describe('workbench store selectors', () => {
     expect(selector(useProjectWorkbenchStore.getState())).toBe(assistantTileId)
   })
 
+  it('persists an assistant tile view independently from its bound thread', () => {
+    const actions = useProjectWorkbenchStore.getState().actions
+    actions.ensureWorkbench('project-1', 'collab')
+    const assistantTileId = actions.addTile('project-1', 'collab', 'assistantChat', {
+      title: 'Designer',
+      threadId: 'thread-1',
+    })
+
+    actions.updateAssistantTile('project-1', 'collab', assistantTileId, {
+      viewMode: 'artifacts',
+    })
+
+    const workbench = selectProjectWorkbench('project-1', 'collab')(
+      useProjectWorkbenchStore.getState(),
+    )
+    expect(workbench?.tiles[assistantTileId]).toMatchObject({
+      type: 'assistantChat',
+      threadId: 'thread-1',
+      viewMode: 'artifacts',
+    })
+  })
+
   it('does not persist an invalid active tile id', () => {
     const actions = useProjectWorkbenchStore.getState().actions
     actions.ensureWorkbench('project-1', 'collab')

@@ -149,11 +149,11 @@ const en = {
     "Git is required for project sync and source control. Install Git and restart Cozea, or set `COZEA_GIT_EXECUTABLE` to an absolute git binary path.",
   "settings.tooling.available": "Available",
   "settings.tooling.notAvailable": "Not available",
-  "settings.tooling.projectsDirectory": "Projects directory",
+  "settings.tooling.projectsDirectory": "New projects and clones location",
   "settings.tooling.projectsDirectoryDesc":
-    "Cozea creates new projects and managed imports in this local folder.",
+    "Cozea creates new projects and repository clones here. Existing folders stay where they are.",
   "settings.tooling.projectsDirectoryLoading": "Loading project location...",
-  "settings.tooling.projectsDirectoryPickerTitle": "Choose Cozea projects directory",
+  "settings.tooling.projectsDirectoryPickerTitle": "Choose where Cozea creates projects and clones",
   "settings.tooling.changeProjectsDirectory": "Change",
   "settings.tooling.previewEmbedCompatibility": "Preview Embed Compatibility",
   "settings.tooling.previewEmbedDesc":
@@ -187,13 +187,13 @@ const en = {
   // ── Projects launch page ────────────────────────────────────────────
   "projects.selectProject": "Select a project",
   "projects.selectProjectDesc":
-    "Choose a project from the sidebar, or drop another local repository here to import it.",
+    "Choose a project from the sidebar, or drop another local repository here to open it in place.",
   "projects.dropRepoTitle": "Drop a repository folder",
-  "projects.dropRepoActive": "Release to import",
-  "projects.dropRepoHint": "Imports the folder the same way as Import local folder. Click to browse.",
+  "projects.dropRepoActive": "Release to open",
+  "projects.dropRepoHint": "Opens the folder in place without copying or moving it. Click to browse.",
   "projects.dropRepoBrowse": "Browse folder",
-  "projects.dropRepoImporting": "Importing project…",
-  "projects.dropRepoAriaLabel": "Drop a repository folder to import, or click to browse",
+  "projects.dropRepoImporting": "Opening project…",
+  "projects.dropRepoAriaLabel": "Drop a repository folder to open in place, or click to browse",
 
   // ── Update menu ─────────────────────────────────────────────────────
   "update.title": "Cozea update",
@@ -222,10 +222,10 @@ const en = {
   "createProject.emptyTitle": "Empty project",
   "createProject.emptyDesc": "Create a blank local project and jump straight into the workbench.",
   "createProject.createBtn": "Create project",
-  "createProject.localTitle": "Import local folder",
-  "createProject.localDescFallback": "Attach an existing local folder and start working in Cozea. Git stays exactly as it is on your machine.",
-  "createProject.localDescFormat": "Import {folderName} into Cozea and keep any git setup on disk exactly as it already is.",
-  "createProject.importBtn": "Import folder",
+  "createProject.localTitle": "Open existing folder",
+  "createProject.localDescFallback": "Use an existing folder in place. Cozea will not copy, rename, move, or take ownership of it.",
+  "createProject.localDescFormat": "Open {folderName} in place. Cozea will not copy, rename, move, or take ownership of it.",
+  "createProject.importBtn": "Open folder",
   "createProject.name": "Name",
   "createProject.namePlaceholder": "My project",
   "createProject.path": "Path",
@@ -236,7 +236,7 @@ const en = {
   "createProject.privateRepo": "Private repo",
   "createProject.privateRepoDesc": "Only you and collaborators can see it",
   "createProject.checkingFolder": "Checking the folder",
-  "createProject.checkingFolderDesc": "Preparing the local import and reading any existing git details on disk.",
+  "createProject.checkingFolderDesc": "Verifying the selected path and reading any existing git details on disk.",
 
   // ── Workbench Selection Tile (Add dev app) ───────────────────────────
   "workbench.selection.letsWorkOn": "Let's work on",
@@ -536,7 +536,7 @@ const en = {
   "settings.error.resetFailed": "Failed to reset encrypted collaboration room",
 
   "menu.emptyProject": "Empty project",
-  "menu.importLocalFolder": "Import local folder",
+  "menu.importLocalFolder": "Open existing folder",
   "header.shareProject": "Share project",
   "workbench.editor.openIn": "Open in {editor}",
   "workbench.editor.noEditor": "No supported external editor detected",
