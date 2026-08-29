@@ -36,7 +36,7 @@ export function OrgAttachDialog({
   const { convexUserId } = useAuth()
   const orgs = useQuery(
     api.organizations.listMine,
-    convexUserId ? { userId: convexUserId } : "skip",
+    convexUserId ? {} : "skip",
   )
   const [name, setName] = useState(`${projectName} Org`)
   const [selectedOrgId, setSelectedOrgId] = useState<Id<"organizations"> | null>(null)

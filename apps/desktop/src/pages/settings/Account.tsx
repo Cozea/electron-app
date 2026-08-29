@@ -27,12 +27,12 @@ import {
   DialogTrigger,
 } from "../../components/ui/dialog";
 import { useTranslation } from "@/lib/i18n";
+import { clearDeviceSession } from "@/lib/deviceSession";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Alert01Icon as __AlertTriangleHugeIcon, Delete02Icon as __Trash2HugeIcon } from '@hugeicons/core-free-icons'
 
 interface UserPrefs {
-  emailNotifications: boolean;
   pushNotifications: boolean;
 }
 
@@ -45,20 +45,22 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const { user, convexUserId } = useAuth();
   const { t } = useTranslation();
 
-  const profile = useQuery(api.users.getById, convexUserId ? { userId: convexUserId } : "skip");
+  const profile = useQuery(api.users.getCurrent, convexUserId ? {} : "skip");
 
   const updatePreferencesMutation = useMutation(api.users.updatePreferences);
+  const revokeCurrentDevice = useMutation(api.users.revokeCurrentDevice);
 
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({
-    emailNotifications: true,
     pushNotifications: true,
   });
+  const [copied, setCopied] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
 
     setUserPrefs({
-      emailNotifications: profile.preferences?.emailNotifications ?? true,
       pushNotifications: profile.preferences?.pushNotifications ?? true,
     });
   }, [profile]);
@@ -67,12 +69,17 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     ? `${profile.firstName} ${profile.lastName || ""}`.trim()
     : user?.firstName
       ? `${user.firstName} ${user.lastName || ""}`.trim()
-      : user?.email?.split("@")[0] || t("common.user");
-  const isLocalDeviceProfile = Boolean(
-    user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
-  );
+      : t("settings.account.thisDevice");
+  const identityKey = profile?.identityKey ?? user?.deviceId ?? user?.id ?? "";
 
-  const handlePrefChange = async (key: keyof UserPrefs, value: boolean | string) => {
+  const copyIdentityKey = async () => {
+    if (!identityKey) return;
+    await navigator.clipboard.writeText(identityKey);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2_000);
+  };
+
+  const handlePrefChange = async (key: keyof UserPrefs, value: boolean) => {
     if (!convexUserId) return;
 
     const newPrefs = { ...userPrefs, [key]: value };
@@ -80,7 +87,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
     try {
       await updatePreferencesMutation({
-        userId: convexUserId,
         preferences: { [key]: value },
       });
     } catch (error) {
@@ -94,7 +100,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   return (
     <SettingsPageBody surface={surface}>
       <section>
-        <SettingsSectionTitle>{isLocalDeviceProfile ? t("settings.account.deviceProfileTitle") : t("settings.account.profileTitle")}</SettingsSectionTitle>
+        <SettingsSectionTitle>{t("settings.account.deviceProfileTitle")}</SettingsSectionTitle>
         <SettingsGroup>
           <div className="flex items-center gap-4 px-4 py-3">
             <div className="min-w-0 flex-1">
@@ -103,7 +109,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 <p className="truncate text-[11px] text-muted-foreground">{profile.jobTitle}</p>
               ) : null}
               <p className="truncate text-[11px] text-muted-foreground">
-                {isLocalDeviceProfile ? t("settings.account.localTrustedDevice") : user?.email}
+                {t("settings.account.localTrustedDevice")}
               </p>
             </div>
           </div>
@@ -112,10 +118,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
       <section>
         <div className="mb-1 flex items-center justify-between gap-2 px-1">
-          <SettingsSectionTitle className="mb-0">{t("settings.account.myDevices")}</SettingsSectionTitle>
-          <Button variant="outline" size="sm" className="h-7 shrink-0 text-[11px]" disabled>
-            {t("settings.account.addDevice")}
-          </Button>
+          <SettingsSectionTitle className="mb-0">{t("settings.account.deviceIdentity")}</SettingsSectionTitle>
         </div>
         <SettingsSectionDescription>
           {t("settings.account.devicesDescription")}
@@ -124,11 +127,19 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
           <SettingsRow isFirst className="items-center">
             <div className="min-w-0 flex-1">
               <span className="text-xs font-medium text-foreground">{t("settings.account.thisDevice")}</span>
-              <p className="text-[11px] text-muted-foreground">{t("settings.account.activeNow")}</p>
+              <p className="max-w-[34rem] truncate font-mono text-[11px] text-muted-foreground">
+                {identityKey || t("common.loading")}
+              </p>
             </div>
             <SettingsRowControl>
-              <Button variant="ghost" size="sm" className="h-7 text-[11px] text-muted-foreground" disabled>
-                {t("common.revoke")}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[11px]"
+                disabled={!identityKey}
+                onClick={() => void copyIdentityKey()}
+              >
+                {copied ? t("common.copied") : t("common.copy")}
               </Button>
             </SettingsRowControl>
           </SettingsRow>
@@ -139,19 +150,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
         <SettingsSectionTitle>{t("settings.account.notifications")}</SettingsSectionTitle>
         <SettingsGroup>
           <SettingsRow isFirst>
-            <SettingsRowLabel
-              title={t("settings.account.emailNotifications")}
-              description={t("settings.account.emailNotificationsDesc")}
-            />
-            <SettingsRowControl>
-              <Switch
-                checked={userPrefs.emailNotifications}
-                onCheckedChange={(checked) => void handlePrefChange("emailNotifications", checked)}
-                disabled={isProfileLoading}
-              />
-            </SettingsRowControl>
-          </SettingsRow>
-          <SettingsRow>
             <SettingsRowLabel
               title={t("settings.account.pushNotifications")}
               description={t("settings.account.pushNotificationsDesc")}
@@ -170,22 +168,18 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       <section>
         <SettingsSectionTitle variant="danger">
           <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="size-3.5" aria-hidden />
-          {isLocalDeviceProfile ? t("settings.account.localDeviceControls") : t("settings.account.dangerZone")}
+          {t("settings.account.localDeviceControls")}
         </SettingsSectionTitle>
         <SettingsDangerGroup>
           <SettingsRow isFirst borderClassName="border-destructive/20">
             <SettingsRowLabel
-              title={isLocalDeviceProfile ? t("settings.account.resetDeviceIdentity") : t("settings.account.deleteAccount")}
-              description={
-                isLocalDeviceProfile
-                  ? t("settings.account.resetDeviceDesc")
-                  : t("settings.account.deleteAccountDesc")
-              }
+              title={t("settings.account.resetDeviceIdentity")}
+              description={t("settings.account.resetDeviceDesc")}
             />
             <SettingsRowControl>
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="destructive" size="sm" className="h-7 gap-1.5 text-[11px]" disabled>
+                  <Button variant="destructive" size="sm" className="h-7 gap-1.5 text-[11px]">
                     <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
                     {t("common.delete")}
                   </Button>
@@ -193,30 +187,42 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>
-                      {isLocalDeviceProfile ? t("settings.account.resetConfirmTitle") : t("settings.account.deleteConfirmTitle")}
+                      {t("settings.account.resetConfirmTitle")}
                     </DialogTitle>
                     <DialogDescription>
-                      {isLocalDeviceProfile
-                        ? t("settings.account.resetConfirmDesc")
-                        : t("settings.account.deleteConfirmDesc")}
+                      {t("settings.account.resetConfirmDesc")}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label>
-                        {isLocalDeviceProfile
-                          ? t("settings.account.resetConfirmLabel")
-                          : t("settings.account.deleteConfirmLabel")}
+                        {t("settings.account.resetConfirmLabel")}
                       </Label>
                       <Input
-                        placeholder={isLocalDeviceProfile ? t("settings.account.resetConfirmPlaceholder") : t("settings.account.deleteConfirmPlaceholder")}
-                        disabled={isLocalDeviceProfile}
+                        placeholder={t("settings.account.resetConfirmPlaceholder")}
+                        value={resetConfirmation}
+                        onChange={(event) => setResetConfirmation(event.target.value)}
+                        disabled={resetting}
                       />
                     </div>
                   </div>
                   <DialogFooter>
                     <Button variant="outline">{t("common.cancel")}</Button>
-                    <Button variant="destructive">{t("settings.account.deleteAccount")}</Button>
+                    <Button variant="destructive" disabled={resetConfirmation !== "RESET" || resetting}
+                      onClick={() => void (async () => {
+                        setResetting(true);
+                        try {
+                          await revokeCurrentDevice({ reason: "local_identity_reset" });
+                          const result = await window.electronAPI.collab.deleteDeviceIdentity();
+                          if (!result.success) throw new Error(result.error || "Could not delete the local device identity");
+                          clearDeviceSession();
+                          window.location.reload();
+                        } finally {
+                          setResetting(false);
+                        }
+                      })()}>
+                      {t("settings.account.resetDeviceIdentity")}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>

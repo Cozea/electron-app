@@ -21,6 +21,7 @@ import {
   buildDevServerRunKey,
   ensureDevServerEventBridge,
   ensureDevServerRun,
+  reportDevServerPreviewHttpStatus,
   reconcileDevServerRun,
   registerDevServerRunContext,
   restartDevServerRun,
@@ -30,6 +31,7 @@ import {
 } from '@/features/projects/devserver/devServerRunStore'
 import {
   buildLocalDevServerUrl,
+  getDevServerPreviewRecoveryKey,
   isSameDevServerPreviewUrl,
 } from '@/features/projects/devserver/devServerTileCommands'
 
@@ -48,6 +50,59 @@ describe('dev server preview URLs', () => {
     expect(
       isSameDevServerPreviewUrl('http://[::1]:4173/', 'http://127.0.0.1:4173'),
     ).toBe(true)
+  })
+
+  it('retries a visible failed preview once the matching run is ready', () => {
+    const readyFailure = {
+      status: 'ready',
+      runId: 'run-1',
+      url: 'http://127.0.0.1:4173',
+      loadError: 'ERR_CONNECTION_REFUSED',
+      visible: true,
+    }
+
+    expect(getDevServerPreviewRecoveryKey(readyFailure)).toBe(
+      'run-1\0http://127.0.0.1:4173',
+    )
+    expect(
+      getDevServerPreviewRecoveryKey({
+        ...readyFailure,
+        loadError: 'A later rendering of the same native error',
+      }),
+    ).toBe('run-1\0http://127.0.0.1:4173')
+  })
+
+  it('does not retry before readiness or without a visible transport failure', () => {
+    const base = {
+      status: 'ready',
+      runId: 'run-1',
+      url: 'http://127.0.0.1:4173',
+      loadError: 'ERR_CONNECTION_REFUSED',
+      visible: true,
+    }
+
+    expect(getDevServerPreviewRecoveryKey({ ...base, status: 'starting' })).toBeNull()
+    expect(getDevServerPreviewRecoveryKey({ ...base, loadError: null })).toBeNull()
+    expect(getDevServerPreviewRecoveryKey({ ...base, runId: null })).toBeNull()
+    expect(getDevServerPreviewRecoveryKey({ ...base, url: '' })).toBeNull()
+    expect(getDevServerPreviewRecoveryKey({ ...base, visible: false })).toBeNull()
+  })
+
+  it('permits a fresh recovery for a new run or preview URL', () => {
+    const input = {
+      status: 'ready',
+      runId: 'run-1',
+      url: 'http://127.0.0.1:4173',
+      loadError: 'ERR_CONNECTION_REFUSED',
+      visible: true,
+    }
+
+    expect(getDevServerPreviewRecoveryKey({ ...input, runId: 'run-2' })).not.toBe(
+      getDevServerPreviewRecoveryKey(input),
+    )
+    expect(getDevServerPreviewRecoveryKey({ ...input, url: `${input.url}/settings` })).not.toBe(
+      getDevServerPreviewRecoveryKey(input),
+    )
   })
 })
 
@@ -252,6 +307,51 @@ describe('startDevServerRun', () => {
     expect(run.status).toBe('error')
     expect(run.error).toContain('no reachable port')
     expect(run.failureReason).toBe('server_unreachable')
+  })
+})
+
+describe('reportDevServerPreviewHttpStatus', () => {
+  it('marks a live server unhealthy on HTTP 5xx and restores it after recovery', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    startMock.mockImplementation(async (options: { runId?: string }) => ({
+      success: true,
+      port: 5174,
+      runId: options.runId,
+    }))
+    await startDevServerRun(key)
+
+    reportDevServerPreviewHttpStatus(key, 500, 'Internal Server Error')
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'unhealthy',
+      reachable: true,
+      failureReason: 'http_error_response',
+      error: 'Preview returned HTTP 500 Internal Server Error',
+    })
+
+    reportDevServerPreviewHttpStatus(key, 200, 'OK')
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'ready',
+      reachable: true,
+      failureReason: null,
+      error: null,
+    })
+  })
+
+  it('does not classify a route-level 404 as an unhealthy dev server', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    startMock.mockImplementation(async (options: { runId?: string }) => ({
+      success: true,
+      port: 5174,
+      runId: options.runId,
+    }))
+    await startDevServerRun(key)
+
+    reportDevServerPreviewHttpStatus(key, 404, 'Not Found')
+    expect(useDevServerRunStore.getState().runs[key].status).toBe('ready')
   })
 })
 

@@ -6,7 +6,8 @@ Org DevApps publish a **built static artifact** to a Cozea-owned organization. E
 
 ## Product rules
 
-- Identity is a **Cozea organization** (create + email invite, same pattern as project team). This is not WorkOS.
+- Identity is a Cozea device group. Admins add initialized device principals by their public
+  `czd_…` ID; the group's copyable public ID uses `czg_…`.
 - Left-nav **Publish** / **Update** only builds, packs, and uploads. It does not start a preview, navigate into Dev Server, or call `startDevServerRun`.
 - Open path is an isolated in-Cozea tile (`addTile` + `orgDevApp`), never the Dev Server singleton and never `http://localhost:*`.
 - Consumer payloads contain publication metadata + artifact identity only. They must not include `projectId`, `localPath`, git URL, `workspaceId`, `devCommand`, or `devPort`.
@@ -16,12 +17,13 @@ Org DevApps publish a **built static artifact** to a Cozea-owned organization. E
 
 Convex tables:
 
-- `organizations` — name, creator, timestamps
+- `organizations` — public group ID, name, creator, timestamps
 - `organizationMembers` — `admin` | `member`
-- `organizationInvites` — email invite, pending/accepted/expired
 - `projects.organizationId` — required before a project can publish
 
-Settings → **Organizations** lists every org you belong to, its members and pending invites, and every DevApp published there. Org admins invite or remove members and can archive a DevApp. Accepting an invite uses the same email match as project team.
+Settings → **Organizations** lists every group the authenticated device belongs to, its device
+members, its public group ID, and every DevApp published there. Group admins add devices by public
+device ID, remove members, and can archive a DevApp.
 
 Every authenticated Convex function that lists or mutates an org checks membership with `requireOrgMember` / `requireOrgAdmin`. Do not trust a client-supplied “list this org” without that check.
 
@@ -34,24 +36,56 @@ Every authenticated Convex function that lists or mutates an org checks membersh
 5. Main packs the output as a zip, hashes it (SHA-256), uploads it to Convex `_storage`, and inserts an immutable `devAppReleases` row. The publication points at that release.
 6. Name and logo live on the publication. Editing them in Project Settings or the identity dialog does not append a release.
 
+The upload URL is issued together with a short-lived reservation bound to the authenticated device,
+source project, and destination organization. Convex verifies the uploaded `_storage` size,
+content type, and base16 SHA-256 before the reservation can be consumed. Failed or abandoned
+reservations delete their blob; a daily bounded cleanup removes expired reservations. Each
+publication retains its newest ten releases and deletes older artifact blobs.
+
+The publishing dialog reports build/package, upload, integrity verification, and release activation
+as distinct stages. Cancel terminates an active build process group or aborts the upload and reclaims
+the reservation. Errors remain retryable from the project menu.
+
 If the project has no linked local folder, no `build` script, or no static `index.html` after build, publish stops without writing a release.
 
 ## Open lifecycle
 
 1. Store **Your org** and the workbench launcher load `devApps.listMine` / `listForOrganization`.
 2. Choosing an org DevApp resolves to `addTile` + `tileType: "orgDevApp"` (`publishedDevApp` launch kind).
-3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), caches the zip under app data keyed by content hash, and navigates to `cozea-devapp://release/<hash>/index.html`.
-4. `WorkbenchBrowserService` uses a per-publication session partition (`persist:cozea-devapp-<publicationId>`) and `navigationPolicy: "orgDevApp"`. Localhost, `file:`, and `http:` are rejected. `https:` is allowed for the app’s own hosted API.
+3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), caches the zip under app data keyed by content hash, and navigates to `cozea-devapp://<hash>.release/index.html`.
+4. `WorkbenchBrowserService` uses a per-publication session partition (`persist:cozea-devapp-<publicationId>`) and `navigationPolicy: "orgDevApp"`. Localhost, `file:`, and `http:` are rejected. Top-level HTTPS links open in the system browser; HTTPS API requests remain available to the app.
 5. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
 
 If a mini app needs a backend, that backend is hosted. The tile is only the built UI.
+
+Access is re-evaluated reactively while a tile is open. Archiving the publication or removing the
+device from the organization hides the native surface and prevents cached reopening. Download,
+camera, microphone, location, display-capture, USB, serial, HID, notification, and other browser
+permission requests are denied.
+
+## Artifact and cache limits
+
+- compressed ZIP: 32 MiB maximum
+- expanded artifact: 128 MiB maximum
+- individual file: 32 MiB maximum
+- entries: 4,096 maximum
+- UTF-8 path: 512 bytes maximum
+- compression ratio: 200:1 maximum per file
+- symbolic links, traversal, duplicate/case-colliding paths, invalid CRCs, truncated records, and
+  unsupported compression methods are rejected
+- local cache: 512 MiB, newest 24 releases, 30-day inactivity expiry, with atomic staging and
+  coalesced concurrent preparation
+
+The complete ZIP is still transferred as one bounded IPC/upload buffer. The hard 32 MiB ceiling is
+the memory-safety contract; raising it requires replacing this path with streaming pack/upload and
+download verification first.
 
 ## Settings
 
 The Organizations settings surface is the control plane for “which orgs we are part of”:
 
 - list of orgs you belong to, with role
-- members and pending invites
+- device members and the copyable public group ID
 - DevApps published in the selected org (name, version, Open, Archive for admins)
 
 Every org member sees the same DevApp list. Opening from Settings uses the same isolated tile path as the launcher.
@@ -61,7 +95,13 @@ Every org member sees the same DevApp list. Opening from Settings uses the same 
 - `devAppPublications`: org-scoped, `visibility: "organization"`, editable name/logo, active release pointer, `projectId` is publisher-only
 - `devAppReleases`: append-only version, `artifactStorageId`, `entryPath`, `contentHash`, framework. Legacy recipe fields (`devCommand` / `devPort`) remain optional on empty historical docs and are unused by the client
 
-The machine-local `localProjectDevAppStore` is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must not read it.
+The machine-local `localProjectDevAppStore` is compatibility-only for already-persisted development
+tiles. It is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must
+not read it.
+
+Project deletion owns both lifecycles: it removes the source project's machine-local publication
+and releases immediately, then the bounded Convex project cascade removes any org publication,
+release rows, and artifact blobs. Archiving a project does not delete either catalog.
 
 ## Convex deploy
 

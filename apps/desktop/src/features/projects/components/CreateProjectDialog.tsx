@@ -24,11 +24,11 @@ import {
   SettingsRow,
   SettingsRowControl,
   SettingsRowLabel,
-  settingsInlineInputClass,
   settingsInlineInputWidth,
 } from "@/components/settings/SettingsChrome"
 import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
+import { buildWorkbenchIntentState } from "@/features/projects/lib/workbenchIntent"
 import {
   browseForDirectory,
   buildFilesystemSlug,
@@ -220,16 +220,20 @@ export function CreateProjectDialog({
         .getState()
         .actions.ensureWorkbench(projectId, DEFAULT_WORKBENCH_LANE_ID, workspaceId)
       navigate(
-        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID, {
-          openTile: "assistantChat",
-        }),
+        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID),
         {
-          state: buildProjectRouteNavigationState({
-            projectId,
-            projectSlug,
-            projectName,
-            preferredWorkspaceId: workspaceId,
-          }),
+          state: buildProjectRouteNavigationState(
+            {
+              projectId,
+              projectSlug,
+              projectName,
+              preferredWorkspaceId: workspaceId,
+            },
+            buildWorkbenchIntentState({
+              laneId: DEFAULT_WORKBENCH_LANE_ID,
+              openTile: "assistantChat",
+            }),
+          ),
         },
       )
     },
@@ -409,8 +413,7 @@ export function CreateProjectDialog({
                         placeholder={t('createProject.namePlaceholder')}
                         disabled={isSubmitting}
                         autoFocus
-                        className={cn(settingsInlineInputClass, "w-auto min-w-[72px] text-left text-[13px] font-normal")}
-                        style={{ fieldSizing: "content" } as React.CSSProperties}
+                        className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
                       />
                     </SettingsRowControl>
                   </SettingsRow>
@@ -422,13 +425,13 @@ export function CreateProjectDialog({
                       title={t('createProject.path')}
                       htmlFor="create-project-location"
                     />
-                    <SettingsRowControl>
+                    <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
                       <Button
                         id="create-project-location"
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-7 max-w-full justify-end rounded-[6px] border-border/50 bg-transparent px-2 text-[11px] font-normal shadow-none transition-colors hover:bg-foreground/10 hover:text-foreground"
+                        className="h-7 w-full max-w-full justify-start border-0 border-none bg-transparent px-0 text-xs font-normal shadow-none transition-colors hover:bg-transparent hover:text-foreground"
                         onClick={async () => {
                           const selectedPath = await browseForDirectory("Select project location")
                           if (!selectedPath) return
@@ -439,7 +442,7 @@ export function CreateProjectDialog({
                         title={parentDirectory || t('createProject.chooseParentFolder')}
                       >
                         <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
-                        <span className="truncate text-right">
+                        <span className="min-w-0 flex-1 truncate text-left text-muted-foreground hover:text-foreground">
                           {locationPathPreview || t('createProject.chooseParentFolder')}
                         </span>
                       </Button>

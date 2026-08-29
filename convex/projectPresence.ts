@@ -1,5 +1,6 @@
 import { v } from "convex/values"
-import { mutation, query } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { internalMutation } from "./_generated/server"
 
 // Presence is considered stale after 60 seconds (2 missed heartbeats)
 const PRESENCE_TIMEOUT_MS = 60 * 1000
@@ -148,7 +149,7 @@ export const getActiveUsers = query({
  * Cleanup stale presence records (run periodically via cron or on heartbeat).
  * This is optional - records will naturally be filtered out by getActiveUsers.
  */
-export const cleanupStale = mutation({
+export const cleanupStale = internalMutation({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - PRESENCE_TIMEOUT_MS * 2 // Delete after 2 minutes of inactivity

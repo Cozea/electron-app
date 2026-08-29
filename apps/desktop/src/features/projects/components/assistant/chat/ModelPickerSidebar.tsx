@@ -1,7 +1,7 @@
 import { type ProviderInstanceId } from "@cozea/assistant-contracts";
 import { memo, useMemo } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { StarIcon as __StarIconHugeIcon, Clock01Icon as __Clock01IconHugeIcon } from "@hugeicons/core-free-icons";
+import { PinIcon as __PinIconHugeIcon, Clock01Icon as __Clock01IconHugeIcon } from "@hugeicons/core-free-icons";
 import { Gemini, OpenCodeIcon } from "../Icons";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -72,13 +72,13 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 onClick={() => handleSelect("favorites")}
                 type="button"
                 data-model-picker-provider="favorites"
-                aria-label="Favorites"
+                aria-label="Pinned"
               >
-                <HugeiconsIcon icon={__StarIconHugeIcon} className="size-5 fill-current shrink-0" aria-hidden />
+                <HugeiconsIcon icon={__PinIconHugeIcon} className="size-5 shrink-0" aria-hidden />
               </button>
               </TooltipTrigger>
               <TooltipContent side={PICKER_TOOLTIP_SIDE} align="center" className={PICKER_TOOLTIP_CLASS}>
-                Favorites
+                Pinned
               </TooltipContent>
             </Tooltip>
           </div>

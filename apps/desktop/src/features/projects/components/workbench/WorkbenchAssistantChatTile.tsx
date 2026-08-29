@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { CozeaChatSurface } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
 import { ThreadArtifactsView } from "@/features/projects/components/assistant/artifacts/ThreadArtifactsView"
 import { WorkbenchAssistantDiffDialog } from "@/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog"
@@ -25,46 +26,59 @@ interface WorkbenchAssistantChatTileProps {
   onDuplicate: (tileId: string) => void
 }
 
-function AssistantTileViewTabs(props: {
+function AssistantTileHeaderViewTabs(props: {
   viewMode: "chat" | "artifacts"
   artifactCount: number
   onChange: (viewMode: "chat" | "artifacts") => void
 }) {
   return (
     <div
-      className="inline-flex h-7 items-center rounded-md bg-secondary/70 p-0.5"
+      className="inline-flex h-7 items-center gap-0.5 rounded-md bg-secondary px-0.5 shadow-none"
       role="tablist"
       aria-label="Agent tile view"
     >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={props.viewMode === "chat"}
-        className={cn(
-          "inline-flex h-6 items-center gap-1.5 rounded-[5px] px-2 text-[10px] text-muted-foreground transition-colors",
-          props.viewMode === "chat" && "bg-background text-foreground shadow-sm",
-        )}
-        onClick={() => props.onChange("chat")}
-      >
-        <HugeiconsIcon icon={__ChatHugeIcon} className="size-3" />
-        Chat
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={props.viewMode === "artifacts"}
-        className={cn(
-          "inline-flex h-6 items-center gap-1.5 rounded-[5px] px-2 text-[10px] text-muted-foreground transition-colors",
-          props.viewMode === "artifacts" && "bg-background text-foreground shadow-sm",
-        )}
-        onClick={() => props.onChange("artifacts")}
-      >
-        <HugeiconsIcon icon={__ImageHugeIcon} className="size-3" />
-        Artifacts
-        {props.artifactCount > 0 ? (
-          <span className="tabular-nums text-[9px] text-muted-foreground">{props.artifactCount}</span>
-        ) : null}
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.viewMode === "chat"}
+            aria-label="Chat"
+            className={cn(
+              "flex size-6 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              props.viewMode === "chat" && "bg-background text-foreground shadow-xs",
+            )}
+            onClick={() => props.onChange("chat")}
+          >
+            <HugeiconsIcon icon={__ChatHugeIcon} className="size-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Chat</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.viewMode === "artifacts"}
+            aria-label="Artifacts"
+            className={cn(
+              "relative flex size-6 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              props.viewMode === "artifacts" && "bg-background text-foreground shadow-xs",
+            )}
+            onClick={() => props.onChange("artifacts")}
+          >
+            <HugeiconsIcon icon={__ImageHugeIcon} className="size-3.5" />
+            {props.artifactCount > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 flex size-2 rounded-full bg-primary" />
+            ) : null}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          Artifacts{props.artifactCount > 0 ? ` (${props.artifactCount})` : ""}
+        </TooltipContent>
+      </Tooltip>
     </div>
   )
 }
@@ -108,6 +122,13 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
         contentClassName="overflow-hidden"
         tileType="assistantChat"
         assistantProvider={props.tile.provider}
+        controls={
+          <AssistantTileHeaderViewTabs
+            viewMode={viewMode}
+            artifactCount={artifacts.length}
+            onChange={setViewMode}
+          />
+        }
         actions={
           props.tile.threadId ? (
             <Button
@@ -131,32 +152,23 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
           ) : null
         }
       >
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex h-9 shrink-0 items-center border-b border-border/50 px-3">
-            <AssistantTileViewTabs
-              viewMode={viewMode}
-              artifactCount={artifacts.length}
-              onChange={setViewMode}
-            />
+        <div className="relative h-full min-h-0 flex-1 overflow-hidden">
+          <div
+            className={cn("absolute inset-0", viewMode !== "chat" && "hidden")}
+            aria-hidden={viewMode !== "chat"}
+          >
+            <CozeaChatSurface {...surfaceProps} artifactUrlsById={artifactMedia.urlsById} onOpenArtifact={openArtifact} />
           </div>
-          <div className="relative min-h-0 flex-1 overflow-hidden">
-            <div
-              className={cn("absolute inset-0", viewMode !== "chat" && "hidden")}
-              aria-hidden={viewMode !== "chat"}
-            >
-              <CozeaChatSurface {...surfaceProps} artifactUrlsById={artifactMedia.urlsById} onOpenArtifact={openArtifact} />
-            </div>
-            <div
-              className={cn("absolute inset-0", viewMode !== "artifacts" && "hidden")}
-              aria-hidden={viewMode !== "artifacts"}
-            >
-              <ThreadArtifactsView
-                artifacts={artifacts}
-                media={artifactMedia}
-                selectedArtifactId={selectedArtifactId}
-                onSelectedArtifactChange={setSelectedArtifactId}
-              />
-            </div>
+          <div
+            className={cn("absolute inset-0", viewMode !== "artifacts" && "hidden")}
+            aria-hidden={viewMode !== "artifacts"}
+          >
+            <ThreadArtifactsView
+              artifacts={artifacts}
+              media={artifactMedia}
+              selectedArtifactId={selectedArtifactId}
+              onSelectedArtifactChange={setSelectedArtifactId}
+            />
           </div>
         </div>
       </WorkbenchTileChrome>

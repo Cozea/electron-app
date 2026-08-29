@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cozea-collab",
+  "account_id": "c9081ef53a698d2ee92516a8a7752ebc",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-17",
   "workers_dev": true,

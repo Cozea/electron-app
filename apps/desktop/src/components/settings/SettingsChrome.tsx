@@ -84,16 +84,19 @@ export function SettingsRow({
   className,
   isFirst,
   borderClassName = "border-border/40",
+  onClick,
 }: {
   children: ReactNode;
   className?: string;
   isFirst?: boolean;
   /** Use `border-destructive/20` inside danger groups */
   borderClassName?: string;
+  onClick?: () => void;
 }) {
   return (
     <div
       className={cn(rowBase, !isFirst && cn("border-t", borderClassName), className)}
+      onClick={onClick}
     >
       {children}
     </div>
@@ -156,7 +159,7 @@ export function SettingsFooterActions({ children, className }: { children: React
 
 /** Inputs aligned like project settings (right, compact) */
 export const settingsInlineInputClass =
-  "h-7 max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right";
+  "h-7 max-w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent";
 
 export const settingsInlineInputWidth = "w-[240px] max-w-full";
 

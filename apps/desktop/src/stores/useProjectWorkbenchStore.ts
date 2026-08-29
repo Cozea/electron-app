@@ -302,6 +302,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
   actions: {
     ensureWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
     resetWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
+    removeProject: (projectId: string) => void
     cloneWorkspaceState: (
       projectId: string,
       fromWorkspace?: string | null,
@@ -890,6 +891,58 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
 
   let sanitizedOrder = (workbench.order ?? []).filter((tileId) => Boolean(sanitizedTiles[tileId]))
 
+  // React StrictMode used to replay the URL `openTile=assistantChat` effect
+  // before its replace-navigation settled. The two placeholder agents were
+  // created in the same tick (typically the exact same millisecond) and then
+  // persisted as if the user had opened them separately. Collapse only these
+  // machine-speed, default-titled runs; a person cannot intentionally create
+  // two panels inside this window, and custom-titled agents are never touched.
+  const duplicateAssistantGroups: string[][] = []
+  let currentDuplicateGroup: string[] = []
+  for (const tileId of sanitizedOrder) {
+    const tile = sanitizedTiles[tileId]
+    const previousTileId = currentDuplicateGroup[currentDuplicateGroup.length - 1]
+    const previousTile = previousTileId ? sanitizedTiles[previousTileId] : null
+    const isGeneratedAssistant =
+      tile?.type === "assistantChat" && /^AI Agent(?: \d+)?$/.test(tile.title)
+    const followsSameTickAssistant =
+      isGeneratedAssistant &&
+      previousTile?.type === "assistantChat" &&
+      /^AI Agent(?: \d+)?$/.test(previousTile.title) &&
+      Math.abs(tile.createdAt - previousTile.createdAt) <= 25
+
+    if (followsSameTickAssistant) {
+      currentDuplicateGroup.push(tileId)
+      continue
+    }
+
+    if (currentDuplicateGroup.length > 1) {
+      duplicateAssistantGroups.push(currentDuplicateGroup)
+    }
+    currentDuplicateGroup = isGeneratedAssistant ? [tileId] : []
+  }
+  if (currentDuplicateGroup.length > 1) {
+    duplicateAssistantGroups.push(currentDuplicateGroup)
+  }
+
+  for (const group of duplicateAssistantGroups) {
+    const keepTileId = group.includes(workbench.activeTileId ?? "")
+      ? workbench.activeTileId!
+      : group.findLast((tileId) => {
+          const tile = sanitizedTiles[tileId]
+          return tile?.type === "assistantChat" && Boolean(tile.threadId)
+        }) ?? group[0]!
+
+    for (const tileId of group) {
+      if (tileId === keepTileId) continue
+      delete sanitizedTiles[tileId]
+      removedObsoleteTile = true
+    }
+  }
+  if (duplicateAssistantGroups.length > 0) {
+    sanitizedOrder = sanitizedOrder.filter((tileId) => Boolean(sanitizedTiles[tileId]))
+  }
+
   const nonSelectionTileIds = sanitizedOrder.filter((tileId) => sanitizedTiles[tileId]?.type !== "selection")
   const selectionTileIds = sanitizedOrder.filter((tileId) => sanitizedTiles[tileId]?.type === "selection")
 
@@ -1185,6 +1238,19 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               normalizedWorkspace,
             )
           })
+        },
+        removeProject: (projectId) => {
+          const normalizedProjectId = projectId.trim()
+          if (!normalizedProjectId) return
+
+          set((state) => {
+            for (const [scopeKey, workbench] of Object.entries(state.workbenches)) {
+              if (workbench.projectId === normalizedProjectId) {
+                delete state.workbenches[scopeKey]
+              }
+            }
+          })
+          flushWorkbenchStorage()
         },
         cloneWorkspaceState: (projectId, fromWorkspace, toWorkspace) => {
           const normalizedTargetWorkspace = normalizeWorkspaceId(toWorkspace)
@@ -1500,7 +1566,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
     })),
     {
       name: "cozea:project-workbench",
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => workbenchStorage),
       migrate: (persistedState) => migratePersistedWorkbenchState(persistedState),
       partialize: (state) => ({

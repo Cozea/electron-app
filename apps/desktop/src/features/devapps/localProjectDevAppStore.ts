@@ -72,6 +72,7 @@ export interface LocalProjectDevAppCatalogState {
   publish: (args: PublishLocalProjectDevAppArgs) => PublishProjectDevAppResult;
   updateIdentity: (args: UpdateLocalProjectDevAppIdentityArgs) => void;
   updateLogo: (args: UpdateLocalProjectDevAppLogoArgs) => void;
+  removeProject: (projectId: Id<"projects"> | string) => void;
 }
 
 function createMemoryStorage(): StateStorage {
@@ -517,6 +518,15 @@ export const useLocalProjectDevAppStore = create<LocalProjectDevAppCatalogState>
         updateLogo: (args) => {
           commitEntries(updateLocalEntryLogo(get().entries, args));
         },
+        removeProject: (projectId) => {
+          const normalizedProjectId = String(projectId).trim();
+          if (!normalizedProjectId) return;
+          commitEntries(
+            get().entries.filter(
+              (entry) => String(entry.publication.projectId) !== normalizedProjectId,
+            ),
+          );
+        },
       };
     },
     {
@@ -589,4 +599,11 @@ export function updateLocalProjectDevAppIdentity(
   logoDataUrl: string,
 ): void {
   useLocalProjectDevAppStore.getState().updateIdentity({ publicationId, name, logoDataUrl });
+}
+
+export function removeLocalProjectDevApp(
+  projectId: Id<"projects"> | string | null | undefined,
+): void {
+  if (!projectId) return;
+  useLocalProjectDevAppStore.getState().removeProject(projectId);
 }

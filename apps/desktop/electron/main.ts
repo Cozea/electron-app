@@ -1722,6 +1722,7 @@ registerContextMenuHandlers(ipcMain, {
 
 app.on('window-all-closed', () => {
   workbenchBrowserService.dispose()
+  orgDevAppArtifactService.dispose()
   setBroadcastMainWindow(null)
   win = null
 
@@ -1744,6 +1745,7 @@ app.on('before-quit', () => {
   appIsQuitting = true
   logAssistantBridge('app-before-quit')
   workbenchBrowserService.dispose()
+  orgDevAppArtifactService.dispose()
   PreviewSnapshotService.getInstance().dispose()
   LocalAutomationResolverService.getInstance().dispose()
   void disposeWorkspaceCatalogRuntime()

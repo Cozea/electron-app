@@ -24,6 +24,21 @@ describe('workbench store selectors', () => {
     expect(selector(useProjectWorkbenchStore.getState())).toBeNull()
   })
 
+  it('removes every lane and workspace workbench for only the deleted project', () => {
+    const actions = useProjectWorkbenchStore.getState().actions
+    actions.ensureWorkbench('project-1', 'collab', 'workspace-1')
+    actions.ensureWorkbench('project-1', 'feature', 'workspace-1')
+    actions.ensureWorkbench('project-2', 'collab', 'workspace-2')
+
+    actions.removeProject('project-1')
+
+    expect(
+      Object.values(useProjectWorkbenchStore.getState().workbenches).map(
+        (workbench) => workbench.projectId,
+      ),
+    ).toEqual(['project-2'])
+  })
+
   it('returns the active non-selection tile id for sidebar highlighting', () => {
     const actions = useProjectWorkbenchStore.getState().actions
     actions.ensureWorkbench('project-1', 'collab')

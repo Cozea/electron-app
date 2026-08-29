@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
+import { getOrganizationAccessState } from "./orgAccess"
 
 type ReadDatabaseCtx = Pick<QueryCtx | MutationCtx, "db">
 
@@ -51,7 +52,11 @@ export async function canAccessProject(
   userId: Id<"users">
 ): Promise<boolean> {
   const access = await getProjectAccessState(ctx, projectId, userId)
-  return access.project !== null && (access.isCreator || access.membership !== null)
+  if (!access.project) return false
+  if (access.isCreator || access.membership) return true
+  if (!access.project.organizationId) return false
+  const org = await getOrganizationAccessState(ctx, access.project.organizationId, userId)
+  return org.organization !== null && (org.isCreator || org.membership !== null)
 }
 
 export async function canEditProject(
@@ -67,8 +72,10 @@ export async function canEditProject(
   if (access.isCreator) {
     return true
   }
-
-  return access.membership ? access.membership.role !== "viewer" : false
+  if (access.membership) return access.membership.role !== "viewer"
+  if (!access.project.organizationId) return false
+  const org = await getOrganizationAccessState(ctx, access.project.organizationId, userId)
+  return org.organization !== null && (org.isCreator || org.membership !== null)
 }
 
 export async function canManageProject(
@@ -85,7 +92,10 @@ export async function canManageProject(
     return true
   }
 
-  return access.membership?.role === "project_manager"
+  if (access.membership?.role === "project_manager") return true
+  if (!access.project.organizationId) return false
+  const org = await getOrganizationAccessState(ctx, access.project.organizationId, userId)
+  return org.isCreator || org.membership?.role === "admin"
 }
 
 export async function canArchiveProject(

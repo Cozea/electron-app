@@ -1,4 +1,5 @@
-import { mutation, query, internalMutation } from "./_generated/server"
+import { internalMutation } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { v } from "convex/values"
 
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -173,7 +174,26 @@ export const cleanupAllExpiredTombstones = internalMutation({
       await ctx.db.delete(tombstone._id)
     }
 
-    console.log(`[Tombstones] Cleaned up ${expired.length} expired tombstones`)
+    const dayMs = 24 * 60 * 60_000
+    const oldChallenges = await ctx.db.query("deviceAuthChallenges")
+      .withIndex("by_expiration", (q) => q.lt("expiresAt", now - dayMs)).take(1_000)
+    for (const challenge of oldChallenges) await ctx.db.delete(challenge._id)
+    const events = await ctx.db.query("identitySecurityEvents").collect()
+    const oldEvents = events.filter((event) => event.createdAt < now - 180 * dayMs).slice(0, 1_000)
+    for (const event of oldEvents) await ctx.db.delete(event._id)
+    const grants = await ctx.db.query("organizationRecoveryGrants").collect()
+    const oldGrants = grants.filter((grant) =>
+      grant.expiresAt < now - 30 * dayMs && (grant.consumedAt !== undefined || grant.revokedAt !== undefined),
+    ).slice(0, 1_000)
+    for (const grant of oldGrants) await ctx.db.delete(grant._id)
+    const expiredDevAppUploads = await ctx.db.query("devAppArtifactUploads")
+      .withIndex("by_expiration", (q) => q.lt("expiresAt", now)).take(250)
+    for (const upload of expiredDevAppUploads) {
+      if (upload.storageId) await ctx.storage.delete(upload.storageId)
+      await ctx.db.delete(upload._id)
+    }
+
+    console.log(`[Maintenance] Cleaned ${expired.length} tombstones, ${oldChallenges.length + oldEvents.length + oldGrants.length} identity rows, and ${expiredDevAppUploads.length} DevApp uploads`)
     return { deleted: expired.length }
   },
 })

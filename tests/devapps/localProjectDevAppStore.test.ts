@@ -326,6 +326,30 @@ describe("local project DevApp catalog", () => {
     expect(restored?.logoDataUrl).toBe(logoDataUrl);
   });
 
+  it("removes only the deleted project's local publication and releases", async () => {
+    const catalog = await import("@/features/devapps/localProjectDevAppStore");
+    const otherProjectId = "local-project:other" as Id<"projects">;
+    catalog.publishLocalProjectDevApp(createPublishArgs());
+    catalog.publishLocalProjectDevApp(
+      createPublishArgs({
+        projectId: otherProjectId,
+        sourceProject: {
+          ...createPublishArgs().sourceProject,
+          _id: otherProjectId,
+          name: "Other project",
+          slug: "other-project",
+        },
+      }),
+    );
+
+    catalog.removeLocalProjectDevApp(projectId);
+
+    expect(catalog.getLocalProjectDevAppEntry(projectId)).toBeNull();
+    expect(catalog.getLocalProjectDevAppEntry(otherProjectId)?.sourceProject.name).toBe(
+      "Other project",
+    );
+  });
+
   it("preserves legacy persisted entries that do not have a logo", async () => {
     const storage = new MemoryStorage();
     vi.stubGlobal("window", { localStorage: storage });

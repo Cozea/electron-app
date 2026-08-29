@@ -23,7 +23,7 @@ type ProviderOptionSelectionsLike =
   | undefined;
 
 const EFFORT_OPTION_IDS = ["effort", "reasoningEffort", "reasoning"] as const;
-const FAST_MODE_OPTION_IDS = ["fastMode"] as const;
+const FAST_MODE_OPTION_IDS = ["fastMode", "serviceTier", "speed", "fast"] as const;
 const THINKING_OPTION_IDS = ["thinking"] as const;
 const CONTEXT_WINDOW_OPTION_IDS = ["contextWindow"] as const;
 
@@ -32,6 +32,10 @@ function canonicalOptionId(id: string): string {
     case "reasoningEffort":
     case "reasoning":
       return "effort";
+    case "serviceTier":
+    case "speed":
+    case "fast":
+      return "fastMode";
     default:
       return id.trim();
   }

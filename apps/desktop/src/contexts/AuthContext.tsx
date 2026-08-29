@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useMutation } from 'convex/react'
 
-import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import type {
   PersonalWorkspaceMembership,
   User,
 } from '../types/electron'
+import { convex } from '@/lib/convex'
+import { clearDeviceSession, getDeviceSession } from '@/lib/deviceSession'
 
 interface AuthContextType {
   user: User | null
@@ -27,28 +27,23 @@ export type RefreshTokenStatus = 'refreshed' | 'retryable' | 'expired'
 const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const ensureLocalDeviceProfile = useMutation(api.users.ensureLocalDeviceProfile)
-
   const [user, setUser] = useState<User | null>(null)
   const [convexUserId, setConvexUserId] = useState<Id<"users"> | null>(null)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
   const [personalWorkspace, setPersonalWorkspace] = useState<PersonalWorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
 
   const bootstrapLocalDeviceSession = useCallback(async () => {
-    const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
-    const localProfile = await ensureLocalDeviceProfile({
-      deviceId: deviceIdentity.deviceId,
-      deviceLabel: deviceIdentity.deviceLabel,
-      platform: deviceIdentity.platform,
-      fingerprint: deviceIdentity.fingerprint,
-    })
+    const localProfile = await getDeviceSession()
+    convex?.setAuth(async () => (await getDeviceSession()).accessToken)
 
     setAuthError(null)
+    setAccessToken(localProfile.accessToken)
     setUser(localProfile.user)
-    setConvexUserId(localProfile.userId)
+    setConvexUserId(localProfile.convexUserId)
     setPersonalWorkspace(localProfile.personalWorkspace)
-  }, [ensureLocalDeviceProfile])
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -87,19 +82,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [bootstrapLocalDeviceSession])
 
   const logout = useCallback(async () => {
+    convex?.clearAuth()
+    clearDeviceSession()
+    setUser(null)
+    setConvexUserId(null)
+    setPersonalWorkspace(null)
+    setAccessToken(null)
     setAuthError(null)
     setIsLoading(false)
   }, [])
 
   const refreshToken = useCallback(async (): Promise<RefreshTokenStatus> => {
-    return 'expired'
+    try {
+      const session = await getDeviceSession({ force: true })
+      setAccessToken(session.accessToken)
+      return 'refreshed'
+    } catch {
+      return 'retryable'
+    }
   }, [])
 
   const value = useMemo<AuthContextType>(
     () => ({
       user,
       convexUserId,
-      accessToken: null,
+      accessToken,
       personalWorkspace,
       isAuthenticated: Boolean(user),
       isLoading,
@@ -111,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       authError,
+      accessToken,
       convexUserId,
       isLoading,
       login,
