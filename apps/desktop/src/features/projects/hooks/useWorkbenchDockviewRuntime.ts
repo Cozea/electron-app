@@ -23,6 +23,7 @@ import { useTerminalStore } from "@/stores/useTerminalStore";
 import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore";
 import {
   applyWorkbenchDockviewPolicies,
+  buildAddPanelOptions,
   buildDefaultDockview,
   getDockComponentName,
   getPanelConstraintsForTile,
@@ -1200,6 +1201,29 @@ export function useWorkbenchDockviewRuntime(
           panel.id,
           input.workspaceId,
         );
+
+        if (event.api.totalPanels === 0 && !isDestroyingRef.current && !isHydratingRef.current) {
+          const freshWorkbench = getLiveWorkbench();
+          if (freshWorkbench && freshWorkbench.order.length > 0) {
+            for (const tileId of freshWorkbench.order) {
+              const tile = freshWorkbench.tiles[tileId];
+              if (tile && !isObsoleteWorkbenchTile(tile)) {
+                event.api.addPanel(
+                  buildAddPanelOptions(
+                    event.api,
+                    tile,
+                    input.projectId,
+                    input.activeLaneId,
+                  ),
+                );
+              }
+            }
+            if (freshWorkbench.activeTileId) {
+              event.api.getPanel(freshWorkbench.activeTileId)?.api.setActive();
+            }
+          }
+        }
+
         saveLayout();
       });
 

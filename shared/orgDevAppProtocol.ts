@@ -1,6 +1,7 @@
 export const ORG_DEVAPP_SCHEME = "cozea-devapp"
 export const ORG_DEVAPP_PROTOCOL = `${ORG_DEVAPP_SCHEME}:`
 export const ORG_DEVAPP_RELEASE_HOST_SUFFIX = ".release"
+export const ORG_DEVAPP_SERVICE_HOST_SUFFIX = ".service.localhost"
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"])
 
@@ -93,12 +94,33 @@ export function parseOrgDevAppUrl(value: string): {
 
 export type OrgDevAppNavigationDecision =
   | { allowed: true; kind: "org-devapp" }
-  | { allowed: false; reason: "localhost" | "external-https" | "blocked-scheme" | "invalid" }
+  | { allowed: false; reason: "localhost" | "external-https" | "blocked-scheme" | "cross-release" | "invalid" }
 
-export function evaluateOrgDevAppNavigation(url: string): OrgDevAppNavigationDecision {
+export function getOrgDevAppNavigationScope(value: string): string | null {
+  const staticRelease = parseOrgDevAppUrl(value)
+  if (staticRelease) return `static:${staticRelease.contentHash}`
+  try {
+    const parsed = new URL(value)
+    if (!isOrgDevAppServiceUrl(value)) return null
+    const hostname = parsed.hostname.toLowerCase()
+    const contentHash = hostname.slice(0, -ORG_DEVAPP_SERVICE_HOST_SUFFIX.length)
+    return `service:${contentHash}:${parsed.port}`
+  } catch {
+    return null
+  }
+}
+
+export function evaluateOrgDevAppNavigation(url: string, expectedScope?: string | null): OrgDevAppNavigationDecision {
   const trimmed = url.trim()
   if (!trimmed) {
     return { allowed: false, reason: "invalid" }
+  }
+
+  const scope = getOrgDevAppNavigationScope(trimmed)
+  if (scope) {
+    return expectedScope && scope !== expectedScope
+      ? { allowed: false, reason: "cross-release" }
+      : { allowed: true, kind: "org-devapp" }
   }
 
   if (isLocalhostUrl(trimmed)) {
@@ -116,11 +138,7 @@ export function evaluateOrgDevAppNavigation(url: string): OrgDevAppNavigationDec
     return { allowed: false, reason: "localhost" }
   }
 
-  if (parsed.protocol === ORG_DEVAPP_PROTOCOL) {
-    return parseOrgDevAppUrl(trimmed)
-      ? { allowed: true, kind: "org-devapp" }
-      : { allowed: false, reason: "invalid" }
-  }
+  if (parsed.protocol === ORG_DEVAPP_PROTOCOL) return { allowed: false, reason: "invalid" }
 
   if (parsed.protocol === "https:") {
     return { allowed: false, reason: "external-https" }
@@ -131,4 +149,24 @@ export function evaluateOrgDevAppNavigation(url: string): OrgDevAppNavigationDec
 
 export function isAllowedOrgDevAppNavigation(url: string): boolean {
   return evaluateOrgDevAppNavigation(url).allowed
+}
+
+export function buildOrgDevAppServiceUrl(contentHashInput: string, port: number): string {
+  const contentHash = normalizeContentHash(contentHashInput)
+  if (!isContentHash(contentHash) || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("The Service DevApp URL is invalid.")
+  }
+  return `http://${contentHash}${ORG_DEVAPP_SERVICE_HOST_SUFFIX}:${port}/`
+}
+
+export function isOrgDevAppServiceUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    if (parsed.protocol !== "http:") return false
+    const hostname = parsed.hostname.toLowerCase()
+    if (!hostname.endsWith(ORG_DEVAPP_SERVICE_HOST_SUFFIX)) return false
+    return isContentHash(hostname.slice(0, -ORG_DEVAPP_SERVICE_HOST_SUFFIX.length))
+  } catch {
+    return false
+  }
 }

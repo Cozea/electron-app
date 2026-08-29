@@ -89,6 +89,8 @@ export interface PublishedDevAppLaunchSpec extends DevAppLaunchBase {
   framework: string
   contentHash: string
   entryPath: string
+  runtimeKind: "static" | "service"
+  permissionSetHash?: string | null
   logoDataUrl?: string | null
 }
 

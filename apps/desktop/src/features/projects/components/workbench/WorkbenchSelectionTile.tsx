@@ -189,15 +189,18 @@ function SelectionFilterBar({
   )
 }
 
-function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolean] {
+function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolean, number] {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [spacious, setSpacious] = useState(false)
+  const [dimensions, setDimensions] = useState({ spacious: false, height: 0 })
 
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const { width, height } = el.getBoundingClientRect()
-    setSpacious(isSpaciousSelectionSurface(width, height))
+    setDimensions({
+      spacious: isSpaciousSelectionSurface(width, height),
+      height,
+    })
   }, [])
 
   useEffect(() => {
@@ -208,18 +211,22 @@ function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolea
       const entry = entries[0]
       if (!entry) return
       const { width, height } = entry.contentRect
-      setSpacious(isSpaciousSelectionSurface(width, height))
+      setDimensions({
+        spacious: isSpaciousSelectionSurface(width, height),
+        height,
+      })
     })
 
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  return [ref, spacious]
+  return [ref, dimensions.spacious, dimensions.height]
 }
 
 function useLauncherGridLayout(
   itemCount: number,
+  containerRef?: RefObject<HTMLDivElement | null>,
 ): [RefObject<HTMLDivElement | null>, WorkbenchSelectionLauncherLayout] {
   const ref = useRef<HTMLDivElement | null>(null)
   const [layout, setLayout] = useState<WorkbenchSelectionLauncherLayout>(() =>
@@ -231,25 +238,34 @@ function useLauncherGridLayout(
       cellHeight: LAUNCHER_CONFIG.cellHeight,
       columnGap: LAUNCHER_CONFIG.columnGap,
       rowGap: LAUNCHER_CONFIG.rowGap,
+      maxColumns: 6,
+      maxRows: 2,
     }),
   )
 
   const recalculate = useCallback(() => {
     const el = ref.current
     if (!el) return
-    const { width, height } = el.getBoundingClientRect()
+    const container = containerRef?.current ?? el
+    const containerRect = container.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    const width = elRect.width || containerRect.width
+    // Estimate available vertical space below hero & filter bar (approx 220px overhead)
+    const availableHeight = Math.max(elRect.height, containerRect.height - 220)
     setLayout(
       computeWorkbenchSelectionLauncherLayout({
         width,
-        height,
+        height: availableHeight,
         itemCount,
         cellWidth: LAUNCHER_CONFIG.cellWidth,
         cellHeight: LAUNCHER_CONFIG.cellHeight,
         columnGap: LAUNCHER_CONFIG.columnGap,
         rowGap: LAUNCHER_CONFIG.rowGap,
+        maxColumns: 6,
+        maxRows: 2,
       }),
     )
-  }, [itemCount])
+  }, [containerRef, itemCount])
 
   useLayoutEffect(() => {
     recalculate()
@@ -264,8 +280,11 @@ function useLauncherGridLayout(
     })
 
     ro.observe(el)
+    if (containerRef?.current && containerRef.current !== el) {
+      ro.observe(containerRef.current)
+    }
     return () => ro.disconnect()
-  }, [recalculate])
+  }, [containerRef, recalculate])
 
   return [ref, layout]
 }
@@ -369,7 +388,7 @@ export function WorkbenchSelectionTile({
   const { config } = useAssistantServerConfig(true)
   const densityConfig = LAUNCHER_CONFIG
 
-  const [rootRef, spacious] = useSelectionSurfaceDensity()
+  const [rootRef, spacious, containerHeight] = useSelectionSurfaceDensity()
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -431,7 +450,7 @@ export function WorkbenchSelectionTile({
     () => filterWorkbenchSelectionApps(searchedOptions, resolvedActiveCategory),
     [resolvedActiveCategory, searchedOptions],
   )
-  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length)
+  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, rootRef)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
   const useListView = launcherLayout.fittingColumns <= 2
@@ -446,21 +465,6 @@ export function WorkbenchSelectionTile({
     )
   }, [densityConfig.cellWidth, densityConfig.columnGap, launcherLayout.columns])
 
-  const launcherContentHeight = useMemo(() => {
-    // Keep results container height tied to the items that fill the layout,
-    // bounded by available layout rows, not viewport row capacity (prevents empty bottom void
-    // and eliminates vertical layout shift while searching).
-    const visibleColumns = Math.max(1, launcherLayout.columns)
-    const maxItemsOnPage = Math.max(1, Math.min(launcherLayout.itemsPerPage, allOptions.length))
-    const requiredRows = Math.ceil(maxItemsOnPage / visibleColumns)
-    const visibleRows = Math.max(1, Math.min(launcherLayout.rows, requiredRows))
-    return (
-      visibleRows * densityConfig.cellHeight +
-      Math.max(0, visibleRows - 1) * densityConfig.rowGap +
-      16
-    )
-  }, [allOptions.length, densityConfig.cellHeight, densityConfig.rowGap, launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows])
-
   const pagedOptions = useMemo(() => {
     const pages: DevAppManifest[][] = []
     for (let index = 0; index < filteredOptions.length; index += launcherLayout.itemsPerPage) {
@@ -471,6 +475,14 @@ export function WorkbenchSelectionTile({
 
   const showHero = singletonEmptyWorkbench && spacious
   const centerSingletonSelectionLayout = showHero && !useListView
+
+  // Base 1-row centered top offset: centers the 1-row layout on screen, while a 2nd row
+  // simply expands downwards without pushing the hero and search bar upwards.
+  const centeredTopPaddingPx = useMemo(() => {
+    if (!centerSingletonSelectionLayout || containerHeight <= 0) return 0
+    const BASE_1_ROW_TOTAL_HEIGHT_PX = 360
+    return Math.max(16, Math.floor((containerHeight - BASE_1_ROW_TOTAL_HEIGHT_PX) / 2))
+  }, [centerSingletonSelectionLayout, containerHeight])
 
   useEffect(() => {
     setCurrentPage(0)
@@ -564,13 +576,11 @@ export function WorkbenchSelectionTile({
   return (
     <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
       <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-y-auto",
-          centerSingletonSelectionLayout ? "justify-center" : null,
-        )}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-6"
+        style={centerSingletonSelectionLayout ? { paddingTop: `${centeredTopPaddingPx}px` } : undefined}
       >
         {showHero ? (
-          <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-6 pt-8 md:px-10 md:pt-10">
+          <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-6 pt-0 md:px-10">
             <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
             {useListView ? null : sharedFilterBar}
           </div>
@@ -587,10 +597,9 @@ export function WorkbenchSelectionTile({
         >
           <div
             ref={launcherViewportRef}
-            style={centerSingletonSelectionLayout ? { height: `${launcherContentHeight}px` } : undefined}
             className={cn(
               "flex w-full flex-col",
-              centerSingletonSelectionLayout ? "flex-none" : "min-h-0 flex-1",
+              centerSingletonSelectionLayout ? "min-h-[140px] flex-none" : "min-h-0 flex-1",
             )}
           >
             {useListView ? (

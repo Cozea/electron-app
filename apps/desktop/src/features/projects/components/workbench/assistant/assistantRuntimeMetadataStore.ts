@@ -1,6 +1,12 @@
 import { useSyncExternalStore } from "react"
 
-import type { ProviderDriverKind, ProviderInstanceId, ServerConfig } from "@cozea/assistant-contracts"
+import type {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ServerConfig,
+  ServerProvider,
+  ServerProviderUpdatedPayload,
+} from "@cozea/assistant-contracts"
 
 import {
   createFallbackAssistantRuntimeStatus,
@@ -47,19 +53,26 @@ export interface T3ServerConfigBridge {
   getConfig(): Promise<ServerConfig>
   subscribe(listener: (config: ServerConfig) => void): () => void
   refreshProviders?(): Promise<void>
-  updateProvider?(provider: ProviderDriverKind, instanceId?: ProviderInstanceId): Promise<void>
+  updateProvider?(
+    provider: ProviderDriverKind,
+    instanceId?: ProviderInstanceId,
+  ): Promise<ServerProviderUpdatedPayload>
 }
 
 export async function updateAssistantProvider(
   provider: ProviderDriverKind,
   instanceId?: ProviderInstanceId,
-): Promise<void> {
+): Promise<NonNullable<ServerProvider["updateState"]> | null> {
   if (!t3ConfigBridge?.updateProvider) {
     throw new Error("Provider updates require the local T3 runtime.")
   }
-  await t3ConfigBridge.updateProvider(provider, instanceId)
-  await t3ConfigBridge.refreshProviders?.()
+  const result = await t3ConfigBridge.updateProvider(provider, instanceId)
   await maybeLoadServerConfig({ showLoading: false })
+  const updatedProvider = result.providers.find(
+    (candidate) =>
+      candidate.driver === provider && (!instanceId || candidate.instanceId === instanceId),
+  )
+  return updatedProvider?.updateState ?? null
 }
 
 function createFallbackStatus(): AssistantRuntimeStatus {

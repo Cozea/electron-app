@@ -1,6 +1,8 @@
 # Org DevApps
 
-Org DevApps publish a **built static artifact** to a Cozea-owned organization. Every org member can open every published DevApp in that org. Consumers never receive the source project, a local path, or a localhost recipe.
+Org DevApps publish an immutable **static** or **service** artifact to a Cozea-owned organization.
+Every org member can open every published DevApp in that org. Consumers never receive the source
+project, a local path, a development command, or a dependency-install recipe.
 
 `VITE_FF_PROJECT_DEVAPPS` defaults to `true` and hides publish / Store / launcher / settings DevApp UI when set to `false`.
 
@@ -9,7 +11,9 @@ Org DevApps publish a **built static artifact** to a Cozea-owned organization. E
 - Identity is a Cozea device group. Admins add initialized device principals by their public
   `czd_…` ID; the group's copyable public ID uses `czg_…`.
 - Left-nav **Publish** / **Update** only builds, packs, and uploads. It does not start a preview, navigate into Dev Server, or call `startDevServerRun`.
-- Open path is an isolated in-Cozea tile (`addTile` + `orgDevApp`), never the Dev Server singleton and never `http://localhost:*`.
+- Open path is an isolated in-Cozea tile (`addTile` + `orgDevApp`), never the Dev Server singleton.
+  Static releases use `cozea-devapp://`; service releases use an authenticated release-scoped
+  loopback gateway and never expose their raw process port.
 - Consumer payloads contain publication metadata + artifact identity only. They must not include `projectId`, `localPath`, git URL, `workspaceId`, `devCommand`, or `devPort`.
 - Store cards are labeled with the **organization name**. Do not describe this catalog as This Mac / Local DevApps.
 
@@ -32,7 +36,10 @@ Every authenticated Convex function that lists or mutates an org checks membersh
 1. The project overflow menu shows **Publish** when the project has no active artifact release.
 2. If the project is not attached to an org, Cozea prompts to create one or attach an existing org you belong to.
 3. First publish always asks for a PNG, JPEG, or WebP logo. Later **Update** reuses the publication logo unless it is missing.
-4. Electron main detects a **build** script (not `dev`), runs it, and requires static `index.html` in `dist/`, `build/`, `out/`, or similar. Projects without a static UI fail with a clear error — this product does not ship `npm run dev` to the org.
+4. Electron main detects a **build** script (not `dev`) and runs it without a shell. A static
+   `index.html` remains the first output choice. Next.js `output: "standalone"`, Nuxt `.output`, or
+   an explicit self-contained `cozeaDevApp.service` output produces a service release. Cozea never
+   ships `npm run dev` to the organization.
 5. Main packs the output as a zip, hashes it (SHA-256), and uploads those exact bytes directly to Convex `_storage`; the artifact does not cross renderer IPC. Convex verifies the stored digest before inserting an immutable `devAppReleases` row. The publication points at that release.
 6. Name and logo live on the publication. Editing them in Project Settings or the identity dialog does not append a release.
 
@@ -54,11 +61,24 @@ If the project has no linked local folder, no `build` script, or no static `inde
 
 1. Store **Your org** and the workbench launcher load `devApps.listMine` / `listForOrganization`.
 2. Choosing an org DevApp resolves to `addTile` + `tileType: "orgDevApp"` (`publishedDevApp` launch kind).
-3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), caches the zip under app data keyed by content hash, and navigates to `cozea-devapp://<hash>.release/index.html`.
-4. `WorkbenchBrowserService` uses a per-publication session partition (`persist:cozea-devapp-<publicationId>`) and `navigationPolicy: "orgDevApp"`. The immutable artifact protocol is registered on that partition before its native view is created. Localhost, `file:`, and `http:` are rejected. Top-level HTTPS links open in the system browser; HTTPS API requests remain available to the app.
-5. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
+3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), verifies the ZIP/hash,
+   and caches the immutable release under app data. Static releases navigate to
+   `cozea-devapp://<hash>.release/index.html`.
+4. A service release validates platform, manifest, entrypoint, symlinks, and native-code exclusions;
+   blocks on missing environment values; shows trusted-code approval bound to its content and
+   permission hashes; then starts with Cozea's Electron executable in Node mode, a minimal
+   environment, a publication-scoped data directory, and a 1 GiB V8 heap ceiling.
+5. The main-process gateway routes only a publication session's secret header plus exact content
+   host to that publication's leased runtime. It proxies HTTP and WebSocket upgrades. The tile sees
+   `http://<hash>.service.localhost:<gateway-port>/`, never the service's random raw port.
+6. `WorkbenchBrowserService` uses a per-publication session partition and exact-release navigation
+   scope. Cross-release, other localhost, `file:`, and arbitrary `http:` navigation is rejected.
+   Top-level HTTPS links open in the system browser; HTTPS API requests remain available to the app.
+7. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
 
-If a mini app needs a backend, that backend is hosted. The tile is only the built UI.
+Service releases run separately on each authorized Mac. Local files/databases are device-local;
+shared data still requires an external HTTPS backend. Service code is trusted organization code in
+the beta, not an OS-enforced sandbox.
 
 Access is re-evaluated reactively while a tile is open. Archiving the publication or removing the
 device from the organization hides the native surface and prevents cached reopening. Download,
@@ -67,21 +87,18 @@ permission requests are denied.
 
 ## Artifact and cache limits
 
-- compressed ZIP: 32 MiB maximum
-- expanded artifact: 128 MiB maximum
-- individual file: 32 MiB maximum
-- entries: 4,096 maximum
+- static: 32 MiB compressed, 128 MiB expanded, 32 MiB/file, 4,096 entries
+- service: 256 MiB compressed, 1 GiB expanded, 128 MiB/file, 50,000 entries
 - UTF-8 path: 512 bytes maximum
 - compression ratio: 200:1 maximum per file
 - symbolic links, traversal, duplicate/case-colliding paths, invalid CRCs, truncated records, and
   unsupported compression methods are rejected
-- local cache: 512 MiB, newest 24 releases, 30-day inactivity expiry, with atomic staging and
-  coalesced concurrent preparation
+- local cache: 4 GiB, newest 48 releases, 30-day inactivity expiry, with atomic staging,
+  coalesced preparation, and active-runtime eviction protection
 
-The complete ZIP is still held as one bounded main-process upload buffer. The hard 32 MiB ceiling is
-the memory-safety contract; raising it requires replacing this path with streaming pack/upload and
-download verification first. The renderer receives only the resulting storage ID and release
-metadata.
+The complete ZIP is still held as one bounded main-process upload buffer. Static and service limits
+are deliberately separate; further increases require streaming pack/upload/download verification.
+The renderer receives only the resulting storage ID and release metadata.
 
 ## Settings
 
@@ -96,7 +113,8 @@ Every org member sees the same DevApp list. Opening from Settings uses the same 
 ## Data model
 
 - `devAppPublications`: org-scoped, `visibility: "organization"`, editable name/logo, active release pointer, `projectId` is publisher-only
-- `devAppReleases`: append-only version, `artifactStorageId`, `entryPath`, `contentHash`, framework. Legacy recipe fields (`devCommand` / `devPort`) remain optional on empty historical docs and are unused by the client
+- `devAppReleases`: append-only version, artifact identity, runtime kind, manifest/platform/arch,
+  permission hash, publisher device identity, and framework. Legacy recipe fields remain unused.
 
 The machine-local `localProjectDevAppStore` is compatibility-only for already-persisted development
 tiles. It is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must

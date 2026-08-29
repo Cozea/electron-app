@@ -525,6 +525,13 @@ export default defineSchema({
     devPort: v.optional(v.number()),
     sourceRevision: v.optional(v.string()),
     sourceFingerprint: v.optional(v.string()),
+    runtimeKind: v.optional(v.union(v.literal("static"), v.literal("service"))),
+    manifestVersion: v.optional(v.number()),
+    platform: v.optional(v.string()),
+    arch: v.optional(v.string()),
+    permissionSetHash: v.optional(v.string()),
+    publisherIdentityKey: v.optional(v.string()),
+    publisherDeviceLabel: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
@@ -542,6 +549,7 @@ export default defineSchema({
     storageId: v.optional(v.id("_storage")),
     contentHash: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
+    runtimeKind: v.optional(v.union(v.literal("static"), v.literal("service"))),
     expiresAt: v.number(),
     createdAt: v.number(),
   })

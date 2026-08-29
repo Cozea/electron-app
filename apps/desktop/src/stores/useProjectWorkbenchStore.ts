@@ -133,6 +133,7 @@ export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
   organizationId?: string
   contentHash: string
   entryPath: string
+  runtimeKind?: "static" | "service"
   logoDataUrl?: string | null
   storageScope?: BrowserStorageScope
 }
@@ -262,6 +263,7 @@ export interface CreateTileOptions {
   orgDevAppOrganizationId?: string | null
   orgDevAppContentHash?: string | null
   orgDevAppEntryPath?: string | null
+  orgDevAppRuntimeKind?: "static" | "service" | null
   orgDevAppLogoDataUrl?: string | null
   autoStart?: boolean
   /** Add the surface without changing the user's active Dockview tab. */
@@ -678,6 +680,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         organizationId: normalizeOptionalString(options.orgDevAppOrganizationId),
         contentHash: normalizeOptionalString(options.orgDevAppContentHash) || "",
         entryPath: normalizeOptionalString(options.orgDevAppEntryPath) || "index.html",
+        runtimeKind: options.orgDevAppRuntimeKind ?? "static",
         logoDataUrl: options.orgDevAppLogoDataUrl ?? null,
         storageScope: options.storageScope ?? "orgDevApp",
       }
@@ -741,16 +744,22 @@ function createDefaultWorkbenchState(
   workspaceId?: string | null,
 ): WorkbenchProjectState {
   const normalizedLaneId = normalizeLaneId(laneId)
+  const selectionTile = createTile("selection", {
+    selectionMode: "emptyState",
+    title: TILE_TITLES.selection,
+  })
 
   return {
     projectId,
     laneId: normalizedLaneId,
     workspaceId: normalizeWorkspaceId(workspaceId),
-    activeTileId: null,
+    activeTileId: selectionTile.id,
     layout: null,
     layoutResetKey: nextLayoutResetKey(),
-    order: [],
-    tiles: {},
+    order: [selectionTile.id],
+    tiles: {
+      [selectionTile.id]: selectionTile,
+    },
   }
 }
 

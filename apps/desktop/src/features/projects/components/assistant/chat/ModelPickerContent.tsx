@@ -516,19 +516,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   if (activeView === "root") {
     return (
-      <div className="flex h-full w-full flex-col justify-center p-2 text-popover-foreground">
-        <div className="flex flex-col divide-y divide-border/40 overflow-hidden rounded-xl bg-secondary/40">
-          <button
-            type="button"
-            className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.05]"
-            onClick={() => setActiveView("models")}
-          >
-            <span className="text-xs font-medium text-foreground">Model</span>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="truncate">{activeModelDisplayLabel}</span>
-              <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
-            </div>
-          </button>
+      <div className="flex w-full flex-col divide-y divide-border/30 text-popover-foreground">
+        <button
+          type="button"
+          className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.04]"
+          onClick={() => setActiveView("models")}
+        >
+          <span className="text-xs font-medium text-foreground">Model</span>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="truncate">{activeModelDisplayLabel}</span>
+            <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
+          </div>
+        </button>
 
           {effortDescriptor ? (
             <button
@@ -580,25 +579,24 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           {contextDescriptor && contextDescriptor.type === "select" ? (
             <button
               type="button"
-              className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.05]"
+              className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.04]"
               onClick={() => setActiveView("context")}
             >
               <span className="text-xs font-medium text-foreground">Context</span>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <span className="truncate">{currentContextLabel}</span>
                 <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
               </div>
             </button>
           ) : null}
-        </div>
       </div>
     );
   }
 
   if (activeView === "effort" && effortDescriptor && effortDescriptor.type === "select") {
     return (
-      <div className="flex h-full w-full flex-col overflow-hidden text-popover-foreground">
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-2 bg-muted/20">
+      <div className="flex w-full max-h-72 flex-col overflow-hidden text-popover-foreground">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-3 bg-muted/20">
           <button
             type="button"
             onClick={() => setActiveView("root")}
@@ -610,31 +608,29 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           <span className="text-xs font-medium text-foreground">Effort</span>
           <div className="w-12" />
         </div>
-        <div className="flex flex-1 flex-col overflow-y-auto p-2">
-          <div className="flex flex-col divide-y divide-border/40 overflow-hidden rounded-xl bg-secondary/40">
-            {effortDescriptor.options.map((opt) => {
-              const isSelected = String(currentEffortVal) === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={cn(
-                    "flex h-10 w-full cursor-pointer items-center justify-between px-4 py-2 text-left outline-none transition-colors hover:bg-foreground/[0.05]",
-                    isSelected && "bg-foreground/[0.03]",
-                  )}
-                  onClick={() => {
-                    props.onOptionChange?.(effortDescriptor.id, opt.id);
-                    setActiveView("root");
-                  }}
-                >
-                  <span className="text-xs font-normal text-foreground">{opt.label}</span>
-                  {isSelected ? (
-                    <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-1 flex-col divide-y divide-border/30 overflow-y-auto max-h-56">
+          {effortDescriptor.options.map((opt) => {
+            const isSelected = String(currentEffortVal) === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                className={cn(
+                  "flex h-10 w-full cursor-pointer items-center justify-between px-4 py-2 text-left outline-none transition-colors hover:bg-foreground/[0.04]",
+                  isSelected && "bg-foreground/[0.03]",
+                )}
+                onClick={() => {
+                  props.onOptionChange?.(effortDescriptor.id, opt.id);
+                  setActiveView("root");
+                }}
+              >
+                <span className="text-xs font-normal text-foreground">{opt.label}</span>
+                {isSelected ? (
+                  <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
@@ -642,8 +638,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   if (activeView === "context" && contextDescriptor && contextDescriptor.type === "select") {
     return (
-      <div className="flex h-full w-full flex-col overflow-hidden text-popover-foreground">
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-2 bg-muted/20">
+      <div className="flex w-full max-h-72 flex-col overflow-hidden text-popover-foreground">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-3 bg-muted/20">
           <button
             type="button"
             onClick={() => setActiveView("root")}
@@ -655,31 +651,29 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           <span className="text-xs font-medium text-foreground">Context</span>
           <div className="w-12" />
         </div>
-        <div className="flex flex-1 flex-col overflow-y-auto p-2">
-          <div className="flex flex-col divide-y divide-border/40 overflow-hidden rounded-xl bg-secondary/40">
-            {contextDescriptor.options.map((opt) => {
-              const isSelected = String(currentContextVal) === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={cn(
-                    "flex h-10 w-full cursor-pointer items-center justify-between px-4 py-2 text-left outline-none transition-colors hover:bg-foreground/[0.05]",
-                    isSelected && "bg-foreground/[0.03]",
-                  )}
-                  onClick={() => {
-                    props.onOptionChange?.(contextDescriptor.id, opt.id);
-                    setActiveView("root");
-                  }}
-                >
-                  <span className="text-xs font-normal text-foreground">{opt.label}</span>
-                  {isSelected ? (
-                    <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-1 flex-col divide-y divide-border/30 overflow-y-auto max-h-56">
+          {contextDescriptor.options.map((opt) => {
+            const isSelected = String(currentContextVal) === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                className={cn(
+                  "flex h-10 w-full cursor-pointer items-center justify-between px-4 py-2 text-left outline-none transition-colors hover:bg-foreground/[0.04]",
+                  isSelected && "bg-foreground/[0.03]",
+                )}
+                onClick={() => {
+                  props.onOptionChange?.(contextDescriptor.id, opt.id);
+                  setActiveView("root");
+                }}
+              >
+                <span className="text-xs font-normal text-foreground">{opt.label}</span>
+                {isSelected ? (
+                  <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       </div>
     );

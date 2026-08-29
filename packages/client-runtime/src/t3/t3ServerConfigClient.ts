@@ -1,4 +1,4 @@
-import type { ServerConfig } from "@cozea/assistant-contracts";
+import type { ServerConfig, ServerProviderUpdatedPayload } from "@cozea/assistant-contracts";
 import { WS_METHODS } from "@cozea/contracts";
 
 import {
@@ -61,11 +61,14 @@ export class T3ServerConfigClient {
     await this.client.callUnary(WS_METHODS.serverRefreshProviders, {});
   }
 
-  async updateProvider(provider: string, instanceId?: string): Promise<void> {
-    await this.client.callUnary(WS_METHODS.serverUpdateProvider, {
+  async updateProvider(
+    provider: string,
+    instanceId?: string,
+  ): Promise<ServerProviderUpdatedPayload> {
+    return (await this.client.callUnary(WS_METHODS.serverUpdateProvider, {
       provider,
       ...(instanceId ? { instanceId } : {}),
-    });
+    })) as ServerProviderUpdatedPayload;
   }
 
   private async ensureConfigSubscription(): Promise<void> {

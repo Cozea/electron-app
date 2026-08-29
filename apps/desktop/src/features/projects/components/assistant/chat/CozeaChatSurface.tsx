@@ -438,11 +438,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     phase,
     isWorking,
     activeWorkStartedAt,
-    activeWorkCompletedAt,
     isWorkActive,
     generationStatusPhase,
     timelineEntries,
-    completionDividerBeforeEntryId,
     completionSummary,
     completionSummariesByMessageId,
     turnDiffSummaryByAssistantMessageId,
@@ -1317,14 +1315,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
         <div
           className={cn(
-            "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-150 ease-out",
+            "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-200 ease-out",
             isModelPickerVisible
-              ? "max-h-72 translate-y-0 border-border/30 opacity-100"
+              ? "max-h-80 translate-y-0 border-border/30 opacity-100"
               : "pointer-events-none max-h-0 -translate-y-1 border-transparent opacity-0",
           )}
         >
           {shouldRenderModelPicker ? (
-            <div className="h-72 p-1.5">
+            <div className="w-full">
               <ModelPickerContent
                 provider={props.selectedProvider}
                 activeInstanceId={props.selectedModelSelection.instanceId}
@@ -1645,13 +1643,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             </div>
           </div>
         ) : hasProviderBanner ? (
-          <div
-            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8"
-            // Keep the banner centered in the area above the docked composer
-            // overlay instead of the full tile height (which hides its lower
-            // half behind the composer).
-            style={{ paddingBottom: dockedComposerScrollInsetPx ? dockedComposerScrollInsetPx + 32 : undefined }}
-          >
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8 pb-24">
             <ProviderStatusBanner status={props.providerSnapshot} />
           </div>
         ) : (
@@ -1664,12 +1656,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               activeTurnInProgress={isWorking || !latestTurnSettled}
               activeTurnId={activeTurn?.turnId ?? null}
               activeWorkStartedAt={activeWorkStartedAt}
-              activeWorkCompletedAt={activeWorkCompletedAt}
               isWorkActive={isWorkActive}
               generationStatusPhase={generationStatusPhase}
               scrollContainerRef={props.timelineRef}
               timelineEntries={timelineEntries}
-              completionDividerBeforeEntryId={completionDividerBeforeEntryId}
               completionSummary={completionSummary}
               completionSummariesByMessageId={completionSummariesByMessageId}
               turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   applyServerConfigProjection,
@@ -54,6 +54,36 @@ describe("T3 server config cutover client", () => {
     expect(typeof client.refreshProviders).toBe("function");
     expect(typeof client.updateProvider).toBe("function");
     expect(typeof client.subscribeServerConfig).toBe("function");
+  });
+
+  it("returns the provider update payload so command outcomes reach the UI", async () => {
+    const payload = {
+      providers: [
+        {
+          instanceId: "codex",
+          driver: "codex",
+          updateState: {
+            status: "unchanged",
+            startedAt: "2026-08-29T10:00:00.000Z",
+            finishedAt: "2026-08-29T10:00:01.000Z",
+            message: "The installed provider version did not change.",
+            output: "Already up-to-date.",
+          },
+        },
+      ],
+    };
+    const callUnary = vi.fn().mockResolvedValue(payload);
+    const client = new T3ServerConfigClient({
+      baseUrl: "http://127.0.0.1:13773",
+      wsTicket: "test-ticket",
+      client: { callUnary } as unknown as T3EffectRpcClient,
+    });
+
+    await expect(client.updateProvider("codex", "codex")).resolves.toBe(payload);
+    expect(callUnary).toHaveBeenCalledWith("server.updateProvider", {
+      provider: "codex",
+      instanceId: "codex",
+    });
   });
 });
 

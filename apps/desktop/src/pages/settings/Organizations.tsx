@@ -474,6 +474,9 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                         <p className="truncate text-xs font-medium text-foreground">{app.name}</p>
                         <p className="text-[11px] text-muted-foreground">
                           {t("settings.organizations.version")} {app.activeRelease.version}
+                          {app.activeRelease.runtimeKind === "service"
+                            ? ` · Service · ${app.activeRelease.framework}`
+                            : " · Static"}
                         </p>
                       </div>
                     </div>
@@ -495,6 +498,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                               orgDevAppOrganizationId: app.organizationId,
                               orgDevAppContentHash: app.activeRelease.contentHash,
                               orgDevAppEntryPath: app.activeRelease.entryPath,
+                              orgDevAppRuntimeKind: app.activeRelease.runtimeKind,
                               orgDevAppLogoDataUrl: app.logoDataUrl,
                               storageScope: "orgDevApp",
                             },

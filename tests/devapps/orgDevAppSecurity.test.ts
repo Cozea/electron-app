@@ -56,9 +56,11 @@ describe("org DevApp security lifecycle", () => {
   })
 
   it("registers the artifact protocol on every isolated DevApp session", () => {
-    expect(artifacts).toContain("registerProtocolForSession(targetSession: Session)")
-    expect(browser).toContain("configureOrgDevAppSession?.(nextSession)")
-    expect(main).toContain("orgDevAppArtifactService.registerProtocolForSession(targetSession)")
+    expect(artifacts).toContain("registerProtocolForSession(targetSession: Session, partitionKey: string)")
+    expect(browser).toContain("configureOrgDevAppSession?.(nextSession, workspaceId ?? tileId)")
+    expect(main).toContain("orgDevAppArtifactService.registerProtocolForSession(targetSession, partitionKey)")
+    expect(artifacts).toContain("DEVAPP_GATEWAY_TOKEN_HEADER")
+    expect(artifacts).toContain("gatewayPublications")
   })
 
   it("uses a bounded, integrity-checked, evictable local cache", () => {

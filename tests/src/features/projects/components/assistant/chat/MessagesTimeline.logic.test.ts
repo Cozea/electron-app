@@ -2,9 +2,62 @@
 import { describe, expect, it } from "vitest";
 import {
   computeMessageDurationStart,
+  deriveActiveTurnHeaderIndex,
+  deriveTurnHeaderIndex,
   deriveGenerationStatusPhase,
   normalizeCompactToolLabel,
 } from "../../../../../../../apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.logic";
+
+describe("deriveActiveTurnHeaderIndex", () => {
+  const message = (id, role, turnId) => ({
+    id: `entry:${id}`,
+    kind: "message",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    message: { id, role, turnId, text: "", createdAt: "2026-01-01T00:00:00.000Z" },
+  });
+
+  it("pins the header between the triggering user message and streamed text", () => {
+    const entries = [
+      message("old", "assistant", "turn-old"),
+      message("user", "user"),
+      message("live", "assistant", "turn-live"),
+    ];
+    expect(deriveActiveTurnHeaderIndex(entries, "turn-live")).toBe(2);
+  });
+
+  it("pins the header before the active turn's first tool", () => {
+    const entries = [
+      message("user", "user"),
+      {
+        id: "entry:tool",
+        kind: "work",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        entry: { id: "tool", turnId: "turn-live" },
+      },
+    ];
+    expect(deriveActiveTurnHeaderIndex(entries, "turn-live")).toBe(1);
+  });
+
+  it("places a pending turn header immediately after the latest user message", () => {
+    const entries = [
+      message("old-user", "user"),
+      message("old", "assistant", "turn-old"),
+      message("new-user", "user"),
+    ];
+    expect(deriveActiveTurnHeaderIndex(entries, null)).toBe(3);
+  });
+
+  it("keeps a completed historical turn pinned after its own user message", () => {
+    const entries = [
+      message("first-user", "user"),
+      message("first-answer", "assistant", "turn-first"),
+      message("second-user", "user"),
+      message("second-answer", "assistant", "turn-second"),
+    ];
+    expect(deriveTurnHeaderIndex(entries, "turn-first")).toBe(1);
+    expect(deriveTurnHeaderIndex(entries, "turn-second")).toBe(3);
+  });
+});
 
 describe("computeMessageDurationStart", () => {
   it("returns message createdAt when there is no preceding user message", () => {

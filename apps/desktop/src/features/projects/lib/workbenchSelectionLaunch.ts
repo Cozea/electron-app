@@ -17,6 +17,7 @@ export interface WorkbenchSelectionCreateOptions {
   orgDevAppOrganizationId?: string | null
   orgDevAppContentHash?: string | null
   orgDevAppEntryPath?: string | null
+  orgDevAppRuntimeKind?: "static" | "service" | null
   orgDevAppLogoDataUrl?: string | null
   autoStart?: boolean
 }
@@ -60,6 +61,7 @@ export function resolveWorkbenchSelectionLaunchRequest(
         orgDevAppOrganizationId: devApp.organizationId,
         orgDevAppContentHash: devApp.contentHash,
         orgDevAppEntryPath: devApp.entryPath,
+        orgDevAppRuntimeKind: devApp.runtimeKind,
         orgDevAppLogoDataUrl: devApp.logoDataUrl ?? null,
       },
     }

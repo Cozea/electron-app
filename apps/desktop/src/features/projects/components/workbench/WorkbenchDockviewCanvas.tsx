@@ -139,6 +139,22 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         panelId: panel.id,
       })
 
+      const isSoleSelection = tile?.type === "selection" && (workbench?.order.length ?? 0) <= 1
+      if (isSoleSelection) {
+        return [
+          {
+            label: panel.api.isMaximized() ? "Restore" : "Maximize",
+            action: () => {
+              if (panel.api.isMaximized()) {
+                panel.api.exitMaximized()
+              } else {
+                panel.api.maximize()
+              }
+            },
+          },
+        ]
+      }
+
       return [
         {
           label: panel.api.isMaximized() ? "Restore" : "Maximize",

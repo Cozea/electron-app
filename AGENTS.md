@@ -256,19 +256,23 @@ See `docs/device-identity.md` for the protocol and deployment requirements.
 
 ## How Project DevApps Work
 
-- The active product is organization-scoped static artifacts. The project overflow menu shows
-  **Publish** / **Update**; it never publishes a localhost command or source folder.
+- The active product is organization-scoped immutable static and service artifacts. The project
+  overflow menu shows **Publish** / **Update**; it never publishes a dev command or source folder.
 - First publish requires a PNG, JPEG, or WebP logo. Cozea optimizes it locally; later updates retain
   the independently editable publication name and logo.
 - Publication and consumption derive the device principal from verified Convex auth. Uploads use a
   short-lived reservation bound to that device, project, and organization; never accept a
   caller-selected user identity or an unreserved storage object.
 - The Store and workbench launcher list organization releases only. Consumers receive bounded,
-  immutable static artifacts and never receive project source, local paths, workspace IDs, or dev
-  commands.
-- Org DevApps run in sandboxed, permission-denied Electron sessions. Every content hash has its own
-  `cozea-devapp` origin; external HTTPS navigation opens outside the tile, while HTTPS API requests
-  from the app remain available.
+  immutable artifacts and never receive project source, local paths, workspace IDs, dev commands,
+  or dependency-install recipes.
+- Static releases use per-hash `cozea-devapp` origins. Service releases use strict manifests,
+  publication-owned local runtimes, encrypted environment configuration, release-bound trusted-code
+  approval, and an authenticated release-scoped loopback gateway. Next.js standalone and Nuxt are
+  automatic; other self-contained Node outputs use `package.json.cozeaDevApp.service`.
+- Browser permissions are denied and top-level external HTTPS opens outside the tile. Service code
+  is trusted organization code for the private beta, not an OS-enforced filesystem/network sandbox;
+  see `docs/service-devapps-implementation-plan.md` for the post-beta container/VM milestone.
 - The historical machine-local `localProjectDevAppStore` and Dev Server source metadata remain only
   as compatibility support for already-persisted development tiles. Do not add new Store or publish
   callers to that catalog.

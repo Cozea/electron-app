@@ -9,6 +9,7 @@ import type {
 } from '../../../../shared/browserHostTypes'
 import {
   evaluateOrgDevAppNavigation,
+  getOrgDevAppNavigationScope,
   isAllowedOrgDevAppNavigation,
 } from '../../../../shared/orgDevAppProtocol'
 
@@ -18,6 +19,7 @@ interface WorkbenchBrowserRecord {
   storageScope: BrowserStorageScope
   workspaceId: string | null
   navigationPolicy: 'open' | 'orgDevApp'
+  orgDevAppNavigationScope: string | null
   /** Monotonic per-record navigation counter; see loadUrlIntoRecord. */
   navigationId: number
 }
@@ -25,7 +27,7 @@ interface WorkbenchBrowserRecord {
 interface WorkbenchBrowserServiceOptions {
   getMainWindow: () => BrowserWindow | null
   backgroundThrottling?: boolean
-  configureOrgDevAppSession?: (targetSession: Electron.Session) => void
+  configureOrgDevAppSession?: (targetSession: Electron.Session, partitionKey: string) => void
 }
 
 interface EnsureWorkbenchBrowserTileOptions {
@@ -149,7 +151,7 @@ export class WorkbenchBrowserService {
 
     const nextSession = session.fromPartition(key)
     if (storageScope === 'orgDevApp') {
-      this.options.configureOrgDevAppSession?.(nextSession)
+      this.options.configureOrgDevAppSession?.(nextSession, workspaceId ?? tileId)
       nextSession.setPermissionCheckHandler(() => false)
       nextSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
         callback(false)
@@ -397,7 +399,7 @@ export class WorkbenchBrowserService {
     view.webContents.setWindowOpenHandler(({ url }) => {
       const record = this.records.get(tileId)
       if (record?.navigationPolicy === 'orgDevApp') {
-        const decision = evaluateOrgDevAppNavigation(url)
+        const decision = evaluateOrgDevAppNavigation(url, record.orgDevAppNavigationScope)
         if (decision.allowed) {
           void this.loadUrlIntoRecord(tileId, record, url)
         } else if (decision.reason === 'external-https') {
@@ -415,7 +417,7 @@ export class WorkbenchBrowserService {
     view.webContents.on('will-navigate', (event, url) => {
       const record = this.records.get(tileId)
       if (record?.navigationPolicy !== 'orgDevApp') return
-      const decision = evaluateOrgDevAppNavigation(url)
+      const decision = evaluateOrgDevAppNavigation(url, record.orgDevAppNavigationScope)
       if (!decision.allowed) {
         event.preventDefault()
         if (decision.reason === 'external-https') void shell.openExternal(url)
@@ -425,7 +427,7 @@ export class WorkbenchBrowserService {
     view.webContents.on('will-redirect', (event, url) => {
       const record = this.records.get(tileId)
       if (record?.navigationPolicy !== 'orgDevApp') return
-      const decision = evaluateOrgDevAppNavigation(url)
+      const decision = evaluateOrgDevAppNavigation(url, record.orgDevAppNavigationScope)
       if (!decision.allowed) {
         event.preventDefault()
         if (decision.reason === 'external-https') void shell.openExternal(url)
@@ -651,13 +653,23 @@ export class WorkbenchBrowserService {
     record: WorkbenchBrowserRecord,
     url: string,
   ): Promise<WorkbenchBrowserViewState> {
-    if (record.navigationPolicy === 'orgDevApp' && !isAllowedOrgDevAppNavigation(url)) {
+    const nextOrgDevAppScope = record.navigationPolicy === 'orgDevApp'
+      ? getOrgDevAppNavigationScope(url)
+      : null
+    if (
+      record.navigationPolicy === 'orgDevApp' &&
+      (!isAllowedOrgDevAppNavigation(url) ||
+        (record.orgDevAppNavigationScope !== null && nextOrgDevAppScope !== record.orgDevAppNavigationScope))
+    ) {
       record.state = {
         ...record.state,
         isLoading: false,
         loadError: 'This DevApp cannot open localhost or other blocked URLs.',
       }
       return this.emitState(tileId) ?? record.state
+    }
+    if (record.navigationPolicy === 'orgDevApp' && record.orgDevAppNavigationScope === null) {
+      record.orgDevAppNavigationScope = nextOrgDevAppScope
     }
     const navigationId = record.navigationId + 1
     record.navigationId = navigationId
@@ -739,6 +751,9 @@ export class WorkbenchBrowserService {
       storageScope,
       workspaceId: sessionKey ?? null,
       navigationPolicy,
+      orgDevAppNavigationScope: navigationPolicy === 'orgDevApp' && initialUrl
+        ? getOrgDevAppNavigationScope(initialUrl)
+        : null,
       navigationId: 0,
     }
 

@@ -17,6 +17,13 @@ export interface OrgDevAppConsumerRecord {
     framework: string
     entryPath: string
     contentHash: string
+    runtimeKind: "static" | "service"
+    manifestVersion: number | null
+    platform: string | null
+    arch: string | null
+    permissionSetHash: string | null
+    publisherIdentityKey: string | null
+    publisherDeviceLabel: string | null
   }
 }
 
@@ -39,6 +46,8 @@ export function buildPublishedDevAppLaunchSpec(
     framework: entry.activeRelease.framework,
     contentHash: entry.activeRelease.contentHash,
     entryPath: entry.activeRelease.entryPath,
+    runtimeKind: entry.activeRelease.runtimeKind,
+    permissionSetHash: entry.activeRelease.permissionSetHash,
     logoDataUrl: entry.logoDataUrl,
   }
 }

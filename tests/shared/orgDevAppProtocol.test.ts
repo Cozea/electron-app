@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import {
   buildOrgDevAppUrl,
+  buildOrgDevAppServiceUrl,
   evaluateOrgDevAppNavigation,
+  getOrgDevAppNavigationScope,
+  isOrgDevAppServiceUrl,
   isLocalhostUrl,
   parseOrgDevAppUrl,
 } from "@shared/orgDevAppProtocol"
@@ -41,6 +44,23 @@ describe("org DevApp protocol", () => {
       allowed: false,
       reason: "external-https",
     })
+  })
+
+  it("allows release-scoped Service DevApp localhost origins", () => {
+    const url = buildOrgDevAppServiceUrl(HASH, 43123)
+    expect(isOrgDevAppServiceUrl(url)).toBe(true)
+    expect(evaluateOrgDevAppNavigation(url)).toEqual({ allowed: true, kind: "org-devapp" })
+    const scope = getOrgDevAppNavigationScope(url)
+    expect(scope).toBe(`service:${HASH}:43123`)
+    expect(evaluateOrgDevAppNavigation(buildOrgDevAppServiceUrl("b".repeat(64), 43123), scope)).toEqual({
+      allowed: false,
+      reason: "cross-release",
+    })
+    expect(evaluateOrgDevAppNavigation(buildOrgDevAppServiceUrl(HASH, 43124), scope)).toEqual({
+      allowed: false,
+      reason: "cross-release",
+    })
+    expect(isOrgDevAppServiceUrl("http://localhost:43123")).toBe(false)
   })
 
   it("gives distinct releases distinct browser origins", () => {
