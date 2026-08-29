@@ -66,7 +66,6 @@ import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
-import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
 import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useTranslation } from "@/lib/i18n"
@@ -718,8 +717,18 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   const activePanel = props.activePanel
   const isMaximized = activePanel?.api.isMaximized() ?? false
   const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
+  const isSoleSelectionTile = useProjectWorkbenchStore((state) => {
+    const wb = selectProjectWorkbench(
+      runtime.projectId,
+      runtime.laneId,
+      runtime.workspaceId,
+    )(state)
+    if (!wb || wb.order.length !== 1) return false
+    const sole = wb.tiles[wb.order[0]]
+    return sole?.type === "selection"
+  })
 
-  if (!activePanel) {
+  if (!activePanel || (isSoleSelectionTile && !isMaximized)) {
     return null
   }
 
@@ -856,77 +865,10 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   )
 })
 
-// Placeholder record for the empty-lane launcher. WorkbenchSelectionTile only
-// reads `tile` for its preview/positioning modes (unused in the emptyState
-// launcher), so the field values here are inert — they exist to satisfy the
-// prop type while we reuse the full picker as the watermark.
-const WATERMARK_SELECTION_TILE: WorkbenchSelectionTileRecord = {
-  id: "workbench-watermark-selection",
-  type: "selection",
-  title: "Add DevApp",
-  createdAt: 0,
-  mode: "emptyState",
-}
-
 export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
   _props: IWatermarkPanelProps,
 ) {
-  const runtime = useWorkbenchDockRuntime()
-  const actions = useProjectWorkbenchStore((state) => state.actions)
-  // Dockview mounts this overlay whenever it momentarily has zero panels —
-  // including mid-hydration (clear -> fromJSON) on every project switch.
-  // Render the launcher only when the lane is GENUINELY empty; otherwise the
-  // launcher flashes over the content area while the real tiles rebuild.
-  const laneHasTiles = useProjectWorkbenchStore((state) => {
-    const workbench = selectProjectWorkbench(
-      runtime.projectId,
-      runtime.laneId,
-      runtime.workspaceId,
-    )(state)
-    if (!workbench) return false
-    return workbench.order.some((tileId) => {
-      const tile = workbench.tiles[tileId]
-      return Boolean(tile) && tile!.type !== "selection"
-    })
-  })
-  if (laneHasTiles) {
-    return null
-  }
-
-  return (
-    <div className="h-full w-full bg-transparent">
-      <Suspense fallback={null}>
-        <LazyWorkbenchSelectionTile
-          tile={WATERMARK_SELECTION_TILE}
-          singletonEmptyWorkbench
-          projectId={runtime.projectId}
-          projectName={runtime.projectName}
-          workspaceId={runtime.workspaceId}
-          className="bg-transparent"
-          onChoose={(request) => {
-            const launch = resolveWorkbenchSelectionLaunchRequest(request)
-            if (launch.action === "openSingletonTile") {
-              actions.openSingletonTile(
-                runtime.projectId,
-                runtime.laneId,
-                launch.tileType,
-                launch.options,
-                runtime.workspaceId,
-              )
-              return
-            }
-            actions.addTile(
-              runtime.projectId,
-              runtime.laneId,
-              launch.tileType,
-              launch.options,
-              runtime.workspaceId,
-            )
-          }}
-        />
-      </Suspense>
-    </div>
-  )
+  return null
 })
 
 const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {

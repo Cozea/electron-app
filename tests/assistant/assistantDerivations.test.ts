@@ -205,8 +205,8 @@ describe("assistant timeline derivations", () => {
       latestTurnSettled: true,
     })
 
-    expect(summaries.get(assistantOne)).toBe("Worked for 3.0s")
-    expect(summaries.get(assistantTwo)).toBe("Worked for 4.0s")
+    expect(summaries.get(assistantOne)).toBe("Worked for 3s")
+    expect(summaries.get(assistantTwo)).toBe("Worked for 4s")
   })
 
   it("reports one duration for the whole turn across assistant generations", () => {
@@ -257,6 +257,59 @@ describe("assistant timeline derivations", () => {
     })
 
     expect(summaries.has(firstAssistant)).toBe(false)
-    expect(summaries.get(finalAssistant)).toBe("Worked for 8.0s")
+    expect(summaries.get(finalAssistant)).toBe("Worked for 8s")
+  })
+
+  it("keeps the previous completed summary while the next turn is starting", () => {
+    const previousTurn = TurnId.makeUnsafe("turn-previous")
+    const currentTurn = TurnId.makeUnsafe("turn-current")
+    const previousAssistant = MessageId.makeUnsafe("assistant-previous")
+    const summaries = deriveCompletionSummariesByMessageId({
+      messages: [
+        {
+          id: MessageId.makeUnsafe("user-previous"),
+          role: "user",
+          text: "first",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          streaming: false,
+        },
+        {
+          id: previousAssistant,
+          role: "assistant",
+          text: "done",
+          turnId: previousTurn,
+          createdAt: "2026-01-01T00:00:03.000Z",
+          completedAt: "2026-01-01T00:00:04.000Z",
+          streaming: false,
+        },
+        {
+          id: MessageId.makeUnsafe("user-current"),
+          role: "user",
+          text: "second",
+          createdAt: "2026-01-01T00:01:00.000Z",
+          streaming: false,
+        },
+      ],
+      activities: [
+        {
+          id: EventId.makeUnsafe("tool-previous"),
+          kind: "tool.completed",
+          summary: "Ran command",
+          tone: "tool",
+          payload: {},
+          turnId: previousTurn,
+          createdAt: "2026-01-01T00:00:03.500Z",
+        },
+      ],
+      activeTurn: {
+        turnId: currentTurn,
+        state: "running",
+        requestedAt: "2026-01-01T00:01:00.000Z",
+        startedAt: "2026-01-01T00:01:00.000Z",
+      },
+      latestTurnSettled: false,
+    })
+
+    expect(summaries.get(previousAssistant)).toBe("Worked for 4s")
   })
 })

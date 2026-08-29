@@ -168,8 +168,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
         <HugeiconsIcon
           icon={__ChevronDownIconHugeIcon}
           aria-hidden="true"
+          strokeWidth={2.25}
           className={cn(
-            "size-3 shrink-0 opacity-60 transition-transform duration-200",
+            "size-4 shrink-0 opacity-80 stroke-[2.25] transition-transform duration-200",
             props.open && "rotate-180",
           )}
         />

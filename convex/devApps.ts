@@ -13,7 +13,7 @@ import {
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import { normalizeStorageSha256 } from "./lib/storageHash"
 import {
-  ORG_DEVAPP_ARTIFACT_LIMITS,
+  orgDevAppArtifactLimits,
   ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS,
 } from "../shared/orgDevAppLimits"
 
@@ -123,6 +123,7 @@ export const registerUploadedArtifact = mutation({
     reservationId: v.id("devAppArtifactUploads"),
     storageId: v.id("_storage"),
     contentHash: v.string(),
+    runtimeKind: v.union(v.literal("static"), v.literal("service")),
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
@@ -142,8 +143,9 @@ export const registerUploadedArtifact = mutation({
       storageId: args.storageId,
       contentHash,
       sizeBytes: metadata.size,
+      runtimeKind: args.runtimeKind,
     })
-    if (metadata.size > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes) {
+    if (metadata.size > orgDevAppArtifactLimits(args.runtimeKind).maxCompressedBytes) {
       return { registered: false, error: "The uploaded DevApp artifact exceeds the size limit" }
     }
     if (metadata.contentType !== "application/zip") {
@@ -177,6 +179,11 @@ export const publish = mutation({
     framework: v.string(),
     uploadReservationId: v.id("devAppArtifactUploads"),
     entryPath: v.string(),
+    runtimeKind: v.union(v.literal("static"), v.literal("service")),
+    manifestVersion: v.optional(v.number()),
+    platform: v.optional(v.string()),
+    arch: v.optional(v.string()),
+    permissionSetHash: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
@@ -207,9 +214,12 @@ export const publish = mutation({
       throw new ConvexError("The DevApp upload is incomplete, expired, or belongs to another project")
     }
     const metadata = await ctx.db.system.get("_storage", reservation.storageId)
+    if ((reservation.runtimeKind ?? "static") !== args.runtimeKind) {
+      throw new ConvexError("The DevApp upload runtime kind does not match the release")
+    }
     if (
       !metadata ||
-      metadata.size > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes ||
+      metadata.size > orgDevAppArtifactLimits(args.runtimeKind).maxCompressedBytes ||
       metadata.contentType !== "application/zip" ||
       normalizeStorageSha256(metadata.sha256) !== reservation.contentHash
     ) {
@@ -227,6 +237,14 @@ export const publish = mutation({
     }
     if (args.logoDataUrl && args.logoDataUrl.length > DEVAPP_LOGO_MAX_LENGTH) {
       throw new ConvexError("The DevApp logo exceeds the allowed size")
+    }
+    if (args.runtimeKind === "service") {
+      if (args.manifestVersion !== 1 || args.platform !== "darwin" || args.arch !== "arm64") {
+        throw new ConvexError("The Service DevApp runtime metadata is unsupported")
+      }
+      if (!args.permissionSetHash || !/^[a-f0-9]{64}$/.test(args.permissionSetHash)) {
+        throw new ConvexError("The Service DevApp permission hash is invalid")
+      }
     }
     const now = Date.now()
 
@@ -272,6 +290,13 @@ export const publish = mutation({
       artifactStorageId: reservation.storageId,
       entryPath,
       contentHash: reservation.contentHash,
+      runtimeKind: args.runtimeKind,
+      ...(args.manifestVersion ? { manifestVersion: args.manifestVersion } : {}),
+      ...(args.platform ? { platform: args.platform } : {}),
+      ...(args.arch ? { arch: args.arch } : {}),
+      ...(args.permissionSetHash ? { permissionSetHash: args.permissionSetHash } : {}),
+      ...(user.identityKey ? { publisherIdentityKey: user.identityKey } : {}),
+      ...(user.deviceLabel ? { publisherDeviceLabel: user.deviceLabel } : {}),
       createdBy: user._id,
       createdAt: now,
     })
@@ -513,6 +538,13 @@ export const getArtifactUrl = query({
       entryPath: release.entryPath ?? "index.html",
       releaseId: release._id,
       version: release.version,
+      runtimeKind: release.runtimeKind ?? "static",
+      manifestVersion: release.manifestVersion ?? null,
+      platform: release.platform ?? null,
+      arch: release.arch ?? null,
+      permissionSetHash: release.permissionSetHash ?? null,
+      publisherIdentityKey: release.publisherIdentityKey ?? null,
+      publisherDeviceLabel: release.publisherDeviceLabel ?? null,
     }
   },
 })

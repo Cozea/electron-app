@@ -46,20 +46,28 @@ export function useAssistantTurnLifecycle({
   const [isForceStopAvailable, setIsForceStopAvailable] = useState(false)
   const [pendingTurnStart, setPendingTurnStart] = useState<PendingTurnStart | null>(null)
   const interruptFailureBaselineRef = useRef<string | null>(null)
+  const pendingTurnObservedRunningRef = useRef<MessageId | null>(null)
   const latestInterruptFailure = useMemo(() => findLatestInterruptFailure(thread), [thread])
 
   const isTurnStartPending = pendingTurnStart !== null
   const isTurnBusy = isRunning || isInterrupting || isTurnStartPending
 
   const clearPendingTurnStart = useCallback(() => {
+    pendingTurnObservedRunningRef.current = null
     setPendingTurnStart(null)
   }, [])
 
-  const notePendingTurnStart = useCallback((messageId: MessageId, threadId: ThreadId) => {
+  const notePendingTurnStart = useCallback((
+    messageId: MessageId,
+    threadId: ThreadId,
+    startedAtIso: string,
+  ) => {
+    const parsedStartedAt = Date.parse(startedAtIso)
+    pendingTurnObservedRunningRef.current = null
     setPendingTurnStart({
       messageId,
       threadId,
-      startedAt: Date.now(),
+      startedAt: Number.isFinite(parsedStartedAt) ? parsedStartedAt : Date.now(),
     })
   }, [])
 
@@ -70,6 +78,7 @@ export function useAssistantTurnLifecycle({
 
     setIsInterrupting(false)
     setIsForceStopAvailable(false)
+    pendingTurnObservedRunningRef.current = null
     setPendingTurnStart(null)
   }, [isRuntimeReady])
 
@@ -83,7 +92,28 @@ export function useAssistantTurnLifecycle({
       return
     }
 
+    const projectedTurnStartedAt = thread.latestTurn?.startedAt
+      ? Date.parse(thread.latestTurn.startedAt)
+      : Number.NaN
+    if (
+      Number.isFinite(projectedTurnStartedAt) &&
+      projectedTurnStartedAt >= pendingTurnStart.startedAt
+    ) {
+      pendingTurnObservedRunningRef.current = null
+      setPendingTurnStart(null)
+      return
+    }
+
+    // The runtime can report streaming before the new turn projection lands.
+    // Keep the optimistic timestamp alive during that handoff and do not fire
+    // the start-timeout error for a turn that is observably running.
     if (isRunning) {
+      pendingTurnObservedRunningRef.current = pendingTurnStart.messageId
+      return
+    }
+
+    if (pendingTurnObservedRunningRef.current === pendingTurnStart.messageId) {
+      pendingTurnObservedRunningRef.current = null
       setPendingTurnStart(null)
       return
     }

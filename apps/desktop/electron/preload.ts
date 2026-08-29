@@ -375,7 +375,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       downloadUrl: string
       contentHash: string
       entryPath?: string
+      runtimeKind?: 'static' | 'service'
     }) => ipcRenderer.invoke('orgDevApp:prepareArtifact', options),
+    getRuntimeTrust: (options: { contentHash: string; publicationId: string; permissionSetHash: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeTrust', options),
+    approveRuntime: (options: { contentHash: string; publicationId: string; permissionSetHash: string }) => ipcRenderer.invoke('orgDevApp:approveRuntime', options),
+    getRuntimeEnvironment: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeEnvironment', options),
+    setRuntimeEnvironment: (options: { contentHash: string; publicationId: string; values: Record<string, string | null> }) => ipcRenderer.invoke('orgDevApp:setRuntimeEnvironment', options),
+    startRuntime: (options: { contentHash: string; publicationId?: string; permissionSetHash?: string; leaseId?: string }) => ipcRenderer.invoke('orgDevApp:startRuntime', options),
+    releaseRuntime: (options: { contentHash: string; publicationId: string; leaseId: string }) => ipcRenderer.invoke('orgDevApp:releaseRuntime', options),
+    stopRuntime: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:stopRuntime', options),
+    getRuntimeState: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeState', options),
   },
   /** Agent browser automation MVP (flag `cozea.browser.agentAutomation`, default off). */
   browserAutomation: {

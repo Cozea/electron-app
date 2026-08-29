@@ -22,6 +22,9 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status: ServerProvider | null;
 }) {
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateResult, setUpdateResult] = useState<
+    NonNullable<ServerProvider["updateState"]> | null
+  >(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const updateAvailable = status?.versionAdvisory?.status === "behind_latest";
 
@@ -40,6 +43,9 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const isError = status.status === "error";
   const devApp = getDevAppForAssistantProvider(provider);
   const badgeClass = isError ? "bg-destructive text-white" : "bg-amber-500 text-white";
+  const updateState = updateResult ?? status.updateState ?? null;
+  const updateFeedback =
+    updateState?.status === "failed" || updateState?.status === "unchanged" ? updateState : null;
 
   return (
     <div className="flex max-w-sm flex-col items-center justify-center gap-4 text-center">
@@ -79,20 +85,40 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
           onClick={() => {
             setIsUpdating(true);
             setUpdateError(null);
+            setUpdateResult(null);
             void updateAssistantProvider(
               status.driver ?? (provider as ProviderDriverKind),
               status.instanceId,
             )
+              .then((result) => setUpdateResult(result))
               .catch((error: unknown) => {
                 setUpdateError(error instanceof Error ? error.message : "Provider update failed.");
               })
               .finally(() => setIsUpdating(false));
           }}
         >
+          {isUpdating ? <div className="loader mr-1.5" /> : null}
           {isUpdating ? `Updating ${providerLabel}…` : `Update ${providerLabel}`}
         </Button>
       ) : null}
       {updateError ? <p className="text-xs text-destructive">{updateError}</p> : null}
+      {updateFeedback ? (
+        <div className="w-full space-y-2 text-left" role="status" aria-live="polite">
+          <p
+            className={`text-xs ${updateFeedback.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}
+          >
+            {updateFeedback.message ?? "The provider version did not change."}
+          </p>
+          {updateFeedback.output ? (
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none">Update details</summary>
+              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono text-[11px]">
+                {updateFeedback.output}
+              </pre>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 });

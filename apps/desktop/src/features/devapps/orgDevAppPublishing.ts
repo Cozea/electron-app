@@ -47,6 +47,7 @@ export async function publishOrgDevAppFromWorkspace(input: {
       reservationId: reservation.reservationId,
       storageId: packed.storageId as Id<"_storage">,
       contentHash: packed.contentHash,
+      runtimeKind: packed.runtimeKind,
     })
     if (!registered.registered) {
       throw new Error(registered.error)
@@ -61,6 +62,11 @@ export async function publishOrgDevAppFromWorkspace(input: {
       framework: packed.framework,
       uploadReservationId: reservation.reservationId,
       entryPath: packed.entryPath,
+      runtimeKind: packed.runtimeKind,
+      ...(packed.manifestVersion ? { manifestVersion: packed.manifestVersion } : {}),
+      ...(packed.platform ? { platform: packed.platform } : {}),
+      ...(packed.arch ? { arch: packed.arch } : {}),
+      ...(packed.permissionSetHash ? { permissionSetHash: packed.permissionSetHash } : {}),
     })
     input.onStageChange?.("complete")
   } catch (error) {

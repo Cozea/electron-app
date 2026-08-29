@@ -1527,6 +1527,11 @@ export interface ElectronAPI {
           contentHash: string
           entryPath: string
           framework: string
+          runtimeKind: 'static' | 'service'
+          manifestVersion?: number
+          platform?: string
+          arch?: string
+          permissionSetHash?: string
         }
       | { success: false; error: string }
     >
@@ -1535,8 +1540,38 @@ export interface ElectronAPI {
       downloadUrl: string
       contentHash: string
       entryPath?: string
+      runtimeKind?: 'static' | 'service'
     }) => Promise<
-      | { success: true; originUrl: string; contentHash: string; entryPath: string }
+      | { success: true; originUrl: string; contentHash: string; entryPath: string; runtimeKind: 'static' | 'service'; servicePermissions?: { network: boolean; persistentData: boolean } }
+      | { success: false; error: string }
+    >
+    getRuntimeTrust: (options: { contentHash: string; publicationId: string; permissionSetHash: string }) => Promise<
+      | { success: true; trusted: boolean }
+      | { success: false; error: string }
+    >
+    approveRuntime: (options: { contentHash: string; publicationId: string; permissionSetHash: string }) => Promise<
+      | { success: true }
+      | { success: false; error: string }
+    >
+    getRuntimeEnvironment: (options: { contentHash: string; publicationId: string }) => Promise<
+      | { success: true; status: import('./orgDevAppEnvironment').OrgDevAppEnvironmentStatus }
+      | { success: false; error: string }
+    >
+    setRuntimeEnvironment: (options: { contentHash: string; publicationId: string; values: Record<string, string | null> }) => Promise<
+      | { success: true; status: import('./orgDevAppEnvironment').OrgDevAppEnvironmentStatus }
+      | { success: false; error: string }
+    >
+    startRuntime: (options: { contentHash: string; publicationId?: string; permissionSetHash?: string; leaseId?: string }) => Promise<
+      | { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState }
+      | { success: false; error: string }
+    >
+    releaseRuntime: (options: { contentHash: string; publicationId: string; leaseId: string }) => Promise<{ released: boolean }>
+    stopRuntime: (options: { contentHash: string; publicationId: string }) => Promise<
+      | { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState }
+      | { success: false; error: string }
+    >
+    getRuntimeState: (options: { contentHash: string; publicationId: string }) => Promise<
+      | { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState }
       | { success: false; error: string }
     >
   }

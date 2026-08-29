@@ -7,6 +7,7 @@ import {
   derivePendingUserInputs,
   derivePhase,
   deriveWorkLogEntries,
+  formatDuration,
   hasToolActivityForTurn,
 } from "@/features/projects/components/assistant/chat/session-logic";
 import type { ThreadSession } from "@/stores/types";
@@ -43,6 +44,15 @@ if (typeof globalWithCanvas.OffscreenCanvas === "undefined") {
   globalWithCanvas.OffscreenCanvas =
     MockOffscreenCanvas as unknown as typeof globalWithCanvas.OffscreenCanvas;
 }
+
+describe("formatDuration", () => {
+  it("uses whole seconds without millisecond or decimal output", () => {
+    expect(formatDuration(0)).toBe("0s");
+    expect(formatDuration(250)).toBe("1s");
+    expect(formatDuration(1_049)).toBe("1s");
+    expect(formatDuration(1_950)).toBe("2s");
+  });
+});
 
 function makeActivity(overrides: {
   id?: string;

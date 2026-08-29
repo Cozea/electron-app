@@ -65,6 +65,7 @@ import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeMessageDurationStart,
+  deriveTurnHeaderIndex,
   normalizeCompactToolLabel,
   type GenerationStatusPhase,
 } from "./MessagesTimeline.logic";
@@ -108,12 +109,10 @@ interface MessagesTimelineProps {
   activeTurnInProgress: boolean;
   activeTurnId?: TurnId | null;
   activeWorkStartedAt: string | null;
-  activeWorkCompletedAt: string | null;
   isWorkActive: boolean;
   generationStatusPhase: GenerationStatusPhase;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
-  completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
   completionSummariesByMessageId: ReadonlyMap<MessageId, string>;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
@@ -181,12 +180,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeTurnInProgress,
   activeTurnId,
   activeWorkStartedAt,
-  activeWorkCompletedAt,
   isWorkActive,
   generationStatusPhase,
   scrollContainerRef,
   timelineEntries,
-  completionDividerBeforeEntryId,
   completionSummary,
   completionSummariesByMessageId,
   turnDiffSummaryByAssistantMessageId,
@@ -251,16 +248,82 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const rows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
-    let activeCompletionSummaryAttached = false;
+    const completedStatuses = new Map<
+      string,
+      { turnId: TurnId; summary: string; createdAt: string }
+    >();
+    for (const [messageId, summary] of completionSummariesByMessageId) {
+      const terminalEntry = timelineEntries.find(
+        (entry) => entry.kind === "message" && entry.message.id === messageId,
+      );
+      if (
+        terminalEntry?.kind !== "message" ||
+        terminalEntry.message.role !== "assistant" ||
+        !terminalEntry.message.turnId
+      ) {
+        continue;
+      }
+      completedStatuses.set(String(terminalEntry.message.turnId), {
+        turnId: terminalEntry.message.turnId,
+        summary,
+        createdAt: terminalEntry.message.completedAt ?? terminalEntry.message.createdAt,
+      });
+    }
+    if (completionSummary && activeTurnId && !completedStatuses.has(String(activeTurnId))) {
+      completedStatuses.set(String(activeTurnId), {
+        turnId: activeTurnId,
+        summary: completionSummary,
+        createdAt: activeWorkStartedAt ?? "",
+      });
+    }
+
+    const turnStatusRowsByIndex = new Map<number, TimelineRow[]>();
+    const addTurnStatusRow = (index: number, row: TimelineRow) => {
+      const existing = turnStatusRowsByIndex.get(index);
+      if (existing) {
+        existing.push(row);
+      } else {
+        turnStatusRowsByIndex.set(index, [row]);
+      }
+    };
+    for (const status of completedStatuses.values()) {
+      addTurnStatusRow(deriveTurnHeaderIndex(timelineEntries, status.turnId), {
+        kind: "turn-status",
+        id: `turn-status:${status.turnId}`,
+        createdAt: status.createdAt,
+        startedAt: null,
+        summary: status.summary,
+      });
+    }
+    if (isWorkActive) {
+      const statusId = activeTurnId ? `turn-status:${activeTurnId}` : "turn-status:pending";
+      for (const rowsAtIndex of turnStatusRowsByIndex.values()) {
+        const completedIndex = rowsAtIndex.findIndex((row) => row.id === statusId);
+        if (completedIndex >= 0) rowsAtIndex.splice(completedIndex, 1);
+      }
+      addTurnStatusRow(deriveTurnHeaderIndex(timelineEntries, activeTurnId), {
+        kind: "turn-status",
+        id: statusId,
+        createdAt: activeWorkStartedAt ?? "",
+        startedAt: activeWorkStartedAt,
+        summary: null,
+      });
+    }
+
     const durationStartByMessageId = computeMessageDurationStart(
       timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
     );
+    const appendTurnStatusRows = (index: number) => {
+      nextRows.push(...(turnStatusRowsByIndex.get(index) ?? []));
+    };
 
     for (let index = 0; index < timelineEntries.length; index += 1) {
       const timelineEntry = timelineEntries[index];
       if (!timelineEntry) {
         continue;
       }
+
+      appendTurnStatusRows(index);
 
       if (timelineEntry.kind === "work") {
         const groupedEntries = [timelineEntry.entry];
@@ -307,19 +370,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         continue;
       }
 
-      const inlineCompletionSummary =
-        timelineEntry.message.role === "assistant"
-          ? (completionSummariesByMessageId.get(timelineEntry.message.id) ??
-            (completionDividerBeforeEntryId === timelineEntry.id ? completionSummary : null))
-          : null;
-      if (
-        inlineCompletionSummary &&
-        activeTurnId &&
-        timelineEntry.message.turnId === activeTurnId
-      ) {
-        activeCompletionSummaryAttached = true;
-      }
-
       nextRows.push({
         kind: "message",
         id: timelineEntry.id,
@@ -327,39 +377,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         message: timelineEntry.message,
         durationStart:
           durationStartByMessageId.get(timelineEntry.message.id) ?? timelineEntry.message.createdAt,
-        completionSummary: inlineCompletionSummary,
       });
     }
+    appendTurnStatusRows(timelineEntries.length);
 
-    if (
-      completionSummary &&
-      activeWorkCompletedAt &&
-      !activeCompletionSummaryAttached &&
-      !completionDividerBeforeEntryId
-    ) {
+    if (isWorkActive && generationStatusPhase === "thinking") {
       nextRows.push({
-        kind: "completion",
-        id: `completion-summary-row:${activeWorkCompletedAt}`,
-        createdAt: activeWorkCompletedAt,
-        summary: completionSummary,
-      });
-    }
-
-    if (isWorkActive) {
-      nextRows.push({
-        kind: "working",
-        id: "working-indicator-row",
-        createdAt: activeWorkStartedAt,
-        phase: generationStatusPhase,
+        kind: "thinking",
+        id: "thinking-indicator-row",
+        createdAt: activeWorkStartedAt ?? "",
       });
     }
 
     return nextRows;
   }, [
-    activeWorkCompletedAt,
     activeWorkStartedAt,
     activeTurnId,
-    completionDividerBeforeEntryId,
     completionSummariesByMessageId,
     completionSummary,
     isWorkActive,
@@ -376,7 +409,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     let firstCurrentTurnRowIndex = -1;
     if (!Number.isNaN(turnStartedAtMs)) {
       firstCurrentTurnRowIndex = rows.findIndex((row) => {
-        if (row.kind === "working") return true;
+        if (row.kind === "turn-status" && row.startedAt) return true;
         if (!row.createdAt) return false;
         const rowCreatedAtMs = Date.parse(row.createdAt);
         return !Number.isNaN(rowCreatedAtMs) && rowCreatedAtMs >= turnStartedAtMs;
@@ -412,7 +445,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       if (row) keys.add(row.id);
     }
     for (const row of rows) {
-      if (row.kind === "working") {
+      if (row.kind === "turn-status" || row.kind === "thinking") {
         keys.add(row.id);
       }
       if (row.kind === "message" && row.message.streaming) {
@@ -448,12 +481,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       lastRow?.kind ?? "none",
       activeTurnInProgress ? "active" : "idle",
       isWorking ? "working" : "settled",
-      completionDividerBeforeEntryId ?? "no-divider",
       completionSummariesByMessageId.size,
     ].join(":");
   }, [
     activeTurnInProgress,
-    completionDividerBeforeEntryId,
     completionSummariesByMessageId.size,
     isWorking,
     rows,
@@ -493,7 +524,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const getItemType = useCallback((row: TimelineRow): TimelineRow["kind"] => row.kind, []);
   const keyExtractor = useCallback((row: TimelineRow) => row.id, []);
   const shouldRestoreVisiblePosition = useCallback(
-    (row: TimelineRow) => row.kind !== "working",
+    (row: TimelineRow) => row.kind !== "turn-status" && row.kind !== "thinking",
     [],
   );
   const itemsAreEqual = useCallback(
@@ -850,7 +881,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
           return (
             <>
-              {row.completionSummary && <CompletionSummaryRow summary={row.completionSummary} />}
               <div className="min-w-0 px-1 py-0.5">
                 <ChatMarkdown
                   text={messageText}
@@ -920,11 +950,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         </div>
       )}
 
-      {row.kind === "completion" && <CompletionSummaryRow summary={row.summary} />}
-
-      {row.kind === "working" && (
-        <WorkingIndicatorRow startedAtIso={row.createdAt} phase={row.phase} />
+      {row.kind === "turn-status" && (
+        <TurnStatusRow startedAtIso={row.startedAt} summary={row.summary} />
       )}
+      {row.kind === "thinking" && <ThinkingIndicatorRow />}
     </div>
   );
 
@@ -1043,7 +1072,6 @@ type TimelineRow =
       createdAt: string;
       message: TimelineMessage;
       durationStart: string;
-      completionSummary: string | null;
     }
   | {
       kind: "proposed-plan";
@@ -1052,16 +1080,16 @@ type TimelineRow =
       proposedPlan: TimelineProposedPlan;
     }
   | {
-      kind: "completion";
+      kind: "turn-status";
       id: string;
       createdAt: string;
-      summary: string;
+      startedAt: string | null;
+      summary: string | null;
     }
   | {
-      kind: "working";
+      kind: "thinking";
       id: string;
-      createdAt: string | null;
-      phase: "thinking" | "working";
+      createdAt: string;
     };
 
 function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan): number {
@@ -1083,16 +1111,13 @@ function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | n
       // Collapsed single line; expanded height is corrected by measurement.
       return 28;
     case "message":
-      return (
-        estimateTimelineMessageHeight(row.message, { timelineWidthPx }) +
-        (row.completionSummary ? 40 : 0)
-      );
+      return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
     case "proposed-plan":
       return estimateTimelineProposedPlanHeight(row.proposedPlan);
-    case "completion":
+    case "turn-status":
       return 40;
-    case "working":
-      return 40;
+    case "thinking":
+      return 32;
   }
 }
 
@@ -1129,7 +1154,6 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
     return (
       previousRow.createdAt === nextRow.createdAt &&
       previousRow.durationStart === nextRow.durationStart &&
-      previousRow.completionSummary === nextRow.completionSummary &&
       previousRow.message.id === nextRow.message.id &&
       previousRow.message.role === nextRow.message.role &&
       previousRow.message.text === nextRow.message.text &&
@@ -1145,12 +1169,16 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
     );
   }
 
-  if (previousRow.kind === "completion" && nextRow.kind === "completion") {
-    return previousRow.createdAt === nextRow.createdAt && previousRow.summary === nextRow.summary;
+  if (previousRow.kind === "turn-status" && nextRow.kind === "turn-status") {
+    return (
+      previousRow.createdAt === nextRow.createdAt &&
+      previousRow.startedAt === nextRow.startedAt &&
+      previousRow.summary === nextRow.summary
+    );
   }
 
-  if (previousRow.kind === "working" && nextRow.kind === "working") {
-    return previousRow.createdAt === nextRow.createdAt && previousRow.phase === nextRow.phase;
+  if (previousRow.kind === "thinking" && nextRow.kind === "thinking") {
+    return true;
   }
 
   return false;
@@ -1161,11 +1189,7 @@ function formatLiveElapsed(startIso: string, nowMs: number): string | null {
   if (!Number.isFinite(startedAtMs)) {
     return null;
   }
-  const elapsedMs = Math.max(0, nowMs - startedAtMs);
-  if (elapsedMs < 10_000) {
-    return `${(elapsedMs / 1_000).toFixed(1)}s`;
-  }
-  return formatDuration(elapsedMs);
+  return formatDuration(Math.max(0, nowMs - startedAtMs));
 }
 
 const WorkingTimer = memo(function WorkingTimer(props: { startedAtIso: string }) {
@@ -1202,45 +1226,44 @@ const LiveShimmerText = memo(function LiveShimmerText(props: {
   );
 });
 
-const WorkingIndicatorRow = memo(function WorkingIndicatorRow(props: {
+const TurnStatusRow = memo(function TurnStatusRow(props: {
   startedAtIso: string | null;
-  phase: "thinking" | "working";
+  summary: string | null;
 }) {
-  const { phase, startedAtIso } = props;
+  const { startedAtIso, summary } = props;
+  const isActive = summary === null;
 
   return (
-    <div role="status" aria-live="polite" data-assistant-generation-phase={phase}>
-      {phase === "thinking" ? (
-        <div className="flex min-h-8 items-center gap-1.5 border-b border-border/60 px-1 pb-2 pt-1 text-sm text-muted-foreground">
-          <span
-            className="cozea-wave-loader inline-flex h-4 w-4 shrink-0 items-center justify-between"
-            aria-hidden="true"
-          >
-            <span className="cozea-wave-loader-dot" />
-            <span className="cozea-wave-loader-dot" />
-            <span className="cozea-wave-loader-dot" />
-          </span>
-          <span>Thinking</span>
-        </div>
-      ) : (
-        <div className="min-h-8 border-b border-border/60 px-1 pb-2 pt-1 text-sm leading-relaxed tabular-nums">
-          <LiveShimmerText>Working</LiveShimmerText>
-          {startedAtIso ? (
-            <span className="text-muted-foreground/75"> for <WorkingTimer startedAtIso={startedAtIso} /></span>
-          ) : null}
-        </div>
-      )}
+    <div
+      role="status"
+      aria-live="polite"
+      data-assistant-turn-status={isActive ? "working" : "worked"}
+    >
+      <div className="flex min-h-8 items-baseline gap-1 border-b border-border/60 px-1 pb-2 pt-1 text-sm leading-relaxed tabular-nums">
+        {isActive ? <LiveShimmerText>Working</LiveShimmerText> : null}
+        {isActive && startedAtIso ? (
+          <>
+            <span className="text-muted-foreground/75">for</span>
+            <span className="text-muted-foreground/75">
+              <WorkingTimer startedAtIso={startedAtIso} />
+            </span>
+          </>
+        ) : null}
+        {summary ? <span className="font-medium text-muted-foreground/88">{summary}</span> : null}
+      </div>
     </div>
   );
 });
 
-const CompletionSummaryRow = memo(function CompletionSummaryRow(props: { summary: string }) {
+const ThinkingIndicatorRow = memo(function ThinkingIndicatorRow() {
   return (
-    <div className="my-4 px-1">
-      <div className="text-[13px] text-muted-foreground/88">
-        <span className="font-medium">{props.summary}</span>
-      </div>
-      <div className="mt-2 h-px bg-border/70" />
+    <div
+      role="status"
+      aria-live="polite"
+      className="min-h-7 px-1 py-0.5 text-sm leading-relaxed"
+      data-assistant-generation-phase="thinking"
+    >
+      <LiveShimmerText>Thinking</LiveShimmerText>
     </div>
   );
 });

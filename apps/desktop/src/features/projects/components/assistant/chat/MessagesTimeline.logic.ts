@@ -1,4 +1,5 @@
 import type { OrchestrationThreadActivity, TurnId } from "@cozea/assistant-contracts";
+import type { TimelineEntry } from "./session-logic";
 
 export interface TimelineDurationMessage {
   id: string;
@@ -31,6 +32,49 @@ export function normalizeCompactToolLabel(value: string): string {
 }
 
 export type GenerationStatusPhase = "thinking" | "working";
+
+function timelineEntryTurnId(entry: TimelineEntry): TurnId | null {
+  if (entry.kind === "message") {
+    return entry.message.role === "assistant" ? (entry.message.turnId ?? null) : null;
+  }
+  if (entry.kind === "proposed-plan") {
+    return entry.proposedPlan.turnId;
+  }
+  return entry.entry.turnId ?? null;
+}
+
+/** Pin a turn header after its triggering user message and before generated content. */
+export function deriveTurnHeaderIndex(
+  timelineEntries: ReadonlyArray<TimelineEntry>,
+  turnId: TurnId | null | undefined,
+): number {
+  if (!turnId) {
+    const latestUserMessageIndex = timelineEntries.findLastIndex(
+      (entry) => entry.kind === "message" && entry.message.role === "user",
+    );
+    return latestUserMessageIndex + 1;
+  }
+
+  const firstOwnedEntryIndex = timelineEntries.findIndex(
+    (entry) => timelineEntryTurnId(entry) === turnId,
+  );
+  if (firstOwnedEntryIndex < 0) {
+    const latestUserMessageIndex = timelineEntries.findLastIndex(
+      (entry) => entry.kind === "message" && entry.message.role === "user",
+    );
+    return latestUserMessageIndex + 1;
+  }
+
+  const triggeringUserMessageIndex = timelineEntries.findLastIndex(
+    (entry, index) =>
+      index < firstOwnedEntryIndex &&
+      entry.kind === "message" &&
+      entry.message.role === "user",
+  );
+  return triggeringUserMessageIndex >= 0 ? triggeringUserMessageIndex + 1 : firstOwnedEntryIndex;
+}
+
+export const deriveActiveTurnHeaderIndex = deriveTurnHeaderIndex;
 
 /**
  * Explicit provider reasoning is the only state that renders as Thinking.

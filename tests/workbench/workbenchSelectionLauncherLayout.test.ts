@@ -24,9 +24,9 @@ describe("workbenchSelectionLauncherLayout", () => {
       fittingColumns: 4,
       fittingRows: 3,
       columns: 4,
-      rows: 3,
-      itemsPerPage: 12,
-      pageCount: 1,
+      rows: 2,
+      itemsPerPage: 8,
+      pageCount: 2,
     })
   })
 

@@ -174,7 +174,8 @@ export function deriveCompletionSummariesByMessageId({
     }
 
     const isActiveTurn = activeTurn?.turnId === terminalMessage.turnId
-    if ((isActiveTurn || turnKey === newestTurnKey) && !latestTurnSettled) continue
+    const isUnprojectedNewestTurn = !activeTurn && turnKey === newestTurnKey
+    if ((isActiveTurn || isUnprojectedNewestTurn) && !latestTurnSettled) continue
 
     const startedAt = isActiveTurn ? (activeTurn?.startedAt ?? turn.startedAt) : turn.startedAt
     const completedCandidates = [

@@ -1099,6 +1099,7 @@ export function useWorkbenchAssistantTileController(
     setComposer("")
     setComposerCursor(0)
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
+    notePendingTurnStart(messageId, thread.id, messageCreatedAt)
 
     try {
       ensureNativeApi()
@@ -1148,7 +1149,6 @@ export function useWorkbenchAssistantTileController(
           : {}),
         createdAt: messageCreatedAt,
       })
-      notePendingTurnStart(messageId, thread.id)
     } catch (error) {
       clearPendingTurnStart()
       setOptimisticUserMessages((current) =>
@@ -1367,6 +1367,7 @@ export function useWorkbenchAssistantTileController(
     setComposerCursor(0)
     setComposerImages([])
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
+    notePendingTurnStart(messageId, resolvedThread.id, messageCreatedAt)
 
     try {
       const useSubstrateRpcFallback =
@@ -1394,6 +1395,7 @@ export function useWorkbenchAssistantTileController(
             },
           ])
         }
+        clearPendingTurnStart()
         return
       }
 
@@ -1449,7 +1451,6 @@ export function useWorkbenchAssistantTileController(
         skills,
         createdAt: messageCreatedAt,
       })
-      notePendingTurnStart(messageId, resolvedThread.id)
     } catch (error) {
       // --- Fix 3: Properly handle blob URLs on failed sends ---
       clearPendingTurnStart()

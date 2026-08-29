@@ -1076,8 +1076,8 @@ const workbenchBrowserService = new WorkbenchBrowserService({
   // Match the main renderer: native preview child surfaces remain paintable
   // for development UI automation while packaged builds retain throttling.
   backgroundThrottling: app.isPackaged,
-  configureOrgDevAppSession: (targetSession) => {
-    orgDevAppArtifactService.registerProtocolForSession(targetSession)
+  configureOrgDevAppSession: (targetSession, partitionKey) => {
+    orgDevAppArtifactService.registerProtocolForSession(targetSession, partitionKey)
   },
 })
 

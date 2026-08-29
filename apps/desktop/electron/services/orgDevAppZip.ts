@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { crc32, deflateRawSync, inflateRawSync } from "node:zlib"
 
-import { ORG_DEVAPP_ARTIFACT_LIMITS } from "../../../../shared/orgDevAppLimits"
+import { ORG_DEVAPP_ARTIFACT_LIMITS, type OrgDevAppArtifactLimits } from "../../../../shared/orgDevAppLimits"
 
 export { ORG_DEVAPP_ARTIFACT_LIMITS } from "../../../../shared/orgDevAppLimits"
 
@@ -11,7 +11,7 @@ const LOCAL_HEADER = 0x04034b50
 const CENTRAL_HEADER = 0x02014b50
 const EOCD = 0x06054b50
 
-function walkFiles(rootDir: string): string[] {
+function walkFiles(rootDir: string, limits: OrgDevAppArtifactLimits): string[] {
   const files: string[] = []
   const stack = [rootDir]
   while (stack.length > 0) {
@@ -28,8 +28,8 @@ function walkFiles(rootDir: string): string[] {
       } else if (entry.isFile()) {
         files.push(fullPath)
       }
-      if (files.length > ORG_DEVAPP_ARTIFACT_LIMITS.maxEntries) {
-        throw new Error(`The DevApp artifact contains more than ${ORG_DEVAPP_ARTIFACT_LIMITS.maxEntries} files.`)
+      if (files.length > limits.maxEntries) {
+        throw new Error(`The DevApp artifact contains more than ${limits.maxEntries} files.`)
       }
     }
   }
@@ -40,8 +40,8 @@ function toZipPath(rootDir: string, filePath: string): string {
   return path.relative(rootDir, filePath).split(path.sep).join("/")
 }
 
-export function packDirectoryToZip(rootDir: string): { zip: Buffer; contentHash: string } {
-  const files = walkFiles(rootDir)
+export function packDirectoryToZip(rootDir: string, limits: OrgDevAppArtifactLimits = ORG_DEVAPP_ARTIFACT_LIMITS): { zip: Buffer; contentHash: string } {
+  const files = walkFiles(rootDir, limits)
   if (files.length === 0) {
     throw new Error("The build output is empty.")
   }
@@ -54,16 +54,16 @@ export function packDirectoryToZip(rootDir: string): { zip: Buffer; contentHash:
   for (const filePath of files) {
     const rel = toZipPath(rootDir, filePath)
     const nameBuf = Buffer.from(rel, "utf8")
-    if (nameBuf.length === 0 || nameBuf.length > ORG_DEVAPP_ARTIFACT_LIMITS.maxPathBytes) {
+    if (nameBuf.length === 0 || nameBuf.length > limits.maxPathBytes) {
       throw new Error("The DevApp artifact contains a path that is too long.")
     }
     const fileSize = fs.statSync(filePath).size
-    if (fileSize > ORG_DEVAPP_ARTIFACT_LIMITS.maxEntryBytes) {
-      throw new Error(`The DevApp artifact contains a file larger than ${ORG_DEVAPP_ARTIFACT_LIMITS.maxEntryBytes / 1024 / 1024} MB.`)
+    if (fileSize > limits.maxEntryBytes) {
+      throw new Error(`The DevApp artifact contains a file larger than ${limits.maxEntryBytes / 1024 / 1024} MB.`)
     }
     expandedBytes += fileSize
-    if (expandedBytes > ORG_DEVAPP_ARTIFACT_LIMITS.maxExpandedBytes) {
-      throw new Error(`The DevApp artifact expands beyond ${ORG_DEVAPP_ARTIFACT_LIMITS.maxExpandedBytes / 1024 / 1024} MB.`)
+    if (expandedBytes > limits.maxExpandedBytes) {
+      throw new Error(`The DevApp artifact expands beyond ${limits.maxExpandedBytes / 1024 / 1024} MB.`)
     }
     const data = fs.readFileSync(filePath)
     const crc = crc32(data)
@@ -109,8 +109,8 @@ export function packDirectoryToZip(rootDir: string): { zip: Buffer; contentHash:
 
     centralParts.push(Buffer.concat([central, nameBuf]))
     offset += local.length
-    if (offset > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes) {
-      throw new Error(`The compressed DevApp artifact exceeds ${ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes / 1024 / 1024} MB.`)
+    if (offset > limits.maxCompressedBytes) {
+      throw new Error(`The compressed DevApp artifact exceeds ${limits.maxCompressedBytes / 1024 / 1024} MB.`)
     }
   }
 
@@ -126,8 +126,8 @@ export function packDirectoryToZip(rootDir: string): { zip: Buffer; contentHash:
   eocd.writeUInt16LE(0, 20)
 
   const zip = Buffer.concat([...localParts, centralBuf, eocd])
-  if (zip.length > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes) {
-    throw new Error(`The compressed DevApp artifact exceeds ${ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes / 1024 / 1024} MB.`)
+  if (zip.length > limits.maxCompressedBytes) {
+    throw new Error(`The compressed DevApp artifact exceeds ${limits.maxCompressedBytes / 1024 / 1024} MB.`)
   }
   return {
     zip,
@@ -135,8 +135,8 @@ export function packDirectoryToZip(rootDir: string): { zip: Buffer; contentHash:
   }
 }
 
-function findEocdOffset(buffer: Buffer): number {
-  if (buffer.length < 22 || buffer.length > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes) {
+function findEocdOffset(buffer: Buffer, limits: OrgDevAppArtifactLimits): number {
+  if (buffer.length < 22 || buffer.length > limits.maxCompressedBytes) {
     throw new Error("The DevApp artifact is not a valid bounded zip.")
   }
   for (let i = buffer.length - 22; i >= 0; i -= 1) {
@@ -147,13 +147,13 @@ function findEocdOffset(buffer: Buffer): number {
   throw new Error("The DevApp artifact is not a valid zip.")
 }
 
-function safeJoin(rootDir: string, zipPath: string): string {
+function safeJoin(rootDir: string, zipPath: string, limits: OrgDevAppArtifactLimits): string {
   const normalized = zipPath.replace(/\\/g, "/").replace(/^\/+/, "")
   const segments = normalized.split("/")
   if (
     !normalized ||
     normalized.includes("\0") ||
-    Buffer.byteLength(normalized, "utf8") > ORG_DEVAPP_ARTIFACT_LIMITS.maxPathBytes ||
+    Buffer.byteLength(normalized, "utf8") > limits.maxPathBytes ||
     segments.some((segment) => !segment || segment === "." || segment === "..")
   ) {
     throw new Error("The DevApp artifact contains an unsafe path.")
@@ -166,10 +166,10 @@ function safeJoin(rootDir: string, zipPath: string): string {
   return fullPath
 }
 
-export function unpackZip(zip: Buffer, destinationDir: string): void {
-  const eocd = findEocdOffset(zip)
+export function unpackZip(zip: Buffer, destinationDir: string, limits: OrgDevAppArtifactLimits = ORG_DEVAPP_ARTIFACT_LIMITS): void {
+  const eocd = findEocdOffset(zip, limits)
   const entryCount = zip.readUInt16LE(eocd + 10)
-  if (entryCount === 0 || entryCount > ORG_DEVAPP_ARTIFACT_LIMITS.maxEntries) {
+  if (entryCount === 0 || entryCount > limits.maxEntries) {
     throw new Error("The DevApp artifact contains an invalid number of files.")
   }
   let offset = zip.readUInt32LE(eocd + 16)
@@ -196,7 +196,7 @@ export function unpackZip(zip: Buffer, destinationDir: string): void {
     const commentLength = zip.readUInt16LE(offset + 32)
     const localOffset = zip.readUInt32LE(offset + 42)
     const expectedCrc = zip.readUInt32LE(offset + 16)
-    if (nameLength === 0 || nameLength > ORG_DEVAPP_ARTIFACT_LIMITS.maxPathBytes) {
+    if (nameLength === 0 || nameLength > limits.maxPathBytes) {
       throw new Error("The DevApp artifact contains an invalid path.")
     }
     if (offset + 46 + nameLength + extraLength + commentLength > eocd) {
@@ -205,22 +205,22 @@ export function unpackZip(zip: Buffer, destinationDir: string): void {
     const name = zip.subarray(offset + 46, offset + 46 + nameLength).toString("utf8")
     offset += 46 + nameLength + extraLength + commentLength
 
-    if (uncompressedSize > ORG_DEVAPP_ARTIFACT_LIMITS.maxEntryBytes) {
+    if (uncompressedSize > limits.maxEntryBytes) {
       throw new Error("The DevApp artifact contains a file that is too large.")
     }
     expandedBytes += uncompressedSize
-    if (expandedBytes > ORG_DEVAPP_ARTIFACT_LIMITS.maxExpandedBytes) {
+    if (expandedBytes > limits.maxExpandedBytes) {
       throw new Error("The DevApp artifact expands beyond the allowed size.")
     }
     if (
       compressedSize > 0 &&
-      uncompressedSize / compressedSize > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressionRatio
+      uncompressedSize / compressedSize > limits.maxCompressionRatio
     ) {
       throw new Error("The DevApp artifact contains a suspicious compression ratio.")
     }
 
     if (name.endsWith("/")) {
-      fs.mkdirSync(safeJoin(destinationDir, name), { recursive: true })
+      fs.mkdirSync(safeJoin(destinationDir, name, limits), { recursive: true })
       continue
     }
 
@@ -240,7 +240,7 @@ export function unpackZip(zip: Buffer, destinationDir: string): void {
         : method === 8
           ? inflateRawSync(compressed, {
               maxOutputLength: Math.min(
-                ORG_DEVAPP_ARTIFACT_LIMITS.maxEntryBytes + 1,
+                limits.maxEntryBytes + 1,
                 uncompressedSize + 1,
               ),
             })
@@ -249,7 +249,7 @@ export function unpackZip(zip: Buffer, destinationDir: string): void {
       throw new Error("The DevApp artifact could not be unpacked.")
     }
 
-    const outputPath = safeJoin(destinationDir, name)
+    const outputPath = safeJoin(destinationDir, name, limits)
     const pathKey = path.resolve(outputPath).normalize("NFC").toLowerCase()
     if (extractedPaths.has(pathKey)) {
       throw new Error("The DevApp artifact contains duplicate file paths.")

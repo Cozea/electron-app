@@ -56,7 +56,11 @@ interface UseAssistantTurnSendInput {
   addOptimisticUserMessage: (message: ChatMessage) => void
   removeOptimisticUserMessage: (messageId: ChatMessage["id"]) => void
   clearPendingTurnStart: () => void
-  notePendingTurnStart: (messageId: ChatMessage["id"], threadId: Thread["id"]) => void
+  notePendingTurnStart: (
+    messageId: ChatMessage["id"],
+    threadId: Thread["id"],
+    startedAtIso: string,
+  ) => void
 }
 
 const SKILL_TOKEN_REGEX = /(^|\s)\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\s|$)/g
@@ -170,6 +174,7 @@ export function useAssistantTurnSend({
     onError(null)
     onComposerReset()
     addOptimisticUserMessage(optimisticMessage)
+    notePendingTurnStart(messageId, thread.id, messageCreatedAt)
 
     try {
       const api = ensureNativeApi()
@@ -215,7 +220,6 @@ export function useAssistantTurnSend({
         skills,
         createdAt: messageCreatedAt,
       })
-      notePendingTurnStart(messageId, thread.id)
     } catch (error) {
       clearPendingTurnStart()
       removeOptimisticUserMessage(messageId)

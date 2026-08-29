@@ -103,6 +103,13 @@ export function toConsumerDevApp(input: {
     framework: string
     entryPath: string
     contentHash: string
+    runtimeKind: "static" | "service"
+    manifestVersion: number | null
+    platform: string | null
+    arch: string | null
+    permissionSetHash: string | null
+    publisherIdentityKey: string | null
+    publisherDeviceLabel: string | null
   }
 } {
   const organizationId = input.publication.organizationId
@@ -127,6 +134,13 @@ export function toConsumerDevApp(input: {
       framework: input.release.framework,
       entryPath: input.release.entryPath ?? "index.html",
       contentHash: input.release.contentHash,
+      runtimeKind: input.release.runtimeKind ?? "static",
+      manifestVersion: input.release.manifestVersion ?? null,
+      platform: input.release.platform ?? null,
+      arch: input.release.arch ?? null,
+      permissionSetHash: input.release.permissionSetHash ?? null,
+      publisherIdentityKey: input.release.publisherIdentityKey ?? null,
+      publisherDeviceLabel: input.release.publisherDeviceLabel ?? null,
     },
   }
 }
