@@ -66,6 +66,7 @@ describe("Org DevApp #114 port completeness", () => {
   it("forwards the isolated partition and navigation policy to Electron", async () => {
     const ensureTile = vi.fn(async () => createBrowserState("org-devapp-tile"));
     const destroyTile = vi.fn(async () => undefined);
+    const setBounds = vi.fn(async () => true);
     const onStateChange = vi.fn(() => () => undefined);
 
     vi.stubGlobal("window", {
@@ -73,6 +74,7 @@ describe("Org DevApp #114 port completeness", () => {
         workbenchBrowser: {
           ensureTile,
           destroyTile,
+          setBounds,
           onStateChange,
         },
       },
@@ -94,7 +96,19 @@ describe("Org DevApp #114 port completeness", () => {
       ...options,
     });
 
+    const hiddenModel = new BrowserTileModel("hidden-org-devapp-tile");
+    await hiddenModel.setVisible(false, options);
+    expect(ensureTile).toHaveBeenCalledWith({
+      tileId: "hidden-org-devapp-tile",
+      ...options,
+    });
+    expect(setBounds).toHaveBeenCalledWith({
+      tileId: "hidden-org-devapp-tile",
+      visible: false,
+    });
+
     await model.dispose();
+    await hiddenModel.dispose();
     expect(destroyTile).toHaveBeenCalledWith({ tileId: "org-devapp-tile" });
   });
 });

@@ -1,4 +1,7 @@
-export const PROJECT_DEVAPP_LOGO_ACCEPT = "image/png,image/jpeg,image/webp";
+// macOS' native open panel does not consistently resolve MIME accept filters
+// for files outside the app sandbox. Use extensions for the picker;
+// processFile still performs the authoritative MIME and size checks.
+export const PROJECT_DEVAPP_LOGO_ACCEPT = ".png,.jpg,.jpeg,.webp";
 export const PROJECT_DEVAPP_LOGO_MAX_INPUT_BYTES = 8 * 1024 * 1024;
 /**
  * Every logo is re-encoded to a 256px WebP, which lands well under 40 KB of

@@ -363,8 +363,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   orgDevApp: {
-    buildAndPack: (options: { workspaceId: string; laneId?: string | null; operationId?: string }) =>
-      ipcRenderer.invoke('orgDevApp:buildAndPack', options),
+    buildAndUpload: (options: {
+      workspaceId: string
+      laneId?: string | null
+      operationId?: string
+      uploadUrl: string
+    }) => ipcRenderer.invoke('orgDevApp:buildAndUpload', options),
     cancelBuild: (options: { operationId: string }) =>
       ipcRenderer.invoke('orgDevApp:cancelBuild', options),
     prepareArtifact: (options: {

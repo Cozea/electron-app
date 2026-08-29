@@ -1068,15 +1068,18 @@ type AppBrowserWindow = InstanceType<typeof BrowserWindow>
 
 let win: AppBrowserWindow | null = null
 let canCreateMainWindow = false
+const orgDevAppArtifactService = new OrgDevAppArtifactService(
+  () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
+)
 const workbenchBrowserService = new WorkbenchBrowserService({
   getMainWindow: () => win,
   // Match the main renderer: native preview child surfaces remain paintable
   // for development UI automation while packaged builds retain throttling.
   backgroundThrottling: app.isPackaged,
+  configureOrgDevAppSession: (targetSession) => {
+    orgDevAppArtifactService.registerProtocolForSession(targetSession)
+  },
 })
-const orgDevAppArtifactService = new OrgDevAppArtifactService(
-  () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
-)
 
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([

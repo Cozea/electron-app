@@ -1515,14 +1515,15 @@ export interface ElectronAPI {
     onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
   }
   orgDevApp: {
-    buildAndPack: (options: {
+    buildAndUpload: (options: {
       workspaceId: string
       laneId?: string | null
       operationId?: string
+      uploadUrl: string
     }) => Promise<
       | {
           success: true
-          zip: Uint8Array
+          storageId: string
           contentHash: string
           entryPath: string
           framework: string

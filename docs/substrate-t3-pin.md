@@ -1,12 +1,14 @@
 # T3 substrate pin
 
-Date: 2026-08-26
+Date: 2026-08-29
 
 | Field | Value |
 | --- | --- |
-| Upstream | [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Recommended pin SHA | `a3a8cbd60539b4af4de8f96c892dbd07a2b6c041` (`a3a8cbd6`) |
-| Recorded by | Track Inv (`cursor/substrate-inventories-a002`) |
-| Vendor strategy | Git submodule or sparse `vendor/t3code` in Phase 0/1 — avoid piecemeal adapter copies |
+| Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
+| Required pin SHA | `d830df40b5aa7c72a75c9a43632bb5383530638f` (`d830df40`) |
+| Recorded by | Parent repository `vendor/t3code` gitlink |
+| Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
-Update this file whenever the shadow-server pin moves. Keep the implementation plan header in sync.
+Update this file whenever the shadow-server pin moves. Keep the Electron runtime
+constant and parent gitlink synchronized. Generated contract banners record the
+revision they were generated from and change only when contracts are regenerated.

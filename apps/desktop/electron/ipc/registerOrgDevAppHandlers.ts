@@ -14,14 +14,19 @@ export function registerOrgDevAppHandlers(
   const { service } = deps
 
   ipcMain.handle(
-    "orgDevApp:buildAndPack",
+    "orgDevApp:buildAndUpload",
     async (
       _event,
-      options: { workspaceId: string; laneId?: string | null; operationId?: string },
+      options: {
+        workspaceId: string
+        laneId?: string | null
+        operationId?: string
+        uploadUrl: string
+      },
     ): Promise<
       | {
           success: true
-          zip: Uint8Array
+          storageId: string
           contentHash: string
           entryPath: string
           framework: string
@@ -34,12 +39,12 @@ export function registerOrgDevAppHandlers(
           laneId: options.laneId,
           operation: "runtime-detect",
         })
-        const result = await service.buildAndPack(access.projectRootPath, {
+        const result = await service.buildAndUpload(access.projectRootPath, options.uploadUrl, {
           operationId: options.operationId,
         })
         return {
           success: true,
-          zip: result.zip,
+          storageId: result.storageId,
           contentHash: result.contentHash,
           entryPath: result.entryPath,
           framework: result.framework,
