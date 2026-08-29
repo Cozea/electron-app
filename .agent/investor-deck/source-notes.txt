@@ -1,0 +1,46 @@
+Research timestamp: 2026-08-25T21:14:53-0600 (America/Mexico_City)
+
+Cozea primary sources
+
+- https://cozea.app/ — product positioning, product pillars, four-step workflow, provider support, integration claims, and website imagery.
+- https://cozea.app/pricing — current Free and Custom Enterprise packaging.
+- https://cozea.app/integrations — integrations and provider ecosystem.
+- https://cozea.app/docs — workbench, tiles, DevApps, lanes, agents, collaboration, and SDK claims.
+- https://cozea.app/privacy — AGPL, self-hosting, and privacy statements.
+- https://cozea.app/terms — Ramuse LLC operator, provider-neutral model, third-party account responsibility, AGPL software license.
+- https://cal.com/erick-xu/30min — public founder contact name.
+- Local repository AGENTS.md — Electron/React/Convex/Effect/Yjs architecture and current product overview.
+- Local docs/project-devapps.md — current machine-local DevApp lifecycle and runtime safety.
+- Local docs/collaboration-encryption-architecture.md — implemented encrypted collaboration slice and design.
+- Local docs/ai-behavior-contract.md — stable provider adaptation boundary and project-scoped tool rules.
+- Local src/features/devapps/registry/index.ts and provider manifests — built-in Browser, Dev Server, Terminal, Mobile Simulator, Codex, Claude, Cursor, and OpenCode DevApps.
+- Local git shortlog — evidence of a lean two-person core contribution pattern; titles are described conservatively in the deck.
+
+Competitive and market validation sources
+
+- OpenAI, "Introducing the Codex app," 2026-02-02: https://openai.com/index/introducing-the-codex-app/ — multi-agent/worktree positioning and more than one million developers in the prior month.
+- Anthropic, "Anthropic acquires Bun as Claude Code reaches $1B milestone," 2025-12-03: https://www.anthropic.com/news/anthropic-acquires-bun-as-claude-code-reaches-usd1b-milestone — Claude Code $1B run-rate revenue statement.
+- Anthropic Claude Code setup/docs: https://docs.anthropic.com/en/docs/claude-code/getting-started — CLI/terminal product surface.
+- Cursor Teams pricing/docs, current in 2026: https://prod.cursor.com/docs/account/teams/pricing and https://cursor.com/blog/teams-pricing-june-2026 — $40 monthly Standard Team seat and enterprise feature set.
+- Carta, "State of Private Markets: Q1 2026," published 2026-05-29: https://carta.com/data/state-of-private-markets-q1-2026/ — $30.4B raised in Q1 2026 and more than 60% of capital going to AI.
+- Carta, "State of Pre-Seed: Q2 2026," published 2026-08-13: https://carta.com/data/state-of-pre-seed-q2-2026/ — $3.19B across more than 11,500 pre-seed instruments, $276K average instrument, 49% of H1 pre-seed dollars to AI, and few pre-seed deals above $2.5M.
+- Carta, "In the pre-seed market, valuation caps on new SAFEs keep getting bigger," published 2026-08-25: https://carta.com/uk/en/data/safe-valuation-caps-q2-2026/ — 93% of pre-seed rounds structured as SAFEs, 91% post-money SAFEs, and cap trends.
+- Y Combinator standard deal: https://www.ycombinator.com/deal/ — $500K structure with fixed 7% on the $125K component and uncapped MFN SAFE for the remainder; used only as a familiar dilution reference, not as a direct valuation benchmark.
+
+Calculations and modeling
+
+- Illustrative ARR scenarios are model outputs, not forecasts: 100K seats x $30/month x 12 = $36M ARR; 250K seats x $30/month x 12 = $90M ARR; 500K seats x $40/month x 12 = $240M ARR.
+- Founder-selected ask: $1M for 10% ownership = $10M post-money equivalent and $9M pre-money equivalent.
+- Use-of-funds amounts on $1M: 45% product/infrastructure = $450K; 30% distribution/customer success = $300K; 15% enterprise/security = $150K; 10% operations/legal/reserve = $100K.
+- Founder-provided latest-product update, 2026-08-26: DevApps built inside or outside Cozea can be published for an entire organization to discover and launch within Cozea. This capability is not yet documented on the public website; the checked-in branch documents the earlier machine-local precursor and supplies implementation evidence for publication identities, versioned releases, Store discovery, launch recipes, and workbench mounting.
+
+Asset provenance
+
+- https://cozea.app/cozea_logo_v4.png
+- https://cozea.app/hero-img-solid.png
+- https://cozea.app/features/img_4.png
+- https://cozea.app/features/img_5.jpeg
+- https://cozea.app/features/img_6.png
+- https://cozea.app/features/img_8.png
+- https://cozea.app/features/img_9.png
+- https://cozea.app/hero-bg.jpg

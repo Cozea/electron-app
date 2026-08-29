@@ -1,0 +1,20 @@
+Communication job
+By the end, early-stage investors should understand that Cozea can own the provider-neutral team layer around coding agents and the organization-wide distribution layer for internal DevApps, then approve a focused $1M-for-10% first round to prove commercial pull.
+
+Visual direction
+- Premium dark developer-tool aesthetic without copying another company's identity.
+- Near-black graphite canvas, brushed titanium textures, muted silver type, and restrained electric-blue accents.
+- Authentic Cozea screenshots remain the evidence layer; generated imagery is limited to abstract decorative backgrounds.
+- Metallic framing is used selectively around product screenshots and the financing ask.
+- Flat compositions, strong typographic hierarchy, visible source rails, and no decorative cyberpunk grids or gaming motifs.
+
+Generated asset prompts
+1. Cover/closing background: brushed titanium ribbons and graphite planes on a near-black studio void; sculptural geometry concentrated on the right; clean negative space on the left; cool rim light and restrained electric-blue reflections; no text, logos, UI, circuitry, people, or watermark.
+2. Content background: ultra-subtle dark graphite material field with faint brushed-metal grain and one beveled contour on the far right; calm center/left area for readable content; no text, logos, UI, grids, circuitry, people, or watermark.
+
+Financing decision
+- Ask: $1M for 10%.
+- Economics: $10M post-money equivalent / $9M pre-money equivalent.
+- Target proof window: 15–18 months.
+- Use of funds: 45% product and infrastructure; 30% distribution and success; 15% enterprise readiness; 10% operations and reserve.
+- Product positioning: Cozea is also the organization-wide launch and distribution layer for DevApps built inside or outside the product.

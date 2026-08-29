@@ -1,0 +1,572 @@
+{"kind":"deck","id":"pr/iiaqrb","name":"Deck"}
+{"kind":"layout","layoutId":"3ba4f758-84bb-449b-9fee-bb6320a23cda","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"a83ba4d4-3a23-42da-b035-ce40339777a1","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/jb33lr","slide":1,"title":"COZEA","textShapes":5}
+{"kind":"shape","id":"sh/pcvi9g3a","slide":1,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/ob21gbmp","slide":1,"bbox":[56,42,52,52]}
+{"kind":"textbox","id":"sh/qd4ji14v","slide":1,"text":"COZEA","textPreview":"COZEA","textChars":5,"textLines":1,"bbox":[124,56,180,30]}
+{"kind":"shape","id":"sh/xgvidg36","slide":1,"bbox":[58,132,112,2]}
+{"kind":"shape","id":"sh/cfm1kb2l","slide":1,"bbox":[170,132,34,2]}
+{"kind":"textbox","id":"sh/ri90zmlw","slide":1,"name":"cover-title","text":"The multiplayer operating system\nfor agentic software teams","textPreview":"The multiplayer operating system | for agentic software teams","textChars":59,"textLines":2,"bbox":[58,168,738,188]}
+{"kind":"textbox","id":"sh/6h0z6h4b","slide":1,"text":"Provider-neutral orchestration, programmable workflows, and real-time team collaboration in one desktop workbench.","textPreview":"Provider-neutral orchestration, programmable workflows, and real-time team collaboration in one desktop workbench.","textChars":114,"textLines":1,"bbox":[62,392,690,98]}
+{"kind":"textbox","id":"sh/gv6do32t","slide":1,"text":"INVESTOR READ DECK  ·  AUGUST 2026","textPreview":"INVESTOR READ DECK  ·  AUGUST 2026","textChars":34,"textLines":1,"bbox":[62,622,460,30]}
+{"kind":"textbox","id":"sh/1wfux8je","slide":1,"text":"cozea.app","textPreview":"cozea.app","textChars":9,"textLines":1,"bbox":[1010,622,200,30]}
+{"kind":"image","id":"im/vet83m5g","slide":1,"name":"","alt":"Brushed titanium ribbons on a graphite background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/mp07qh4j","slide":1,"name":"","geometry":"rect","alt":"Cozea logo","bbox":[64,50,36,36]}
+{"kind":"notes","id":"nt/jb33lr","slide":1,"text":"[Sources]\n- https://cozea.app/ — product positioning and brand asset.\n- https://cozea.app/cozea_logo_v4.png — authentic Cozea brand mark.\n- AI-generated brushed titanium background created for this deck; prompt recorded in the project design notes.\n\n[Context]\nThe cover language is a strategic positioning synthesis, not a direct quotation."}
+{"kind":"slide","id":"sl/mttfcx","slide":2,"title":"COZEA  /  PROBLEM","textShapes":11}
+{"kind":"shape","id":"sh/5gza9czq","slide":2,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/4fq9g7y5","slide":2,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/rihsb2hw","slide":2,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/6h8rihgb","slide":2,"name":"deck-section","text":"COZEA  /  PROBLEM","textPreview":"COZEA  /  PROBLEM","textChars":17,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/tkzadczm","slide":2,"name":"slide-title","text":"Coding agents changed execution; team coordination did not","textPreview":"Coding agents changed execution; team coordination did not","textChars":58,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/sjq9k7yh","slide":2,"name":"slide-subtitle","text":"Agent capability is compounding, while the surrounding workflow remains fragmented across people, tools, and model vendors.","textPreview":"Agent capability is compounding, while the surrounding workflow remains fragmented across people, tools, and model vendors.","textChars":123,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/fm1sfmhs","slide":2,"bbox":[638,210,1,390]}
+{"kind":"textbox","id":"sh/elsrmhg7","slide":2,"text":"TODAY'S TOOLS","textPreview":"TODAY'S TOOLS","textChars":13,"textLines":1,"bbox":[72,218,230,28]}
+{"kind":"textbox","id":"sh/sbexgjq9","slide":2,"text":"Optimize a developer–agent loop","textPreview":"Optimize a developer–agent loop","textChars":31,"textLines":1,"bbox":[72,258,500,72]}
+{"kind":"textbox","id":"sh/dcny9o7u","slide":2,"text":"One IDE, terminal, or model surface at a time\nParallel agents create more branches, diffs, and state to supervise\nTeam context still moves through meetings, chat, tickets, and screenshots","textPreview":"One IDE, terminal, or model surface at a time | Parallel agents create more branches, diffs, and state to supervise | Team context still ...","textChars":187,"textLines":3,"bbox":[72,360,500,210]}
+{"kind":"textbox","id":"sh/q9cfe983","slide":2,"text":"THE NEW REQUIREMENT","textPreview":"THE NEW REQUIREMENT","textChars":19,"textLines":1,"bbox":[704,218,260,28]}
+{"kind":"textbox","id":"sh/ralg7epo","slide":2,"text":"Coordinate an entire software team","textPreview":"Coordinate an entire software team","textChars":34,"textLines":1,"bbox":[704,258,500,72]}
+{"kind":"textbox","id":"sh/0fehk3ql","slide":2,"text":"Multiple humans and multiple agents operating at once\nShared visibility into files, terminals, previews, changes, and decisions\nA common workspace that survives provider and workflow changes","textPreview":"Multiple humans and multiple agents operating at once | Shared visibility into files, terminals, previews, changes, and decisions | A com...","textChars":190,"textLines":3,"bbox":[704,360,500,210]}
+{"kind":"shape","id":"sh/1gnyd876","slide":2,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/edwzit8f","slide":2,"name":"source-footer","text":"Sources: OpenAI Codex app; Cozea product site. Full links in notes.","textPreview":"Sources: OpenAI Codex app; Cozea product site. Full links in notes.","textChars":67,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/fe5gbyp0","slide":2,"name":"page-number","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/vip4bqxw","slide":2,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/mttfcx","slide":2,"text":"[Sources]\n- https://openai.com/index/introducing-the-codex-app/ — describes the shift from single-agent edits to supervising coordinated teams of agents.\n- https://cozea.app/ — positions Cozea around multi-agent and team collaboration.\n\n[Context]\nProblem framing is a synthesis across the current product category and Cozea's stated product thesis."}
+{"kind":"slide","id":"sl/zj2j12","slide":3,"title":"COZEA  /  CATEGORY","textShapes":15}
+{"kind":"shape","id":"sh/or2pkry1","slide":3,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/9svqdwfm","slide":3,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/e1k7ehgz","slide":3,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/z2to7mxk","slide":3,"name":"deck-section","text":"COZEA  /  CATEGORY","textPreview":"COZEA  /  CATEGORY","textChars":18,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/032pgry5","slide":3,"name":"slide-title","text":"The next bottleneck is coordinating humans, agents, and tools","textPreview":"The next bottleneck is coordinating humans, agents, and tools","textChars":61,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/14b69wfq","slide":3,"name":"slide-subtitle","text":"Cozea sits at the intersection, turning fragmented execution into a shared operating context.","textPreview":"Cozea sits at the intersection, turning fragmented execution into a shared operating context.","textChars":93,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/qx07ahg3","slide":3,"bbox":[332,394,194,0]}
+{"kind":"shape","id":"sh/ry9o3mxo","slide":3,"bbox":[754,394,194,0]}
+{"kind":"shape","id":"sh/rep4vyxs","slide":3,"bbox":[640,278,0,62]}
+{"kind":"shape","id":"sh/qdg32dw7","slide":3,"bbox":[502,330,276,130]}
+{"kind":"textbox","id":"sh/dgrmx8fy","slide":3,"text":"COZEA","textPreview":"COZEA","textChars":5,"textLines":1,"bbox":[534,355,212,36]}
+{"kind":"textbox","id":"sh/sfil43ed","slide":3,"text":"Shared control plane","textPreview":"Shared control plane","textChars":20,"textLines":1,"bbox":[534,399,212,28]}
+{"kind":"shape","id":"sh/zi94zixo","slide":3,"bbox":[78,322,254,150]}
+{"kind":"textbox","id":"sh/eh036dwj","slide":3,"text":"Human team","textPreview":"Human team","textChars":10,"textLines":1,"bbox":[104,350,202,38]}
+{"kind":"textbox","id":"sh/14rm1sfu","slide":3,"text":"Developers, designers, operators, and reviewers share the same project state.","textPreview":"Developers, designers, operators, and reviewers share the same project state.","textChars":77,"textLines":1,"bbox":[104,404,202,70]}
+{"kind":"shape","id":"sh/0jil8ne9","slide":3,"bbox":[948,322,254,150]}
+{"kind":"textbox","id":"sh/vm5knexk","slide":3,"text":"Agent fleet","textPreview":"Agent fleet","textChars":11,"textLines":1,"bbox":[974,350,202,38]}
+{"kind":"textbox","id":"sh/ulw3utwz","slide":3,"text":"Codex, Cursor, Claude, OpenCode, and future providers run side by side.","textPreview":"Codex, Cursor, Claude, OpenCode, and future providers run side by side.","textChars":71,"textLines":1,"bbox":[974,404,202,70]}
+{"kind":"shape","id":"sh/idofilkz","slide":3,"bbox":[514,192,252,90]}
+{"kind":"textbox","id":"sh/jexgrqlk","slide":3,"text":"Delivery stack","textPreview":"Delivery stack","textChars":14,"textLines":1,"bbox":[540,211,200,34]}
+{"kind":"textbox","id":"sh/kf6xkv2p","slide":3,"text":"Code · terminals · previews · integrations","textPreview":"Code · terminals · previews · integrations","textChars":42,"textLines":1,"bbox":[528,250,224,24]}
+{"kind":"textbox","id":"sh/5gfyt03a","slide":3,"text":"The category opportunity is the coordination layer—not another model endpoint.","textPreview":"The category opportunity is the coordination layer—not another model endpoint.","textChars":78,"textLines":1,"bbox":[252,525,776,46]}
+{"kind":"textbox","id":"sh/ap4fe1kn","slide":3,"text":"The control plane gains value as the number of people, agents, and connected workflows increases.","textPreview":"The control plane gains value as the number of people, agents, and connected workflows increases.","textChars":97,"textLines":1,"bbox":[270,582,740,42]}
+{"kind":"shape","id":"sh/vadwn6l8","slide":3,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/wb6xgb2t","slide":3,"name":"source-footer","text":"Sources: see notes","textPreview":"Sources: see notes","textChars":18,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/xcfepg3e","slide":3,"name":"page-number","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/69wb2xk3","slide":3,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/zj2j12","slide":3,"text":"[Sources]\n- https://cozea.app/ — provider support, multi-agent, workspace, collaboration, and integrations.\n- Local AGENTS.md and src/features/devapps/registry/index.ts — implementation evidence for providers and workbench surfaces.\n\n[Context]\nThis is a conceptual category diagram and does not represent market share or current customer usage."}
+{"kind":"slide","id":"sl/k4mlk4","slide":4,"title":"COZEA  /  TIMING","textShapes":13}
+{"kind":"shape","id":"sh/apgfatkr","slide":4,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/vq9g3y1c","slide":4,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/8nyx832l","slide":4,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/9o7e18j6","slide":4,"name":"deck-section","text":"COZEA  /  TIMING","textPreview":"COZEA  /  TIMING","textChars":16,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/mlgf6tkf","slide":4,"name":"slide-title","text":"Demand for agentic development is already proven","textPreview":"Demand for agentic development is already proven","textChars":48,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/nmpwzy10","slide":4,"name":"slide-subtitle","text":"The opportunity is not to prove that developers want coding agents; it is to own the team workflow that forms around them.","textPreview":"The opportunity is not to prove that developers want coding agents; it is to own the team workflow that forms around them.","textChars":122,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/sj2xkn2p","slide":4,"bbox":[56,286,360,280]}
+{"kind":"textbox","id":"sh/tkbydsja","slide":4,"text":">1M","textPreview":">1M","textChars":3,"textLines":1,"bbox":[80,308,312,90]}
+{"kind":"textbox","id":"sh/58n6hkf2","slide":4,"text":"developers used Codex in the prior month when OpenAI introduced its desktop multi-agent app in February 2026.","textPreview":"developers used Codex in the prior month when OpenAI introduced its desktop multi-agent app in February 2026.","textChars":109,"textLines":1,"bbox":[80,404,312,138]}
+{"kind":"shape","id":"sh/47e5ozyh","slide":4,"bbox":[452,286,360,280]}
+{"kind":"textbox","id":"sh/36lofuxw","slide":4,"text":"$1B","textPreview":"$1B","textChars":3,"textLines":1,"bbox":[476,308,312,90]}
+{"kind":"textbox","id":"sh/ilcnmpgb","slide":4,"text":"run-rate revenue reported for Claude Code in November 2025, six months after public availability.","textPreview":"run-rate revenue reported for Claude Code in November 2025, six months after public availability.","textChars":97,"textLines":1,"bbox":[476,404,312,138]}
+{"kind":"shape","id":"sh/hk3mdkfq","slide":4,"bbox":[848,286,360,280]}
+{"kind":"textbox","id":"sh/gju5kfy5","slide":4,"text":"$40","textPreview":"$40","textChars":3,"textLines":1,"bbox":[872,308,312,90]}
+{"kind":"textbox","id":"sh/vil4baxk","slide":4,"text":"per user per month for Cursor's Standard Teams seat in 2026—evidence of willingness to pay for team-grade developer tooling.","textPreview":"per user per month for Cursor's Standard Teams seat in 2026—evidence of willingness to pay for team-grade developer tooling.","textChars":124,"textLines":1,"bbox":[872,404,312,138]}
+{"kind":"textbox","id":"sh/uhcni5gf","slide":4,"text":"Category signal","textPreview":"Category signal","textChars":15,"textLines":1,"bbox":[56,590,160,28]}
+{"kind":"textbox","id":"sh/1g76p4fu","slide":4,"text":"Agent capability, usage, and spend are scaling faster than the collaborative operating model around them.","textPreview":"Agent capability, usage, and spend are scaling faster than the collaborative operating model around them.","textChars":105,"textLines":1,"bbox":[210,586,990,38]}
+{"kind":"shape","id":"sh/0fy5wjyp","slide":4,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/kv6h87qx","slide":4,"name":"source-footer","text":"OpenAI, Anthropic, and Cursor sources; full links in notes.","textPreview":"OpenAI, Anthropic, and Cursor sources; full links in notes.","textChars":59,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/lwzyhcri","slide":4,"name":"page-number","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/kzehk3qh","slide":4,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/k4mlk4","slide":4,"text":"[Sources]\n- https://openai.com/index/introducing-the-codex-app/ — more than one million developers used Codex in the preceding month.\n- https://www.anthropic.com/news/anthropic-acquires-bun-as-claude-code-reaches-usd1b-milestone — Claude Code $1B run-rate revenue statement.\n- https://prod.cursor.com/docs/account/teams/pricing — $40/month Standard Teams seat.\n\n[Context]\nThese are category-validation metrics from provider companies; they are not Cozea traction metrics."}
+{"kind":"slide","id":"sl/9s8pqb","slide":5,"title":"COZEA  /  PRODUCT","textShapes":6}
+{"kind":"shape","id":"sh/kvedo3md","slide":5,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/5wnux8ny","slide":5,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/a5cvit4b","slide":5,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/v65cry5g","slide":5,"name":"deck-section","text":"COZEA  /  PRODUCT","textPreview":"COZEA  /  PRODUCT","textChars":17,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/w7edkjm1","slide":5,"name":"slide-title","text":"One repo becomes a shared, agent-native workbench","textPreview":"One repo becomes a shared, agent-native workbench","textChars":49,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/xsnutonm","slide":5,"name":"slide-subtitle","text":"Files, assistants, terminals, browser previews, mobile simulation, diffs, and custom DevApps live in one persistent, dockable workspace.","textPreview":"Files, assistants, terminals, browser previews, mobile simulation, diffs, and custom DevApps live in one persistent, dockable workspace.","textChars":136,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/m1cbe9oz","slide":5,"bbox":[60,204,1160,420]}
+{"kind":"shape","id":"sh/n2lcne5k","slide":5,"bbox":[64,208,1152,412]}
+{"kind":"textbox","id":"sh/6tc32h0r","slide":5,"text":"One project state. Multiple people. Multiple agents. One place to supervise the work.","textPreview":"One project state. Multiple people. Multiple agents. One place to supervise the work.","textChars":85,"textLines":1,"bbox":[98,632,1084,28]}
+{"kind":"shape","id":"sh/twnmxcz2","slide":5,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/svul47ih","slide":5,"name":"source-footer","text":"Product image: Cozea website. Feature descriptions verified against the local application repository.","textPreview":"Product image: Cozea website. Feature descriptions verified against the local application repository.","textChars":101,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/fy54zmh8","slide":5,"name":"page-number","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/ipcj65kr","slide":5,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/c3et8nmp","slide":5,"name":"","geometry":"roundRect","alt":"Cozea multi-pane workbench with several assistant sessions and a live project preview","bbox":[66,210,1148,408]}
+{"kind":"notes","id":"nt/9s8pqb","slide":5,"text":"[Sources]\n- https://cozea.app/hero-img-solid.png — product screenshot.\n- https://cozea.app/ and local AGENTS.md — product description."}
+{"kind":"slide","id":"sl/6pwake","slide":6,"title":"COZEA  /  WORKFLOW","textShapes":17}
+{"kind":"shape","id":"sh/vyx4r694","slide":6,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/uxoni18j","slide":6,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/5ozmxgr6","slide":6,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/43q5obql","slide":6,"name":"deck-section","text":"COZEA  /  WORKFLOW","textPreview":"COZEA  /  WORKFLOW","textChars":18,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/j2h4v690","slide":6,"name":"slide-title","text":"One loop carries a team from workspace setup to launch","textPreview":"One loop carries a team from workspace setup to launch","textChars":54,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/i1onml8f","slide":6,"name":"slide-subtitle","text":"Cozea removes handoff friction by keeping context and tools inside the same project environment.","textPreview":"Cozea removes handoff friction by keeping context and tools inside the same project environment.","textChars":96,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/tsz610r2","slide":6,"bbox":[88,338,1104,2]}
+{"kind":"shape","id":"sh/srq5svqx","slide":6,"bbox":[88,331,16,16]}
+{"kind":"shape","id":"sh/atorixcz","slide":6,"bbox":[366,331,16,16]}
+{"kind":"shape","id":"sh/vux8ridk","slide":6,"bbox":[644,331,16,16]}
+{"kind":"shape","id":"sh/wv69knup","slide":6,"bbox":[922,331,16,16]}
+{"kind":"textbox","id":"sh/hwfqtsva","slide":6,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[88,344,60,30]}
+{"kind":"textbox","id":"sh/ixormxcv","slide":6,"text":"Build workspace","textPreview":"Build workspace","textChars":15,"textLines":1,"bbox":[88,390,236,54]}
+{"kind":"textbox","id":"sh/jyh8v2dg","slide":6,"text":"Start from a local or new project, then compose the layout with assistants, editor, terminal, browser, dev server, and other DevApps.","textPreview":"Start from a local or new project, then compose the layout with assistants, editor, terminal, browser, dev server, and other DevApps.","textChars":133,"textLines":1,"bbox":[88,466,236,188]}
+{"kind":"textbox","id":"sh/4zq9o7u1","slide":6,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[366,344,60,30]}
+{"kind":"textbox","id":"sh/50zqxcvm","slide":6,"text":"Invite team","textPreview":"Invite team","textChars":11,"textLines":1,"bbox":[366,390,236,54]}
+{"kind":"textbox","id":"sh/y147atcr","slide":6,"text":"Bring collaborators into the project so the team shares current files, presence, decisions, and changes instead of relaying state manually.","textPreview":"Bring collaborators into the project so the team shares current files, presence, decisions, and changes instead of relaying state manually.","textChars":139,"textLines":1,"bbox":[366,466,236,188]}
+{"kind":"textbox","id":"sh/z2d8jydc","slide":6,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[644,344,60,30]}
+{"kind":"textbox","id":"sh/369orut4","slide":6,"text":"Vibe together","textPreview":"Vibe together","textChars":13,"textLines":1,"bbox":[644,390,236,54]}
+{"kind":"textbox","id":"sh/250ni9sj","slide":6,"text":"Run multiple provider agents in parallel while teammates inspect previews, review diffs, and coordinate the next action in the same workspace.","textPreview":"Run multiple provider agents in parallel while teammates inspect previews, review diffs, and coordinate the next action in the same works...","textChars":142,"textLines":1,"bbox":[644,466,236,188]}
+{"kind":"textbox","id":"sh/p8b6t4bu","slide":6,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[922,344,60,30]}
+{"kind":"textbox","id":"sh/o725kzap","slide":6,"text":"Launch project","textPreview":"Launch project","textChars":14,"textLines":1,"bbox":[922,390,236,54]}
+{"kind":"textbox","id":"sh/fi94nuts","slide":6,"text":"Use integrated dev tools and connected services to validate, package, and ship without rebuilding context in another environment.","textPreview":"Use integrated dev tools and connected services to validate, package, and ship without rebuilding context in another environment.","textChars":129,"textLines":1,"bbox":[922,466,236,188]}
+{"kind":"shape","id":"sh/eh0neps7","slide":6,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/14r6p4by","slide":6,"name":"source-footer","text":"Source: Cozea website's four-step workflow; expanded with application repository evidence.","textPreview":"Source: Cozea website's four-step workflow; expanded with application repository evidence.","textChars":90,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/g3i5gzad","slide":6,"name":"page-number","text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/pw7ap4f6","slide":6,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/6pwake","slide":6,"text":"[Sources]\n- https://cozea.app/ — Build Workspace, Invite Team, Vibe Together, Launch Project sequence.\n- Local AGENTS.md — project creation and workbench lifecycle.\n\n[Context]\nExpanded descriptions paraphrase the product workflow rather than quoting the website verbatim."}
+{"kind":"slide","id":"sl/qielfd","slide":7,"title":"COZEA  /  PRODUCT SYSTEM","textShapes":17}
+{"kind":"shape","id":"sh/a54f2t0r","slide":7,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/b6dwbyhc","slide":7,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/kb6x83it","slide":7,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/lcfeh8ze","slide":7,"name":"deck-section","text":"COZEA  /  PRODUCT SYSTEM","textPreview":"COZEA  /  PRODUCT SYSTEM","textChars":24,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/y9of6t03","slide":7,"name":"slide-title","text":"Four systems make the workspace more valuable over time","textPreview":"Four systems make the workspace more valuable over time","textChars":55,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/jaxwfyh8","slide":7,"name":"slide-subtitle","text":"The product is designed as an operating environment, not a single chat or code-completion feature.","textPreview":"The product is designed as an operating environment, not a single chat or code-completion feature.","textChars":98,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/8zqxcni5","slide":7,"bbox":[52,224,622,356]}
+{"kind":"shape","id":"sh/t0zyl8zq","slide":7,"bbox":[56,228,614,348]}
+{"kind":"textbox","id":"sh/4jixgvad","slide":7,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[724,230,38,24]}
+{"kind":"textbox","id":"sh/ji9g7qts","slide":7,"text":"Composable workbench","textPreview":"Composable workbench","textChars":20,"textLines":1,"bbox":[778,226,420,32]}
+{"kind":"textbox","id":"sh/ih0fels7","slide":7,"text":"Persistent, dockable tiles let every team shape its own workflow.","textPreview":"Persistent, dockable tiles let every team shape its own workflow.","textChars":65,"textLines":1,"bbox":[778,266,420,46]}
+{"kind":"shape","id":"sh/tobyd0bu","slide":7,"bbox":[724,318,474,1]}
+{"kind":"textbox","id":"sh/sn2xkfa9","slide":7,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[724,330,38,24]}
+{"kind":"textbox","id":"sh/rm9gbato","slide":7,"text":"Provider layer","textPreview":"Provider layer","textChars":14,"textLines":1,"bbox":[778,326,420,32]}
+{"kind":"textbox","id":"sh/6l0fi5s3","slide":7,"text":"Codex, Claude, Cursor, and OpenCode run through one assistant surface.","textPreview":"Codex, Claude, Cursor, and OpenCode run through one assistant surface.","textChars":70,"textLines":1,"bbox":[778,366,420,46]}
+{"kind":"shape","id":"sh/9s7e1gbq","slide":7,"bbox":[724,418,474,1]}
+{"kind":"textbox","id":"sh/8ryx8ba5","slide":7,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[724,430,38,24]}
+{"kind":"textbox","id":"sh/0v2xobi1","slide":7,"text":"Collaboration substrate","textPreview":"Collaboration substrate","textChars":23,"textLines":1,"bbox":[778,426,420,32]}
+{"kind":"textbox","id":"sh/lwbyxgjm","slide":7,"text":"Real-time shared state and encrypted updates keep the team synchronized.","textPreview":"Real-time shared state and encrypted updates keep the team synchronized.","textChars":72,"textLines":1,"bbox":[778,466,420,46]}
+{"kind":"shape","id":"sh/y9kfm10v","slide":7,"bbox":[724,518,474,1]}
+{"kind":"textbox","id":"sh/zatgv61g","slide":7,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[724,530,38,24]}
+{"kind":"textbox","id":"sh/8z2xsvix","slide":7,"text":"DevApp platform","textPreview":"DevApp platform","textChars":15,"textLines":1,"bbox":[778,526,420,32]}
+{"kind":"textbox","id":"sh/90vy10ji","slide":7,"text":"Any app can be published into the organization catalog and launched from the shared workbench.","textPreview":"Any app can be published into the organization catalog and launched from the shared workbench.","textChars":94,"textLines":1,"bbox":[778,566,420,46]}
+{"kind":"shape","id":"sh/mxkfql0r","slide":7,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/nytgzq1c","slide":7,"name":"source-footer","text":"Sources: see notes","textPreview":"Sources: see notes","textChars":18,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/w3mxwvi9","slide":7,"name":"page-number","text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/wjixsve1","slide":7,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/i94be1kz","slide":7,"name":"","geometry":"roundRect","alt":"Cozea customized workspace with browser and terminal tiles","bbox":[58,230,610,344]}
+{"kind":"notes","id":"nt/qielfd","slide":7,"text":"[Sources]\n- https://cozea.app/features/img_8.png — product image.\n- https://cozea.app/ — workspace, providers, collaboration, and DevApps product pillars.\n- Local src/features/devapps/registry/index.ts and AGENTS.md — implementation evidence.\n- Founder-provided product update, 2026-08-26 — organization-wide DevApp publication and launch scope."}
+{"kind":"slide","id":"sl/8vo39z","slide":8,"title":"COZEA  /  PROVIDER STRATEGY","textShapes":16}
+{"kind":"shape","id":"sh/gzux83ud","slide":8,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/h03e18by","slide":8,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/i1cfadcj","slide":8,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/32lw3it4","slide":8,"name":"deck-section","text":"COZEA  /  PROVIDER STRATEGY","textPreview":"COZEA  /  PROVIDER STRATEGY","textChars":27,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/43exc3u9","slide":8,"name":"slide-title","text":"Provider-neutral orchestration removes model lock-in","textPreview":"Provider-neutral orchestration removes model lock-in","textChars":52,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/54ne58bu","slide":8,"name":"slide-subtitle","text":"Teams can use the best agent for each job while Cozea owns the durable workspace, shared context, and supervision layer.","textPreview":"Teams can use the best agent for each job while Cozea owns the durable workspace, shared context, and supervision layer.","textChars":120,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/y5svy9cz","slide":8,"bbox":[52,218,662,378]}
+{"kind":"shape","id":"sh/j61wredk","slide":8,"bbox":[56,222,654,370]}
+{"kind":"textbox","id":"sh/u1w7itov","slide":8,"text":"BUILT-IN PROVIDERS","textPreview":"BUILT-IN PROVIDERS","textChars":18,"textLines":1,"bbox":[766,222,220,28]}
+{"kind":"textbox","id":"sh/h476t8nm","slide":8,"text":"Codex","textPreview":"Codex","textChars":5,"textLines":1,"bbox":[766,270,152,34]}
+{"kind":"textbox","id":"sh/w3ypk361","slide":8,"text":"OpenAI coding-agent workflows","textPreview":"OpenAI coding-agent workflows","textChars":29,"textLines":1,"bbox":[932,274,280,48]}
+{"kind":"shape","id":"sh/7y5one5k","slide":8,"bbox":[766,330,446,1]}
+{"kind":"textbox","id":"sh/mxw7etoz","slide":8,"text":"Claude","textPreview":"Claude","textChars":6,"textLines":1,"bbox":[766,348,152,34]}
+{"kind":"textbox","id":"sh/90n6pona","slide":8,"text":"Anthropic planning and implementation","textPreview":"Anthropic planning and implementation","textChars":37,"textLines":1,"bbox":[932,352,280,48]}
+{"kind":"shape","id":"sh/8zepgj65","slide":8,"bbox":[766,408,446,1]}
+{"kind":"textbox","id":"sh/zaloje58","slide":8,"text":"Cursor","textPreview":"Cursor","textChars":6,"textLines":1,"bbox":[766,426,152,34]}
+{"kind":"textbox","id":"sh/y9c7a9on","slide":8,"text":"Cursor sessions inside the shared workbench","textPreview":"Cursor sessions inside the shared workbench","textChars":43,"textLines":1,"bbox":[932,430,280,48]}
+{"kind":"shape","id":"sh/25c7m98v","slide":8,"bbox":[766,486,446,1]}
+{"kind":"textbox","id":"sh/n6l8ve9g","slide":8,"text":"OpenCode","textPreview":"OpenCode","textChars":8,"textLines":1,"bbox":[766,504,152,34]}
+{"kind":"textbox","id":"sh/o7upojql","slide":8,"text":"Open-source provider surface","textPreview":"Open-source provider surface","textChars":28,"textLines":1,"bbox":[932,508,280,48]}
+{"kind":"textbox","id":"sh/p83qxor6","slide":8,"text":"Strategic implication","textPreview":"Strategic implication","textChars":21,"textLines":1,"bbox":[766,592,190,26]}
+{"kind":"textbox","id":"sh/a9c7q98r","slide":8,"text":"Cozea can benefit from model progress regardless of which vendor leads a given task category.","textPreview":"Cozea can benefit from model progress regardless of which vendor leads a given task category.","textChars":93,"textLines":1,"bbox":[946,588,266,60]}
+{"kind":"shape","id":"sh/bul8ze9c","slide":8,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/cvupsjqx","slide":8,"name":"source-footer","text":"Sources: see notes","textPreview":"Sources: see notes","textChars":18,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/xwnq1ori","slide":8,"name":"page-number","text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/qx4fm9sn","slide":8,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/cr2hwzyd","slide":8,"name":"","geometry":"roundRect","alt":"Cozea multi-agent workspace with multiple assistant sessions","bbox":[58,224,650,366]}
+{"kind":"notes","id":"nt/8vo39z","slide":8,"text":"[Sources]\n- https://cozea.app/features/img_6.png — product image.\n- Local src/features/devapps/apps/codex/manifest.ts, claude/manifest.ts, cursor/manifest.ts, opencode/manifest.ts — built-in provider surfaces.\n- https://cozea.app/terms — users connect their own third-party provider accounts; Cozea does not provide a proprietary foundation model."}
+{"kind":"slide","id":"sl/ipff8i","slide":9,"title":"COZEA  /  COLLABORATION","textShapes":9}
+{"kind":"shape","id":"sh/3mhs76d4","slide":9,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/2l8by1wj","slide":9,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/dsjadgvm","slide":9,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/crqt4bu1","slide":9,"name":"deck-section","text":"COZEA  /  COLLABORATION","textPreview":"COZEA  /  COLLABORATION","textChars":23,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/bqhsbqdg","slide":9,"name":"slide-title","text":"Human collaboration is built into the coding loop","textPreview":"Human collaboration is built into the coding loop","textChars":49,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/qp8b2lcv","slide":9,"name":"slide-subtitle","text":"Instead of screen sharing or relaying state through chat, teammates operate against the same evolving project context.","textPreview":"Instead of screen sharing or relaying state through chat, teammates operate against the same evolving project context.","textChars":118,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/lgjah0vi","slide":9,"bbox":[52,216,656,374]}
+{"kind":"shape","id":"sh/0fat8vux","slide":9,"bbox":[56,220,648,366]}
+{"kind":"textbox","id":"sh/bi58v2tc","slide":9,"text":"Shared by default","textPreview":"Shared by default","textChars":17,"textLines":1,"bbox":[760,232,426,40]}
+{"kind":"textbox","id":"sh/wjepo7ux","slide":9,"text":"Live state — files, presence, and updates stay synchronized through Yjs collaboration.\nEncrypted content — websocket updates, snapshots, and awareness payloads are encrypted before server persistence.\nReviewable change — assistant-proposed changes surface as diffs for human approval before disk writes.\nBranch-aware work — shared collaboration and local work remain distinct operating contexts.","textPreview":"Live state — files, presence, and updates stay synchronized through Yjs collaboration. | Encrypted content — websocket updates, snapshots...","textChars":395,"textLines":4,"bbox":[760,300,446,274]}
+{"kind":"textbox","id":"sh/xknqxcbi","slide":9,"text":"Why it matters","textPreview":"Why it matters","textChars":14,"textLines":1,"bbox":[760,594,130,28]}
+{"kind":"textbox","id":"sh/ylw7qhs3","slide":9,"text":"Collaboration becomes part of the product architecture, not a meeting layered over individual tools.","textPreview":"Collaboration becomes part of the product architecture, not a meeting layered over individual tools.","textChars":100,"textLines":1,"bbox":[900,590,306,58]}
+{"kind":"shape","id":"sh/jm58z2t8","slide":9,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/kneps7at","slide":9,"name":"source-footer","text":"Sources: see notes","textPreview":"Sources: see notes","textChars":18,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/l87q1cbe","slide":9,"name":"page-number","text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/pcfepkby","slide":9,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/t4zylsze","slide":9,"name":"","geometry":"roundRect","alt":"Cozea share-project dialog and two collaborator assistant tiles","bbox":[58,222,644,362]}
+{"kind":"notes","id":"nt/ipff8i","slide":9,"text":"[Sources]\n- https://cozea.app/features/img_9.png — product image.\n- Local docs/collaboration-encryption-architecture.md — implemented encrypted collaboration slice and threat model.\n- Local AGENTS.md — Yjs CRDT collaboration and diff approval flow.\n\n[Context]\nSecurity claims are limited to the implemented collaboration transport/persistence slice described in the repository; no broader compliance certification is claimed."}
+{"kind":"slide","id":"sl/no0hzg","slide":10,"title":"COZEA  /  DEVAPP DISTRIBUTION","textShapes":16}
+{"kind":"shape","id":"sh/tg3qxovu","slide":10,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/8fu9oje9","slide":10,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/vil8zyd0","slide":10,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/uhcrqtwf","slide":10,"name":"deck-section","text":"COZEA  /  DEVAPP DISTRIBUTION","textPreview":"COZEA  /  DEVAPP DISTRIBUTION","textChars":29,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/hk3q1ovq","slide":10,"name":"slide-title","text":"Every internal app can become an organization-wide DevApp","textPreview":"Every internal app can become an organization-wide DevApp","textChars":57,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/gju9sje5","slide":10,"name":"slide-subtitle","text":"Build it inside or outside Cozea. Publish it once. Let the entire organization launch it from the same shared workbench.","textPreview":"Build it inside or outside Cozea. Publish it once. Let the entire organization launch it from the same shared workbench.","textChars":120,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/bmh8nuxg","slide":10,"bbox":[52,216,632,362]}
+{"kind":"shape","id":"sh/al87epwv","slide":10,"bbox":[56,220,624,354]}
+{"kind":"textbox","id":"sh/t8fuxkba","slide":10,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[738,228,42,24]}
+{"kind":"textbox","id":"sh/654v25sj","slide":10,"text":"Build anywhere","textPreview":"Build anywhere","textChars":14,"textLines":1,"bbox":[794,224,406,34]}
+{"kind":"textbox","id":"sh/76dcvat4","slide":10,"text":"Start with a Cozea project or bring an existing web app built elsewhere.","textPreview":"Start with a Cozea project or bring an existing web app built elsewhere.","textChars":72,"textLines":1,"bbox":[794,264,406,54]}
+{"kind":"shape","id":"sh/gb6d8zal","slide":10,"bbox":[738,326,462,1]}
+{"kind":"textbox","id":"sh/hcfu1kb6","slide":10,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[738,340,42,24]}
+{"kind":"textbox","id":"sh/u9ov6psv","slide":10,"text":"Publish once","textPreview":"Publish once","textChars":12,"textLines":1,"bbox":[794,336,406,34]}
+{"kind":"textbox","id":"sh/vaxczut0","slide":10,"text":"Give the app a durable identity, release, permissions, and launch configuration.","textPreview":"Give the app a durable identity, release, permissions, and launch configuration.","textChars":80,"textLines":1,"bbox":[794,376,406,54]}
+{"kind":"shape","id":"sh/wfmdwvah","slide":10,"bbox":[738,438,462,1]}
+{"kind":"textbox","id":"sh/xgvup0b2","slide":10,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[738,452,42,24]}
+{"kind":"textbox","id":"sh/d032dsze","slide":10,"text":"Launch across the organization","textPreview":"Launch across the organization","textChars":30,"textLines":1,"bbox":[794,448,406,34]}
+{"kind":"textbox","id":"sh/szu14ni9","slide":10,"text":"Teammates discover it in the shared catalog and open it inside their own Cozea workbench.","textPreview":"Teammates discover it in the shared catalog and open it inside their own Cozea workbench.","textChars":89,"textLines":1,"bbox":[794,488,406,54]}
+{"kind":"shape","id":"sh/rylkbiho","slide":10,"bbox":[58,602,1142,1]}
+{"kind":"textbox","id":"sh/qxsj2d03","slide":10,"text":"Strategic implication","textPreview":"Strategic implication","textChars":21,"textLines":1,"bbox":[58,618,170,24]}
+{"kind":"textbox","id":"sh/1o32hczq","slide":10,"text":"Cozea becomes the distribution surface for internal software—not only the place where teams build it.","textPreview":"Cozea becomes the distribution surface for internal software—not only the place where teams build it.","textChars":101,"textLines":1,"bbox":[236,612,964,38]}
+{"kind":"shape","id":"sh/0nu187i5","slide":10,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/f2lkf2hk","slide":10,"name":"source-footer","text":"Latest product scope supplied by the founder; app interface shown from Cozea.","textPreview":"Latest product scope supplied by the founder; app interface shown from Cozea.","textChars":77,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/e1cj6x0z","slide":10,"name":"page-number","text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/vito7upk","slide":10,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/bmdcbeds","slide":10,"name":"","geometry":"roundRect","alt":"Cozea DevApp launcher and Store entry point inside the shared workbench","bbox":[58,222,620,350]}
+{"kind":"notes","id":"nt/no0hzg","slide":10,"text":"[Sources]\n- https://cozea.app/features/img_4.png — product image.\n- https://cozea.app/docs — DevApps overview, built-ins, selection bridge, and manifest model.\n- Founder-provided product update, 2026-08-26 — the latest app can publish DevApps built inside or outside Cozea for organization-wide discovery and launch.\n- Local docs/project-devapps.md and src/features/devapps/ — publication identity, versioned releases, Store discovery, launch recipes, and workbench mounting are visible implementation foundations.\n\n[Context]\nThe organization-wide scope is a founder-provided latest-product update that is not yet described on the public website. The checked-in branch still documents the earlier machine-local precursor, so the founder statement is the authoritative source for the current shipping scope presented here."}
+{"kind":"slide","id":"sl/qyakxt","slide":11,"title":"COZEA  /  COMPETITION","textShapes":32}
+{"kind":"shape","id":"sh/r2xg3mls","slide":11,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/q1ozahk7","slide":11,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/18zi9w3u","slide":11,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/07qhgr29","slide":11,"name":"deck-section","text":"COZEA  /  COMPETITION","textPreview":"COZEA  /  COMPETITION","textChars":21,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/f6x076lo","slide":11,"name":"slide-title","text":"Cozea is a control plane, not another coding model","textPreview":"Cozea is a control plane, not another coding model","textChars":50,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/e5oze1k3","slide":11,"name":"slide-subtitle","text":"Cursor, Codex, and Claude Code validate agentic development; Cozea differentiates by coordinating multiple providers and multiple teammates in a shared programmable workspace.","textPreview":"Cursor, Codex, and Claude Code validate agentic development; Cozea differentiates by coordinating multiple providers and multiple teammat...","textChars":175,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"textbox","id":"sh/hcvyxc3a","slide":11,"text":"Product","textPreview":"Product","textChars":7,"textLines":1,"bbox":[66,226,164,36]}
+{"kind":"textbox","id":"sh/gbmh472p","slide":11,"text":"Primary promise","textPreview":"Primary promise","textChars":15,"textLines":1,"bbox":[246,226,266,36]}
+{"kind":"textbox","id":"sh/ixgbytor","slide":11,"text":"Provider posture","textPreview":"Provider posture","textChars":16,"textLines":1,"bbox":[528,226,212,36]}
+{"kind":"textbox","id":"sh/jy9c7ypc","slide":11,"text":"Team collaboration","textPreview":"Team collaboration","textChars":18,"textLines":1,"bbox":[756,226,236,36]}
+{"kind":"textbox","id":"sh/kzit036x","slide":11,"text":"Extensibility","textPreview":"Extensibility","textChars":13,"textLines":1,"bbox":[1008,226,204,36]}
+{"kind":"shape","id":"sh/50ru987i","slide":11,"bbox":[58,272,1162,2]}
+{"kind":"shape","id":"sh/610b2do3","slide":11,"bbox":[58,278,1162,88]}
+{"kind":"textbox","id":"sh/729cbipo","slide":11,"text":"Cozea","textPreview":"Cozea","textChars":5,"textLines":1,"bbox":[66,290,164,70]}
+{"kind":"textbox","id":"sh/s3it4n69","slide":11,"text":"Team operating system for agentic software work","textPreview":"Team operating system for agentic software work","textChars":47,"textLines":1,"bbox":[246,290,266,70]}
+{"kind":"textbox","id":"sh/toruds7e","slide":11,"text":"Provider-neutral; hosts Codex, Claude, Cursor, OpenCode","textPreview":"Provider-neutral; hosts Codex, Claude, Cursor, OpenCode","textChars":55,"textLines":1,"bbox":[528,290,212,70]}
+{"kind":"textbox","id":"sh/upkb6doz","slide":11,"text":"Live shared workbench and project context","textPreview":"Live shared workbench and project context","textChars":41,"textLines":1,"bbox":[756,290,236,70]}
+{"kind":"textbox","id":"sh/fqtcfipk","slide":11,"text":"Organization-wide DevApps and workflow composition","textPreview":"Organization-wide DevApps and workflow composition","textChars":50,"textLines":1,"bbox":[1008,290,204,70]}
+{"kind":"shape","id":"sh/ruts3ils","slide":11,"bbox":[58,368,1162,1]}
+{"kind":"textbox","id":"sh/qtkbux47","slide":11,"text":"Cursor","textPreview":"Cursor","textChars":6,"textLines":1,"bbox":[66,380,164,70]}
+{"kind":"textbox","id":"sh/dwva5s3y","slide":11,"text":"AI-native editor, cloud agents, and team administration","textPreview":"AI-native editor, cloud agents, and team administration","textChars":55,"textLines":1,"bbox":[246,380,266,70]}
+{"kind":"textbox","id":"sh/cv2twnmd","slide":11,"text":"Multi-model inside Cursor's product and pricing layer","textPreview":"Multi-model inside Cursor's product and pricing layer","textChars":53,"textLines":1,"bbox":[528,380,212,70]}
+{"kind":"textbox","id":"sh/3qtszi5g","slide":11,"text":"Team billing, analytics, shared context and cloud agents","textPreview":"Team billing, analytics, shared context and cloud agents","textChars":56,"textLines":1,"bbox":[756,380,236,70]}
+{"kind":"textbox","id":"sh/25kbqd4b","slide":11,"text":"Rules, skills, plugins, SDK and marketplace","textPreview":"Rules, skills, plugins, SDK and marketplace","textChars":43,"textLines":1,"bbox":[1008,380,204,70]}
+{"kind":"shape","id":"sh/psba1snm","slide":11,"bbox":[58,458,1162,1]}
+{"kind":"textbox","id":"sh/4r2tsnm1","slide":11,"text":"Codex","textPreview":"Codex","textChars":5,"textLines":1,"bbox":[66,470,164,70]}
+{"kind":"textbox","id":"sh/f29svy5k","slide":11,"text":"OpenAI command center for parallel coding agents","textPreview":"OpenAI command center for parallel coding agents","textChars":48,"textLines":1,"bbox":[246,470,266,70]}
+{"kind":"textbox","id":"sh/u10bmd4z","slide":11,"text":"OpenAI-first model and agent ecosystem","textPreview":"OpenAI-first model and agent ecosystem","textChars":38,"textLines":1,"bbox":[528,470,212,70]}
+{"kind":"textbox","id":"sh/k7ypwz2x","slide":11,"text":"Threads, worktrees, review, and handoff around agent tasks","textPreview":"Threads, worktrees, review, and handoff around agent tasks","textChars":58,"textLines":1,"bbox":[756,470,236,70]}
+{"kind":"textbox","id":"sh/587q543i","slide":11,"text":"Skills and automations within Codex","textPreview":"Skills and automations within Codex","textChars":35,"textLines":1,"bbox":[1008,470,204,70]}
+{"kind":"shape","id":"sh/i5g7u9kr","slide":11,"bbox":[58,548,1162,1]}
+{"kind":"textbox","id":"sh/j6p83elc","slide":11,"text":"Claude Code","textPreview":"Claude Code","textChars":11,"textLines":1,"bbox":[66,560,164,70]}
+{"kind":"textbox","id":"sh/sbyp0j2t","slide":11,"text":"Anthropic coding agent in terminal and IDE surfaces","textPreview":"Anthropic coding agent in terminal and IDE surfaces","textChars":51,"textLines":1,"bbox":[246,560,266,70]}
+{"kind":"textbox","id":"sh/tw7q9oje","slide":11,"text":"Anthropic-first; configurable enterprise gateways","textPreview":"Anthropic-first; configurable enterprise gateways","textChars":49,"textLines":1,"bbox":[528,560,212,70]}
+{"kind":"textbox","id":"sh/69g7y9k3","slide":11,"text":"Agent teams, subagents, and developer-controlled sessions","textPreview":"Agent teams, subagents, and developer-controlled sessions","textChars":57,"textLines":1,"bbox":[756,560,236,70]}
+{"kind":"textbox","id":"sh/7ap87e18","slide":11,"text":"Hooks, MCP, SDK, and CLI workflows","textPreview":"Hooks, MCP, SDK, and CLI workflows","textChars":34,"textLines":1,"bbox":[1008,560,204,70]}
+{"kind":"shape","id":"sh/ofepof2p","slide":11,"bbox":[58,638,1162,1]}
+{"kind":"shape","id":"sh/90nqxk3a","slide":11,"bbox":[238,226,1,414]}
+{"kind":"shape","id":"sh/1wzixk3e","slide":11,"bbox":[520,226,1,414]}
+{"kind":"shape","id":"sh/gvqh4f2t","slide":11,"bbox":[748,226,1,414]}
+{"kind":"shape","id":"sh/fuh0valo","slide":11,"bbox":[1000,226,1,414]}
+{"kind":"textbox","id":"sh/etoz2pk3","slide":11,"text":"Positioning discipline","textPreview":"Positioning discipline","textChars":22,"textLines":1,"bbox":[58,640,170,24]}
+{"kind":"textbox","id":"sh/tsfitk3i","slide":11,"text":"Do not claim that incumbents lack agents, worktrees, teams, or extensions. Win on cross-provider human collaboration and workflow composition.","textPreview":"Do not claim that incumbents lack agents, worktrees, teams, or extensions. Win on cross-provider human collaboration and workflow composi...","textChars":142,"textLines":1,"bbox":[230,636,990,32]}
+{"kind":"shape","id":"sh/s76h0f2x","slide":11,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/r6xgralc","slide":11,"name":"source-footer","text":"Sources: official Cozea, Cursor, OpenAI, and Anthropic product pages. Comparison reflects primary product posture, not exhaustive parity.","textPreview":"Sources: official Cozea, Cursor, OpenAI, and Anthropic product pages. Comparison reflects primary product posture, not exhaustive parity.","textChars":137,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/65ozy5kr","slide":11,"name":"page-number","text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/14nylove","slide":11,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/qyakxt","slide":11,"text":"[Sources]\n- https://cozea.app/ and https://cozea.app/docs — Cozea positioning and product surface.\n- https://prod.cursor.com/docs/account/teams/pricing and https://cursor.com/en-US/business/teams — Cursor Teams, cloud agents, admin, and extensibility.\n- https://openai.com/index/introducing-the-codex-app/ — Codex multi-agent app, worktrees, skills, and automations.\n- https://docs.anthropic.com/en/docs/claude-code/getting-started and https://www.anthropic.com/news/enabling-claude-code-to-work-more-autonomously — Claude Code surfaces, subagents, hooks, and background tasks.\n- Founder-provided product update, 2026-08-26 — Cozea organization-wide DevApp distribution capability.\n\n[Context]\nThis is a strategic comparison of primary product posture. It intentionally avoids absolute yes/no feature claims where products are evolving quickly."}
+{"kind":"slide","id":"sl/2bifqt","slide":12,"title":"COZEA  /  DEFENSIBILITY","textShapes":19}
+{"kind":"shape","id":"sh/nadgfmdw","slide":12,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/m94fmhcb","slide":12,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/x0fylwvy","slide":12,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/wz6hsrud","slide":12,"name":"deck-section","text":"COZEA  /  DEFENSIBILITY","textPreview":"COZEA  /  DEFENSIBILITY","textChars":23,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/byxgjmd8","slide":12,"name":"slide-title","text":"Architecture compounds into a durable advantage","textPreview":"Architecture compounds into a durable advantage","textChars":47,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/ax4zq1cn","slide":12,"name":"slide-subtitle","text":"The defensible asset is the coordination system around models: state, permissions, adapters, workflows, and collaborative behavior.","textPreview":"The defensible asset is the coordination system around models: state, permissions, adapters, workflows, and collaborative behavior.","textChars":131,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/l4fypgva","slide":12,"bbox":[78,218,1124,78]}
+{"kind":"textbox","id":"sh/k36hwbup","slide":12,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[102,240,44,30]}
+{"kind":"textbox","id":"sh/ul0jihwr","slide":12,"text":"Composable experience","textPreview":"Composable experience","textChars":21,"textLines":1,"bbox":[166,235,320,36]}
+{"kind":"textbox","id":"sh/vm90rmdc","slide":12,"text":"Dockable workbench, organization DevApp catalog, built-in and custom apps","textPreview":"Dockable workbench, organization DevApp catalog, built-in and custom apps","textChars":73,"textLines":1,"bbox":[510,236,652,42]}
+{"kind":"shape","id":"sh/wni1krex","slide":12,"bbox":[78,314,1124,78]}
+{"kind":"textbox","id":"sh/horitwvi","slide":12,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[102,336,44,30]}
+{"kind":"textbox","id":"sh/ip0jm1wn","slide":12,"text":"Provider adaptation boundary","textPreview":"Provider adaptation boundary","textChars":28,"textLines":1,"bbox":[166,331,320,36]}
+{"kind":"textbox","id":"sh/jq90v6d8","slide":12,"text":"Stable product behavior across Codex, Claude, Cursor, and OpenCode adapters","textPreview":"Stable product behavior across Codex, Claude, Cursor, and OpenCode adapters","textChars":75,"textLines":1,"bbox":[510,332,652,42]}
+{"kind":"shape","id":"sh/4r21oret","slide":12,"bbox":[78,410,1124,78]}
+{"kind":"textbox","id":"sh/5sbixwve","slide":12,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[102,432,44,30]}
+{"kind":"textbox","id":"sh/ytgzaxwj","slide":12,"text":"Local execution and control","textPreview":"Local execution and control","textChars":27,"textLines":1,"bbox":[166,427,320,36]}
+{"kind":"textbox","id":"sh/zup0j2x4","slide":12,"text":"Project-scoped tools, terminal/runtime ownership, diff approvals, safe command constraints","textPreview":"Project-scoped tools, terminal/runtime ownership, diff approvals, safe command constraints","textChars":90,"textLines":1,"bbox":[510,428,652,42]}
+{"kind":"shape","id":"sh/3m1ovepk","slide":12,"bbox":[78,506,1124,78]}
+{"kind":"textbox","id":"sh/2ls7298z","slide":12,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[102,528,44,30]}
+{"kind":"textbox","id":"sh/po36x47q","slide":12,"text":"Encrypted collaboration substrate","textPreview":"Encrypted collaboration substrate","textChars":33,"textLines":1,"bbox":[166,523,320,36]}
+{"kind":"textbox","id":"sh/onup4zq5","slide":12,"text":"Yjs real-time updates, wrapped device keys, encrypted snapshots and awareness","textPreview":"Yjs real-time updates, wrapped device keys, encrypted snapshots and awareness","textChars":77,"textLines":1,"bbox":[510,524,652,42]}
+{"kind":"textbox","id":"sh/fy1oru9o","slide":12,"text":"What compounds","textPreview":"What compounds","textChars":14,"textLines":1,"bbox":[78,622,150,24]}
+{"kind":"textbox","id":"sh/exs7yp83","slide":12,"text":"Every provider added, team workflow encoded, and collaborative state transition strengthens the control plane without requiring Cozea to train a foundation model.","textPreview":"Every provider added, team workflow encoded, and collaborative state transition strengthens the control plane without requiring Cozea to ...","textChars":162,"textLines":1,"bbox":[232,616,970,44]}
+{"kind":"shape","id":"sh/1kj6t4re","slide":12,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/gjap0zq9","slide":12,"name":"source-footer","text":"Sources: see notes","textPreview":"Sources: see notes","textChars":18,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/ze583yps","slide":12,"name":"page-number","text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/lg3e9wni","slide":12,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/2bifqt","slide":12,"text":"[Sources]\n- Local AGENTS.md — application stack and runtime architecture.\n- Local docs/ai-behavior-contract.md — stable provider adaptation boundary and project-scoped tool rules.\n- Local docs/collaboration-encryption-architecture.md — encrypted collaboration substrate.\n- Local docs/project-devapps.md — composable DevApp layer and runtime safety.\n- Founder-provided product update, 2026-08-26 — shared organization DevApp catalog scope.\n\n[Context]\nDefensibility is a strategic inference from the implemented architecture, not a claim of patent protection or proprietary foundation-model IP."}
+{"kind":"slide","id":"sl/j8rx2y","slide":13,"title":"COZEA  /  BUSINESS MODEL","textShapes":20}
+{"kind":"shape","id":"sh/yt432tsn","slide":13,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/zudkvyt8","slide":13,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/8z6l8na5","slide":13,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/90fm1sba","slide":13,"name":"deck-section","text":"COZEA  /  BUSINESS MODEL","textPreview":"COZEA  /  BUSINESS MODEL","textChars":24,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/mx436dsz","slide":13,"name":"slide-title","text":"Free core creates adoption; organizational controls create revenue","textPreview":"Free core creates adoption; organizational controls create revenue","textChars":66,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/nyxkzitk","slide":13,"name":"slide-subtitle","text":"The current site offers Free and Custom Enterprise. A paid team layer is the logical packaging experiment once retention is proven.","textPreview":"The current site offers Free and Custom Enterprise. A paid team layer is the logical packaging experiment once retention is proven.","textChars":131,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/wn6lcna1","slide":13,"bbox":[448,220,1,382]}
+{"kind":"shape","id":"sh/xofm5sbm","slide":13,"bbox":[840,220,1,382]}
+{"kind":"textbox","id":"sh/hgja587y","slide":13,"text":"CURRENT","textPreview":"CURRENT","textChars":7,"textLines":1,"bbox":[72,226,100,24]}
+{"kind":"textbox","id":"sh/gfa9c36t","slide":13,"text":"Free core","textPreview":"Free core","textChars":9,"textLines":1,"bbox":[72,268,320,44]}
+{"kind":"textbox","id":"sh/ve1s3yp8","slide":13,"text":"$0 forever","textPreview":"$0 forever","textChars":10,"textLines":1,"bbox":[72,325,260,38]}
+{"kind":"textbox","id":"sh/udsraton","slide":13,"text":"Full desktop app\nCore collaboration\nAll coding agents\n20+ integrations","textPreview":"Full desktop app | Core collaboration | All coding agents | 20+ integrations","textChars":70,"textLines":4,"bbox":[72,392,312,170]}
+{"kind":"textbox","id":"sh/5k3a987a","slide":13,"text":"Goal: remove adoption friction and create workflow habit.","textPreview":"Goal: remove adoption friction and create workflow habit.","textChars":57,"textLines":1,"bbox":[72,574,312,52]}
+{"kind":"textbox","id":"sh/4ju9g36p","slide":13,"text":"RECOMMENDED TEST","textPreview":"RECOMMENDED TEST","textChars":16,"textLines":1,"bbox":[466,226,170,24]}
+{"kind":"textbox","id":"sh/3i1s7ip4","slide":13,"text":"Team cloud","textPreview":"Team cloud","textChars":10,"textLines":1,"bbox":[466,268,320,44]}
+{"kind":"textbox","id":"sh/ihsredoj","slide":13,"text":"$30–40 / user / month","textPreview":"$30–40 / user / month","textChars":21,"textLines":1,"bbox":[466,325,330,38]}
+{"kind":"textbox","id":"sh/lozqxo76","slide":13,"text":"Managed team sync\nShared workflow templates\nUsage and cost visibility\nTeam permissions and support","textPreview":"Managed team sync | Shared workflow templates | Usage and cost visibility | Team permissions and support","textChars":98,"textLines":4,"bbox":[466,392,316,170]}
+{"kind":"textbox","id":"sh/knq94jql","slide":13,"text":"Goal: monetize the collaboration layer while preserving a generous free wedge.","textPreview":"Goal: monetize the collaboration layer while preserving a generous free wedge.","textChars":78,"textLines":1,"bbox":[466,574,316,52]}
+{"kind":"textbox","id":"sh/cru9kjyh","slide":13,"text":"CURRENT / EXPAND","textPreview":"CURRENT / EXPAND","textChars":16,"textLines":1,"bbox":[858,226,150,24]}
+{"kind":"textbox","id":"sh/xs3adofm","slide":13,"text":"Enterprise","textPreview":"Enterprise","textChars":10,"textLines":1,"bbox":[858,268,320,44]}
+{"kind":"textbox","id":"sh/apcri9gb","slide":13,"text":"Custom annual contract","textPreview":"Custom annual contract","textChars":22,"textLines":1,"bbox":[858,325,330,38]}
+{"kind":"textbox","id":"sh/bqlsbexw","slide":13,"text":"SAML / OIDC and SCIM\nOrganization-wide controls\nPrivate deployment\nCustom providers and rollout support","textPreview":"SAML / OIDC and SCIM | Organization-wide controls | Private deployment | Custom providers and rollout support","textChars":103,"textLines":4,"bbox":[858,392,316,170]}
+{"kind":"textbox","id":"sh/kvu9o3yd","slide":13,"text":"Goal: high-ACV revenue tied to governance, deployment, and procurement requirements.","textPreview":"Goal: high-ACV revenue tied to governance, deployment, and procurement requirements.","textChars":84,"textLines":1,"bbox":[858,574,316,52]}
+{"kind":"shape","id":"sh/lwnahofy","slide":13,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/ytcrmtg7","slide":13,"name":"source-footer","text":"Current packaging sourced from cozea.app/pricing. Team-cloud pricing is a recommended test, not a current offer.","textPreview":"Current packaging sourced from cozea.app/pricing. Team-cloud pricing is a recommended test, not a current offer.","textChars":112,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/zulsfyxs","slide":13,"name":"page-number","text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/wjulgv2d","slide":13,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/j8rx2y","slide":13,"text":"[Sources]\n- https://cozea.app/pricing — current Free and Custom Enterprise packaging and enterprise feature list.\n- https://prod.cursor.com/docs/account/teams/pricing — external reference for current team-seat willingness to pay.\n\n[Context]\nThe proposed Team cloud tier and $30–40 price range are strategic recommendations for testing after retention is established."}
+{"kind":"slide","id":"sl/e9n0d6","slide":14,"title":"COZEA  /  GO-TO-MARKET","textShapes":19}
+{"kind":"shape","id":"sh/3alsjex0","slide":14,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/i9cbq9wf","slide":14,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/h83ah4fu","slide":14,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/g7utozep","slide":14,"name":"deck-section","text":"COZEA  /  GO-TO-MARKET","textPreview":"COZEA  /  GO-TO-MARKET","textChars":22,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/v6lsfux4","slide":14,"name":"slide-title","text":"Start with high-agency teams, then expand through workflow gravity","textPreview":"Start with high-agency teams, then expand through workflow gravity","textChars":66,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/ulcbmpwj","slide":14,"name":"slide-subtitle","text":"The winning motion is product-led adoption followed by founder-led conversion where collaboration and governance become critical.","textPreview":"The winning motion is product-led adoption followed by founder-led conversion where collaboration and governance become critical.","textChars":129,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/147utove","slide":14,"bbox":[90,360,1100,2]}
+{"kind":"shape","id":"sh/03yt0jet","slide":14,"bbox":[88,350,20,20]}
+{"kind":"textbox","id":"sh/upknaxsf","slide":14,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[84,230,44,24]}
+{"kind":"textbox","id":"sh/vqto3290","slide":14,"text":"Wedge","textPreview":"Wedge","textChars":5,"textLines":1,"bbox":[84,274,240,46]}
+{"kind":"textbox","id":"sh/gr25c7al","slide":14,"text":"2–10 person AI-native startups, agencies, and product teams already mixing providers and tools.","textPreview":"2–10 person AI-native startups, agencies, and product teams already mixing providers and tools.","textChars":95,"textLines":1,"bbox":[84,402,240,166]}
+{"kind":"shape","id":"sh/hsb65cr6","slide":14,"bbox":[370,350,20,20]}
+{"kind":"textbox","id":"sh/m10n6xsj","slide":14,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[366,230,44,24]}
+{"kind":"textbox","id":"sh/7m94z294","slide":14,"text":"Land","textPreview":"Land","textChars":4,"textLines":1,"bbox":[366,274,240,46]}
+{"kind":"textbox","id":"sh/8ni587a9","slide":14,"text":"Free desktop product, open-source trust, local repo import, and ready-made agent/tool surfaces.","textPreview":"Free desktop product, open-source trust, local repo import, and ready-made agent/tool surfaces.","textChars":95,"textLines":1,"bbox":[366,402,240,166]}
+{"kind":"shape","id":"sh/9ob61cru","slide":14,"bbox":[652,350,20,20]}
+{"kind":"textbox","id":"sh/qx4nihsn","slide":14,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[648,230,44,24]}
+{"kind":"textbox","id":"sh/ridobm98","slide":14,"text":"Expand","textPreview":"Expand","textChars":6,"textLines":1,"bbox":[648,274,240,46]}
+{"kind":"textbox","id":"sh/n25k3epk","slide":14,"text":"Organization DevApps, shared layouts, team workflows, and collaboration pull additional seats into the workspace.","textPreview":"Organization DevApps, shared layouts, team workflows, and collaboration pull additional seats into the workspace.","textChars":113,"textLines":1,"bbox":[648,402,240,166]}
+{"kind":"shape","id":"sh/21w3at8z","slide":14,"bbox":[934,350,20,20]}
+{"kind":"textbox","id":"sh/p4n25o7q","slide":14,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[930,230,44,24]}
+{"kind":"textbox","id":"sh/o3elcjq5","slide":14,"text":"Monetize","textPreview":"Monetize","textChars":8,"textLines":1,"bbox":[930,274,240,46]}
+{"kind":"textbox","id":"sh/b6pk7ypw","slide":14,"text":"Convert teams needing managed sync, admin visibility, security controls, private deployment, and support.","textPreview":"Convert teams needing managed sync, admin visibility, security controls, private deployment, and support.","textChars":105,"textLines":1,"bbox":[930,402,240,166]}
+{"kind":"textbox","id":"sh/a5g3et8b","slide":14,"text":"Initial distribution loops","textPreview":"Initial distribution loops","textChars":26,"textLines":1,"bbox":[84,592,200,26]}
+{"kind":"textbox","id":"sh/x872987m","slide":14,"text":"Founder-led design partners  ·  Open-source/community content  ·  Workflow templates  ·  Provider ecosystem partnerships","textPreview":"Founder-led design partners  ·  Open-source/community content  ·  Workflow templates  ·  Provider ecosystem partnerships","textChars":120,"textLines":1,"bbox":[294,590,896,30]}
+{"kind":"shape","id":"sh/c7ylg3q1","slide":14,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/zupkbyps","slide":14,"name":"source-footer","text":"Proposed GTM strategy based on current Free/Enterprise packaging and Cozea's integration-first product design.","textPreview":"Proposed GTM strategy based on current Free/Enterprise packaging and Cozea's integration-first product design.","textChars":110,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/ytg3id87","slide":14,"name":"page-number","text":"14","textPreview":"14","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/loripova","slide":14,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/e9n0d6","slide":14,"text":"[Sources]\n- https://cozea.app/pricing — free adoption and enterprise packaging.\n- https://cozea.app/integrations — integration-first product posture.\n- https://cozea.app/privacy — AGPL and self-hosting posture.\n- Founder-provided product update, 2026-08-26 — organization-wide DevApps as an expansion loop.\n\n[Context]\nThis slide is a recommended go-to-market plan, not a statement of current pipeline or customer counts."}
+{"kind":"slide","id":"sl/yzi4di","slide":15,"title":"COZEA  /  OPPORTUNITY","textShapes":11}
+{"kind":"shape","id":"sh/2pcfm9sb","slide":15,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/3qlgvetw","slide":15,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/cfexsjad","slide":15,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/dgny1oby","slide":15,"name":"deck-section","text":"COZEA  /  OPPORTUNITY","textPreview":"COZEA  /  OPPORTUNITY","textChars":21,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/qdwfqts7","slide":15,"name":"slide-title","text":"A focused developer wedge can support a venture-scale business","textPreview":"A focused developer wedge can support a venture-scale business","textChars":62,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/be5gzets","slide":15,"name":"slide-subtitle","text":"Seat-based team revenue scales quickly even before adding enterprise platform fees or services. The scenarios below are illustrative, not forecasts.","textPreview":"Seat-based team revenue scales quickly even before adding enterprise platform fees or services. The scenarios below are illustrative, not...","textChars":148,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"textbox","id":"sh/lk7y58bu","slide":15,"text":"MODELED INPUTS","textPreview":"MODELED INPUTS","textChars":14,"textLines":1,"bbox":[862,246,170,24]}
+{"kind":"textbox","id":"sh/pknitgrq","slide":15,"text":"$30","textPreview":"$30","textChars":3,"textLines":1,"bbox":[862,292,150,60]}
+{"kind":"textbox","id":"sh/oje1kba5","slide":15,"text":"monthly seat price for the first two scenarios","textPreview":"monthly seat price for the first two scenarios","textChars":46,"textLines":1,"bbox":[862,354,314,52]}
+{"kind":"shape","id":"sh/3i50r69k","slide":15,"bbox":[862,430,314,1]}
+{"kind":"textbox","id":"sh/2hwjilsz","slide":15,"text":"$40","textPreview":"$40","textChars":3,"textLines":1,"bbox":[862,454,150,60]}
+{"kind":"textbox","id":"sh/do7ix0rm","slide":15,"text":"monthly seat price for the 500K-seat scenario; equal to Cursor Standard Teams pricing","textPreview":"monthly seat price for the 500K-seat scenario; equal to Cursor Standard Teams pricing","textChars":85,"textLines":1,"bbox":[862,516,314,70]}
+{"kind":"textbox","id":"sh/cny1ova1","slide":15,"text":"The strategic question is not whether developer spend exists—it is whether Cozea can earn a durable share by owning cross-provider team workflows.","textPreview":"The strategic question is not whether developer spend exists—it is whether Cozea can earn a durable share by owning cross-provider team w...","textChars":146,"textLines":1,"bbox":[70,618,1106,38]}
+{"kind":"shape","id":"sh/bmp0vq9w","slide":15,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/qlgjmlsb","slide":15,"name":"source-footer","text":"Illustrative calculation: seats × monthly price × 12. Cursor $40 reference sourced from official 2026 pricing.","textPreview":"Illustrative calculation: seats × monthly price × 12. Cursor $40 reference sourced from official 2026 pricing.","textChars":110,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/ts3ilwri","slide":15,"name":"page-number","text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"chart","id":"ch/4za9czql","slide":15,"name":"","chartType":"bar","bbox":[70,238,730,360]}
+{"kind":"image","id":"im/ojmt4v65","slide":15,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/yzi4di","slide":15,"text":"[Sources]\n- https://prod.cursor.com/docs/account/teams/pricing — $40/month Standard Teams seat reference.\n- Calculation: 100K x $30 x 12 = $36M; 250K x $30 x 12 = $90M; 500K x $40 x 12 = $240M.\n\n[Context]\nThese are illustrative revenue scenarios and are not management forecasts, current revenue, TAM estimates, or customer commitments."}
+{"kind":"slide","id":"sl/vtjdbm","slide":16,"title":"COZEA  /  STAGE","textShapes":18}
+{"kind":"shape","id":"sh/atkzupsb","slide":16,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/vut03utw","slide":16,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/kj2h0zat","slide":16,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/5kvi94ry","slide":16,"name":"deck-section","text":"COZEA  /  STAGE","textPreview":"COZEA  /  STAGE","textChars":15,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/ihkzypsn","slide":16,"name":"slide-title","text":"The product is beyond concept; the round funds commercial proof","textPreview":"The product is beyond concept; the round funds commercial proof","textChars":63,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/jit07u98","slide":16,"name":"slide-subtitle","text":"Cozea already contains significant systems depth. The next valuation step comes from retained teams and repeatable paid demand.","textPreview":"Cozea already contains significant systems depth. The next valuation step comes from retained teams and repeatable paid demand.","textChars":127,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"textbox","id":"sh/0nihofa9","slide":16,"text":"PRODUCT EVIDENCE","textPreview":"PRODUCT EVIDENCE","textChars":16,"textLines":1,"bbox":[58,224,200,24]}
+{"kind":"textbox","id":"sh/lorix0bu","slide":16,"text":"8","textPreview":"8","textChars":1,"textLines":1,"bbox":[58,266,250,90]}
+{"kind":"textbox","id":"sh/lsjmlwfy","slide":16,"text":"built-in DevApps across development and assistant workflows","textPreview":"built-in DevApps across development and assistant workflows","textChars":59,"textLines":1,"bbox":[58,362,250,54]}
+{"kind":"textbox","id":"sh/kralsred","slide":16,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[338,266,250,90]}
+{"kind":"textbox","id":"sh/jq14jmxs","slide":16,"text":"provider kinds supported in the local assistant runtime","textPreview":"provider kinds supported in the local assistant runtime","textChars":55,"textLines":1,"bbox":[338,362,250,54]}
+{"kind":"textbox","id":"sh/yps3qhw7","slide":16,"text":"E2E","textPreview":"E2E","textChars":3,"textLines":1,"bbox":[58,446,250,90]}
+{"kind":"textbox","id":"sh/tg3mpgfu","slide":16,"text":"encrypted collaboration updates, snapshots, and awareness payloads","textPreview":"encrypted collaboration updates, snapshots, and awareness payloads","textChars":66,"textLines":1,"bbox":[58,542,250,54]}
+{"kind":"textbox","id":"sh/sfu5wbe9","slide":16,"text":"AGPL","textPreview":"AGPL","textChars":4,"textLines":1,"bbox":[338,446,250,90]}
+{"kind":"textbox","id":"sh/7u14n6x4","slide":16,"text":"open-source software and self-hosting posture","textPreview":"open-source software and self-hosting posture","textChars":45,"textLines":1,"bbox":[338,542,250,54]}
+{"kind":"shape","id":"sh/6tsnu1wj","slide":16,"bbox":[646,224,1,400]}
+{"kind":"textbox","id":"sh/hk3mtgv6","slide":16,"text":"WHAT THE ROUND MUST PROVE","textPreview":"WHAT THE ROUND MUST PROVE","textChars":25,"textLines":1,"bbox":[704,224,270,24]}
+{"kind":"textbox","id":"sh/gju50bel","slide":16,"text":"Retention — teams return weekly because shared workflows and project context compound.\nOrganization pull — one useful DevApp or workflow reliably brings additional teammates into Cozea.\nWillingness to pay — managed collaboration, visibility, and governance convert to paid accounts.\nDistribution — repeatable channels acquire teams without founder-only effort.\nEnterprise readiness — security, identity, deployment, and support requirements are productized.","textPreview":"Retention — teams return weekly because shared workflows and project context compound. | Organization pull — one useful DevApp or workflo...","textChars":457,"textLines":5,"bbox":[704,280,492,300]}
+{"kind":"textbox","id":"sh/0zmxcjqt","slide":16,"text":"Investor implication","textPreview":"Investor implication","textChars":20,"textLines":1,"bbox":[704,594,156,24]}
+{"kind":"textbox","id":"sh/10vylo7e","slide":16,"text":"Features justify attention; commercial evidence earns the next round.","textPreview":"Features justify attention; commercial evidence earns the next round.","textChars":69,"textLines":1,"bbox":[862,590,334,42]}
+{"kind":"shape","id":"sh/ex4fa983","slide":16,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/zydgjep8","slide":16,"name":"source-footer","text":"Product evidence: website, app repository, and founder-provided latest DevApp scope; no user or revenue metrics asserted.","textPreview":"Product evidence: website, app repository, and founder-provided latest DevApp scope; no user or revenue metrics asserted.","textChars":121,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/o3mxg3q5","slide":16,"name":"page-number","text":"16","textPreview":"16","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/0be5k7ud","slide":16,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/vtjdbm","slide":16,"text":"[Sources]\n- Local src/features/devapps/registry/index.ts — eight built-in DevApps.\n- Local AGENTS.md — four provider kinds and product/runtime architecture.\n- Local docs/collaboration-encryption-architecture.md — implemented encrypted collaboration slice.\n- https://cozea.app/privacy — AGPL and self-hosting posture.\n- Founder-provided product update, 2026-08-26 — organization-wide DevApp distribution and launch.\n\n[Context]\nNo current usage, retention, revenue, or customer figures were supplied, so this slide uses product evidence and defines the commercial proofs required from the round."}
+{"kind":"slide","id":"sl/q2yqg9","slide":17,"title":"COZEA  /  FINANCING","textShapes":19}
+{"kind":"shape","id":"sh/i90ry5sn","slide":17,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/ja9srat8","slide":17,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/sfitozap","slide":17,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/tgrax4ba","slide":17,"name":"deck-section","text":"COZEA  /  FINANCING","textPreview":"COZEA  /  FINANCING","textChars":19,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/6d0rmpsj","slide":17,"name":"slide-title","text":"$1M for 10% funds the proof that unlocks the next round","textPreview":"$1M for 10% funds the proof that unlocks the next round","textChars":55,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/re9svut4","slide":17,"name":"slide-subtitle","text":"A deliberately focused first round keeps the team lean while converting product depth into retention, paid adoption, and repeatable team expansion.","textPreview":"A deliberately focused first round keeps the team lean while converting product depth into retention, paid adoption, and repeatable team ...","textChars":147,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"shape","id":"sh/8jy9sval","slide":17,"bbox":[56,220,540,330]}
+{"kind":"textbox","id":"sh/9k7al0bq","slide":17,"text":"THE ASK","textPreview":"THE ASK","textChars":7,"textLines":1,"bbox":[88,248,120,26]}
+{"kind":"textbox","id":"sh/9wz6pwfe","slide":17,"text":"$1M","textPreview":"$1M","textChars":3,"textLines":1,"bbox":[84,290,240,108]}
+{"kind":"textbox","id":"sh/ovq5gret","slide":17,"text":"FOR","textPreview":"FOR","textChars":3,"textLines":1,"bbox":[344,338,70,36]}
+{"kind":"textbox","id":"sh/nuhonmxo","slide":17,"text":"10%","textPreview":"10%","textChars":3,"textLines":1,"bbox":[418,290,150,108]}
+{"kind":"shape","id":"sh/mt8nehg3","slide":17,"bbox":[88,426,450,1]}
+{"kind":"textbox","id":"sh/x0j6twfq","slide":17,"text":"$10M post-money equivalent","textPreview":"$10M post-money equivalent","textChars":26,"textLines":1,"bbox":[88,454,310,32]}
+{"kind":"textbox","id":"sh/wza5kre5","slide":17,"text":"Simple ownership economics; final instrument and closing mechanics should be set with counsel.","textPreview":"Simple ownership economics; final instrument and closing mechanics should be set with counsel.","textChars":94,"textLines":1,"bbox":[88,494,430,48]}
+{"kind":"textbox","id":"sh/by1ormxk","slide":17,"text":"WHAT THIS ROUND MUST PROVE","textPreview":"WHAT THIS ROUND MUST PROVE","textChars":26,"textLines":1,"bbox":[654,232,330,28]}
+{"kind":"textbox","id":"sh/axsnihwz","slide":17,"text":"Retention — teams return because shared workflows and project context compound week after week.\nPaid adoption — managed collaboration, visibility, and governance convert into recurring revenue.\nExpansion — one activated user reliably pulls teammates and additional workflows into Cozea.","textPreview":"Retention — teams return because shared workflows and project context compound week after week. | Paid adoption — managed collaboration, ...","textChars":286,"textLines":3,"bbox":[654,286,550,196]}
+{"kind":"shape","id":"sh/loj6xgfm","slide":17,"bbox":[654,506,550,1]}
+{"kind":"textbox","id":"sh/kna5obe1","slide":17,"text":"15–18 mo.","textPreview":"15–18 mo.","textChars":9,"textLines":1,"bbox":[654,532,152,34]}
+{"kind":"textbox","id":"sh/47ip0fmd","slide":17,"text":"proof window","textPreview":"proof window","textChars":12,"textLines":1,"bbox":[654,568,152,26]}
+{"kind":"textbox","id":"sh/58rqtkny","slide":17,"text":"Lean team","textPreview":"Lean team","textChars":9,"textLines":1,"bbox":[838,532,152,34]}
+{"kind":"textbox","id":"sh/i507y547","slide":17,"text":"disciplined hiring","textPreview":"disciplined hiring","textChars":18,"textLines":1,"bbox":[838,568,152,26]}
+{"kind":"textbox","id":"sh/3698ra5s","slide":17,"text":"3 proofs","textPreview":"3 proofs","textChars":8,"textLines":1,"bbox":[1022,532,182,34]}
+{"kind":"textbox","id":"sh/sv2pofm9","slide":17,"text":"retention · paid · expansion","textPreview":"retention · paid · expansion","textChars":28,"textLines":1,"bbox":[1022,568,182,36]}
+{"kind":"shape","id":"sh/dwbqxknu","slide":17,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/qtk7mp4j","slide":17,"name":"source-footer","text":"Proposed first-round economics: $1M for 10%. Final structure should be reviewed with startup counsel.","textPreview":"Proposed first-round economics: $1M for 10%. Final structure should be reviewed with startup counsel.","textChars":101,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/rut8vu54","slide":17,"name":"page-number","text":"17","textPreview":"17","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/o3yp0b6p","slide":17,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/q2yqg9","slide":17,"text":"[Sources]\n- https://carta.com/data/state-of-pre-seed-q2-2026/ — Q2 2026 pre-seed volume, average instrument size, AI share, and observation that few pre-seed deals exceed $2.5M.\n- https://carta.com/uk/en/data/safe-valuation-caps-q2-2026/ — SAFE dominance, post-money SAFE usage, and rising caps.\n- https://www.ycombinator.com/deal/ — familiar early-stage dilution reference.\n- Calculation: $1M / 10% ownership = $10M post-money equivalent and $9M pre-money equivalent.\n\n[Context]\nThis is a founder-selected financing ask based on incomplete company metrics. Final terms should be set with legal, tax, and financing counsel and adjusted to verified traction, team burn, and investor demand."}
+{"kind":"slide","id":"sl/yf37ge","slide":18,"title":"COZEA  /  USE OF FUNDS","textShapes":26}
+{"kind":"shape","id":"sh/ip8bu58v","slide":18,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/3ahs3apg","slide":18,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/sfat0fqx","slide":18,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/dgja9k7i","slide":18,"name":"deck-section","text":"COZEA  /  USE OF FUNDS","textPreview":"COZEA  /  USE OF FUNDS","textChars":22,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/qdsbyp8r","slide":18,"name":"slide-title","text":"The round creates a 15–18 month commercial proof window","textPreview":"The round creates a 15–18 month commercial proof window","textChars":55,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/re1s7apc","slide":18,"name":"slide-subtitle","text":"Capital stays concentrated on retention, collaboration reliability, and the shortest path from free use to paid organizational value.","textPreview":"Capital stays concentrated on retention, collaboration reliability, and the shortest path from free use to paid organizational value.","textChars":133,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"textbox","id":"sh/0jat4zq9","slide":18,"text":"45%","textPreview":"45%","textChars":3,"textLines":1,"bbox":[56,226,150,64]}
+{"kind":"textbox","id":"sh/1kjud47e","slide":18,"text":"$450K","textPreview":"$450K","textChars":5,"textLines":1,"bbox":[56,294,180,32]}
+{"kind":"textbox","id":"sh/5cjm5ozm","slide":18,"text":"Product + infrastructure","textPreview":"Product + infrastructure","textChars":24,"textLines":1,"bbox":[56,350,244,54]}
+{"kind":"textbox","id":"sh/kbalc3i1","slide":18,"text":"Collaboration reliability, provider adapters, workbench polish, performance, and cross-platform readiness.","textPreview":"Collaboration reliability, provider adapters, workbench polish, performance, and cross-platform readiness.","textChars":106,"textLines":1,"bbox":[56,418,244,88]}
+{"kind":"shape","id":"sh/ja143y1g","slide":18,"bbox":[326,226,1,272]}
+{"kind":"textbox","id":"sh/i983at0v","slide":18,"text":"30%","textPreview":"30%","textChars":3,"textLines":1,"bbox":[348,226,150,64]}
+{"kind":"textbox","id":"sh/tgjm98zi","slide":18,"text":"$300K","textPreview":"$300K","textChars":5,"textLines":1,"bbox":[348,294,180,32]}
+{"kind":"textbox","id":"sh/sfalg3ix","slide":18,"text":"Distribution + success","textPreview":"Distribution + success","textChars":22,"textLines":1,"bbox":[348,350,244,54]}
+{"kind":"textbox","id":"sh/7e147yhc","slide":18,"text":"Design partners, onboarding, content/community, customer success, and founder-led sales instrumentation.","textPreview":"Design partners, onboarding, content/community, customer success, and founder-led sales instrumentation.","textChars":104,"textLines":1,"bbox":[348,418,244,88]}
+{"kind":"shape","id":"sh/6ds3et0r","slide":18,"bbox":[618,226,1,272]}
+{"kind":"textbox","id":"sh/9kz2x4je","slide":18,"text":"15%","textPreview":"15%","textChars":3,"textLines":1,"bbox":[640,226,150,64]}
+{"kind":"textbox","id":"sh/8jql4jit","slide":18,"text":"$150K","textPreview":"$150K","textChars":5,"textLines":1,"bbox":[640,294,180,32]}
+{"kind":"textbox","id":"sh/0nulkjqp","slide":18,"text":"Enterprise readiness","textPreview":"Enterprise readiness","textChars":20,"textLines":1,"bbox":[640,350,244,54]}
+{"kind":"textbox","id":"sh/1o3mtora","slide":18,"text":"Identity, admin controls, security review, private deployment, auditability, and procurement requirements.","textPreview":"Identity, admin controls, security review, private deployment, auditability, and procurement requirements.","textChars":106,"textLines":1,"bbox":[640,418,244,88]}
+{"kind":"shape","id":"sh/e1s3i98j","slide":18,"bbox":[910,226,1,272]}
+{"kind":"textbox","id":"sh/z214re94","slide":18,"text":"10%","textPreview":"10%","textChars":3,"textLines":1,"bbox":[932,226,150,64]}
+{"kind":"textbox","id":"sh/orulojql","slide":18,"text":"$100K","textPreview":"$100K","textChars":5,"textLines":1,"bbox":[932,294,180,32]}
+{"kind":"textbox","id":"sh/9s3mxor6","slide":18,"text":"Operations + reserve","textPreview":"Operations + reserve","textChars":20,"textLines":1,"bbox":[932,350,244,54]}
+{"kind":"textbox","id":"sh/mpc3mt8f","slide":18,"text":"Legal, finance, tooling, contingencies, and a buffer against a forced raise.","textPreview":"Legal, finance, tooling, contingencies, and a buffer against a forced raise.","textChars":76,"textLines":1,"bbox":[932,418,244,88]}
+{"kind":"shape","id":"sh/nql4ve90","slide":18,"bbox":[56,536,1168,108]}
+{"kind":"textbox","id":"sh/wve5s3qx","slide":18,"text":"MILESTONES TO TARGET BY THE NEXT ROUND","textPreview":"MILESTONES TO TARGET BY THE NEXT ROUND","textChars":38,"textLines":1,"bbox":[80,554,390,24]}
+{"kind":"textbox","id":"sh/xwnm18r2","slide":18,"text":"20–30 design-partner teams","textPreview":"20–30 design-partner teams","textChars":26,"textLines":1,"bbox":[80,592,250,30]}
+{"kind":"textbox","id":"sh/7qpor2tk","slide":18,"text":"10–15 paying organizations","textPreview":"10–15 paying organizations","textChars":26,"textLines":1,"bbox":[350,592,250,30]}
+{"kind":"textbox","id":"sh/6pg7ixsz","slide":18,"text":"Strong 8-week team retention","textPreview":"Strong 8-week team retention","textChars":28,"textLines":1,"bbox":[620,592,250,30]}
+{"kind":"textbox","id":"sh/ts76tcba","slide":18,"text":"Repeatable acquisition + expansion","textPreview":"Repeatable acquisition + expansion","textChars":34,"textLines":1,"bbox":[890,592,286,30]}
+{"kind":"shape","id":"sh/8rypk7a5","slide":18,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/jm5onit8","slide":18,"name":"source-footer","text":"Illustrative allocation and milestone plan for a $1M raise.","textPreview":"Illustrative allocation and milestone plan for a $1M raise.","textChars":59,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/ylw7edsn","slide":18,"name":"page-number","text":"18","textPreview":"18","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/0fa5cz6t","slide":18,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/yf37ge","slide":18,"text":"[Sources]\n- Internal recommendation and arithmetic: 45%/30%/15%/10% of $1M.\n- Local AGENTS.md and product docs — product, security, collaboration, and enterprise work areas informing the allocation.\n\n[Context]\nMilestones are proposed operating targets, not current results or guaranteed outcomes. They should be updated after the founders confirm baseline metrics, headcount, salaries, and infrastructure spend."}
+{"kind":"slide","id":"sl/r539qd","slide":19,"title":"COZEA  /  RISKS","textShapes":27}
+{"kind":"shape","id":"sh/dc32tkzq","slide":19,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/cra10zy5","slide":19,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/zelkvuhg","slide":19,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/ydcj2pgb","slide":19,"name":"deck-section","text":"COZEA  /  RISKS","textPreview":"COZEA  /  RISKS","textChars":15,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/lg32x4zm","slide":19,"name":"slide-title","text":"The key risks are real—and testable in this round","textPreview":"The key risks are real—and testable in this round","textChars":49,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/kfu14zy1","slide":19,"name":"slide-subtitle","text":"A credible investor case should show how Cozea will learn faster than incumbents can close the gap.","textPreview":"A credible investor case should show how Cozea will learn faster than incumbents can close the gap.","textChars":99,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"textbox","id":"sh/7ilkzehs","slide":19,"text":"Risk","textPreview":"Risk","textChars":4,"textLines":1,"bbox":[64,222,228,30]}
+{"kind":"textbox","id":"sh/mhcj69g7","slide":19,"text":"Why it matters","textPreview":"Why it matters","textChars":14,"textLines":1,"bbox":[308,222,274,30]}
+{"kind":"textbox","id":"sh/obqpcna1","slide":19,"text":"Mitigation","textPreview":"Mitigation","textChars":10,"textLines":1,"bbox":[598,222,278,30]}
+{"kind":"textbox","id":"sh/pczqlsbm","slide":19,"text":"Proof required by next round","textPreview":"Proof required by next round","textChars":28,"textLines":1,"bbox":[892,222,324,30]}
+{"kind":"shape","id":"sh/2po7adsv","slide":19,"bbox":[56,264,1168,2]}
+{"kind":"textbox","id":"sh/nah8jitg","slide":19,"text":"Platform encroachment","textPreview":"Platform encroachment","textChars":21,"textLines":1,"bbox":[64,280,228,68]}
+{"kind":"textbox","id":"sh/cfqpgnax","slide":19,"text":"Cursor, OpenAI, and Anthropic are rapidly adding agents, teams, worktrees, and extensions.","textPreview":"Cursor, OpenAI, and Anthropic are rapidly adding agents, teams, worktrees, and extensions.","textChars":90,"textLines":1,"bbox":[308,280,274,68]}
+{"kind":"textbox","id":"sh/xgzqpsbi","slide":19,"text":"Stay provider-neutral and focus on live multi-human coordination plus programmable cross-tool workflows.","textPreview":"Stay provider-neutral and focus on live multi-human coordination plus programmable cross-tool workflows.","textChars":104,"textLines":1,"bbox":[598,280,278,68]}
+{"kind":"textbox","id":"sh/ad87exsr","slide":19,"text":"Teams choose Cozea even when they already pay for a provider-native tool.","textPreview":"Teams choose Cozea even when they already pay for a provider-native tool.","textChars":73,"textLines":1,"bbox":[892,280,324,68]}
+{"kind":"shape","id":"sh/beh8n2tc","slide":19,"bbox":[56,352,1168,1]}
+{"kind":"textbox","id":"sh/kjapk7a9","slide":19,"text":"Open-source monetization","textPreview":"Open-source monetization","textChars":24,"textLines":1,"bbox":[64,364,228,68]}
+{"kind":"textbox","id":"sh/lkjqtcbe","slide":19,"text":"AGPL and a free core can limit direct seat monetization if paid value is not distinct.","textPreview":"AGPL and a free core can limit direct seat monetization if paid value is not distinct.","textChars":86,"textLines":1,"bbox":[308,364,274,68]}
+{"kind":"textbox","id":"sh/t0fqdc3y","slide":19,"text":"Charge for managed collaboration, governance, deployment, visibility, and support—not access to local code.","textPreview":"Charge for managed collaboration, governance, deployment, visibility, and support—not access to local code.","textChars":107,"textLines":1,"bbox":[598,364,278,68]}
+{"kind":"textbox","id":"sh/8z6p472d","slide":19,"text":"Free-to-paid conversion and clear enterprise willingness to pay.","textPreview":"Free-to-paid conversion and clear enterprise willingness to pay.","textChars":64,"textLines":1,"bbox":[892,364,324,68]}
+{"kind":"shape","id":"sh/7yx8b2ls","slide":19,"bbox":[56,436,1168,1]}
+{"kind":"textbox","id":"sh/6xo72xk7","slide":19,"text":"Provider fragility","textPreview":"Provider fragility","textChars":18,"textLines":1,"bbox":[64,448,228,68]}
+{"kind":"textbox","id":"sh/h4zqhc3u","slide":19,"text":"CLI and SDK behavior can change, breaking adapters or creating support cost.","textPreview":"CLI and SDK behavior can change, breaking adapters or creating support cost.","textChars":76,"textLines":1,"bbox":[308,448,274,68]}
+{"kind":"textbox","id":"sh/g3qp8729","slide":19,"text":"Maintain a stable provider contract, version gates, runtime diagnostics, and multiple supported providers.","textPreview":"Maintain a stable provider contract, version gates, runtime diagnostics, and multiple supported providers.","textChars":106,"textLines":1,"bbox":[598,448,278,68]}
+{"kind":"textbox","id":"sh/v2x8f2lo","slide":19,"text":"Fast adapter recovery and low provider-related churn or support burden.","textPreview":"Fast adapter recovery and low provider-related churn or support burden.","textChars":71,"textLines":1,"bbox":[892,448,324,68]}
+{"kind":"shape","id":"sh/u1o76hk3","slide":19,"bbox":[56,520,1168,1]}
+{"kind":"textbox","id":"sh/x8v65s3q","slide":19,"text":"Security + onboarding","textPreview":"Security + onboarding","textChars":21,"textLines":1,"bbox":[64,532,228,68]}
+{"kind":"textbox","id":"sh/w7mpwn25","slide":19,"text":"Collaboration, local execution, and enterprise deployment raise trust and complexity requirements.","textPreview":"Collaboration, local execution, and enterprise deployment raise trust and complexity requirements.","textChars":98,"textLines":1,"bbox":[308,532,274,68]}
+{"kind":"textbox","id":"sh/mdkn6t0n","slide":19,"text":"Default-safe tool scopes, encrypted collaboration, clear device recovery, identity controls, and design-partner security reviews.","textPreview":"Default-safe tool scopes, encrypted collaboration, clear device recovery, identity controls, and design-partner security reviews.","textChars":129,"textLines":1,"bbox":[598,532,278,68]}
+{"kind":"textbox","id":"sh/net4zy18","slide":19,"text":"Security review completion, low activation time, and reliable team onboarding.","textPreview":"Security review completion, low activation time, and reliable team onboarding.","textChars":78,"textLines":1,"bbox":[892,532,324,68]}
+{"kind":"shape","id":"sh/of258jit","slide":19,"bbox":[56,604,1168,1]}
+{"kind":"shape","id":"sh/90bm1oje","slide":19,"bbox":[300,222,1,384]}
+{"kind":"shape","id":"sh/a1knat0z","slide":19,"bbox":[590,222,1,384]}
+{"kind":"shape","id":"sh/b2t43y1k","slide":19,"bbox":[884,222,1,384]}
+{"kind":"textbox","id":"sh/w325c3i5","slide":19,"text":"Fundraising message","textPreview":"Fundraising message","textChars":19,"textLines":1,"bbox":[56,628,180,24]}
+{"kind":"textbox","id":"sh/x4vm58jq","slide":19,"text":"The round is sized to answer these risks with evidence before scaling burn.","textPreview":"The round is sized to answer these risks with evidence before scaling burn.","textChars":75,"textLines":1,"bbox":[242,624,982,32]}
+{"kind":"shape","id":"sh/q503y90v","slide":19,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/r694ru10","slide":19,"name":"source-footer","text":"Sources: see notes","textPreview":"Sources: see notes","textChars":18,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/7qhcf6ps","slide":19,"name":"page-number","text":"19","textPreview":"19","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/za54jmlo","slide":19,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/r539qd","slide":19,"text":"[Sources]\n- Official Cursor, OpenAI Codex, and Anthropic Claude Code pages cited on slide 11 — incumbent product expansion.\n- https://cozea.app/privacy and https://cozea.app/terms — AGPL, self-hosting, and provider posture.\n- Local docs/ai-behavior-contract.md, docs/collaboration-encryption-architecture.md, and docs/project-devapps.md — mitigation evidence.\n\n[Context]\nRisks and mitigation priorities are strategic analysis based on the product and competitive landscape."}
+{"kind":"slide","id":"sl/pwi4hx","slide":20,"title":"COZEA  /  TEAM","textShapes":15}
+{"kind":"shape","id":"sh/lsvylkf6","slide":20,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/krmhsfel","slide":20,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/7udgnuxc","slide":20,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/6t4zupwr","slide":20,"name":"deck-section","text":"COZEA  /  TEAM","textPreview":"COZEA  /  TEAM","textChars":14,"textLines":1,"bbox":[56,26,500,22]}
+{"kind":"textbox","id":"sh/twfyp4f2","slide":20,"name":"slide-title","text":"A lean core team built systems depth before scaling headcount","textPreview":"A lean core team built systems depth before scaling headcount","textChars":61,"textLines":1,"bbox":[56,64,1168,62]}
+{"kind":"textbox","id":"sh/8v6hwzex","slide":20,"name":"slide-subtitle","text":"The first round should preserve hands-on founder speed while adding focused capacity around product reliability, adoption, and enterprise readiness.","textPreview":"The first round should preserve hands-on founder speed while adding focused capacity around product reliability, adoption, and enterprise...","textChars":148,"textLines":1,"bbox":[56,130,1168,54]}
+{"kind":"textbox","id":"sh/nytgbqxs","slide":20,"text":"ERICK XU","textPreview":"ERICK XU","textChars":8,"textLines":1,"bbox":[70,236,360,52]}
+{"kind":"textbox","id":"sh/2xkfilgn","slide":20,"text":"Founder & CEO","textPreview":"Founder & CEO","textChars":13,"textLines":1,"bbox":[70,294,300,32]}
+{"kind":"textbox","id":"sh/w7yl0fal","slide":20,"text":"Public founder contact for Cozea. Leads company direction, product strategy, and fundraising.","textPreview":"Public founder contact for Cozea. Leads company direction, product strategy, and fundraising.","textChars":93,"textLines":1,"bbox":[70,348,450,90]}
+{"kind":"shape","id":"sh/x87m9kb6","slide":20,"bbox":[610,228,1,250]}
+{"kind":"textbox","id":"sh/a5w3y5sf","slide":20,"text":"KELYAN EDOU ENGONE","textPreview":"KELYAN EDOU ENGONE","textChars":18,"textLines":1,"bbox":[674,236,470,52]}
+{"kind":"textbox","id":"sh/v6547at0","slide":20,"text":"Founding technical contributor","textPreview":"Founding technical contributor","textChars":30,"textLines":1,"bbox":[674,294,420,32]}
+{"kind":"textbox","id":"sh/kbyl4fah","slide":20,"text":"Largest repository contributor by commit count; hands-on engineering across the desktop product and supporting systems.","textPreview":"Largest repository contributor by commit count; hands-on engineering across the desktop product and supporting systems.","textChars":119,"textLines":1,"bbox":[674,348,474,90]}
+{"kind":"shape","id":"sh/5c7mdkb2","slide":20,"bbox":[70,506,1078,116]}
+{"kind":"textbox","id":"sh/i9g325sr","slide":20,"text":"FIRST HIRES AFTER THE ROUND","textPreview":"FIRST HIRES AFTER THE ROUND","textChars":27,"textLines":1,"bbox":[94,526,250,24]}
+{"kind":"textbox","id":"sh/jap4batc","slide":20,"text":"Senior product / runtime engineer","textPreview":"Senior product / runtime engineer","textChars":33,"textLines":1,"bbox":[94,566,302,32]}
+{"kind":"textbox","id":"sh/0felsvad","slide":20,"text":"Product-led growth + customer success","textPreview":"Product-led growth + customer success","textChars":37,"textLines":1,"bbox":[438,566,334,32]}
+{"kind":"textbox","id":"sh/lgnm10by","slide":20,"text":"Enterprise security / platform capacity","textPreview":"Enterprise security / platform capacity","textChars":39,"textLines":1,"bbox":[814,566,306,32]}
+{"kind":"shape","id":"sh/1cf2pc3m","slide":20,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/gb61w721","slide":20,"name":"source-footer","text":"Founder name sourced from Cozea's public enterprise scheduling link. Repository contribution summary is local Git evidence.","textPreview":"Founder name sourced from Cozea's public enterprise scheduling link. Repository contribution summary is local Git evidence.","textChars":123,"textLines":1,"bbox":[56,684,1030,20]}
+{"kind":"textbox","id":"sh/fadknmlw","slide":20,"name":"page-number","text":"20","textPreview":"20","textChars":2,"textLines":1,"bbox":[1178,682,38,20]}
+{"kind":"image","id":"im/jipgnm94","slide":20,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/pwi4hx","slide":20,"text":"[Sources]\n- https://cal.com/erick-xu/30min — public founder contact linked from Cozea's pricing page.\n- https://www.linkedin.com/in/erickxuli — public profile identifies Erick Xu as a co-founder/CEO at RAMUSE, the operator named in Cozea's terms.\n- Local git shortlog — Kelyan Edou Engone is the largest repository contributor by commit count; role wording is deliberately conservative.\n- https://cozea.app/terms — Cozea is currently operated by Ramuse LLC.\n\n[Context]\nFinal titles and biographies should be confirmed by the founders before external circulation. This deck avoids unsupported employment history or performance claims."}
+{"kind":"slide","id":"sl/flbrni","slide":21,"title":"COZEA","textShapes":8}
+{"kind":"shape","id":"sh/s7uh0bit","slide":21,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/t83itgzy","slide":21,"bbox":[56,42,52,52]}
+{"kind":"textbox","id":"sh/ji1gnmhw","slide":21,"text":"COZEA","textPreview":"COZEA","textChars":5,"textLines":1,"bbox":[124,56,180,30]}
+{"kind":"shape","id":"sh/kjahwrih","slide":21,"bbox":[58,132,112,2]}
+{"kind":"shape","id":"sh/543ypwz2","slide":21,"bbox":[170,132,34,2]}
+{"kind":"textbox","id":"sh/adszqh0f","slide":21,"text":"Own the team layer in the\nagentic development stack","textPreview":"Own the team layer in the | agentic development stack","textChars":51,"textLines":2,"bbox":[58,176,760,150]}
+{"kind":"textbox","id":"sh/ve1gjmh0","slide":21,"text":"Models will keep changing. Teams will still need one shared place to direct agents, compose workflows, review work, and ship together.","textPreview":"Models will keep changing. Teams will still need one shared place to direct agents, compose workflows, review work, and ship together.","textChars":134,"textLines":1,"bbox":[62,368,700,104]}
+{"kind":"textbox","id":"sh/7qdobaxg","slide":21,"text":"THE ASK","textPreview":"THE ASK","textChars":7,"textLines":1,"bbox":[62,532,120,28]}
+{"kind":"textbox","id":"sh/6p4725gv","slide":21,"text":"$1M  FOR  10%","textPreview":"$1M  FOR  10%","textChars":13,"textLines":1,"bbox":[62,566,520,54]}
+{"kind":"textbox","id":"sh/tcv6dkfm","slide":21,"text":"15–18 month proof window","textPreview":"15–18 month proof window","textChars":24,"textLines":1,"bbox":[62,624,360,28]}
+{"kind":"textbox","id":"sh/srmp4fy1","slide":21,"text":"cozea.app","textPreview":"cozea.app","textChars":9,"textLines":1,"bbox":[1000,568,200,32]}
+{"kind":"textbox","id":"sh/fexofaxs","slide":21,"text":"contact@cozea.app","textPreview":"contact@cozea.app","textChars":17,"textLines":1,"bbox":[954,610,246,28]}
+{"kind":"image","id":"im/ehkn210z","slide":21,"name":"","alt":"Brushed titanium ribbons on a graphite background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/nmdoz6hg","slide":21,"name":"","geometry":"rect","alt":"Cozea logo","bbox":[64,50,36,36]}
+{"kind":"notes","id":"nt/flbrni","slide":21,"text":"[Sources]\n- https://cozea.app/ — closing product thesis and contact domain.\n- https://cozea.app/contact — public contact email.\n- Fundraising recommendation and calculations documented on slides 17–18.\n- AI-generated brushed titanium background created for this deck; prompt recorded in the project design notes.\n\n[Context]\nClosing thesis is strategic positioning, not a claim of current market leadership."}

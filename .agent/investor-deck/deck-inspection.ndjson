@@ -1,0 +1,570 @@
+{"kind":"slide","id":"sl/jb33lr","slide":1,"title":"COZEA","textShapes":5}
+{"kind":"shape","id":"sh/pcvi9g3a","slide":1,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/ob21gbmp","slide":1,"bbox":[56,42,52,52]}
+{"kind":"textbox","id":"sh/qd4ji14v","slide":1,"textChars":5,"textLines":1}
+{"kind":"shape","id":"sh/xgvidg36","slide":1,"bbox":[58,132,112,2]}
+{"kind":"shape","id":"sh/cfm1kb2l","slide":1,"bbox":[170,132,34,2]}
+{"kind":"textbox","id":"sh/ri90zmlw","slide":1,"textChars":59,"textLines":2}
+{"kind":"textbox","id":"sh/6h0z6h4b","slide":1,"textChars":114,"textLines":1}
+{"kind":"textbox","id":"sh/gv6do32t","slide":1,"textChars":34,"textLines":1}
+{"kind":"textbox","id":"sh/1wfux8je","slide":1,"textChars":9,"textLines":1}
+{"kind":"image","id":"im/vet83m5g","slide":1,"name":"","alt":"Brushed titanium ribbons on a graphite background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/mp07qh4j","slide":1,"name":"","geometry":"rect","alt":"Cozea logo","bbox":[64,50,36,36]}
+{"kind":"notes","id":"nt/jb33lr","slide":1,"text":"[Sources] | - https://cozea.app/ — product positioning and brand asset. | - h..."}
+{"kind":"slide","id":"sl/mttfcx","slide":2,"title":"COZEA  /  PROBLEM","textShapes":11}
+{"kind":"shape","id":"sh/5gza9czq","slide":2,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/4fq9g7y5","slide":2,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/rihsb2hw","slide":2,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/6h8rihgb","slide":2,"textChars":17,"textLines":1}
+{"kind":"textbox","id":"sh/tkzadczm","slide":2,"textChars":58,"textLines":1}
+{"kind":"textbox","id":"sh/sjq9k7yh","slide":2,"textChars":123,"textLines":1}
+{"kind":"shape","id":"sh/fm1sfmhs","slide":2,"bbox":[638,210,1,390]}
+{"kind":"textbox","id":"sh/elsrmhg7","slide":2,"textChars":13,"textLines":1}
+{"kind":"textbox","id":"sh/sbexgjq9","slide":2,"textChars":31,"textLines":1}
+{"kind":"textbox","id":"sh/dcny9o7u","slide":2,"textChars":187,"textLines":3}
+{"kind":"textbox","id":"sh/q9cfe983","slide":2,"textChars":19,"textLines":1}
+{"kind":"textbox","id":"sh/ralg7epo","slide":2,"textChars":34,"textLines":1}
+{"kind":"textbox","id":"sh/0fehk3ql","slide":2,"textChars":190,"textLines":3}
+{"kind":"shape","id":"sh/1gnyd876","slide":2,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/edwzit8f","slide":2,"textChars":67,"textLines":1}
+{"kind":"textbox","id":"sh/fe5gbyp0","slide":2,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/vip4bqxw","slide":2,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/mttfcx","slide":2,"text":"[Sources] | - https://openai.com/index/introducing-the-codex-app/ — describes..."}
+{"kind":"slide","id":"sl/zj2j12","slide":3,"title":"COZEA  /  CATEGORY","textShapes":15}
+{"kind":"shape","id":"sh/or2pkry1","slide":3,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/9svqdwfm","slide":3,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/e1k7ehgz","slide":3,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/z2to7mxk","slide":3,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/032pgry5","slide":3,"textChars":61,"textLines":1}
+{"kind":"textbox","id":"sh/14b69wfq","slide":3,"textChars":93,"textLines":1}
+{"kind":"shape","id":"sh/qx07ahg3","slide":3,"bbox":[332,394,194,0]}
+{"kind":"shape","id":"sh/ry9o3mxo","slide":3,"bbox":[754,394,194,0]}
+{"kind":"shape","id":"sh/rep4vyxs","slide":3,"bbox":[640,278,0,62]}
+{"kind":"shape","id":"sh/qdg32dw7","slide":3,"bbox":[502,330,276,130]}
+{"kind":"textbox","id":"sh/dgrmx8fy","slide":3,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/sfil43ed","slide":3,"textChars":20,"textLines":1}
+{"kind":"shape","id":"sh/zi94zixo","slide":3,"bbox":[78,322,254,150]}
+{"kind":"textbox","id":"sh/eh036dwj","slide":3,"textChars":10,"textLines":1}
+{"kind":"textbox","id":"sh/14rm1sfu","slide":3,"textChars":77,"textLines":1}
+{"kind":"shape","id":"sh/0jil8ne9","slide":3,"bbox":[948,322,254,150]}
+{"kind":"textbox","id":"sh/vm5knexk","slide":3,"textChars":11,"textLines":1}
+{"kind":"textbox","id":"sh/ulw3utwz","slide":3,"textChars":71,"textLines":1}
+{"kind":"shape","id":"sh/idofilkz","slide":3,"bbox":[514,192,252,90]}
+{"kind":"textbox","id":"sh/jexgrqlk","slide":3,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/kf6xkv2p","slide":3,"textChars":42,"textLines":1}
+{"kind":"textbox","id":"sh/5gfyt03a","slide":3,"textChars":78,"textLines":1}
+{"kind":"textbox","id":"sh/ap4fe1kn","slide":3,"textChars":97,"textLines":1}
+{"kind":"shape","id":"sh/vadwn6l8","slide":3,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/wb6xgb2t","slide":3,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/xcfepg3e","slide":3,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/69wb2xk3","slide":3,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/zj2j12","slide":3,"text":"[Sources] | - https://cozea.app/ — provider support, multi-agent, workspace, ..."}
+{"kind":"slide","id":"sl/k4mlk4","slide":4,"title":"COZEA  /  TIMING","textShapes":13}
+{"kind":"shape","id":"sh/apgfatkr","slide":4,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/vq9g3y1c","slide":4,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/8nyx832l","slide":4,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/9o7e18j6","slide":4,"textChars":16,"textLines":1}
+{"kind":"textbox","id":"sh/mlgf6tkf","slide":4,"textChars":48,"textLines":1}
+{"kind":"textbox","id":"sh/nmpwzy10","slide":4,"textChars":122,"textLines":1}
+{"kind":"shape","id":"sh/sj2xkn2p","slide":4,"bbox":[56,286,360,280]}
+{"kind":"textbox","id":"sh/tkbydsja","slide":4,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/58n6hkf2","slide":4,"textChars":109,"textLines":1}
+{"kind":"shape","id":"sh/47e5ozyh","slide":4,"bbox":[452,286,360,280]}
+{"kind":"textbox","id":"sh/36lofuxw","slide":4,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/ilcnmpgb","slide":4,"textChars":97,"textLines":1}
+{"kind":"shape","id":"sh/hk3mdkfq","slide":4,"bbox":[848,286,360,280]}
+{"kind":"textbox","id":"sh/gju5kfy5","slide":4,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/vil4baxk","slide":4,"textChars":124,"textLines":1}
+{"kind":"textbox","id":"sh/uhcni5gf","slide":4,"textChars":15,"textLines":1}
+{"kind":"textbox","id":"sh/1g76p4fu","slide":4,"textChars":105,"textLines":1}
+{"kind":"shape","id":"sh/0fy5wjyp","slide":4,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/kv6h87qx","slide":4,"textChars":59,"textLines":1}
+{"kind":"textbox","id":"sh/lwzyhcri","slide":4,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/kzehk3qh","slide":4,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/k4mlk4","slide":4,"text":"[Sources] | - https://openai.com/index/introducing-the-codex-app/ — more than..."}
+{"kind":"slide","id":"sl/9s8pqb","slide":5,"title":"COZEA  /  PRODUCT","textShapes":6}
+{"kind":"shape","id":"sh/kvedo3md","slide":5,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/5wnux8ny","slide":5,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/a5cvit4b","slide":5,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/v65cry5g","slide":5,"textChars":17,"textLines":1}
+{"kind":"textbox","id":"sh/w7edkjm1","slide":5,"textChars":49,"textLines":1}
+{"kind":"textbox","id":"sh/xsnutonm","slide":5,"textChars":136,"textLines":1}
+{"kind":"shape","id":"sh/m1cbe9oz","slide":5,"bbox":[60,204,1160,420]}
+{"kind":"shape","id":"sh/n2lcne5k","slide":5,"bbox":[64,208,1152,412]}
+{"kind":"textbox","id":"sh/6tc32h0r","slide":5,"textChars":85,"textLines":1}
+{"kind":"shape","id":"sh/twnmxcz2","slide":5,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/svul47ih","slide":5,"textChars":101,"textLines":1}
+{"kind":"textbox","id":"sh/fy54zmh8","slide":5,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/ipcj65kr","slide":5,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/c3et8nmp","slide":5,"name":"","geometry":"roundRect","alt":"Cozea multi-pane workbench with several assistant sessions and a live project preview","bbox":[66,210,1148,408]}
+{"kind":"notes","id":"nt/9s8pqb","slide":5,"text":"[Sources] | - https://cozea.app/hero-img-solid.png — product screenshot. | - ..."}
+{"kind":"slide","id":"sl/6pwake","slide":6,"title":"COZEA  /  WORKFLOW","textShapes":17}
+{"kind":"shape","id":"sh/vyx4r694","slide":6,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/uxoni18j","slide":6,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/5ozmxgr6","slide":6,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/43q5obql","slide":6,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/j2h4v690","slide":6,"textChars":54,"textLines":1}
+{"kind":"textbox","id":"sh/i1onml8f","slide":6,"textChars":96,"textLines":1}
+{"kind":"shape","id":"sh/tsz610r2","slide":6,"bbox":[88,338,1104,2]}
+{"kind":"shape","id":"sh/srq5svqx","slide":6,"bbox":[88,331,16,16]}
+{"kind":"shape","id":"sh/atorixcz","slide":6,"bbox":[366,331,16,16]}
+{"kind":"shape","id":"sh/vux8ridk","slide":6,"bbox":[644,331,16,16]}
+{"kind":"shape","id":"sh/wv69knup","slide":6,"bbox":[922,331,16,16]}
+{"kind":"textbox","id":"sh/hwfqtsva","slide":6,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/ixormxcv","slide":6,"textChars":15,"textLines":1}
+{"kind":"textbox","id":"sh/jyh8v2dg","slide":6,"textChars":133,"textLines":1}
+{"kind":"textbox","id":"sh/4zq9o7u1","slide":6,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/50zqxcvm","slide":6,"textChars":11,"textLines":1}
+{"kind":"textbox","id":"sh/y147atcr","slide":6,"textChars":139,"textLines":1}
+{"kind":"textbox","id":"sh/z2d8jydc","slide":6,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/369orut4","slide":6,"textChars":13,"textLines":1}
+{"kind":"textbox","id":"sh/250ni9sj","slide":6,"textChars":142,"textLines":1}
+{"kind":"textbox","id":"sh/p8b6t4bu","slide":6,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/o725kzap","slide":6,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/fi94nuts","slide":6,"textChars":129,"textLines":1}
+{"kind":"shape","id":"sh/eh0neps7","slide":6,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/14r6p4by","slide":6,"textChars":90,"textLines":1}
+{"kind":"textbox","id":"sh/g3i5gzad","slide":6,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/pw7ap4f6","slide":6,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/6pwake","slide":6,"text":"[Sources] | - https://cozea.app/ — Build Workspace, Invite Team, Vibe Togethe..."}
+{"kind":"slide","id":"sl/qielfd","slide":7,"title":"COZEA  /  PRODUCT SYSTEM","textShapes":17}
+{"kind":"shape","id":"sh/a54f2t0r","slide":7,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/b6dwbyhc","slide":7,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/kb6x83it","slide":7,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/lcfeh8ze","slide":7,"textChars":24,"textLines":1}
+{"kind":"textbox","id":"sh/y9of6t03","slide":7,"textChars":55,"textLines":1}
+{"kind":"textbox","id":"sh/jaxwfyh8","slide":7,"textChars":98,"textLines":1}
+{"kind":"shape","id":"sh/8zqxcni5","slide":7,"bbox":[52,224,622,356]}
+{"kind":"shape","id":"sh/t0zyl8zq","slide":7,"bbox":[56,228,614,348]}
+{"kind":"textbox","id":"sh/4jixgvad","slide":7,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/ji9g7qts","slide":7,"textChars":20,"textLines":1}
+{"kind":"textbox","id":"sh/ih0fels7","slide":7,"textChars":65,"textLines":1}
+{"kind":"shape","id":"sh/tobyd0bu","slide":7,"bbox":[724,318,474,1]}
+{"kind":"textbox","id":"sh/sn2xkfa9","slide":7,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/rm9gbato","slide":7,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/6l0fi5s3","slide":7,"textChars":70,"textLines":1}
+{"kind":"shape","id":"sh/9s7e1gbq","slide":7,"bbox":[724,418,474,1]}
+{"kind":"textbox","id":"sh/8ryx8ba5","slide":7,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/0v2xobi1","slide":7,"textChars":23,"textLines":1}
+{"kind":"textbox","id":"sh/lwbyxgjm","slide":7,"textChars":72,"textLines":1}
+{"kind":"shape","id":"sh/y9kfm10v","slide":7,"bbox":[724,518,474,1]}
+{"kind":"textbox","id":"sh/zatgv61g","slide":7,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/8z2xsvix","slide":7,"textChars":15,"textLines":1}
+{"kind":"textbox","id":"sh/90vy10ji","slide":7,"textChars":94,"textLines":1}
+{"kind":"shape","id":"sh/mxkfql0r","slide":7,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/nytgzq1c","slide":7,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/w3mxwvi9","slide":7,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/wjixsve1","slide":7,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/i94be1kz","slide":7,"name":"","geometry":"roundRect","alt":"Cozea customized workspace with browser and terminal tiles","bbox":[58,230,610,344]}
+{"kind":"notes","id":"nt/qielfd","slide":7,"text":"[Sources] | - https://cozea.app/features/img_8.png — product image. | - https..."}
+{"kind":"slide","id":"sl/8vo39z","slide":8,"title":"COZEA  /  PROVIDER STRATEGY","textShapes":16}
+{"kind":"shape","id":"sh/gzux83ud","slide":8,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/h03e18by","slide":8,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/i1cfadcj","slide":8,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/32lw3it4","slide":8,"textChars":27,"textLines":1}
+{"kind":"textbox","id":"sh/43exc3u9","slide":8,"textChars":52,"textLines":1}
+{"kind":"textbox","id":"sh/54ne58bu","slide":8,"textChars":120,"textLines":1}
+{"kind":"shape","id":"sh/y5svy9cz","slide":8,"bbox":[52,218,662,378]}
+{"kind":"shape","id":"sh/j61wredk","slide":8,"bbox":[56,222,654,370]}
+{"kind":"textbox","id":"sh/u1w7itov","slide":8,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/h476t8nm","slide":8,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/w3ypk361","slide":8,"textChars":29,"textLines":1}
+{"kind":"shape","id":"sh/7y5one5k","slide":8,"bbox":[766,330,446,1]}
+{"kind":"textbox","id":"sh/mxw7etoz","slide":8,"textChars":6,"textLines":1}
+{"kind":"textbox","id":"sh/90n6pona","slide":8,"textChars":37,"textLines":1}
+{"kind":"shape","id":"sh/8zepgj65","slide":8,"bbox":[766,408,446,1]}
+{"kind":"textbox","id":"sh/zaloje58","slide":8,"textChars":6,"textLines":1}
+{"kind":"textbox","id":"sh/y9c7a9on","slide":8,"textChars":43,"textLines":1}
+{"kind":"shape","id":"sh/25c7m98v","slide":8,"bbox":[766,486,446,1]}
+{"kind":"textbox","id":"sh/n6l8ve9g","slide":8,"textChars":8,"textLines":1}
+{"kind":"textbox","id":"sh/o7upojql","slide":8,"textChars":28,"textLines":1}
+{"kind":"textbox","id":"sh/p83qxor6","slide":8,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/a9c7q98r","slide":8,"textChars":93,"textLines":1}
+{"kind":"shape","id":"sh/bul8ze9c","slide":8,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/cvupsjqx","slide":8,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/xwnq1ori","slide":8,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/qx4fm9sn","slide":8,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/cr2hwzyd","slide":8,"name":"","geometry":"roundRect","alt":"Cozea multi-agent workspace with multiple assistant sessions","bbox":[58,224,650,366]}
+{"kind":"notes","id":"nt/8vo39z","slide":8,"text":"[Sources] | - https://cozea.app/features/img_6.png — product image. | - Local..."}
+{"kind":"slide","id":"sl/ipff8i","slide":9,"title":"COZEA  /  COLLABORATION","textShapes":9}
+{"kind":"shape","id":"sh/3mhs76d4","slide":9,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/2l8by1wj","slide":9,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/dsjadgvm","slide":9,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/crqt4bu1","slide":9,"textChars":23,"textLines":1}
+{"kind":"textbox","id":"sh/bqhsbqdg","slide":9,"textChars":49,"textLines":1}
+{"kind":"textbox","id":"sh/qp8b2lcv","slide":9,"textChars":118,"textLines":1}
+{"kind":"shape","id":"sh/lgjah0vi","slide":9,"bbox":[52,216,656,374]}
+{"kind":"shape","id":"sh/0fat8vux","slide":9,"bbox":[56,220,648,366]}
+{"kind":"textbox","id":"sh/bi58v2tc","slide":9,"textChars":17,"textLines":1}
+{"kind":"textbox","id":"sh/wjepo7ux","slide":9,"textChars":395,"textLines":4}
+{"kind":"textbox","id":"sh/xknqxcbi","slide":9,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/ylw7qhs3","slide":9,"textChars":100,"textLines":1}
+{"kind":"shape","id":"sh/jm58z2t8","slide":9,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/kneps7at","slide":9,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/l87q1cbe","slide":9,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/pcfepkby","slide":9,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/t4zylsze","slide":9,"name":"","geometry":"roundRect","alt":"Cozea share-project dialog and two collaborator assistant tiles","bbox":[58,222,644,362]}
+{"kind":"notes","id":"nt/ipff8i","slide":9,"text":"[Sources] | - https://cozea.app/features/img_9.png — product image. | - Local..."}
+{"kind":"slide","id":"sl/no0hzg","slide":10,"title":"COZEA  /  DEVAPP DISTRIBUTION","textShapes":16}
+{"kind":"shape","id":"sh/tg3qxovu","slide":10,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/8fu9oje9","slide":10,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/vil8zyd0","slide":10,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/uhcrqtwf","slide":10,"textChars":29,"textLines":1}
+{"kind":"textbox","id":"sh/hk3q1ovq","slide":10,"textChars":57,"textLines":1}
+{"kind":"textbox","id":"sh/gju9sje5","slide":10,"textChars":120,"textLines":1}
+{"kind":"shape","id":"sh/bmh8nuxg","slide":10,"bbox":[52,216,632,362]}
+{"kind":"shape","id":"sh/al87epwv","slide":10,"bbox":[56,220,624,354]}
+{"kind":"textbox","id":"sh/t8fuxkba","slide":10,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/654v25sj","slide":10,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/76dcvat4","slide":10,"textChars":72,"textLines":1}
+{"kind":"shape","id":"sh/gb6d8zal","slide":10,"bbox":[738,326,462,1]}
+{"kind":"textbox","id":"sh/hcfu1kb6","slide":10,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/u9ov6psv","slide":10,"textChars":12,"textLines":1}
+{"kind":"textbox","id":"sh/vaxczut0","slide":10,"textChars":80,"textLines":1}
+{"kind":"shape","id":"sh/wfmdwvah","slide":10,"bbox":[738,438,462,1]}
+{"kind":"textbox","id":"sh/xgvup0b2","slide":10,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/d032dsze","slide":10,"textChars":30,"textLines":1}
+{"kind":"textbox","id":"sh/szu14ni9","slide":10,"textChars":89,"textLines":1}
+{"kind":"shape","id":"sh/rylkbiho","slide":10,"bbox":[58,602,1142,1]}
+{"kind":"textbox","id":"sh/qxsj2d03","slide":10,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/1o32hczq","slide":10,"textChars":101,"textLines":1}
+{"kind":"shape","id":"sh/0nu187i5","slide":10,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/f2lkf2hk","slide":10,"textChars":77,"textLines":1}
+{"kind":"textbox","id":"sh/e1cj6x0z","slide":10,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/vito7upk","slide":10,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/bmdcbeds","slide":10,"name":"","geometry":"roundRect","alt":"Cozea DevApp launcher and Store entry point inside the shared workbench","bbox":[58,222,620,350]}
+{"kind":"notes","id":"nt/no0hzg","slide":10,"text":"[Sources] | - https://cozea.app/features/img_4.png — product image. | - https..."}
+{"kind":"slide","id":"sl/qyakxt","slide":11,"title":"COZEA  /  COMPETITION","textShapes":32}
+{"kind":"shape","id":"sh/r2xg3mls","slide":11,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/q1ozahk7","slide":11,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/18zi9w3u","slide":11,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/07qhgr29","slide":11,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/f6x076lo","slide":11,"textChars":50,"textLines":1}
+{"kind":"textbox","id":"sh/e5oze1k3","slide":11,"textChars":175,"textLines":1}
+{"kind":"textbox","id":"sh/hcvyxc3a","slide":11,"textChars":7,"textLines":1}
+{"kind":"textbox","id":"sh/gbmh472p","slide":11,"textChars":15,"textLines":1}
+{"kind":"textbox","id":"sh/ixgbytor","slide":11,"textChars":16,"textLines":1}
+{"kind":"textbox","id":"sh/jy9c7ypc","slide":11,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/kzit036x","slide":11,"textChars":13,"textLines":1}
+{"kind":"shape","id":"sh/50ru987i","slide":11,"bbox":[58,272,1162,2]}
+{"kind":"shape","id":"sh/610b2do3","slide":11,"bbox":[58,278,1162,88]}
+{"kind":"textbox","id":"sh/729cbipo","slide":11,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/s3it4n69","slide":11,"textChars":47,"textLines":1}
+{"kind":"textbox","id":"sh/toruds7e","slide":11,"textChars":55,"textLines":1}
+{"kind":"textbox","id":"sh/upkb6doz","slide":11,"textChars":41,"textLines":1}
+{"kind":"textbox","id":"sh/fqtcfipk","slide":11,"textChars":50,"textLines":1}
+{"kind":"shape","id":"sh/ruts3ils","slide":11,"bbox":[58,368,1162,1]}
+{"kind":"textbox","id":"sh/qtkbux47","slide":11,"textChars":6,"textLines":1}
+{"kind":"textbox","id":"sh/dwva5s3y","slide":11,"textChars":55,"textLines":1}
+{"kind":"textbox","id":"sh/cv2twnmd","slide":11,"textChars":53,"textLines":1}
+{"kind":"textbox","id":"sh/3qtszi5g","slide":11,"textChars":56,"textLines":1}
+{"kind":"textbox","id":"sh/25kbqd4b","slide":11,"textChars":43,"textLines":1}
+{"kind":"shape","id":"sh/psba1snm","slide":11,"bbox":[58,458,1162,1]}
+{"kind":"textbox","id":"sh/4r2tsnm1","slide":11,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/f29svy5k","slide":11,"textChars":48,"textLines":1}
+{"kind":"textbox","id":"sh/u10bmd4z","slide":11,"textChars":38,"textLines":1}
+{"kind":"textbox","id":"sh/k7ypwz2x","slide":11,"textChars":58,"textLines":1}
+{"kind":"textbox","id":"sh/587q543i","slide":11,"textChars":35,"textLines":1}
+{"kind":"shape","id":"sh/i5g7u9kr","slide":11,"bbox":[58,548,1162,1]}
+{"kind":"textbox","id":"sh/j6p83elc","slide":11,"textChars":11,"textLines":1}
+{"kind":"textbox","id":"sh/sbyp0j2t","slide":11,"textChars":51,"textLines":1}
+{"kind":"textbox","id":"sh/tw7q9oje","slide":11,"textChars":49,"textLines":1}
+{"kind":"textbox","id":"sh/69g7y9k3","slide":11,"textChars":57,"textLines":1}
+{"kind":"textbox","id":"sh/7ap87e18","slide":11,"textChars":34,"textLines":1}
+{"kind":"shape","id":"sh/ofepof2p","slide":11,"bbox":[58,638,1162,1]}
+{"kind":"shape","id":"sh/90nqxk3a","slide":11,"bbox":[238,226,1,414]}
+{"kind":"shape","id":"sh/1wzixk3e","slide":11,"bbox":[520,226,1,414]}
+{"kind":"shape","id":"sh/gvqh4f2t","slide":11,"bbox":[748,226,1,414]}
+{"kind":"shape","id":"sh/fuh0valo","slide":11,"bbox":[1000,226,1,414]}
+{"kind":"textbox","id":"sh/etoz2pk3","slide":11,"textChars":22,"textLines":1}
+{"kind":"textbox","id":"sh/tsfitk3i","slide":11,"textChars":142,"textLines":1}
+{"kind":"shape","id":"sh/s76h0f2x","slide":11,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/r6xgralc","slide":11,"textChars":137,"textLines":1}
+{"kind":"textbox","id":"sh/65ozy5kr","slide":11,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/14nylove","slide":11,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/qyakxt","slide":11,"text":"[Sources] | - https://cozea.app/ and https://cozea.app/docs — Cozea positioni..."}
+{"kind":"slide","id":"sl/2bifqt","slide":12,"title":"COZEA  /  DEFENSIBILITY","textShapes":19}
+{"kind":"shape","id":"sh/nadgfmdw","slide":12,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/m94fmhcb","slide":12,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/x0fylwvy","slide":12,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/wz6hsrud","slide":12,"textChars":23,"textLines":1}
+{"kind":"textbox","id":"sh/byxgjmd8","slide":12,"textChars":47,"textLines":1}
+{"kind":"textbox","id":"sh/ax4zq1cn","slide":12,"textChars":131,"textLines":1}
+{"kind":"shape","id":"sh/l4fypgva","slide":12,"bbox":[78,218,1124,78]}
+{"kind":"textbox","id":"sh/k36hwbup","slide":12,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/ul0jihwr","slide":12,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/vm90rmdc","slide":12,"textChars":73,"textLines":1}
+{"kind":"shape","id":"sh/wni1krex","slide":12,"bbox":[78,314,1124,78]}
+{"kind":"textbox","id":"sh/horitwvi","slide":12,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/ip0jm1wn","slide":12,"textChars":28,"textLines":1}
+{"kind":"textbox","id":"sh/jq90v6d8","slide":12,"textChars":75,"textLines":1}
+{"kind":"shape","id":"sh/4r21oret","slide":12,"bbox":[78,410,1124,78]}
+{"kind":"textbox","id":"sh/5sbixwve","slide":12,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/ytgzaxwj","slide":12,"textChars":27,"textLines":1}
+{"kind":"textbox","id":"sh/zup0j2x4","slide":12,"textChars":90,"textLines":1}
+{"kind":"shape","id":"sh/3m1ovepk","slide":12,"bbox":[78,506,1124,78]}
+{"kind":"textbox","id":"sh/2ls7298z","slide":12,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/po36x47q","slide":12,"textChars":33,"textLines":1}
+{"kind":"textbox","id":"sh/onup4zq5","slide":12,"textChars":77,"textLines":1}
+{"kind":"textbox","id":"sh/fy1oru9o","slide":12,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/exs7yp83","slide":12,"textChars":162,"textLines":1}
+{"kind":"shape","id":"sh/1kj6t4re","slide":12,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/gjap0zq9","slide":12,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/ze583yps","slide":12,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/lg3e9wni","slide":12,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/2bifqt","slide":12,"text":"[Sources] | - Local AGENTS.md — application stack and runtime architecture. |..."}
+{"kind":"slide","id":"sl/j8rx2y","slide":13,"title":"COZEA  /  BUSINESS MODEL","textShapes":20}
+{"kind":"shape","id":"sh/yt432tsn","slide":13,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/zudkvyt8","slide":13,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/8z6l8na5","slide":13,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/90fm1sba","slide":13,"textChars":24,"textLines":1}
+{"kind":"textbox","id":"sh/mx436dsz","slide":13,"textChars":66,"textLines":1}
+{"kind":"textbox","id":"sh/nyxkzitk","slide":13,"textChars":131,"textLines":1}
+{"kind":"shape","id":"sh/wn6lcna1","slide":13,"bbox":[448,220,1,382]}
+{"kind":"shape","id":"sh/xofm5sbm","slide":13,"bbox":[840,220,1,382]}
+{"kind":"textbox","id":"sh/hgja587y","slide":13,"textChars":7,"textLines":1}
+{"kind":"textbox","id":"sh/gfa9c36t","slide":13,"textChars":9,"textLines":1}
+{"kind":"textbox","id":"sh/ve1s3yp8","slide":13,"textChars":10,"textLines":1}
+{"kind":"textbox","id":"sh/udsraton","slide":13,"textChars":70,"textLines":4}
+{"kind":"textbox","id":"sh/5k3a987a","slide":13,"textChars":57,"textLines":1}
+{"kind":"textbox","id":"sh/4ju9g36p","slide":13,"textChars":16,"textLines":1}
+{"kind":"textbox","id":"sh/3i1s7ip4","slide":13,"textChars":10,"textLines":1}
+{"kind":"textbox","id":"sh/ihsredoj","slide":13,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/lozqxo76","slide":13,"textChars":98,"textLines":4}
+{"kind":"textbox","id":"sh/knq94jql","slide":13,"textChars":78,"textLines":1}
+{"kind":"textbox","id":"sh/cru9kjyh","slide":13,"textChars":16,"textLines":1}
+{"kind":"textbox","id":"sh/xs3adofm","slide":13,"textChars":10,"textLines":1}
+{"kind":"textbox","id":"sh/apcri9gb","slide":13,"textChars":22,"textLines":1}
+{"kind":"textbox","id":"sh/bqlsbexw","slide":13,"textChars":103,"textLines":4}
+{"kind":"textbox","id":"sh/kvu9o3yd","slide":13,"textChars":84,"textLines":1}
+{"kind":"shape","id":"sh/lwnahofy","slide":13,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/ytcrmtg7","slide":13,"textChars":112,"textLines":1}
+{"kind":"textbox","id":"sh/zulsfyxs","slide":13,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/wjulgv2d","slide":13,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/j8rx2y","slide":13,"text":"[Sources] | - https://cozea.app/pricing — current Free and Custom Enterprise ..."}
+{"kind":"slide","id":"sl/e9n0d6","slide":14,"title":"COZEA  /  GO-TO-MARKET","textShapes":19}
+{"kind":"shape","id":"sh/3alsjex0","slide":14,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/i9cbq9wf","slide":14,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/h83ah4fu","slide":14,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/g7utozep","slide":14,"textChars":22,"textLines":1}
+{"kind":"textbox","id":"sh/v6lsfux4","slide":14,"textChars":66,"textLines":1}
+{"kind":"textbox","id":"sh/ulcbmpwj","slide":14,"textChars":129,"textLines":1}
+{"kind":"shape","id":"sh/147utove","slide":14,"bbox":[90,360,1100,2]}
+{"kind":"shape","id":"sh/03yt0jet","slide":14,"bbox":[88,350,20,20]}
+{"kind":"textbox","id":"sh/upknaxsf","slide":14,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/vqto3290","slide":14,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/gr25c7al","slide":14,"textChars":95,"textLines":1}
+{"kind":"shape","id":"sh/hsb65cr6","slide":14,"bbox":[370,350,20,20]}
+{"kind":"textbox","id":"sh/m10n6xsj","slide":14,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/7m94z294","slide":14,"textChars":4,"textLines":1}
+{"kind":"textbox","id":"sh/8ni587a9","slide":14,"textChars":95,"textLines":1}
+{"kind":"shape","id":"sh/9ob61cru","slide":14,"bbox":[652,350,20,20]}
+{"kind":"textbox","id":"sh/qx4nihsn","slide":14,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/ridobm98","slide":14,"textChars":6,"textLines":1}
+{"kind":"textbox","id":"sh/n25k3epk","slide":14,"textChars":113,"textLines":1}
+{"kind":"shape","id":"sh/21w3at8z","slide":14,"bbox":[934,350,20,20]}
+{"kind":"textbox","id":"sh/p4n25o7q","slide":14,"textChars":2,"textLines":1}
+{"kind":"textbox","id":"sh/o3elcjq5","slide":14,"textChars":8,"textLines":1}
+{"kind":"textbox","id":"sh/b6pk7ypw","slide":14,"textChars":105,"textLines":1}
+{"kind":"textbox","id":"sh/a5g3et8b","slide":14,"textChars":26,"textLines":1}
+{"kind":"textbox","id":"sh/x872987m","slide":14,"textChars":120,"textLines":1}
+{"kind":"shape","id":"sh/c7ylg3q1","slide":14,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/zupkbyps","slide":14,"textChars":110,"textLines":1}
+{"kind":"textbox","id":"sh/ytg3id87","slide":14,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/loripova","slide":14,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/e9n0d6","slide":14,"text":"[Sources] | - https://cozea.app/pricing — free adoption and enterprise packag..."}
+{"kind":"slide","id":"sl/yzi4di","slide":15,"title":"COZEA  /  OPPORTUNITY","textShapes":11}
+{"kind":"shape","id":"sh/2pcfm9sb","slide":15,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/3qlgvetw","slide":15,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/cfexsjad","slide":15,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/dgny1oby","slide":15,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/qdwfqts7","slide":15,"textChars":62,"textLines":1}
+{"kind":"textbox","id":"sh/be5gzets","slide":15,"textChars":148,"textLines":1}
+{"kind":"textbox","id":"sh/lk7y58bu","slide":15,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/pknitgrq","slide":15,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/oje1kba5","slide":15,"textChars":46,"textLines":1}
+{"kind":"shape","id":"sh/3i50r69k","slide":15,"bbox":[862,430,314,1]}
+{"kind":"textbox","id":"sh/2hwjilsz","slide":15,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/do7ix0rm","slide":15,"textChars":85,"textLines":1}
+{"kind":"textbox","id":"sh/cny1ova1","slide":15,"textChars":146,"textLines":1}
+{"kind":"shape","id":"sh/bmp0vq9w","slide":15,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/qlgjmlsb","slide":15,"textChars":110,"textLines":1}
+{"kind":"textbox","id":"sh/ts3ilwri","slide":15,"textChars":2,"textLines":1}
+{"kind":"chart","id":"ch/4za9czql","slide":15,"name":"","chartType":"bar","bbox":[70,238,730,360]}
+{"kind":"image","id":"im/ojmt4v65","slide":15,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/yzi4di","slide":15,"text":"[Sources] | - https://prod.cursor.com/docs/account/teams/pricing — $40/month ..."}
+{"kind":"slide","id":"sl/vtjdbm","slide":16,"title":"COZEA  /  STAGE","textShapes":18}
+{"kind":"shape","id":"sh/atkzupsb","slide":16,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/vut03utw","slide":16,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/kj2h0zat","slide":16,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/5kvi94ry","slide":16,"textChars":15,"textLines":1}
+{"kind":"textbox","id":"sh/ihkzypsn","slide":16,"textChars":63,"textLines":1}
+{"kind":"textbox","id":"sh/jit07u98","slide":16,"textChars":127,"textLines":1}
+{"kind":"textbox","id":"sh/0nihofa9","slide":16,"textChars":16,"textLines":1}
+{"kind":"textbox","id":"sh/lorix0bu","slide":16,"textChars":1,"textLines":1}
+{"kind":"textbox","id":"sh/lsjmlwfy","slide":16,"textChars":59,"textLines":1}
+{"kind":"textbox","id":"sh/kralsred","slide":16,"textChars":1,"textLines":1}
+{"kind":"textbox","id":"sh/jq14jmxs","slide":16,"textChars":55,"textLines":1}
+{"kind":"textbox","id":"sh/yps3qhw7","slide":16,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/tg3mpgfu","slide":16,"textChars":66,"textLines":1}
+{"kind":"textbox","id":"sh/sfu5wbe9","slide":16,"textChars":4,"textLines":1}
+{"kind":"textbox","id":"sh/7u14n6x4","slide":16,"textChars":45,"textLines":1}
+{"kind":"shape","id":"sh/6tsnu1wj","slide":16,"bbox":[646,224,1,400]}
+{"kind":"textbox","id":"sh/hk3mtgv6","slide":16,"textChars":25,"textLines":1}
+{"kind":"textbox","id":"sh/gju50bel","slide":16,"textChars":457,"textLines":5}
+{"kind":"textbox","id":"sh/0zmxcjqt","slide":16,"textChars":20,"textLines":1}
+{"kind":"textbox","id":"sh/10vylo7e","slide":16,"textChars":69,"textLines":1}
+{"kind":"shape","id":"sh/ex4fa983","slide":16,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/zydgjep8","slide":16,"textChars":121,"textLines":1}
+{"kind":"textbox","id":"sh/o3mxg3q5","slide":16,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/0be5k7ud","slide":16,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/vtjdbm","slide":16,"text":"[Sources] | - Local src/features/devapps/registry/index.ts — eight built-in D..."}
+{"kind":"slide","id":"sl/q2yqg9","slide":17,"title":"COZEA  /  FINANCING","textShapes":19}
+{"kind":"shape","id":"sh/i90ry5sn","slide":17,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/ja9srat8","slide":17,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/sfitozap","slide":17,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/tgrax4ba","slide":17,"textChars":19,"textLines":1}
+{"kind":"textbox","id":"sh/6d0rmpsj","slide":17,"textChars":55,"textLines":1}
+{"kind":"textbox","id":"sh/re9svut4","slide":17,"textChars":147,"textLines":1}
+{"kind":"shape","id":"sh/8jy9sval","slide":17,"bbox":[56,220,540,330]}
+{"kind":"textbox","id":"sh/9k7al0bq","slide":17,"textChars":7,"textLines":1}
+{"kind":"textbox","id":"sh/9wz6pwfe","slide":17,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/ovq5gret","slide":17,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/nuhonmxo","slide":17,"textChars":3,"textLines":1}
+{"kind":"shape","id":"sh/mt8nehg3","slide":17,"bbox":[88,426,450,1]}
+{"kind":"textbox","id":"sh/x0j6twfq","slide":17,"textChars":26,"textLines":1}
+{"kind":"textbox","id":"sh/wza5kre5","slide":17,"textChars":94,"textLines":1}
+{"kind":"textbox","id":"sh/by1ormxk","slide":17,"textChars":26,"textLines":1}
+{"kind":"textbox","id":"sh/axsnihwz","slide":17,"textChars":286,"textLines":3}
+{"kind":"shape","id":"sh/loj6xgfm","slide":17,"bbox":[654,506,550,1]}
+{"kind":"textbox","id":"sh/kna5obe1","slide":17,"textChars":9,"textLines":1}
+{"kind":"textbox","id":"sh/47ip0fmd","slide":17,"textChars":12,"textLines":1}
+{"kind":"textbox","id":"sh/58rqtkny","slide":17,"textChars":9,"textLines":1}
+{"kind":"textbox","id":"sh/i507y547","slide":17,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/3698ra5s","slide":17,"textChars":8,"textLines":1}
+{"kind":"textbox","id":"sh/sv2pofm9","slide":17,"textChars":28,"textLines":1}
+{"kind":"shape","id":"sh/dwbqxknu","slide":17,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/qtk7mp4j","slide":17,"textChars":101,"textLines":1}
+{"kind":"textbox","id":"sh/rut8vu54","slide":17,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/o3yp0b6p","slide":17,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/q2yqg9","slide":17,"text":"[Sources] | - https://carta.com/data/state-of-pre-seed-q2-2026/ — Q2 2026 pre..."}
+{"kind":"slide","id":"sl/yf37ge","slide":18,"title":"COZEA  /  USE OF FUNDS","textShapes":26}
+{"kind":"shape","id":"sh/ip8bu58v","slide":18,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/3ahs3apg","slide":18,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/sfat0fqx","slide":18,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/dgja9k7i","slide":18,"textChars":22,"textLines":1}
+{"kind":"textbox","id":"sh/qdsbyp8r","slide":18,"textChars":55,"textLines":1}
+{"kind":"textbox","id":"sh/re1s7apc","slide":18,"textChars":133,"textLines":1}
+{"kind":"textbox","id":"sh/0jat4zq9","slide":18,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/1kjud47e","slide":18,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/5cjm5ozm","slide":18,"textChars":24,"textLines":1}
+{"kind":"textbox","id":"sh/kbalc3i1","slide":18,"textChars":106,"textLines":1}
+{"kind":"shape","id":"sh/ja143y1g","slide":18,"bbox":[326,226,1,272]}
+{"kind":"textbox","id":"sh/i983at0v","slide":18,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/tgjm98zi","slide":18,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/sfalg3ix","slide":18,"textChars":22,"textLines":1}
+{"kind":"textbox","id":"sh/7e147yhc","slide":18,"textChars":104,"textLines":1}
+{"kind":"shape","id":"sh/6ds3et0r","slide":18,"bbox":[618,226,1,272]}
+{"kind":"textbox","id":"sh/9kz2x4je","slide":18,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/8jql4jit","slide":18,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/0nulkjqp","slide":18,"textChars":20,"textLines":1}
+{"kind":"textbox","id":"sh/1o3mtora","slide":18,"textChars":106,"textLines":1}
+{"kind":"shape","id":"sh/e1s3i98j","slide":18,"bbox":[910,226,1,272]}
+{"kind":"textbox","id":"sh/z214re94","slide":18,"textChars":3,"textLines":1}
+{"kind":"textbox","id":"sh/orulojql","slide":18,"textChars":5,"textLines":1}
+{"kind":"textbox","id":"sh/9s3mxor6","slide":18,"textChars":20,"textLines":1}
+{"kind":"textbox","id":"sh/mpc3mt8f","slide":18,"textChars":76,"textLines":1}
+{"kind":"shape","id":"sh/nql4ve90","slide":18,"bbox":[56,536,1168,108]}
+{"kind":"textbox","id":"sh/wve5s3qx","slide":18,"textChars":38,"textLines":1}
+{"kind":"textbox","id":"sh/xwnm18r2","slide":18,"textChars":26,"textLines":1}
+{"kind":"textbox","id":"sh/7qpor2tk","slide":18,"textChars":26,"textLines":1}
+{"kind":"textbox","id":"sh/6pg7ixsz","slide":18,"textChars":28,"textLines":1}
+{"kind":"textbox","id":"sh/ts76tcba","slide":18,"textChars":34,"textLines":1}
+{"kind":"shape","id":"sh/8rypk7a5","slide":18,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/jm5onit8","slide":18,"textChars":59,"textLines":1}
+{"kind":"textbox","id":"sh/ylw7edsn","slide":18,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/0fa5cz6t","slide":18,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/yf37ge","slide":18,"text":"[Sources] | - Internal recommendation and arithmetic: 45%/30%/15%/10% of $1M...."}
+{"kind":"slide","id":"sl/r539qd","slide":19,"title":"COZEA  /  RISKS","textShapes":27}
+{"kind":"shape","id":"sh/dc32tkzq","slide":19,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/cra10zy5","slide":19,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/zelkvuhg","slide":19,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/ydcj2pgb","slide":19,"textChars":15,"textLines":1}
+{"kind":"textbox","id":"sh/lg32x4zm","slide":19,"textChars":49,"textLines":1}
+{"kind":"textbox","id":"sh/kfu14zy1","slide":19,"textChars":99,"textLines":1}
+{"kind":"textbox","id":"sh/7ilkzehs","slide":19,"textChars":4,"textLines":1}
+{"kind":"textbox","id":"sh/mhcj69g7","slide":19,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/obqpcna1","slide":19,"textChars":10,"textLines":1}
+{"kind":"textbox","id":"sh/pczqlsbm","slide":19,"textChars":28,"textLines":1}
+{"kind":"shape","id":"sh/2po7adsv","slide":19,"bbox":[56,264,1168,2]}
+{"kind":"textbox","id":"sh/nah8jitg","slide":19,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/cfqpgnax","slide":19,"textChars":90,"textLines":1}
+{"kind":"textbox","id":"sh/xgzqpsbi","slide":19,"textChars":104,"textLines":1}
+{"kind":"textbox","id":"sh/ad87exsr","slide":19,"textChars":73,"textLines":1}
+{"kind":"shape","id":"sh/beh8n2tc","slide":19,"bbox":[56,352,1168,1]}
+{"kind":"textbox","id":"sh/kjapk7a9","slide":19,"textChars":24,"textLines":1}
+{"kind":"textbox","id":"sh/lkjqtcbe","slide":19,"textChars":86,"textLines":1}
+{"kind":"textbox","id":"sh/t0fqdc3y","slide":19,"textChars":107,"textLines":1}
+{"kind":"textbox","id":"sh/8z6p472d","slide":19,"textChars":64,"textLines":1}
+{"kind":"shape","id":"sh/7yx8b2ls","slide":19,"bbox":[56,436,1168,1]}
+{"kind":"textbox","id":"sh/6xo72xk7","slide":19,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/h4zqhc3u","slide":19,"textChars":76,"textLines":1}
+{"kind":"textbox","id":"sh/g3qp8729","slide":19,"textChars":106,"textLines":1}
+{"kind":"textbox","id":"sh/v2x8f2lo","slide":19,"textChars":71,"textLines":1}
+{"kind":"shape","id":"sh/u1o76hk3","slide":19,"bbox":[56,520,1168,1]}
+{"kind":"textbox","id":"sh/x8v65s3q","slide":19,"textChars":21,"textLines":1}
+{"kind":"textbox","id":"sh/w7mpwn25","slide":19,"textChars":98,"textLines":1}
+{"kind":"textbox","id":"sh/mdkn6t0n","slide":19,"textChars":129,"textLines":1}
+{"kind":"textbox","id":"sh/net4zy18","slide":19,"textChars":78,"textLines":1}
+{"kind":"shape","id":"sh/of258jit","slide":19,"bbox":[56,604,1168,1]}
+{"kind":"shape","id":"sh/90bm1oje","slide":19,"bbox":[300,222,1,384]}
+{"kind":"shape","id":"sh/a1knat0z","slide":19,"bbox":[590,222,1,384]}
+{"kind":"shape","id":"sh/b2t43y1k","slide":19,"bbox":[884,222,1,384]}
+{"kind":"textbox","id":"sh/w325c3i5","slide":19,"textChars":19,"textLines":1}
+{"kind":"textbox","id":"sh/x4vm58jq","slide":19,"textChars":75,"textLines":1}
+{"kind":"shape","id":"sh/q503y90v","slide":19,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/r694ru10","slide":19,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/7qhcf6ps","slide":19,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/za54jmlo","slide":19,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/r539qd","slide":19,"text":"[Sources] | - Official Cursor, OpenAI Codex, and Anthropic Claude Code pages ..."}
+{"kind":"slide","id":"sl/pwi4hx","slide":20,"title":"COZEA  /  TEAM","textShapes":15}
+{"kind":"shape","id":"sh/lsvylkf6","slide":20,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/krmhsfel","slide":20,"bbox":[56,18,116,2]}
+{"kind":"shape","id":"sh/7udgnuxc","slide":20,"bbox":[172,18,34,2]}
+{"kind":"textbox","id":"sh/6t4zupwr","slide":20,"textChars":14,"textLines":1}
+{"kind":"textbox","id":"sh/twfyp4f2","slide":20,"textChars":61,"textLines":1}
+{"kind":"textbox","id":"sh/8v6hwzex","slide":20,"textChars":148,"textLines":1}
+{"kind":"textbox","id":"sh/nytgbqxs","slide":20,"textChars":8,"textLines":1}
+{"kind":"textbox","id":"sh/2xkfilgn","slide":20,"textChars":13,"textLines":1}
+{"kind":"textbox","id":"sh/w7yl0fal","slide":20,"textChars":93,"textLines":1}
+{"kind":"shape","id":"sh/x87m9kb6","slide":20,"bbox":[610,228,1,250]}
+{"kind":"textbox","id":"sh/a5w3y5sf","slide":20,"textChars":18,"textLines":1}
+{"kind":"textbox","id":"sh/v6547at0","slide":20,"textChars":30,"textLines":1}
+{"kind":"textbox","id":"sh/kbyl4fah","slide":20,"textChars":119,"textLines":1}
+{"kind":"shape","id":"sh/5c7mdkb2","slide":20,"bbox":[70,506,1078,116]}
+{"kind":"textbox","id":"sh/i9g325sr","slide":20,"textChars":27,"textLines":1}
+{"kind":"textbox","id":"sh/jap4batc","slide":20,"textChars":33,"textLines":1}
+{"kind":"textbox","id":"sh/0felsvad","slide":20,"textChars":37,"textLines":1}
+{"kind":"textbox","id":"sh/lgnm10by","slide":20,"textChars":39,"textLines":1}
+{"kind":"shape","id":"sh/1cf2pc3m","slide":20,"bbox":[56,676,1168,1]}
+{"kind":"textbox","id":"sh/gb61w721","slide":20,"textChars":123,"textLines":1}
+{"kind":"textbox","id":"sh/fadknmlw","slide":20,"textChars":2,"textLines":1}
+{"kind":"image","id":"im/jipgnm94","slide":20,"name":"","alt":"Subtle graphite and brushed-metal presentation background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/pwi4hx","slide":20,"text":"[Sources] | - https://cal.com/erick-xu/30min — public founder contact linked ..."}
+{"kind":"slide","id":"sl/flbrni","slide":21,"title":"COZEA","textShapes":8}
+{"kind":"shape","id":"sh/s7uh0bit","slide":21,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/t83itgzy","slide":21,"bbox":[56,42,52,52]}
+{"kind":"textbox","id":"sh/ji1gnmhw","slide":21,"textChars":5,"textLines":1}
+{"kind":"shape","id":"sh/kjahwrih","slide":21,"bbox":[58,132,112,2]}
+{"kind":"shape","id":"sh/543ypwz2","slide":21,"bbox":[170,132,34,2]}
+{"kind":"textbox","id":"sh/adszqh0f","slide":21,"textChars":51,"textLines":2}
+{"kind":"textbox","id":"sh/ve1gjmh0","slide":21,"textChars":134,"textLines":1}
+{"kind":"textbox","id":"sh/7qdobaxg","slide":21,"textChars":7,"textLines":1}
+{"kind":"textbox","id":"sh/6p4725gv","slide":21,"textChars":13,"textLines":1}
+{"kind":"textbox","id":"sh/tcv6dkfm","slide":21,"textChars":24,"textLines":1}
+{"kind":"textbox","id":"sh/srmp4fy1","slide":21,"textChars":9,"textLines":1}
+{"kind":"textbox","id":"sh/fexofaxs","slide":21,"textChars":17,"textLines":1}
+{"kind":"image","id":"im/ehkn210z","slide":21,"name":"","alt":"Brushed titanium ribbons on a graphite background","bbox":[0,0,1280,720]}
+{"kind":"image","id":"im/nmdoz6hg","slide":21,"name":"","geometry":"rect","alt":"Cozea logo","bbox":[64,50,36,36]}
+{"kind":"notes","id":"nt/flbrni","slide":21,"text":"[Sources] | - https://cozea.app/ — closing product thesis and contact domain...."}
+{"kind":"notice","message":"Truncated: omitted 0 lines. Increase maxChars or narrow target."}
