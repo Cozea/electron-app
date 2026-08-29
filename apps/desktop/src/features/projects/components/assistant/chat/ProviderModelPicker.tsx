@@ -33,6 +33,7 @@ interface ProviderModelPickerProps {
   modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<ModelEsque>>;
   optionDescriptors?: ReadonlyArray<ProviderOptionDescriptor>;
   activeProviderIconClassName?: string;
+  showProviderIcon?: boolean;
   compact?: boolean;
   disabled?: boolean;
   terminalOpen?: boolean;
@@ -73,17 +74,30 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
   const effortDescriptor = props.optionDescriptors?.find(
     (d) => d.id === "effort" || d.id === "reasoningEffort" || d.id === "reasoning" || d.id === "thinking",
   );
-  const currentEffortVal = effortDescriptor ? getProviderOptionCurrentValue(effortDescriptor) : null;
+  const variantDescriptor = props.optionDescriptors?.find((d) => d.id === "variant");
+  const agentDescriptor = props.optionDescriptors?.find((d) => d.id === "agent");
+
+  const primaryTraitDescriptor = effortDescriptor ?? variantDescriptor;
+  const currentEffortVal = primaryTraitDescriptor ? getProviderOptionCurrentValue(primaryTraitDescriptor) : null;
   const currentEffortLabel = useMemo(() => {
-    if (!effortDescriptor || currentEffortVal === undefined || currentEffortVal === null) return null;
-    if (effortDescriptor.type === "select") {
-      return effortDescriptor.options.find((o) => o.id === currentEffortVal)?.label ?? String(currentEffortVal);
+    if (!primaryTraitDescriptor || currentEffortVal === undefined || currentEffortVal === null) return null;
+    if (primaryTraitDescriptor.type === "select") {
+      return primaryTraitDescriptor.options.find((o) => o.id === currentEffortVal)?.label ?? String(currentEffortVal);
     }
     if (typeof currentEffortVal === "boolean") {
       return currentEffortVal ? "Thinking" : null;
     }
     return null;
-  }, [effortDescriptor, currentEffortVal]);
+  }, [primaryTraitDescriptor, currentEffortVal]);
+
+  const currentAgentVal = agentDescriptor ? getProviderOptionCurrentValue(agentDescriptor) : null;
+  const currentAgentLabel = useMemo(() => {
+    if (!agentDescriptor || currentAgentVal === undefined || currentAgentVal === null) return null;
+    if (agentDescriptor.type === "select") {
+      return agentDescriptor.options.find((o) => o.id === currentAgentVal)?.label ?? String(currentAgentVal);
+    }
+    return String(currentAgentVal);
+  }, [agentDescriptor, currentAgentVal]);
 
   const speedDescriptor = props.optionDescriptors?.find((d) => {
     const normId = d.id.toLowerCase();
@@ -119,19 +133,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
       data-chat-provider-model-picker="true"
       className={cn(
         "inline-flex h-7 min-w-0 items-center justify-start gap-1.5 whitespace-nowrap rounded-full border border-transparent px-2 text-xs font-normal text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-        props.compact ? "max-w-56 shrink-0" : "max-w-64 shrink sm:max-w-72 sm:px-3",
+        props.compact ? "max-w-xs shrink sm:max-w-md" : "max-w-sm shrink sm:max-w-lg sm:px-3",
         props.triggerClassName,
       )}
       disabled={props.disabled}
       onClick={() => props.onOpenChange?.(!props.open)}
     >
-      <span
-        className={cn(
-          "flex min-w-0 w-full box-border items-center gap-1.5 overflow-hidden",
-          props.compact ? "max-w-52 sm:pl-0.5" : undefined,
-        )}
-      >
-        {activeEntry ? (
+      <span className="flex min-w-0 w-full box-border items-center gap-1.5 overflow-hidden">
+        {props.showProviderIcon !== false && activeEntry ? (
           <ProviderInstanceIcon
             driverKind={activeEntry.driverKind}
             displayName={activeEntry.displayName}
@@ -149,8 +158,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
               className="min-w-0 flex-1 truncate flex items-center gap-1.5"
             >
               <span className="truncate">{triggerTitle}</span>
+              {currentAgentLabel && currentAgentLabel.toLowerCase() !== "build" ? (
+                <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium">
+                  {currentAgentLabel}
+                </span>
+              ) : null}
               {currentEffortLabel ? (
-                <span className="truncate text-muted-foreground/60 font-normal text-xs">
+                <span className="shrink-0 text-muted-foreground/60 font-normal text-xs">
                   {currentEffortLabel}
                 </span>
               ) : null}

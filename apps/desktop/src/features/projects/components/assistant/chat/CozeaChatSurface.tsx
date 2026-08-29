@@ -65,7 +65,19 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "@/lib/i18n"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon as __PlusIconHugeIcon, BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, ImageAdd01Icon as __ImageAdd01IconHugeIcon } from '@hugeicons/core-free-icons'
+import {
+  Add01Icon as __PlusIconHugeIcon,
+  AlertCircleIcon as __CircleAlertIconHugeIcon,
+  BubbleChatIcon as __ChatIconHugeIcon,
+  Cancel01Icon as __XIconHugeIcon,
+  ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon,
+  ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon,
+  CircleUnlock02Icon as __LockOpenIconHugeIcon,
+  ImageAdd01Icon as __ImageAdd01IconHugeIcon,
+  LeftToRightListBulletIcon as __ListTodoIconHugeIcon,
+  LockIcon as __LockIconHugeIcon,
+  Mic01Icon as __Mic01IconHugeIcon,
+} from '@hugeicons/core-free-icons'
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
@@ -769,6 +781,28 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
   }, [])
 
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
+  const [surfaceHeightPx, setSurfaceHeightPx] = useState(0)
+
+  useLayoutEffect(() => {
+    const el = surfaceRef.current
+    if (!el) return
+    const updateHeight = () => {
+      setSurfaceHeightPx(el.getBoundingClientRect().height)
+    }
+    updateHeight()
+    const ro = new ResizeObserver(updateHeight)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const maxModelPickerHeightPx = useMemo(() => {
+    if (surfaceHeightPx <= 0) return 260
+    // Reserved space for prompt editor (~48px) + footer (~40px) + bottom padding (~20px) + top clearance (~80px) = ~188px
+    const available = surfaceHeightPx - 188
+    return Math.max(90, Math.min(260, Math.floor(available)))
+  }, [surfaceHeightPx])
+
   useEffect(() => {
     if (!activePendingUserInput) {
       return
@@ -1169,11 +1203,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         event.preventDefault()
         void props.onSend()
       }}
-      className="relative z-30 mx-auto flex h-full max-h-full min-h-0 w-full min-w-0 max-w-3xl flex-col"
+      className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl flex-col"
     >
       <div
         className={cn(
-          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-border/60 bg-surface-raised shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
+          "mt-3 flex flex-col rounded-2xl border border-border/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-colors dark:border-white/[0.08] dark:bg-surface-raised dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
         )}
         onBlurCapture={handleComposerShellBlurCapture}
@@ -1317,13 +1351,15 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           className={cn(
             "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-200 ease-out",
             isModelPickerVisible
-              ? "max-h-80 translate-y-0 border-border/30 opacity-100"
+              ? "translate-y-0 border-border/30 opacity-100"
               : "pointer-events-none max-h-0 -translate-y-1 border-transparent opacity-0",
           )}
+          style={isModelPickerVisible ? { maxHeight: `${maxModelPickerHeightPx}px` } : undefined}
         >
           {shouldRenderModelPicker ? (
-            <div className="w-full">
+            <div className="w-full" style={{ maxHeight: `${maxModelPickerHeightPx}px` }}>
               <ModelPickerContent
+                maxAvailableHeightPx={maxModelPickerHeightPx}
                 provider={props.selectedProvider}
                 activeInstanceId={props.selectedModelSelection.instanceId}
                 model={props.selectedModelSelection.model}
@@ -1458,9 +1494,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : (
           <div
             data-chat-composer-footer="true"
-            className="mb-2 shrink-0 flex flex-nowrap items-center justify-between gap-2 px-2"
+            className="mb-2.5 shrink-0 flex flex-nowrap items-center justify-between gap-2 px-3 pb-0.5"
           >
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="flex min-w-0 shrink-0 items-center gap-1">
               <Button
                 type="button"
                 variant="ghost"
@@ -1479,9 +1515,34 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   </span>
                 ) : null}
               </Button>
+              <button
+                type="button"
+                onClick={() => void props.onToggleRuntimeMode()}
+                className={cn(
+                  "inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-2 text-xs font-normal cursor-pointer transition-colors",
+                  props.selectedRuntimeMode === "full-access"
+                    ? "text-amber-600 hover:bg-accent/60 dark:text-amber-500"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                )}
+                title={`Runtime mode: ${props.selectedRuntimeMode === "full-access" ? "Full access (runs tools without approval)" : "Approval required (asks before running tools)"}. Click to toggle.`}
+              >
+                <HugeiconsIcon
+                  icon={
+                    props.selectedRuntimeMode === "full-access"
+                      ? __CircleAlertIconHugeIcon
+                      : __LockIconHugeIcon
+                  }
+                  className="size-3.5 shrink-0"
+                />
+                <span className="whitespace-nowrap">
+                  {props.selectedRuntimeMode === "full-access"
+                    ? "Full"
+                    : "Approval"}
+                </span>
+              </button>
             </div>
 
-            <div data-chat-composer-actions="right" className="flex shrink-0 items-center gap-1.5">
+            <div data-chat-composer-actions="right" className="flex min-w-0 max-w-[calc(100%-48px)] shrink items-center gap-1.5">
               <ProviderModelPicker
                 provider={props.selectedProvider}
                 activeInstanceId={props.selectedModelSelection.instanceId}
@@ -1490,13 +1551,25 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
                 optionDescriptors={props.modelOptionDescriptors}
-                compact
+                showProviderIcon={false}
                 disabled={!isChatReady || props.isRunning}
-                triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
+                triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-foreground hover:bg-accent sm:text-xs"
                 onProviderModelChange={props.onProviderModelChange}
                 open={isModelPickerOpen}
                 onOpenChange={setIsModelPickerOpen}
               />
+              {!activePendingProgress && props.activeContextWindow ? (
+                <ContextWindowMeter usage={props.activeContextWindow} hidePercentage className="px-0.5" />
+              ) : null}
+              <button
+                type="button"
+                disabled
+                className="flex size-7 items-center justify-center rounded-full text-muted-foreground/50 transition-colors cursor-pointer"
+                title="Voice input (coming soon)"
+                aria-label="Voice input"
+              >
+                <HugeiconsIcon icon={__Mic01IconHugeIcon} className="size-4" />
+              </button>
               {activePendingProgress ? (
                 <div className="flex items-center gap-2">
                   {activePendingProgress.questionIndex > 0 ? (
@@ -1561,7 +1634,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               ) : (
                 <button
                   type="submit"
-                  className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs shadow-primary/25 transition-all duration-150 enabled:cursor-pointer enabled:hover:scale-105 enabled:hover:bg-primary/90 enabled:active:scale-95 disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none"
+                  className="flex size-8 items-center justify-center rounded-full bg-zinc-800 text-white shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:hover:scale-105 enabled:hover:bg-zinc-900 enabled:active:scale-95 disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none dark:bg-primary dark:text-primary-foreground"
                   disabled={
                     !isChatReady ||
                     (props.composer.trim().length === 0 && props.composerImages.length === 0) ||
@@ -1585,12 +1658,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         )}
       </div>
-
-      {!activePendingApproval && props.activeContextWindow ? (
-        <div className="flex shrink-0 items-center justify-end px-1 pt-2">
-          <ContextWindowMeter usage={props.activeContextWindow} />
-        </div>
-      ) : null}
     </form>
   )
 
@@ -1601,6 +1668,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   return (
     <div
+      ref={surfaceRef}
       className="flex h-full min-h-0 flex-col overflow-x-hidden bg-content-surface relative"
       onDragEnter={handleSurfaceDragEnter}
       onDragOver={handleSurfaceDragOver}
@@ -1693,18 +1761,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               )}
             >
               <div
-                className={cn(
-                  "pointer-events-none absolute inset-x-0 bottom-0 top-[-2rem] bg-gradient-to-t from-content-surface via-content-surface/86 via-55% to-transparent transition-opacity duration-300 sm:top-[-2.5rem]",
-                  showComposerDockChrome ? "opacity-100" : "opacity-0",
-                )}
-                aria-hidden
-              />
-              <div
                 data-chat-composer-dock-content="true"
                 className={cn(
                   "relative z-[1] flex w-full min-h-0 flex-col transition-all duration-200 ease-out",
                   showComposerDockChrome
-                    ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
+                    ? "max-h-full translate-y-0 opacity-100 pointer-events-auto"
                     : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
                 )}
                 onFocusCapture={() => {

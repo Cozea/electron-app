@@ -1,26 +1,37 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { CheckmarkCircle02Icon as __CheckIconHugeIcon, DocumentAttachmentIcon as __CopyIconHugeIcon } from '@hugeicons/core-free-icons'
+import { CheckmarkCircle02Icon as __CheckIconHugeIcon, Copy01Icon as __CopyIconHugeIcon } from '@hugeicons/core-free-icons'
 
 import { memo } from "react";
-import { Button } from "../ui/button";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { cn } from "@/lib/utils";
 
-export const MessageCopyButton = memo(function MessageCopyButton({ text }: { text: string }) {
+export const MessageCopyButton = memo(function MessageCopyButton({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
   const { copyToClipboard, isCopied } = useCopyToClipboard();
 
   return (
-    <Button
+    <button
       type="button"
-      size="icon-sm"
-      variant="ghost"
-      className="rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+      className={cn(
+        "cursor-pointer p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground",
+        className,
+      )}
       onClick={() => copyToClipboard(text)}
-      title="Copy message"
-      aria-label="Copy message"
+      title={isCopied ? "Copied!" : "Copy message"}
+      aria-label={isCopied ? "Copied!" : "Copy message"}
     >
-      {isCopied ? <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3 text-success" /> : <HugeiconsIcon icon={__CopyIconHugeIcon} className="size-3" />}
-    </Button>
+      {isCopied ? (
+        <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 text-success" />
+      ) : (
+        <HugeiconsIcon icon={__CopyIconHugeIcon} className="size-3.5" />
+      )}
+    </button>
   );
 });

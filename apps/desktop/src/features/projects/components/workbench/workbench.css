@@ -127,8 +127,25 @@
 
 .cozea-workbench-dockview .dv-tab {
   letter-spacing: 0;
-  min-width: 7rem;
-  max-width: 13rem;
+  min-width: 6rem;
+  max-width: 14rem;
+  overflow: hidden;
+}
+
+/* When a group has only a single tab, remove the pill background so the title sits cleanly without a pill wrapper */
+.cozea-workbench-dockview-theme .dv-tabs-container > .dv-tab:only-child {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.cozea-workbench-dockview-theme .dv-tabs-container > .dv-tab:only-child:hover {
+  background-color: transparent !important;
+}
+
+.cozea-workbench-dockview-theme .dv-tabs-container > .dv-tab:only-child .cozea-workbench-tab {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
 }
 
 .cozea-workbench-dockview .dv-tab:has(.cozea-workbench-tab--chrome-owned) {
@@ -136,8 +153,19 @@
   max-width: 2.5rem;
 }
 
+.cozea-workbench-dockview .dv-tab > * {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
 .cozea-workbench-dockview .cozea-workbench-tab {
   letter-spacing: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .cozea-workbench-dockview .dv-left-actions-container {
@@ -166,7 +194,12 @@
   display: none !important;
 }
 
-/* Basic tab overflow control (OSS list — not enterprise search). */
+/* Basic tab overflow control (OSS list — not enterprise search).
+   Only show when a group has multiple tabs and at least one overflows. */
+.cozea-workbench-dockview-theme .dv-tabs-and-actions-container:has(.dv-tabs-container > .dv-tab:only-child) .dv-tabs-overflow-container {
+  display: none !important;
+}
+
 .cozea-workbench-dockview-theme .dv-tabs-overflow-container,
 .cozea-workbench-dockview-theme .dv-tabs-overflow-dropdown-default {
   color: color-mix(in oklch, var(--foreground) 72%, transparent);

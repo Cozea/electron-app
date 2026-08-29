@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
@@ -9,11 +9,11 @@ import { WorkbenchAssistantDiffDialog } from "@/features/projects/components/wor
 import { useWorkbenchAssistantTileController } from "@/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/stores/useProjectWorkbenchStore"
-import { flushWorkbenchStorage, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+import { flushWorkbenchStorage, selectProjectWorkbench, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeftRightIcon as __ChatHugeIcon, Delete02Icon as __DeleteHugeIcon, Image01Icon as __ImageHugeIcon } from "@hugeicons/core-free-icons"
+import { BubbleChatIcon as __ChatHugeIcon, Delete02Icon as __DeleteHugeIcon, Image01Icon as __ImageHugeIcon } from "@hugeicons/core-free-icons"
 
 interface WorkbenchAssistantChatTileProps {
   projectId: string
@@ -36,16 +36,13 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
       tile: props.tile,
     })
   const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
+  const currentTile = useProjectWorkbenchStore((state) => {
+    const wb = selectProjectWorkbench(props.projectId, props.laneId, props.workspaceId)(state)
+    return wb?.tiles[props.tile.id] as WorkbenchAssistantChatTileRecord | undefined
+  })
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
-  const [viewMode, setLocalViewMode] = useState<"chat" | "artifacts">(() =>
-    props.tile.viewMode === "artifacts" ? "artifacts" : "chat",
-  )
-
-  useEffect(() => {
-    if (props.tile.viewMode === "artifacts" || props.tile.viewMode === "chat") {
-      setLocalViewMode(props.tile.viewMode)
-    }
-  }, [props.tile.viewMode])
+  const [localViewMode, setLocalViewMode] = useState<"chat" | "artifacts" | null>(null)
+  const viewMode = localViewMode ?? currentTile?.viewMode ?? props.tile.viewMode ?? "chat"
 
   const setViewMode = useCallback(
     (nextMode: "chat" | "artifacts") => {
@@ -90,7 +87,11 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
                     viewMode === "artifacts" && "bg-accent text-foreground",
                   )}
                   aria-label={viewMode === "chat" ? "View artifacts" : "Back to chat"}
-                  onClick={() => setViewMode(viewMode === "chat" ? "artifacts" : "chat")}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setViewMode(viewMode === "chat" ? "artifacts" : "chat")
+                  }}
                 >
                   <HugeiconsIcon
                     icon={viewMode === "chat" ? __ImageHugeIcon : __ChatHugeIcon}

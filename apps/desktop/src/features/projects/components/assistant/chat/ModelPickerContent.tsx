@@ -115,11 +115,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   optionDescriptors?: ReadonlyArray<ProviderOptionDescriptor>;
   onOptionChange?: (id: string, value: string | boolean) => void;
   terminalOpen: boolean;
+  maxAvailableHeightPx?: number;
   onRequestClose?: () => void;
   onProviderModelChange: (provider: ProviderKind, model: string, instanceId?: ProviderInstanceId) => void;
 }) {
   const { onProviderModelChange } = props;
-  const [activeView, setActiveView] = useState<"root" | "models" | "effort" | "context">("root");
+  const [activeView, setActiveView] = useState<string>("root");
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRegionRef = useRef<HTMLDivElement>(null);
@@ -449,25 +450,29 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     };
   }, [filteredModelKeys]);
 
-  const effortDescriptor = props.optionDescriptors?.find(
-    (d) => d.id === "effort" || d.id === "reasoningEffort" || d.id === "reasoning" || d.id === "thinking",
-  );
   const speedDescriptor = props.optionDescriptors?.find((d) => isSpeedOption(d.id, d.label));
-  const contextDescriptor = props.optionDescriptors?.find((d) => d.id === "contextWindow");
+  const otherDescriptors = useMemo(
+    () => (props.optionDescriptors ?? []).filter((d) => !speedDescriptor || d.id !== speedDescriptor.id),
+    [props.optionDescriptors, speedDescriptor],
+  );
+  const selectDescriptors = useMemo(
+    () =>
+      otherDescriptors.filter(
+        (d): d is Extract<ProviderOptionDescriptor, { type: "select" }> => d.type === "select",
+      ),
+    [otherDescriptors],
+  );
+  const booleanDescriptors = useMemo(
+    () =>
+      otherDescriptors.filter(
+        (d): d is Extract<ProviderOptionDescriptor, { type: "boolean" }> => d.type === "boolean",
+      ),
+    [otherDescriptors],
+  );
 
-  const currentEffortVal = effortDescriptor ? getProviderOptionCurrentValue(effortDescriptor) : null;
-  const currentEffortLabel = useMemo(() => {
-    if (!effortDescriptor || currentEffortVal === undefined || currentEffortVal === null) return "None";
-    if (effortDescriptor.type === "select") {
-      return effortDescriptor.options.find((o) => o.id === currentEffortVal)?.label ?? String(currentEffortVal);
-    }
-    if (typeof currentEffortVal === "boolean") {
-      return currentEffortVal ? "Thinking" : "Off";
-    }
-    return String(currentEffortVal);
-  }, [effortDescriptor, currentEffortVal]);
-
-  const currentSpeedVal = String(speedDescriptor ? getProviderOptionCurrentValue(speedDescriptor) ?? "" : "").toLowerCase();
+  const currentSpeedVal = String(
+    speedDescriptor ? getProviderOptionCurrentValue(speedDescriptor) ?? "" : "",
+  ).toLowerCase();
   const isSpeedChecked =
     currentSpeedVal === "true" ||
     currentSpeedVal === "on" ||
@@ -505,15 +510,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     ? getDisplayModelName(activeSelectedModel, { preferShortName: true })
     : props.model;
 
-  const currentContextVal = contextDescriptor ? getProviderOptionCurrentValue(contextDescriptor) : null;
-  const currentContextLabel = useMemo(() => {
-    if (!contextDescriptor || currentContextVal === undefined || currentContextVal === null) return null;
-    if (contextDescriptor.type === "select") {
-      return contextDescriptor.options.find((o) => o.id === currentContextVal)?.label ?? String(currentContextVal);
-    }
-    return String(currentContextVal);
-  }, [contextDescriptor, currentContextVal]);
-
   if (activeView === "root") {
     return (
       <div className="flex w-full flex-col divide-y divide-border/30 text-popover-foreground">
@@ -529,73 +525,90 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           </div>
         </button>
 
-          {effortDescriptor ? (
+        {selectDescriptors.map((descriptor) => {
+          const currentVal = getProviderOptionCurrentValue(descriptor);
+          const currentLabel =
+            descriptor.options.find((o) => o.id === currentVal)?.label ??
+            String(currentVal ?? "Default");
+          return (
             <button
+              key={descriptor.id}
               type="button"
-              className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.05]"
-              onClick={() => {
-                if (effortDescriptor.type === "select") {
-                  setActiveView("effort");
-                } else {
-                  const curr = getProviderOptionCurrentValue(effortDescriptor) === true;
-                  props.onOptionChange?.(effortDescriptor.id, !curr);
-                }
-              }}
+              className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.04]"
+              onClick={() => setActiveView(`option:${descriptor.id}`)}
             >
-              <span className="text-xs font-medium text-foreground">Effort</span>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {effortDescriptor.type === "select" ? (
-                  <>
-                    <span className="truncate">{currentEffortLabel}</span>
-                    <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
-                  </>
-                ) : (
-                  <Switch
-                    checked={getProviderOptionCurrentValue(effortDescriptor) === true}
-                    onCheckedChange={(checked) => props.onOptionChange?.(effortDescriptor.id, checked)}
-                    className="scale-[0.75] -mr-1"
-                  />
-                )}
+              <span className="text-xs font-medium text-foreground">{descriptor.label}</span>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span className="truncate">{currentLabel}</span>
+                <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
               </div>
             </button>
-          ) : null}
+          );
+        })}
 
-          {speedDescriptor ? (
-            <div className="flex h-11 w-full items-center justify-between px-4 py-2.5 text-left">
-              <span className="text-xs font-medium text-foreground">Speed</span>
+        {booleanDescriptors.map((descriptor) => {
+          const isChecked = getProviderOptionCurrentValue(descriptor) === true;
+          return (
+            <div
+              key={descriptor.id}
+              className="flex h-11 w-full items-center justify-between px-4 py-2.5 text-left"
+            >
+              <span className="text-xs font-medium text-foreground">{descriptor.label}</span>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {isSpeedChecked ? "Fast" : "Standard"}
-                </span>
+                <span className="text-xs text-muted-foreground">{isChecked ? "On" : "Off"}</span>
                 <Switch
-                  checked={isSpeedChecked}
-                  onCheckedChange={handleSpeedToggle}
+                  checked={isChecked}
+                  onCheckedChange={(checked) => props.onOptionChange?.(descriptor.id, checked)}
                   className="scale-[0.75] -mr-1"
                 />
               </div>
             </div>
-          ) : null}
+          );
+        })}
 
-          {contextDescriptor && contextDescriptor.type === "select" ? (
-            <button
-              type="button"
-              className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.04]"
-              onClick={() => setActiveView("context")}
-            >
-              <span className="text-xs font-medium text-foreground">Context</span>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span className="truncate">{currentContextLabel}</span>
-                <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
-              </div>
-            </button>
-          ) : null}
+        {speedDescriptor ? (
+          <div className="flex h-11 w-full items-center justify-between px-4 py-2.5 text-left">
+            <span className="text-xs font-medium text-foreground">Speed</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {isSpeedChecked ? "Fast" : "Standard"}
+              </span>
+              <Switch
+                checked={isSpeedChecked}
+                onCheckedChange={handleSpeedToggle}
+                className="scale-[0.75] -mr-1"
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
 
-  if (activeView === "effort" && effortDescriptor && effortDescriptor.type === "select") {
+  const activeOptionDescriptor = (() => {
+    if (activeView.startsWith("option:")) {
+      const id = activeView.slice("option:".length);
+      return selectDescriptors.find((d) => d.id === id);
+    }
+    if (activeView === "effort") {
+      return selectDescriptors.find(
+        (d) => d.id === "effort" || d.id === "reasoningEffort" || d.id === "reasoning" || d.id === "thinking",
+      );
+    }
+    if (activeView === "context") {
+      return selectDescriptors.find((d) => d.id === "contextWindow");
+    }
+    return undefined;
+  })();
+
+  if (activeOptionDescriptor) {
+    const maxHeight = Math.max(80, Math.min(260, (props.maxAvailableHeightPx ?? 260) - 10));
+    const currentVal = getProviderOptionCurrentValue(activeOptionDescriptor);
     return (
-      <div className="flex w-full max-h-72 flex-col overflow-hidden text-popover-foreground">
+      <div
+        className="flex w-full flex-col overflow-hidden text-popover-foreground"
+        style={{ maxHeight: `${maxHeight}px` }}
+      >
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-3 bg-muted/20">
           <button
             type="button"
@@ -605,12 +618,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
             <span>Back</span>
           </button>
-          <span className="text-xs font-medium text-foreground">Effort</span>
-          <div className="w-12" />
+          <span className="text-xs font-medium text-muted-foreground mr-1">{activeOptionDescriptor.label}</span>
         </div>
-        <div className="flex flex-1 flex-col divide-y divide-border/30 overflow-y-auto max-h-56">
-          {effortDescriptor.options.map((opt) => {
-            const isSelected = String(currentEffortVal) === opt.id;
+        <div
+          className="flex flex-col divide-y divide-border/30 overflow-y-auto"
+          style={{ maxHeight: `${Math.max(50, maxHeight - 36)}px` }}
+        >
+          {activeOptionDescriptor.options.map((opt) => {
+            const isSelected = String(currentVal) === opt.id;
             return (
               <button
                 key={opt.id}
@@ -620,11 +635,16 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   isSelected && "bg-foreground/[0.03]",
                 )}
                 onClick={() => {
-                  props.onOptionChange?.(effortDescriptor.id, opt.id);
+                  props.onOptionChange?.(activeOptionDescriptor.id, opt.id);
                   setActiveView("root");
                 }}
               >
-                <span className="text-xs font-normal text-foreground">{opt.label}</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-normal text-foreground">{opt.label}</span>
+                  {opt.description ? (
+                    <span className="text-[10px] text-muted-foreground truncate">{opt.description}</span>
+                  ) : null}
+                </div>
                 {isSelected ? (
                   <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
                 ) : null}
@@ -636,53 +656,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     );
   }
 
-  if (activeView === "context" && contextDescriptor && contextDescriptor.type === "select") {
-    return (
-      <div className="flex w-full max-h-72 flex-col overflow-hidden text-popover-foreground">
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-3 bg-muted/20">
-          <button
-            type="button"
-            onClick={() => setActiveView("root")}
-            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground cursor-pointer px-1.5 py-0.5 rounded hover:bg-foreground/[0.05]"
-          >
-            <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
-            <span>Back</span>
-          </button>
-          <span className="text-xs font-medium text-foreground">Context</span>
-          <div className="w-12" />
-        </div>
-        <div className="flex flex-1 flex-col divide-y divide-border/30 overflow-y-auto max-h-56">
-          {contextDescriptor.options.map((opt) => {
-            const isSelected = String(currentContextVal) === opt.id;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                className={cn(
-                  "flex h-10 w-full cursor-pointer items-center justify-between px-4 py-2 text-left outline-none transition-colors hover:bg-foreground/[0.04]",
-                  isSelected && "bg-foreground/[0.03]",
-                )}
-                onClick={() => {
-                  props.onOptionChange?.(contextDescriptor.id, opt.id);
-                  setActiveView("root");
-                }}
-              >
-                <span className="text-xs font-normal text-foreground">{opt.label}</span>
-                {isSelected ? (
-                  <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  const modelsViewHeight = Math.max(90, Math.min(260, props.maxAvailableHeightPx ?? 240));
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="relative flex w-full h-full overflow-hidden text-popover-foreground flex-col">
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-2 bg-muted/20">
+      <div
+        className="relative flex w-full overflow-hidden text-popover-foreground flex-col"
+        style={{ height: `${modelsViewHeight}px`, maxHeight: `${modelsViewHeight}px` }}
+      >
+        <div className="flex h-9 shrink-0 items-center border-b border-border/40 px-2 bg-muted/20">
           <button
             type="button"
             onClick={() => setActiveView("root")}
@@ -691,8 +673,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
             <span>Back</span>
           </button>
-          <span className="text-xs font-medium text-foreground">Model</span>
-          <div className="w-12" />
         </div>
 
         <div className="flex min-h-0 flex-1 overflow-hidden flex-row">
@@ -706,7 +686,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             />
           )}
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Combobox
               open
               disabled={false}
@@ -718,7 +698,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 props.onRequestClose?.();
               }}
             >
-              <div className="relative border-b border-border/40">
+              <div className="relative shrink-0 border-b border-border/40">
                 <ComboboxInput
                   ref={searchInputRef}
                   value={searchQuery}
@@ -742,7 +722,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               </div>
               <div
                 ref={listRegionRef}
-                className="relative min-h-0 flex-1 w-full overflow-y-auto overscroll-contain"
+                className="relative min-h-0 flex-1 w-full overflow-y-auto overscroll-contain app-scrollbar scroll-fade-y"
               >
                 <ComboboxListVirtualized className="min-h-full">
                   {filteredModels.length === 0 ? (

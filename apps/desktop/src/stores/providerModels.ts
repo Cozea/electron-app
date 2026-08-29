@@ -119,3 +119,38 @@ export function normalizeClaudeModelOptionsWithCapabilities(
   nextOptions = setProviderOptionSelectionValue(nextOptions, "contextWindow", contextWindow)
   return nextOptions
 }
+
+export function normalizeOpenCodeModelOptionsWithCapabilities(
+  _caps: ModelCapabilities,
+  modelOptions: ReadonlyArray<ProviderOptionSelection> | Record<string, unknown> | null | undefined,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
+  const variant = getProviderOptionStringSelectionValue(modelOptions, "variant")
+  const agent = getProviderOptionStringSelectionValue(modelOptions, "agent")
+  let nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined
+  if (variant) {
+    nextOptions = setProviderOptionSelectionValue(nextOptions, "variant", variant)
+  }
+  if (agent) {
+    nextOptions = setProviderOptionSelectionValue(nextOptions, "agent", agent)
+  }
+  return nextOptions
+}
+
+export function normalizeCursorModelOptionsWithCapabilities(
+  caps: ModelCapabilities,
+  modelOptions: ReadonlyArray<ProviderOptionSelection> | Record<string, unknown> | null | undefined,
+): ReadonlyArray<ProviderOptionSelection> | undefined {
+  const reasoning = resolveEffort(caps, getProviderOptionStringSelectionValue(modelOptions, "reasoning") ?? getProviderOptionStringSelectionValue(modelOptions, "effort"))
+  const fastMode =
+    caps.supportsFastMode && getProviderOptionBooleanSelectionValue(modelOptions, "fastMode") === true
+      ? true
+      : undefined
+  let nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined
+  if (reasoning) {
+    nextOptions = setProviderOptionSelectionValue(nextOptions, "reasoning", reasoning)
+  }
+  if (fastMode) {
+    nextOptions = setProviderOptionSelectionValue(nextOptions, "fastMode", fastMode)
+  }
+  return nextOptions
+}

@@ -3,10 +3,10 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
 import {
-
   SettingsDangerGroup,
   SettingsGroup,
   SettingsPageBody,
+  SettingsPageHeader,
   SettingsRow,
   SettingsRowControl,
   SettingsRowLabel,
@@ -99,6 +99,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
   return (
     <SettingsPageBody surface={surface}>
+      <SettingsPageHeader title={t("settings.nav.account")} />
       <section>
         <SettingsSectionTitle>{t("settings.account.deviceProfileTitle")}</SettingsSectionTitle>
         <SettingsGroup>

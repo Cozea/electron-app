@@ -2,7 +2,27 @@ import { type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** Outer column: matches project settings scroll column (`max-w-xl`, padding). */
+/** Header for top of settings pages (large clean title + optional description) */
+export function SettingsPageHeader({
+  title,
+  description,
+  className,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("mb-6 px-1 space-y-1", className)}>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+      {description ? (
+        <p className="text-xs text-muted-foreground/80">{description}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Outer column: matches project settings scroll column (`max-w-4xl`, padding). */
 export function SettingsPageBody({
   children,
   className,
@@ -15,8 +35,8 @@ export function SettingsPageBody({
   return (
     <div
       className={cn(
-        "mx-auto w-full space-y-5",
-        surface === "drawer" ? "max-w-4xl px-6 py-6" : "max-w-xl px-6 pt-5 pb-6",
+        "mx-auto w-full space-y-7",
+        surface === "drawer" ? "max-w-5xl px-8 py-7" : "max-w-4xl px-8 sm:px-10 pt-6 pb-12",
         className,
       )}
     >
@@ -25,7 +45,7 @@ export function SettingsPageBody({
   );
 }
 
-/** Muted caps section label above a group */
+/** Section title label above a group (e.g. Permissions, General) */
 export function SettingsSectionTitle({
   children,
   className,
@@ -36,29 +56,36 @@ export function SettingsSectionTitle({
   variant?: "default" | "danger";
 }) {
   return (
-    <h3
+    <h2
       className={cn(
-        "mb-1.5 flex items-center gap-1.5 px-1 text-xs font-medium",
-        variant === "danger" ? "text-destructive" : "text-muted-foreground",
+        "mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold tracking-tight",
+        variant === "danger" ? "text-destructive" : "text-foreground",
         className,
       )}
     >
       {children}
-    </h3>
+    </h2>
   );
 }
 
-/** One line under section title (replaces ad hoc `text-sm text-muted-foreground mb-4`) */
+/** One line under section title */
 export function SettingsSectionDescription({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("mb-3 px-1 text-[11px] text-muted-foreground", className)}>{children}</p>
+    <p className={cn("mb-2.5 px-1 text-[11px] text-muted-foreground/80", className)}>{children}</p>
   );
 }
 
-/** Grouped card (iOS-style settings list) */
+/** Grouped card (Apple Inset Grouped card with border and divided rows) */
 export function SettingsGroup({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex flex-col overflow-hidden rounded-[14px] bg-muted", className)}>{children}</div>
+    <div
+      className={cn(
+        "flex flex-col overflow-hidden rounded-2xl border border-border/40 bg-secondary/35 dark:border-white/[0.08] dark:bg-[#161616] divide-y divide-border/25 dark:divide-white/[0.06]",
+        className,
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -66,7 +93,7 @@ export function SettingsDangerGroup({ children, className }: { children: ReactNo
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-[14px] bg-destructive/15 dark:bg-destructive/20",
+        "flex flex-col overflow-hidden rounded-2xl border border-destructive/25 bg-destructive/10 dark:border-destructive/30 dark:bg-destructive/15 divide-y divide-destructive/20",
         className,
       )}
     >
@@ -76,26 +103,25 @@ export function SettingsDangerGroup({ children, className }: { children: ReactNo
 }
 
 const rowBase =
-  "flex min-h-[44px] items-center justify-between gap-4 px-4 py-2 text-left";
+  "flex min-h-[58px] items-center justify-between gap-8 px-6 py-4 text-left transition-colors";
 
-/** One row inside SettingsGroup; first row should pass isFirst */
+/** One row inside SettingsGroup */
 export function SettingsRow({
   children,
   className,
-  isFirst,
-  borderClassName = "border-border/40",
+  isFirst: _isFirst,
+  borderClassName: _borderClassName,
   onClick,
 }: {
   children: ReactNode;
   className?: string;
   isFirst?: boolean;
-  /** Use `border-destructive/20` inside danger groups */
   borderClassName?: string;
   onClick?: () => void;
 }) {
   return (
     <div
-      className={cn(rowBase, !isFirst && cn("border-t", borderClassName), className)}
+      className={cn(rowBase, className)}
       onClick={onClick}
     >
       {children}
@@ -103,7 +129,7 @@ export function SettingsRow({
   );
 }
 
-/** Left column: title + optional description (project settings pattern) */
+/** Left column: title + optional description */
 export function SettingsRowLabel({
   title,
   description,
@@ -118,16 +144,16 @@ export function SettingsRowLabel({
   descriptionClassName?: string;
 }) {
   return (
-    <div className={cn("min-w-0 pr-4", description ? "flex flex-col gap-0.5" : "", className)}>
+    <div className={cn("min-w-0 flex-1 pr-6", description ? "flex flex-col gap-0.5" : "", className)}>
       {htmlFor ? (
-        <label htmlFor={htmlFor} className="cursor-pointer text-xs font-medium text-foreground">
+        <label htmlFor={htmlFor} className="cursor-pointer text-sm font-medium text-foreground">
           {title}
         </label>
       ) : (
-        <span className="text-xs font-medium text-foreground">{title}</span>
+        <span className="text-sm font-medium text-foreground">{title}</span>
       )}
       {description ? (
-        <p className={cn("text-[11px] text-muted-foreground", descriptionClassName)}>{description}</p>
+        <p className={cn("text-xs leading-relaxed text-muted-foreground/80 mt-0.5", descriptionClassName)}>{description}</p>
       ) : null}
     </div>
   );
@@ -140,13 +166,13 @@ export function SettingsRowControl({ children, className }: { children: ReactNod
 
 /** Inline error inside a group (full width row) */
 export function SettingsGroupError({ children }: { children: ReactNode }) {
-  return <div className="border-t border-border/40 px-4 py-3 text-xs text-destructive">{children}</div>;
+  return <div className="border-t border-border/40 px-5 py-3 text-xs text-destructive">{children}</div>;
 }
 
 /** Success line inside group */
 export function SettingsGroupSuccess({ children }: { children: ReactNode }) {
   return (
-    <div className="border-t border-border/40 px-4 py-3 text-xs text-emerald-600 dark:text-emerald-500">
+    <div className="border-t border-border/40 px-5 py-3 text-xs text-emerald-600 dark:text-emerald-500">
       {children}
     </div>
   );
@@ -157,12 +183,12 @@ export function SettingsFooterActions({ children, className }: { children: React
   return <div className={cn("flex justify-end pt-3", className)}>{children}</div>;
 }
 
-/** Inputs aligned like project settings (right, compact) */
+/** Inputs aligned like settings (right, compact, flat borderless) */
 export const settingsInlineInputClass =
   "h-7 max-w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent";
 
-export const settingsInlineInputWidth = "w-[240px] max-w-full";
+export const settingsInlineInputWidth = "w-[280px] max-w-full";
 
-/** Native `<select>` in settings / create-project rows (compact bordered control). */
+/** Native `<select>` in settings / create-project rows (compact rounded control). */
 export const settingsNativeSelectClass =
-  "h-7 max-w-full rounded-md border border-border/50 bg-transparent px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-ring/50";
+  "h-8 max-w-full rounded-lg border border-border/60 bg-background/50 px-2.5 text-xs text-foreground shadow-xs outline-none focus:outline-none focus:ring-1 focus:ring-ring dark:bg-muted/40 cursor-pointer";

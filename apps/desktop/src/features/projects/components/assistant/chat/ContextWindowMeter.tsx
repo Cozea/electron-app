@@ -12,13 +12,24 @@ function formatPercentage(value: number | null): string | null {
   return `${Math.round(value)}%`;
 }
 
-export function ContextWindowMeter(props: { usage: ContextWindowSnapshot }) {
-  const { usage } = props;
+export function ContextWindowMeter(props: {
+  usage: ContextWindowSnapshot;
+  hidePercentage?: boolean;
+  className?: string;
+}) {
+  const { usage, hidePercentage = false, className } = props;
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 8.25;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (normalizedPercentage / 100) * circumference;
+
+  const progressColorClass =
+    normalizedPercentage >= 90
+      ? "text-rose-500"
+      : normalizedPercentage >= 75
+        ? "text-amber-500"
+        : "text-foreground/80";
 
   return (
     <Popover>
@@ -29,14 +40,17 @@ export function ContextWindowMeter(props: { usage: ContextWindowSnapshot }) {
         render={
           <button
             type="button"
-            className="group inline-flex items-center gap-1.5 rounded-full transition-opacity hover:opacity-85"
+            className={cn(
+              "group inline-flex items-center gap-1.5 rounded-full transition-opacity hover:opacity-85 cursor-pointer",
+              className,
+            )}
             aria-label={
               usage.maxTokens !== null && usedPercentage
                 ? `Context window ${usedPercentage} used`
                 : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
             }
           >
-            <span className="relative flex h-5 w-5 items-center justify-center">
+            <span className="relative flex h-5 w-5 items-center justify-center shrink-0">
               <svg
                 viewBox="0 0 24 24"
                 className="-rotate-90 absolute inset-0 h-full w-full transform-gpu"
@@ -47,33 +61,39 @@ export function ContextWindowMeter(props: { usage: ContextWindowSnapshot }) {
                   cy="12"
                   r={radius}
                   fill="none"
-                  stroke="color-mix(in oklab, var(--color-muted) 70%, transparent)"
+                  stroke="currentColor"
                   strokeWidth="2.5"
+                  className="text-foreground/20 dark:text-white/20"
                 />
                 <circle
                   cx="12"
                   cy="12"
                   r={radius}
                   fill="none"
-                  stroke="var(--color-muted-foreground)"
+                  stroke="currentColor"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeDasharray={circumference}
                   strokeDashoffset={dashOffset}
-                  className="transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:transition-none"
+                  className={cn(
+                    "transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:transition-none",
+                    progressColorClass,
+                  )}
                 />
               </svg>
             </span>
-            <span
-              className={cn(
-                "min-w-0 text-[9px] font-medium tabular-nums text-muted-foreground",
-                "leading-none",
-              )}
-            >
-              {usage.usedPercentage !== null
-                ? `${Math.round(usage.usedPercentage)}%`
-                : formatContextWindowTokens(usage.usedTokens)}
-            </span>
+            {!hidePercentage ? (
+              <span
+                className={cn(
+                  "min-w-0 text-[9px] font-medium tabular-nums text-muted-foreground",
+                  "leading-none",
+                )}
+              >
+                {usage.usedPercentage !== null
+                  ? `${Math.round(usage.usedPercentage)}%`
+                  : formatContextWindowTokens(usage.usedTokens)}
+              </span>
+            ) : null}
           </button>
         }
       />

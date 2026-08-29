@@ -344,15 +344,15 @@ export function WorkbenchBrowserTile({
       >
         <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
       </Button>
-      <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md bg-secondary px-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 bg-transparent px-1">
         {state.favicon ? (
           <img
             src={state.favicon}
             alt=""
-            className="size-[18px] shrink-0 rounded-sm object-contain"
+            className="size-[16px] shrink-0 rounded-sm object-contain"
           />
         ) : draftUrl.startsWith("https://") ? (
-          <HugeiconsIcon icon={__LockHugeIcon} className="size-[18px] shrink-0 text-muted-foreground" />
+          <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
         ) : null}
         <Input
           ref={urlInputRef}
@@ -366,8 +366,7 @@ export function WorkbenchBrowserTile({
           }}
           placeholder="Search or enter address"
           className={cn(
-            "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none dark:bg-transparent",
-            "placeholder:text-muted-foreground/45 focus-visible:ring-0",
+            "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
           )}
         />
       </div>

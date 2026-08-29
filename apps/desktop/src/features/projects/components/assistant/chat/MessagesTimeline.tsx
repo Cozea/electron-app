@@ -35,15 +35,18 @@ import {
   Edit01Icon as __SquarePenIconHugeIcon,
   EyeIcon as __EyeIconHugeIcon,
   FirstBracketCircleIcon as __ZapIconHugeIcon,
+  GitForkIcon as __GitForkIconHugeIcon,
   Globe02Icon as __GlobeIconHugeIcon,
   HammerIcon as __HammerIconHugeIcon,
-  Wrench01Icon as __WrenchIconHugeIcon,
   Image01Icon as __ImageIconHugeIcon,
+  PinIcon as __PinIconHugeIcon,
+  Undo02Icon as __UndoIconHugeIcon,
+  Volume02Icon as __VolumeIconHugeIcon,
+  Wrench01Icon as __WrenchIconHugeIcon,
 } from "@hugeicons/core-free-icons";
 import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/stores/types";
-import { summarizeTurnDiffStats } from "./turnDiffTree";
 import ChatMarkdown from "./ChatMarkdown";
 import {
   Empty,
@@ -54,20 +57,34 @@ import {
 } from "@/components/ui/empty";
 import { asHugeIcon } from "@/lib/icons/asHugeIcon";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
-import { Button } from "@/components/ui/button";
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
-import { ChangedFilesTree } from "./ChangedFilesTree";
+import { ChangedFilesCard } from "./ChangedFilesTree";
+import {
+  CHANGED_FILES_PREVIEW_FILE_LIMIT,
+  changedFileName,
+  shouldAutoExpandChangedFiles,
+} from "./changedFilesPresentation";
+import { VscodeEntryIcon } from "./VscodeEntryIcon";
+import { commandProgramName } from "./shellCommandProgram";
+import { normalizeToolRowPresentation } from "./toolDetailPresentation";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeMessageDurationStart,
   deriveTurnHeaderIndex,
   normalizeCompactToolLabel,
+  omitSupersededLifecycleMarkers,
+  summarizeToolGroup,
+  toolGroupSummaryKind,
+  workEntryIndicatesFailure,
+  workGroupId,
+  workLogEntryIsToolLike,
   type GenerationStatusPhase,
+  type ToolGroupSummaryKind,
 } from "./MessagesTimeline.logic";
 import { PersistedFilesList } from "./PersistedFilesList";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
@@ -96,11 +113,30 @@ const HammerIcon = asHugeIcon(__HammerIconHugeIcon);
 const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon);
 const ImageIcon = asHugeIcon(__ImageIconHugeIcon);
 
-const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
+const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 /** Long user bubbles: collapse with expand control (same pattern as work log overflow). */
 const USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD = 420;
 const USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD = 10;
+
+function formatMessageRelativeTime(timestamp: string | number | undefined): string {
+  if (!timestamp) return "";
+  const parsed = typeof timestamp === "string" ? Date.parse(timestamp) : timestamp;
+  if (!parsed || Number.isNaN(parsed) || parsed <= 0) return "";
+  const diffMs = Date.now() - parsed;
+  const seconds = Math.max(0, Math.floor(diffMs / 1000));
+  if (seconds < 45) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes === 1) return "1 minute ago";
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return "1 hour ago";
+  if (hours < 24) return `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  return new Date(parsed).toLocaleDateString();
+}
 
 interface MessagesTimelineProps {
   hasMessages: boolean;
@@ -206,6 +242,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const legendListRef = useRef<LegendListRef | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
   const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(null);
+  const [changedFilesExpandedByTurnId, setChangedFilesExpandedByTurnId] = useState<
+    Record<string, boolean>
+  >({});
+  const onToggleChangedFilesExpanded = useCallback((turnId: TurnId, expanded: boolean) => {
+    setChangedFilesExpandedByTurnId((previous) => ({ ...previous, [turnId]: expanded }));
+  }, []);
+  /** Only the newest turn's changed files may auto-expand. */
+  const latestTurnDiffTurnId = useMemo(() => {
+    let latestTurnId: TurnId | null = null;
+    let latestCompletedAt = "";
+    for (const summary of turnDiffSummaryByAssistantMessageId.values()) {
+      if (summary.completedAt >= latestCompletedAt) {
+        latestCompletedAt = summary.completedAt;
+        latestTurnId = summary.turnId;
+      }
+    }
+    return latestTurnId;
+  }, [turnDiffSummaryByAssistantMessageId]);
   const [allDirectoriesExpandedByTurnId, setAllDirectoriesExpandedByTurnId] = useState<
     Record<string, boolean>
   >({});
@@ -334,26 +388,115 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           groupedEntries.push(nextEntry.entry);
           cursor += 1;
         }
+        // Providers without stable tool-call ids emit a start marker and a
+        // terminal marker for the same call. Collapse them before segmenting so
+        // one tool call renders as one row.
+        const dedupedEntries = omitSupersededLifecycleMarkers(
+          groupedEntries,
+          (workEntry) => workEntry,
+        );
         // Session diagnostics (runtime/config warnings, non-fatal provider
         // errors) fold into quiet collapsed "notices" rows instead of red
         // entries inline with the turn's work; turn failures surface through
         // the thread error state, not these activities. Order is preserved by
         // splitting the run into consecutive same-kind segments.
         let segmentStart = 0;
-        for (let cut = 1; cut <= groupedEntries.length; cut += 1) {
+        for (let cut = 1; cut <= dedupedEntries.length; cut += 1) {
           const boundary =
-            cut === groupedEntries.length ||
-            isDiagnosticWorkEntry(groupedEntries[cut]!) !==
-              isDiagnosticWorkEntry(groupedEntries[segmentStart]!);
+            cut === dedupedEntries.length ||
+            isDiagnosticWorkEntry(dedupedEntries[cut]!) !==
+              isDiagnosticWorkEntry(dedupedEntries[segmentStart]!);
           if (!boundary) continue;
-          const segment = groupedEntries.slice(segmentStart, cut);
+          const segment = dedupedEntries.slice(segmentStart, cut);
           const first = segment[0]!;
-          nextRows.push({
-            kind: isDiagnosticWorkEntry(first) ? "notices" : "work",
-            id: segmentStart === 0 ? timelineEntry.id : `${timelineEntry.id}:${segmentStart}`,
-            createdAt: first.createdAt ?? timelineEntry.createdAt,
-            groupedEntries: segment,
-          });
+          const segmentId =
+            segmentStart === 0 ? timelineEntry.id : `${timelineEntry.id}:${segmentStart}`;
+          const segmentCreatedAt = first.createdAt ?? timelineEntry.createdAt;
+
+          if (isDiagnosticWorkEntry(first)) {
+            nextRows.push({
+              kind: "notices",
+              id: segmentId,
+              createdAt: segmentCreatedAt,
+              groupedEntries: segment,
+            });
+            segmentStart = cut;
+            continue;
+          }
+
+          // A run of pure tool calls collapses to one row: the tool still
+          // running, or a summary of the finished run. Mixed runs (narration,
+          // info) keep the original single-card treatment, since a summary
+          // would mislabel them.
+          const onlyToolEntries = segment.every(workLogEntryIsToolLike);
+          if (!onlyToolEntries) {
+            nextRows.push({
+              kind: "work",
+              id: segmentId,
+              createdAt: segmentCreatedAt,
+              groupedEntries: segment,
+            });
+            segmentStart = cut;
+            continue;
+          }
+
+          const groupId = workGroupId(segmentId, first);
+          const expanded = expandedWorkGroups[groupId] ?? false;
+          const liveEntries = segment.filter(
+            (workEntry) =>
+              isWorkActive &&
+              workEntry.toolLifecycleStatus === "inProgress" &&
+              (activeTurnId === null ||
+                activeTurnId === undefined ||
+                workEntry.turnId === activeTurnId),
+          );
+
+          // Only settled calls collapse. A tool that is still running stays on
+          // screen as its own row — hiding live work behind a summary is the
+          // one moment the reader most needs to see it.
+          const liveIds = new Set(liveEntries.map((workEntry) => workEntry.id));
+          const settledEntries = segment.filter((workEntry) => !liveIds.has(workEntry.id));
+
+          if (settledEntries.length > 0) {
+            nextRows.push({
+              kind: "work-toggle",
+              id: `work-toggle:${segmentId}`,
+              createdAt: segmentCreatedAt,
+              groupId,
+              hiddenCount: settledEntries.length,
+              expanded,
+              summary: summarizeToolGroup(settledEntries),
+              summaryKind: toolGroupSummaryKind(settledEntries),
+              hasFailure: settledEntries.some(workEntryIndicatesFailure),
+            });
+
+            if (expanded) {
+              for (const [entryIndex, workEntry] of settledEntries.entries()) {
+                nextRows.push({
+                  kind: "work",
+                  id: `${segmentId}:entry:${workEntry.id}`,
+                  createdAt: workEntry.createdAt ?? segmentCreatedAt,
+                  groupedEntries: [workEntry],
+                  isExpandedToolGroupEntry: true,
+                  isLastExpandedToolGroupEntry: entryIndex === settledEntries.length - 1,
+                });
+              }
+            }
+          }
+
+          for (const workEntry of liveEntries) {
+            nextRows.push({
+              kind: "work-live",
+              id: `work-live:${segmentId}:${workEntry.id}`,
+              createdAt: workEntry.createdAt ?? segmentCreatedAt,
+              entry: workEntry,
+              // One card per running call, so it carries no group toggle of
+              // its own — the settled pill above owns expansion.
+              groupedEntries: [workEntry],
+              groupId,
+              expanded,
+            });
+          }
           segmentStart = cut;
         }
         index = cursor - 1;
@@ -395,6 +538,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     activeTurnId,
     completionSummariesByMessageId,
     completionSummary,
+    // Row derivation now depends on expansion: an expanded group emits an extra
+    // row per entry, so toggling has to rebuild the rows.
+    expandedWorkGroups,
     isWorkActive,
     generationStatusPhase,
     timelineEntries,
@@ -493,9 +639,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => ({
       allDirectoriesExpandedByTurnId,
       completionSummary,
-      completionSummaryVersion: [...completionSummariesByMessageId.entries()]
-        .map(([messageId, summary]) => `${messageId}:${summary}`)
-        .join("|"),
+      // Size only. This memo recomputes every streaming frame (activeTurn and
+      // thread.messages both change per token upstream), so materializing every
+      // summary's full text here rebuilt the whole string at frame rate.
+      completionSummaryVersion: completionSummariesByMessageId.size,
       expandedUserMessageIds,
       expandedWorkGroups,
       isRevertingCheckpoint,
@@ -617,9 +764,34 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         (() => {
           const groupId = row.id;
           const groupedEntries = row.groupedEntries;
+
+          // Entries revealed by expanding a group render bare: the group's own
+          // live/toggle row already supplies the surrounding card.
+          if (row.isExpandedToolGroupEntry) {
+            return (
+              <div className={cn("px-2", row.isLastExpandedToolGroupEntry && "pb-1")}>
+                {groupedEntries.map((workEntry) => (
+                  <SimpleWorkEntryRow
+                    key={`work-row:${workEntry.id}`}
+                    workEntry={workEntry}
+                    workspaceRoot={workspaceRoot}
+                    resolvedTheme={resolvedTheme}
+                    artifactUrl={
+                      workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined
+                    }
+                    onOpenArtifact={onOpenArtifact}
+                    onOpenTurnDiff={onOpenTurnDiff}
+                  />
+                ))}
+              </div>
+            );
+          }
+
           const isExpanded = expandedWorkGroups[groupId] ?? false;
           const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
           const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
+          // A `work` row is a mixed run by construction: all-tool runs are
+          // routed to work-live / work-toggle, which own summarization.
           const showHeader = hasOverflow || !onlyToolEntries;
 
           return (
@@ -628,11 +800,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 <div className="mb-1.5 flex items-center justify-between gap-2 -mx-1 -mt-0.5">
                   <p
                     className="inline-flex min-h-5 shrink-0 items-center justify-center rounded-full bg-muted/90 px-2.5 py-1 text-sm font-medium tabular-nums leading-none text-muted-foreground"
-                    aria-label={
-                      onlyToolEntries
-                        ? `${groupedEntries.length} tool calls`
-                        : `${groupedEntries.length} work log entries`
-                    }
+                    aria-label={`${groupedEntries.length} work log entries`}
                   >
                     {groupedEntries.length}
                   </p>
@@ -679,12 +847,89 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     resolvedTheme={resolvedTheme}
                     artifactUrl={workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined}
                     onOpenArtifact={onOpenArtifact}
+                    onOpenTurnDiff={onOpenTurnDiff}
                   />
                 ))}
               </div>
             </div>
           );
         })()}
+
+      {row.kind === "work-live" && (
+        <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <SimpleWorkEntryRow
+                workEntry={row.entry}
+                workspaceRoot={workspaceRoot}
+                resolvedTheme={resolvedTheme}
+                artifactUrl={
+                  row.entry.toolCallId ? artifactUrlsById?.[row.entry.toolCallId] : undefined
+                }
+                onOpenArtifact={onOpenArtifact}
+                onOpenTurnDiff={onOpenTurnDiff}
+              />
+            </div>
+            {row.groupedEntries.length > 1 && (
+              <button
+                type="button"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/90 text-muted-foreground/65 transition-colors duration-150 hover:bg-muted hover:text-foreground/80"
+                aria-expanded={row.expanded}
+                aria-label={
+                  row.expanded
+                    ? "Collapse tool calls"
+                    : `Expand to show all ${row.groupedEntries.length} tool calls`
+                }
+                title={row.expanded ? "Show less" : "Show all"}
+                onClick={() => onToggleWorkGroup(row.groupId)}
+              >
+                <HugeiconsIcon
+                  icon={row.expanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
+                  className="size-4 stroke-[2.2]"
+                  aria-hidden="true"
+                />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {row.kind === "work-toggle" && (
+        <button
+          type="button"
+          className="group/work-toggle flex w-full items-center gap-2 rounded-xl border border-border/45 bg-card/25 px-2.5 py-1.5 text-left transition-colors duration-150 hover:bg-card/40"
+          aria-expanded={row.expanded}
+          aria-label={`${row.summary} (${row.hiddenCount} tool ${
+            row.hiddenCount === 1 ? "call" : "calls"
+          })`}
+          onClick={() => onToggleWorkGroup(row.groupId)}
+        >
+          <HugeiconsIcon
+            icon={row.hasFailure ? __CircleAlertIconHugeIcon : __CheckIconHugeIcon}
+            className={cn(
+              "size-4 shrink-0 stroke-[2.2]",
+              row.hasFailure ? "text-destructive" : "text-foreground/60",
+            )}
+            aria-hidden="true"
+          />
+          <span className="min-w-0 truncate text-sm font-medium leading-none text-muted-foreground">
+            {row.summary}
+          </span>
+          <HugeiconsIcon
+            icon={row.expanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
+            className={cn(
+              "size-4 shrink-0 stroke-[2.2] text-muted-foreground/65 transition-[color,opacity] duration-150",
+              // Quiet until hovered; an open group keeps its control visible.
+              row.expanded
+                ? "opacity-100"
+                : "opacity-0 group-hover/work-toggle:opacity-100 group-focus-visible/work-toggle:opacity-100",
+            )}
+            aria-hidden="true"
+          />
+          {/* Absorbs the remaining width so the summary and chevron stay together. */}
+          <span className="min-w-0 flex-1" aria-hidden="true" />
+        </button>
+      )}
 
       {row.kind === "notices" &&
         (() => {
@@ -743,17 +988,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             newlineCount >= USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD;
           const userMessageExpanded = expandedUserMessageIds[messageId] ?? false;
           return (
-            <div className="w-full min-w-0">
-              <div className="group flex w-full min-w-0 flex-col gap-1">
+            <div className="flex w-full min-w-0 justify-end">
+              <div className="group relative flex max-w-[85%] sm:max-w-[75%] min-w-0 flex-col items-end gap-1">
                 {userImages.length > 0 && (
-                  <div className="mb-1 flex w-full flex-wrap justify-end gap-2 pl-12">
+                  <div className="mb-1 flex w-full flex-wrap justify-end gap-2">
                     {userImages.map(
                       (image: NonNullable<TimelineMessage["attachments"]>[number]) => {
                         const isFailed = failedImageIds.has(image.id);
                         return (
                           <div
                             key={image.id}
-                            className="relative overflow-hidden rounded-md border border-border/40 bg-transparent h-24 w-32 shrink-0"
+                            className="relative overflow-hidden rounded-xl border border-border/40 bg-transparent h-24 w-32 shrink-0"
                           >
                             {image.previewUrl && !isFailed ? (
                               <button
@@ -790,8 +1035,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 )}
                 {(displayedUserMessage.visibleText.trim().length > 0 ||
                   terminalContexts.length > 0) && (
-                  <div className="relative w-full min-w-0 rounded-md bg-surface-raised px-3.5 py-2.5">
-                    <div className="flex w-full min-w-0 items-start gap-1">
+                  <div className="relative w-fit max-w-full rounded-2xl bg-zinc-900 text-white shadow-xs transition-colors dark:bg-surface-raised dark:text-foreground px-4 py-2.5">
+                    <div className="flex w-full min-w-0 items-start gap-1.5">
                       <div
                         className={cn(
                           "min-w-0 flex-1 text-left",
@@ -808,7 +1053,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       {needsUserBodyTruncate ? (
                         <button
                           type="button"
-                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground/80"
+                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/15 hover:text-white dark:text-muted-foreground/60 dark:hover:bg-muted/80 dark:hover:text-foreground/80"
                           aria-expanded={userMessageExpanded}
                           aria-label={
                             userMessageExpanded ? "Collapse user message" : "Expand user message"
@@ -827,49 +1072,61 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         </button>
                       ) : null}
                     </div>
-                    <div className="absolute right-1.5 top-1.5 flex items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
-                      {displayedUserMessage.copyText && (
-                        <MessageCopyButton text={displayedUserMessage.copyText} />
-                      )}
-                      {canRevertAgentWork && (
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="ghost"
-                          className="rounded-md border border-transparent bg-secondary/80 text-muted-foreground hover:bg-accent hover:text-foreground"
-                          disabled={isRevertingCheckpoint || isWorking}
-                          onClick={() => onRevertUserMessage(row.message.id)}
-                          title="Revert to this message"
-                          aria-label="Revert to this message"
-                        >
-                          <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
-                        </Button>
-                      )}
-                    </div>
                   </div>
                 )}
 
-                {!(
-                  displayedUserMessage.visibleText.trim().length > 0 || terminalContexts.length > 0
-                ) &&
-                  canRevertAgentWork && (
-                    <div className="mt-0.5 flex w-full min-w-0 items-center justify-end gap-2 px-1">
-                      <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="ghost"
-                          className="rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-                          disabled={isRevertingCheckpoint || isWorking}
-                          onClick={() => onRevertUserMessage(row.message.id)}
-                          title="Revert to this message"
-                          aria-label="Revert to this message"
-                        >
-                          <HugeiconsIcon icon={__Undo2IconHugeIcon} className="size-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                <div className="flex items-center justify-end gap-2 px-1 pt-0.5 text-xs text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
+                  {row.message.createdAt ? (
+                    <span className="select-none text-[11px] tabular-nums">
+                      {formatMessageRelativeTime(row.message.createdAt)}
+                    </span>
+                  ) : null}
+                  <div className="flex items-center gap-1">
+                    {displayedUserMessage.copyText ? (
+                      <MessageCopyButton text={displayedUserMessage.copyText} />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                        aria-label="Copy not available"
+                      >
+                        <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5" />
+                      </button>
+                    )}
+                    {canRevertAgentWork ? (
+                      <button
+                        type="button"
+                        className="cursor-pointer p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground/30"
+                        disabled={isRevertingCheckpoint || isWorking}
+                        onClick={() => onRevertUserMessage(row.message.id)}
+                        title="Revert to this message"
+                        aria-label="Revert to this message"
+                      >
+                        <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                        aria-label="Revert not available"
+                        title="No earlier checkpoint to revert to"
+                      >
+                        <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled
+                      className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                      title="Branch (coming soon)"
+                      aria-label="Branch thread"
+                    >
+                      <HugeiconsIcon icon={__GitForkIconHugeIcon} className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           );
@@ -881,7 +1138,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
           return (
             <>
-              <div className="min-w-0 px-1 py-0.5">
+              <div className="group min-w-0 px-1 py-0.5">
                 <ChatMarkdown
                   text={messageText}
                   cwd={markdownCwd}
@@ -893,48 +1150,71 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   if (!turnSummary) return null;
                   const checkpointFiles = turnSummary.files;
                   if (checkpointFiles.length === 0) return null;
-                  const summaryStat = summarizeTurnDiffStats(checkpointFiles);
-                  const changedFileCountLabel = String(checkpointFiles.length);
                   const allDirectoriesExpanded =
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
+                  // Small, recent turns open themselves; anything larger stays
+                  // collapsed behind the scope summary until asked for.
+                  const expanded =
+                    changedFilesExpandedByTurnId[turnSummary.turnId] ??
+                    shouldAutoExpandChangedFiles(
+                      checkpointFiles,
+                      turnSummary.turnId === latestTurnDiffTurnId,
+                    );
                   return (
-                    <div className="mt-2 rounded-lg bg-secondary p-2.5">
-                      <div className="group mb-2 flex items-center justify-between gap-2 pr-2 pl-1.5 pt-1">
-                        <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground/60">
-                          <span>Changed files</span>
-                          <span className="inline-flex size-[18px] items-center justify-center rounded-full bg-border/40 text-[10px] font-medium normal-case tracking-normal tabular-nums text-foreground/70">
-                            {changedFileCountLabel}
-                          </span>
-                          <button
-                            type="button"
-                            className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => onToggleAllDirectories(turnSummary.turnId)}
-                            title={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
-                            aria-label={allDirectoriesExpanded ? "Collapse all" : "Expand all"}
-                          >
-                            <HugeiconsIcon icon={__ChevronsUpDownHugeIcon} className="size-3.5" />
-                          </button>
-                        </div>
-                        {hasNonZeroStat(summaryStat) && (
-                          <div className="font-mono text-[10px] tabular-nums">
-                            <DiffStatLabel
-                              additions={summaryStat.additions}
-                              deletions={summaryStat.deletions}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      <ChangedFilesTree
-                        key={`changed-files-tree:${turnSummary.turnId}`}
-                        turnId={turnSummary.turnId}
-                        files={checkpointFiles}
-                        allDirectoriesExpanded={allDirectoriesExpanded}
-                        resolvedTheme={resolvedTheme}
-                        onOpenTurnDiff={onOpenTurnDiff}
-                      />
-                    </div>
+                    <ChangedFilesCard
+                      turnId={turnSummary.turnId}
+                      files={checkpointFiles}
+                      expanded={expanded}
+                      allDirectoriesExpanded={allDirectoriesExpanded}
+                      resolvedTheme={resolvedTheme}
+                      onExpandedChange={(next) =>
+                        onToggleChangedFilesExpanded(turnSummary.turnId, next)
+                      }
+                      onToggleAllDirectories={() => onToggleAllDirectories(turnSummary.turnId)}
+                      onOpenTurnDiff={onOpenTurnDiff}
+                    />
                   );
                 })()}
+
+                {!row.message.streaming && messageText && messageText !== "(empty response)" ? (
+                  <div className="mt-1 flex items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
+                    <div className="flex items-center gap-1.5">
+                      <MessageCopyButton text={row.message.text} />
+                      <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                        title="Branch (coming soon)"
+                        aria-label="Branch thread"
+                      >
+                        <HugeiconsIcon icon={__GitForkIconHugeIcon} className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                        title="Pin (coming soon)"
+                        aria-label="Pin message"
+                      >
+                        <HugeiconsIcon icon={__PinIconHugeIcon} className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                        title="Read aloud (coming soon)"
+                        aria-label="Read aloud"
+                      >
+                        <HugeiconsIcon icon={__VolumeIconHugeIcon} className="size-3.5" />
+                      </button>
+                    </div>
+                    {row.message.completedAt || row.message.createdAt ? (
+                      <span className="select-none tabular-nums">
+                        {formatMessageRelativeTime(row.message.completedAt ?? row.message.createdAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </>
           );
@@ -1036,7 +1316,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         }}
         onStartReachedThreshold={0.2}
         onViewableItemsChanged={onLegendListViewableItemsChanged}
-        className="app-scrollbar h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
+        className="app-scrollbar scroll-fade-y h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
         contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
         contentContainerStyle={{
           paddingBottom: bottomPaddingPx,
@@ -1059,6 +1339,31 @@ type TimelineRow =
       id: string;
       createdAt: string;
       groupedEntries: TimelineWorkEntry[];
+      /** Rendered bare inside an expanded group rather than as its own card. */
+      isExpandedToolGroupEntry?: boolean;
+      isLastExpandedToolGroupEntry?: boolean;
+    }
+  | {
+      /** The tool currently running, kept visible while the rest collapse. */
+      kind: "work-live";
+      id: string;
+      createdAt: string;
+      entry: TimelineWorkEntry;
+      groupedEntries: TimelineWorkEntry[];
+      groupId: string;
+      expanded: boolean;
+    }
+  | {
+      /** Collapsed summary standing in for a finished run of tool calls. */
+      kind: "work-toggle";
+      id: string;
+      createdAt: string;
+      groupId: string;
+      hiddenCount: number;
+      expanded: boolean;
+      summary: string;
+      summaryKind: ToolGroupSummaryKind;
+      hasFailure: boolean;
     }
   | {
       kind: "notices";
@@ -1100,13 +1405,22 @@ function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan):
 function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | null): number {
   switch (row.kind) {
     case "work": {
+      const entriesHeight = row.groupedEntries.reduce(
+        (total, entry) => total + estimateWorkEntryHeight(entry),
+        0,
+      );
+      // Entries inside an expanded group render bare, without the card chrome.
+      if (row.isExpandedToolGroupEntry) return entriesHeight;
       const hasOverflow = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
       const overflowHeaderHeight = hasOverflow ? 24 : 0;
-      const variableHeight = hasOverflow
-        ? 160
-        : row.groupedEntries.reduce((total, entry) => total + estimateWorkEntryHeight(entry), 0);
+      const variableHeight = hasOverflow ? 160 : entriesHeight;
       return 24 + overflowHeaderHeight + variableHeight;
     }
+    case "work-live":
+      return 24 + estimateWorkEntryHeight(row.entry);
+    case "work-toggle":
+      // Single collapsed line; measurement corrects it once mounted.
+      return 32;
     case "notices":
       // Collapsed single line; expanded height is corrected by measurement.
       return 28;
@@ -1139,6 +1453,31 @@ function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRo
       previousLastEntry?.detail === nextLastEntry?.detail &&
       previousLastEntry?.command === nextLastEntry?.command &&
       previousLastEntry?.tone === nextLastEntry?.tone
+    );
+  }
+
+  if (previousRow.kind === "work-live" && nextRow.kind === "work-live") {
+    return (
+      previousRow.createdAt === nextRow.createdAt &&
+      previousRow.expanded === nextRow.expanded &&
+      previousRow.groupedEntries.length === nextRow.groupedEntries.length &&
+      previousRow.entry.id === nextRow.entry.id &&
+      previousRow.entry.label === nextRow.entry.label &&
+      previousRow.entry.detail === nextRow.entry.detail &&
+      previousRow.entry.command === nextRow.entry.command &&
+      previousRow.entry.tone === nextRow.entry.tone &&
+      previousRow.entry.status === nextRow.entry.status
+    );
+  }
+
+  if (previousRow.kind === "work-toggle" && nextRow.kind === "work-toggle") {
+    return (
+      previousRow.createdAt === nextRow.createdAt &&
+      previousRow.expanded === nextRow.expanded &&
+      previousRow.hiddenCount === nextRow.hiddenCount &&
+      previousRow.summary === nextRow.summary &&
+      previousRow.summaryKind === nextRow.summaryKind &&
+      previousRow.hasFailure === nextRow.hasFailure
     );
   }
 
@@ -1344,7 +1683,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-foreground">
+          <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-inherit">
             {inlineNodes}
           </div>
         );
@@ -1372,7 +1711,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-foreground">
+      <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-inherit">
         {inlineNodes}
       </div>
     );
@@ -1383,7 +1722,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-foreground">
+    <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-inherit">
       {props.text}
     </div>
   );
@@ -1470,6 +1809,23 @@ function workEntryRawCommand(
     return null;
   }
   return rawCommand === workEntry.command.trim() ? null : rawCommand;
+}
+
+/**
+ * A running command is described by the program it invokes ("Running bun"),
+ * which stays readable where the full command line does not. Falls back to the
+ * normal preview when the command cannot be parsed confidently.
+ */
+function liveWorkEntryLabel(
+  workEntry: TimelineWorkEntry,
+  workspaceRoot: string | undefined,
+): string {
+  const command = workEntry.command?.trim();
+  if (command) {
+    const program = commandProgramName(command);
+    return program ? `Running ${program}` : "Running command";
+  }
+  return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
 }
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
@@ -1593,22 +1949,64 @@ function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
   return null;
 }
 
+function sameDisplayedText(left: string, right: string): boolean {
+  return left.replace(/\s+/gu, " ").trim() === right.replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * Content for the expanded row, or null when there is nothing to add.
+ *
+ * A row only earns an expand control when it can show something the collapsed
+ * row does not already say. Echoing the command or path back at the reader is
+ * not worth a chevron.
+ */
 function buildWorkEntryExpandedBody(
   workEntry: TimelineWorkEntry,
   workspaceRoot: string | undefined,
+  options: {
+    /** Text already visible on the collapsed row. */
+    readonly displayedText: string;
+    /** Changed files already listed as chips beneath the row. */
+    readonly changedFilesVisible: boolean;
+    /** Detail was a raw `Tool: {json}` payload that the row replaced. */
+    readonly detailIsRawPayload: boolean;
+  },
 ): string | null {
   const blocks: string[] = [];
-  const command = workEntryRawCommand(workEntry) ?? workEntry.command?.trim() ?? null;
-  if (command) blocks.push(command);
-  const detail = workEntry.detail?.trim();
-  if (detail && detail !== command) blocks.push(detail);
-  if ((workEntry.changedFiles?.length ?? 0) > 0) {
-    blocks.push(
-      workEntry
-        .changedFiles!.map((filePath) => formatWorkspaceRelativePath(filePath, workspaceRoot))
-        .join("\n"),
-    );
+  const alreadyShown = (value: string) => sameDisplayedText(value, options.displayedText);
+
+  // An MCP call is otherwise opaque: the row shows only the tool name, so the
+  // structured payload is genuinely additional.
+  if (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) {
+    try {
+      blocks.push(`MCP call\n${JSON.stringify(workEntry.toolData, null, 2)}`);
+    } catch {
+      // Cyclic or non-serializable payloads simply do not get a block.
+    }
   }
+
+  // Worth showing only when it differs from the command on the row — a wrapper
+  // like `env -C /repo bun test` displayed as `bun test`.
+  const rawCommand = workEntryRawCommand(workEntry);
+  if (rawCommand && !alreadyShown(rawCommand)) {
+    blocks.push(rawCommand);
+  }
+
+  // Raw tool payloads are never re-shown: the row already renders what they mean.
+  if (!options.detailIsRawPayload) {
+    const detail = workEntry.detail?.trim();
+    if (detail && !alreadyShown(detail) && detail !== rawCommand) {
+      blocks.push(detail);
+    }
+  }
+
+  if (!options.changedFilesVisible && (workEntry.changedFiles?.length ?? 0) > 0) {
+    const paths = workEntry
+      .changedFiles!.map((filePath) => formatWorkspaceRelativePath(filePath, workspaceRoot))
+      .join("\n");
+    if (!alreadyShown(paths)) blocks.push(paths);
+  }
+
   return blocks.length > 0 ? blocks.join("\n\n") : null;
 }
 
@@ -1618,15 +2016,27 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   resolvedTheme: "light" | "dark";
   artifactUrl?: string;
   onOpenArtifact?: (artifactId: string) => void;
+  onOpenTurnDiff?: (turnId: TurnId, filePath?: string) => void;
 }) {
-  const { workEntry, workspaceRoot, resolvedTheme, artifactUrl, onOpenArtifact } = props;
+  const { workEntry, workspaceRoot, resolvedTheme, artifactUrl, onOpenArtifact, onOpenTurnDiff } =
+    props;
   const [expanded, setExpanded] = useState(false);
   const iconConfig = workToneIcon(workEntry.tone, workEntry.status);
   const EntryIcon = workEntryIcon(workEntry);
   const isLive = isRunningWorkEntry(workEntry);
   const isCommand = isCommandLikeWorkEntry(workEntry);
-  const heading = toolWorkEntryHeading(workEntry);
-  const rawPreview = workEntryPreview(workEntry, workspaceRoot);
+  // Adapters that only label rows by category ("Tool call") hide the real tool
+  // name and its arguments inside the detail string. Recover them so the row
+  // reads "Read file · Component.tsx" instead of a line of JSON.
+  const normalizedPresentation = normalizeToolRowPresentation({
+    title: workEntry.toolTitle,
+    detail: workEntry.detail,
+  });
+  const heading = normalizedPresentation?.heading ?? toolWorkEntryHeading(workEntry);
+  // Already a basename for file work; the full path rides along for the tooltip.
+  const rawPreview = normalizedPresentation
+    ? (normalizedPresentation.detail ?? null)
+    : workEntryPreview(workEntry, workspaceRoot);
   const preview =
     rawPreview &&
     normalizeCompactToolLabel(rawPreview).toLowerCase() ===
@@ -1635,14 +2045,14 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       : rawPreview;
   const rawCommand = workEntryRawCommand(workEntry);
   const statusBadge = workEntryStatusBadge(workEntry);
-  const displayText =
-    isCommand && !isLive && workEntry.status !== "failed" && preview
+  const displayText = isLive
+    ? // A running row names the program rather than echoing the command line.
+      liveWorkEntryLabel(workEntry, workspaceRoot)
+    : isCommand && workEntry.status !== "failed" && preview
       ? preview
       : preview
         ? `${heading} — ${preview}`
         : heading;
-  const expandedBody = buildWorkEntryExpandedBody(workEntry, workspaceRoot);
-  const canExpand = expandedBody !== null;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const hasPersistedFileGroups =
     (workEntry.savedFiles?.length ?? 0) > 0 || (workEntry.failedFiles?.length ?? 0) > 0;
@@ -1652,12 +2062,22 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
     preview,
     workspaceRoot,
   );
+  // Mirrors the chip-rendering condition below, so the body does not repeat
+  // files the row already lists.
+  const changedFilesVisible =
+    hasChangedFiles && !previewIsChangedFiles && !duplicateChangedFileDisplay;
+  const expandedBody = buildWorkEntryExpandedBody(workEntry, workspaceRoot, {
+    displayedText: [heading, rawPreview].filter(Boolean).join(" "),
+    changedFilesVisible,
+    detailIsRawPayload: normalizedPresentation !== null,
+  });
+  const canExpand = expandedBody !== null;
 
   return (
     <div className="rounded-lg px-1 py-1">
       <div
         className={cn(
-          "flex items-center gap-2 rounded-md transition-[background-color,opacity,translate] duration-200",
+          "group/work-row flex items-center gap-2 rounded-md transition-[background-color,opacity,translate] duration-200",
           canExpand &&
             "cursor-pointer hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
         )}
@@ -1683,7 +2103,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         >
           <EntryIcon className="size-3.5" aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <p
             className={cn(
               "truncate text-[11px] leading-5",
@@ -1692,10 +2112,48 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                 : "text-muted-foreground/75",
               isCommand && "font-mono",
             )}
-            title={rawCommand ?? displayText}
+            title={normalizedPresentation?.path ?? rawCommand ?? displayText}
           >
-            {isLive ? <LiveShimmerText className="w-full truncate">{displayText}</LiveShimmerText> : displayText}
+            {isLive ? (
+              <LiveShimmerText className="w-full truncate">{displayText}</LiveShimmerText>
+            ) : normalizedPresentation ? (
+              // Verb stays muted; the file or command it acted on is what the
+              // eye should land on.
+              <>
+                <span>{normalizedPresentation.heading}</span>
+                {rawPreview ? (
+                  <span className="ml-1.5 text-foreground/85">{rawPreview}</span>
+                ) : null}
+              </>
+            ) : (
+              displayText
+            )}
           </p>
+          {normalizedPresentation?.stat &&
+          hasNonZeroStat(normalizedPresentation.stat) &&
+          !isLive ? (
+            <span className="shrink-0 font-mono text-[10px] tabular-nums">
+              <DiffStatLabel
+                additions={normalizedPresentation.stat.additions}
+                deletions={normalizedPresentation.stat.deletions}
+              />
+            </span>
+          ) : null}
+          {canExpand ? (
+            <HugeiconsIcon
+              icon={__WorkLogExpandHugeIcon}
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground/55 transition-[transform,opacity] duration-200",
+                // Quiet until the row is hovered or focused; an expanded row
+                // keeps it visible so the control that opened it stays put.
+                expanded
+                  ? "rotate-180 opacity-100"
+                  : "opacity-0 group-hover/work-row:opacity-100 group-focus-visible/work-row:opacity-100",
+              )}
+              aria-hidden="true"
+            />
+          ) : null}
+          <span className="min-w-0 flex-1" aria-hidden="true" />
         </div>
         {statusBadge ? (
           <span
@@ -1706,16 +2164,6 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           >
             {statusBadge.label}
           </span>
-        ) : null}
-        {canExpand ? (
-          <HugeiconsIcon
-            icon={__WorkLogExpandHugeIcon}
-            className={cn(
-              "mr-1 size-3.5 shrink-0 text-muted-foreground/55 transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
-            aria-hidden="true"
-          />
         ) : null}
       </div>
       {workEntry.itemType === "image_generation" && artifactUrl && workEntry.toolCallId ? (
@@ -1743,22 +2191,57 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           resolvedTheme={resolvedTheme}
         />
       ) : hasChangedFiles && !previewIsChangedFiles && !duplicateChangedFileDisplay ? (
-        <div className="mt-1 flex flex-wrap gap-1 pl-6">
-          {workEntry.changedFiles?.slice(0, 4).map((filePath) => {
+        <div className="mt-1 flex flex-wrap items-center gap-1 pl-6">
+          {workEntry.changedFiles?.slice(0, CHANGED_FILES_PREVIEW_FILE_LIMIT).map((filePath) => {
             const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
-            return (
+            // The chip shows the basename; the full path lives in the tooltip so
+            // a row of chips stays scannable instead of a wall of directories.
+            const fileName = changedFileName(displayPath);
+            const turnId = workEntry.turnId;
+            const canOpenDiff = Boolean(onOpenTurnDiff && turnId);
+            const chipClassName = cn(
+              "inline-flex max-w-48 items-center gap-1 rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75",
+              canOpenDiff &&
+                "cursor-pointer transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            );
+            const chipContent = (
+              <>
+                <VscodeEntryIcon
+                  pathValue={displayPath}
+                  kind="file"
+                  theme={resolvedTheme}
+                  className="size-3 shrink-0"
+                />
+                <span className="truncate">{fileName}</span>
+              </>
+            );
+            return canOpenDiff ? (
+              <button
+                key={`${workEntry.id}:${filePath}`}
+                type="button"
+                className={chipClassName}
+                title={displayPath}
+                aria-label={`Open diff for ${displayPath}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenTurnDiff?.(turnId!, filePath);
+                }}
+              >
+                {chipContent}
+              </button>
+            ) : (
               <span
                 key={`${workEntry.id}:${filePath}`}
-                className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
+                className={chipClassName}
                 title={displayPath}
               >
-                {displayPath}
+                {chipContent}
               </span>
             );
           })}
-          {(workEntry.changedFiles?.length ?? 0) > 4 && (
+          {(workEntry.changedFiles?.length ?? 0) > CHANGED_FILES_PREVIEW_FILE_LIMIT && (
             <span className="px-1 text-[10px] text-muted-foreground/55">
-              +{(workEntry.changedFiles?.length ?? 0) - 4}
+              +{(workEntry.changedFiles?.length ?? 0) - CHANGED_FILES_PREVIEW_FILE_LIMIT}
             </span>
           )}
         </div>

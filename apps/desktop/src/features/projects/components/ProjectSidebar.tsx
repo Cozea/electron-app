@@ -1,8 +1,11 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowLeft01Icon as __ArrowLeftHugeIcon, FolderAddIcon as __FolderAddHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
-
+import {
+  ArrowLeft01Icon as __ArrowLeftHugeIcon,
+  FolderAddIcon as __FolderAddHugeIcon,
+  ShoppingBag01Icon as __ShoppingBagHugeIcon,
+} from '@hugeicons/core-free-icons'
 
 import * as React from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
@@ -24,6 +27,7 @@ import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCrea
 import {
   SidebarContent,
   SidebarFooter,
+  SidebarHeader,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { useTranslation } from "@/lib/i18n";
@@ -887,7 +891,16 @@ export function ProjectSidebar({
 
   return (
     <>
-      <SidebarContent className="gap-0 px-2 py-3">
+      <SidebarHeader className="px-2 pt-2 pb-1">
+        <div className="flex items-center justify-between px-1.5">
+          <div className="flex items-baseline gap-1.5 select-none">
+            <span className="text-lg font-semibold tracking-tight text-foreground">Cozea</span>
+            <span className="text-lg font-normal tracking-tight text-muted-foreground/50">Alpha</span>
+          </div>
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent className="gap-0 px-2 py-2">
           {!isOnCurrentProjectSubMenu && (
             <div className="mb-4 space-y-1">
               <button

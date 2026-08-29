@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
-import { SettingsPageBody } from '@/components/settings/SettingsChrome'
+import {
+  SettingsGroup,
+  SettingsPageBody,
+  SettingsPageHeader,
+  SettingsRow,
+  SettingsRowControl,
+  SettingsRowLabel,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+} from '@/components/settings/SettingsChrome'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 import { toolingSettingsClient } from '@/lib/settings/toolingSettingsClient'
 import { Badge } from '../../components/ui/badge'
@@ -226,58 +235,47 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
   const content = (
     <SettingsPageBody surface={surface} className="space-y-6">
-        <div className="px-1 py-1">
-          <div className="flex flex-wrap items-start gap-4">
-            <div>
-              <h2 className="text-base font-medium">{t('settings.tooling.title')}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t('settings.tooling.description')}
-              </p>
-            </div>
-          </div>
+      <SettingsPageHeader
+        title={t('settings.tooling.title')}
+        description={t('settings.tooling.description')}
+      />
+
+      {error && (
+        <div className="rounded-2xl bg-destructive/10 px-4 py-4 text-sm text-destructive">
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="rounded-2xl bg-destructive/10 px-4 py-4 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        <section className="space-y-3">
-          <div className="rounded-2xl bg-secondary/60 px-5 py-4">
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-medium">{t('settings.tooling.projectsDirectory')}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t('settings.tooling.projectsDirectoryDesc')}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 w-full justify-start rounded-[8px] border-border/50 bg-background/40 px-3 text-xs font-normal shadow-none transition-colors hover:bg-background/70 hover:text-foreground"
-                onClick={() => void handleChooseProjectsDirectory()}
-                disabled={isSavingProjectsDirectory}
-                title={projectsDirectory ?? ''}
-              >
-                <HugeiconsIcon icon={__FolderHugeIcon} className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
-                <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px]">
-                  {projectsDirectory ?? t('settings.tooling.projectsDirectoryLoading')}
-                </span>
-              </Button>
-            </div>
+      <section>
+        <SettingsSectionTitle>{t('settings.tooling.projectsDirectory')}</SettingsSectionTitle>
+        <SettingsSectionDescription>{t('settings.tooling.projectsDirectoryDesc')}</SettingsSectionDescription>
+        <SettingsGroup>
+          <div className="p-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-full justify-start rounded-lg border-border/50 bg-background/50 px-3 text-xs font-normal shadow-none transition-colors hover:bg-background/80 hover:text-foreground"
+              onClick={() => void handleChooseProjectsDirectory()}
+              disabled={isSavingProjectsDirectory}
+              title={projectsDirectory ?? ''}
+            >
+              <HugeiconsIcon icon={__FolderHugeIcon} className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
+              <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px]">
+                {projectsDirectory ?? t('settings.tooling.projectsDirectoryLoading')}
+              </span>
+            </Button>
             {projectsDirectoryError && (
-              <p className="mt-3 text-xs text-destructive">{projectsDirectoryError}</p>
+              <p className="mt-2 text-xs text-destructive">{projectsDirectoryError}</p>
             )}
           </div>
-        </section>
+        </SettingsGroup>
+      </section>
 
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium">{t('settings.tooling.gitRuntime')}</h3>
-          </div>
-          <div className="rounded-2xl bg-secondary/60 px-5 py-4">
+      <section>
+        <SettingsSectionTitle>{t('settings.tooling.gitRuntime')}</SettingsSectionTitle>
+        <SettingsGroup>
+          <div className="px-4 py-3">
             {gitRuntimeHealth ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
@@ -323,17 +321,18 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
               </p>
             )}
           </div>
-        </section>
+        </SettingsGroup>
+      </section>
 
-        <section className="space-y-3">
-          <div className="rounded-2xl bg-secondary/60 px-5 py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-medium">{t('settings.tooling.previewEmbedCompatibility')}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t('settings.tooling.previewEmbedDesc')}
-                </p>
-              </div>
+      <section>
+        <SettingsSectionTitle>{t('settings.tooling.previewEmbedCompatibility')}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow isFirst>
+            <SettingsRowLabel
+              title={t('settings.tooling.previewEmbedCompatibility')}
+              description={t('settings.tooling.previewEmbedDesc')}
+            />
+            <SettingsRowControl>
               <Switch
                 checked={previewHeaderCompatibilityEnabled}
                 onCheckedChange={(checked) => {
@@ -342,116 +341,115 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                 disabled={isSavingPreviewHeaderCompatibility}
                 aria-label={t('settings.tooling.previewEmbedCompatibility')}
               />
+            </SettingsRowControl>
+          </SettingsRow>
+          {previewHeaderCompatibilityError && (
+            <div className="px-4 py-2 text-xs text-destructive">
+              {previewHeaderCompatibilityError}
             </div>
-            {previewHeaderCompatibilityError && (
-              <p className="mt-3 text-xs text-destructive">{previewHeaderCompatibilityError}</p>
-            )}
-          </div>
-        </section>
+          )}
+        </SettingsGroup>
+      </section>
 
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium">{t('settings.tooling.runtimeInventory')}</h3>
+      <section>
+        <SettingsSectionTitle>{t('settings.tooling.runtimeInventory')}</SettingsSectionTitle>
+        <SettingsSectionDescription>{t('settings.tooling.runtimeInventoryDesc')}</SettingsSectionDescription>
+        <SettingsGroup>
+          <div className="grid grid-cols-[1fr_2fr_0.8fr] gap-2 border-b border-border/30 px-4 py-2 text-xs font-medium text-muted-foreground">
+            <span>{t('settings.tooling.colRuntime')}</span>
+            <span>{t('settings.tooling.colPath')}</span>
+            <span className="text-right">{t('settings.tooling.colAction')}</span>
           </div>
-          <div className="rounded-2xl border border-border/50 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
-            {t('settings.tooling.runtimeInventoryDesc')}
-          </div>
-          <div className="overflow-hidden rounded-2xl bg-secondary/60">
-            <div className="grid grid-cols-[1fr_2fr_0.8fr] gap-2 px-4 py-2 text-xs text-muted-foreground">
-              <span>{t('settings.tooling.colRuntime')}</span>
-              <span>{t('settings.tooling.colPath')}</span>
-              <span className="text-right">{t('settings.tooling.colAction')}</span>
-            </div>
-            <div className="space-y-1 px-1 pb-1">
-              {(() => {
-                const runtimes = runtimeStatus?.runtimes ?? []
-                if (runtimes.length === 0) {
-                  return (
-                    <div className="px-3 py-4 text-sm text-muted-foreground">
-                      {isLoading
-                        ? t('settings.tooling.runtimeLoadingPlaceholder')
-                        : t('settings.tooling.noRuntimeData')}
-                    </div>
-                  )
-                }
-
-                const totalPages = Math.ceil(runtimes.length / itemsPerPage)
-                const startIndex = (currentPage - 1) * itemsPerPage
-                const paginatedRuntimes = runtimes.slice(startIndex, startIndex + itemsPerPage)
-
+          <div className="divide-y divide-border/20">
+            {(() => {
+              const runtimes = runtimeStatus?.runtimes ?? []
+              if (runtimes.length === 0) {
                 return (
-                  <>
-                    <div className="min-h-[260px] space-y-1">
-                      {paginatedRuntimes.map((runtime) => (
-                        (() => {
-                          const badgeLabel = getRuntimeBadgeLabel(runtime)
-                          const badgeVariant = runtime.available ? 'secondary' : 'destructive'
-
-                          return (
-                            <div
-                              key={runtime.runtime}
-                              className="grid grid-cols-[1fr_2fr_0.8fr] items-center gap-2 rounded-xl px-3 py-2 text-sm odd:bg-background/20"
-                            >
-                              <div className="flex min-w-0 items-center gap-3">
-                                <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-                                  <RuntimeLogo runtime={runtime.runtime} />
-                                </div>
-                                <span className="truncate font-medium">{RUNTIME_LABELS[runtime.runtime]}</span>
-                              </div>
-                              <span
-                                className="truncate text-muted-foreground"
-                                title={runtime.executablePath || runtime.error || ''}
-                              >
-                                {runtime.executablePath || runtime.error || '—'}
-                              </span>
-                              <div className="flex items-center justify-end">
-                                <Badge variant={badgeVariant} className="gap-1 rounded-full">
-                                  <HugeiconsIcon
-                                    icon={runtime.available ? __CheckHugeIcon : __AlertTriangleHugeIcon}
-                                    className="h-3 w-3"
-                                  />
-                                  {badgeLabel}
-                                </Badge>
-                              </div>
-                            </div>
-                          )
-                        })()
-                      ))}
-                    </div>
-                    {totalPages > 1 && (
-                      <div className="mt-2 flex items-center justify-between border-t border-border/40 px-3 pt-3 pb-1">
-                        <span className="text-xs text-muted-foreground">
-                          {t('common.page')} {currentPage} {t('common.of')} {totalPages}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                          >
-                            {t('common.previous')}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                          >
-                            {t('common.next')}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </>
+                  <div className="px-4 py-4 text-xs text-muted-foreground">
+                    {isLoading
+                      ? t('settings.tooling.runtimeLoadingPlaceholder')
+                      : t('settings.tooling.noRuntimeData')}
+                  </div>
                 )
-              })()}
-            </div>
+              }
+
+              const totalPages = Math.ceil(runtimes.length / itemsPerPage)
+              const startIndex = (currentPage - 1) * itemsPerPage
+              const paginatedRuntimes = runtimes.slice(startIndex, startIndex + itemsPerPage)
+
+              return (
+                <>
+                  <div className="divide-y divide-border/20">
+                    {paginatedRuntimes.map((runtime) => (
+                      (() => {
+                        const badgeLabel = getRuntimeBadgeLabel(runtime)
+                        const badgeVariant = runtime.available ? 'secondary' : 'destructive'
+
+                        return (
+                          <div
+                            key={runtime.runtime}
+                            className="grid grid-cols-[1fr_2fr_0.8fr] items-center gap-2 px-4 py-2.5 text-xs"
+                          >
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center">
+                                <RuntimeLogo runtime={runtime.runtime} />
+                              </div>
+                              <span className="truncate font-medium text-foreground">{RUNTIME_LABELS[runtime.runtime]}</span>
+                            </div>
+                            <span
+                              className="truncate font-mono text-[11px] text-muted-foreground"
+                              title={runtime.executablePath || runtime.error || ''}
+                            >
+                              {runtime.executablePath || runtime.error || '—'}
+                            </span>
+                            <div className="flex items-center justify-end">
+                              <Badge variant={badgeVariant} className="gap-1 rounded-full text-[10px]">
+                                <HugeiconsIcon
+                                  icon={runtime.available ? __CheckHugeIcon : __AlertTriangleHugeIcon}
+                                  className="h-3 w-3"
+                                />
+                                {badgeLabel}
+                              </Badge>
+                            </div>
+                          </div>
+                        )
+                      })()
+                    ))}
+                  </div>
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between border-t border-border/30 px-4 py-2.5">
+                      <span className="text-xs text-muted-foreground">
+                        {t('common.page')} {currentPage} {t('common.of')} {totalPages}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                        >
+                          {t('common.previous')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={currentPage === totalPages}
+                        >
+                          {t('common.next')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
-        </section>
-      </SettingsPageBody>
+        </SettingsGroup>
+      </section>
+    </SettingsPageBody>
   )
 
   if (surface === 'drawer') {

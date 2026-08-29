@@ -2,9 +2,7 @@ import { type ReactNode, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/components/ProjectShellTitleBarCenterFromLabel";
 import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
-import { resolveSettingsSurfaceFromRoute } from "@/lib/settings/settingsRegistry";
 import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore";
 
 interface UseProjectChromeHeaderArgs {
@@ -26,8 +24,8 @@ interface UseProjectChromeHeaderArgs {
  */
 export function useProjectChromeHeader({
   isSettingsModeRoute,
-  pathname,
-  workspaceScoped,
+  pathname: _pathname,
+  workspaceScoped: _workspaceScoped,
   presencePreSearchAddon,
   projectId,
   projectName,
@@ -42,25 +40,9 @@ export function useProjectChromeHeader({
     })),
   );
 
-  const settingsTitle = useMemo(() => {
-    if (!isSettingsModeRoute) return null;
-    const unprefixedPath = pathname.startsWith("/projects/")
-      ? `/${pathname.slice("/projects/".length)}`
-      : pathname;
-    const surface = resolveSettingsSurfaceFromRoute(unprefixedPath);
-    if (surface) return surface.surface.label;
-    return workspaceScoped ? "Workspace Settings" : "Settings";
-  }, [isSettingsModeRoute, pathname, workspaceScoped]);
-
   return useMemo(() => {
     const headerResolved = headerFromPage ?? <ProjectShellTitleBarLeft />;
-
-    const centerAddon =
-      isSettingsModeRoute && settingsTitle ? (
-        <ProjectShellTitleBarCenterFromLabel label={settingsTitle} />
-      ) : (
-        (centerFromPage ?? undefined)
-      );
+    const centerAddon = isSettingsModeRoute ? undefined : (centerFromPage ?? undefined);
 
     return {
       header: headerResolved,
@@ -84,6 +66,5 @@ export function useProjectChromeHeader({
     presencePreSearchAddon,
     projectId,
     projectName,
-    settingsTitle,
   ]);
 }
