@@ -1,6 +1,74 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+const clearCachedProjectLaneState = vi.fn()
+const clearDrafts = vi.fn()
+const clearLastWorkbenchRoutesForProject = vi.fn()
+const clearPersistedProjectSidebarEntry = vi.fn()
+const clearPersistedWorkbenchLayoutsForProject = vi.fn()
+const clearProjectBranchSession = vi.fn()
+const clearRecentProjectOpenSync = vi.fn()
+const clearSyncFeedSeen = vi.fn()
 const closeRuntime = vi.fn()
+const collectAssistantProjectIdsForDeletion = vi.fn(() => ["assistant-project-1"])
+const deleteAssistantProjectsForDeletedWorkspace = vi.fn(async () => undefined)
+const releaseDevServerSurfaceLease = vi.fn()
+const removeLocalProjectDevApp = vi.fn()
+const removeProjectWorkbench = vi.fn()
+const resetDevServerRuns = vi.fn()
+const resetTerminalProject = vi.fn()
+const resetThread = vi.fn()
+const clearQueryCache = vi.fn()
+
+vi.mock("@/features/devapps/localProjectDevAppStore", () => ({
+  removeLocalProjectDevApp,
+}))
+
+vi.mock("@/features/projects/components/assistant/chat/composerDraftStore", () => ({
+  useAssistantComposerDraftStore: {
+    getState: () => ({ clearDrafts }),
+  },
+}))
+
+vi.mock("@/features/projects/components/sidebar/projectSidebarState", () => ({
+  clearPersistedProjectSidebarEntry,
+}))
+
+vi.mock("@/features/projects/devserver/devServerRunStore", () => ({
+  clearDevServerRunsForWorkspace: resetDevServerRuns,
+}))
+
+vi.mock("@/features/projects/devserver/devServerSurfaceController", () => ({
+  releaseDevServerSurfaceLease,
+}))
+
+vi.mock("@/features/projects/hooks/useProjectLaneState", () => ({
+  clearCachedProjectLaneState,
+}))
+
+vi.mock("@/features/projects/lib/assistantProjectDeletion", () => ({
+  collectAssistantProjectIdsForDeletion,
+  deleteAssistantProjectsForDeletedWorkspace,
+}))
+
+vi.mock("@/features/projects/lib/lastWorkbenchRoute", () => ({
+  clearLastWorkbenchRoutesForProject,
+}))
+
+vi.mock("@/features/projects/lib/projectBranchSessionStore", () => ({
+  clearProjectBranchSession,
+}))
+
+vi.mock("@/features/projects/lib/recentProjectOpenSync", () => ({
+  clearRecentProjectOpenSync,
+}))
+
+vi.mock("@/features/projects/lib/workbenchLayoutPersistence", () => ({
+  clearPersistedWorkbenchLayoutsForProject,
+}))
+
+vi.mock("@/features/projects/syncFeedSeen", () => ({
+  clearSyncFeedSeen,
+}))
 
 vi.mock("@/features/projects/workspaces/useWorkspaceRuntimeStore", () => ({
   useWorkspaceRuntimeStore: {
@@ -13,6 +81,20 @@ vi.mock("@/features/projects/workspaces/useWorkspaceRuntimeStore", () => ({
             workspaceId: "workspace_1",
           },
         },
+        "runtime-unbound": {
+          runtimeId: "runtime-unbound",
+          config: {
+            projectId: "project_1",
+            workspaceId: null,
+          },
+        },
+        "runtime-other": {
+          runtimeId: "runtime-other",
+          config: {
+            projectId: "project_2",
+            workspaceId: "workspace_2",
+          },
+        },
       },
       actions: {
         closeRuntime,
@@ -21,12 +103,49 @@ vi.mock("@/features/projects/workspaces/useWorkspaceRuntimeStore", () => ({
   },
 }))
 
-vi.mock("@/features/projects/hooks/useProjectLaneState", () => ({
-  clearCachedProjectLaneState: vi.fn(),
+vi.mock("@/stores/useProjectWorkbenchStore", () => ({
+  useProjectWorkbenchStore: {
+    getState: () => ({
+      workbenches: {
+        "project_1::lane-1::workspace_1": {
+          projectId: "project_1",
+          workspaceId: "workspace_1",
+          laneId: "lane-1",
+          tiles: {
+            "assistant-tile-1": {
+              id: "assistant-tile-1",
+              type: "assistantChat",
+              assistantProjectId: "assistant-project-1",
+              threadId: "thread-1",
+            },
+            "dev-server-tile-1": {
+              id: "dev-server-tile-1",
+              type: "devServer",
+            },
+          },
+        },
+      },
+      actions: { removeProject: removeProjectWorkbench },
+    }),
+  },
 }))
 
-vi.mock("@/features/projects/lib/projectBranchSessionStore", () => ({
-  clearProjectBranchSession: vi.fn(),
+vi.mock("@/stores/useQueryCache", () => ({
+  useQueryCache: {
+    getState: () => ({ clear: clearQueryCache }),
+  },
+}))
+
+vi.mock("@/stores/useTerminalStore", () => ({
+  useTerminalStore: {
+    getState: () => ({ actions: { resetProject: resetTerminalProject } }),
+  },
+}))
+
+vi.mock("@/stores/threadDetailStore", () => ({
+  useThreadDetailStore: {
+    getState: () => ({ resetThread }),
+  },
 }))
 
 describe("cleanupDeletedProjectLocally", () => {
@@ -35,14 +154,36 @@ describe("cleanupDeletedProjectLocally", () => {
   const listForProject = vi.fn()
   const listSessions = vi.fn()
   const closeSession = vi.fn()
+  const stopDevServer = vi.fn()
+  const removeLocalStorageItem = vi.fn()
 
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
     trashManagedWorkspace.mockResolvedValue({ success: true, movedToTrash: true })
     forget.mockResolvedValue(undefined)
-    listSessions.mockResolvedValue([])
-    closeSession.mockResolvedValue(undefined)
+    closeSession.mockResolvedValue({ success: true })
+    stopDevServer.mockResolvedValue({ success: true })
+    listSessions.mockResolvedValue([
+      {
+        sessionKey: "session-bound",
+        projectId: "project_1",
+        laneId: "lane-1",
+        workspaceId: "workspace_1",
+      },
+      {
+        sessionKey: "session-unbound",
+        projectId: "project_1",
+        laneId: "collab",
+        workspaceId: null,
+      },
+      {
+        sessionKey: "session-other",
+        projectId: "project_2",
+        laneId: "collab",
+        workspaceId: "workspace_2",
+      },
+    ])
     listForProject.mockResolvedValue([
       {
         workspaceId: "workspace_1",
@@ -53,7 +194,13 @@ describe("cleanupDeletedProjectLocally", () => {
 
     Object.assign(globalThis, {
       window: {
+        localStorage: {
+          removeItem: removeLocalStorageItem,
+        },
         electronAPI: {
+          devServer: {
+            stop: stopDevServer,
+          },
           workbenchSession: {
             listSessions,
             closeSession,
@@ -68,20 +215,48 @@ describe("cleanupDeletedProjectLocally", () => {
     })
   })
 
-  it("keeps local folders when keepLocalFiles is true", async () => {
+  it("keeps attached state on disk while removing every app-owned project record", async () => {
     const { cleanupDeletedProjectLocally } = await import(
       "../../apps/desktop/src/features/projects/lib/projectLocalCleanup"
     )
 
     await cleanupDeletedProjectLocally("project_1", {
       keepLocalFiles: true,
+      projectSlug: "demo",
     })
 
     expect(trashManagedWorkspace).not.toHaveBeenCalled()
     expect(forget).toHaveBeenCalledWith("workspace_1")
+    expect(stopDevServer).toHaveBeenCalledWith({ workspaceId: "workspace_1", laneId: "lane-1" })
+    expect(stopDevServer).toHaveBeenCalledWith({ workspaceId: "workspace_1", laneId: "collab" })
+    expect(closeSession).toHaveBeenCalledTimes(2)
+    expect(closeSession).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "session-unbound" }))
+    expect(closeRuntime).toHaveBeenCalledWith("runtime-1")
+    expect(closeRuntime).toHaveBeenCalledWith("runtime-unbound")
+    expect(closeRuntime).not.toHaveBeenCalledWith("runtime-other")
+    expect(deleteAssistantProjectsForDeletedWorkspace).toHaveBeenCalledWith({
+      assistantProjectIds: ["assistant-project-1"],
+      workspaceRoots: new Set(["/tmp/cozea-projects/demo"]),
+    })
+    expect(clearDrafts).toHaveBeenCalledWith([
+      "assistant-tile-1",
+      "dev-server-tile-1",
+      "thread-1",
+    ])
+    expect(resetThread).toHaveBeenCalledWith("thread-1")
+    expect(removeProjectWorkbench).toHaveBeenCalledWith("project_1")
+    expect(clearPersistedWorkbenchLayoutsForProject).toHaveBeenCalledWith("project_1")
+    expect(removeLocalProjectDevApp).toHaveBeenCalledWith("project_1")
+    expect(clearPersistedProjectSidebarEntry).toHaveBeenCalledWith("project_1")
+    expect(clearLastWorkbenchRoutesForProject).toHaveBeenCalledWith("project_1")
+    expect(clearRecentProjectOpenSync).toHaveBeenCalledWith("project_1")
+    expect(clearSyncFeedSeen).toHaveBeenCalledWith("demo")
+    expect(resetDevServerRuns).toHaveBeenCalledWith("workspace_1")
+    expect(resetTerminalProject).toHaveBeenCalledWith("workspace_1")
+    expect(clearQueryCache).toHaveBeenCalled()
   })
 
-  it("trashes local folders when keepLocalFiles is false", async () => {
+  it("trashes only managed folders when local file removal is selected", async () => {
     const { cleanupDeletedProjectLocally } = await import(
       "../../apps/desktop/src/features/projects/lib/projectLocalCleanup"
     )

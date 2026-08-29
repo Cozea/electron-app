@@ -99,7 +99,7 @@ export function resolveTrustedProjectRouteNavigationState(
 }
 
 export function buildProjectRouteNavigationState<
-  TExtras extends Record<string, unknown> = Record<never, never>,
+  TExtras extends object = Record<never, never>,
 >(
   input: ProjectRouteNavigationState,
   extras?: TExtras,

@@ -1,5 +1,5 @@
 import { cronJobs } from "convex/server"
-import { api } from "./_generated/api"
+import { internal } from "./_generated/api"
 
 const crons = cronJobs()
 
@@ -8,7 +8,14 @@ const crons = cronJobs()
 crons.interval(
   "cleanup stale project presence",
   { minutes: 5 },
-  api.projectPresence.cleanupStale,
+  internal.projectPresence.cleanupStale,
+  {},
+)
+
+crons.daily(
+  "cleanup expired identity security state",
+  { hourUTC: 3, minuteUTC: 15 },
+  internal.fileTombstones.cleanupAllExpiredTombstones,
   {},
 )
 

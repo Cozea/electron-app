@@ -1,10 +1,12 @@
 import { api } from "./_generated/api"
-import { mutation, query } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { ConvexError, v } from "convex/values"
 import * as Y from "yjs"
 import { applyProjectStorageDeltas } from "./lib/workspaceLimits"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
+import { canManageProject } from "./lib/projectAccess"
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength)
@@ -154,6 +156,13 @@ type EncryptionBootstrapStatus =
   | "missing_for_device"
   | "device_revoked"
 
+function assertGatewaySecret(secret: string): void {
+  const expected = process.env.AI_GATEWAY_SECRET
+  if (!expected || secret !== expected) {
+    throw new ConvexError("Unauthorized")
+  }
+}
+
 function defaultRoomId(projectId: Id<"projects">): string {
   return `project:${projectId}`
 }
@@ -163,7 +172,7 @@ async function getProject(
   projectId: Id<"projects">
 ) {
   const project = await ctx.db.get(projectId)
-  if (!project) {
+  if (!project || project.status === "deleted") {
     throw new Error("Project not found")
   }
 
@@ -220,7 +229,7 @@ async function getActiveRoomKey(
     .collect()
 
   const active = roomKeys
-    .filter((entry) => entry.status === "active")
+    .filter((entry) => entry.status === "active" || entry.status === "rotating")
     .sort((a, b) => b.keyVersion - a.keyVersion)[0]
 
   return (active ?? null) as ActiveRoomKeyRecord | null
@@ -577,6 +586,7 @@ export const broadcastUpdate = mutation({
     clientId: v.string(),
     origin: v.optional(v.string()),
     timestamp: v.optional(v.number()),
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const inserted = await insertSequencedUpdate(ctx, {
@@ -606,6 +616,7 @@ export const getUpdatesSince = query({
     projectId: v.id("projects"),
     since: v.number(),
     limit: v.optional(v.number()),
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await assertCollaborationAccess(ctx, args.projectId)
@@ -635,6 +646,7 @@ export const getUpdatesAfterSeq = query({
     projectId: v.id("projects"),
     sinceSeq: v.number(),
     limit: v.optional(v.number()),
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await assertCollaborationAccess(ctx, args.projectId)
@@ -957,6 +969,7 @@ export const maybeCompactProject = mutation({
 
 export const registerCollabDevice = mutation({
   args: {
+    serverSecret: v.string(),
     userId: v.id("users"),
     deviceId: v.string(),
     deviceLabel: v.string(),
@@ -966,6 +979,7 @@ export const registerCollabDevice = mutation({
     fingerprint: v.string(),
   },
   handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
     const existing = await ctx.db
       .query("collabDevices")
       .withIndex("by_user_and_device", (q) =>
@@ -1013,12 +1027,14 @@ export const registerCollabDevice = mutation({
 
 export const getEncryptionBootstrap = query({
   args: {
+    serverSecret: v.string(),
     projectId: v.id("projects"),
     roomId: v.optional(v.string()),
     userId: v.id("users"),
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
     await assertCollaborationAccess(ctx, args.projectId)
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const registeredDevice = await ctx.db
@@ -1169,6 +1185,10 @@ export const createKeyRequest = mutation({
     recipientFingerprint: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (user._id !== args.recipientUserId || user.identityKey !== args.recipientDeviceId) {
+      throw new ConvexError("A device can request an encryption key only for itself")
+    }
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const device = await ctx.db
       .query("collabDevices")
@@ -1218,6 +1238,10 @@ export const listPendingKeyRequests = query({
     roomId: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canManageProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("Only project managers can review encryption key requests")
+    }
     await assertCollaborationAccess(ctx, args.projectId)
     const requests = await ctx.db
       .query("projectCollabKeyRequests")
@@ -1274,6 +1298,10 @@ export const listCollabRoomDevices = query({
     roomId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canManageProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("Only project managers can review collaboration devices")
+    }
     await assertCollaborationAccess(ctx, args.projectId)
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
@@ -1331,6 +1359,7 @@ export const listCollabRoomDevices = query({
           hasPendingRequest: Boolean(pendingRequest),
           pendingRequestedAt: pendingRequest?.requestedAt ?? null,
           activeKeyVersion: activeRoomKey?.keyVersion ?? null,
+          rotationRequired: activeRoomKey?.status === "rotating",
         }
       }),
     )
@@ -1354,7 +1383,27 @@ export const storeWrappedRoomKey = mutation({
     wrappedKey: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canManageProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("Only project managers can approve encryption key requests")
+    }
+    if (user.identityKey !== args.senderDeviceId) {
+      throw new ConvexError("The wrapping device does not match the authenticated device")
+    }
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
+    const pendingRequest = await ctx.db
+      .query("projectCollabKeyRequests")
+      .withIndex("by_project_room_and_device", (q) =>
+        q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientDeviceId", args.recipientDeviceId),
+      )
+      .first()
+    if (
+      !pendingRequest ||
+      typeof pendingRequest.fulfilledAt === "number" ||
+      pendingRequest.recipientUserId !== args.recipientUserId
+    ) {
+      throw new ConvexError("A matching pending key request is required before sharing access")
+    }
     const existing = await ctx.db
       .query("projectCollabWrappedKeys")
       .withIndex("by_project_room_and_recipient", (q) =>
@@ -1390,18 +1439,7 @@ export const storeWrappedRoomKey = mutation({
       })
     }
 
-    const pendingRequest = await ctx.db
-      .query("projectCollabKeyRequests")
-      .withIndex("by_project_room_and_device", (q) =>
-        q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientDeviceId", args.recipientDeviceId),
-      )
-      .first()
-
-    if (pendingRequest && typeof pendingRequest.fulfilledAt !== "number") {
-      await ctx.db.patch(pendingRequest._id, {
-        fulfilledAt: now,
-      })
-    }
+    await ctx.db.patch(pendingRequest._id, { fulfilledAt: now })
 
     return { stored: true }
   },
@@ -1420,6 +1458,13 @@ export const storeRecoveryKit = mutation({
     createdByDeviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canManageProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("Only project managers can create collaboration recovery kits")
+    }
+    if (args.createdByUserId !== user._id || args.createdByDeviceId !== user.identityKey) {
+      throw new ConvexError("Recovery-kit creator does not match the authenticated device")
+    }
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, args.roomId)
     if (!activeRoomKey) {
@@ -1476,19 +1521,13 @@ export const revokeCollabDevice = mutation({
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canManageProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("Only project managers can revoke collaboration access")
+    }
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const now = Date.now()
-
-    const device = await ctx.db
-      .query("collabDevices")
-      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
-      .first()
-    if (device && typeof device.revokedAt !== "number") {
-      await ctx.db.patch(device._id, {
-        revokedAt: now,
-      })
-    }
 
     const wrappedKeys = await ctx.db
       .query("projectCollabWrappedKeys")
@@ -1539,6 +1578,13 @@ export const rotateEncryptedRoomKey = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canManageProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("Only project managers can rotate collaboration keys")
+    }
+    if (args.userId !== user._id || args.initiatedByDeviceId !== user.identityKey) {
+      throw new ConvexError("Key rotation initiator does not match the authenticated device")
+    }
     await assertCollaborationWriteAllowed(
       ctx,
       args.projectId,
@@ -1673,6 +1719,16 @@ export const resetEncryptedRoom = mutation({
     retainDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canManageProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("Only project managers can reset encrypted collaboration")
+    }
+    if (
+      (args.userId !== undefined && args.userId !== user._id) ||
+      (args.retainDeviceId !== undefined && args.retainDeviceId !== user.identityKey)
+    ) {
+      throw new ConvexError("Retained recovery device does not match the authenticated device")
+    }
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const now = Date.now()

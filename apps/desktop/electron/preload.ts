@@ -191,6 +191,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     isEncryptionAvailable: () => ipcRenderer.invoke('collab:isEncryptionAvailable'),
     ensureDeviceIdentity: () => ipcRenderer.invoke('collab:ensureDeviceIdentity'),
     getStoredDeviceIdentity: () => ipcRenderer.invoke('collab:getStoredDeviceIdentity'),
+    signDeviceChallenge: (challenge: string) =>
+      ipcRenderer.invoke('collab:signDeviceChallenge', challenge),
     wrapRoomKey: (options: { roomKeyBase64: string; recipientPublicKeyJwk: string }) =>
       ipcRenderer.invoke('collab:wrapRoomKey', options),
     unwrapRoomKey: (options: { senderPublicKeyJwk: string; wrappedKey: string; wrapAlgorithm?: string }) =>
@@ -361,8 +363,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   orgDevApp: {
-    buildAndPack: (options: { workspaceId: string; laneId?: string | null }) =>
+    buildAndPack: (options: { workspaceId: string; laneId?: string | null; operationId?: string }) =>
       ipcRenderer.invoke('orgDevApp:buildAndPack', options),
+    cancelBuild: (options: { operationId: string }) =>
+      ipcRenderer.invoke('orgDevApp:cancelBuild', options),
     prepareArtifact: (options: {
       downloadUrl: string
       contentHash: string

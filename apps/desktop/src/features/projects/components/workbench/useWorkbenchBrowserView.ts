@@ -33,6 +33,15 @@ export interface WorkbenchBrowserViewState {
   canZoomOut: boolean
   find: BrowserFindState
   loadError?: string | null
+  httpStatusCode?: number | null
+  httpStatusText?: string | null
+  httpError?: string | null
+}
+
+export function getWorkbenchBrowserDisplayError(
+  state: Pick<WorkbenchBrowserViewState, "loadError" | "httpError">,
+): string | null {
+  return state.loadError ?? state.httpError ?? null
 }
 
 interface UseWorkbenchBrowserViewOptions {
@@ -146,6 +155,9 @@ export function useWorkbenchBrowserView(
       finalUpdate: false,
     },
     loadError: null,
+    httpStatusCode: null,
+    httpStatusText: null,
+    httpError: null,
   })
   const [boundsReady, setBoundsReady] = useState(false)
   const [overlayPaused, setOverlayPaused] = useState(false)
@@ -155,14 +167,15 @@ export function useWorkbenchBrowserView(
   const scheduleBoundsSyncRef = useRef<(() => void) | null>(null)
   const visibleRef = useRef(visible)
   const activeUrlRef = useRef(url)
-  const loadErrorRef = useRef<string | null | undefined>(state.loadError)
+  const displayError = getWorkbenchBrowserDisplayError(state)
+  const displayErrorRef = useRef<string | null>(displayError)
   const pauseNativeSurfaceForOverlayRef = useRef<() => void>(() => {})
   visibleRef.current = visible
   activeUrlRef.current = url
-  loadErrorRef.current = state.loadError
+  displayErrorRef.current = displayError
   pauseNativeSurfaceForOverlayRef.current = () => {
     const model = modelRef.current
-    if (!model || !visibleRef.current || !activeUrlRef.current || loadErrorRef.current) return
+    if (!model || !visibleRef.current || !activeUrlRef.current || displayErrorRef.current) return
 
     overlayPausedRef.current = true
     setOverlayPaused(true)
@@ -254,6 +267,9 @@ export function useWorkbenchBrowserView(
           finalUpdate: false,
         },
         loadError: null,
+        httpStatusCode: null,
+        httpStatusText: null,
+        httpError: null,
       }
     })
   }, [storageScope, tileId, url])
@@ -370,7 +386,7 @@ export function useWorkbenchBrowserView(
 
     let cancelled = false
 
-    if (!hasOverlappingOverlay || !url || state.loadError) {
+    if (!hasOverlappingOverlay || !url || displayError) {
       overlayPausedRef.current = false
       setOverlayPaused(false)
       scheduleBoundsSyncRef.current?.()
@@ -399,7 +415,7 @@ export function useWorkbenchBrowserView(
     return () => {
       cancelled = true
     }
-  }, [hasMeasuredOverlayRect, hasOverlappingOverlay, overlayPauseReason, state.loadError, url])
+  }, [displayError, hasMeasuredOverlayRect, hasOverlappingOverlay, overlayPauseReason, url])
 
   useEffect(() => {
     const element = hostRef.current
@@ -425,11 +441,10 @@ export function useWorkbenchBrowserView(
       const width = Math.max(0, Math.round(rect.right) - x)
       const height = Math.max(0, Math.round(rect.bottom) - y)
 
-      const stateLoadError = state.loadError
       const nextBoundsReady =
         visible &&
         Boolean(url) &&
-        !stateLoadError &&
+        !displayError &&
         width > 0 &&
         height > 0
 
@@ -482,7 +497,7 @@ export function useWorkbenchBrowserView(
       void model.setVisible(false)
       setBoundsReady(false)
     }
-  }, [tileId, url, visible, state.loadError])
+  }, [displayError, tileId, url, visible])
 
   useEffect(() => {
     return () => {

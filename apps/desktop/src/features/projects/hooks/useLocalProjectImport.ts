@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import { useMutation } from "convex/react"
+import { useConvex, useMutation } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
@@ -7,12 +7,13 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
+import { buildWorkbenchIntentState } from "@/features/projects/lib/workbenchIntent"
 import {
   browseForDirectory,
-  buildFilesystemSlug,
   deriveNameFromPath,
   deriveProviderFromRepoUrl,
 } from "@/features/projects/lib/localProjectImport"
+import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup"
 import {
   DEFAULT_WORKBENCH_LANE_ID,
   useProjectWorkbenchStore,
@@ -30,6 +31,7 @@ interface ImportWorkspacePathResult {
 
 export function useLocalProjectImport() {
   const navigate = useViewTransitionNavigate()
+  const convex = useConvex()
   const { convexUserId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const deleteProject = useMutation(api.projects.deleteProject)
@@ -68,16 +70,20 @@ export function useLocalProjectImport() {
         .actions.ensureWorkbench(projectId, DEFAULT_WORKBENCH_LANE_ID, workspaceId)
 
       navigate(
-        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID, {
-          openTile: "assistantChat",
-        }),
+        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID),
         {
-          state: buildProjectRouteNavigationState({
-            projectId,
-            projectSlug,
-            projectName,
-            preferredWorkspaceId: workspaceId,
-          }),
+          state: buildProjectRouteNavigationState(
+            {
+              projectId,
+              projectSlug,
+              projectName,
+              preferredWorkspaceId: workspaceId,
+            },
+            buildWorkbenchIntentState({
+              laneId: DEFAULT_WORKBENCH_LANE_ID,
+              openTile: "assistantChat",
+            }),
+          ),
         },
       )
     },
@@ -111,7 +117,7 @@ export function useLocalProjectImport() {
 
     try {
       const projectName = deriveNameFromPath(localFolderPath) || "Project"
-      const preflight = await window.electronAPI.workspace!.preflightExistingFolder({
+      let preflight = await window.electronAPI.workspace!.preflightExistingFolder({
         folderPath: localFolderPath,
       })
       if (!preflight.success) {
@@ -119,13 +125,39 @@ export function useLocalProjectImport() {
       }
 
       if (preflight.existingWorkspace) {
-        navigateToProjectWorkbench(
-          preflight.existingWorkspace.projectId,
-          buildFilesystemSlug(projectName),
-          preflight.existingWorkspace.workspaceId,
-          projectName,
-        )
-        return "imported"
+        const existingProjectId = preflight.existingWorkspace.projectId as Id<"projects">
+        const accessibleProject = await convex.query(api.projects.getAccessibleById, {
+          projectId: existingProjectId,
+        })
+
+        if (accessibleProject) {
+          navigateToProjectWorkbench(
+            String(accessibleProject._id),
+            accessibleProject.slug,
+            preflight.existingWorkspace.workspaceId,
+            accessibleProject.name,
+          )
+          return "imported"
+        }
+
+        // The folder still exists, but its device-local catalog entry points at
+        // a project the authenticated device cannot see (for example after an
+        // identity cutover). Remove every app-owned projection for that binding
+        // while preserving the attached source folder, then attach it to a new
+        // project owned by the current device below.
+        await cleanupDeletedProjectLocally(String(existingProjectId), {
+          keepLocalFiles: true,
+        })
+
+        preflight = await window.electronAPI.workspace!.preflightExistingFolder({
+          folderPath: localFolderPath,
+        })
+        if (!preflight.success || preflight.existingWorkspace) {
+          throw new Error(
+            preflight.error ||
+              "Cozea could not safely detach the folder from its inaccessible project.",
+          )
+        }
       }
 
       const branch = preflight.branch || "main"
@@ -198,6 +230,7 @@ export function useLocalProjectImport() {
     }
   }, [
     convexUserId,
+    convex,
     createProject,
     deleteProject,
     navigateToProjectWorkbench,

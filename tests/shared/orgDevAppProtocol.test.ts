@@ -12,7 +12,7 @@ const HASH = "a".repeat(64)
 describe("org DevApp protocol", () => {
   it("builds and parses a release URL", () => {
     const url = buildOrgDevAppUrl({ contentHash: HASH, entryPath: "index.html" })
-    expect(url).toBe(`cozea-devapp://release/${HASH}/index.html`)
+    expect(url).toBe(`cozea-devapp://${HASH}.release/index.html`)
     expect(parseOrgDevAppUrl(url)).toEqual({
       contentHash: HASH,
       assetPath: "index.html",
@@ -33,14 +33,21 @@ describe("org DevApp protocol", () => {
     })
   })
 
-  it("allows the custom protocol and https APIs", () => {
+  it("allows only the immutable custom-protocol release as top-level navigation", () => {
     expect(
       evaluateOrgDevAppNavigation(buildOrgDevAppUrl({ contentHash: HASH })),
     ).toEqual({ allowed: true, kind: "org-devapp" })
     expect(evaluateOrgDevAppNavigation("https://api.example.com/v1")).toEqual({
-      allowed: true,
-      kind: "https",
+      allowed: false,
+      reason: "external-https",
     })
+  })
+
+  it("gives distinct releases distinct browser origins", () => {
+    const otherHash = "b".repeat(64)
+    expect(new URL(buildOrgDevAppUrl({ contentHash: HASH })).hostname).not.toBe(
+      new URL(buildOrgDevAppUrl({ contentHash: otherHash })).hostname,
+    )
   })
 
   it("blocks other schemes", () => {

@@ -1,7 +1,7 @@
 import { type ProviderDriverKind, type ProviderInstanceId, type ProviderKind } from "@cozea/assistant-contracts";
 import { memo } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { StarIcon as __StarIconHugeIcon } from "@hugeicons/core-free-icons";
+import { CheckmarkCircle02Icon as __CheckHugeIcon, PinIcon as __PinIconHugeIcon } from "@hugeicons/core-free-icons";
 import {
   getDisplayModelName,
   getTriggerDisplayModelLabel,
@@ -20,11 +20,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
   providerDisplayName: string;
   providerAccentColor?: string;
   isFavorite: boolean;
+  isSelected?: boolean;
   showProvider: boolean;
   preferShortName?: boolean;
   useTriggerLabel?: boolean;
   showNewBadge?: boolean;
-  jumpLabel?: string | null;
   onToggleFavorite: () => void;
 }) {
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[props.driverKind as ProviderKind] ?? null;
@@ -55,22 +55,22 @@ export const ModelListRow = memo(function ModelListRow(props: {
               event.stopPropagation();
             }}
             type="button"
-            aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            aria-label={props.isFavorite ? "Unpin model" : "Pin model"}
           >
             <HugeiconsIcon
-              icon={__StarIconHugeIcon}
-              className={cn("size-4", props.isFavorite && "fill-current text-yellow-500")}
+              icon={__PinIconHugeIcon}
+              className={cn("size-4", props.isFavorite ? "text-primary fill-current" : "text-muted-foreground")}
             />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" align="center">
-          {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+          {props.isFavorite ? "Unpin model" : "Pin model"}
         </TooltipContent>
       </Tooltip>
 
       <div className="min-w-0 flex-1 text-left">
         <div className="flex items-center justify-between gap-2 min-w-0">
-          <div className="text-xs font-medium leading-snug flex items-center gap-2 min-w-0">
+          <div className="text-xs font-normal leading-snug flex items-center gap-2 min-w-0">
             <span className="truncate">
               {props.useTriggerLabel
                 ? getTriggerDisplayModelLabel(props.model)
@@ -88,10 +88,8 @@ export const ModelListRow = memo(function ModelListRow(props: {
               </span>
             ) : null}
           </div>
-          {props.jumpLabel ? (
-            <span className="h-4 min-w-0 shrink-0 rounded-sm px-1.5 text-[10px] bg-muted text-muted-foreground font-mono">
-              {props.jumpLabel}
-            </span>
+          {props.isSelected ? (
+            <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
           ) : null}
         </div>
         {props.showProvider && (

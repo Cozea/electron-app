@@ -76,6 +76,23 @@ export function writePersistedProjectSidebarState(
   )
 }
 
+export function clearPersistedProjectSidebarEntry(projectId: string): void {
+  const normalizedProjectId = projectId.trim()
+  if (!normalizedProjectId) return
+
+  const state = readPersistedProjectSidebarState()
+  const expandedProjectIds = state.expandedProjectIds.filter((id) => id !== normalizedProjectId)
+  const projectOrderIds = state.projectOrderIds.filter((id) => id !== normalizedProjectId)
+  if (
+    areStringArraysEqual(expandedProjectIds, state.expandedProjectIds) &&
+    areStringArraysEqual(projectOrderIds, state.projectOrderIds)
+  ) {
+    return
+  }
+
+  writePersistedProjectSidebarState({ expandedProjectIds, projectOrderIds })
+}
+
 export function buildOrderedProjects(
   projects: SidebarProjectItem[],
   projectOrderIds: readonly string[],

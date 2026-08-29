@@ -13,6 +13,7 @@ interface AssistantComposerDraftStoreState {
   upsertDraft: (targetKey: string, patch: AssistantComposerDraftState) => void
   adoptDraft: (fromTargetKey: string, toTargetKey: string) => void
   clearDraft: (targetKey: string) => void
+  clearDrafts: (targetKeys: readonly string[]) => void
 }
 
 export const useAssistantComposerDraftStore = create<AssistantComposerDraftStoreState>()(
@@ -62,6 +63,22 @@ export const useAssistantComposerDraftStore = create<AssistantComposerDraftStore
           const nextDrafts = { ...state.draftsByTargetKey }
           delete nextDrafts[targetKey]
           return { draftsByTargetKey: nextDrafts }
+        })
+      },
+      clearDrafts: (targetKeys) => {
+        const keysToClear = new Set(targetKeys.filter(Boolean))
+        if (keysToClear.size === 0) {
+          return
+        }
+        set((state) => {
+          const nextDrafts = { ...state.draftsByTargetKey }
+          let changed = false
+          for (const targetKey of keysToClear) {
+            if (!(targetKey in nextDrafts)) continue
+            delete nextDrafts[targetKey]
+            changed = true
+          }
+          return changed ? { draftsByTargetKey: nextDrafts } : state
         })
       },
     }),

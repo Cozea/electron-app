@@ -6,6 +6,7 @@ import {
   ensureCollabDeviceIdentity,
   getStoredCollabDeviceIdentitySummary,
   isCollabEncryptionAvailable,
+  signCollabDeviceChallenge,
   unwrapRoomKeyFromRecoveryKit,
   unwrapRoomKeyFromSender,
   wrapRoomKeyForRecipient,
@@ -34,6 +35,10 @@ export class CollabEncryptionService {
 
     ipcMain.handle('collab:getStoredDeviceIdentity', () => {
       return getStoredCollabDeviceIdentitySummary()
+    })
+
+    ipcMain.handle('collab:signDeviceChallenge', async (_event, challenge: string) => {
+      return await signCollabDeviceChallenge(challenge)
     })
 
     ipcMain.handle(

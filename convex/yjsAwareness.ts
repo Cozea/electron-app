@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values"
 import type { MutationCtx } from "./_generated/server"
-import { internalMutation, mutation, query } from "./_generated/server"
+import { internalMutation } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 
 // Keep awareness reasonably fresh to avoid "ghost cursors".
 // Clients republish periodically to stay active.
@@ -66,6 +67,7 @@ export const upsertAwareness = mutation({
     clientId: v.string(),
     update: v.bytes(),
     ttlMs: v.optional(v.number()),
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const activeRoomKey = await ctx.db
@@ -137,6 +139,7 @@ export const upsertAwareness = mutation({
 export const getActiveAwareness = query({
   args: {
     projectId: v.id("projects"),
+    serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now()
@@ -163,11 +166,6 @@ export const getActiveAwareness = query({
       expiresAt: e.expiresAt ?? e.updatedAt + AWARENESS_TIMEOUT_MS,
     }))
   },
-})
-
-export const cleanupExpiredAwareness = mutation({
-  args: {},
-  handler: async (ctx) => await deleteExpiredAwarenessBatch(ctx),
 })
 
 export const cleanupExpiredAwarenessInternal = internalMutation({

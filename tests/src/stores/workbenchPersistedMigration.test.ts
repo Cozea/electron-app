@@ -108,6 +108,70 @@ describe("persisted workbench migration", () => {
     expect(byProject["p-assistant-artifacts"]).toMatchObject({ viewMode: "artifacts" })
   })
 
+  it("collapses same-tick default assistant placeholders while keeping the active bound tile", () => {
+    const duplicated = bench({
+      projectId: "p-duplicate-agent",
+      workspaceId: "lws_duplicate_agent",
+      tiles: [
+        { id: "agent-1", type: "assistantChat" },
+        { id: "agent-2", type: "assistantChat" },
+      ],
+    })
+    duplicated.tiles["agent-1"] = {
+      ...duplicated.tiles["agent-1"],
+      title: "AI Agent",
+      createdAt: 1_000,
+      assistantProjectId: "assistant-project",
+      threadId: null,
+    }
+    duplicated.tiles["agent-2"] = {
+      ...duplicated.tiles["agent-2"],
+      title: "AI Agent 2",
+      createdAt: 1_000,
+      assistantProjectId: "assistant-project",
+      threadId: "thread-2",
+    }
+    duplicated.activeTileId = "agent-2"
+    duplicated.layout = { grid: {}, panels: {} }
+
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: { duplicated },
+    })
+    const workbench = Object.values(migrated.workbenches)[0]!
+
+    expect(workbench.order).toEqual(["agent-2"])
+    expect(workbench.activeTileId).toBe("agent-2")
+    expect(workbench.tiles["agent-1"]).toBeUndefined()
+    expect(workbench.layout).toBeNull()
+  })
+
+  it("preserves deliberately named assistant panels even when created together", () => {
+    const deliberate = bench({
+      projectId: "p-deliberate-agents",
+      workspaceId: "lws_deliberate_agents",
+      tiles: [
+        { id: "planner", type: "assistantChat" },
+        { id: "reviewer", type: "assistantChat" },
+      ],
+    })
+    deliberate.tiles.planner = {
+      ...deliberate.tiles.planner,
+      title: "Planner",
+      createdAt: 2_000,
+    }
+    deliberate.tiles.reviewer = {
+      ...deliberate.tiles.reviewer,
+      title: "Reviewer",
+      createdAt: 2_000,
+    }
+
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: { deliberate },
+    })
+
+    expect(Object.values(migrated.workbenches)[0]!.order).toEqual(["planner", "reviewer"])
+  })
+
   it("sanitizes persisted project DevApp launch metadata", () => {
     const persisted = bench({
       projectId: "p6",

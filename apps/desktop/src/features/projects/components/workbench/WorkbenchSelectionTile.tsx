@@ -376,7 +376,7 @@ export function WorkbenchSelectionTile({
   const { convexUserId } = useAuth()
   const orgDevApps = useQuery(
     api.devApps.listMine,
-    featureFlags.projectDevApps && convexUserId ? { userId: convexUserId } : "skip",
+    featureFlags.projectDevApps && convexUserId ? {} : "skip",
   )
 
   const orgDevAppOptions = useMemo(
@@ -445,6 +445,21 @@ export function WorkbenchSelectionTile({
       Math.max(0, visibleColumns - 1) * densityConfig.columnGap
     )
   }, [densityConfig.cellWidth, densityConfig.columnGap, launcherLayout.columns])
+
+  const launcherContentHeight = useMemo(() => {
+    // Keep results container height tied to the items that fill the layout,
+    // bounded by available layout rows, not viewport row capacity (prevents empty bottom void
+    // and eliminates vertical layout shift while searching).
+    const visibleColumns = Math.max(1, launcherLayout.columns)
+    const maxItemsOnPage = Math.max(1, Math.min(launcherLayout.itemsPerPage, allOptions.length))
+    const requiredRows = Math.ceil(maxItemsOnPage / visibleColumns)
+    const visibleRows = Math.max(1, Math.min(launcherLayout.rows, requiredRows))
+    return (
+      visibleRows * densityConfig.cellHeight +
+      Math.max(0, visibleRows - 1) * densityConfig.rowGap +
+      16
+    )
+  }, [allOptions.length, densityConfig.cellHeight, densityConfig.rowGap, launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows])
 
   const pagedOptions = useMemo(() => {
     const pages: DevAppManifest[][] = []
@@ -572,6 +587,7 @@ export function WorkbenchSelectionTile({
         >
           <div
             ref={launcherViewportRef}
+            style={centerSingletonSelectionLayout ? { height: `${launcherContentHeight}px` } : undefined}
             className={cn(
               "flex w-full flex-col",
               centerSingletonSelectionLayout ? "flex-none" : "min-h-0 flex-1",
@@ -604,7 +620,7 @@ export function WorkbenchSelectionTile({
                     ref={launcherPagerRef}
                     className={cn(
                       "overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                      centerSingletonSelectionLayout ? "w-full flex-none" : "min-h-0 flex-1",
+                      centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
                     )}
                   >
                     <div className="flex h-full">
@@ -641,33 +657,53 @@ export function WorkbenchSelectionTile({
                   <div
                     className={cn(
                       "flex items-center justify-center px-2 py-8 text-xs text-muted-foreground",
-                      centerSingletonSelectionLayout ? "w-full flex-none" : "min-h-0 flex-1",
+                      centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
                     )}
                   >
                     {t('workbench.selection.noResults')} "{searchQuery.trim()}".
                   </div>
                 )}
-
-                {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
-                  <div className="mt-3 flex items-center justify-center gap-2">
-                    {pagedOptions.map((_, pageIndex) => (
-                      <button
-                        key={`selection-page-dot-${pageIndex}`}
-                        type="button"
-                        aria-label={`Go to page ${pageIndex + 1}`}
-                        aria-pressed={pageIndex === currentPage}
-                        className={cn(
-                          "h-2.5 w-2.5 rounded-full transition-colors",
-                          pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
-                        )}
-                        onClick={() => handlePageSelect(pageIndex)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
               </>
             )}
           </div>
+
+          {!useListView && centerSingletonSelectionLayout ? (
+            <div className="flex h-7 items-center justify-center">
+              {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
+                <div className="flex items-center justify-center gap-2">
+                  {pagedOptions.map((_, pageIndex) => (
+                    <button
+                      key={`selection-page-dot-${pageIndex}`}
+                      type="button"
+                      aria-label={`Go to page ${pageIndex + 1}`}
+                      aria-pressed={pageIndex === currentPage}
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full transition-colors",
+                        pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
+                      )}
+                      onClick={() => handlePageSelect(pageIndex)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : !useListView && filteredOptions.length > 0 && pagedOptions.length > 1 ? (
+            <div className="mt-3 flex items-center justify-center gap-2">
+              {pagedOptions.map((_, pageIndex) => (
+                <button
+                  key={`selection-page-dot-${pageIndex}`}
+                  type="button"
+                  aria-label={`Go to page ${pageIndex + 1}`}
+                  aria-pressed={pageIndex === currentPage}
+                  className={cn(
+                    "h-2.5 w-2.5 rounded-full transition-colors",
+                    pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
+                  )}
+                  onClick={() => handlePageSelect(pageIndex)}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

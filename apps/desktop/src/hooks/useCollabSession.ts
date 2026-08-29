@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getDeviceSession } from '@/lib/deviceSession'
 
 const COLLAB_SESSION_INVALIDATION_EVENT = 'cozea:collab-session-invalidate'
 
@@ -122,11 +123,13 @@ export function useCollabSession({
 
     try {
       const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
+      const deviceSession = await getDeviceSession()
 
       const sessionResponse = await fetch(`${gatewayBaseUrl}/collab/session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${deviceSession.accessToken}`,
         },
         body: JSON.stringify({
           projectId,

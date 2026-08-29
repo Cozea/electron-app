@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react"
+import { useCallback, useEffect, useRef } from "react"
 
 import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore"
 import {
@@ -94,6 +94,7 @@ export function useProjectWorkbenchSearchParamSync(
     openWorkbenchTarget,
     focusWorkbenchTile,
   } = props
+  const appliedOpenIntentRef = useRef<string | null>(null)
 
   const closeChangesOverlay = useCallback(() => {
     replaceSearchParams(buildClosedChangesSearchParams(searchParams))
@@ -136,7 +137,22 @@ export function useProjectWorkbenchSearchParamSync(
   useEffect(() => {
     if (!projectId) return
     const intent = deriveWorkbenchSearchParamIntent(searchParams, activeLaneId)
-    if (!intent.requestedOpenTarget) return
+    if (!intent.requestedOpenTarget) {
+      appliedOpenIntentRef.current = null
+      return
+    }
+
+    const intentKey = [
+      projectId,
+      workspaceId ?? "",
+      activeLaneId,
+      intent.requestedOpenTarget,
+      searchParams.toString(),
+    ].join("\u0000")
+    if (appliedOpenIntentRef.current === intentKey) return
+    // Claim before mutating the workbench. StrictMode may replay this effect
+    // before the replace-navigation removes the query parameters.
+    appliedOpenIntentRef.current = intentKey
 
     if (intent.requestedOpenTarget === "changes") {
       useChangesSidebarStore.getState().actions.open()
@@ -148,7 +164,7 @@ export function useProjectWorkbenchSearchParamSync(
     nextParams.delete("lane")
     nextParams.delete("openTile")
     replaceSearchParams(nextParams)
-  }, [activeLaneId, openWorkbenchTarget, projectId, replaceSearchParams, searchParams])
+  }, [activeLaneId, openWorkbenchTarget, projectId, replaceSearchParams, searchParams, workspaceId])
 
   useEffect(() => {
     if (!projectId) return

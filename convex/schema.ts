@@ -2,9 +2,29 @@ import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
 export default defineSchema({
-  // Users - local device-backed profiles with legacy identity compatibility
+  // Device principals. In the product model one physical device is one user.
   users: defineTable({
-    // WorkOS identifiers
+    // Canonical public identity and public key bindings. Optional at the storage
+    // boundary only so pre-cutover test rows can remain inert; every active
+    // device principal is created and validated with all fields present.
+    identityKey: v.optional(v.string()),
+    deviceLabel: v.optional(v.string()),
+    platform: v.optional(v.string()),
+    encryptionPublicKeyJwk: v.optional(v.string()),
+    encryptionPublicKeyAlgorithm: v.optional(v.string()),
+    encryptionFingerprint: v.optional(v.string()),
+    signingPublicKeyJwk: v.optional(v.string()),
+    signingPublicKeyAlgorithm: v.optional(v.string()),
+    signingFingerprint: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("active"), v.literal("revoked"))),
+    signingKeyVersion: v.optional(v.number()),
+    tokenValidAfter: v.optional(v.number()),
+    lastAuthenticatedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    revocationReason: v.optional(v.string()),
+
+    // Transitional contact/profile fields used by project-sharing surfaces. They are not
+    // authentication identifiers; authenticated authority comes from identityKey.
     workosId: v.string(),
     email: v.string(),
     normalizedEmail: v.optional(v.string()),
@@ -30,9 +50,37 @@ export default defineSchema({
     updatedAt: v.number(),
     lastLoginAt: v.optional(v.number()),
   })
+    .index("by_identity_key", ["identityKey"])
     .index("by_workos_id", ["workosId"])
     .index("by_email", ["email"])
     .index("by_normalized_email", ["normalizedEmail"]),
+
+  // Short-lived proof-of-possession challenges. A challenge must be consumed
+  // atomically before an access token is issued, preventing replay.
+  deviceAuthChallenges: defineTable({
+    nonce: v.string(),
+    identityKey: v.string(),
+    requestFingerprint: v.optional(v.string()),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_identity_and_created_at", ["identityKey", "createdAt"])
+    .index("by_fingerprint_and_created_at", ["requestFingerprint", "createdAt"])
+    .index("by_expiration", ["expiresAt"]),
+
+  identitySecurityEvents: defineTable({
+    identityKey: v.optional(v.string()),
+    actorIdentityKey: v.optional(v.string()),
+    organizationId: v.optional(v.id("organizations")),
+    eventType: v.string(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_identity_and_created_at", ["identityKey", "createdAt"])
+    .index("by_organization_and_created_at", ["organizationId", "createdAt"])
+    .index("by_event_type_and_created_at", ["eventType", "createdAt"]),
 
   // ============================================
   // PROJECT SYSTEM TABLES
@@ -361,11 +409,13 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_project_and_user", ["projectId", "userId"]),
 
-  // Cozea-owned organizations. Members are invited like project team, not WorkOS.
+  // Device groups. Membership always points to device-backed user principals.
   organizations: defineTable({
+    // Optional only for inert pre-cutover test rows. New groups always have a
+    // valid czg_ identifier and legacy rows are rejected by access helpers.
+    groupId: v.optional(v.string()),
     name: v.string(),
-    // Legacy WorkOS-backed organizations predate Cozea membership records.
-    // Keep them readable until the device-identity migration assigns ownership.
+    // Historical WorkOS metadata is not an authentication authority.
     createdBy: v.optional(v.id("users")),
     workosId: v.optional(v.string()),
     slug: v.optional(v.string()),
@@ -376,7 +426,9 @@ export default defineSchema({
     subscription: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_created_by", ["createdBy"]),
+  })
+    .index("by_group_id", ["groupId"])
+    .index("by_created_by", ["createdBy"]),
 
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
@@ -388,6 +440,38 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_user", ["userId"])
     .index("by_organization_and_user", ["organizationId", "userId"]),
+
+  organizationDeviceEnrollments: defineTable({
+    organizationId: v.id("organizations"),
+    targetIdentityKey: v.string(),
+    role: v.union(v.literal("admin"), v.literal("member")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("rejected"),
+      v.literal("cancelled"),
+      v.literal("expired"),
+    ),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_organization_and_status", ["organizationId", "status"])
+    .index("by_target_and_status", ["targetIdentityKey", "status"]),
+
+  organizationRecoveryGrants: defineTable({
+    organizationId: v.id("organizations"),
+    verifierHash: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.number()),
+    consumedBy: v.optional(v.id("users")),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_verifier_hash", ["verifierHash"]),
 
   organizationInvites: defineTable({
     organizationId: v.id("organizations"),
@@ -446,6 +530,23 @@ export default defineSchema({
   })
     .index("by_publication", ["publicationId"])
     .index("by_publication_and_version", ["publicationId", "version"])
+    .index("by_project", ["projectId"]),
+
+  // Short-lived upload capabilities bind a newly uploaded artifact to the
+  // authenticated publisher, source project, and organization before it can
+  // become an immutable release. Expired rows and their blobs are cron-cleaned.
+  devAppArtifactUploads: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.id("organizations"),
+    createdBy: v.id("users"),
+    storageId: v.optional(v.id("_storage")),
+    contentHash: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_expiration", ["expiresAt"])
+    .index("by_creator", ["createdBy"])
     .index("by_project", ["projectId"]),
 
   projectTrustedDevices: defineTable({

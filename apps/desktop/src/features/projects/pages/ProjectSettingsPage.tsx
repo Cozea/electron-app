@@ -81,7 +81,7 @@ export function ProjectSettingsPage({
   const orgDevApp = useQuery(
     api.devApps.getForProject,
     featureFlags.projectDevApps && project?._id && convexUserId
-      ? { userId: convexUserId, projectId: project._id }
+      ? { projectId: project._id }
       : 'skip',
   )
   const updateDevAppIdentity = useMutation(api.devApps.updateIdentity)
@@ -103,25 +103,26 @@ export function ProjectSettingsPage({
       ? { projectId: project._id, userId: convexUserId }
       : 'skip'
   )
+  const isManager = memberRole === 'project_manager'
   const collabSessionResult = useCollabSession({
     projectId: project?._id ? String(project._id) : null,
     enabled: Boolean(project?._id),
   })
   const collaborationDevices = useQuery(
     api.yjs.listCollabRoomDevices,
-    project?._id && collabSessionResult.session?.roomId
+    isManager && project?._id && collabSessionResult.session?.roomId
       ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
       : 'skip',
   )
   const pendingKeyRequests = useQuery(
     api.yjs.listPendingKeyRequests,
-    project?._id && collabSessionResult.session?.roomId
+    isManager && project?._id && collabSessionResult.session?.roomId
       ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
       : 'skip',
   )
   const activeRecoveryKit = useQuery(
     unsafeYjsApi.yjs.getActiveRecoveryKit,
-    project?._id && collabSessionResult.session?.roomId
+    isManager && project?._id && collabSessionResult.session?.roomId
       ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
       : 'skip',
   ) as ActiveRecoveryKit | null | undefined
@@ -168,7 +169,6 @@ export function ProjectSettingsPage({
     project,
   ])
 
-  const isManager = memberRole === 'project_manager'
   const canEditGeneral = memberRole !== null && memberRole !== undefined && memberRole !== 'viewer'
 
   const projectName = project?.name ?? ''
@@ -182,8 +182,9 @@ export function ProjectSettingsPage({
   const collabBootstrap = collabSession?.encryption ?? null
   const currentDeviceId = collabSession?.deviceId ?? null
   const collabScopeKey = project?._id ? String(project._id) : null
-  const canManageCollabSecurity = Boolean(project?._id && convexUserId && canEditGeneral)
+  const canManageCollabSecurity = Boolean(project?._id && convexUserId && isManager)
   const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
+  const collabRotationRequired = collaborationDevices?.some((device) => device.rotationRequired) ?? false
 
   const buildAndStoreRecoveryKit = useCallback(async (args: {
     roomKeyBase64: string
@@ -427,6 +428,7 @@ export function ProjectSettingsPage({
 
       await cleanupDeletedProjectLocally(deletedProjectId, {
         keepLocalFiles,
+        projectSlug: project.slug,
       })
     } catch (error) {
       const presentation = formatProjectDeleteError(error)
@@ -779,7 +781,7 @@ export function ProjectSettingsPage({
                             setName(event.target.value)
                           }}
                           placeholder={t('settings.placeholder.projectName')}
-                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
+                          className="h-7 w-[240px] max-w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent"
                         />
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
@@ -791,7 +793,7 @@ export function ProjectSettingsPage({
                             setDescription(event.target.value)
                           }}
                           placeholder={t('settings.placeholder.description')}
-                          className="h-7 w-[240px] max-w-full border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 text-right"
+                          className="h-7 w-[240px] max-w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent"
                         />
                       </div>
                       <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
@@ -801,7 +803,7 @@ export function ProjectSettingsPage({
                             {t('settings.desc.slug')}
                           </p>
                         </div>
-                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-none bg-transparent px-0 text-sm shadow-none opacity-50 cursor-not-allowed text-right" />
+                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none opacity-50 cursor-not-allowed text-right dark:border-none dark:bg-transparent" />
                       </div>
                       {saveError ? (
                         <div className="border-t border-border/40 px-4 py-3">
@@ -910,7 +912,11 @@ export function ProjectSettingsPage({
                         ) : null}
                         {collabBootstrap?.status === 'ready' ? (
                           <span>
-                            {pendingRequestCount > 0 ? t('settings.collab.readyDevices').replace('{count}', String(pendingRequestCount)) : t('settings.collab.readyNoDevices')}
+                            {collabRotationRequired
+                              ? 'A device was revoked. Rotate the room key before continuing collaboration.'
+                              : pendingRequestCount > 0
+                                ? t('settings.collab.readyDevices').replace('{count}', String(pendingRequestCount))
+                                : t('settings.collab.readyNoDevices')}
                           </span>
                         ) : null}
                       </div>
@@ -1229,7 +1235,6 @@ export function ProjectSettingsPage({
                 if (!convexUserId) return
                 try {
                   await updateDevAppIdentity({
-                    userId: convexUserId,
                     publicationId: orgDevApp.publicationId,
                     name: devAppName,
                     logoDataUrl,

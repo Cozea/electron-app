@@ -1,6 +1,6 @@
-import { mutation } from "./_generated/server"
+import { internalMutation } from "./_generated/server"
 
-export const deleteLegacyProjects = mutation({
+export const deleteLegacyProjects = internalMutation({
   args: {},
   handler: async (ctx) => {
     const projects = await ctx.db.query("projects").collect()

@@ -111,6 +111,35 @@ export function buildDevServerRunKey(workspaceId: string, laneId?: string | null
   return `${workspaceId}::${trimmed && trimmed.length > 0 ? trimmed : DEFAULT_LANE_ID}`
 }
 
+export function clearDevServerRunsForWorkspace(workspaceId: string): void {
+  const normalizedWorkspaceId = workspaceId.trim()
+  if (!normalizedWorkspaceId) return
+
+  const prefix = `${normalizedWorkspaceId}::`
+  const keys = new Set([
+    ...Object.keys(runtime.store.getState().runs),
+    ...Object.keys(runtime.store.getState().contexts),
+  ].filter((key) => key.startsWith(prefix)))
+  if (keys.size === 0) return
+
+  runtime.store.setState((state) => ({
+    runs: Object.fromEntries(
+      Object.entries(state.runs).filter(([key]) => !keys.has(key)),
+    ),
+    contexts: Object.fromEntries(
+      Object.entries(state.contexts).filter(([key]) => !keys.has(key)),
+    ),
+  }))
+
+  for (const key of keys) {
+    runtime.schedulers.get(key)?.cancel()
+    runtime.schedulers.delete(key)
+    runtime.lifecycles.delete(key)
+    runtime.pendingStarts.delete(key)
+    runtime.lastOutputTimelineAt.delete(key)
+  }
+}
+
 interface DevServerRunRuntime {
   store: UseBoundStore<StoreApi<DevServerRunStoreState>>
   lifecycles: Map<string, DevServerLifecycleSnapshot>
@@ -188,6 +217,60 @@ function appendTimeline(
         ? merged.slice(merged.length - MAX_TIMELINE_EVENTS)
         : merged,
     }
+  })
+}
+
+export function reportDevServerPreviewHttpStatus(
+  key: string,
+  statusCode: number | null | undefined,
+  statusText?: string | null,
+): void {
+  if (typeof statusCode !== 'number' || !Number.isInteger(statusCode)) return
+
+  const current = getRun(key)
+  if (current.status !== 'ready' && current.status !== 'unhealthy') return
+
+  if (statusCode >= 500) {
+    const normalizedStatusText = statusText?.trim() ?? ''
+    const message = `Preview returned HTTP ${statusCode}${normalizedStatusText ? ` ${normalizedStatusText}` : ''}`
+    if (
+      current.status === 'unhealthy' &&
+      current.failureReason === 'http_error_response' &&
+      current.error === message
+    ) {
+      return
+    }
+    setRun(key, (prev) => ({
+      ...prev,
+      status: 'unhealthy',
+      reachable: true,
+      failureReason: 'http_error_response',
+      error: message,
+    }))
+    appendTimeline(key, {
+      runId: current.runId,
+      type: 'probe_failed',
+      message,
+      details: { statusCode },
+    })
+    return
+  }
+
+  if (current.status !== 'unhealthy' || current.failureReason !== 'http_error_response') {
+    return
+  }
+  setRun(key, (prev) => ({
+    ...prev,
+    status: 'ready',
+    reachable: true,
+    failureReason: null,
+    error: null,
+  }))
+  appendTimeline(key, {
+    runId: current.runId,
+    type: 'probe_succeeded',
+    message: `Preview recovered with HTTP ${statusCode}`,
+    details: { statusCode },
   })
 }
 

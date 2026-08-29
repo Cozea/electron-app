@@ -12,7 +12,7 @@ This is an Electron desktop application with a React frontend and Convex backend
 - **Desktop**: Electron 40 + electron-vite
 - **Backend**: Convex (real-time serverless database)
 - **AI Runtime**: Vendored T3 server (`apps/server/` + `vendor/t3code`) spawned by shadow child; local Effect-TS substrate in `apps/desktop/electron/substrate/`
-- **Auth**: WorkOS (SSO, organizations)
+- **Auth**: device-bound ECDSA identity, Cloudflare token issuer, Convex custom JWT
 - **Collab**: Yjs CRDTs with E2E encryption
 - **Package manager**: Bun (always use `bun` instead of npm/yarn/pnpm)
 
@@ -224,7 +224,7 @@ Project creation is a simple form — there is no conversational wizard or AI in
 4. Cozea never copies, renames, relocates, or assumes deletion ownership of an existing folder. Attached non-Git folders receive no source marker; attached Git folders may use the private `.git/cozea` marker.
 5. Once attachment succeeds, the project becomes `active` and the workbench opens at the returned workspace ID.
 
-Project deletion and **Clear all** may move only catalog-proven `managed` workspaces to Trash. Attached folders always remain on disk, including when they happen to live inside the configured managed-projects directory.
+Project deletion and **Clear all** may move only catalog-proven `managed` workspaces to Trash. Attached folders always remain on disk, including when they happen to live inside the configured managed-projects directory. Deleting a project stops its Dev Servers and sessions, clears project-scoped renderer/T3 state and local DevApp records, forgets its local workspace bindings, and schedules a bounded Convex cascade that removes project-owned rows and stored blobs before deleting the project document. Archiving does none of this cleanup and remains reversible.
 
 ## How the AI / Workbench Works
 
@@ -237,16 +237,38 @@ The AI chat runs **after** project creation, inside the workbench.
 - Generated images are thread-scoped artifacts. Each assistant tile has persistent `Chat` / `Artifacts` views; hiding chat must not unmount its controller or stream. See `docs/assistant-artifacts.md`.
 - Users approve proposed changes before they are written to disk via `sync:writeFiles` IPC
 
+## How Device Identity Works
+
+- One physical device is one Cozea user principal: the public `deviceId`, `userId`, and
+  `identityKey` are the same `czd_…` value.
+- Organizations are device groups with a public copyable `czg_…` ID. Admins add initialized
+  devices by their public `czd_…` ID.
+- Public IDs are identifiers, not credentials. Electron keeps separate ECDH encryption and ECDSA
+  signing private keys in OS-backed secure storage; private keys are never copied or exposed.
+- The Cloudflare worker verifies a device-signed challenge and issues short-lived,
+  audience-bound ES256 tokens. Convex authorization must derive the caller from `ctx.auth`.
+- This is a clean beta cutover; do not add legacy UUID/email identity migration paths.
+
+See `docs/device-identity.md` for the protocol and deployment requirements.
+
 ## How Project DevApps Work
 
-- Project DevApps currently use a machine-local persisted catalog; `VITE_FF_PROJECT_DEVAPPS` defaults on and no DevApp publication call is made to Convex.
-- A user can use the project overflow menu to **Launch as DevApp**; after the first local release, the action becomes **Update DevApp**.
-- First launch requires a PNG, JPEG, or WebP logo. Cozea optimizes it locally and uses it in the Store, launcher, and workbench tile chrome; later release updates retain the publication's independently editable name and logo.
-- Local DevApp artwork in the Store opens a shared local identity editor for its display name and logo; the editor is also available in Project Settings and never creates a release. Built-in DevApps never expose this control.
-- The local catalog keeps one stable publication per project and append-only releases containing the inspected framework, command, port, revision, and source fingerprint.
-- Store entries must say **This Mac** / **Local DevApps**; do not describe the local catalog as organization-private.
-- Opening a project DevApp reuses the workbench Dev Server singleton, applies its release configuration, prepares missing runtime/dependencies, and auto-starts the local preview.
-- The Convex schema/functions are an internal-only future scaffold. Do not make them client-callable until verified WorkOS identity derives user and organization server-side.
+- The active product is organization-scoped static artifacts. The project overflow menu shows
+  **Publish** / **Update**; it never publishes a localhost command or source folder.
+- First publish requires a PNG, JPEG, or WebP logo. Cozea optimizes it locally; later updates retain
+  the independently editable publication name and logo.
+- Publication and consumption derive the device principal from verified Convex auth. Uploads use a
+  short-lived reservation bound to that device, project, and organization; never accept a
+  caller-selected user identity or an unreserved storage object.
+- The Store and workbench launcher list organization releases only. Consumers receive bounded,
+  immutable static artifacts and never receive project source, local paths, workspace IDs, or dev
+  commands.
+- Org DevApps run in sandboxed, permission-denied Electron sessions. Every content hash has its own
+  `cozea-devapp` origin; external HTTPS navigation opens outside the tile, while HTTPS API requests
+  from the app remain available.
+- The historical machine-local `localProjectDevAppStore` and Dev Server source metadata remain only
+  as compatibility support for already-persisted development tiles. Do not add new Store or publish
+  callers to that catalog.
 
 See `docs/project-devapps.md` for the full lifecycle and operational notes.
 

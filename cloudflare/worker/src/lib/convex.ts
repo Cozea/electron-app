@@ -1,27 +1,136 @@
 import type {
   ConvexPersistedUpdate,
   ConvexSessionContext,
+  DeviceAuthChallengeClaims,
+  DeviceAccessClaims,
   Env,
   SessionRequestBody,
 } from '../types'
 import { ConvexHttpClient } from 'convex/browser'
 import type { FunctionReference } from 'convex/server'
+import { isTokenIssuedAfterRevocationBoundary } from '../../../../shared/deviceIdentity'
 
 type AnyQueryReference = FunctionReference<'query', 'public', Record<string, unknown>, unknown>
 type AnyMutationReference = FunctionReference<'mutation', 'public', Record<string, unknown>, unknown>
 
 interface LocalDeviceProfileInfo {
   userId: string
+  user: {
+    id: string
+    deviceId: string
+    email: string
+    firstName: string
+    lastName: null
+    profileImageUrl: null
+  }
+  personalWorkspace: {
+    id: string
+    workspaceId: string
+    workspaceName: string
+    organizationId: string
+    organizationName: string
+    role: 'admin'
+    status: 'active'
+    workspaceType: 'personal'
+  }
   identity: {
     deviceId: string
     deviceLabel: string
     fingerprint: string | null
   }
+  authentication: {
+    status: 'active'
+    signingKeyVersion: number
+    tokenValidAfter: number
+  }
+}
+
+export async function persistDeviceAuthChallengeInConvex(
+  env: Env,
+  args: { nonce: string; identityKey: string; requestFingerprint?: string; expiresAt: number },
+): Promise<void> {
+  await runMutation(env, 'users:createDeviceAuthChallengeFromServer', {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    ...args,
+  })
+}
+
+export async function consumeDeviceAuthChallengeInConvex(
+  env: Env,
+  args: { nonce: string; identityKey: string },
+): Promise<void> {
+  await runMutation(env, 'users:consumeDeviceAuthChallengeFromServer', {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    ...args,
+  })
+}
+
+export async function createOrganizationRecoveryGrantInConvex(
+  env: Env,
+  args: { organizationId: string; actorIdentityKey: string; verifierHash: string; expiresAt: number },
+): Promise<void> {
+  await runMutation(env, 'organizations:createRecoveryGrantFromServer', {
+    serverSecret: env.AI_GATEWAY_SECRET, ...args,
+  })
+}
+
+export async function redeemOrganizationRecoveryGrantInConvex(
+  env: Env,
+  args: { targetIdentityKey: string; verifierHash: string },
+): Promise<{ organizationId: string; recovered: true }> {
+  return await runMutation(env, 'organizations:redeemRecoveryGrantFromServer', {
+    serverSecret: env.AI_GATEWAY_SECRET, ...args,
+  })
+}
+
+export async function ensureDevicePrincipalFromConvex(
+  env: Env,
+  identity: DeviceAuthChallengeClaims,
+): Promise<LocalDeviceProfileInfo> {
+  return runMutation<LocalDeviceProfileInfo>(env, 'users:ensureDevicePrincipalFromServer', {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    identityKey: identity.identityKey,
+    deviceLabel: identity.deviceLabel,
+    platform: identity.platform,
+    encryptionPublicKeyJwk: identity.encryptionPublicKeyJwk,
+    encryptionPublicKeyAlgorithm: identity.encryptionPublicKeyAlgorithm,
+    encryptionFingerprint: identity.encryptionFingerprint,
+    signingPublicKeyJwk: identity.signingPublicKeyJwk,
+    signingPublicKeyAlgorithm: identity.signingPublicKeyAlgorithm,
+    signingFingerprint: identity.signingFingerprint,
+  })
 }
 
 interface ProjectAccessResult {
   canAccess: boolean
   canEdit: boolean
+}
+
+interface DevicePrincipalInfo {
+  userId: string
+  identityKey: string
+  deviceLabel: string
+  platform: string
+  encryptionPublicKeyJwk: string
+  encryptionPublicKeyAlgorithm: string
+  encryptionFingerprint: string
+  signingFingerprint: string
+  status: 'active'
+  signingKeyVersion: number
+  tokenValidAfter: number
+}
+
+export async function requireActiveDeviceAccessInConvex(
+  env: Env,
+  auth: DeviceAccessClaims,
+): Promise<DevicePrincipalInfo> {
+  const principal = await runServerQuery<DevicePrincipalInfo | null>(
+    env, 'users:getDevicePrincipalForServer', { identityKey: auth.sub },
+  )
+  if (!principal || auth.key_version !== principal.signingKeyVersion || !isTokenIssuedAfterRevocationBoundary(auth.iat, principal.tokenValidAfter)) {
+    throw new Error('Device session has been revoked')
+  }
+  return principal
 }
 
 interface EncryptionBootstrapResult {
@@ -73,31 +182,33 @@ async function runQuery<T>(
   return (await getClient(env).query(asQuery(name), args)) as T
 }
 
-export async function createCollabSessionFromConvex(env: Env, body: SessionRequestBody): Promise<ConvexSessionContext> {
-  const localProfile = await runMutation<LocalDeviceProfileInfo>(env, 'users:ensureLocalDeviceProfile', {
-    deviceId: body.deviceId,
-    deviceLabel: body.deviceLabel,
-    platform: body.platform,
-    fingerprint: body.fingerprint,
-  })
+export async function createCollabSessionFromConvex(
+  env: Env,
+  body: SessionRequestBody,
+  auth: DeviceAccessClaims,
+): Promise<ConvexSessionContext> {
+  if (auth.sub !== body.deviceId) {
+    throw new Error('Authenticated device does not match the collaboration device')
+  }
+  const localProfile = await requireActiveDeviceAccessInConvex(env, auth)
+  if (
+    localProfile.encryptionPublicKeyJwk !== body.publicKeyJwk ||
+    localProfile.encryptionPublicKeyAlgorithm !== body.publicKeyAlgorithm ||
+    localProfile.encryptionFingerprint !== body.fingerprint
+  ) {
+    throw new Error('Collaboration encryption key does not match the authenticated device')
+  }
   const access = await runServerQuery<ProjectAccessResult>(env, 'projectMembers:getProjectAccessForServer', {
     projectId: body.projectId,
     userId: localProfile.userId,
     deviceId: body.deviceId,
   })
-  // In the current desktop product, device-backed local users may open projects
-  // that are not represented as traditional shared memberships yet.
-  // Keep the access result for future tightening, but do not block bootstrap here.
   if (!access.canAccess || !access.canEdit) {
-    console.warn('[CloudflareCollab] Proceeding without explicit shared-project membership', {
-      projectId: body.projectId,
-      deviceId: body.deviceId,
-      canAccess: access.canAccess,
-      canEdit: access.canEdit,
-    })
+    throw new Error('The authenticated device cannot access this project')
   }
 
   await runMutation(env, 'yjs:registerCollabDevice', {
+    serverSecret: env.AI_GATEWAY_SECRET,
     userId: localProfile.userId,
     deviceId: body.deviceId,
     deviceLabel: body.deviceLabel,
@@ -108,7 +219,7 @@ export async function createCollabSessionFromConvex(env: Env, body: SessionReque
   })
 
   const roomId = `project:${body.projectId}`
-  const encryption = await runQuery<EncryptionBootstrapResult>(env, 'yjs:getEncryptionBootstrap', {
+  const encryption = await runServerQuery<EncryptionBootstrapResult>(env, 'yjs:getEncryptionBootstrap', {
     projectId: body.projectId,
     roomId,
     userId: localProfile.userId,
@@ -120,7 +231,7 @@ export async function createCollabSessionFromConvex(env: Env, body: SessionReque
     projectId: body.projectId,
     roomId,
     deviceId: body.deviceId,
-    deviceLabel: localProfile.identity.deviceLabel,
+    deviceLabel: localProfile.deviceLabel,
     deviceFingerprint: body.fingerprint,
     devicePublicKeyJwk: body.publicKeyJwk,
     encryption,
@@ -140,6 +251,7 @@ export async function fetchYjsDeltasFromConvex(
       projectId,
       sinceSeq: knownSeq,
       limit: 128,
+      serverSecret: env.AI_GATEWAY_SECRET,
     },
   )
 
@@ -152,7 +264,7 @@ export async function fetchYjsDeltasFromConvex(
 }
 
 export async function persistYjsUpdateToConvex(
-    env,
+    env: Env,
     args: {
       projectId: string
       roomId: string
@@ -166,6 +278,7 @@ export async function persistYjsUpdateToConvex(
 ): Promise<{ seq: number }> {
   const payload = fromBase64(args.updateBinary)
   const result = await runMutation<{ seq: number }>(env, 'yjs:broadcastUpdate', {
+    serverSecret: env.AI_GATEWAY_SECRET,
     projectId: args.projectId,
     roomId: args.roomId,
     idempotencyKey: args.idempotencyKey,
@@ -188,6 +301,7 @@ export async function upsertAwarenessInConvex(
 ): Promise<void> {
   const payload = fromBase64(args.awarenessBinary)
   await runMutation(env, 'yjsAwareness:upsertAwareness', {
+    serverSecret: env.AI_GATEWAY_SECRET,
     projectId: args.projectId,
     clientId: args.clientId,
     update: payload.buffer,
@@ -203,7 +317,7 @@ export async function fetchActiveAwarenessFromConvex(
     clientId: string
     update?: ArrayBuffer
     expiresAt?: number
-  }>>(env, 'yjsAwareness:getActiveAwareness', { projectId })
+  }>>(env, 'yjsAwareness:getActiveAwareness', { projectId, serverSecret: env.AI_GATEWAY_SECRET })
 
   return entries
     .filter((entry) => entry.update instanceof ArrayBuffer)
