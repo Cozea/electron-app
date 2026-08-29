@@ -20,19 +20,20 @@ import {
   clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/projects/lib/lastWorkbenchRoute"
+import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 import { resolveDroppedLocalFolderPath } from "@/features/projects/lib/resolveDroppedLocalFolderPath"
-import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore"
 
 export function ProjectsLaunchPage() {
   const { convexUserId, user } = useAuth()
   const { t } = useTranslation()
-  const { importLocalFolder, importPickedLocalFolder } = useLocalProjectImport()
+  const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const workspaceSelectionId = user?.id ?? "local-device"
   const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
-  const [isImporting, setIsImporting] = useState(false)
+  const [isSelectingFolder, setIsSelectingFolder] = useState(false)
   const lastWorkbenchRoute =
     ignoredWorkspaceSelectionId === workspaceSelectionId
       ? null
@@ -84,24 +85,22 @@ export function ProjectsLaunchPage() {
     })
   }, [])
 
-  const beginImport = useCallback(
-    async (run: () => Promise<"cancelled" | "imported" | "error">) => {
-      if (isImporting) {
-        return
-      }
-      setIsImporting(true)
-      try {
-        await run()
-      } finally {
-        setIsImporting(false)
-      }
-    },
-    [isImporting],
-  )
+  const handleBrowse = useCallback(async () => {
+    if (isSelectingFolder) return
 
-  const handleBrowse = useCallback(() => {
-    void beginImport(() => importLocalFolder())
-  }, [beginImport, importLocalFolder])
+    setIsSelectingFolder(true)
+    try {
+      const selectedPath = await browseForDirectory("Select local project folder")
+      if (!selectedPath?.trim()) return
+
+      openCreateProjectDialog({
+        mode: "local",
+        localFolderPath: selectedPath,
+      })
+    } finally {
+      setIsSelectingFolder(false)
+    }
+  }, [isSelectingFolder, openCreateProjectDialog])
 
   const handleDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -136,7 +135,7 @@ export function ProjectsLaunchPage() {
       event.stopPropagation()
       setIsDragActive(false)
 
-      if (isImporting) {
+      if (isSelectingFolder) {
         return
       }
 
@@ -156,9 +155,12 @@ export function ProjectsLaunchPage() {
         return
       }
 
-      void beginImport(() => importPickedLocalFolder(resolved.path))
+      openCreateProjectDialog({
+        mode: "local",
+        localFolderPath: resolved.path,
+      })
     },
-    [beginImport, importPickedLocalFolder, isImporting, showDropError],
+    [isSelectingFolder, openCreateProjectDialog, showDropError],
   )
 
   if (lastWorkbenchRoute) {
@@ -194,20 +196,20 @@ export function ProjectsLaunchPage() {
             <div
               role="button"
               tabIndex={0}
-              aria-disabled={isImporting}
+              aria-disabled={isSelectingFolder}
               aria-label={t("projects.dropRepoAriaLabel")}
               onClick={() => {
-                if (!isImporting) {
-                  handleBrowse()
+                if (!isSelectingFolder) {
+                  void handleBrowse()
                 }
               }}
               onKeyDown={(event) => {
-                if (isImporting) {
+                if (isSelectingFolder) {
                   return
                 }
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault()
-                  handleBrowse()
+                  void handleBrowse()
                 }
               }}
               onDragEnter={handleDragEnter}
@@ -219,10 +221,10 @@ export function ProjectsLaunchPage() {
                 isDragActive
                   ? "bg-primary/5"
                   : "bg-secondary/20 hover:bg-secondary/30",
-                isImporting && "pointer-events-none opacity-70",
+                isSelectingFolder && "pointer-events-none opacity-70",
               )}
             >
-              {isImporting ? (
+              {isSelectingFolder ? (
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
               ) : (
                 <HugeiconsIcon
@@ -235,7 +237,7 @@ export function ProjectsLaunchPage() {
               )}
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">
-                  {isImporting
+                  {isSelectingFolder
                     ? t("projects.dropRepoImporting")
                     : isDragActive
                       ? t("projects.dropRepoActive")
@@ -249,10 +251,10 @@ export function ProjectsLaunchPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={isImporting}
+                disabled={isSelectingFolder}
                 onClick={(event) => {
                   event.stopPropagation()
-                  handleBrowse()
+                  void handleBrowse()
                 }}
               >
                 {t("projects.dropRepoBrowse")}

@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useTranslation } from "@/lib/i18n"
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
-import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
+import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import { cn } from "@/lib/utils"
 import {
   createOrganizationRecoveryCode,
@@ -512,11 +512,9 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                   <SettingsRow key={app.publicationId} isFirst={index === 0}>
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-background/50 p-1 border border-border/40">
-                        <DevAppIcon
-                          app={{
-                            name: app.name,
-                            icon: { src: app.logoDataUrl || "", alt: app.name },
-                          }}
+                        <PublishedDevAppIcon
+                          name={app.name}
+                          logoDataUrl={app.logoDataUrl}
                           className="size-full"
                         />
                       </div>

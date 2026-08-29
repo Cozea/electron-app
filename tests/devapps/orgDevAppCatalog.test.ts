@@ -185,5 +185,7 @@ describe("published DevApp manifests", () => {
     expect(manifest.launch.kind).toBe("publishedDevApp")
     expect(manifest.store.badgeLabel).toBe("Acme")
     expect(manifest.store.categoryLabel).toBe("Organization")
+    expect(manifest.icon.src).toContain("/published/icon.png")
+    expect(manifest.icon.className).toBe("scale-[1.25]")
   })
 })

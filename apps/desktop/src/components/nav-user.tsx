@@ -15,6 +15,20 @@ import { formatLocalDeviceLabel, isLocalDeviceEmail } from "@/lib/userDisplay"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Settings02Icon as __SettingsHugeIcon } from "@hugeicons/core-free-icons"
 
+import {
+  NAV_USER_THEME_OPTIONS,
+  resolveNavUserThemeAction,
+  type NavUserThemeMenuAction,
+} from "./navUserThemeOptions"
+
+type NavUserMenuAction =
+  | "summary"
+  | "account-settings"
+  | NavUserThemeMenuAction
+  | "theme-group"
+  | "separator-top"
+  | "separator-bottom"
+
 // Raw user type from auth context
 interface RawUser {
   email: string
@@ -74,16 +88,7 @@ export function NavUser({
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
       const rect = event.currentTarget.getBoundingClientRect()
-      const items: ContextMenuItem<
-        | "summary"
-        | "account-settings"
-        | "theme-light"
-        | "theme-dark"
-        | "theme-system"
-        | "theme-group"
-        | "separator-top"
-        | "separator-bottom"
-      >[] = []
+      const items: ContextMenuItem<NavUserMenuAction>[] = []
 
       if (menuTitle || menuSummarySublabel) {
         items.push({
@@ -102,11 +107,12 @@ export function NavUser({
       items.push({
         id: "theme-group",
         label: t("nav.theme"),
-        submenu: [
-          { id: "theme-light", label: t("nav.themeLight"), type: "radio", checked: theme === "light" },
-          { id: "theme-dark", label: t("nav.themeDark"), type: "radio", checked: theme === "dark" },
-          { id: "theme-system", label: t("nav.themeSystem"), type: "radio", checked: theme === "system" },
-        ],
+        submenu: NAV_USER_THEME_OPTIONS.map((option) => ({
+          id: option.id,
+          label: t(option.labelKey),
+          type: "radio",
+          checked: theme === option.theme,
+        })),
       })
       items.push({ id: "separator-bottom", label: "", type: "separator" })
 
@@ -116,19 +122,16 @@ export function NavUser({
       }
 
       const action = await showDesktopContextMenu(items, position)
+      const selectedTheme = resolveNavUserThemeAction(action)
+
+      if (selectedTheme) {
+        setTheme(selectedTheme)
+        return
+      }
 
       switch (action) {
         case "account-settings":
           navigate("/projects/settings/account")
-          break
-        case "theme-light":
-          setTheme("light")
-          break
-        case "theme-dark":
-          setTheme("dark")
-          break
-        case "theme-system":
-          setTheme("system")
           break
       }
     },

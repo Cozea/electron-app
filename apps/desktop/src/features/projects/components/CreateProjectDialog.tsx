@@ -34,6 +34,7 @@ import {
   buildFilesystemSlug,
   deriveNameFromPath,
   inspectLocalGitState,
+  resolveImportedProjectName,
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
 import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
@@ -119,7 +120,9 @@ export function CreateProjectDialog({
   const [ghCliAvailable, setGhCliAvailable] = useState<boolean | null>(cachedGhCliStatus?.available ?? null)
 
   const copy = useMemo(() => {
-    if (mode !== "local" || !initialLocalFolderPath.trim()) {
+    const selectedLocalFolderPath = localFolderPath.trim() || initialLocalFolderPath.trim()
+
+    if (mode !== "local" || !selectedLocalFolderPath) {
       return {
         title: mode === "empty" ? t("createProject.emptyTitle") : t("createProject.localTitle"),
         description: mode === "empty" ? t("createProject.emptyDesc") : t("createProject.localDescFallback"),
@@ -127,16 +130,24 @@ export function CreateProjectDialog({
       } satisfies DialogCopy
     }
 
-    const folderName = deriveNameFromPath(initialLocalFolderPath.trim()) || "this folder"
+    const folderName = deriveNameFromPath(selectedLocalFolderPath) || "this folder"
     return {
       title: t("createProject.localTitle"),
       description: t("createProject.localDescFormat").replace("{folderName}", folderName),
       submitLabel: t("createProject.importBtn"),
     } satisfies DialogCopy
-  }, [initialLocalFolderPath, mode, t])
+  }, [initialLocalFolderPath, localFolderPath, mode, t])
   const locationPathPreview = useMemo(
     () => formatLocationPathPreview(parentDirectory, 2),
     [parentDirectory],
+  )
+  const localPathPreview = useMemo(
+    () => formatLocationPathPreview(localFolderPath, 2),
+    [localFolderPath],
+  )
+  const localFolderName = useMemo(
+    () => deriveNameFromPath(localFolderPath),
+    [localFolderPath],
   )
 
   useEffect(() => {
@@ -239,19 +250,22 @@ export function CreateProjectDialog({
     },
     [navigate, onOpenChange],
   )
-  const isCreateProjectDisabled = isSubmitting || (mode === "empty" && name.trim().length === 0)
+  const isCreateProjectDisabled =
+    isSubmitting ||
+    (mode === "empty" && name.trim().length === 0) ||
+    (mode === "local" && localFolderPath.trim().length === 0)
 
   const handleSubmit = useCallback(async () => {
     if (!convexUserId || isSubmitting) {
       return
     }
 
-    const trimmedName =
-      mode === "local"
-        ? deriveNameFromPath(localFolderPath).trim() || name.trim()
-        : name.trim()
     const trimmedParentDirectory = parentDirectory.trim()
     const trimmedLocalFolderPath = localFolderPath.trim()
+    const trimmedName =
+      mode === "local"
+        ? resolveImportedProjectName(name, trimmedLocalFolderPath)
+        : name.trim()
 
     if (!trimmedName) {
       return
@@ -338,7 +352,7 @@ export function CreateProjectDialog({
       }
 
       if (mode === "local") {
-        const outcome = await importPickedLocalFolder(trimmedLocalFolderPath)
+        const outcome = await importPickedLocalFolder(trimmedLocalFolderPath, trimmedName)
         if (outcome === "imported") {
           closeDialog()
         } else if (outcome === "error") {
@@ -377,17 +391,12 @@ export function CreateProjectDialog({
     >
       <DialogContent
         showCloseButton={false}
-        className={cn(
-          "p-3 sm:max-w-md sm:p-4",
-          mode === "empty" && "border-none bg-transparent shadow-none",
-        )}
+        className="border-border/70 bg-popover p-4 shadow-xl sm:max-w-md"
       >
-        {mode !== "empty" ? (
-          <DialogHeader className="items-start space-y-1 text-left">
-            <DialogTitle>{copy.title}</DialogTitle>
-            <DialogDescription className="text-sm">{copy.description}</DialogDescription>
-          </DialogHeader>
-        ) : null}
+        <DialogHeader className="items-start space-y-1 text-left">
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription className="text-sm">{copy.description}</DialogDescription>
+        </DialogHeader>
 
         <div
           className={cn(
@@ -395,146 +404,177 @@ export function CreateProjectDialog({
             mode === "local" ? "space-y-2" : "space-y-2.5",
           )}
         >
-          {mode !== "local" ? (
-            <section>
-              <SettingsGroup>
-                {mode === "empty" ? (
-                  <SettingsRow isFirst>
-                    <SettingsRowLabel title={t('createProject.name')} htmlFor="create-project-name" />
-                    <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
-                      <Input
-                        id="create-project-name"
-                        value={name}
-                        onChange={(event) => {
-                          setHasEditedName(true)
-                          setName(event.target.value)
-                          setError(null)
-                        }}
-                        placeholder={t('createProject.namePlaceholder')}
-                        disabled={isSubmitting}
-                        autoFocus
-                        className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
-                      />
-                    </SettingsRowControl>
-                  </SettingsRow>
-                ) : null}
+          <section>
+            <SettingsGroup>
+              <SettingsRow isFirst>
+                <SettingsRowLabel title={t('createProject.name')} htmlFor="create-project-name" />
+                <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                  <Input
+                    id="create-project-name"
+                    value={name}
+                    onChange={(event) => {
+                      setHasEditedName(true)
+                      setName(event.target.value)
+                      setError(null)
+                    }}
+                    placeholder={
+                      mode === "local"
+                        ? localFolderName || t('createProject.folderNamePlaceholder')
+                        : t('createProject.namePlaceholder')
+                    }
+                    disabled={isSubmitting}
+                    autoFocus
+                    className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
+                  />
+                </SettingsRowControl>
+              </SettingsRow>
 
-                {mode === "empty" ? (
-                  <SettingsRow>
-                    <SettingsRowLabel
-                      title={t('createProject.path')}
-                      htmlFor="create-project-location"
-                    />
-                    <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
-                      <Button
-                        id="create-project-location"
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-full max-w-full justify-start border-0 border-none bg-transparent px-0 text-xs font-normal shadow-none transition-colors hover:bg-transparent hover:text-foreground"
-                        onClick={async () => {
-                          const selectedPath = await browseForDirectory("Select project location")
-                          if (!selectedPath) return
-                          setParentDirectory(selectedPath)
-                          setError(null)
-                        }}
-                        disabled={isSubmitting}
-                        title={parentDirectory || t('createProject.chooseParentFolder')}
-                      >
-                        <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
-                        <span className="min-w-0 flex-1 truncate text-left text-muted-foreground hover:text-foreground">
-                          {locationPathPreview || t('createProject.chooseParentFolder')}
-                        </span>
-                      </Button>
-                    </SettingsRowControl>
-                  </SettingsRow>
-                ) : null}
+              {mode === "empty" ? (
+                <SettingsRow>
+                  <SettingsRowLabel
+                    title={t('createProject.path')}
+                    htmlFor="create-project-location"
+                  />
+                  <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                    <Button
+                      id="create-project-location"
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-full max-w-full justify-start border-0 border-none bg-transparent px-0 text-xs font-normal shadow-none transition-colors hover:bg-transparent hover:text-foreground"
+                      onClick={async () => {
+                        const selectedPath = await browseForDirectory("Select project location")
+                        if (!selectedPath) return
+                        setParentDirectory(selectedPath)
+                        setError(null)
+                      }}
+                      disabled={isSubmitting}
+                      title={parentDirectory || t('createProject.chooseParentFolder')}
+                    >
+                      <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
+                      <span className="min-w-0 flex-1 truncate text-left text-muted-foreground hover:text-foreground">
+                        {locationPathPreview || t('createProject.chooseParentFolder')}
+                      </span>
+                    </Button>
+                  </SettingsRowControl>
+                </SettingsRow>
+              ) : null}
 
-                {mode === "empty" ? (
-                  <SettingsRow>
-                    <SettingsRowLabel
-                      title={t('createProject.github')}
-                      description={t('createProject.createRemoteRepo')}
-                      htmlFor="create-project-github"
-                    />
-                    <SettingsRowControl>
-                      {ghCliAvailable === false ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="inline-flex">
-                              <Switch
-                                id="create-project-github"
-                                checked={false}
-                                disabled
-                              />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="left">
-                            {t('createProject.installGhCli')}
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        <Switch
-                          id="create-project-github"
-                          checked={createGitHubRepo}
-                          onCheckedChange={setCreateGitHubRepo}
-                          disabled={isSubmitting}
-                        />
-                      )}
-                    </SettingsRowControl>
-                  </SettingsRow>
-                ) : null}
+              {mode === "local" ? (
+                <SettingsRow>
+                  <SettingsRowLabel
+                    title={t('createProject.path')}
+                    htmlFor="open-project-location"
+                  />
+                  <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                    <Button
+                      id="open-project-location"
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-full max-w-full justify-start border-0 border-none bg-transparent px-0 text-xs font-normal shadow-none transition-colors hover:bg-transparent hover:text-foreground"
+                      onClick={async () => {
+                        const selectedPath = await browseForDirectory("Select local project folder")
+                        if (!selectedPath) return
+                        setLocalFolderPath(selectedPath)
+                        setError(null)
+                      }}
+                      disabled={isSubmitting}
+                      title={localFolderPath || t('createProject.chooseLocalFolder')}
+                    >
+                      <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
+                      <span className="min-w-0 flex-1 truncate text-left text-muted-foreground hover:text-foreground">
+                        {localPathPreview || t('createProject.chooseLocalFolder')}
+                      </span>
+                    </Button>
+                  </SettingsRowControl>
+                </SettingsRow>
+              ) : null}
 
-                {mode === "empty" && createGitHubRepo ? (
-                  <SettingsRow>
-                    <SettingsRowLabel
-                      title={t('createProject.privateRepo')}
-                      description={t('createProject.privateRepoDesc')}
-                      htmlFor="create-project-visibility"
-                    />
-                    <SettingsRowControl>
+              {mode === "empty" ? (
+                <SettingsRow>
+                  <SettingsRowLabel
+                    title={t('createProject.github')}
+                    description={t('createProject.createRemoteRepo')}
+                    htmlFor="create-project-github"
+                  />
+                  <SettingsRowControl>
+                    {ghCliAvailable === false ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <Switch
+                              id="create-project-github"
+                              checked={false}
+                              disabled
+                            />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">
+                          {t('createProject.installGhCli')}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
                       <Switch
-                        id="create-project-visibility"
-                        checked={repoVisibility === "private"}
-                        onCheckedChange={(checked) => setRepoVisibility(checked ? "private" : "public")}
+                        id="create-project-github"
+                        checked={createGitHubRepo}
+                        onCheckedChange={setCreateGitHubRepo}
                         disabled={isSubmitting}
                       />
-                    </SettingsRowControl>
-                  </SettingsRow>
-                ) : null}
+                    )}
+                  </SettingsRowControl>
+                </SettingsRow>
+              ) : null}
 
-                {mode === "empty" ? (
-                  <SettingsRow>
-                    <div className="min-w-0 flex-1" />
-                    <SettingsRowControl className="gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full"
-                        onClick={closeDialog}
-                        disabled={isSubmitting}
-                      >
-                        {t('common.cancel')}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="rounded-full"
-                        onClick={() => void handleSubmit()}
-                        disabled={isCreateProjectDisabled}
-                      >
-                        {isSubmitting ? (
-                          <div className="loader" />
-                        ) : null}
-                        {copy.submitLabel}
-                      </Button>
-                    </SettingsRowControl>
-                  </SettingsRow>
-                ) : null}
-              </SettingsGroup>
-            </section>
-          ) : null}
+              {mode === "empty" && createGitHubRepo ? (
+                <SettingsRow>
+                  <SettingsRowLabel
+                    title={t('createProject.privateRepo')}
+                    description={t('createProject.privateRepoDesc')}
+                    htmlFor="create-project-visibility"
+                  />
+                  <SettingsRowControl>
+                    <Switch
+                      id="create-project-visibility"
+                      checked={repoVisibility === "private"}
+                      onCheckedChange={(checked) => setRepoVisibility(checked ? "private" : "public")}
+                      disabled={isSubmitting}
+                    />
+                  </SettingsRowControl>
+                </SettingsRow>
+              ) : null}
+
+              {mode === "empty" ? (
+                <SettingsRow>
+                  <div className="min-w-0 flex-1" />
+                  <SettingsRowControl className="gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={closeDialog}
+                      disabled={isSubmitting}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => void handleSubmit()}
+                      disabled={isCreateProjectDisabled}
+                    >
+                      {isSubmitting ? (
+                        <div className="loader" />
+                      ) : null}
+                      {copy.submitLabel}
+                    </Button>
+                  </SettingsRowControl>
+                </SettingsRow>
+              ) : null}
+            </SettingsGroup>
+          </section>
 
           {mode === "local" && localGitState?.isLoading ? (
             <Alert className="rounded-2xl bg-secondary/35">

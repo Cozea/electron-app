@@ -14,7 +14,7 @@ import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDelete
 import type { ProjectDeleteConfirmOptions } from '@/features/projects/components/ProjectDeleteDialog'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
-import { DevAppIcon } from '@/features/devapps/components/DevAppIcon'
+import { PublishedDevAppIcon } from '@/features/devapps/components/PublishedDevAppIcon'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -852,13 +852,9 @@ export function ProjectSettingsPage({
                             setShowDevAppIdentityDialog(true)
                           }}
                         >
-                          <DevAppIcon
-                            app={{
-                              name: orgDevApp.name,
-                              icon: orgDevApp.logoDataUrl
-                                ? { src: orgDevApp.logoDataUrl, alt: `${orgDevApp.name} DevApp` }
-                                : { src: '', alt: `${orgDevApp.name} DevApp` },
-                            }}
+                          <PublishedDevAppIcon
+                            name={orgDevApp.name}
+                            logoDataUrl={orgDevApp.logoDataUrl}
                           />
                           <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                             <HugeiconsIcon icon={__EditHugeIcon} className="size-3.5" />

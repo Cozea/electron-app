@@ -1,5 +1,5 @@
-import iconSrc from "@/features/devapps/apps/dev-server/icon.png"
-import { isProjectDevAppLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
+import { resolveProjectDevAppDisplayLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
+import { buildPublishedDevAppIconDefinition } from "@/features/devapps/publishedDevAppIcon"
 import type { DevAppManifest, PublishedDevAppLaunchSpec } from "@/features/devapps/registry/types"
 import { buildOrgDevAppUrl } from "@shared/orgDevAppProtocol"
 
@@ -34,6 +34,8 @@ export function buildPublishedDevAppId(publicationId: string): string {
 export function buildPublishedDevAppLaunchSpec(
   entry: OrgDevAppConsumerRecord,
 ): PublishedDevAppLaunchSpec {
+  const logoDataUrl = resolveProjectDevAppDisplayLogoDataUrl(entry.logoDataUrl)
+
   return {
     kind: "publishedDevApp",
     tileType: "orgDevApp",
@@ -48,12 +50,11 @@ export function buildPublishedDevAppLaunchSpec(
     entryPath: entry.activeRelease.entryPath,
     runtimeKind: entry.activeRelease.runtimeKind,
     permissionSetHash: entry.activeRelease.permissionSetHash,
-    logoDataUrl: entry.logoDataUrl,
+    logoDataUrl,
   }
 }
 
 export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): DevAppManifest {
-  const logoDataUrl = isProjectDevAppLogoDataUrl(entry.logoDataUrl) ? entry.logoDataUrl : null
   const description =
     entry.description?.trim() ||
     `Published to ${entry.organizationName} as a built artifact.`
@@ -63,11 +64,7 @@ export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): De
     name: entry.name,
     description,
     categories: ["discover", "build-release"],
-    icon: {
-      src: logoDataUrl ?? iconSrc,
-      alt: `${entry.name} DevApp`,
-      ...(logoDataUrl ? {} : { className: "scale-[1.25]" }),
-    },
+    icon: buildPublishedDevAppIconDefinition(entry.name, entry.logoDataUrl),
     launcher: {
       enabled: true,
       order: 4,
