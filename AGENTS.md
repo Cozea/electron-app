@@ -67,6 +67,9 @@ committed; the `generate` script is currently **not runnable as-is** (its
 # Install dependencies
 bun install
 
+# Fresh checkout: install dependencies and prepare the pinned T3 runtime
+bun run bootstrap
+
 # Development (runs Electron + Vite)
 bun run dev
 

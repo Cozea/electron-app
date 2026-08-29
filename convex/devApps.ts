@@ -11,6 +11,7 @@ import {
   toConsumerDevApp,
 } from "./lib/orgAccess"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
+import { normalizeStorageSha256 } from "./lib/storageHash"
 import {
   ORG_DEVAPP_ARTIFACT_LIMITS,
   ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS,
@@ -148,7 +149,7 @@ export const registerUploadedArtifact = mutation({
     if (metadata.contentType !== "application/zip") {
       return { registered: false, error: "The uploaded DevApp artifact has an invalid content type" }
     }
-    if (metadata.sha256.toLowerCase() !== contentHash) {
+    if (normalizeStorageSha256(metadata.sha256) !== contentHash) {
       return { registered: false, error: "The uploaded DevApp artifact hash does not match" }
     }
     return { registered: true }
@@ -210,7 +211,7 @@ export const publish = mutation({
       !metadata ||
       metadata.size > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes ||
       metadata.contentType !== "application/zip" ||
-      metadata.sha256.toLowerCase() !== reservation.contentHash
+      normalizeStorageSha256(metadata.sha256) !== reservation.contentHash
     ) {
       throw new ConvexError("The DevApp upload failed integrity validation")
     }

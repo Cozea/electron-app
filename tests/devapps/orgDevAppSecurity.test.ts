@@ -13,15 +13,31 @@ const artifacts = fs.readFileSync(
   path.join(root, "apps/desktop/electron/services/OrgDevAppArtifactService.ts"),
   "utf8",
 )
+const publishing = fs.readFileSync(
+  path.join(root, "apps/desktop/src/features/devapps/orgDevAppPublishing.ts"),
+  "utf8",
+)
+const upload = fs.readFileSync(
+  path.join(root, "apps/desktop/electron/services/orgDevAppUpload.ts"),
+  "utf8",
+)
+const main = fs.readFileSync(
+  path.join(root, "apps/desktop/electron/main.ts"),
+  "utf8",
+)
 
 describe("org DevApp security lifecycle", () => {
   it("binds uploads to an authenticated reservation and verifies storage metadata", () => {
     expect(devApps).toContain("createUploadReservation")
     expect(devApps).toContain("registerUploadedArtifact")
     expect(devApps).toContain('ctx.db.system.get("_storage", args.storageId)')
-    expect(devApps).toContain("metadata.sha256.toLowerCase() !== contentHash")
+    expect(devApps).toContain("normalizeStorageSha256(metadata.sha256) !== contentHash")
     expect(devApps).toContain("reservation.createdBy !== user._id")
     expect(devApps).not.toContain("export const generateUploadUrl")
+    expect(publishing).toContain("orgDevApp.buildAndUpload")
+    expect(publishing).not.toContain("body: zipBytes")
+    expect(upload).toContain("hashBuffer(zip) !== packed.contentHash.toLowerCase()")
+    expect(upload).toContain('.endsWith(".convex.cloud")')
   })
 
   it("bounds release retention and denies cached reopening after access loss", () => {
@@ -37,6 +53,12 @@ describe("org DevApp security lifecycle", () => {
     expect(browser).toContain("event.preventDefault()")
     expect(browser).toContain("decision.reason === 'external-https'")
     expect(browser).toContain("shell.openExternal(url)")
+  })
+
+  it("registers the artifact protocol on every isolated DevApp session", () => {
+    expect(artifacts).toContain("registerProtocolForSession(targetSession: Session)")
+    expect(browser).toContain("configureOrgDevAppSession?.(nextSession)")
+    expect(main).toContain("orgDevAppArtifactService.registerProtocolForSession(targetSession)")
   })
 
   it("uses a bounded, integrity-checked, evictable local cache", () => {

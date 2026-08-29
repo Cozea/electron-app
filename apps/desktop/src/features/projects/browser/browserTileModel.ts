@@ -163,8 +163,11 @@ export class BrowserTileModel {
     await this.initializePromise
   }
 
-  async setVisible(visible: boolean): Promise<void> {
-    await this.initialize()
+  async setVisible(
+    visible: boolean,
+    options: BrowserCreateOptions = {},
+  ): Promise<void> {
+    await this.initialize(options)
     await window.electronAPI.workbenchBrowser.setBounds(
       visible
         ? { tileId: this.id, visible: true as const }

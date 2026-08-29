@@ -25,43 +25,27 @@ export async function publishOrgDevAppFromWorkspace(input: {
   const cancelBuild = () => {
     void window.electronAPI.orgDevApp.cancelBuild({ operationId })
   }
-  input.signal?.addEventListener("abort", cancelBuild, { once: true })
-  const packed = await window.electronAPI.orgDevApp.buildAndPack({
-    workspaceId: input.workspaceId,
-    operationId,
-  }).finally(() => {
-    input.signal?.removeEventListener("abort", cancelBuild)
-  })
-  if (!packed.success) {
-    if (input.signal?.aborted) throw new DOMException("Publishing was cancelled.", "AbortError")
-    throw new Error(packed.error)
-  }
-
-  if (input.signal?.aborted) throw new DOMException("Publishing was cancelled.", "AbortError")
   const reservation = await input.convex.mutation(api.devApps.createUploadReservation, {
     projectId: input.projectId,
   })
+  input.signal?.addEventListener("abort", cancelBuild, { once: true })
   try {
+    if (input.signal?.aborted) throw new DOMException("Publishing was cancelled.", "AbortError")
     input.onStageChange?.("uploading")
-    const zipBytes = packed.zip instanceof Uint8Array ? packed.zip : new Uint8Array(packed.zip)
-    const uploadResponse = await fetch(reservation.uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/zip" },
-      body: zipBytes as unknown as BodyInit,
-      signal: input.signal,
+    const packed = await window.electronAPI.orgDevApp.buildAndUpload({
+      workspaceId: input.workspaceId,
+      operationId,
+      uploadUrl: reservation.uploadUrl,
     })
-    if (!uploadResponse.ok) {
-      throw new Error("Cozea could not upload the built DevApp artifact.")
-    }
-    const uploaded = (await uploadResponse.json()) as { storageId?: string }
-    if (!uploaded.storageId) {
-      throw new Error("Cozea did not receive a storage id for the DevApp artifact.")
+    if (!packed.success) {
+      if (input.signal?.aborted) throw new DOMException("Publishing was cancelled.", "AbortError")
+      throw new Error(packed.error)
     }
 
     input.onStageChange?.("verifying")
     const registered = await input.convex.mutation(api.devApps.registerUploadedArtifact, {
       reservationId: reservation.reservationId,
-      storageId: uploaded.storageId as Id<"_storage">,
+      storageId: packed.storageId as Id<"_storage">,
       contentHash: packed.contentHash,
     })
     if (!registered.registered) {
@@ -84,5 +68,7 @@ export async function publishOrgDevAppFromWorkspace(input: {
       reservationId: reservation.reservationId,
     }).catch(() => undefined)
     throw error
+  } finally {
+    input.signal?.removeEventListener("abort", cancelBuild)
   }
 }

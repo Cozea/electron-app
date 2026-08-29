@@ -72,6 +72,22 @@ module.exports = {
   ],
   extraResources: [
     {
+      // Portable T3 server bundle plus its production-only native dependencies.
+      // `predist` creates this directory and launch fails before packaging if it
+      // is absent or cannot be executed.
+      from: "../../build/t3-runtime",
+      to: "t3-runtime",
+      filter: ["**/*", "!node_modules{,/**/*}"],
+    },
+    {
+      // Copy from inside the generated dependency directory so the resource
+      // matcher does not apply electron-builder's global node_modules ignore
+      // to the portable server payload.
+      from: "../../build/t3-runtime/node_modules",
+      to: "t3-runtime/node_modules",
+      filter: ["**/*"],
+    },
+    {
       from: "../../build/runtime",
       to: "runtime",
       // Ship lightweight runtime metadata and verification material only.

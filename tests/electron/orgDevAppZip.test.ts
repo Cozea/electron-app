@@ -10,6 +10,10 @@ import {
   packDirectoryToZip,
   unpackZip,
 } from "../../apps/desktop/electron/services/orgDevAppZip"
+import {
+  uploadPackedDevApp,
+  validateConvexUploadUrl,
+} from "../../apps/desktop/electron/services/orgDevAppUpload"
 
 describe("org DevApp zip packing", () => {
   it("round-trips a static index.html tree", () => {
@@ -72,5 +76,48 @@ describe("org DevApp zip packing", () => {
     } finally {
       fs.rmSync(source, { recursive: true, force: true })
     }
+  })
+})
+
+describe("org DevApp upload", () => {
+  it("uploads the exact bytes whose hash is registered", async () => {
+    const zip = Buffer.from("exact-devapp-zip-bytes")
+    let uploadedBody: Buffer | null = null
+    const result = await uploadPackedDevApp(
+      "https://example.convex.cloud/api/storage/upload?token=test",
+      { zip, contentHash: hashBuffer(zip) },
+      {
+        fetch: async (_input, init) => {
+          uploadedBody = Buffer.from(init?.body as Uint8Array)
+          return new Response(JSON.stringify({ storageId: "storage-id" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        },
+      },
+    )
+
+    expect(result.storageId).toBe("storage-id")
+    expect(uploadedBody).toEqual(zip)
+    expect(hashBuffer(uploadedBody!)).toBe(hashBuffer(zip))
+  })
+
+  it("rejects an artifact that changed after hashing", async () => {
+    const zip = Buffer.from("changed")
+    await expect(
+      uploadPackedDevApp(
+        "https://example.convex.cloud/api/storage/upload?token=test",
+        { zip, contentHash: hashBuffer(Buffer.from("original")) },
+      ),
+    ).rejects.toThrow(/changed before upload/)
+  })
+
+  it("only allows Convex storage upload destinations", () => {
+    expect(() => validateConvexUploadUrl("http://example.convex.cloud/api/storage/upload"))
+      .toThrow(/not trusted/)
+    expect(() => validateConvexUploadUrl("https://convex.cloud.evil.test/api/storage/upload"))
+      .toThrow(/not trusted/)
+    expect(() => validateConvexUploadUrl("https://example.convex.cloud/not-storage"))
+      .toThrow(/not trusted/)
   })
 })

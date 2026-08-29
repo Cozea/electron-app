@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
@@ -37,18 +37,30 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
     })
   const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
-  const viewMode = props.tile.viewMode === "artifacts" ? "artifacts" : "chat"
+  const [viewMode, setLocalViewMode] = useState<"chat" | "artifacts">(() =>
+    props.tile.viewMode === "artifacts" ? "artifacts" : "chat",
+  )
 
-  const setViewMode = (nextMode: "chat" | "artifacts") => {
-    updateAssistantTile(
-      props.projectId,
-      props.laneId,
-      props.tile.id,
-      { viewMode: nextMode },
-      props.workspaceId,
-    )
-    void flushWorkbenchStorage()
-  }
+  useEffect(() => {
+    if (props.tile.viewMode === "artifacts" || props.tile.viewMode === "chat") {
+      setLocalViewMode(props.tile.viewMode)
+    }
+  }, [props.tile.viewMode])
+
+  const setViewMode = useCallback(
+    (nextMode: "chat" | "artifacts") => {
+      setLocalViewMode(nextMode)
+      updateAssistantTile(
+        props.projectId,
+        props.laneId,
+        props.tile.id,
+        { viewMode: nextMode },
+        props.workspaceId,
+      )
+      void flushWorkbenchStorage()
+    },
+    [props.laneId, props.projectId, props.tile.id, props.workspaceId, updateAssistantTile],
+  )
 
   const openArtifact = (artifactId: string) => {
     setSelectedArtifactId(artifactId)
@@ -139,6 +151,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
               media={artifactMedia}
               selectedArtifactId={selectedArtifactId}
               onSelectedArtifactChange={setSelectedArtifactId}
+              onBackToChat={() => setViewMode("chat")}
             />
           </div>
         </div>
