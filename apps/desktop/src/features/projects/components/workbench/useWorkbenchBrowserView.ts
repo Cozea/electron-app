@@ -282,7 +282,12 @@ export function useWorkbenchBrowserView(
     // A persistent native view can outlive the renderer that last positioned
     // it. Request an immediate hide at re-acquisition so stale pre-reload
     // bounds cannot cover the shell while this renderer measures the new host.
-    void model.setVisible(false)
+    void model.setVisible(false, {
+      storageScope,
+      workspaceId,
+      partitionKey,
+      navigationPolicy,
+    })
 
     const unsubscribe = model.subscribe((nextState) => {
       setState(nextState)
@@ -301,7 +306,7 @@ export function useWorkbenchBrowserView(
     })
 
     return unsubscribe
-  }, [persistModel, storageScope, tileId, workspaceId])
+  }, [navigationPolicy, partitionKey, persistModel, storageScope, tileId, workspaceId])
 
   useLayoutEffect(() => {
     const unsubscribe = window.electronAPI.workbenchBrowser.onNewPageRequest((request) => {

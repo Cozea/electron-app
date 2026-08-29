@@ -19,6 +19,7 @@ dist-ssr
 
 # Build artifacts
 dist-electron
+build/t3-runtime/
 build/v8-snapshot
 build/browser_v8_context_snapshot.bin
 build/snapshot_blob.bin

@@ -13,7 +13,7 @@ commands:
           name: Install Bun
           command: |
             set -euo pipefail
-            curl -fsSL https://bun.sh/install | bash
+            curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.0"
             echo 'export BUN_INSTALL="$HOME/.bun"' >> "$BASH_ENV"
             echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> "$BASH_ENV"
             source "$BASH_ENV"
@@ -31,7 +31,8 @@ commands:
           command: |
             set -euo pipefail
             source "$BASH_ENV"
-            bun install --frozen-lockfile
+            bun install --frozen-lockfile --ignore-scripts
+            bun run postinstall
 
   checkout_with_t3_submodule:
     steps:
@@ -48,7 +49,7 @@ commands:
           command: |
             set -euo pipefail
             corepack enable
-            corepack prepare pnpm@10.28.2 --activate
+            corepack prepare pnpm@11.10.0 --activate
             pnpm --version
 
 jobs:
@@ -154,7 +155,7 @@ jobs:
       VITE_FF_OFFSCREEN_SCREENSHOT: "1"
       VITE_FF_UTILITY_PROCESS_MANIFEST: "1"
     steps:
-      - checkout
+      - checkout_with_t3_submodule
       - run:
           name: Install macOS build dependencies
           command: |
@@ -222,7 +223,7 @@ jobs:
       VITE_FF_OFFSCREEN_SCREENSHOT: "1"
       VITE_FF_UTILITY_PROCESS_MANIFEST: "1"
     steps:
-      - checkout
+      - checkout_with_t3_submodule
       - run:
           name: Build Windows release
           command: |
@@ -230,7 +231,8 @@ jobs:
             irm bun.sh/install.ps1 | iex
             $env:Path = "$env:USERPROFILE\.bun\bin;$env:Path"
             bun --version
-            bun install --frozen-lockfile
+            bun install --frozen-lockfile --ignore-scripts
+            bun run postinstall
             bun run prepare:runtime-metadata
             if ($env:COZEA_RUNTIME_SIGNING_PRIVATE_KEY -or $env:COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH) {
               bun run sign:runtime-metadata

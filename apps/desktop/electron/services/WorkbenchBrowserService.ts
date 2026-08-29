@@ -25,6 +25,7 @@ interface WorkbenchBrowserRecord {
 interface WorkbenchBrowserServiceOptions {
   getMainWindow: () => BrowserWindow | null
   backgroundThrottling?: boolean
+  configureOrgDevAppSession?: (targetSession: Electron.Session) => void
 }
 
 interface EnsureWorkbenchBrowserTileOptions {
@@ -148,6 +149,7 @@ export class WorkbenchBrowserService {
 
     const nextSession = session.fromPartition(key)
     if (storageScope === 'orgDevApp') {
+      this.options.configureOrgDevAppSession?.(nextSession)
       nextSession.setPermissionCheckHandler(() => false)
       nextSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
         callback(false)

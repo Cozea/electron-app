@@ -15,12 +15,18 @@ The Cozea Electron desktop application lives in this workspace package.
 
 Cozea uses **Bun** for the monorepo (`bun install`, `bun run dev`). The vendored upstream tree under `vendor/t3code/` keeps its own **pnpm** / `vp` toolchain and is not merged into the Bun workspace.
 
+For a fresh checkout, use `bun run bootstrap`. It initializes the direct T3
+submodule and builds the assistant server without installing pnpm globally.
+Normal `bun run dev` calls the same idempotent preparation step and does no
+vendor work when the pinned bundle is already ready. Never initialize the T3
+submodule recursively.
+
 ## Running locally
 
 From the repository root:
 
 ```bash
-bun install
+bun run bootstrap
 bun run dev
 ```
 

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import type { ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { net, protocol } from "electron"
+import { net, protocol, type Session } from "electron"
 import { pathToFileURL } from "node:url"
 
 import {
@@ -19,6 +19,7 @@ import {
   packDirectoryToZip,
   unpackZip,
 } from "./orgDevAppZip"
+import { uploadPackedDevApp } from "./orgDevAppUpload"
 
 const STATIC_OUTPUT_CANDIDATES = ["dist", "build", "out", "output", ".output/public"] as const
 const DEVAPP_CACHE_MAX_BYTES = 512 * 1024 * 1024
@@ -51,6 +52,13 @@ export interface OrgDevAppBuildResult {
   entryPath: string
   framework: string
   outputDir: string
+}
+
+export interface OrgDevAppBuildAndUploadResult {
+  storageId: string
+  contentHash: string
+  entryPath: string
+  framework: string
 }
 
 export interface OrgDevAppPrepareResult {
@@ -222,8 +230,10 @@ function directorySize(rootDir: string): number {
 
 export class OrgDevAppArtifactService {
   private protocolRegistered = false
+  private readonly registeredSessionProtocols = new WeakSet<Session>()
   private readonly getCacheRoot: () => string
   private readonly activeBuilds = new Map<string, ChildProcess>()
+  private readonly activeUploads = new Map<string, AbortController>()
   private readonly cancelledBuilds = new Set<string>()
   private readonly pendingArtifacts = new Map<string, Promise<OrgDevAppPrepareResult>>()
 
@@ -284,9 +294,11 @@ export class OrgDevAppArtifactService {
 
   cancelBuild(operationId: string): boolean {
     const child = this.activeBuilds.get(operationId)
-    if (!child) return false
+    const upload = this.activeUploads.get(operationId)
+    if (!child && !upload) return false
     this.cancelledBuilds.add(operationId)
-    terminateChildProcess(child)
+    if (child) terminateChildProcess(child)
+    upload?.abort()
     return true
   }
 
@@ -296,6 +308,39 @@ export class OrgDevAppArtifactService {
       terminateChildProcess(child)
     }
     this.activeBuilds.clear()
+    for (const upload of this.activeUploads.values()) upload.abort()
+    this.activeUploads.clear()
+  }
+
+  async buildAndUpload(
+    projectRoot: string,
+    uploadUrl: string,
+    options: { operationId?: string } = {},
+  ): Promise<OrgDevAppBuildAndUploadResult> {
+    const controller = new AbortController()
+    const operationId = options.operationId
+    if (operationId) this.activeUploads.set(operationId, controller)
+    try {
+      const packed = await this.buildAndPack(projectRoot, options)
+      if (controller.signal.aborted) throw new Error("Publishing was cancelled.")
+      const uploaded = await uploadPackedDevApp(uploadUrl, packed, {
+        signal: controller.signal,
+      })
+      return {
+        storageId: uploaded.storageId,
+        contentHash: packed.contentHash,
+        entryPath: packed.entryPath,
+        framework: packed.framework,
+      }
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error("Publishing was cancelled.")
+      throw error
+    } finally {
+      if (operationId) {
+        this.activeUploads.delete(operationId)
+        this.cancelledBuilds.delete(operationId)
+      }
+    }
   }
 
   async buildAndPack(
@@ -424,40 +469,48 @@ export class OrgDevAppArtifactService {
     }
   }
 
+  private readonly handleProtocolRequest = async (request: Request): Promise<Response> => {
+    const parsed = parseOrgDevAppUrl(request.url)
+    if (!parsed) {
+      return new Response("Invalid DevApp URL", {
+        status: 400,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      })
+    }
+    const cacheDir = this.getCacheDir(parsed.contentHash)
+    const filePath = resolveCachedFile(cacheDir, parsed.assetPath, "index.html")
+    if (!filePath) {
+      return new Response("DevApp file not found", {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      })
+    }
+    const fileUrl = pathToFileURL(filePath).toString()
+    const fileResponse = await net.fetch(fileUrl)
+    const headers = new Headers(fileResponse.headers)
+    headers.set("content-type", mimeForPath(filePath))
+    headers.set("cache-control", "public, max-age=31536000, immutable")
+    headers.set(
+      "content-security-policy",
+      "default-src 'self' https: data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; connect-src https: wss:; script-src 'self'; style-src 'self' 'unsafe-inline'",
+    )
+    headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), display-capture=(), usb=(), serial=(), hid=()")
+    headers.set("x-content-type-options", "nosniff")
+    return new Response(fileResponse.body, {
+      status: fileResponse.status,
+      headers,
+    })
+  }
+
   registerProtocol(): void {
     if (this.protocolRegistered) return
-    protocol.handle(ORG_DEVAPP_SCHEME, async (request) => {
-      const parsed = parseOrgDevAppUrl(request.url)
-      if (!parsed) {
-        return new Response("Invalid DevApp URL", {
-          status: 400,
-          headers: { "content-type": "text/plain; charset=utf-8" },
-        })
-      }
-      const cacheDir = this.getCacheDir(parsed.contentHash)
-      const filePath = resolveCachedFile(cacheDir, parsed.assetPath, "index.html")
-      if (!filePath) {
-        return new Response("DevApp file not found", {
-          status: 404,
-          headers: { "content-type": "text/plain; charset=utf-8" },
-        })
-      }
-      const fileUrl = pathToFileURL(filePath).toString()
-      const fileResponse = await net.fetch(fileUrl)
-      const headers = new Headers(fileResponse.headers)
-      headers.set("content-type", mimeForPath(filePath))
-      headers.set("cache-control", "public, max-age=31536000, immutable")
-      headers.set(
-        "content-security-policy",
-        "default-src 'self' https: data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; connect-src https: wss:; script-src 'self'; style-src 'self' 'unsafe-inline'",
-      )
-      headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), display-capture=(), usb=(), serial=(), hid=()")
-      headers.set("x-content-type-options", "nosniff")
-      return new Response(fileResponse.body, {
-        status: fileResponse.status,
-        headers,
-      })
-    })
+    protocol.handle(ORG_DEVAPP_SCHEME, this.handleProtocolRequest)
     this.protocolRegistered = true
+  }
+
+  registerProtocolForSession(targetSession: Session): void {
+    if (this.registeredSessionProtocols.has(targetSession)) return
+    targetSession.protocol.handle(ORG_DEVAPP_SCHEME, this.handleProtocolRequest)
+    this.registeredSessionProtocols.add(targetSession)
   }
 }

@@ -142,16 +142,25 @@ async function waitForEnvironment(baseUrl: string, deadlineMs = 45_000): Promise
   throw new Error(`Timed out waiting for T3 environment at ${baseUrl}`);
 }
 
-function resolveT3ServerNodeExecutable(): string {
+interface T3NodeLaunch {
+  readonly executable: string;
+  readonly environment: NodeJS.ProcessEnv;
+}
+
+function resolveT3ServerNodeLaunch(): T3NodeLaunch {
   const override = process.env.COZEA_T3_NODE?.trim() || process.env.NPM_NODE_EXECPATH?.trim();
   if (override) {
-    return override;
+    return { executable: override, environment: { ...process.env } };
   }
-  // Shadow child processes forked from Electron inherit Electron as execPath.
+  // Packaged shadow children can reuse Electron's embedded Node runtime instead
+  // of requiring end users to install a compatible system Node separately.
   if (process.versions.electron) {
-    return "node";
+    return {
+      executable: process.execPath,
+      environment: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    };
   }
-  return process.execPath;
+  return { executable: process.execPath, environment: { ...process.env } };
 }
 
 export async function startT3ServerProcess(
@@ -160,7 +169,7 @@ export async function startT3ServerProcess(
   assertNodeVersionForT3Server();
   if (!vendorT3ServerBinExists()) {
     throw new Error(
-      `Missing T3 server bundle at ${VENDOR_T3_SERVER_BIN}. Run pnpm install/build in vendor/t3code.`,
+      `Missing T3 server bundle at ${VENDOR_T3_SERVER_BIN}. Run bun run prepare:t3-runtime from the Cozea repository.`,
     );
   }
 
@@ -177,12 +186,13 @@ export async function startT3ServerProcess(
 
   const startupOutput = createT3StartupOutputTracker(options.onLog);
 
+  const nodeLaunch = resolveT3ServerNodeLaunch();
   const child: ChildProcessByStdio<null, Readable, Readable> = spawn(
-    resolveT3ServerNodeExecutable(),
+    nodeLaunch.executable,
     [VENDOR_T3_SERVER_BIN, "serve", "--port", String(port), "--host", host, "--no-browser", "--base-dir", baseDir],
     {
       cwd: VENDOR_T3_SERVER_PKG,
-      env: { ...process.env },
+      env: nodeLaunch.environment,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );

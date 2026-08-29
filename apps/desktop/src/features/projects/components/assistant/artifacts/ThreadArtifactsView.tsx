@@ -20,6 +20,7 @@ interface ThreadArtifactsViewProps {
   media: ThreadArtifactMediaState;
   selectedArtifactId?: string | null;
   onSelectedArtifactChange?: (artifactId: string | null) => void;
+  onBackToChat?: () => void;
 }
 
 function artifactFileName(artifact: ThreadImageArtifact): string {
@@ -107,6 +108,7 @@ export function ThreadArtifactsView({
   media,
   selectedArtifactId,
   onSelectedArtifactChange,
+  onBackToChat,
 }: ThreadArtifactsViewProps) {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -215,6 +217,26 @@ export function ThreadArtifactsView({
       className="h-full min-h-0 overflow-y-auto bg-content-surface p-3"
       aria-label="Thread artifacts"
     >
+      {onBackToChat ? (
+        <div className="mb-3 flex min-h-7 items-center justify-between border-b border-border/40 pb-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground cursor-pointer"
+            onClick={onBackToChat}
+          >
+            <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3" />
+            Back to Chat
+          </Button>
+          {artifacts.length > 0 ? (
+            <span className="text-[10px] text-muted-foreground">
+              {artifacts.length} {artifacts.length === 1 ? "artifact" : "artifacts"}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       {orderedArtifacts.length === 0 ? (
         <div className="flex h-full min-h-52 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
           <HugeiconsIcon icon={__ImageHugeIcon} className="size-7 opacity-70" aria-hidden="true" />

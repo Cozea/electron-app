@@ -2,12 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   isProjectDevAppLogoDataUrl,
+  PROJECT_DEVAPP_LOGO_ACCEPT,
   PROJECT_DEVAPP_LOGO_MAX_DATA_URL_LENGTH,
   PROJECT_DEVAPP_LOGO_MAX_INPUT_BYTES,
   validateProjectDevAppLogoFile,
 } from "@/features/devapps/projectDevAppLogo";
 
 describe("Project DevApp logos", () => {
+  it("advertises macOS-compatible file extensions", () => {
+    expect(PROJECT_DEVAPP_LOGO_ACCEPT).toContain(".png");
+    expect(PROJECT_DEVAPP_LOGO_ACCEPT).toContain(".jpeg");
+    expect(PROJECT_DEVAPP_LOGO_ACCEPT).toContain(".webp");
+  });
+
   it.each(["image/png", "image/jpeg", "image/webp"])("accepts %s uploads", (type) => {
     expect(validateProjectDevAppLogoFile({ type, size: 128_000 })).toBeNull();
   });

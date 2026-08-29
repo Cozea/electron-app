@@ -24,6 +24,7 @@ import type * as lib_projectAccess from "../lib/projectAccess.js";
 import type * as lib_projectGitMetadata from "../lib/projectGitMetadata.js";
 import type * as lib_projectPagination from "../lib/projectPagination.js";
 import type * as lib_projectSharing from "../lib/projectSharing.js";
+import type * as lib_storageHash from "../lib/storageHash.js";
 import type * as lib_usagePeriods from "../lib/usagePeriods.js";
 import type * as lib_workspaceLimits from "../lib/workspaceLimits.js";
 import type * as lib_workspaceProjectAccess from "../lib/workspaceProjectAccess.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   "lib/projectGitMetadata": typeof lib_projectGitMetadata;
   "lib/projectPagination": typeof lib_projectPagination;
   "lib/projectSharing": typeof lib_projectSharing;
+  "lib/storageHash": typeof lib_storageHash;
   "lib/usagePeriods": typeof lib_usagePeriods;
   "lib/workspaceLimits": typeof lib_workspaceLimits;
   "lib/workspaceProjectAccess": typeof lib_workspaceProjectAccess;
