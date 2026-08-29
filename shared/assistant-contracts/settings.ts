@@ -85,7 +85,7 @@ export interface ClaudeSettings {
 
 
 export const CursorSettings = Schema.Struct({
-  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   binaryPath: makeBinaryPathSetting("agent"),
   apiEndpoint: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),

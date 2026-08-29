@@ -13,28 +13,29 @@
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
   --radius: 0.625rem;
-  /* Light shell: pronounced grey canvas (#d4d4d4) so tile cards pop; tiles
-     use --content-surface, white stays for dialogs/popovers. */
-  --background: oklch(0.87 0 0);
+  /* Light shell: pure white background and white tiles */
+  --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  --content-surface: oklch(1 0 0);
+  --surface-raised: oklch(0.97 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.84 0 0);
+  --secondary: oklch(0.95 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.84 0 0);
+  --muted: oklch(0.95 0 0);
   --muted-foreground: oklch(0.50 0 0);
-  --accent: oklch(0.88 0 0);
+  --accent: oklch(0.94 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --table-row-hover: color-mix(in oklch, var(--secondary) 90%, var(--foreground) 10%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 88%, var(--foreground) 12%);
   --destructive: oklch(0.577 0.245 27.325);
   --success: oklch(0.627 0.194 149.214);
-  --border: oklch(0.82 0 0);
-  --input: oklch(0.82 0 0);
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.92 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -742,12 +743,12 @@ body {
 
 /* Primary left sidebars: translucent surface + blur (native window vibrancy/Mica shows through). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent) !important;
-  backdrop-filter: blur(22px) saturate(1.12);
-  -webkit-backdrop-filter: blur(22px) saturate(1.12);
+  background-color: color-mix(in oklch, var(--left-sidebar-surface) 18%, transparent) !important;
+  backdrop-filter: blur(28px) saturate(1.25);
+  -webkit-backdrop-filter: blur(28px) saturate(1.25);
   isolation: isolate;
   /* Sidebar reads as recessed: the content surface casts a soft shadow onto its right edge. */
-  box-shadow: inset -28px 0 32px -20px rgb(0 0 0 / 0.07);
+  box-shadow: inset -28px 0 32px -20px rgb(0 0 0 / 0.05);
 }
 
 .dark .sidebar-glass [data-slot="sidebar-inner"],
@@ -756,6 +757,8 @@ body {
 .forest .sidebar-glass [data-slot="sidebar-inner"],
 .clay .sidebar-glass [data-slot="sidebar-inner"] {
   background-color: color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent) !important;
+  backdrop-filter: blur(22px) saturate(1.12);
+  -webkit-backdrop-filter: blur(22px) saturate(1.12);
   box-shadow: inset -32px 0 36px -22px rgb(0 0 0 / 0.18);
 }
 
@@ -1009,20 +1012,21 @@ body {
 
 .dark {
   color-scheme: dark;
-  /* Cursor-like dark canvas (#1f1f1f); was 0.20, which read near-black. */
-  --background: oklch(0.24 0 0);
+  --background: rgb(8, 8, 8);
   --foreground: oklch(0.985 0 0);
+  --content-surface: rgb(22, 22, 22);
+  --surface-raised: rgb(36, 36, 36);
   --card: oklch(0.30 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.30 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.33 0 0);
+  --secondary: rgb(36, 36, 36);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.33 0 0);
+  --muted: rgb(36, 36, 36);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.33 0 0);
+  --accent: rgb(36, 36, 36);
   --accent-foreground: oklch(0.985 0 0);
   --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
@@ -1458,22 +1462,23 @@ body {
 
 /* Vibrancy support: ensure backgrounds are translucent where needed */
 :root {
-  --sidebar-opacity: 0.94;
+  --sidebar-opacity: 0.78;
   --sidebar-surface: color-mix(
     in oklch,
     var(--sidebar),
     transparent calc(100% - var(--sidebar-opacity) * 100%)
   );
-  /* Light theme: grey cards above the dark canvas; chips/hovers (--secondary)
-     sit below the canvas, white stays for dialogs/popovers. */
-  --content-surface: oklch(0.915 0 0);
-  /* Large chat surfaces on tiles (user bubbles, composer): canvas color in
-     light mode (soft inset against the lighter tile); dark themes reuse
-     their interactive tier. */
-  --surface-raised: var(--background);
+  --content-surface: oklch(1 0 0);
+  --surface-raised: oklch(0.97 0 0);
 }
 
-.dark,
+.dark {
+  --content-surface: rgb(22, 22, 22);
+  --surface-raised: rgb(36, 36, 36);
+  --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
+  --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
+}
+
 .navy,
 .wine,
 .forest,
@@ -1537,6 +1542,94 @@ body {
     color-mix(in oklch, var(--background) 82%, transparent),
     transparent
   );
+}
+
+/* Accordion animation keyframes */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height, var(--accordion-panel-height, var(--collapsible-panel-height, auto)));
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height, var(--accordion-panel-height, var(--collapsible-panel-height, auto)));
+  }
+  to {
+    height: 0;
+  }
+}
+
+.animate-accordion-down {
+  animation: accordion-down 0.2s ease-out;
+}
+
+.animate-accordion-up {
+  animation: accordion-up 0.2s ease-out;
+}
+
+/* Scroll-driven Fade Mask (Skiper87) */
+@supports (animation-timeline: scroll()) {
+  @property --scroll-fade-top {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+  }
+
+  @property --scroll-fade-bottom {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 36px;
+  }
+
+  .scroll-fade-y {
+    --scroll-fade-top: 0px;
+    --scroll-fade-bottom: 36px;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--scroll-fade-top),
+      #000 calc(100% - var(--scroll-fade-bottom)),
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--scroll-fade-top),
+      #000 calc(100% - var(--scroll-fade-bottom)),
+      transparent 100%
+    );
+    mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    animation:
+      scrollFadeTop 1 linear both,
+      scrollFadeBottom 1 linear both;
+    animation-timeline: scroll(self), scroll(self);
+    animation-range:
+      0% 48px,
+      calc(100% - 48px) 100%;
+  }
+
+  @keyframes scrollFadeTop {
+    from {
+      --scroll-fade-top: 0px;
+    }
+    to {
+      --scroll-fade-top: 36px;
+    }
+  }
+
+  @keyframes scrollFadeBottom {
+    from {
+      --scroll-fade-bottom: 36px;
+    }
+    to {
+      --scroll-fade-bottom: 0px;
+    }
+  }
 }
 
 .light .file-tree-panel-border {

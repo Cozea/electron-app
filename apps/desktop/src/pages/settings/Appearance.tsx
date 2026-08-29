@@ -3,6 +3,7 @@
 import {
   SettingsGroup,
   SettingsPageBody,
+  SettingsPageHeader,
   SettingsRow,
   SettingsRowControl,
   SettingsRowLabel,
@@ -91,6 +92,7 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
 
   return (
     <SettingsPageBody surface={surface}>
+      <SettingsPageHeader title={t("settings.nav.appearance")} />
       <section>
         <SettingsSectionTitle>{t("settings.appearance.language")}</SettingsSectionTitle>
         <SettingsSectionDescription>{t("settings.appearance.languageDesc")}</SettingsSectionDescription>

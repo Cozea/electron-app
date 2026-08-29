@@ -7,14 +7,22 @@ import { useAuth } from "@/contexts/AuthContext"
 import {
   SettingsGroup,
   SettingsPageBody,
+  SettingsPageHeader,
   SettingsRow,
   SettingsRowControl,
   SettingsSectionDescription,
   SettingsSectionTitle,
+  settingsNativeSelectClass,
 } from "@/components/settings/SettingsChrome"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useTranslation } from "@/lib/i18n"
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
@@ -25,7 +33,11 @@ import {
 } from "@/lib/deviceSession"
 
 import { HugeiconsIcon } from "@hugeicons/react"
-import { CheckmarkCircle02Icon as __CheckHugeIcon } from "@hugeicons/core-free-icons"
+import {
+  CheckmarkCircle02Icon as __CheckHugeIcon,
+  MoreHorizontalIcon as __MoreHorizontalHugeIcon,
+  PlusSignIcon as __PlusHugeIcon,
+} from "@hugeicons/core-free-icons"
 
 interface OrganizationsProps {
   surface?: "page" | "drawer"
@@ -41,6 +53,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
   const { convexUserId } = useAuth()
   const { t } = useTranslation()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
+  const [isCreatingOrg, setIsCreatingOrg] = useState(false)
   const [orgName, setOrgName] = useState("")
   const [deviceIdentityId, setDeviceIdentityId] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -78,7 +91,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
   )
   const pendingEnrollments = useQuery(
     api.organizations.listEnrollments,
-    convexUserId && activeOrgId && activeOrgId && orgs?.find((org) => org.organizationId === activeOrgId)?.role === "admin"
+    convexUserId && activeOrgId && orgs?.find((org) => org.organizationId === activeOrgId)?.role === "admin"
       ? { organizationId: activeOrgId }
       : "skip",
   )
@@ -118,72 +131,51 @@ export function Organizations({ surface = "page", route: _route }: Organizations
 
   return (
     <SettingsPageBody surface={surface}>
-      <section>
-        <SettingsSectionTitle>{t("settings.organizations.title")}</SettingsSectionTitle>
-        <SettingsSectionDescription>
-          {t("settings.organizations.description")}
-        </SettingsSectionDescription>
-        {error ? <p className="mb-3 px-1 text-xs text-destructive">{error}</p> : null}
+      <SettingsPageHeader
+        title={t("settings.nav.organizations")}
+        description={t("settings.organizations.description")}
+      />
 
-        <SettingsGroup>
-          <SettingsRow isFirst>
-            <div className="min-w-0 flex-1 pr-3">
-              <Input
-                value={orgName}
-                onChange={(event) => setOrgName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && orgName.trim() && !busy && convexUserId) {
-                    void run(async () => {
-                      if (!convexUserId) return
-                      const created = await createOrg({ name: orgName })
-                      setOrgName("")
-                      setSelectedOrgId(created.organizationId)
-                    })
-                  }
-                }}
-                placeholder={t("settings.organizations.createPlaceholder")}
-                className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
-              />
-            </div>
-            <SettingsRowControl>
-              <Button
-                size="sm"
-                className="h-7 text-[11px]"
-                disabled={busy || !convexUserId || !orgName.trim()}
-                onClick={() =>
-                  void run(async () => {
-                    if (!convexUserId) return
-                    const created = await createOrg({ name: orgName })
-                    setOrgName("")
-                    setSelectedOrgId(created.organizationId)
-                  })
-                }
-              >
-                {t("settings.organizations.create")}
-              </Button>
-            </SettingsRowControl>
-          </SettingsRow>
-        </SettingsGroup>
-      </section>
+      {error ? <p className="mb-3 px-1 text-xs text-destructive">{error}</p> : null}
 
+      {/* 1. Pending Incoming Invitations */}
       {(incomingEnrollments ?? []).length > 0 ? (
         <section>
           <SettingsSectionTitle>Pending invitations</SettingsSectionTitle>
-          <SettingsSectionDescription>Accept only groups you recognize. Membership grants access to that group’s projects.</SettingsSectionDescription>
+          <SettingsSectionDescription>
+            Accept only groups you recognize. Membership grants access to that group’s projects and DevApps.
+          </SettingsSectionDescription>
           <SettingsGroup>
             {(incomingEnrollments ?? []).map((enrollment, index) => (
               <SettingsRow key={enrollment._id} isFirst={index === 0}>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium">{enrollment.organizationName}</p>
+                  <p className="text-xs font-medium text-foreground">{enrollment.organizationName}</p>
                   <p className="truncate font-mono text-[11px] text-muted-foreground">{enrollment.groupId}</p>
                 </div>
                 <SettingsRowControl className="gap-2">
-                  <Button variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
-                    onClick={() => void run(async () => { await resolveDeviceEnrollment({ enrollmentId: enrollment._id, accept: false }) })}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await resolveDeviceEnrollment({ enrollmentId: enrollment._id, accept: false })
+                      })
+                    }
+                  >
                     Reject
                   </Button>
-                  <Button size="sm" className="h-7 text-[11px]" disabled={busy}
-                    onClick={() => void run(async () => { await resolveDeviceEnrollment({ enrollmentId: enrollment._id, accept: true }) })}>
+                  <Button
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await resolveDeviceEnrollment({ enrollmentId: enrollment._id, accept: true })
+                      })
+                    }
+                  >
                     Accept
                   </Button>
                 </SettingsRowControl>
@@ -193,40 +185,79 @@ export function Organizations({ surface = "page", route: _route }: Organizations
         </section>
       ) : null}
 
+      {/* 2. Organizations Selector & List */}
       <section>
-        <SettingsSectionTitle>Recover group access</SettingsSectionTitle>
-        <SettingsSectionDescription>Redeem a one-time recovery code on this replacement device. It receives its own new device ID.</SettingsSectionDescription>
-        <SettingsGroup>
-          <SettingsRow isFirst>
-            <div className="min-w-0 flex-1 pr-3">
-              <Input
-                value={recoveryCode}
-                onChange={(event) => setRecoveryCode(event.target.value)}
-                placeholder="czr_…"
-                className="h-7 w-full border-0 border-none bg-transparent px-0 font-mono text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
-              />
-            </div>
-            <SettingsRowControl>
-              <Button
-                size="sm"
-                className="h-7 text-[11px]"
-                disabled={busy || !recoveryCode.trim()}
-                onClick={() =>
-                  void run(async () => {
-                    await redeemOrganizationRecoveryCode(recoveryCode.trim())
-                    setRecoveryCode("")
-                  })
-                }
-              >
-                Recover
-              </Button>
-            </SettingsRowControl>
-          </SettingsRow>
-        </SettingsGroup>
-      </section>
+        <div className="mb-2 flex items-center justify-between px-1">
+          <SettingsSectionTitle className="mb-0">{t("settings.organizations.title")}</SettingsSectionTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            onClick={() => setIsCreatingOrg((prev) => !prev)}
+          >
+            <HugeiconsIcon icon={__PlusHugeIcon} className="size-3.5" />
+            <span>New organization</span>
+          </Button>
+        </div>
 
-      <section>
-        <SettingsSectionTitle>{t("settings.organizations.yours")}</SettingsSectionTitle>
+        {isCreatingOrg ? (
+          <SettingsGroup className="mb-3">
+            <SettingsRow isFirst>
+              <div className="min-w-0 flex-1 pr-3">
+                <Input
+                  value={orgName}
+                  onChange={(event) => setOrgName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && orgName.trim() && !busy && convexUserId) {
+                      void run(async () => {
+                        if (!convexUserId) return
+                        const created = await createOrg({ name: orgName.trim() })
+                        setOrgName("")
+                        setIsCreatingOrg(false)
+                        setSelectedOrgId(created.organizationId)
+                      })
+                    }
+                  }}
+                  placeholder={t("settings.organizations.createPlaceholder")}
+                  className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
+                  autoFocus
+                />
+              </div>
+              <SettingsRowControl className="gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  disabled={busy}
+                  onClick={() => {
+                    setIsCreatingOrg(false)
+                    setOrgName("")
+                  }}
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  disabled={busy || !convexUserId || !orgName.trim()}
+                  onClick={() =>
+                    void run(async () => {
+                      if (!convexUserId) return
+                      const created = await createOrg({ name: orgName.trim() })
+                      setOrgName("")
+                      setIsCreatingOrg(false)
+                      setSelectedOrgId(created.organizationId)
+                    })
+                  }
+                >
+                  {t("settings.organizations.create")}
+                </Button>
+              </SettingsRowControl>
+            </SettingsRow>
+          </SettingsGroup>
+        ) : null}
+
         {(orgs ?? []).length === 0 ? (
           <SettingsGroup>
             <SettingsRow isFirst>
@@ -272,8 +303,10 @@ export function Organizations({ surface = "page", route: _route }: Organizations
         )}
       </section>
 
+      {/* 3. Active Organization Details */}
       {activeOrg ? (
         <>
+          {/* Org Group ID & Copy */}
           <section>
             <SettingsSectionTitle>{t("settings.organizations.groupId")}</SettingsSectionTitle>
             <SettingsSectionDescription>
@@ -301,6 +334,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
             </SettingsGroup>
           </section>
 
+          {/* Members List & Device Enrollment */}
           <section>
             <SettingsSectionTitle>{t("settings.organizations.members")}</SettingsSectionTitle>
             <SettingsGroup>
@@ -315,40 +349,72 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                     </p>
                   </div>
                   <SettingsRowControl className="gap-2">
-                    <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] font-normal">
-                      {member.role === "admin"
-                        ? t("settings.organizations.role.admin")
-                        : t("settings.organizations.role.member")}
-                    </Badge>
                     {isAdmin && convexUserId !== member.userId ? (
                       <>
-                        <Button variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
-                          onClick={() => void run(async () => {
-                            await updateMemberRole({ organizationId: activeOrg.organizationId, memberUserId: member.userId, role: member.role === "admin" ? "member" : "admin" })
-                          })}>
-                          {member.role === "admin" ? "Make member" : "Make admin"}
-                        </Button>
-                        {activeOrgDetails?.isCreator ? (
-                          <Button variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
-                            onClick={() => void run(async () => {
-                              await transferAdministration({ organizationId: activeOrg.organizationId, memberUserId: member.userId })
-                            })}>
-                            Transfer
-                          </Button>
-                        ) : null}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-[11px] hover:text-destructive"
+                        <select
+                          className={cn(settingsNativeSelectClass, "h-7 text-xs font-normal py-0")}
+                          value={member.role}
                           disabled={busy}
-                          onClick={() => void run(async () => {
-                            await removeMember({ organizationId: activeOrg.organizationId, memberUserId: member.userId })
-                          })}
+                          onChange={(e) => {
+                            const nextRole = e.target.value as "admin" | "member"
+                            void run(async () => {
+                              await updateMemberRole({
+                                organizationId: activeOrg.organizationId,
+                                memberUserId: member.userId,
+                                role: nextRole,
+                              })
+                            })
+                          }}
                         >
-                          {t("settings.organizations.remove")}
-                        </Button>
+                          <option value="member">{t("settings.organizations.role.member")}</option>
+                          <option value="admin">{t("settings.organizations.role.admin")}</option>
+                        </select>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="size-7 rounded-lg p-0 text-muted-foreground hover:text-foreground"
+                              disabled={busy}
+                            >
+                              <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            {activeOrgDetails?.isCreator ? (
+                              <DropdownMenuItem
+                                onClick={() => void run(async () => {
+                                  await transferAdministration({
+                                    organizationId: activeOrg.organizationId,
+                                    memberUserId: member.userId,
+                                  })
+                                })}
+                              >
+                                Transfer ownership
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => void run(async () => {
+                                await removeMember({
+                                  organizationId: activeOrg.organizationId,
+                                  memberUserId: member.userId,
+                                })
+                              })}
+                            >
+                              {t("settings.organizations.remove")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </>
-                    ) : null}
+                    ) : (
+                      <Badge variant="secondary" className="h-6 rounded-lg px-2.5 text-xs font-normal">
+                        {member.role === "admin"
+                          ? t("settings.organizations.role.admin")
+                          : t("settings.organizations.role.member")}
+                      </Badge>
+                    )}
                   </SettingsRowControl>
                 </SettingsRow>
               ))}
@@ -365,7 +431,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                             if (!convexUserId) return
                             await createDeviceEnrollment({
                               organizationId: activeOrg.organizationId,
-                              identityKey: deviceIdentityId,
+                              identityKey: deviceIdentityId.trim(),
                               role: "member",
                             })
                             setDeviceIdentityId("")
@@ -386,7 +452,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                           if (!convexUserId) return
                           await createDeviceEnrollment({
                             organizationId: activeOrg.organizationId,
-                            identityKey: deviceIdentityId,
+                            identityKey: deviceIdentityId.trim(),
                             role: "member",
                           })
                           setDeviceIdentityId("")
@@ -399,17 +465,27 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                 </SettingsRow>
               ) : null}
             </SettingsGroup>
+
             {isAdmin && (pendingEnrollments ?? []).length > 0 ? (
               <SettingsGroup className="mt-2">
                 {(pendingEnrollments ?? []).map((enrollment, index) => (
                   <SettingsRow key={enrollment._id} isFirst={index === 0}>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium">Pending device</p>
+                      <p className="text-xs font-medium text-foreground">Pending device</p>
                       <p className="truncate font-mono text-[11px] text-muted-foreground">{enrollment.targetIdentityKey}</p>
                     </div>
                     <SettingsRowControl>
-                      <Button variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
-                        onClick={() => void run(async () => { await cancelDeviceEnrollment({ enrollmentId: enrollment._id }) })}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px]"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () => {
+                            await cancelDeviceEnrollment({ enrollmentId: enrollment._id })
+                          })
+                        }
+                      >
                         Cancel
                       </Button>
                     </SettingsRowControl>
@@ -419,33 +495,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
             ) : null}
           </section>
 
-          {isAdmin ? (
-            <section>
-              <SettingsSectionTitle>Offline recovery</SettingsSectionTitle>
-              <SettingsSectionDescription>Create one code, store it offline, and rotate it after use or suspected exposure.</SettingsSectionDescription>
-              <SettingsGroup>
-                <SettingsRow isFirst>
-                  <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
-                    {generatedRecoveryCode ?? "No recovery code shown"}
-                  </p>
-                  <SettingsRowControl>
-                    <Button variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
-                      onClick={() => void run(async () => {
-                        const result = await createOrganizationRecoveryCode(activeOrg.organizationId)
-                        setGeneratedRecoveryCode(result.recoveryCode)
-                      })}>
-                      {generatedRecoveryCode ? "Rotate code" : "Create code"}
-                    </Button>
-                    {generatedRecoveryCode ? (
-                      <Button variant="outline" size="sm" className="h-7 text-[11px]"
-                        onClick={() => void copyId(generatedRecoveryCode)}>Copy</Button>
-                    ) : null}
-                  </SettingsRowControl>
-                </SettingsRow>
-              </SettingsGroup>
-            </section>
-          ) : null}
-
+          {/* DevApps in this organization */}
           <section>
             <SettingsSectionTitle>{t("settings.organizations.devApps")}</SettingsSectionTitle>
             {(devApps ?? []).length === 0 ? (
@@ -532,8 +582,86 @@ export function Organizations({ surface = "page", route: _route }: Organizations
               </SettingsGroup>
             )}
           </section>
+
+          {/* Offline Recovery Code (Admins) */}
+          {isAdmin ? (
+            <section>
+              <SettingsSectionTitle>Offline recovery</SettingsSectionTitle>
+              <SettingsSectionDescription>
+                Create one recovery code, store it offline, and rotate it after use or suspected exposure.
+              </SettingsSectionDescription>
+              <SettingsGroup>
+                <SettingsRow isFirst>
+                  <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+                    {generatedRecoveryCode ?? "No recovery code shown"}
+                  </p>
+                  <SettingsRowControl className="gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          const result = await createOrganizationRecoveryCode(activeOrg.organizationId)
+                          setGeneratedRecoveryCode(result.recoveryCode)
+                        })
+                      }
+                    >
+                      {generatedRecoveryCode ? "Rotate code" : "Create code"}
+                    </Button>
+                    {generatedRecoveryCode ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px]"
+                        onClick={() => void copyId(generatedRecoveryCode)}
+                      >
+                        Copy
+                      </Button>
+                    ) : null}
+                  </SettingsRowControl>
+                </SettingsRow>
+              </SettingsGroup>
+            </section>
+          ) : null}
         </>
       ) : null}
+
+      {/* 4. Group Access Recovery (Redeem code) */}
+      <section>
+        <SettingsSectionTitle>Recover group access</SettingsSectionTitle>
+        <SettingsSectionDescription>
+          Redeem a one-time recovery code on this replacement device to rejoin your organization.
+        </SettingsSectionDescription>
+        <SettingsGroup>
+          <SettingsRow isFirst>
+            <div className="min-w-0 flex-1 pr-3">
+              <Input
+                value={recoveryCode}
+                onChange={(event) => setRecoveryCode(event.target.value)}
+                placeholder="czr_…"
+                className="h-7 w-full border-0 border-none bg-transparent px-0 font-mono text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
+              />
+            </div>
+            <SettingsRowControl>
+              <Button
+                size="sm"
+                className="h-7 text-[11px]"
+                disabled={busy || !recoveryCode.trim()}
+                onClick={() =>
+                  void run(async () => {
+                    await redeemOrganizationRecoveryCode(recoveryCode.trim())
+                    setRecoveryCode("")
+                  })
+                }
+              >
+                Recover
+              </Button>
+            </SettingsRowControl>
+          </SettingsRow>
+        </SettingsGroup>
+      </section>
     </SettingsPageBody>
   )
 }

@@ -6,6 +6,8 @@ export {
   isProviderEnabled,
   normalizeClaudeModelOptionsWithCapabilities,
   normalizeCodexModelOptionsWithCapabilities,
+  normalizeCursorModelOptionsWithCapabilities,
+  normalizeOpenCodeModelOptionsWithCapabilities,
   resolveSelectableProvider,
 } from "@/stores/providerModels"
 

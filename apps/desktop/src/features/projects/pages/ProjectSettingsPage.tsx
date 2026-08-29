@@ -18,6 +18,17 @@ import { DevAppIcon } from '@/features/devapps/components/DevAppIcon'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  SettingsGroup,
+  SettingsDangerGroup,
+  SettingsRow,
+  SettingsRowLabel,
+  SettingsRowControl,
+  SettingsSectionTitle,
+  SettingsPageHeader,
+  settingsInlineInputClass,
+  settingsInlineInputWidth,
+} from '@/components/settings/SettingsChrome'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -27,6 +38,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -40,7 +57,7 @@ import {
 } from '@/lib/collab/cipherEnvelope'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon, Edit01Icon as __EditHugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon, Edit01Icon as __EditHugeIcon, MoreHorizontalIcon as __MoreHorizontalHugeIcon } from '@hugeicons/core-free-icons'
 
 const LazyProjectDevAppLogoDialog = lazy(() =>
   import('@/features/devapps/components/ProjectDevAppLogoDialog').then((module) => ({
@@ -748,7 +765,7 @@ export function ProjectSettingsPage({
         className={cn(
           'relative flex h-full w-full flex-col overflow-hidden bg-background supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur',
           !isEmbedded &&
-            'max-w-4xl mx-auto my-10 rounded-[24px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
+            'max-w-5xl mx-auto my-8 rounded-[24px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
         )}
         onClick={!isEmbedded ? (e) => e.stopPropagation() : undefined}
       >
@@ -762,18 +779,19 @@ export function ProjectSettingsPage({
         </button>
 
         <div className="flex-1 min-h-0">
-          <ScrollArea className="h-full">
-            <div className="w-full min-h-full px-6 pt-5 pb-6 mx-auto max-w-xl">
-            <div className="w-full">
-              <section className="space-y-5">
-                <div className="min-w-0 space-y-6">
-                  <section>
-                    <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
-                      {t('settings.section.general')}
-                    </h3>
-                    <div className="flex flex-col overflow-hidden rounded-[14px] bg-muted">
-                      <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
-                        <Label htmlFor="name" className="text-xs font-medium text-foreground whitespace-nowrap">{t('settings.label.projectName')}</Label>
+          <ScrollArea className="scroll-fade-y h-full">
+            <div className="w-full min-h-full px-8 sm:px-10 pt-6 pb-12 mx-auto max-w-4xl">
+              <SettingsPageHeader
+                title={project.name}
+                description={project.description || undefined}
+              />
+              <div className="w-full space-y-6">
+                <section>
+                  <SettingsSectionTitle>{t('settings.section.general')}</SettingsSectionTitle>
+                  <SettingsGroup>
+                    <SettingsRow isFirst>
+                      <SettingsRowLabel title={t('settings.label.projectName')} htmlFor="name" />
+                      <SettingsRowControl>
                         <Input
                           id="name"
                           value={name}
@@ -781,11 +799,13 @@ export function ProjectSettingsPage({
                             setName(event.target.value)
                           }}
                           placeholder={t('settings.placeholder.projectName')}
-                          className="h-7 w-[240px] max-w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent"
+                          className={cn(settingsInlineInputClass, settingsInlineInputWidth)}
                         />
-                      </div>
-                      <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                        <Label htmlFor="description" className="text-xs font-medium text-foreground whitespace-nowrap">{t('settings.label.description')}</Label>
+                      </SettingsRowControl>
+                    </SettingsRow>
+                    <SettingsRow>
+                      <SettingsRowLabel title={t('settings.label.description')} htmlFor="description" />
+                      <SettingsRowControl>
                         <Input
                           id="description"
                           value={description}
@@ -793,33 +813,32 @@ export function ProjectSettingsPage({
                             setDescription(event.target.value)
                           }}
                           placeholder={t('settings.placeholder.description')}
-                          className="h-7 w-[240px] max-w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent"
+                          className={cn(settingsInlineInputClass, settingsInlineInputWidth)}
                         />
-                      </div>
-                      <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                        <div className="flex flex-col gap-0.5 min-w-0 pr-4">
-                          <Label htmlFor="slug" className="text-xs font-medium text-foreground">{t('settings.label.slug')}</Label>
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            {t('settings.desc.slug')}
-                          </p>
-                        </div>
+                      </SettingsRowControl>
+                    </SettingsRow>
+                    <SettingsRow>
+                      <SettingsRowLabel
+                        title={t('settings.label.slug')}
+                        description={t('settings.desc.slug')}
+                        htmlFor="slug"
+                      />
+                      <SettingsRowControl>
                         <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none opacity-50 cursor-not-allowed text-right dark:border-none dark:bg-transparent" />
+                      </SettingsRowControl>
+                    </SettingsRow>
+                    {saveError ? (
+                      <div className="border-t border-border/40 px-4 py-3">
+                        <p className="text-xs text-destructive">{saveError}</p>
                       </div>
-                      {saveError ? (
-                        <div className="border-t border-border/40 px-4 py-3">
-                          <p className="text-xs text-destructive">{saveError}</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  </section>
-                </div>
+                    ) : null}
+                  </SettingsGroup>
+                </section>
                 {orgDevApp?.hasArtifact ? (
-                  <div className="min-w-0 space-y-6">
-                    <section>
-                      <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
-                        {t('settings.section.localDevApp')}
-                      </h3>
-                      <div className="flex min-h-[68px] items-center gap-3 rounded-[14px] bg-muted px-4 py-3">
+                  <section>
+                    <SettingsSectionTitle>{t('settings.section.localDevApp')}</SettingsSectionTitle>
+                    <SettingsGroup>
+                      <div className="flex min-h-[64px] items-center gap-3 px-4 py-3">
                         <button
                           type="button"
                           aria-label={t('appStore.page.editDevAppFor').replace(
@@ -873,71 +892,68 @@ export function ProjectSettingsPage({
                           {t('settings.action.editDevApp')}
                         </Button>
                       </div>
-                    </section>
-                  </div>
+                    </SettingsGroup>
+                  </section>
                 ) : null}
-                <div className="min-w-0 space-y-6">
-                  <section>
-                    <h3 className="px-1 text-xs font-medium text-muted-foreground mb-1.5">
-                      {t('settings.section.collabSecurity')}
-                    </h3>
-                    <div className="flex flex-col overflow-hidden rounded-[14px] bg-muted">
-                      <div className="border-b border-border/40 px-4 py-3">
-                        <p className="text-xs font-medium text-foreground">{t('settings.label.collabTitle')}</p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
-                          {t('settings.desc.collabTitle')}
-                        </p>
-                      </div>
-                      <div className="px-4 py-3 text-[11px] text-muted-foreground">
-                        {collabSessionResult.status === 'loading' ? t('settings.collab.loading') : null}
-                        {collabSessionResult.status === 'error' ? (
-                          <span className="text-destructive">{collabSessionResult.error ?? t('settings.collab.error')}</span>
-                        ) : null}
-                        {collabBootstrap?.status === 'room_not_initialized' ? (
-                          <span>
-                            {t('settings.collab.notInitialized')}
-                          </span>
-                        ) : null}
-                        {collabBootstrap?.status === 'missing_for_device' ? (
-                          <span>
-                            {activeRecoveryKit
-                              ? t('settings.collab.missingForDeviceRecover')
-                              : t('settings.collab.missingForDevice')}
-                          </span>
-                        ) : null}
-                        {collabBootstrap?.status === 'device_revoked' ? (
-                          <span className="text-destructive">
-                            {t('settings.collab.deviceRevoked')}
-                          </span>
-                        ) : null}
-                        {collabBootstrap?.status === 'ready' ? (
-                          <span>
-                            {collabRotationRequired
-                              ? 'A device was revoked. Rotate the room key before continuing collaboration.'
-                              : pendingRequestCount > 0
-                                ? t('settings.collab.readyDevices').replace('{count}', String(pendingRequestCount))
-                                : t('settings.collab.readyNoDevices')}
-                          </span>
-                        ) : null}
-                      </div>
-                      {collabError ? (
-                        <div className="border-t border-border/40 px-4 py-3">
-                          <p className="text-xs text-destructive">{collabError}</p>
-                        </div>
+
+                <section>
+                  <SettingsSectionTitle>{t('settings.section.collabSecurity')}</SettingsSectionTitle>
+                  <SettingsGroup>
+                    <div className="px-4 py-3">
+                      <p className="text-xs font-medium text-foreground">{t('settings.label.collabTitle')}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {t('settings.desc.collabTitle')}
+                      </p>
+                    </div>
+                    <div className="px-4 py-3 text-[11px] text-muted-foreground">
+                      {collabSessionResult.status === 'loading' ? t('settings.collab.loading') : null}
+                      {collabSessionResult.status === 'error' ? (
+                        <span className="text-destructive">{collabSessionResult.error ?? t('settings.collab.error')}</span>
                       ) : null}
-                      {collabNotice ? (
-                        <div className="border-t border-border/40 px-4 py-3">
-                          <p className="text-xs text-emerald-600">{collabNotice}</p>
-                        </div>
+                      {collabBootstrap?.status === 'room_not_initialized' ? (
+                        <span>
+                          {t('settings.collab.notInitialized')}
+                        </span>
                       ) : null}
-                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
-                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.trustedDeviceRecovery')}</Label>
-                            <p className="truncate text-[11px] text-muted-foreground">
-                              {t('settings.collab.trustedDeviceRecoveryDesc')}
-                            </p>
-                          </div>
+                      {collabBootstrap?.status === 'missing_for_device' ? (
+                        <span>
+                          {activeRecoveryKit
+                            ? t('settings.collab.missingForDeviceRecover')
+                            : t('settings.collab.missingForDevice')}
+                        </span>
+                      ) : null}
+                      {collabBootstrap?.status === 'device_revoked' ? (
+                        <span className="text-destructive">
+                          {t('settings.collab.deviceRevoked')}
+                        </span>
+                      ) : null}
+                      {collabBootstrap?.status === 'ready' ? (
+                        <span>
+                          {collabRotationRequired
+                            ? 'A device was revoked. Rotate the room key before continuing collaboration.'
+                            : pendingRequestCount > 0
+                              ? t('settings.collab.readyDevices').replace('{count}', String(pendingRequestCount))
+                              : t('settings.collab.readyNoDevices')}
+                        </span>
+                      ) : null}
+                    </div>
+                    {collabError ? (
+                      <div className="border-t border-border/40 px-4 py-3">
+                        <p className="text-xs text-destructive">{collabError}</p>
+                      </div>
+                    ) : null}
+                    {collabNotice ? (
+                      <div className="border-t border-border/40 px-4 py-3">
+                        <p className="text-xs text-emerald-600 dark:text-emerald-500">{collabNotice}</p>
+                      </div>
+                    ) : null}
+                    {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                      <SettingsRow>
+                        <SettingsRowLabel
+                          title={t('settings.collab.trustedDeviceRecovery')}
+                          description={t('settings.collab.trustedDeviceRecoveryDesc')}
+                        />
+                        <SettingsRowControl>
                           <Button
                             variant="outline"
                             className="h-7 text-[11px]"
@@ -951,16 +967,16 @@ export function ProjectSettingsPage({
                             ) : null}
                             {t('settings.collab.shareKeys')}
                           </Button>
-                        </div>
-                      ) : null}
-                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
-                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoveryCode')}</Label>
-                            <p className="truncate text-[11px] text-muted-foreground">
-                              {t('settings.collab.recoveryCodeDesc')}
-                            </p>
-                          </div>
+                        </SettingsRowControl>
+                      </SettingsRow>
+                    ) : null}
+                    {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                      <SettingsRow>
+                        <SettingsRowLabel
+                          title={t('settings.collab.recoveryCode')}
+                          description={t('settings.collab.recoveryCodeDesc')}
+                        />
+                        <SettingsRowControl>
                           <Button
                             variant="outline"
                             className="h-7 text-[11px]"
@@ -974,16 +990,16 @@ export function ProjectSettingsPage({
                             ) : null}
                             {activeRecoveryKit ? t('settings.collab.regenerateCode') : t('settings.collab.generateCode')}
                           </Button>
-                        </div>
-                      ) : null}
-                      {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
-                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.rotateRoomKey')}</Label>
-                            <p className="truncate text-[11px] text-muted-foreground">
-                              {t('settings.collab.rotateRoomKeyDesc')}
-                            </p>
-                          </div>
+                        </SettingsRowControl>
+                      </SettingsRow>
+                    ) : null}
+                    {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
+                      <SettingsRow>
+                        <SettingsRowLabel
+                          title={t('settings.collab.rotateRoomKey')}
+                          description={t('settings.collab.rotateRoomKeyDesc')}
+                        />
+                        <SettingsRowControl>
                           <Button
                             variant="outline"
                             className="h-7 text-[11px]"
@@ -997,16 +1013,16 @@ export function ProjectSettingsPage({
                             ) : null}
                             {t('settings.collab.rotateKeys')}
                           </Button>
-                        </div>
-                      ) : null}
-                      {canManageCollabSecurity && collabBootstrap?.status !== 'room_not_initialized' ? (
-                        <div className="flex items-center justify-between gap-4 border-t border-border/40 px-4 py-2">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.roomRecovery')}</Label>
-                            <p className="truncate text-[11px] text-muted-foreground">
-                              {t('settings.collab.roomRecoveryDesc')}
-                            </p>
-                          </div>
+                        </SettingsRowControl>
+                      </SettingsRow>
+                    ) : null}
+                    {canManageCollabSecurity && collabBootstrap?.status !== 'room_not_initialized' ? (
+                      <SettingsRow>
+                        <SettingsRowLabel
+                          title={t('settings.collab.roomRecovery')}
+                          description={t('settings.collab.roomRecoveryDesc')}
+                        />
+                        <SettingsRowControl>
                           <Button
                             variant="ghost"
                             className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
@@ -1017,103 +1033,110 @@ export function ProjectSettingsPage({
                           >
                             {t('settings.collab.resetRoom')}
                           </Button>
-                        </div>
-                      ) : null}
-                      {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
-                        <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoverWithCode')}</Label>
-                            <p className="truncate text-[11px] text-muted-foreground">
-                              {t('settings.collab.recoverWithCodeDesc')}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={recoveryCodeInput}
-                              onChange={(event) => {
-                                setRecoveryCodeInput(event.target.value)
-                              }}
-                              placeholder="XXXX-XXXX-XXXX-XXXX"
-                              className="h-8 text-xs"
-                            />
-                            <Button
-                              variant="outline"
-                              className="h-8 text-[11px]"
-                              disabled={collabAction === 'recover' || recoveryCodeInput.trim().length === 0}
-                              onClick={() => {
-                                void handleRecoverWithCode()
-                              }}
-                            >
-                              {collabAction === 'recover' ? (
-                                <div className="loader mr-2" />
-                              ) : null}
-                              {t('settings.collab.recover')}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {collaborationDevices && collaborationDevices.length > 0 ? (
-                        <div className="border-t border-border/40">
-                          {collaborationDevices.map((device, index) => (
-                            <div
-                              key={device.deviceId}
-                              className={cn(
-                                'flex min-h-[44px] items-center justify-between gap-4 px-4 py-2',
-                                index > 0 && 'border-t border-border/40',
-                              )}
-                            >
-                              <div className="flex min-w-0 flex-col gap-0.5">
-                                <p className="truncate text-xs font-medium text-foreground">
-                                  {device.deviceLabel}
-                                  {device.deviceId === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
-                                </p>
-                                <p className="truncate text-[11px] text-muted-foreground">
-                                  {device.platform} · {device.fingerprint.slice(0, 12)}
-                                  {device.hasPendingRequest ? ` · ${t('settings.collab.waitingForKey')}` : ''}
-                                  {device.revokedAt ? ` · ${t('settings.collab.revoked')}` : ''}
-                                </p>
-                              </div>
-                              {canManageCollabSecurity ? (
-                                <Button
-                                  variant="ghost"
-                                  className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
-                                  disabled={
-                                    Boolean(device.revokedAt) ||
-                                    device.deviceId === currentDeviceId ||
-                                    collabAction === `revoke:${device.deviceId}`
-                                  }
-                                  onClick={() => {
-                                    void handleRevokeDevice(device.deviceId)
-                                  }}
-                                >
-                                  {collabAction === `revoke:${device.deviceId}` ? (
-                                    <div className="loader mr-2" />
-                                  ) : null}
-                                  {device.revokedAt ? t('settings.collab.actionRevoked') : t('settings.collab.revoke')}
-                                </Button>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </section>
-                </div>
-
-                <div className="min-w-0 space-y-6">
-                  <section>
-                    <h3 className="flex items-center gap-1.5 px-1 text-xs font-medium text-destructive mb-1.5">
-                      <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3.5 w-3.5" />
-                      {t('settings.section.dangerZone')}
-                    </h3>
-                    <div className="flex flex-col overflow-hidden rounded-[14px] bg-destructive/15 dark:bg-destructive/20">
-                      <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
+                        </SettingsRowControl>
+                      </SettingsRow>
+                    ) : null}
+                    {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
+                      <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
                         <div className="flex min-w-0 flex-col gap-0.5">
-                          <Label className="text-xs font-medium text-foreground">{t('settings.label.archiveProject')}</Label>
+                          <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoverWithCode')}</Label>
                           <p className="truncate text-[11px] text-muted-foreground">
-                            {t('settings.desc.archiveProject')}
+                            {t('settings.collab.recoverWithCodeDesc')}
                           </p>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={recoveryCodeInput}
+                            onChange={(event) => {
+                              setRecoveryCodeInput(event.target.value)
+                            }}
+                            placeholder="XXXX-XXXX-XXXX-XXXX"
+                            className="h-8 text-xs"
+                          />
+                          <Button
+                            variant="outline"
+                            className="h-8 text-[11px]"
+                            disabled={collabAction === 'recover' || recoveryCodeInput.trim().length === 0}
+                            onClick={() => {
+                              void handleRecoverWithCode()
+                            }}
+                          >
+                            {collabAction === 'recover' ? (
+                              <div className="loader mr-2" />
+                            ) : null}
+                            {t('settings.collab.recover')}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {collaborationDevices && collaborationDevices.length > 0 ? (
+                      <div className="border-t border-border/40">
+                        {collaborationDevices.map((device, index) => (
+                          <div
+                            key={device.deviceId}
+                            className={cn(
+                              'flex min-h-[50px] items-center justify-between gap-4 px-4 py-3',
+                              index > 0 && 'border-t border-border/40',
+                            )}
+                          >
+                            <div className="flex min-w-0 flex-col gap-0.5">
+                              <p className="truncate text-xs font-medium text-foreground">
+                                {device.deviceLabel}
+                                {device.deviceId === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
+                              </p>
+                              <p className="truncate text-[11px] text-muted-foreground">
+                                {device.platform} · {device.fingerprint.slice(0, 12)}
+                                {device.hasPendingRequest ? ` · ${t('settings.collab.waitingForKey')}` : ''}
+                                {device.revokedAt ? ` · ${t('settings.collab.revoked')}` : ''}
+                              </p>
+                            </div>
+                            {canManageCollabSecurity ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="size-7 rounded-lg p-0 text-muted-foreground hover:text-foreground"
+                                    disabled={
+                                      Boolean(device.revokedAt) ||
+                                      device.deviceId === currentDeviceId ||
+                                      collabAction === `revoke:${device.deviceId}`
+                                    }
+                                  >
+                                    <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-40">
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => {
+                                      void handleRevokeDevice(device.deviceId)
+                                    }}
+                                  >
+                                    {device.revokedAt ? t('settings.collab.actionRevoked') : t('settings.collab.revoke')}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </SettingsGroup>
+                </section>
+
+                <section>
+                  <SettingsSectionTitle variant="danger">
+                    <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3.5 w-3.5" />
+                    {t('settings.section.dangerZone')}
+                  </SettingsSectionTitle>
+                  <SettingsDangerGroup>
+                    <SettingsRow isFirst>
+                      <SettingsRowLabel
+                        title={t('settings.label.archiveProject')}
+                        description={t('settings.desc.archiveProject')}
+                      />
+                      <SettingsRowControl>
                         <Button
                           variant="outline"
                           className="h-7 text-[11px] text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
@@ -1125,14 +1148,14 @@ export function ProjectSettingsPage({
                         >
                           {project.status === 'archived' ? t('settings.action.archived') : t('settings.action.archive')}
                         </Button>
-                      </div>
-                      <div className="flex min-h-[44px] items-center justify-between gap-4 border-t border-destructive/20 px-4 py-2">
-                        <div className="flex min-w-0 flex-col gap-0.5">
-                          <Label className="text-xs font-medium text-foreground">{t('settings.label.deleteProject')}</Label>
-                            <p className="truncate text-[11px] text-muted-foreground">
-                              {t('settings.desc.deleteProject')}
-                            </p>
-                        </div>
+                      </SettingsRowControl>
+                    </SettingsRow>
+                    <SettingsRow>
+                      <SettingsRowLabel
+                        title={t('settings.label.deleteProject')}
+                        description={t('settings.desc.deleteProject')}
+                      />
+                      <SettingsRowControl>
                         <Button
                           variant="destructive"
                           disabled={!convexUserId}
@@ -1145,10 +1168,10 @@ export function ProjectSettingsPage({
                           <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-1.5 h-4 w-4" />
                           {t('settings.action.delete')}
                         </Button>
-                      </div>
-                    </div>
-                  </section>
-                </div>
+                      </SettingsRowControl>
+                    </SettingsRow>
+                  </SettingsDangerGroup>
+                </section>
 
                 <div className="flex justify-end pt-3">
                   <Button
@@ -1168,12 +1191,11 @@ export function ProjectSettingsPage({
                     {isSaving ? t('settings.action.saving') : t('settings.action.save')}
                   </Button>
                 </div>
-              </section>
+              </div>
             </div>
-          </div>
-        </ScrollArea>
+          </ScrollArea>
+        </div>
       </div>
-    </div>
 
       <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
         <AlertDialogContent>

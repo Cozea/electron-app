@@ -269,7 +269,7 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   if (chromeOwnedSurface) {
     return (
       <div
-        className="cozea-workbench-tab cozea-workbench-tab--chrome-owned flex h-full min-w-0 items-center justify-center px-1"
+        className="cozea-workbench-tab cozea-workbench-tab--chrome-owned flex h-full w-full min-w-0 max-w-full items-center justify-center px-1"
         title={title}
       >
         <WorkbenchDockTabIcon tile={tile} />
@@ -281,13 +281,13 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   return (
     <div
       className={cn(
-        "cozea-workbench-tab flex h-full min-w-0 items-center gap-1.5 px-2 text-[12px]",
+        "cozea-workbench-tab flex h-full w-full min-w-0 max-w-full items-center gap-1.5 px-2 text-[12px] overflow-hidden",
         active ? "text-foreground" : "text-muted-foreground",
       )}
       title={title}
     >
       <WorkbenchDockTabIcon tile={tile} />
-      <span className="min-w-0 truncate">{title}</span>
+      <span className="min-w-0 flex-1 truncate">{title}</span>
       {tile?.type === "assistantChat" && tile.model ? (
         <span className="hidden max-w-20 shrink-0 truncate rounded-sm bg-secondary px-1 text-[10px] text-muted-foreground group-hover:inline-flex">
           {tile.model}
@@ -416,11 +416,11 @@ const BrowserPanelHeaderControls = memo(function BrowserPanelHeaderControls({
         >
           <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
         </Button>
-        <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md bg-secondary px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 bg-transparent px-1">
           {navState.favicon ? (
-            <img src={navState.favicon} alt="" className="size-[18px] shrink-0 rounded-sm object-contain" />
+            <img src={navState.favicon} alt="" className="size-[16px] shrink-0 rounded-sm object-contain" />
           ) : draftUrl.startsWith("https://") ? (
-            <HugeiconsIcon icon={__LockHugeIcon} className="size-[18px] shrink-0 text-muted-foreground" />
+            <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
           ) : null}
           <Input
             ref={inputRef}
@@ -434,8 +434,7 @@ const BrowserPanelHeaderControls = memo(function BrowserPanelHeaderControls({
             }}
             placeholder="Search or enter address"
             className={cn(
-              "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none dark:bg-transparent",
-              "placeholder:text-muted-foreground/45 focus-visible:ring-0",
+              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
             )}
           />
         </div>
@@ -551,8 +550,8 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
     <div className="cozea-workbench-header-controls flex h-full min-w-0 items-center px-1">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {viewToggle}
-        <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md bg-secondary px-2">
-          <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" />
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 bg-transparent px-1">
+          <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
           <Input
             ref={inputRef}
             value={draftUrl}
@@ -570,8 +569,7 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
               }
             }}
             className={cn(
-              "h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none dark:bg-transparent",
-              "placeholder:text-muted-foreground/45 focus-visible:ring-0",
+              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
             )}
           />
           {overrideUrl ? (

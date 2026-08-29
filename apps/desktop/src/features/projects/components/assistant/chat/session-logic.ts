@@ -56,6 +56,14 @@ export interface WorkLogEntry {
   toolCallId?: string;
   toolLifecycleStatus?: "inProgress" | "completed" | "failed" | "declined" | "stopped";
   status?: "inProgress" | "completed" | "failed" | "declined" | "cancelled";
+  /** Grouping key for subagent lifecycle rows (one row per agent). Not yet populated. */
+  taskId?: string;
+  /**
+   * Structured tool payload for MCP calls, surfaced in the expanded row. The
+   * server projection keeps `item`, `toolName`, `input` and a summarized
+   * `result`, which is enough to show what was actually called.
+   */
+  toolData?: unknown;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -590,6 +598,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (itemType) {
     entry.itemType = itemType;
+  }
+  if (itemType === "mcp_tool_call" && payload?.data !== undefined) {
+    entry.toolData = payload.data;
   }
   if (status) {
     entry.status = status;

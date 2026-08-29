@@ -54,6 +54,36 @@ interface GitCommandOptions {
   timeoutMs?: number
 }
 
+/**
+ * Git subcommands that cannot change any field of RepoMetadata. Anything absent
+ * from this set invalidates the cached metadata for its working directory —
+ * unknown commands fail closed, costing at most one extra `rev-parse` later.
+ *
+ * `branch` only qualifies in its `--show-current` form (`branch -D`, plain
+ * `branch <name>` and `--set-upstream-to` all write refs). Keeping that form
+ * read-only is load-bearing: getRepoMetadata() runs it while computing, and
+ * invalidating mid-computation would evict the entry the same call just
+ * published, disabling the cache entirely.
+ */
+const READ_ONLY_GIT_COMMANDS = new Set([
+  'cat-file',
+  'diff',
+  'log',
+  'ls-files',
+  'ls-remote',
+  'rev-list',
+  'rev-parse',
+  'show',
+  'status',
+])
+
+function isReadOnlyGitInvocation(args: readonly string[]): boolean {
+  const subcommand = args.find((arg) => !arg.startsWith('-'))
+  if (!subcommand) return false
+  if (subcommand === 'branch') return args.includes('--show-current')
+  return READ_ONLY_GIT_COMMANDS.has(subcommand)
+}
+
 interface GitAuthOptions {
   provider?: string
   accessToken?: string
@@ -92,7 +122,10 @@ export class GitSyncService {
     const projectPath = path.resolve(options.projectPath)
 
     try {
+      // Creating the directory flips repoExists, so a cached miss from a probe
+      // moments earlier would otherwise be replayed here.
       fs.mkdirSync(projectPath, { recursive: true })
+      this.invalidateRepoMetadata(projectPath)
 
       const before = await this.getRepoMetadata(projectPath)
       let initialized = false
@@ -198,6 +231,7 @@ export class GitSyncService {
           }
         }
         fs.rmSync(projectPath, { recursive: true, force: true })
+        this.invalidateRepoMetadata(projectPath)
       }
 
       fs.mkdirSync(parentDir, { recursive: true })
@@ -217,6 +251,9 @@ export class GitSyncService {
       if (!clone.success) {
         return { success: false, error: clone.error }
       }
+      // `git clone` runs from parentDir, so runGit only evicted that key; the
+      // repo it just created lives at projectPath.
+      this.invalidateRepoMetadata(projectPath)
 
       const configured = await this.ensureCommitIdentity(projectPath)
       if (!configured.success) {
@@ -803,6 +840,7 @@ export class GitSyncService {
     try {
       if (fs.existsSync(projectPath)) {
         await fs.promises.rename(projectPath, backupPath)
+        this.invalidateRepoMetadata(projectPath)
       }
     } catch (error) {
       return {
@@ -826,6 +864,7 @@ export class GitSyncService {
       try {
         if (!fs.existsSync(projectPath) && fs.existsSync(backupPath)) {
           await fs.promises.rename(backupPath, projectPath)
+          this.invalidateRepoMetadata(projectPath)
         }
       } catch (restoreError) {
         console.warn('[GitSyncService] Failed to restore backup after salvage clone failure:', restoreError)
@@ -1130,6 +1169,9 @@ export class GitSyncService {
       }
 
       fs.mkdirSync(projectPath, { recursive: true })
+      // Removing .git and recreating the directory both change metadata without
+      // going through runGit.
+      this.invalidateRepoMetadata(projectPath)
 
       const init = await this.initializeRepository(projectPath, branch)
       if (!init.success) {
@@ -1450,8 +1492,20 @@ export class GitSyncService {
 
   private repoMetadataCache = new Map<string, { ts: number; data: Promise<RepoMetadata> }>()
 
+  /**
+   * Drop cached metadata for a repo after something changed it. The 500ms TTL
+   * only bounds staleness between reads; it does not help when a write lands in
+   * the same window, so every mutation has to evict explicitly.
+   */
+  private invalidateRepoMetadata(projectPath: string): void {
+    this.repoMetadataCache.delete(path.resolve(projectPath))
+  }
+
   private async getRepoMetadata(projectPath: string): Promise<RepoMetadata> {
-    const cached = this.repoMetadataCache.get(projectPath)
+    // Resolved so reads and invalidations always agree on the key. runGit
+    // invalidates by `options.cwd`, which callers do not always pre-resolve.
+    const cacheKey = path.resolve(projectPath)
+    const cached = this.repoMetadataCache.get(cacheKey)
     if (cached && Date.now() - cached.ts < 500) {
       return cached.data
     }
@@ -1486,7 +1540,7 @@ export class GitSyncService {
       }
     })();
 
-    this.repoMetadataCache.set(projectPath, { ts: Date.now(), data: promise })
+    this.repoMetadataCache.set(cacheKey, { ts: Date.now(), data: promise })
     return promise
   }
 
@@ -1728,6 +1782,14 @@ export class GitSyncService {
       cwd: options.cwd,
       timeoutMs: options.timeoutMs ?? 60_000,
     })
+
+    // Tested against the original args, not prefixedArgs: a leading
+    // `-c http.extraheader=...` would otherwise be mistaken for the subcommand.
+    // Failures invalidate too — a checkout or cherry-pick that reports an error
+    // can still have moved refs partway.
+    if (!isReadOnlyGitInvocation(args)) {
+      this.invalidateRepoMetadata(options.cwd)
+    }
 
     if (result.success) {
       return result

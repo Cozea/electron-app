@@ -18,6 +18,8 @@ interface WorkbenchBrowserRecord {
   state: WorkbenchBrowserViewState
   storageScope: BrowserStorageScope
   workspaceId: string | null
+  /** Partition this tile's session was resolved from; see destroyTile. */
+  sessionPartition: string
   navigationPolicy: 'open' | 'orgDevApp'
   orgDevAppNavigationScope: string | null
   /** Monotonic per-record navigation counter; see loadUrlIntoRecord. */
@@ -138,12 +140,22 @@ export class WorkbenchBrowserService {
     return `cozea-browser-ephemeral-${this.normalizeSessionSegment(tileId)}`
   }
 
+  /**
+   * Ephemeral partitions are keyed per tile and die with it. Persistent ones
+   * (`persist:` prefix, matching Electron's own semantics) are shared between
+   * tiles and bounded by workspace/DevApp count, so they stay cached for the
+   * process lifetime — see destroyTile.
+   */
+  private isEphemeralSessionKey(key: string): boolean {
+    return !key.startsWith('persist:')
+  }
+
   private resolveSession(
+    key: string,
     tileId: string,
     storageScope: BrowserStorageScope,
     workspaceId?: string | null,
   ): Electron.Session {
-    const key = this.buildSessionKey(tileId, storageScope, workspaceId)
     const existing = this.sessions.get(key)
     if (existing) {
       return existing
@@ -730,13 +742,14 @@ export class WorkbenchBrowserService {
       return this.emitState(tileId) ?? existing.state
     }
 
+    const sessionPartition = this.buildSessionKey(tileId, storageScope, sessionKey ?? null)
     const view = new WebContentsView({
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
         backgroundThrottling: this.options.backgroundThrottling ?? true,
-        session: this.resolveSession(tileId, storageScope, sessionKey ?? null),
+        session: this.resolveSession(sessionPartition, tileId, storageScope, sessionKey ?? null),
       },
     })
     view.setBackgroundColor('#00000000')
@@ -750,6 +763,7 @@ export class WorkbenchBrowserService {
       state: this.createInitialState(tileId, initialUrl, storageScope),
       storageScope,
       workspaceId: sessionKey ?? null,
+      sessionPartition,
       navigationPolicy,
       orgDevAppNavigationScope: navigationPolicy === 'orgDevApp' && initialUrl
         ? getOrgDevAppNavigationScope(initialUrl)
@@ -1067,6 +1081,23 @@ export class WorkbenchBrowserService {
     }
 
     this.records.delete(tileId)
+
+    // The ephemeral partition was this tile's alone, so its cache entry would
+    // otherwise pin an Electron Session for the life of the process — one per
+    // tile ever opened. Persistent partitions are deliberately left cached:
+    // they are shared between tiles, and because session.fromPartition() hands
+    // back the same instance for a given partition, re-resolving an evicted
+    // orgDevApp entry would re-run the setup block and stack another
+    // 'will-download' listener on that same session.
+    if (
+      this.isEphemeralSessionKey(record.sessionPartition) &&
+      !Array.from(this.records.values()).some(
+        (other) => other.sessionPartition === record.sessionPartition,
+      )
+    ) {
+      this.sessions.delete(record.sessionPartition)
+    }
+
     return true
   }
 
@@ -1074,5 +1105,6 @@ export class WorkbenchBrowserService {
     for (const tileId of Array.from(this.records.keys())) {
       this.destroyTile(tileId)
     }
+    this.sessions.clear()
   }
 }

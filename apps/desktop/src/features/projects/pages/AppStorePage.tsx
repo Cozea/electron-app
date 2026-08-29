@@ -63,12 +63,10 @@ export function AppStorePage() {
   }, [activeCategory.id, query])
 
   const visiblePreviewApps = useMemo(() => {
-    const apps = listStoreApps({
+    return listStoreApps({
       category: activeCategory.id,
       query,
     })
-
-    return activeCategory.id === "discover" ? apps.slice(0, 6) : apps.slice(0, 6)
   }, [activeCategory.id, query])
 
   const visibleOrgDevApps = useMemo(() => {
