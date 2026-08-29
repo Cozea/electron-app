@@ -6,7 +6,29 @@ const t3ModuleDir = path.dirname(fileURLToPath(import.meta.url));
 /** apps/server/src/t3 → repo root (four levels up). */
 export const REPO_ROOT = path.resolve(t3ModuleDir, "../../../..");
 export const VENDOR_T3_ROOT = path.join(REPO_ROOT, "vendor/t3code");
-export const VENDOR_T3_SERVER_PKG = path.join(VENDOR_T3_ROOT, "apps/server");
+
+interface ResolveT3RuntimeRootOptions {
+  readonly explicitRoot?: string;
+  readonly resourcesPath?: string;
+  readonly exists?: (candidate: string) => boolean;
+}
+
+export function resolveT3RuntimeRoot(options: ResolveT3RuntimeRootOptions = {}): string | null {
+  const explicitRoot = options.explicitRoot?.trim();
+  if (explicitRoot) return explicitRoot;
+
+  const resourcesPath = options.resourcesPath?.trim();
+  if (!resourcesPath) return null;
+  const candidate = path.join(resourcesPath, "t3-runtime");
+  const exists = options.exists ?? fs.existsSync;
+  return exists(path.join(candidate, "dist/bin.mjs")) ? candidate : null;
+}
+
+export const T3_RUNTIME_ROOT = resolveT3RuntimeRoot({
+  explicitRoot: process.env.COZEA_T3_RUNTIME_ROOT,
+  resourcesPath: typeof process.resourcesPath === "string" ? process.resourcesPath : undefined,
+});
+export const VENDOR_T3_SERVER_PKG = T3_RUNTIME_ROOT ?? path.join(VENDOR_T3_ROOT, "apps/server");
 export const VENDOR_T3_SERVER_BIN = path.join(VENDOR_T3_SERVER_PKG, "dist/bin.mjs");
 
 export const DEFAULT_T3_SERVER_HOST = "127.0.0.1";

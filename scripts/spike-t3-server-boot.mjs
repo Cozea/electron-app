@@ -53,7 +53,7 @@ function readPinSha() {
 
 function readVendorSha() {
   if (!fs.existsSync(path.join(vendorRoot, ".git"))) {
-    throw new Error("vendor/t3code submodule missing — run git submodule update --init --recursive");
+    throw new Error("vendor/t3code submodule missing — run bun run prepare:t3-runtime");
   }
   const result = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: vendorRoot,

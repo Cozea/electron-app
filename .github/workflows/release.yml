@@ -162,7 +162,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.4.0"
 
       - name: Verify tag matches package version
         shell: bash
@@ -191,7 +191,9 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run postinstall
 
       - name: Prepare runtime metadata
         run: bun run prepare:runtime-metadata
@@ -264,6 +266,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ needs.plan.outputs.checkout_ref }}
+          submodules: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -273,7 +276,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.4.0"
 
       - name: Validate shared release build env
         shell: bash
@@ -333,7 +336,9 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run postinstall
 
       - name: Install macOS build deps
         if: runner.os == 'macOS'
