@@ -5,6 +5,7 @@ import {
   PROJECT_DEVAPP_LOGO_ACCEPT,
   PROJECT_DEVAPP_LOGO_MAX_DATA_URL_LENGTH,
   PROJECT_DEVAPP_LOGO_MAX_INPUT_BYTES,
+  resolveProjectDevAppDisplayLogoDataUrl,
   validateProjectDevAppLogoFile,
 } from "@/features/devapps/projectDevAppLogo";
 
@@ -46,5 +47,17 @@ describe("Project DevApp logos", () => {
         `data:image/png;base64,${"A".repeat(PROJECT_DEVAPP_LOGO_MAX_DATA_URL_LENGTH)}`,
       ),
     ).toBe(false);
+  });
+
+  it("replaces the pixelated legacy published-app default without hiding custom logos", () => {
+    const customLogo = "data:image/webp;base64,UklGRjEyMzRXRUJQ";
+    const legacyPrefix = "data:image/webp;base64,UklGRjEyMzRXRUJQ";
+    const legacyLogo =
+      legacyPrefix +
+      "A".repeat(15_291 - legacyPrefix.length - 6) +
+      "xsVL+E";
+
+    expect(resolveProjectDevAppDisplayLogoDataUrl(customLogo)).toBe(customLogo);
+    expect(resolveProjectDevAppDisplayLogoDataUrl(legacyLogo)).toBeNull();
   });
 });

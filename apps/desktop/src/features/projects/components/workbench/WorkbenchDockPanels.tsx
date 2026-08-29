@@ -44,6 +44,7 @@ import {
 } from "@/features/projects/browser/browserTileModel"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
+import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
@@ -185,11 +186,7 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
   if (tile?.type === "orgDevApp") {
     return (
       <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
-        {tile.logoDataUrl ? (
-          <img src={tile.logoDataUrl} alt="" className="size-4 object-cover" />
-        ) : (
-          <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="size-4" />
-        )}
+        <PublishedDevAppIcon name={tile.title} logoDataUrl={tile.logoDataUrl} />
       </span>
     )
   }

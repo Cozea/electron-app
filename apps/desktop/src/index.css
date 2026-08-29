@@ -66,6 +66,7 @@
   --tool-diff-deleted-line-number-fg: #f87171;
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
   --left-sidebar-surface: var(--content-surface);
+  --left-sidebar-glass-color-weight: 18%;
   --left-sidebar-accent: color-mix(in oklch, var(--left-sidebar-surface) 86%, var(--foreground) 14%);
   --left-sidebar-border: color-mix(in oklch, var(--foreground) 12%, transparent);
   --app-scrollbar-size: 8px;
@@ -743,7 +744,11 @@ body {
 
 /* Primary left sidebars: translucent surface + blur (native window vibrancy/Mica shows through). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--left-sidebar-surface) 18%, transparent) !important;
+  background-color: color-mix(
+    in oklch,
+    var(--left-sidebar-surface) var(--left-sidebar-glass-color-weight),
+    transparent
+  ) !important;
   backdrop-filter: blur(28px) saturate(1.25);
   -webkit-backdrop-filter: blur(28px) saturate(1.25);
   isolation: isolate;
@@ -756,7 +761,6 @@ body {
 .wine .sidebar-glass [data-slot="sidebar-inner"],
 .forest .sidebar-glass [data-slot="sidebar-inner"],
 .clay .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent) !important;
   backdrop-filter: blur(22px) saturate(1.12);
   -webkit-backdrop-filter: blur(22px) saturate(1.12);
   box-shadow: inset -32px 0 36px -22px rgb(0 0 0 / 0.18);
@@ -1050,6 +1054,7 @@ body {
   --sidebar-ring: oklch(0.556 0 0);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 30%;
   --left-sidebar-accent: oklch(0.19 0.01 258);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
@@ -1090,8 +1095,9 @@ body {
   --sidebar-accent-foreground: hsl(210 30% 94%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(210 78% 62%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(222 30% 16%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
@@ -1130,8 +1136,9 @@ body {
   --sidebar-accent-foreground: hsl(330 22% 92%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(345 72% 50%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(340 28% 18%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
@@ -1170,8 +1177,9 @@ body {
   --sidebar-accent-foreground: hsl(35 25% 94%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(28 65% 52%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(25 24% 17%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --tool-surface: color-mix(in oklch, var(--secondary) 80%, transparent);
@@ -1221,8 +1229,9 @@ body {
   --sidebar-accent-foreground: hsl(148 18% 92%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(150 42% 34%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(150 20% 17%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }

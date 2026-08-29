@@ -13,6 +13,10 @@ export function deriveNameFromPath(workspaceId: string): string {
   return segments[segments.length - 1] ?? ""
 }
 
+export function resolveImportedProjectName(requestedName: string, folderPath: string): string {
+  return requestedName.trim() || deriveNameFromPath(folderPath).trim() || "Project"
+}
+
 export function deriveProviderFromRepoUrl(
   repoUrl: string,
 ): "github" | "gitlab" | "bitbucket" | "other" {

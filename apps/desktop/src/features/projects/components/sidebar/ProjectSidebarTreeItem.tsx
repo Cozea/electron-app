@@ -22,6 +22,7 @@ import {
   resolveProjectCollabBranch,
   resolveSidebarDevAppMenuAction,
   areSidebarProjectItemsEqual,
+  hasProjectSidebarChildren,
   SIDEBAR_PILL_ACTIVE_CLASS,
   SIDEBAR_PILL_HOVER_CLASS,
   type SidebarProjectTreeItemProps,
@@ -116,7 +117,12 @@ export const ProjectSidebarTreeItem = React.memo(
     const hasHeadlessDevServer =
       isDevServerRunActive(activeDevServerStatus) && !hasBuiltInDevServerSurface
 
-    const isLanesOpen = selection.isExpanded
+    const hasSidebarChildren = hasProjectSidebarChildren(
+      activeLaneSummary,
+      hasHeadlessDevServer,
+    )
+    const isLanesOpen = selection.isExpanded && hasSidebarChildren
+    const canToggleLanes = hasSidebarChildren || !shouldLoadLanes
     const { containerRef: projectRowRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
       font: SIDEBAR_PROJECT_LABEL_FONT,
     })
@@ -293,24 +299,32 @@ export const ProjectSidebarTreeItem = React.memo(
             "group/project-item flex min-h-7 items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70",
             SIDEBAR_PILL_HOVER_CLASS,
             (selection.activeSelectionLevel === "project" ||
-              (!selection.isExpanded && context.isCurrentProject)) &&
+              (!isLanesOpen && context.isCurrentProject)) &&
               SIDEBAR_PILL_ACTIVE_CLASS,
           )}
           onPointerEnter={handlePrefetchProject}
           onFocus={handlePrefetchProject}
         >
           <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
-            <button
-              type="button"
-              className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-[2px] hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={handleProjectToggleClick}
-              aria-label={isLanesOpen ? "Collapse" : "Expand"}
-            >
-              <NativeProjectFolderIcon
-                folderPath={snapshotEntry?.status === "ready" ? snapshotEntry.workspace.projectRootPath : null}
-                isOpen={isLanesOpen}
-              />
-            </button>
+            {canToggleLanes ? (
+              <button
+                type="button"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-[2px] hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={handleProjectToggleClick}
+                aria-label={isLanesOpen ? "Collapse" : "Expand"}
+              >
+                <NativeProjectFolderIcon
+                  folderPath={snapshotEntry?.status === "ready" ? snapshotEntry.workspace.projectRootPath : null}
+                  isOpen={isLanesOpen}
+                />
+              </button>
+            ) : (
+              <span className="flex shrink-0 items-center justify-center p-[2px]" aria-hidden>
+                <NativeProjectFolderIcon
+                  folderPath={snapshotEntry?.status === "ready" ? snapshotEntry.workspace.projectRootPath : null}
+                />
+              </span>
+            )}
             <button
               type="button"
               className="group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
@@ -333,19 +347,21 @@ export const ProjectSidebarTreeItem = React.memo(
         </div>
 
         <CollapsibleContent>
-          <SidebarLaneTiles
-            activeLaneSummary={activeLaneSummary}
-            activeSelectionLevel={selection.activeSelectionLevel}
-            activeTileId={selection.activeTileId}
-            hasHeadlessDevServer={hasHeadlessDevServer}
-            onOpenLaneWorkbench={(options) => {
-              if (!activeLane) return
-              void actions.openLaneWorkbench(project, activeLane.id, {
-                ...options,
-                workspaceId: activeLane.workspaceId ?? workspaceId,
-              })
-            }}
-          />
+          {hasSidebarChildren ? (
+            <SidebarLaneTiles
+              activeLaneSummary={activeLaneSummary}
+              activeSelectionLevel={selection.activeSelectionLevel}
+              activeTileId={selection.activeTileId}
+              hasHeadlessDevServer={hasHeadlessDevServer}
+              onOpenLaneWorkbench={(options) => {
+                if (!activeLane) return
+                void actions.openLaneWorkbench(project, activeLane.id, {
+                  ...options,
+                  workspaceId: activeLane.workspaceId ?? workspaceId,
+                })
+              }}
+            />
+          ) : null}
         </CollapsibleContent>
       </Collapsible>
     )

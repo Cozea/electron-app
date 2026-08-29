@@ -8,6 +8,7 @@ import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectO
 import { isProjectDevAppLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration"
 import { cn } from "@/lib/utils"
+import type { WorkbenchLaneSidebarSummary } from "@/stores/useProjectWorkbenchStore"
 
 /** Use on `<button>`/rows; pair with `SIDEBAR_PILL_ACTIVE_CLASS` when selected */
 export const SIDEBAR_PILL_HOVER_CLASS =
@@ -167,6 +168,17 @@ export function canReuseProjectDevAppLogo(
   logoDataUrl: unknown,
 ): logoDataUrl is string {
   return mode === "update" && isProjectDevAppLogoDataUrl(logoDataUrl)
+}
+
+export function hasProjectSidebarChildren(
+  activeLaneSummary: WorkbenchLaneSidebarSummary | null,
+  hasHeadlessDevServer: boolean,
+): boolean {
+  return Boolean(
+    hasHeadlessDevServer ||
+      activeLaneSummary?.agents.length ||
+      activeLaneSummary?.surfaces.length,
+  )
 }
 
 export function resolveProjectCollabBranch(project: SidebarProjectItem): string {
