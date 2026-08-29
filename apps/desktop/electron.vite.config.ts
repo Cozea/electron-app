@@ -19,7 +19,7 @@ function readBooleanFlag(name: string, fallback: boolean): boolean {
 }
 
 function resolveAiProxyTarget(): string {
-  const defaultRemoteTarget = 'https://api.cozea.app'
+  const defaultRemoteTarget = 'https://cozea-collab.kelyan-engone.workers.dev'
 
   // Optional explicit proxy target (origin or full URL).
   const configured =

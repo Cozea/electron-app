@@ -42,7 +42,6 @@ import type {
 } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
 import { buildExpandedImagePreview } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
 import { MessagesTimeline } from "@/features/projects/components/assistant/chat/MessagesTimeline"
-import { ProviderOptionControls } from "@/features/projects/components/assistant/chat/ProviderOptionControls"
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
 import { ModelPickerContent } from "@/features/projects/components/assistant/chat/ModelPickerContent"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
@@ -66,7 +65,7 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "@/lib/i18n"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, ImageAdd01Icon as __ImageAdd01IconHugeIcon } from '@hugeicons/core-free-icons'
+import { Add01Icon as __PlusIconHugeIcon, BubbleChatIcon as __ChatIconHugeIcon, Cancel01Icon as __XIconHugeIcon, ChevronDoubleCloseIcon as __ChevronLeftIconHugeIcon, ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon, CircleUnlock02Icon as __LockOpenIconHugeIcon, LeftToRightListBulletIcon as __ListTodoIconHugeIcon, LockIcon as __LockIconHugeIcon, ImageAdd01Icon as __ImageAdd01IconHugeIcon } from '@hugeicons/core-free-icons'
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
@@ -1176,7 +1175,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     >
       <div
         className={cn(
-          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl bg-surface-raised transition-colors",
+          "mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-border/60 bg-surface-raised shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
         )}
         onBlurCapture={handleComposerShellBlurCapture}
@@ -1333,6 +1332,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 lockedProvider={props.selectedProvider}
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
+                optionDescriptors={props.modelOptionDescriptors}
+                onOptionChange={props.onModelOptionChange}
                 terminalOpen={false}
                 onRequestClose={() => setIsModelPickerOpen(false)}
                 onProviderModelChange={(provider, model, instanceId) => {
@@ -1461,7 +1462,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             data-chat-composer-footer="true"
             className="mb-2 shrink-0 flex flex-nowrap items-center justify-between gap-2 px-2"
           >
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+            <div className="flex min-w-0 items-center gap-1">
               <Button
                 type="button"
                 variant="ghost"
@@ -1473,28 +1474,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 }}
                 title={`Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`}
               >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden="true"
-                  className="shrink-0"
-                >
-                  <path
-                    d="M21.44 11.05l-8.49 8.49a6 6 0 11-8.49-8.49l8.49-8.49a4 4 0 115.66 5.66l-8.5 8.49a2 2 0 11-2.82-2.83l7.78-7.78"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <HugeiconsIcon icon={__PlusIconHugeIcon} className="size-3.5 shrink-0 stroke-[2.25]" strokeWidth={2.25} />
                 {props.composerImages.length > 0 ? (
                   <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[10px] leading-none text-primary">
                     {props.composerImages.length}
                   </span>
                 ) : null}
               </Button>
+            </div>
+
+            <div data-chat-composer-actions="right" className="flex shrink-0 items-center gap-1.5">
               <ProviderModelPicker
                 provider={props.selectedProvider}
                 activeInstanceId={props.selectedModelSelection.instanceId}
@@ -1502,6 +1491,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 lockedProvider={props.selectedProvider}
                 providers={props.providers}
                 modelOptionsByProvider={props.modelOptionsByProvider}
+                optionDescriptors={props.modelOptionDescriptors}
                 compact
                 disabled={!isChatReady || props.isRunning}
                 triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground hover:bg-accent sm:text-xs"
@@ -1509,9 +1499,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 open={isModelPickerOpen}
                 onOpenChange={setIsModelPickerOpen}
               />
-            </div>
-
-            <div data-chat-composer-actions="right" className="flex shrink-0 items-center gap-2">
               {activePendingProgress ? (
                 <div className="flex items-center gap-2">
                   {activePendingProgress.questionIndex > 0 ? (
@@ -1601,21 +1588,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         )}
       </div>
 
-      {!activePendingApproval ? (
-        <div className="flex shrink-0 items-center justify-between gap-3 px-1 pt-2">
-          <div className="flex min-w-0 items-center gap-1">
-            <ProviderOptionControls
-              descriptors={props.modelOptionDescriptors}
-              disabled={!isChatReady || props.isRunning}
-              onOptionChange={props.onModelOptionChange}
-            />
-          </div>
-
-          {props.activeContextWindow ? (
-            <div className="shrink-0">
-              <ContextWindowMeter usage={props.activeContextWindow} />
-            </div>
-          ) : null}
+      {!activePendingApproval && props.activeContextWindow ? (
+        <div className="flex shrink-0 items-center justify-end px-1 pt-2">
+          <ContextWindowMeter usage={props.activeContextWindow} />
         </div>
       ) : null}
     </form>
@@ -1729,7 +1704,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             >
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-0 bottom-[-1rem] top-[-2rem] bg-gradient-to-t from-content-surface via-content-surface/86 via-55% to-transparent transition-opacity duration-300 sm:bottom-[-1.25rem] sm:top-[-2.5rem]",
+                  "pointer-events-none absolute inset-x-0 bottom-0 top-[-2rem] bg-gradient-to-t from-content-surface via-content-surface/86 via-55% to-transparent transition-opacity duration-300 sm:top-[-2.5rem]",
                   showComposerDockChrome ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden
@@ -1737,7 +1712,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               <div
                 data-chat-composer-dock-content="true"
                 className={cn(
-                  "relative z-[1] flex w-full min-h-0 flex-col overflow-hidden transition-all duration-200 ease-out",
+                  "relative z-[1] flex w-full min-h-0 flex-col transition-all duration-200 ease-out",
                   showComposerDockChrome
                     ? "max-h-[min(28rem,85vh)] translate-y-0 opacity-100 pointer-events-auto"
                     : "max-h-0 translate-y-1 opacity-0 pointer-events-none",

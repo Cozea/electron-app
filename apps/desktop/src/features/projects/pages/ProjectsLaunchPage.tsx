@@ -43,7 +43,6 @@ export function ProjectsLaunchPage() {
     lastWorkbenchRoute?.projectId && convexUserId
       ? {
           projectId: lastWorkbenchRoute.projectId as Id<"projects">,
-          userId: convexUserId,
         }
       : "skip",
   )

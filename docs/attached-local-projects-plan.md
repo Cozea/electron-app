@@ -11,7 +11,11 @@ The core ownership and exact-path attachment design is now implemented:
   and an explicit marker policy through migration 003.
 - **Open Existing Folder** preflights and attaches the selected real path in place. Both renderer
   entry points share the same orchestration, reopening an already-bound folder navigates to its
-  existing project, and the compatibility import operation no longer copies or force-binds.
+  existing project only after an authenticated current-device access probe. If an identity
+  cutover or earlier incomplete cleanup left an inaccessible binding, Cozea removes every
+  app-owned projection for that old project, preserves the attached source folder, verifies the
+  catalog is detached, and creates a fresh current-device project at the exact same path. The
+  compatibility import operation no longer copies or force-binds.
 - New projects and clones remain managed. Attached folders are excluded from managed storage and
   can never be selected by project deletion or **Clear all**. Managed deletion resolves a
   workspace ID in Electron and requires ownership, root containment, marker identity, and
@@ -24,6 +28,11 @@ The core ownership and exact-path attachment design is now implemented:
   directory reads. Attached roots no longer need a persistent global read grant for Dev Server
   launch or Project DevApp command publication.
 - Package-manager-specific dev-server port forwarding is covered for npm, pnpm, Bun, and Yarn.
+- Project deletion now clears all project-scoped renderer state, workbench/session/runtime state,
+  local DevApp records, and the matching T3 project/threads before forgetting workspace bindings.
+  Convex marks the project deleted immediately, then performs a bounded two-pass cascade that
+  removes all project-owned rows and stored blobs before deleting the project document itself.
+  An internal resume mutation is available for legacy soft-deleted records.
 
 Verification completed on 2026-08-29: 835 tests passed with 4 intentional skips, renderer and
 Electron typechecks passed, lint passed, the production build passed, and a real Electron
@@ -223,9 +232,12 @@ choice with copy-specific language.
 1. Select the folder.
 2. Electron preflights stat, realpath, accessibility, marker identity, catalog collision, nested-root
    selection, and Git metadata before creating cloud state.
-3. If the same real path is already bound to the same project, open it.
-4. If it belongs to another live project, offer **Open existing project** or cancel. Transfer must be
-   a separate confirmed action.
+3. If the same real path is already bound, ask Convex whether the authenticated device can access
+   that project. Open it only when access is confirmed; an auth or transport failure is an error,
+   not permission to detach.
+4. If the authenticated lookup returns `null`, stop project services, clear renderer/workbench/T3
+   projections, forget the device-local workspace record, preserve the attached source folder,
+   and re-run preflight. Do not create cloud state unless the stale binding is demonstrably gone.
 5. Create/resume a Convex project in `provisioning` with an idempotent creation token.
 6. Attach the exact folder locally as `attached`.
 7. Mark the cloud project active and navigate using the returned workspace ID.
@@ -261,6 +273,18 @@ function. Local mode no longer asks for or validates a destination parent direct
   ownership is `managed`, the workspace marker matches, the real path is within its recorded
   managed root, no other project claims it, and sessions are stopped.
 - Keep deletion recoverable through Trash and report local cleanup failures after cloud deletion.
+- Stop Dev Servers before closing their workbench sessions or forgetting workspace authorization.
+  Close every session/runtime for the project, including legacy unbound sessions.
+- Remove persisted workbenches/layouts, assistant drafts and thread detail, sidebar/route/task/feed
+  state, terminal and Dev Server mirrors, surface leases, query cache entries, and local Project
+  DevApp publications. Delete the corresponding T3 project with `force` so its threads cannot
+  restore when the same source folder is attached again; retry a temporarily unavailable T3
+  runtime from a small persisted deletion queue.
+- Cloud deletion is a real cascade rather than a permanent tombstone: mark deleted to revoke
+  access synchronously, purge every direct project-owned table and storage reference in bounded
+  scheduled batches, make a second pass for in-flight writes, then delete the project row last.
+  Pre-fix soft-deleted projects can be scheduled through the internal-only
+  `projects.resumeDeletedProjectPurge` mutation after deployment.
 
 ## Marker policy
 
@@ -360,9 +384,11 @@ project data.
 
 ### Phase 3 — deletion, authorization, and storage
 
-- Ship ownership-aware deletion UI and guarded Trash operation before broadly enabling attach.
-- Move project inspection to workspace-scoped IPC and shrink persistent broad read grants.
-- Split managed storage from optional attached caches; make clear/reset operations ownership-safe.
+- Completed: ownership-aware deletion UI, guarded Trash, full local/T3 state cleanup, and bounded
+  Convex cascade are implemented. Attached roots remain ineligible for filesystem deletion.
+- Completed: project inspection uses workspace-scoped IPC for Dev Server and DevApp detection.
+- Remaining: split optional attached dependency/build caches into explicit storage accounting and
+  retire the unused legacy broad-read configuration after compatibility telemetry permits it.
 
 ### Phase 4 — path decoupling and runtime hardening
 

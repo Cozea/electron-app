@@ -51,6 +51,9 @@ export interface BrowserState {
   canZoomOut: boolean
   find: BrowserFindState
   loadError?: string | null
+  httpStatusCode?: number | null
+  httpStatusText?: string | null
+  httpError?: string | null
 }
 
 export interface BrowserCreateOptions {

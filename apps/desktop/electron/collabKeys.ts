@@ -1,8 +1,10 @@
 import { app, safeStorage } from 'electron'
-import { createHash, randomUUID, webcrypto } from 'node:crypto'
+import { createHash, webcrypto } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+
+import { createDeviceIdentityKey } from '@shared/deviceIdentity'
 
 // node's webcrypto.subtle is runtime-compatible with the DOM SubtleCrypto interface; type it as
 // such so the JsonWebKey/CryptoKey/BufferSource annotations (from lib.dom) line up.
@@ -17,28 +19,48 @@ const toBufferSource = (view: Uint8Array): BufferSource => view as BufferSource
 const COLLAB_KEYS_DIR = 'collab-keys'
 const DEVICE_IDENTITY_FILE = 'device-identity.bin'
 const DEVICE_ALGORITHM = 'ECDH-P256'
+const DEVICE_SIGNING_ALGORITHM = 'ECDSA-P256-SHA256'
 const WRAP_ALGORITHM = 'ECDH-P256+A256GCM'
 const RECOVERY_WRAP_ALGORITHM = 'PBKDF2-SHA256+A256GCM'
 const RECOVERY_WRAP_ITERATIONS = 210_000
 
 interface StoredCollabDeviceIdentity {
+  schemaVersion: 2
   deviceId: string
+  identityKey: string
   deviceLabel: string
   platform: string
   publicKeyAlgorithm: typeof DEVICE_ALGORITHM
   fingerprint: string
   publicKeyJwk: JsonWebKey
   privateKeyJwk: JsonWebKey
+  signingPublicKeyAlgorithm: typeof DEVICE_SIGNING_ALGORITHM
+  signingFingerprint: string
+  signingPublicKeyJwk: JsonWebKey
+  signingPrivateKeyJwk: JsonWebKey
   createdAt: number
 }
 
 export interface CollabDeviceIdentity {
   deviceId: string
+  userId: string
+  identityKey: string
   deviceLabel: string
   platform: string
   publicKeyAlgorithm: typeof DEVICE_ALGORITHM
   fingerprint: string
   publicKeyJwk: string
+  signingPublicKeyAlgorithm?: typeof DEVICE_SIGNING_ALGORITHM
+  signingFingerprint?: string
+  signingPublicKeyJwk?: string
+}
+
+export interface CollabDeviceChallengeSignature {
+  deviceId: string
+  userId: string
+  identityKey: string
+  algorithm: typeof DEVICE_SIGNING_ALGORITHM
+  signature: string
 }
 
 export interface WrappedRoomKeyDescriptor {
@@ -99,6 +121,10 @@ function bytesToBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('base64')
 }
 
+function bytesToBase64Url(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('base64url')
+}
+
 function base64ToBytes(value: string): Uint8Array {
   return new Uint8Array(Buffer.from(value, 'base64'))
 }
@@ -129,7 +155,15 @@ function readStoredIdentity(): StoredCollabDeviceIdentity | null {
       const encrypted = fs.readFileSync(encryptedPath)
       const json = safeStorage.decryptString(encrypted)
       const parsed = JSON.parse(json) as StoredCollabDeviceIdentity
-      if (!parsed?.deviceId || !parsed?.publicKeyJwk || !parsed?.privateKeyJwk) {
+      if (
+        parsed?.schemaVersion !== 2 ||
+        !parsed.identityKey ||
+        parsed.deviceId !== parsed.identityKey ||
+        !parsed.publicKeyJwk ||
+        !parsed.privateKeyJwk ||
+        !parsed.signingPublicKeyJwk ||
+        !parsed.signingPrivateKeyJwk
+      ) {
         return null
       }
       return parsed
@@ -140,7 +174,15 @@ function readStoredIdentity(): StoredCollabDeviceIdentity | null {
         '[collabKeys] Reading insecure plaintext device identity. Set only for local/cloud agent testing.',
       )
       const parsed = JSON.parse(fs.readFileSync(insecurePath, 'utf8')) as StoredCollabDeviceIdentity
-      if (!parsed?.deviceId || !parsed?.publicKeyJwk || !parsed?.privateKeyJwk) {
+      if (
+        parsed?.schemaVersion !== 2 ||
+        !parsed.identityKey ||
+        parsed.deviceId !== parsed.identityKey ||
+        !parsed.publicKeyJwk ||
+        !parsed.privateKeyJwk ||
+        !parsed.signingPublicKeyJwk ||
+        !parsed.signingPrivateKeyJwk
+      ) {
         return null
       }
       return parsed
@@ -185,7 +227,7 @@ function writeStoredIdentity(identity: StoredCollabDeviceIdentity): void {
 }
 
 async function generateStoredIdentity(): Promise<StoredCollabDeviceIdentity> {
-  const keyPair = await subtle.generateKey(
+  const encryptionKeyPair = await subtle.generateKey(
     {
       name: 'ECDH',
       namedCurve: 'P-256',
@@ -194,29 +236,53 @@ async function generateStoredIdentity(): Promise<StoredCollabDeviceIdentity> {
     ['deriveBits'],
   )
 
-  const publicKeyJwk = await subtle.exportKey('jwk', keyPair.publicKey)
-  const privateKeyJwk = await subtle.exportKey('jwk', keyPair.privateKey)
+  const signingKeyPair = await subtle.generateKey(
+    {
+      name: 'ECDSA',
+      namedCurve: 'P-256',
+    },
+    true,
+    ['sign', 'verify'],
+  )
+
+  const publicKeyJwk = await subtle.exportKey('jwk', encryptionKeyPair.publicKey)
+  const privateKeyJwk = await subtle.exportKey('jwk', encryptionKeyPair.privateKey)
+  const signingPublicKeyJwk = await subtle.exportKey('jwk', signingKeyPair.publicKey)
+  const signingPrivateKeyJwk = await subtle.exportKey('jwk', signingKeyPair.privateKey)
+  const identityKey = createDeviceIdentityKey(webcrypto.getRandomValues(new Uint8Array(16)))
 
   return {
-    deviceId: randomUUID(),
+    schemaVersion: 2,
+    deviceId: identityKey,
+    identityKey,
     deviceLabel: os.hostname(),
     platform: process.platform,
     publicKeyAlgorithm: DEVICE_ALGORITHM,
     fingerprint: publicJwkFingerprint(publicKeyJwk),
     publicKeyJwk,
     privateKeyJwk,
+    signingPublicKeyAlgorithm: DEVICE_SIGNING_ALGORITHM,
+    signingFingerprint: publicJwkFingerprint(signingPublicKeyJwk),
+    signingPublicKeyJwk,
+    signingPrivateKeyJwk,
     createdAt: Date.now(),
   }
 }
 
 function toPublicIdentity(identity: StoredCollabDeviceIdentity): CollabDeviceIdentity {
+  const identityKey = identity.identityKey
   return {
-    deviceId: identity.deviceId,
+    deviceId: identityKey,
+    userId: identityKey,
+    identityKey,
     deviceLabel: identity.deviceLabel,
     platform: identity.platform,
     publicKeyAlgorithm: identity.publicKeyAlgorithm,
     fingerprint: identity.fingerprint,
     publicKeyJwk: JSON.stringify(identity.publicKeyJwk),
+    signingPublicKeyAlgorithm: identity.signingPublicKeyAlgorithm,
+    signingFingerprint: identity.signingFingerprint,
+    signingPublicKeyJwk: JSON.stringify(identity.signingPublicKeyJwk),
   }
 }
 
@@ -308,6 +374,37 @@ export function isCollabEncryptionAvailable(): boolean {
 export async function ensureCollabDeviceIdentity(): Promise<CollabDeviceIdentity> {
   const identity = await loadStoredIdentityOrThrow()
   return toPublicIdentity(identity)
+}
+
+export async function signCollabDeviceChallenge(
+  challenge: string,
+): Promise<CollabDeviceChallengeSignature> {
+  if (!challenge || challenge.length > 8_192) {
+    throw new Error('Device challenge must contain between 1 and 8192 characters.')
+  }
+
+  const identity = await loadStoredIdentityOrThrow()
+  const signingKey = await subtle.importKey(
+    'jwk',
+    identity.signingPrivateKeyJwk,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    signingKey,
+    toBufferSource(encoder.encode(challenge)),
+  )
+  const identityKey = identity.identityKey
+
+  return {
+    deviceId: identityKey,
+    userId: identityKey,
+    identityKey,
+    algorithm: DEVICE_SIGNING_ALGORITHM,
+    signature: bytesToBase64Url(new Uint8Array(signature)),
+  }
 }
 
 export async function wrapRoomKeyForRecipient(args: {

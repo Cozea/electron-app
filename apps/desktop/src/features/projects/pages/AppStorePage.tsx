@@ -37,7 +37,7 @@ export function AppStorePage() {
   const query = searchParams.get("q") ?? ""
   const orgDevApps = useQuery(
     api.devApps.listMine,
-    featureFlags.projectDevApps && convexUserId ? { userId: convexUserId } : "skip",
+    featureFlags.projectDevApps && convexUserId ? {} : "skip",
   )
 
   const headerCenter = useMemo(

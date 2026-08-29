@@ -20,7 +20,7 @@ export function useAccessibleProject() {
   const projectById = useQuery(
     api.projects.getAccessibleById,
     !projectRouteContext && routeProjectIdParam && convexUserId
-      ? { projectId: routeProjectIdParam as Id<"projects">, userId: convexUserId }
+      ? { projectId: routeProjectIdParam as Id<"projects"> }
       : "skip"
   )
 

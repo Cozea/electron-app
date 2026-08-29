@@ -21,6 +21,8 @@ const es: Record<TranslationKey, string> = {
   "common.page": "Página",
   "common.of": "de",
   "common.revoke": "Revocar",
+  "common.copy": "Copiar",
+  "common.copied": "Copiado",
 
   // ── Inicio de sesión / Autenticación ────────────────────────────────
   "login.welcome": "Bienvenido a Cozea",
@@ -54,9 +56,10 @@ const es: Record<TranslationKey, string> = {
   "settings.account.deviceProfileTitle": "Perfil del dispositivo",
   "settings.account.localTrustedDevice": "Dispositivo local de confianza",
   "settings.account.myDevices": "Mis dispositivos",
+  "settings.account.deviceIdentity": "Identidad del dispositivo",
   "settings.account.addDevice": "+ Agregar dispositivo",
   "settings.account.devicesDescription":
-    "Dispositivos vinculados a tu cuenta. Las claves de colaboración están limitadas por dispositivo.",
+    "Este ID público es a la vez el ID del dispositivo y su ID de usuario de Cozea. Compártelo cuando un administrador de organización necesite agregar este dispositivo.",
   "settings.account.thisDevice": "Este dispositivo",
   "settings.account.activeNow": "Activo ahora",
   "settings.account.notifications": "Notificaciones",
@@ -73,19 +76,19 @@ const es: Record<TranslationKey, string> = {
   "settings.account.deleteAccountDesc":
     "Eliminar permanentemente tu cuenta y todos los datos",
   "settings.account.resetDeviceDesc":
-    "Reservado para futuros flujos de restablecimiento de identidad local.",
+    "Revoca este dispositivo, borra sus claves privadas locales y crea una identidad nueva.",
   "settings.account.deleteConfirmTitle": "Eliminar cuenta",
   "settings.account.resetConfirmTitle": "Restablecer identidad del dispositivo",
   "settings.account.deleteConfirmDesc":
     "Esta acción no se puede deshacer. Todos tus datos serán eliminados permanentemente.",
   "settings.account.resetConfirmDesc":
-    "Este flujo de trabajo aún no está disponible.",
+    "Este ID quedará revocado permanentemente. Usa una invitación o código de recuperación para restaurar el acceso del nuevo dispositivo.",
   "settings.account.deleteConfirmLabel":
     'Escribe "eliminar mi cuenta" para confirmar',
   "settings.account.resetConfirmLabel":
-    "El restablecimiento de identidad del dispositivo está deshabilitado actualmente",
+    'Escribe "RESET" para confirmar',
   "settings.account.deleteConfirmPlaceholder": "eliminar mi cuenta",
-  "settings.account.resetConfirmPlaceholder": "No disponible",
+  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Configuración: Apariencia ───────────────────────────────────────
   "settings.appearance.theme": "Tema",
@@ -121,7 +124,7 @@ const es: Record<TranslationKey, string> = {
   // ── Configuración: Organizaciones ───────────────────────────────────
   "settings.organizations.title": "Organizaciones",
   "settings.organizations.description":
-    "Crea una organización de Cozea, invita por correo y abre cada DevApp publicada allí.",
+    "Crea un grupo de dispositivos, agrega dispositivos inicializados por su ID público de Cozea y abre cada DevApp publicada allí.",
   "settings.organizations.create": "Crear",
   "settings.organizations.createPlaceholder": "Nombre de la organización",
   "settings.organizations.empty": "Todavía no perteneces a una organización.",
@@ -131,6 +134,11 @@ const es: Record<TranslationKey, string> = {
   "settings.organizations.devApps": "DevApps",
   "settings.organizations.inviteEmail": "Invitar por correo",
   "settings.organizations.invite": "Invitar",
+  "settings.organizations.groupId": "ID del grupo",
+  "settings.organizations.groupIdDescription":
+    "Este es el ID público de este grupo de dispositivos. Es seguro copiarlo y compartirlo.",
+  "settings.organizations.deviceIdPlaceholder": "ID del dispositivo (czd_…)",
+  "settings.organizations.addDevice": "Agregar dispositivo",
   "settings.organizations.role.admin": "Admin",
   "settings.organizations.role.member": "Miembro",
   "settings.organizations.remove": "Quitar",
@@ -658,6 +666,17 @@ const es: Record<TranslationKey, string> = {
   "orgDevApp.publish.needsOrg": "Vincula este proyecto a una organización antes de publicar.",
   "orgDevApp.publish.failed": "No se pudo publicar la DevApp.",
   "orgDevApp.publish.noFolder": "Vuelve a vincular la carpeta local de este proyecto antes de publicar un artefacto compilado.",
+  "orgDevApp.publish.title": "Publicando DevApp",
+  "orgDevApp.publish.updateTitle": "Actualizando DevApp",
+  "orgDevApp.publish.building": "Compilando y empaquetando la aplicación estática…",
+  "orgDevApp.publish.uploading": "Subiendo el artefacto limitado…",
+  "orgDevApp.publish.verifying": "Verificando el tamaño y la integridad…",
+  "orgDevApp.publish.activating": "Activando la versión de la organización…",
+  "orgDevApp.publish.complete": "Publicada.",
+  "orgDevApp.publish.cancelling": "Cancelando la publicación…",
+  "orgDevApp.publish.cancel": "Cancelar",
+  "orgDevApp.open.accessLost": "Este dispositivo ya no tiene acceso a esta DevApp.",
+  "orgDevApp.open.retry": "Reintentar",
   "orgDevApp.attach.title": "Publicar en una organización",
   "orgDevApp.attach.description": "Los miembros de la organización pueden abrir la app compilada. Nunca reciben el proyecto fuente.",
   "orgDevApp.attach.create": "Crear organización",

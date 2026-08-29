@@ -2,13 +2,15 @@ import { ConvexError } from "convex/values"
 
 import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
+import { isGroupIdentityKey } from "../../shared/deviceIdentity"
 
 type ReadDatabaseCtx = Pick<QueryCtx | MutationCtx, "db">
 
 export type OrganizationRole = Doc<"organizationMembers">["role"]
+export type DeviceOrganization = Doc<"organizations"> & { groupId: string }
 
 export interface OrganizationAccessState {
-  organization: Doc<"organizations"> | null
+  organization: DeviceOrganization | null
   membership: Doc<"organizationMembers"> | null
   isCreator: boolean
 }
@@ -32,13 +34,13 @@ export async function getOrganizationAccessState(
   userId: Id<"users">,
 ): Promise<OrganizationAccessState> {
   const organization = await ctx.db.get(organizationId)
-  if (!organization) {
+  if (!organization?.groupId || !isGroupIdentityKey(organization.groupId)) {
     return { organization: null, membership: null, isCreator: false }
   }
 
   const membership = await getOrganizationMembership(ctx, organizationId, userId)
   return {
-    organization,
+    organization: organization as DeviceOrganization,
     membership,
     isCreator: organization.createdBy === userId,
   }
@@ -57,7 +59,7 @@ export async function requireOrgMember(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
   userId: Id<"users">,
-): Promise<{ organization: Doc<"organizations">; membership: Doc<"organizationMembers"> | null }> {
+): Promise<{ organization: DeviceOrganization; membership: Doc<"organizationMembers"> | null }> {
   const access = await getOrganizationAccessState(ctx, organizationId, userId)
   if (!access.organization || (!access.isCreator && !access.membership)) {
     throw new ConvexError("You are not a member of this organization")
@@ -69,7 +71,7 @@ export async function requireOrgAdmin(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
   userId: Id<"users">,
-): Promise<{ organization: Doc<"organizations"> }> {
+): Promise<{ organization: DeviceOrganization }> {
   const access = await getOrganizationAccessState(ctx, organizationId, userId)
   if (!access.organization) {
     throw new ConvexError("Organization not found")

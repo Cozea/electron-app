@@ -1,10 +1,16 @@
 # Collaboration Encryption Architecture
 
-Last reviewed: 2026-04-15
+Last reviewed: 2026-08-29
 
 ## Implementation Status
 
 The first encrypted collaboration slice is now implemented on the live websocket collaboration path.
+
+Device authentication now uses a separate ECDSA P-256 signing key beside the ECDH room-key
+encryption key. The public `czd_…` identity is simultaneously the device ID and product user ID;
+private keys remain in Electron secure storage. `/collab/session` requires the short-lived ES256
+device bearer token, binds its subject to the registered ECDH key, and fails closed when project
+membership is absent. See [device-identity.md](./device-identity.md).
 
 ### Implemented on the live path
 
@@ -80,7 +86,11 @@ After this work:
 - full local-at-rest secrecy for the user's working tree on disk
 - complete recovery from total device loss with no trusted device available
 
-## Current Plaintext Surfaces
+## Historical Plaintext Surfaces (closed)
+
+The paths below describe the pre-encryption audit that motivated the current implementation. They
+no longer describe the live payload format: updates, snapshots, awareness, and the local
+collaboration snapshot cache now use validated encrypted envelopes.
 
 Today collaboration payloads remain readable in several places:
 

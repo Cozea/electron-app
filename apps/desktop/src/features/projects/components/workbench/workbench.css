@@ -1,5 +1,7 @@
 .cozea-workbench-dockview-host {
   background: transparent;
+  margin-top: -6px;
+  height: calc(100% + 6px);
 }
 
 /* Breathing room so terminal output doesn't sit flush against the tile
@@ -78,19 +80,49 @@
   background-color: transparent;
 }
 
+.cozea-workbench-dockview-theme .dv-resize-container {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .cozea-workbench-dockview .dv-groupview.dv-active-group {
   outline: 0;
   outline-offset: 0;
 }
 
 /* Light mode: hairline + soft ambient glow so tiles read as floating cards
-   against the dark canvas. (Beats the spaced theme's `border: none` on
-   specificity; radius comes from the theme's rounded resize containers.) */
-:root.light .cozea-workbench-dockview .dv-resize-container:has(> .dv-groupview) {
-  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+   against the dark canvas. */
+:root.light .cozea-workbench-dockview-theme .dv-groupview {
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent) !important;
   box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.8),
     0 1px 2px rgb(0 0 0 / 0.04),
-    0 6px 20px rgb(0 0 0 / 0.07);
+    0 6px 20px rgb(0 0 0 / 0.07) !important;
+}
+
+/* Dark themes: faint hairline perimeter border, ambient 3D drop shadow, and a razor-thin
+   top specular highlight line tracing the upper rim and rounded corners. */
+.dark .cozea-workbench-dockview-theme .dv-groupview,
+.cozea-workbench-dockview-theme--dark .dv-groupview,
+:root:not(.light) .cozea-workbench-dockview-theme .dv-groupview {
+  border: 0.5px solid color-mix(in oklch, var(--foreground) 7%, transparent) !important;
+  box-shadow:
+    inset 0 0.5px 0 0 color-mix(in oklch, var(--foreground) 16%, transparent),
+    0 1px 3px 0 rgb(0 0 0 / 0.5),
+    0 8px 24px -4px rgb(0 0 0 / 0.6) !important;
+}
+
+.dark .cozea-workbench-dockview-theme .dv-groupview::before,
+.cozea-workbench-dockview-theme--dark .dv-groupview::before,
+:root:not(.light) .cozea-workbench-dockview-theme .dv-groupview::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 15;
+  box-shadow: inset 0 0.5px 0 0 color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
 .cozea-workbench-dockview .dv-tab {

@@ -12,8 +12,8 @@ import {
   type WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
-import { buildOrgDevAppUrl } from "@shared/orgDevAppProtocol"
 import { useTranslation } from "@/lib/i18n"
+import { Button } from "@/components/ui/button"
 
 interface WorkbenchOrgDevAppTileProps {
   projectId: string
@@ -39,19 +39,24 @@ export function WorkbenchOrgDevAppTile({
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const [prepareError, setPrepareError] = useState<string | null>(null)
-  const [originUrl, setOriginUrl] = useState(tile.url)
+  const [originUrl, setOriginUrl] = useState("")
+  const [prepareAttempt, setPrepareAttempt] = useState(0)
 
   const artifact = useQuery(
     api.devApps.getArtifactUrl,
     convexUserId && tile.publicationId
       ? {
-          userId: convexUserId,
           publicationId: tile.publicationId as Id<"devAppPublications">,
         }
       : "skip",
   )
 
   useEffect(() => {
+    if (artifact === null) {
+      setOriginUrl("")
+      setPrepareError(t("orgDevApp.open.accessLost"))
+      return
+    }
     if (!artifact) return
     let cancelled = false
     setPrepareError(null)
@@ -76,11 +81,9 @@ export function WorkbenchOrgDevAppTile({
     return () => {
       cancelled = true
     }
-  }, [artifact, laneId, projectId, t, tile.id, workbenchActions, workspaceId])
+  }, [artifact, laneId, prepareAttempt, projectId, t, tile.id, workbenchActions, workspaceId])
 
-  const resolvedUrl = originUrl || (tile.contentHash
-    ? buildOrgDevAppUrl({ contentHash: tile.contentHash, entryPath: tile.entryPath })
-    : "")
+  const resolvedUrl = originUrl
 
   const {
     hostRef,
@@ -96,7 +99,7 @@ export function WorkbenchOrgDevAppTile({
     projectId,
     laneId,
     workspaceId: tile.publicationId,
-    visible: panelActivity.visible && Boolean(resolvedUrl) && !prepareError,
+    visible: panelActivity.visible && Boolean(resolvedUrl) && !prepareError && artifact !== null,
     persistModel: true,
     storageScope: "orgDevApp",
     partitionKey: tile.publicationId,
@@ -125,8 +128,23 @@ export function WorkbenchOrgDevAppTile({
       contentClassName="relative h-full overflow-hidden bg-content-surface"
     >
       {statusMessage && (!boundsReady || prepareError) ? (
-        <div className="flex h-full items-center justify-center p-6 text-center">
-          <p className="max-w-md text-sm text-muted-foreground">{statusMessage}</p>
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+          <p className={prepareError ? "max-w-md text-sm text-destructive" : "max-w-md text-sm text-muted-foreground"}>
+            {statusMessage}
+          </p>
+          {prepareError && artifact !== null ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPrepareError(null)
+                setPrepareAttempt((attempt) => attempt + 1)
+              }}
+            >
+              {t("orgDevApp.open.retry")}
+            </Button>
+          ) : null}
         </div>
       ) : null}
       <div ref={hostRef} className="absolute inset-0" />
@@ -138,8 +156,11 @@ export function WorkbenchOrgDevAppTile({
         />
       ) : null}
       {state.loadError ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 p-6 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/80 p-6 text-center">
           <p className="max-w-md text-sm text-destructive">{state.loadError}</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void actions.reload()}>
+            {t("orgDevApp.open.retry")}
+          </Button>
         </div>
       ) : null}
       <button

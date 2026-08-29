@@ -7,7 +7,10 @@ import type {
   BrowserStorageScope,
   BrowserUiCommand,
 } from '../../../../shared/browserHostTypes'
-import { isAllowedOrgDevAppNavigation } from '../../../../shared/orgDevAppProtocol'
+import {
+  evaluateOrgDevAppNavigation,
+  isAllowedOrgDevAppNavigation,
+} from '../../../../shared/orgDevAppProtocol'
 
 interface WorkbenchBrowserRecord {
   view: WebContentsView
@@ -37,6 +40,56 @@ const DEFAULT_BROWSER_ZOOM_FACTOR = 1
 const MIN_BROWSER_ZOOM_FACTOR = BROWSER_ZOOM_FACTORS[0]
 const MAX_BROWSER_ZOOM_FACTOR = BROWSER_ZOOM_FACTORS[BROWSER_ZOOM_FACTORS.length - 1]
 const IS_MAC = process.platform === 'darwin'
+const MIN_HTTP_ERROR_STATUS = 400
+
+const HAS_RENDERABLE_DOCUMENT_CONTENT_SCRIPT = String.raw`(() => {
+  const ignoredTags = new Set(['SCRIPT', 'STYLE', 'LINK', 'META', 'TITLE', 'TEMPLATE', 'NOSCRIPT'])
+  const visualTags = new Set(['CANVAS', 'EMBED', 'IFRAME', 'IMG', 'OBJECT', 'SVG', 'VIDEO'])
+  const isVisible = (element) => {
+    if (ignoredTags.has(element.tagName)) return false
+    const style = window.getComputedStyle(element)
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      style.visibility === 'collapse' ||
+      Number.parseFloat(style.opacity || '1') === 0
+    ) {
+      return false
+    }
+    const rect = element.getBoundingClientRect()
+    return rect.width > 0 && rect.height > 0
+  }
+
+  const visit = (root) => {
+    for (const element of root.children) {
+      if (
+        isVisible(element) &&
+        (visualTags.has(element.tagName) || (element.innerText || '').trim().length > 0)
+      ) {
+        return true
+      }
+      if (element.shadowRoot && visit(element.shadowRoot)) return true
+      if (visit(element)) return true
+    }
+    return false
+  }
+
+  return Boolean(document.body && visit(document.body))
+})()`
+
+export function formatWorkbenchBrowserHttpError(statusCode: number, statusText: string): string {
+  const normalizedStatusText = statusText.trim()
+  return `HTTP ${statusCode}${normalizedStatusText ? ` ${normalizedStatusText}` : ''}`
+}
+
+export function shouldSurfaceWorkbenchBrowserHttpError(
+  statusCode: number | null | undefined,
+  hasRenderableContent: boolean,
+): boolean {
+  return typeof statusCode === 'number' &&
+    statusCode >= MIN_HTTP_ERROR_STATUS &&
+    !hasRenderableContent
+}
 
 export class WorkbenchBrowserService {
   private readonly records = new Map<string, WorkbenchBrowserRecord>()
@@ -94,6 +147,15 @@ export class WorkbenchBrowserService {
     }
 
     const nextSession = session.fromPartition(key)
+    if (storageScope === 'orgDevApp') {
+      nextSession.setPermissionCheckHandler(() => false)
+      nextSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+        callback(false)
+      })
+      nextSession.on('will-download', (event) => {
+        event.preventDefault()
+      })
+    }
     this.sessions.set(key, nextSession)
     return nextSession
   }
@@ -177,6 +239,9 @@ export class WorkbenchBrowserService {
       canZoomOut: true,
       find: this.createInitialFindState(),
       loadError: null,
+      httpStatusCode: null,
+      httpStatusText: null,
+      httpError: null,
     }
   }
 
@@ -248,6 +313,9 @@ export class WorkbenchBrowserService {
       canZoomOut: zoomFactor > MIN_BROWSER_ZOOM_FACTOR,
       find: record.state.find,
       loadError: record.state.loadError ?? null,
+      httpStatusCode: record.state.httpStatusCode ?? null,
+      httpStatusText: record.state.httpStatusText ?? null,
+      httpError: record.state.httpError ?? null,
     }
   }
 
@@ -265,6 +333,55 @@ export class WorkbenchBrowserService {
     })
   }
 
+  private async refreshHttpErrorState(tileId: string): Promise<void> {
+    const record = this.records.get(tileId)
+    if (!record || record.view.webContents.isDestroyed()) return
+
+    const statusCode = record.state.httpStatusCode
+    const statusText = record.state.httpStatusText ?? ''
+    if (typeof statusCode !== 'number' || statusCode < MIN_HTTP_ERROR_STATUS) {
+      if (record.state.httpError) {
+        record.state.httpError = null
+        this.scheduleEmit(tileId)
+      }
+      return
+    }
+
+    const observedUrl = record.view.webContents.getURL()
+    let hasRenderableContent = true
+    try {
+      hasRenderableContent = Boolean(
+        await record.view.webContents.executeJavaScript(
+          HAS_RENDERABLE_DOCUMENT_CONTENT_SCRIPT,
+          true,
+        ),
+      )
+    } catch {
+      // If the failed document cannot be inspected, prefer a useful host error
+      // over a permanently empty native surface.
+      hasRenderableContent = false
+    }
+
+    const current = this.records.get(tileId)
+    if (
+      current !== record ||
+      current.view.webContents.getURL() !== observedUrl ||
+      current.state.httpStatusCode !== statusCode
+    ) {
+      return
+    }
+
+    const nextHttpError = shouldSurfaceWorkbenchBrowserHttpError(
+      statusCode,
+      hasRenderableContent,
+    )
+      ? formatWorkbenchBrowserHttpError(statusCode, statusText)
+      : null
+    if (current.state.httpError === nextHttpError) return
+    current.state.httpError = nextHttpError
+    this.scheduleEmit(tileId)
+  }
+
   private attachView(tileId: string, view: WebContentsView): void {
     const mainWindow = this.getMainWindow()
     if (!mainWindow || mainWindow.isDestroyed()) return
@@ -278,8 +395,11 @@ export class WorkbenchBrowserService {
     view.webContents.setWindowOpenHandler(({ url }) => {
       const record = this.records.get(tileId)
       if (record?.navigationPolicy === 'orgDevApp') {
-        if (isAllowedOrgDevAppNavigation(url)) {
+        const decision = evaluateOrgDevAppNavigation(url)
+        if (decision.allowed) {
           void this.loadUrlIntoRecord(tileId, record, url)
+        } else if (decision.reason === 'external-https') {
+          void shell.openExternal(url)
         }
         return { action: 'deny' }
       }
@@ -293,16 +413,20 @@ export class WorkbenchBrowserService {
     view.webContents.on('will-navigate', (event, url) => {
       const record = this.records.get(tileId)
       if (record?.navigationPolicy !== 'orgDevApp') return
-      if (!isAllowedOrgDevAppNavigation(url)) {
+      const decision = evaluateOrgDevAppNavigation(url)
+      if (!decision.allowed) {
         event.preventDefault()
+        if (decision.reason === 'external-https') void shell.openExternal(url)
       }
     })
 
     view.webContents.on('will-redirect', (event, url) => {
       const record = this.records.get(tileId)
       if (record?.navigationPolicy !== 'orgDevApp') return
-      if (!isAllowedOrgDevAppNavigation(url)) {
+      const decision = evaluateOrgDevAppNavigation(url)
+      if (!decision.allowed) {
         event.preventDefault()
+        if (decision.reason === 'external-https') void shell.openExternal(url)
       }
     })
 
@@ -314,6 +438,9 @@ export class WorkbenchBrowserService {
       const record = this.records.get(tileId)
       if (record) {
         record.state.loadError = null
+        record.state.httpStatusCode = null
+        record.state.httpStatusText = null
+        record.state.httpError = null
       }
       coalesce()
     })
@@ -478,8 +605,19 @@ export class WorkbenchBrowserService {
     })
 
     view.webContents.on('did-stop-loading', coalesce)
-    view.webContents.on('did-finish-load', coalesce)
-    view.webContents.on('did-navigate', coalesce)
+    view.webContents.on('did-finish-load', () => {
+      coalesce()
+      void this.refreshHttpErrorState(tileId)
+    })
+    view.webContents.on('did-navigate', (_event, _url, httpResponseCode, httpStatusText) => {
+      const record = this.records.get(tileId)
+      if (record) {
+        record.state.httpStatusCode = httpResponseCode >= 0 ? httpResponseCode : null
+        record.state.httpStatusText = httpStatusText || null
+        record.state.httpError = null
+      }
+      coalesce()
+    })
     view.webContents.on('did-navigate-in-page', coalesce)
     view.webContents.on(
       'did-fail-load',
@@ -496,6 +634,9 @@ export class WorkbenchBrowserService {
             url: validatedURL || record.state.url,
             isLoading: false,
             loadError: `${errorDescription} (${errorCode})`,
+            httpStatusCode: null,
+            httpStatusText: null,
+            httpError: null,
           }
         }
         coalesce()
@@ -529,6 +670,9 @@ export class WorkbenchBrowserService {
         finalUpdate: false,
       },
       loadError: null,
+      httpStatusCode: null,
+      httpStatusText: null,
+      httpError: null,
     }
     this.emitState(tileId)
 

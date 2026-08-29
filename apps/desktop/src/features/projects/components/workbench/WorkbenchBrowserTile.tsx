@@ -21,7 +21,10 @@ import {
 } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
+import {
+  getWorkbenchBrowserDisplayError,
+  useWorkbenchBrowserView,
+} from "@/features/projects/components/workbench/useWorkbenchBrowserView"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
@@ -124,6 +127,7 @@ export function WorkbenchBrowserTile({
       void actions.stopFindInPage(true)
     },
   })
+  const displayError = getWorkbenchBrowserDisplayError(state)
 
   useEffect(() => {
     setDraftUrl(tile.url)
@@ -529,17 +533,26 @@ export function WorkbenchBrowserTile({
                 </Empty>
               </div>
             ) : null}
-            {tile.url && state.loadError ? (
+            {tile.url && displayError ? (
               <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
                 <div className="max-w-md space-y-2">
                   <div className="text-sm font-medium text-foreground">
-                    This page could not be loaded.
+                    {state.httpError
+                      ? `Page returned HTTP ${state.httpStatusCode ?? "error"}`
+                      : "This page could not be loaded."}
                   </div>
-                  <div className="text-xs text-muted-foreground">{state.loadError}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {state.httpError
+                      ? `${displayError}. The page produced no visible error document.`
+                      : displayError}
+                  </div>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => void actions.reload()}>
+                    Reload
+                  </Button>
                 </div>
               </div>
             ) : null}
-            {tile.url && placeholderScreenshot && !state.loadError ? (
+            {tile.url && placeholderScreenshot && !displayError ? (
               <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
                 <div
                   className="absolute inset-0 bg-no-repeat"
@@ -548,7 +561,7 @@ export function WorkbenchBrowserTile({
                 />
               </div>
             ) : null}
-            {tile.url && overlayPaused && !placeholderScreenshot && !state.loadError ? (
+            {tile.url && overlayPaused && !placeholderScreenshot && !displayError ? (
               <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
                 <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
               </div>
@@ -558,7 +571,7 @@ export function WorkbenchBrowserTile({
                 ref={hostRef}
                 className={cn(
                   "absolute top-[1px] bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
-                  (!boundsReady || state.loadError) ? "pointer-events-none opacity-0" : "opacity-100",
+                  (!boundsReady || displayError) ? "pointer-events-none opacity-0" : "opacity-100",
                 )}
               />
             ) : null}

@@ -17,7 +17,7 @@ export function registerOrgDevAppHandlers(
     "orgDevApp:buildAndPack",
     async (
       _event,
-      options: { workspaceId: string; laneId?: string | null },
+      options: { workspaceId: string; laneId?: string | null; operationId?: string },
     ): Promise<
       | {
           success: true
@@ -34,7 +34,9 @@ export function registerOrgDevAppHandlers(
           laneId: options.laneId,
           operation: "runtime-detect",
         })
-        const result = await service.buildAndPack(access.projectRootPath)
+        const result = await service.buildAndPack(access.projectRootPath, {
+          operationId: options.operationId,
+        })
         return {
           success: true,
           zip: result.zip,
@@ -49,6 +51,13 @@ export function registerOrgDevAppHandlers(
         }
       }
     },
+  )
+
+  ipcMain.handle(
+    "orgDevApp:cancelBuild",
+    (_event, options: { operationId: string }): { cancelled: boolean } => ({
+      cancelled: service.cancelBuild(options.operationId),
+    }),
   )
 
   ipcMain.handle(

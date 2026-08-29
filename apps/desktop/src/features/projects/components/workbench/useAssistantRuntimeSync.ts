@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 
 import type { OrchestrationEvent } from "@cozea/assistant-contracts"
+import { flushPendingAssistantProjectDeletions } from "@/features/projects/lib/assistantProjectDeletion"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { coalesceOrchestrationUiEvents, useStore } from "@/stores/assistant-store"
 import { createOrchestrationRecoveryCoordinator } from "@/stores/orchestrationRecovery"
@@ -49,6 +50,7 @@ async function performSnapshotSync() {
   const api = ensureNativeApi()
   const snapshot = await api.orchestration.getSnapshot()
   await applySnapshotToStore(snapshot)
+  await flushPendingAssistantProjectDeletions({ snapshotIsAuthoritative: true })
   const shouldReplay = coordinator.completeSnapshotRecovery(snapshot.snapshotSequence)
   if (shouldReplay) {
     const nextEvents = coordinator.markEventBatchApplied(pendingDomainEvents)

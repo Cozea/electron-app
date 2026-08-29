@@ -246,6 +246,30 @@ describe('WorkspaceCatalog.attachExistingFolder', () => {
     expect(preflight.existingWorkspace?.projectId).toBe('proj_existing')
   })
 
+  it('forgets a stale attached binding and reattaches the exact source path to a new project', async () => {
+    const dir = await makeProjectDir('identity-cutover-folder')
+    const before = await fs.stat(dir)
+    const stale = await call((c) =>
+      c.attachExistingFolder({ projectId: 'proj_old_device', folderPath: dir }),
+    )
+
+    await call((c) => c.forget(stale.workspace!.workspaceId))
+
+    const afterForget = await call((c) => c.preflightExistingFolder({ folderPath: dir }))
+    expect(afterForget.success).toBe(true)
+    expect(afterForget.existingWorkspace).toBeNull()
+
+    const replacement = await call((c) =>
+      c.attachExistingFolder({ projectId: 'proj_current_device', folderPath: dir }),
+    )
+    expect(replacement.success).toBe(true)
+    expect(replacement.workspace?.projectId).toBe('proj_current_device')
+    expect(replacement.workspace?.projectRootPath).toBe(dir)
+    expect(replacement.workspace?.storageOwnership).toBe('attached')
+    expect(replacement.workspace?.workspaceId).not.toBe(stale.workspace?.workspaceId)
+    expect(String((await fs.stat(dir)).ino)).toBe(String(before.ino))
+  })
+
   it('keeps the legacy import IPC as a no-copy compatibility alias', async () => {
     const source = await makeProjectDir('legacy-import-source')
     const destinationRoot = await makeProjectDir('managed-destination')

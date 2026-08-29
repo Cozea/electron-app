@@ -10,10 +10,12 @@ import {
   resolveTabGroupPreset,
 } from "@/features/projects/lib/workbenchDockview";
 
+const DEVAPP_URL = `cozea-devapp://${"a".repeat(64)}.release/index.html`;
+
 function createBrowserState(tileId: string): WorkbenchBrowserViewState {
   return {
     tileId,
-    url: "cozea-devapp://release/example/index.html",
+    url: DEVAPP_URL,
     title: "Org DevApp",
     isLoading: false,
     canGoBack: false,
@@ -78,7 +80,7 @@ describe("Org DevApp #114 port completeness", () => {
 
     const model = new BrowserTileModel("org-devapp-tile");
     const options: BrowserCreateOptions = {
-      initialUrl: "cozea-devapp://release/example/index.html",
+      initialUrl: DEVAPP_URL,
       storageScope: "orgDevApp",
       workspaceId: "publication-1",
       partitionKey: "publication-1",

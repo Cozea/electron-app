@@ -1,7 +1,15 @@
 import { ConvexError, v } from "convex/values"
 
-import type { Doc, Id } from "./_generated/dataModel"
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server"
+import { internal } from "./_generated/api"
+import type { Doc, Id, TableNames } from "./_generated/dataModel"
+import {
+  internalMutation,
+  query as baseQuery,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import {
   buildPendingProjectInviteRecord,
   findPendingProjectInviteByEmail,
@@ -615,13 +623,18 @@ export const listPageForCurrentUser = query({
   },
 })
 
-export const getAccessibleById = query({
+// Unlike most project-scoped queries, this lookup is intentionally nullable.
+// Folder reopening and stale-route recovery need to distinguish "this device
+// cannot access that old binding" from a transport/authentication failure.
+// Keep authentication explicit here rather than weakening the shared wrapper's
+// project guard for every other endpoint.
+export const getAccessibleById = baseQuery({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const canAccess = await canAccessProject(ctx, args.projectId, args.userId)
+    const device = await requireAuthenticatedDevice(ctx)
+    const canAccess = await canAccessProject(ctx, args.projectId, device._id)
     if (!canAccess) {
       return null
     }
@@ -949,7 +962,341 @@ export const deleteProject = mutation({
       updatedAt: now,
     })
 
+    await ctx.scheduler.runAfter(0, internal.projects.purgeDeletedProjectData, {
+      projectId: args.projectId,
+      pass: 0,
+      stage: 0,
+    })
+
     return { ok: true }
+  },
+})
+
+const PROJECT_PURGE_BATCH_SIZE = 64
+const PROJECT_PURGE_FINAL_STAGE = 29
+
+async function deleteRows<TableName extends TableNames>(
+  ctx: MutationCtx,
+  rows: ReadonlyArray<{ _id: Id<TableName> }>,
+): Promise<void> {
+  for (const row of rows) {
+    await ctx.db.delete(row._id)
+  }
+}
+
+async function deleteProjectPurgeStage(
+  ctx: MutationCtx,
+  projectId: Id<"projects">,
+  stage: number,
+): Promise<number> {
+  switch (stage) {
+    case 0: {
+      const rows = await ctx.db
+        .query("devAppReleases")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      for (const row of rows) {
+        if (row.artifactStorageId) await ctx.storage.delete(row.artifactStorageId)
+        await ctx.db.delete(row._id)
+      }
+      return rows.length
+    }
+    case 1: {
+      const rows = await ctx.db
+        .query("devAppPublications")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 2: {
+      const rows = await ctx.db
+        .query("projectFiles")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      for (const row of rows) {
+        await ctx.storage.delete(row.storageId)
+        await ctx.db.delete(row._id)
+      }
+      return rows.length
+    }
+    case 3: {
+      const rows = await ctx.db
+        .query("projectAssets")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      for (const row of rows) {
+        if (row.storageId) await ctx.storage.delete(row.storageId)
+        await ctx.db.delete(row._id)
+      }
+      return rows.length
+    }
+    case 4: {
+      // This legacy table has no project-prefixed index. Keep the scan bounded;
+      // a future schema migration can add one without changing purge semantics.
+      const rows = await ctx.db
+        .query("changeCommentReactions")
+        .filter((q) => q.eq(q.field("projectId"), projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 5: {
+      const rows = await ctx.db
+        .query("changeComments")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 6: {
+      const rows = await ctx.db
+        .query("fileChanges")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 7: {
+      const rows = await ctx.db
+        .query("projectArtifacts")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 8: {
+      const rows = await ctx.db
+        .query("projectSyncState")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 9: {
+      const rows = await ctx.db
+        .query("projectMembers")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 10: {
+      const rows = await ctx.db
+        .query("projectTrustedDevices")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 11: {
+      const rows = await ctx.db
+        .query("projectStorageUsage")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 12: {
+      const rows = await ctx.db
+        .query("projectInvites")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 13: {
+      const rows = await ctx.db
+        .query("projectTasks")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 14: {
+      const rows = await ctx.db
+        .query("projectTaskStates")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 15: {
+      const rows = await ctx.db
+        .query("projectTaskNotifications")
+        .withIndex("by_project_and_created", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 16: {
+      const rows = await ctx.db
+        .query("projectJoinLinks")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 17: {
+      const rows = await ctx.db
+        .query("projectFileLocks")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 18: {
+      const rows = await ctx.db
+        .query("fileTombstones")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 19: {
+      const rows = await ctx.db
+        .query("projectCollabRoomKeys")
+        .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 20: {
+      const rows = await ctx.db
+        .query("projectCollabWrappedKeys")
+        .withIndex("by_project_room_and_recipient", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 21: {
+      const rows = await ctx.db
+        .query("projectCollabKeyRequests")
+        .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 22: {
+      const rows = await ctx.db
+        .query("projectCollabRecoveryKits")
+        .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 23: {
+      const rows = await ctx.db
+        .query("yjsUpdates")
+        .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 24: {
+      const rows = await ctx.db
+        .query("yjsDocuments")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 25: {
+      const rows = await ctx.db
+        .query("yjsAwareness")
+        .withIndex("by_project_and_updated", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 26: {
+      const rows = await ctx.db
+        .query("projectPresence")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 27: {
+      const rows = await ctx.db
+        .query("deploymentJobs")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 28: {
+      const rows = await ctx.db
+        .query("devAppArtifactUploads")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      for (const row of rows) {
+        if (row.storageId) await ctx.storage.delete(row.storageId)
+        await ctx.db.delete(row._id)
+      }
+      return rows.length
+    }
+    default:
+      return 0
+  }
+}
+
+/**
+ * Project deletion is intentionally asynchronous: each mutation stays below
+ * Convex transaction limits while still removing stored blobs and every row
+ * whose lifetime is owned by the project. Two passes catch writes that were
+ * already in flight when the project was first marked deleted.
+ */
+export const purgeDeletedProjectData = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    pass: v.number(),
+    stage: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project || project.status !== "deleted") return { done: true }
+
+    if (args.stage >= PROJECT_PURGE_FINAL_STAGE) {
+      if (args.pass < 1) {
+        await ctx.scheduler.runAfter(0, internal.projects.purgeDeletedProjectData, {
+          projectId: args.projectId,
+          pass: args.pass + 1,
+          stage: 0,
+        })
+        return { done: false }
+      }
+
+      if (project.previewImageId) await ctx.storage.delete(project.previewImageId)
+      await ctx.db.delete(args.projectId)
+      return { done: true }
+    }
+
+    const deleted = await deleteProjectPurgeStage(ctx, args.projectId, args.stage)
+    await ctx.scheduler.runAfter(0, internal.projects.purgeDeletedProjectData, {
+      projectId: args.projectId,
+      pass: args.pass,
+      stage: deleted === PROJECT_PURGE_BATCH_SIZE ? args.stage : args.stage + 1,
+    })
+    return { done: false }
+  },
+})
+
+/** Manual, internal-only bridge for projects deleted by clients predating the purge. */
+export const resumeDeletedProjectPurge = internalMutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (!project || project.status !== "deleted") {
+      throw new ConvexError("Only a deleted project can be purged")
+    }
+
+    await ctx.scheduler.runAfter(0, internal.projects.purgeDeletedProjectData, {
+      projectId: args.projectId,
+      pass: 0,
+      stage: 0,
+    })
+    return { scheduled: true }
   },
 })
 

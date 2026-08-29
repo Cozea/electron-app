@@ -465,6 +465,7 @@ export type PreviewFailureReason =
   | 'iframe_load_error'
   | 'network_quality_degraded'
   | 'server_unreachable'
+  | 'http_error_response'
   | 'invalid_url'
   | 'unsupported_origin'
   | 'window_unavailable'
@@ -1196,11 +1197,24 @@ export interface IntegrationToolResult {
 
 export interface CollabDeviceIdentity {
   deviceId: string
+  userId: string
+  identityKey: string
   deviceLabel: string
   platform: string
   publicKeyAlgorithm: string
   fingerprint: string
   publicKeyJwk: string
+  signingPublicKeyAlgorithm?: string
+  signingFingerprint?: string
+  signingPublicKeyJwk?: string
+}
+
+export interface CollabDeviceChallengeSignature {
+  deviceId: string
+  userId: string
+  identityKey: string
+  algorithm: string
+  signature: string
 }
 
 export interface CollabWrappedRoomKeyResult {
@@ -1299,6 +1313,9 @@ export interface WorkbenchBrowserViewState {
   canZoomOut: boolean
   find: import('./browserHostTypes').BrowserFindState
   loadError?: string | null
+  httpStatusCode?: number | null
+  httpStatusText?: string | null
+  httpError?: string | null
 }
 
 export type WorkbenchSessionLifecycle =
@@ -1377,6 +1394,7 @@ export interface ElectronAPI {
     isEncryptionAvailable: () => Promise<boolean>
     ensureDeviceIdentity: () => Promise<CollabDeviceIdentity>
     getStoredDeviceIdentity: () => Promise<CollabDeviceIdentity | null>
+    signDeviceChallenge: (challenge: string) => Promise<CollabDeviceChallengeSignature>
     wrapRoomKey: (options: {
       roomKeyBase64: string
       recipientPublicKeyJwk: string
@@ -1500,6 +1518,7 @@ export interface ElectronAPI {
     buildAndPack: (options: {
       workspaceId: string
       laneId?: string | null
+      operationId?: string
     }) => Promise<
       | {
           success: true
@@ -1510,6 +1529,7 @@ export interface ElectronAPI {
         }
       | { success: false; error: string }
     >
+    cancelBuild: (options: { operationId: string }) => Promise<{ cancelled: boolean }>
     prepareArtifact: (options: {
       downloadUrl: string
       contentHash: string

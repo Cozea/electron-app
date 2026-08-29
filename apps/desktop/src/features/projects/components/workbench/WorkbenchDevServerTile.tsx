@@ -18,11 +18,13 @@ import { useWorkbenchPanelActivityMode } from "@/features/projects/components/wo
 import {
   buildLocalDevServerUrl,
   DEV_SERVER_TILE_COMMAND_EVENT,
+  getDevServerPreviewRecoveryKey,
   isSameDevServerPreviewUrl,
   type DevServerTileCommand,
 } from "@/features/projects/devserver/devServerTileCommands"
 import {
   buildDevServerRunKey,
+  reportDevServerPreviewHttpStatus,
   useDevServerRunStore,
 } from "@/features/projects/devserver/devServerRunStore"
 import { interruptDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
@@ -373,16 +375,16 @@ function WorkbenchRuntimePreviewTile({
     previewServerActive &&
     (isMobileSimulatorSurface || previewDestination === "cozea")
   const showWebEmbeddedPreview = showEmbeddedPreview && !usesNativePreview
-  const [suppressPreviewUrl, setSuppressPreviewUrl] = useState(false)
   const {
     hostRef,
     state: previewState,
     boundsReady,
     overlayPaused,
     placeholderScreenshot,
+    actions: previewActions,
   } = useWorkbenchBrowserView({
     tileId: tile.id,
-    url: showWebEmbeddedPreview && !suppressPreviewUrl ? activeDisplayUrl : "",
+    url: showWebEmbeddedPreview ? activeDisplayUrl : "",
     sessionKey: runtimeSessionKey,
     projectId: runtimeProjectId,
     laneId: runtimeLaneId,
@@ -416,32 +418,50 @@ function WorkbenchRuntimePreviewTile({
       workbenchActions.setActiveTile(projectId, laneId, nextTileId, workspaceId)
     },
   })
-  const lastExternalPreviewKeyRef = useRef<string | null>(null)
+  const previewDisplayError = previewState.loadError ?? previewState.httpError ?? null
+  const previewRecoveryKey = getDevServerPreviewRecoveryKey({
+    status: devServer.status,
+    runId: devServer.runId ?? null,
+    url: activeDisplayUrl,
+    loadError: previewState.loadError ?? null,
+    visible: showWebEmbeddedPreview && panelActivity.visible,
+  })
+  const recoveredPreviewKeyRef = useRef<string | null>(null)
 
-  /**
-   * When the dev server transitions back into `ready` (e.g. after stop -> start),
-   * the embedded browser view often keeps an `ERR_CONNECTION_REFUSED` snapshot
-   * or stays blank because the URL hasn't actually changed. Briefly suspend the
-   * preview URL so the browser view re-initializes and re-syncs bounds, the
-   * same effect as navigating to the terminal tab and back.
-   */
-  const previousDevServerStatusRef = useRef<DevServerStatus>(devServer.status)
   useEffect(() => {
-    const previousStatus = previousDevServerStatusRef.current
-    previousDevServerStatusRef.current = devServer.status
-    if (devServer.status !== "ready" || previousStatus === "ready") {
+    if (!previewRecoveryKey || recoveredPreviewKeyRef.current === previewRecoveryKey) {
       return
     }
-    if (!showWebEmbeddedPreview) return
-    if (!previewUrl) return
-    setSuppressPreviewUrl(true)
-    const restoreFrame = window.requestAnimationFrame(() => {
-      setSuppressPreviewUrl(false)
+    recoveredPreviewKeyRef.current = previewRecoveryKey
+    void previewActions.reload().catch((cause: unknown) => {
+      console.warn("[dev-server-preview] automatic recovery reload failed", cause)
     })
-    return () => {
-      window.cancelAnimationFrame(restoreFrame)
-    }
-  }, [devServer.status, previewUrl, showWebEmbeddedPreview, tile.id])
+  }, [previewActions, previewRecoveryKey])
+
+  useEffect(() => {
+    if (!runtimeRunKey || !showWebEmbeddedPreview) return
+    reportDevServerPreviewHttpStatus(
+      runtimeRunKey,
+      previewState.httpStatusCode,
+      previewState.httpStatusText,
+    )
+  }, [
+    previewState.httpStatusCode,
+    previewState.httpStatusText,
+    runtimeRunKey,
+    showWebEmbeddedPreview,
+  ])
+
+  const showServerLogs = useCallback(() => {
+    workbenchActions.updateRuntimePreviewTile(
+      projectId,
+      laneId,
+      tile.id,
+      { viewMode: "code" },
+      workspaceId,
+    )
+  }, [laneId, projectId, tile.id, workbenchActions, workspaceId])
+  const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!terminalId) {
@@ -757,17 +777,31 @@ function WorkbenchRuntimePreviewTile({
           </Empty>
         </div>
       ) : null}
-      {activeDisplayUrl && previewState.loadError ? (
-        <div className="pointer-events-none absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
+      {activeDisplayUrl && previewDisplayError ? (
+        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
           <div className="max-w-md space-y-2">
             <div className="text-sm font-medium text-foreground">
-              This preview could not be loaded.
+              {previewState.httpError
+                ? `Preview returned HTTP ${previewState.httpStatusCode ?? "error"}`
+                : "This preview could not be loaded."}
             </div>
-            <div className="text-xs text-muted-foreground">{previewState.loadError}</div>
+            <div className="text-xs text-muted-foreground">
+              {previewState.httpError
+                ? `${previewDisplayError}. The server is still running, but this page produced no visible error document.`
+                : previewDisplayError}
+            </div>
+            <div className="flex justify-center gap-2 pt-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => void previewActions.reload()}>
+                Reload
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={showServerLogs}>
+                Server logs
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}
-      {activeDisplayUrl && placeholderScreenshot && !previewState.loadError ? (
+      {activeDisplayUrl && placeholderScreenshot && !previewDisplayError ? (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
           <div
             className="absolute inset-0 bg-no-repeat"
@@ -776,7 +810,7 @@ function WorkbenchRuntimePreviewTile({
           />
         </div>
       ) : null}
-      {activeDisplayUrl && overlayPaused && !placeholderScreenshot && !previewState.loadError ? (
+      {activeDisplayUrl && overlayPaused && !placeholderScreenshot && !previewDisplayError ? (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
           <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
         </div>
@@ -786,7 +820,7 @@ function WorkbenchRuntimePreviewTile({
           ref={hostRef}
           className={cn(
             "absolute top-[1px] bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
-            (!boundsReady || previewState.loadError) ? "pointer-events-none opacity-0" : "opacity-100",
+            (!boundsReady || previewDisplayError) ? "pointer-events-none opacity-0" : "opacity-100",
           )}
         />
       ) : null}

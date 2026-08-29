@@ -94,7 +94,6 @@ export async function prefetchLayoutProject(input: {
 
   const project = await input.convex.query(api.projects.getAccessibleById, {
     projectId: input.projectId as Id<"projects">,
-    userId: input.userId,
   })
   if (project) {
     useQueryCache.getState().set(cacheKey, project)
