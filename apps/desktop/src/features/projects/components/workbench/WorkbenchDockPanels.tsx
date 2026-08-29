@@ -942,7 +942,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
     storedTile?.type === "selection"
       ? storedTile
       : runtime.getSelectionPreviewTile(props.params.tileId)
-  const singletonEmptyWorkbench = useProjectWorkbenchStore((state) => {
+  const isSoleSelectionTile = useProjectWorkbenchStore((state) => {
     const wb = selectProjectWorkbench(
       props.params.projectId,
       props.params.laneId,
@@ -952,6 +952,22 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
     const sole = wb.tiles[wb.order[0]]
     return sole?.type === "selection"
   })
+  const [isMaximized, setIsMaximized] = useState(() => props.api.isMaximized?.() ?? false)
+  useEffect(() => {
+    setIsMaximized(props.api.isMaximized?.() ?? false)
+    const disposable = props.containerApi.onDidMaximizedGroupChange((event) => {
+      if (event.group.id !== props.api.group?.id) return
+      setIsMaximized(event.isMaximized)
+    })
+    const groupChangeDisposable = props.api.onDidGroupChange?.(() => {
+      setIsMaximized(props.api.isMaximized?.() ?? false)
+    })
+    return () => {
+      disposable?.dispose?.()
+      groupChangeDisposable?.dispose?.()
+    }
+  }, [props.api, props.containerApi])
+  const singletonEmptyWorkbench = isSoleSelectionTile || isMaximized
 
   useSyncPanelTitle(props.api, tile?.title)
 
@@ -963,7 +979,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
         containerApi={props.containerApi}
         chromeVariant="pill"
         tileType="selection"
-        hideWindowActions={singletonEmptyWorkbench}
+        hideWindowActions={isSoleSelectionTile && !isMaximized}
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -979,7 +995,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
       containerApi={props.containerApi}
       chromeVariant="pill"
       tileType="selection"
-      hideWindowActions={singletonEmptyWorkbench}
+      hideWindowActions={isSoleSelectionTile && !isMaximized}
       contentClassName="h-full"
     >
       <Suspense fallback={changesSuspenseFallback}>

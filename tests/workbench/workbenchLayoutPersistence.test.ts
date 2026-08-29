@@ -76,4 +76,26 @@ describe('workbench layout persistence', () => {
       persistence.peekPersistedWorkbenchLayout('project-1::collab', 9),
     ).toBeNull()
   })
+
+  it('removes every workspace and lane layout for only the deleted project', async () => {
+    const localStorage = new MemoryStorage()
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage,
+      addEventListener: vi.fn(),
+    }
+
+    const persistence = await import('../../apps/desktop/src/features/projects/lib/workbenchLayoutPersistence')
+    const layout = { grid: { root: 'root-grid' }, panels: {} } as never
+    persistence.writePersistedWorkbenchLayout('project-1::collab', 1, layout)
+    persistence.writePersistedWorkbenchLayout('project-1::feature::workspace-1', 1, layout)
+    persistence.writePersistedWorkbenchLayout('project-2::collab', 1, layout)
+
+    persistence.clearPersistedWorkbenchLayoutsForProject('project-1')
+
+    expect(persistence.peekPersistedWorkbenchLayout('project-1::collab', 1)).toBeNull()
+    expect(
+      persistence.peekPersistedWorkbenchLayout('project-1::feature::workspace-1', 1),
+    ).toBeNull()
+    expect(persistence.peekPersistedWorkbenchLayout('project-2::collab', 1)).toEqual(layout)
+  })
 })

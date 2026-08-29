@@ -19,6 +19,38 @@ export interface SessionRequestBody {
   fingerprint: string
 }
 
+export interface DeviceAuthChallengeRequest {
+  identityKey: string
+  deviceLabel: string
+  platform: string
+  encryptionPublicKeyJwk: string
+  encryptionPublicKeyAlgorithm: string
+  encryptionFingerprint: string
+  signingPublicKeyJwk: string
+  signingPublicKeyAlgorithm: string
+  signingFingerprint: string
+}
+
+export interface DeviceAuthChallengeClaims extends DeviceAuthChallengeRequest {
+  typ: 'cozea-device-challenge'
+  nonce: string
+  iat: number
+  exp: number
+}
+
+export interface DeviceAccessClaims {
+  sub: string
+  iss: string
+  aud: string
+  device_id: string
+  identity_kind: 'device'
+  jti: string
+  key_version: number
+  token_issued_at: number
+  iat: number
+  exp: number
+}
+
 export interface SessionDescriptor {
   projectId: string
   roomId: string
@@ -76,7 +108,15 @@ export interface DurableObjectNamespaceLike {
 export interface Env {
   COLLAB_PROTOCOL_VERSION?: string
   COLLAB_JWT_SECRET: string
+  DEVICE_AUTH_CHALLENGE_SECRET: string
   CONVEX_URL: string
   AI_GATEWAY_SECRET: string
+  DEVICE_AUTH_ISSUER: string
+  DEVICE_AUTH_AUDIENCE: string
+  DEVICE_AUTH_PRIVATE_JWK: string
+  DEVICE_AUTH_PUBLIC_JWK: string
+  DEVICE_AUTH_KEY_ID: string
+  DEVICE_AUTH_PREVIOUS_PUBLIC_JWK?: string
+  DEVICE_AUTH_PREVIOUS_KEY_ID?: string
   COLLAB_ROOM: DurableObjectNamespaceLike
 }

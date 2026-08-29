@@ -4,6 +4,15 @@ import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
+import {
+  handleDeviceAuthChallenge,
+  handleDeviceAuthComplete,
+  handleDeviceAuthJwks,
+} from './routes/deviceAuth'
+import {
+  handleCreateRecoveryGrant,
+  handleRedeemRecoveryGrant,
+} from './routes/deviceRecovery'
 
 function getRoomStub(env: Env, roomId: string): DurableObjectStub {
   const id = env.COLLAB_ROOM.idFromName(roomId)
@@ -26,6 +35,54 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/collab/capabilities') {
         return handleCollabCapabilities(env)
+      }
+
+      if (request.method === 'GET' && url.pathname === '/.well-known/jwks.json') {
+        return handleDeviceAuthJwks(env)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/auth/device/challenge') {
+        try {
+          return await handleDeviceAuthChallenge(request, env)
+        } catch (error) {
+          return protocolError(
+            'DEVICE_AUTH_CHALLENGE_REJECTED',
+            error instanceof Error ? error.message : 'Invalid device challenge request',
+            { status: 400 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/auth/device/complete') {
+        try {
+          return await handleDeviceAuthComplete(request, env)
+        } catch (error) {
+          return protocolError(
+            'DEVICE_AUTH_REJECTED',
+            error instanceof Error ? error.message : 'Device authentication failed',
+            { status: 401 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/auth/device/recovery/create') {
+        try {
+          return await handleCreateRecoveryGrant(request, env)
+        } catch (error) {
+          return protocolError('RECOVERY_GRANT_REJECTED', error instanceof Error ? error.message : 'Recovery grant failed', { status: 403 }, false, origin)
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/auth/device/recovery/redeem') {
+        try {
+          return await handleRedeemRecoveryGrant(request, env)
+        } catch (error) {
+          return protocolError('RECOVERY_REJECTED', error instanceof Error ? error.message : 'Recovery failed', { status: 403 }, false, origin)
+        }
       }
 
       if (request.method === 'POST' && url.pathname === '/collab/session') {

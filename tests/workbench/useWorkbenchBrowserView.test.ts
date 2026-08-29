@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { shouldLoadWorkbenchBrowserUrl } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
+import {
+  getWorkbenchBrowserDisplayError,
+  shouldLoadWorkbenchBrowserUrl,
+} from "@/features/projects/components/workbench/useWorkbenchBrowserView"
 
 describe("shouldLoadWorkbenchBrowserUrl", () => {
   it("loads an already-requested URL when the native view is still blank", () => {
@@ -28,5 +31,21 @@ describe("shouldLoadWorkbenchBrowserUrl", () => {
       currentUrl: "http://127.0.0.1:4173",
       loadError: "net::ERR_CONNECTION_REFUSED",
     })).toBe(true)
+  })
+})
+
+describe("getWorkbenchBrowserDisplayError", () => {
+  it("prefers transport errors over blank HTTP response errors", () => {
+    expect(getWorkbenchBrowserDisplayError({
+      loadError: "net::ERR_CONNECTION_REFUSED",
+      httpError: "HTTP 500 Internal Server Error",
+    })).toBe("net::ERR_CONNECTION_REFUSED")
+  })
+
+  it("surfaces a blank HTTP response error when navigation itself succeeded", () => {
+    expect(getWorkbenchBrowserDisplayError({
+      loadError: null,
+      httpError: "HTTP 500 Internal Server Error",
+    })).toBe("HTTP 500 Internal Server Error")
   })
 })

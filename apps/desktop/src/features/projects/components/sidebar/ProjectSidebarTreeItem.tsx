@@ -1,7 +1,6 @@
 import * as React from "react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
-import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { cn } from "@/lib/utils"
@@ -323,16 +322,14 @@ export const ProjectSidebarTreeItem = React.memo(
               </span>
             </button>
           </div>
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="-mr-0.5 size-6 shrink-0 rounded-md p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:bg-transparent hover:text-foreground"
+            className="flex size-4.5 shrink-0 cursor-pointer items-center justify-center rounded-[3.5px] p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={handleProjectMenuClick}
             aria-label={`${project.name} options`}
           >
             <HugeiconsIcon icon={__EllipsisVerticalHugeIcon} className="size-3.5" />
-          </Button>
+          </button>
         </div>
 
         <CollapsibleContent>

@@ -1,4 +1,11 @@
-import type { Env, SessionClaims } from '../types'
+import type {
+  DeviceAccessClaims,
+  DeviceAuthChallengeClaims,
+  Env,
+  SessionClaims,
+} from '../types'
+
+const toBufferSource = (value: Uint8Array): BufferSource => value as unknown as BufferSource
 
 function toBase64Url(bytes: Uint8Array): string {
   let value = ''
@@ -29,6 +36,69 @@ async function importSecret(secret: string): Promise<CryptoKey> {
   )
 }
 
+function parseObject(value: Uint8Array, label: string): Record<string, unknown> {
+  const parsed = JSON.parse(new TextDecoder().decode(value)) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object`)
+  }
+  return parsed as Record<string, unknown>
+}
+
+function parseEcPublicJwk(value: string): JsonWebKey {
+  const parsed = JSON.parse(value) as JsonWebKey
+  if (
+    parsed.kty !== 'EC' ||
+    parsed.crv !== 'P-256' ||
+    typeof parsed.x !== 'string' ||
+    typeof parsed.y !== 'string' ||
+    parsed.d
+  ) {
+    throw new Error('Expected a public P-256 EC JWK')
+  }
+  return parsed
+}
+
+async function createHmacCompact(
+  secret: string,
+  header: Record<string, unknown>,
+  payload: object,
+): Promise<string> {
+  const encodedHeader = toBase64Url(new TextEncoder().encode(JSON.stringify(header)))
+  const encodedPayload = toBase64Url(new TextEncoder().encode(JSON.stringify(payload)))
+  const signingInput = `${encodedHeader}.${encodedPayload}`
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    await importSecret(secret),
+    new TextEncoder().encode(signingInput),
+  )
+  return `${signingInput}.${toBase64Url(new Uint8Array(signature))}`
+}
+
+async function verifyHmacCompact(
+  secret: string,
+  token: string,
+  expectedType: string,
+): Promise<Record<string, unknown>> {
+  const [encodedHeader, encodedPayload, encodedSignature] = token.split('.')
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    throw new Error('Invalid signed token format')
+  }
+  const header = parseObject(fromBase64Url(encodedHeader), 'Token header')
+  if (header.alg !== 'HS256' || header.typ !== expectedType) {
+    throw new Error('Unexpected signed token header')
+  }
+  const valid = await crypto.subtle.verify(
+    'HMAC',
+    await importSecret(secret),
+    toBufferSource(fromBase64Url(encodedSignature)),
+    toBufferSource(new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`)),
+  )
+  if (!valid) {
+    throw new Error('Signed token verification failed')
+  }
+  return parseObject(fromBase64Url(encodedPayload), 'Token payload')
+}
+
 export async function signSessionToken(
   env: Env,
   claims: Omit<SessionClaims, 'iat' | 'exp'>,
@@ -44,16 +114,7 @@ export async function signSessionToken(
     iat: issuedAt,
     exp: issuedAt + ttlSeconds,
   }
-  const encodedHeader = toBase64Url(new TextEncoder().encode(JSON.stringify(header)))
-  const encodedPayload = toBase64Url(new TextEncoder().encode(JSON.stringify(payload)))
-  const signingInput = `${encodedHeader}.${encodedPayload}`
-  const key = await importSecret(env.COLLAB_JWT_SECRET)
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(signingInput),
-  )
-  return `${signingInput}.${toBase64Url(new Uint8Array(signature))}`
+  return createHmacCompact(env.COLLAB_JWT_SECRET, header, payload)
 }
 
 export async function verifySessionToken(env: Env, token: string): Promise<SessionClaims> {
@@ -61,22 +122,173 @@ export async function verifySessionToken(env: Env, token: string): Promise<Sessi
   if (!encodedHeader || !encodedPayload || !encodedSignature) {
     throw new Error('Invalid session token format')
   }
-  const signingInput = `${encodedHeader}.${encodedPayload}`
-  const key = await importSecret(env.COLLAB_JWT_SECRET)
-  const signature = fromBase64Url(encodedSignature)
-  const valid = await crypto.subtle.verify(
-    'HMAC',
-    key,
-    signature,
-    new TextEncoder().encode(signingInput),
-  )
-  if (!valid) {
-    throw new Error('Session token verification failed')
-  }
-  const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(encodedPayload))) as SessionClaims
+  const payload = await verifyHmacCompact(env.COLLAB_JWT_SECRET, token, 'JWT') as unknown as SessionClaims
   const now = Math.floor(Date.now() / 1000)
   if (payload.exp <= now) {
     throw new Error('Session token expired')
   }
   return payload
+}
+
+export async function createDeviceChallengeToken(
+  env: Env,
+  claims: DeviceAuthChallengeClaims,
+): Promise<string> {
+  return createHmacCompact(
+    env.DEVICE_AUTH_CHALLENGE_SECRET,
+    { alg: 'HS256', typ: 'COZEA-DEVICE-CHALLENGE' },
+    claims,
+  )
+}
+
+export async function verifyDeviceChallengeToken(
+  env: Env,
+  token: string,
+): Promise<DeviceAuthChallengeClaims> {
+  const payload = await verifyHmacCompact(
+    env.DEVICE_AUTH_CHALLENGE_SECRET,
+    token,
+    'COZEA-DEVICE-CHALLENGE',
+  ) as unknown as DeviceAuthChallengeClaims
+  if (payload.typ !== 'cozea-device-challenge' || payload.exp <= Math.floor(Date.now() / 1000)) {
+    throw new Error('Device challenge expired or is invalid')
+  }
+  return payload
+}
+
+export async function verifyDeviceChallengeSignature(args: {
+  challenge: string
+  signature: string
+  signingPublicKeyJwk: string
+}): Promise<boolean> {
+  const key = await crypto.subtle.importKey(
+    'jwk',
+    parseEcPublicJwk(args.signingPublicKeyJwk),
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['verify'],
+  )
+  return crypto.subtle.verify(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key,
+    toBufferSource(fromBase64Url(args.signature)),
+    toBufferSource(new TextEncoder().encode(args.challenge)),
+  )
+}
+
+export async function signDeviceAccessToken(
+  env: Env,
+  identityKey: string,
+  keyVersion = 1,
+  ttlSeconds = 15 * 60,
+): Promise<{ token: string; expiresAt: number }> {
+  const now = Math.floor(Date.now() / 1000)
+  const expiresAt = now + ttlSeconds
+  const claims: DeviceAccessClaims = {
+    sub: identityKey,
+    iss: env.DEVICE_AUTH_ISSUER,
+    aud: env.DEVICE_AUTH_AUDIENCE,
+    device_id: identityKey,
+    identity_kind: 'device',
+    jti: crypto.randomUUID(),
+    key_version: keyVersion,
+    token_issued_at: now,
+    iat: now,
+    exp: expiresAt,
+  }
+  const header = {
+    alg: 'ES256',
+    typ: 'JWT',
+    kid: env.DEVICE_AUTH_KEY_ID,
+  }
+  const encodedHeader = toBase64Url(new TextEncoder().encode(JSON.stringify(header)))
+  const encodedPayload = toBase64Url(new TextEncoder().encode(JSON.stringify(claims)))
+  const signingInput = `${encodedHeader}.${encodedPayload}`
+  const privateKey = await crypto.subtle.importKey(
+    'jwk',
+    JSON.parse(env.DEVICE_AUTH_PRIVATE_JWK) as JsonWebKey,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    new TextEncoder().encode(signingInput),
+  )
+  return {
+    token: `${signingInput}.${toBase64Url(new Uint8Array(signature))}`,
+    expiresAt,
+  }
+}
+
+export async function verifyDeviceAccessToken(env: Env, token: string): Promise<DeviceAccessClaims> {
+  const [encodedHeader, encodedPayload, encodedSignature] = token.split('.')
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    throw new Error('Invalid device access token format')
+  }
+  const header = parseObject(fromBase64Url(encodedHeader), 'Access token header')
+  if (header.alg !== 'ES256' || header.typ !== 'JWT' || typeof header.kid !== 'string') {
+    throw new Error('Unexpected device access token header')
+  }
+  const publicJwk = header.kid === env.DEVICE_AUTH_KEY_ID
+    ? env.DEVICE_AUTH_PUBLIC_JWK
+    : header.kid === env.DEVICE_AUTH_PREVIOUS_KEY_ID
+      ? env.DEVICE_AUTH_PREVIOUS_PUBLIC_JWK
+      : undefined
+  if (!publicJwk) throw new Error('Unknown device access token signing key')
+  const publicKey = await crypto.subtle.importKey(
+    'jwk',
+    parseEcPublicJwk(publicJwk),
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['verify'],
+  )
+  const valid = await crypto.subtle.verify(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    publicKey,
+    toBufferSource(fromBase64Url(encodedSignature)),
+    toBufferSource(new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`)),
+  )
+  if (!valid) {
+    throw new Error('Device access token verification failed')
+  }
+  const claims = parseObject(fromBase64Url(encodedPayload), 'Access token payload') as unknown as DeviceAccessClaims
+  const now = Math.floor(Date.now() / 1000)
+  if (
+    claims.exp <= now ||
+    claims.iss !== env.DEVICE_AUTH_ISSUER ||
+    claims.aud !== env.DEVICE_AUTH_AUDIENCE ||
+    claims.identity_kind !== 'device' ||
+    claims.sub !== claims.device_id ||
+    typeof claims.jti !== 'string' ||
+    claims.jti.length < 16 ||
+    !Number.isInteger(claims.key_version) ||
+    claims.key_version < 1 ||
+    claims.token_issued_at !== claims.iat
+  ) {
+    throw new Error('Device access token claims are invalid')
+  }
+  return claims
+}
+
+export function getDeviceAuthJwks(env: Env): {
+  keys: Array<JsonWebKey & { alg: 'ES256'; use: 'sig'; kid: string }>
+} {
+  const publicKey = parseEcPublicJwk(env.DEVICE_AUTH_PUBLIC_JWK)
+  const keys: Array<JsonWebKey & { alg: 'ES256'; use: 'sig'; kid: string }> = [{
+      ...publicKey,
+      alg: 'ES256',
+      use: 'sig',
+      kid: env.DEVICE_AUTH_KEY_ID,
+    }]
+  if (env.DEVICE_AUTH_PREVIOUS_PUBLIC_JWK && env.DEVICE_AUTH_PREVIOUS_KEY_ID) {
+    keys.push({
+      ...parseEcPublicJwk(env.DEVICE_AUTH_PREVIOUS_PUBLIC_JWK),
+      alg: 'ES256',
+      use: 'sig',
+      kid: env.DEVICE_AUTH_PREVIOUS_KEY_ID,
+    })
+  }
+  return { keys }
 }

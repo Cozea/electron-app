@@ -19,6 +19,8 @@ const en = {
   "common.page": "Page",
   "common.of": "of",
   "common.revoke": "Revoke",
+  "common.copy": "Copy",
+  "common.copied": "Copied",
 
   // ── Login / Auth ────────────────────────────────────────────────────
   "login.welcome": "Welcome to Cozea",
@@ -52,9 +54,10 @@ const en = {
   "settings.account.deviceProfileTitle": "Device profile",
   "settings.account.localTrustedDevice": "Local trusted device",
   "settings.account.myDevices": "My devices",
+  "settings.account.deviceIdentity": "Device identity",
   "settings.account.addDevice": "+ Add device",
   "settings.account.devicesDescription":
-    "Devices linked to your account. Collaboration keys are scoped per device.",
+    "This public ID is both this device ID and its Cozea user ID. Share it when an organization admin needs to add this device.",
   "settings.account.thisDevice": "This device",
   "settings.account.activeNow": "Active now",
   "settings.account.notifications": "Notifications",
@@ -69,19 +72,19 @@ const en = {
   "settings.account.deleteAccountDesc":
     "Permanently delete your account and all data",
   "settings.account.resetDeviceDesc":
-    "Reserved for future local-identity reset flows.",
+    "Revoke this device everywhere, erase its local private keys, and create a new device identity.",
   "settings.account.deleteConfirmTitle": "Delete account",
   "settings.account.resetConfirmTitle": "Reset device identity",
   "settings.account.deleteConfirmDesc":
     "This action cannot be undone. All your data will be permanently deleted.",
   "settings.account.resetConfirmDesc":
-    "This workflow is not available yet.",
+    "This device ID will be permanently revoked. Use an invitation or recovery code to restore group access to the new identity.",
   "settings.account.deleteConfirmLabel":
     'Type "delete my account" to confirm',
   "settings.account.resetConfirmLabel":
-    "Device identity reset is currently disabled",
+    'Type "RESET" to confirm',
   "settings.account.deleteConfirmPlaceholder": "delete my account",
-  "settings.account.resetConfirmPlaceholder": "Unavailable",
+  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Settings: Appearance ────────────────────────────────────────────
   "settings.appearance.theme": "Theme",
@@ -114,7 +117,7 @@ const en = {
   // ── Settings: Organizations ─────────────────────────────────────────
   "settings.organizations.title": "Organizations",
   "settings.organizations.description":
-    "Create a Cozea organization, invite people by email, and open every DevApp published there.",
+    "Create a device group, add initialized devices by their public Cozea ID, and open every DevApp published there.",
   "settings.organizations.create": "Create",
   "settings.organizations.createPlaceholder": "Organization name",
   "settings.organizations.empty": "You do not belong to an organization yet.",
@@ -124,6 +127,11 @@ const en = {
   "settings.organizations.devApps": "DevApps",
   "settings.organizations.inviteEmail": "Invite by email",
   "settings.organizations.invite": "Invite",
+  "settings.organizations.groupId": "Group ID",
+  "settings.organizations.groupIdDescription":
+    "This is the public ID for this device group. It is safe to copy and share.",
+  "settings.organizations.deviceIdPlaceholder": "Device ID (czd_…)",
+  "settings.organizations.addDevice": "Add device",
   "settings.organizations.role.admin": "Admin",
   "settings.organizations.role.member": "Member",
   "settings.organizations.remove": "Remove",
@@ -648,6 +656,17 @@ const en = {
   "orgDevApp.publish.needsOrg": "Attach this project to an organization before publishing.",
   "orgDevApp.publish.failed": "Publishing the DevApp failed.",
   "orgDevApp.publish.noFolder": "Relink this project's local folder before publishing a built artifact.",
+  "orgDevApp.publish.title": "Publishing DevApp",
+  "orgDevApp.publish.updateTitle": "Updating DevApp",
+  "orgDevApp.publish.building": "Building and packaging the static app…",
+  "orgDevApp.publish.uploading": "Uploading the bounded artifact…",
+  "orgDevApp.publish.verifying": "Verifying size and integrity…",
+  "orgDevApp.publish.activating": "Activating the organization release…",
+  "orgDevApp.publish.complete": "Published.",
+  "orgDevApp.publish.cancelling": "Cancelling publishing…",
+  "orgDevApp.publish.cancel": "Cancel",
+  "orgDevApp.open.accessLost": "This device no longer has access to this DevApp.",
+  "orgDevApp.open.retry": "Retry",
   "orgDevApp.attach.title": "Publish to an organization",
   "orgDevApp.attach.description": "Org members can open the built app. They never receive the source project.",
   "orgDevApp.attach.create": "Create organization",

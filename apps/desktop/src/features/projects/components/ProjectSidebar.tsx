@@ -13,7 +13,10 @@ import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { publishOrgDevAppFromWorkspace } from "@/features/devapps/orgDevAppPublishing";
+import {
+  publishOrgDevAppFromWorkspace,
+  type OrgDevAppPublishStage,
+} from "@/features/devapps/orgDevAppPublishing";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
@@ -27,6 +30,15 @@ import { useTranslation } from "@/lib/i18n";
 import { featureFlags } from "@/lib/featureFlags";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import { buildProjectPath } from "../lib/projectRoutes";
 import { buildWorkbenchIntentState } from "../lib/workbenchIntent";
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
@@ -158,9 +170,12 @@ export function ProjectSidebar({
   const [isDeletingProject, setIsDeletingProject] = React.useState(false);
   const [devAppPublishing, setDevAppPublishing] = React.useState<{
     projectId: string;
+    projectName: string;
     mode: SidebarDevAppPublishMode;
+    stage: OrgDevAppPublishStage | "cancelling";
   } | null>(null);
   const devAppPublishingRef = React.useRef(false);
+  const devAppPublishAbortRef = React.useRef<AbortController | null>(null);
   const [projectPendingDevAppLogo, setProjectPendingDevAppLogo] =
     React.useState<PendingProjectDevAppLogo | null>(null);
   const [projectPendingOrgAttach, setProjectPendingOrgAttach] =
@@ -188,7 +203,7 @@ export function ProjectSidebar({
   );
   const publisherStatus = useQuery(
     api.devApps.listPublisherStatus,
-    featureFlags.projectDevApps && convexUserId ? { userId: convexUserId } : "skip",
+    featureFlags.projectDevApps && convexUserId ? {} : "skip",
   );
   const projectDevAppStateByProjectId = React.useMemo(
     () =>
@@ -595,18 +610,23 @@ export function ProjectSidebar({
       }
 
       devAppPublishingRef.current = true;
-      setDevAppPublishing({ projectId: project.id, mode });
+      const abortController = new AbortController();
+      devAppPublishAbortRef.current = abortController;
+      setDevAppPublishing({ projectId: project.id, projectName: project.name, mode, stage: "building" });
       try {
         await publishOrgDevAppFromWorkspace({
           convex,
-          userId: convexUserId,
           projectId: project._id,
-          organizationId: project.organizationId as Id<"organizations">,
           workspaceId,
           name: project.name,
           logoDataUrl,
+          signal: abortController.signal,
+          onStageChange: (stage) => {
+            setDevAppPublishing((current) => current ? { ...current, stage } : current);
+          },
         });
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         const fallback = t("orgDevApp.publish.failed");
         const detail = (error instanceof Error ? error.message : fallback)
           .replace(/^\[CONVEX.*?\]\s*/, "")
@@ -619,6 +639,7 @@ export function ProjectSidebar({
         });
       } finally {
         devAppPublishingRef.current = false;
+        devAppPublishAbortRef.current = null;
         setDevAppPublishing(null);
       }
     },
@@ -838,6 +859,7 @@ export function ProjectSidebar({
 
         await cleanupDeletedProjectLocally(deletedProjectId, {
           keepLocalFiles,
+          projectSlug: deletedProject.slug,
         });
       } catch (error) {
         const presentation = formatProjectDeleteError(error);
@@ -1075,7 +1097,6 @@ export function ProjectSidebar({
               if (!convexUserId || !projectPendingOrgAttach) return;
               const pending = projectPendingOrgAttach;
               await attachProjectToOrg({
-                userId: convexUserId,
                 organizationId,
                 projectId: pending.project._id,
               });
@@ -1090,7 +1111,6 @@ export function ProjectSidebar({
               if (!convexUserId || !projectPendingOrgAttach) return;
               const pending = projectPendingOrgAttach;
               const created = await createAndAttachProjectOrg({
-                userId: convexUserId,
                 projectId: pending.project._id,
                 name,
               });
@@ -1104,6 +1124,54 @@ export function ProjectSidebar({
           />
         </React.Suspense>
       ) : null}
+      <Dialog open={Boolean(devAppPublishing)} onOpenChange={() => undefined}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {devAppPublishing?.mode === "update"
+                ? t("orgDevApp.publish.updateTitle")
+                : t("orgDevApp.publish.title")}
+            </DialogTitle>
+            <DialogDescription>
+              {devAppPublishing?.projectName ?? "Preparing the project"}
+            </DialogDescription>
+          </DialogHeader>
+          <Progress
+            value={devAppPublishing ? ({
+              building: 20,
+              uploading: 50,
+              verifying: 72,
+              publishing: 90,
+              complete: 100,
+              cancelling: 100,
+            } as const)[devAppPublishing.stage] : 0}
+            className="h-1.5"
+          />
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {devAppPublishing ? ({
+              building: t("orgDevApp.publish.building"),
+              uploading: t("orgDevApp.publish.uploading"),
+              verifying: t("orgDevApp.publish.verifying"),
+              publishing: t("orgDevApp.publish.activating"),
+              complete: t("orgDevApp.publish.complete"),
+              cancelling: t("orgDevApp.publish.cancelling"),
+            } as const)[devAppPublishing.stage] : null}
+          </p>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!devAppPublishing || devAppPublishing.stage === "complete" || devAppPublishing.stage === "cancelling"}
+              onClick={() => {
+                setDevAppPublishing((current) => current ? { ...current, stage: "cancelling" } : current);
+                devAppPublishAbortRef.current?.abort();
+              }}
+            >
+              {t("orgDevApp.publish.cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

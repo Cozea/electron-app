@@ -5,6 +5,7 @@ import type {
 
 export interface User {
   id: string
+  deviceId: string
   email: string
   firstName: string | null
   lastName: string | null

@@ -32,6 +32,9 @@ const DEFAULT_BROWSER_STATE = (tileId: string, url = ""): BrowserState => ({
     finalUpdate: false,
   },
   loadError: null,
+  httpStatusCode: null,
+  httpStatusText: null,
+  httpError: null,
 })
 
 function toBrowserState(state: WorkbenchBrowserViewState): BrowserState {
@@ -52,6 +55,9 @@ function toBrowserState(state: WorkbenchBrowserViewState): BrowserState {
     canZoomOut: state.canZoomOut,
     find: state.find,
     loadError: state.loadError ?? null,
+    httpStatusCode: state.httpStatusCode ?? null,
+    httpStatusText: state.httpStatusText ?? null,
+    httpError: state.httpError ?? null,
   }
 }
 

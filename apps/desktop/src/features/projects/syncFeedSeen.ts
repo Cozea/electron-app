@@ -16,3 +16,9 @@ export function markSyncFeedAsSeen(projectSlug: string): void {
     Date.now().toString()
   )
 }
+
+export function clearSyncFeedSeen(projectSlug: string | null | undefined): void {
+  const normalizedProjectSlug = projectSlug?.trim()
+  if (!normalizedProjectSlug || typeof localStorage === "undefined") return
+  localStorage.removeItem(getSyncFeedSeenStorageKey(normalizedProjectSlug))
+}

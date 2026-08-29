@@ -214,6 +214,29 @@ export function clearPersistedWorkbenchLayout(scopeKey: string): void {
   })
 }
 
+export function clearPersistedWorkbenchLayoutsForProject(projectId: string): void {
+  const normalizedProjectId = projectId.trim()
+  if (!normalizedProjectId) return
+
+  ensureLegacyLayoutsMigrated()
+
+  const state = readPersistedWorkbenchLayoutsStateUnsafe()
+  const projectScopePrefix = `${normalizedProjectId}::`
+  const nextLayouts = Object.fromEntries(
+    Object.entries(state.layouts).filter(([scopeKey]) => !scopeKey.startsWith(projectScopePrefix)),
+  )
+
+  if (Object.keys(nextLayouts).length === Object.keys(state.layouts).length) {
+    return
+  }
+
+  writePersistedWorkbenchLayoutsState({
+    ...state,
+    migratedFromLegacy: true,
+    layouts: nextLayouts,
+  })
+}
+
 export function clonePersistedWorkbenchLayoutsForWorkspace(args: {
   projectId: string
   fromWorkspace?: string | null

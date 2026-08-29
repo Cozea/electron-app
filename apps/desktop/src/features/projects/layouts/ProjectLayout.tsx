@@ -19,7 +19,6 @@ import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
-import { readLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution";
 import { WorkspaceRepairScreen } from "@/features/projects/workspaces/WorkspaceRepairScreen";
@@ -285,7 +284,7 @@ export function ProjectLayout({
   const freshProjectById = useQuery(
     api.projects.getAccessibleById,
     routeProjectId && convexUserId
-      ? { projectId: routeProjectId as Id<"projects">, userId: convexUserId }
+      ? { projectId: routeProjectId as Id<"projects"> }
       : "skip",
   );
   const freshProjectBySlug = useQuery(
@@ -476,14 +475,9 @@ export function ProjectLayout({
     ],
   );
 
-  const workspaceSelectionId = user?.id ?? "local-device";
-
   const collaborationProjectId = useMemo((): Id<"projects"> | null => {
-    if (project?._id) return project._id;
-    const entry = readLastWorkbenchRoute(workspaceSelectionId);
-    if (!entry?.projectId) return null;
-    return entry.projectId as Id<"projects">;
-  }, [project?._id, workspaceSelectionId]);
+    return project?._id ?? null;
+  }, [project?._id]);
 
   const chromeHeader = useProjectChromeHeader({
     isSettingsModeRoute,

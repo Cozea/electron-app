@@ -92,7 +92,6 @@ export function HeaderProjectShareButton({
     projectId && convexUserId
       ? {
           projectId,
-          userId: convexUserId,
         }
       : "skip",
   );

@@ -1,6 +1,6 @@
 export const ORG_DEVAPP_SCHEME = "cozea-devapp"
 export const ORG_DEVAPP_PROTOCOL = `${ORG_DEVAPP_SCHEME}:`
-export const ORG_DEVAPP_RELEASE_HOST = "release"
+export const ORG_DEVAPP_RELEASE_HOST_SUFFIX = ".release"
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"])
 
@@ -57,7 +57,13 @@ export function isOrgDevAppUrl(value: string): boolean {
 export function buildOrgDevAppUrl(locator: OrgDevAppArtifactLocator): string {
   const contentHash = normalizeContentHash(locator.contentHash)
   const entryPath = normalizeEntryPath(locator.entryPath)
-  return `${ORG_DEVAPP_PROTOCOL}//${ORG_DEVAPP_RELEASE_HOST}/${contentHash}/${entryPath}`
+  if (!isContentHash(contentHash)) {
+    throw new Error("The DevApp artifact hash is invalid.")
+  }
+  // A release hash is the host, not a path segment, so every immutable release
+  // receives a distinct browser origin. This prevents two independently
+  // published apps from sharing DOM storage, service workers, or origin trust.
+  return `${ORG_DEVAPP_PROTOCOL}//${contentHash}${ORG_DEVAPP_RELEASE_HOST_SUFFIX}/${entryPath}`
 }
 
 export function parseOrgDevAppUrl(value: string): {
@@ -73,21 +79,21 @@ export function parseOrgDevAppUrl(value: string): {
   if (parsed.protocol !== ORG_DEVAPP_PROTOCOL) {
     return null
   }
-  if (parsed.hostname !== ORG_DEVAPP_RELEASE_HOST) {
+  const hostname = parsed.hostname.toLowerCase()
+  if (!hostname.endsWith(ORG_DEVAPP_RELEASE_HOST_SUFFIX)) {
     return null
   }
-  const segments = parsed.pathname.split("/").filter((segment) => segment.length > 0)
-  const contentHash = segments[0] ? normalizeContentHash(segments[0]) : ""
+  const contentHash = normalizeContentHash(hostname.slice(0, -ORG_DEVAPP_RELEASE_HOST_SUFFIX.length))
   if (!isContentHash(contentHash)) {
     return null
   }
-  const assetPath = normalizeEntryPath(segments.slice(1).join("/") || "index.html")
+  const assetPath = normalizeEntryPath(parsed.pathname.replace(/^\/+/, "") || "index.html")
   return { contentHash, assetPath }
 }
 
 export type OrgDevAppNavigationDecision =
-  | { allowed: true; kind: "org-devapp" | "https" }
-  | { allowed: false; reason: "localhost" | "blocked-scheme" | "invalid" }
+  | { allowed: true; kind: "org-devapp" }
+  | { allowed: false; reason: "localhost" | "external-https" | "blocked-scheme" | "invalid" }
 
 export function evaluateOrgDevAppNavigation(url: string): OrgDevAppNavigationDecision {
   const trimmed = url.trim()
@@ -117,7 +123,7 @@ export function evaluateOrgDevAppNavigation(url: string): OrgDevAppNavigationDec
   }
 
   if (parsed.protocol === "https:") {
-    return { allowed: true, kind: "https" }
+    return { allowed: false, reason: "external-https" }
   }
 
   return { allowed: false, reason: "blocked-scheme" }

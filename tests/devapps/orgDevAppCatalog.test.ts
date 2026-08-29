@@ -15,6 +15,7 @@ function asId<T extends string>(value: string): Id<T> {
 
 interface OrganizationDoc {
   _id: Id<"organizations">
+  groupId: string
   name: string
   createdBy: Id<"users">
   createdAt: number
@@ -83,6 +84,7 @@ describe("org DevApp catalog access", () => {
     organizations: [
       {
         _id: orgId,
+        groupId: "czg_org_test1",
         name: "Acme",
         createdBy: adminId,
         createdAt: 1,

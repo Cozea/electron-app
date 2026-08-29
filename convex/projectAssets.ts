@@ -1,5 +1,5 @@
 import type { MutationCtx } from "./_generated/server"
-import { mutation, query } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import type { Id } from "./_generated/dataModel"
 import { v } from "convex/values"
 import { applyProjectStorageDeltas } from "./lib/workspaceLimits"
@@ -28,7 +28,7 @@ export const generateUploadUrl = mutation({
   handler: async (ctx, args) => {
     // Verify project exists
     const project = await ctx.db.get(args.projectId)
-    if (!project) throw new Error("Project not found")
+    if (!project || project.status === "deleted") throw new Error("Project not found")
 
     return await ctx.storage.generateUploadUrl()
   },
@@ -52,7 +52,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const now = Date.now()
     const project = await ctx.db.get(args.projectId)
-    if (!project) throw new Error("Project not found")
+    if (!project || project.status === "deleted") throw new Error("Project not found")
 
     // Infer category from MIME type if not provided
     let category = args.category

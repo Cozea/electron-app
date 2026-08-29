@@ -130,3 +130,23 @@ export function clearLastWorkbenchRoute(workspaceSelectionId: string | null | un
     entriesByWorkspaceSelectionId: remainingEntries,
   })
 }
+
+export function clearLastWorkbenchRoutesForProject(projectId: string): void {
+  const normalizedProjectId = projectId.trim()
+  if (!normalizedProjectId) return
+
+  const state = readPersistedState()
+  const entriesByWorkspaceSelectionId = Object.fromEntries(
+    Object.entries(state.entriesByWorkspaceSelectionId).filter(
+      ([, entry]) => entry.projectId !== normalizedProjectId,
+    ),
+  )
+  if (
+    Object.keys(entriesByWorkspaceSelectionId).length ===
+    Object.keys(state.entriesByWorkspaceSelectionId).length
+  ) {
+    return
+  }
+
+  writePersistedState({ entriesByWorkspaceSelectionId })
+}

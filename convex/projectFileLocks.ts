@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
 
@@ -417,4 +417,3 @@ export const getProjectLocks = query({
       .collect()
   },
 })
-

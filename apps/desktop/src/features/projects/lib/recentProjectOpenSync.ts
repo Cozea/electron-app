@@ -57,3 +57,13 @@ export function hasRecentProjectOpenSync(projectId: string): boolean {
   writeState(state)
   return false
 }
+
+export function clearRecentProjectOpenSync(projectId: string): void {
+  const normalizedProjectId = projectId.trim()
+  if (!normalizedProjectId) return
+
+  const state = readState()
+  if (!(normalizedProjectId in state)) return
+  delete state[normalizedProjectId]
+  writeState(state)
+}

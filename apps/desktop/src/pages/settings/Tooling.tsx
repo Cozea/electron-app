@@ -245,25 +245,26 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
 
         <section className="space-y-3">
           <div className="rounded-2xl bg-secondary/60 px-5 py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
+            <div className="space-y-3">
+              <div>
                 <h3 className="text-sm font-medium">{t('settings.tooling.projectsDirectory')}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t('settings.tooling.projectsDirectoryDesc')}
                 </p>
-                <p className="mt-3 truncate font-mono text-xs text-muted-foreground" title={projectsDirectory ?? ''}>
-                  {projectsDirectory ?? t('settings.tooling.projectsDirectoryLoading')}
-                </p>
               </div>
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 shrink-0 gap-1.5 text-xs"
+                className="h-8 w-full justify-start rounded-[8px] border-border/50 bg-background/40 px-3 text-xs font-normal shadow-none transition-colors hover:bg-background/70 hover:text-foreground"
                 onClick={() => void handleChooseProjectsDirectory()}
                 disabled={isSavingProjectsDirectory}
+                title={projectsDirectory ?? ''}
               >
-                <HugeiconsIcon icon={__FolderHugeIcon} className="h-3.5 w-3.5" />
-                {t('settings.tooling.changeProjectsDirectory')}
+                <HugeiconsIcon icon={__FolderHugeIcon} className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
+                <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px]">
+                  {projectsDirectory ?? t('settings.tooling.projectsDirectoryLoading')}
+                </span>
               </Button>
             </div>
             {projectsDirectoryError && (

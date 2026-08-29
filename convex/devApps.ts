@@ -1,13 +1,27 @@
 import { ConvexError, v } from "convex/values"
 
 import type { Doc, Id } from "./_generated/dataModel"
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server"
+import { type MutationCtx, type QueryCtx } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { canEditProject } from "./lib/projectAccess"
 import {
+  isOrgMember,
   requireOrgAdmin,
   requireOrgMember,
   toConsumerDevApp,
 } from "./lib/orgAccess"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
+import {
+  ORG_DEVAPP_ARTIFACT_LIMITS,
+  ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS,
+} from "../shared/orgDevAppLimits"
+
+const DEVAPP_NAME_MAX_LENGTH = 80
+const DEVAPP_DESCRIPTION_MAX_LENGTH = 500
+const DEVAPP_LOGO_MAX_LENGTH = 128 * 1024
+const DEVAPP_FRAMEWORK_MAX_LENGTH = 80
+const DEVAPP_ENTRY_PATH_MAX_LENGTH = 512
+const DEVAPP_RELEASE_RETENTION = 10
 
 type ReadDatabaseCtx = Pick<QueryCtx | MutationCtx, "db">
 
@@ -19,9 +33,12 @@ function normalizeRequiredText(value: string, fieldName: string): string {
   return normalized
 }
 
-function normalizeOptionalText(value: string | undefined, fieldName: string): string | undefined {
-  if (value === undefined) return undefined
-  return normalizeRequiredText(value, fieldName)
+function normalizeBoundedText(value: string, fieldName: string, maxLength: number): string {
+  const normalized = normalizeRequiredText(value, fieldName)
+  if (normalized.length > maxLength) {
+    throw new ConvexError(`${fieldName} must be ${maxLength} characters or fewer`)
+  }
+  return normalized
 }
 
 function normalizeContentHash(value: string): string {
@@ -70,31 +87,99 @@ function toConsumerRow(
   return toConsumerDevApp({ publication, release, organizationName })
 }
 
-export const generateUploadUrl = mutation({
+export const createUploadReservation = mutation({
   args: {
-    userId: v.id("users"),
-    organizationId: v.id("organizations"),
+    projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    await requireOrgMember(ctx, args.organizationId, args.userId)
-    return await ctx.storage.generateUploadUrl()
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canEditProject(ctx, args.projectId, user._id))) {
+      throw new ConvexError("You do not have permission to publish this project as a DevApp")
+    }
+    const project = await ctx.db.get(args.projectId)
+    if (!project?.organizationId || project.status === "deleted") {
+      throw new ConvexError("Attach this project to an organization before publishing")
+    }
+    await requireOrgMember(ctx, project.organizationId, user._id)
+    const now = Date.now()
+    const reservationId = await ctx.db.insert("devAppArtifactUploads", {
+      projectId: args.projectId,
+      organizationId: project.organizationId,
+      createdBy: user._id,
+      expiresAt: now + ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS,
+      createdAt: now,
+    })
+    return {
+      reservationId,
+      uploadUrl: await ctx.storage.generateUploadUrl(),
+      expiresAt: now + ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS,
+    }
+  },
+})
+
+export const registerUploadedArtifact = mutation({
+  args: {
+    reservationId: v.id("devAppArtifactUploads"),
+    storageId: v.id("_storage"),
+    contentHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    const reservation = await ctx.db.get(args.reservationId)
+    if (
+      !reservation ||
+      reservation.createdBy !== user._id ||
+      reservation.expiresAt <= Date.now() ||
+      reservation.storageId
+    ) {
+      throw new ConvexError("The DevApp upload reservation is invalid or expired")
+    }
+    const contentHash = normalizeContentHash(args.contentHash)
+    const metadata = await ctx.db.system.get("_storage", args.storageId)
+    if (!metadata) throw new ConvexError("The uploaded DevApp artifact is unavailable")
+    await ctx.db.patch(args.reservationId, {
+      storageId: args.storageId,
+      contentHash,
+      sizeBytes: metadata.size,
+    })
+    if (metadata.size > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes) {
+      return { registered: false, error: "The uploaded DevApp artifact exceeds the size limit" }
+    }
+    if (metadata.contentType !== "application/zip") {
+      return { registered: false, error: "The uploaded DevApp artifact has an invalid content type" }
+    }
+    if (metadata.sha256.toLowerCase() !== contentHash) {
+      return { registered: false, error: "The uploaded DevApp artifact hash does not match" }
+    }
+    return { registered: true }
+  },
+})
+
+export const abandonUploadReservation = mutation({
+  args: { reservationId: v.id("devAppArtifactUploads") },
+  handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    const reservation = await ctx.db.get(args.reservationId)
+    if (!reservation || reservation.createdBy !== user._id) return { removed: false }
+    if (reservation.storageId) await ctx.storage.delete(reservation.storageId)
+    await ctx.db.delete(args.reservationId)
+    return { removed: true }
   },
 })
 
 export const publish = mutation({
   args: {
-    userId: v.id("users"),
     projectId: v.id("projects"),
     name: v.string(),
     description: v.optional(v.string()),
     logoDataUrl: v.optional(v.string()),
     framework: v.string(),
-    artifactStorageId: v.id("_storage"),
+    uploadReservationId: v.id("devAppArtifactUploads"),
     entryPath: v.string(),
-    contentHash: v.string(),
   },
   handler: async (ctx, args) => {
-    if (!(await canEditProject(ctx, args.projectId, args.userId))) {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canEditProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("You do not have permission to publish this project as a DevApp")
     }
 
@@ -106,13 +191,42 @@ export const publish = mutation({
       throw new ConvexError("Attach this project to an organization before publishing")
     }
 
-    await requireOrgMember(ctx, project.organizationId, args.userId)
+    await requireOrgMember(ctx, project.organizationId, user._id)
 
-    const name = normalizeRequiredText(args.name, "name")
-    const description = normalizeOptionalText(args.description, "description")
-    const framework = normalizeRequiredText(args.framework, "framework")
-    const entryPath = normalizeRequiredText(args.entryPath, "entryPath")
-    const contentHash = normalizeContentHash(args.contentHash)
+    const reservation = await ctx.db.get(args.uploadReservationId)
+    if (
+      !reservation ||
+      reservation.createdBy !== user._id ||
+      reservation.projectId !== args.projectId ||
+      reservation.organizationId !== project.organizationId ||
+      reservation.expiresAt <= Date.now() ||
+      !reservation.storageId ||
+      !reservation.contentHash
+    ) {
+      throw new ConvexError("The DevApp upload is incomplete, expired, or belongs to another project")
+    }
+    const metadata = await ctx.db.system.get("_storage", reservation.storageId)
+    if (
+      !metadata ||
+      metadata.size > ORG_DEVAPP_ARTIFACT_LIMITS.maxCompressedBytes ||
+      metadata.contentType !== "application/zip" ||
+      metadata.sha256.toLowerCase() !== reservation.contentHash
+    ) {
+      throw new ConvexError("The DevApp upload failed integrity validation")
+    }
+
+    const name = normalizeBoundedText(args.name, "name", DEVAPP_NAME_MAX_LENGTH)
+    const description = args.description === undefined
+      ? undefined
+      : normalizeBoundedText(args.description, "description", DEVAPP_DESCRIPTION_MAX_LENGTH)
+    const framework = normalizeBoundedText(args.framework, "framework", DEVAPP_FRAMEWORK_MAX_LENGTH)
+    const entryPath = normalizeBoundedText(args.entryPath, "entryPath", DEVAPP_ENTRY_PATH_MAX_LENGTH)
+    if (entryPath.includes("..") || entryPath.startsWith("/") || entryPath.includes("\\")) {
+      throw new ConvexError("entryPath must stay inside the DevApp artifact")
+    }
+    if (args.logoDataUrl && args.logoDataUrl.length > DEVAPP_LOGO_MAX_LENGTH) {
+      throw new ConvexError("The DevApp logo exceeds the allowed size")
+    }
     const now = Date.now()
 
     const existingPublication = await getPublicationForProject(ctx, args.projectId)
@@ -127,8 +241,8 @@ export const publish = mutation({
           ...(description ? { description } : {}),
           ...(args.logoDataUrl ? { logoDataUrl: args.logoDataUrl } : {}),
           status: "active",
-          createdBy: args.userId,
-          updatedBy: args.userId,
+          createdBy: user._id,
+          updatedBy: user._id,
           createdAt: now,
           updatedAt: now,
         })
@@ -154,10 +268,10 @@ export const publish = mutation({
       projectId: args.projectId,
       version,
       framework,
-      artifactStorageId: args.artifactStorageId,
+      artifactStorageId: reservation.storageId,
       entryPath,
-      contentHash,
-      createdBy: args.userId,
+      contentHash: reservation.contentHash,
+      createdBy: user._id,
       createdAt: now,
     })
 
@@ -169,9 +283,20 @@ export const publish = mutation({
       ...(description ? { description } : {}),
       ...(args.logoDataUrl ? { logoDataUrl: args.logoDataUrl } : {}),
       status: "active",
-      updatedBy: args.userId,
+      updatedBy: user._id,
       updatedAt: now,
     })
+    await ctx.db.delete(args.uploadReservationId)
+
+    const retainedReleases = await ctx.db
+      .query("devAppReleases")
+      .withIndex("by_publication_and_version", (q) => q.eq("publicationId", publicationId))
+      .order("desc")
+      .collect()
+    for (const staleRelease of retainedReleases.slice(DEVAPP_RELEASE_RETENTION)) {
+      if (staleRelease.artifactStorageId) await ctx.storage.delete(staleRelease.artifactStorageId)
+      await ctx.db.delete(staleRelease._id)
+    }
 
     const [publication, release] = await Promise.all([
       ctx.db.get(publicationId),
@@ -195,18 +320,18 @@ export const publish = mutation({
 
 export const archive = mutation({
   args: {
-    userId: v.id("users"),
     publicationId: v.id("devAppPublications"),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
     const publication = await ctx.db.get(args.publicationId)
     if (!publication?.organizationId) {
       throw new ConvexError("DevApp not found")
     }
-    await requireOrgAdmin(ctx, publication.organizationId, args.userId)
+    await requireOrgAdmin(ctx, publication.organizationId, user._id)
     await ctx.db.patch(args.publicationId, {
       status: "archived",
-      updatedBy: args.userId,
+      updatedBy: user._id,
       updatedAt: Date.now(),
     })
     return { archived: true }
@@ -215,24 +340,24 @@ export const archive = mutation({
 
 export const updateIdentity = mutation({
   args: {
-    userId: v.id("users"),
     publicationId: v.id("devAppPublications"),
     name: v.optional(v.string()),
     logoDataUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
     const publication = await ctx.db.get(args.publicationId)
     if (!publication?.organizationId) {
       throw new ConvexError("DevApp not found")
     }
-    const { membership } = await requireOrgMember(ctx, publication.organizationId, args.userId)
+    const { membership } = await requireOrgMember(ctx, publication.organizationId, user._id)
     const isAdmin = membership?.role === "admin"
-    const canEditSource = await canEditProject(ctx, publication.projectId, args.userId)
+    const canEditSource = await canEditProject(ctx, publication.projectId, user._id)
     if (!isAdmin && !canEditSource) {
       throw new ConvexError("You do not have permission to edit this DevApp")
     }
     const patch: Partial<Doc<"devAppPublications">> = {
-      updatedBy: args.userId,
+      updatedBy: user._id,
       updatedAt: Date.now(),
     }
     if (args.name !== undefined) {
@@ -248,11 +373,11 @@ export const updateIdentity = mutation({
 
 export const listForOrganization = query({
   args: {
-    userId: v.id("users"),
     organizationId: v.id("organizations"),
   },
   handler: async (ctx, args) => {
-    const { organization } = await requireOrgMember(ctx, args.organizationId, args.userId)
+    const user = await requireAuthenticatedDevice(ctx)
+    const { organization } = await requireOrgMember(ctx, args.organizationId, user._id)
     const publications = await ctx.db
       .query("devAppPublications")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
@@ -273,13 +398,12 @@ export const listForOrganization = query({
 })
 
 export const listMine = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuthenticatedDevice(ctx)
     const memberships = await ctx.db
       .query("organizationMembers")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect()
 
     const grouped = await Promise.all(
@@ -306,18 +430,17 @@ export const listMine = query({
 })
 
 export const listPublisherStatus = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuthenticatedDevice(ctx)
     const memberships = await ctx.db
       .query("projectMembers")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect()
 
     const rows = await Promise.all(
       memberships.map(async (membership) => {
-        if (!(await canEditProject(ctx, membership.projectId, args.userId))) {
+        if (!(await canEditProject(ctx, membership.projectId, user._id))) {
           return null
         }
         const publication = await getPublicationForProject(ctx, membership.projectId)
@@ -342,11 +465,11 @@ export const listPublisherStatus = query({
 
 export const getForProject = query({
   args: {
-    userId: v.id("users"),
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    if (!(await canEditProject(ctx, args.projectId, args.userId))) {
+    const user = await requireAuthenticatedDevice(ctx)
+    if (!(await canEditProject(ctx, args.projectId, user._id))) {
       return null
     }
     const publication = await getPublicationForProject(ctx, args.projectId)
@@ -366,15 +489,15 @@ export const getForProject = query({
 
 export const getArtifactUrl = query({
   args: {
-    userId: v.id("users"),
     publicationId: v.id("devAppPublications"),
   },
   handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
     const publication = await ctx.db.get(args.publicationId)
     if (!publication?.organizationId || publication.status !== "active") {
-      throw new ConvexError("DevApp not found")
+      return null
     }
-    await requireOrgMember(ctx, publication.organizationId, args.userId)
+    if (!(await isOrgMember(ctx, publication.organizationId, user._id))) return null
     const release = await getActiveRelease(ctx, publication)
     if (!release?.artifactStorageId || !release.contentHash) {
       throw new ConvexError("DevApp has no artifact")

@@ -1,4 +1,5 @@
-import { mutation, query, type MutationCtx } from "./_generated/server"
+import { type MutationCtx } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
 import {

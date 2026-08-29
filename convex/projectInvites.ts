@@ -1,7 +1,8 @@
 import { v } from "convex/values"
 
 import type { Doc, Id } from "./_generated/dataModel"
-import { mutation, query, type QueryCtx } from "./_generated/server"
+import { type QueryCtx } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { canAccessProjectByWorkspaceOrMembership } from "./lib/workspaceProjectAccess"
 import {
   buildPendingProjectInviteRecord,

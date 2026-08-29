@@ -26,15 +26,31 @@ function descriptorKey(descriptor: ProviderOptionDescriptor): string {
   return `${descriptor.type}:${descriptor.id}`
 }
 
-function getDescriptorIcon(id: string) {
+function isSpeedOption(id: string, label?: string) {
+  const normId = id.toLowerCase()
+  const normLabel = (label ?? "").toLowerCase()
+  return (
+    normId === "fastmode" ||
+    normId === "servicetier" ||
+    normId === "speed" ||
+    normId === "fast" ||
+    normLabel.includes("speed") ||
+    normLabel.includes("fast mode")
+  )
+}
+
+function getDescriptorIcon(id: string, label?: string) {
+  if (isSpeedOption(id, label)) {
+    return __ZapIconHugeIcon
+  }
   switch (id) {
-    case "fastMode":
-      return __ZapIconHugeIcon
     case "thinking":
       return __BrainIconHugeIcon
     case "contextWindow":
       return __BookOpen01IconHugeIcon
     case "effort":
+    case "reasoningEffort":
+    case "reasoning":
       return __AiBrain05IconHugeIcon
     case "agent":
     case "agentType":
@@ -54,9 +70,19 @@ export const ProviderOptionControls = memo(function ProviderOptionControls(
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       {props.descriptors.map((descriptor) => {
-        const Icon = getDescriptorIcon(descriptor.id)
-        if (descriptor.type === "boolean") {
-          const checked = getProviderOptionCurrentValue(descriptor) === true
+        const isSpeed = isSpeedOption(descriptor.id, descriptor.label)
+        const isToggle = descriptor.type === "boolean" || isSpeed
+        const Icon = getDescriptorIcon(descriptor.id, descriptor.label)
+
+        if (isToggle) {
+          const rawValue = String(getProviderOptionCurrentValue(descriptor) ?? "").toLowerCase()
+          const checked =
+            rawValue === "true" ||
+            rawValue === "on" ||
+            rawValue === "fast" ||
+            rawValue === "priority" ||
+            rawValue === "turbo" ||
+            rawValue === "enabled"
           return (
             <label
               key={descriptorKey(descriptor)}
@@ -64,15 +90,26 @@ export const ProviderOptionControls = memo(function ProviderOptionControls(
                 "inline-flex h-6 shrink-0 whitespace-nowrap cursor-pointer items-center gap-1.5 rounded-full border border-transparent px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                 props.disabled && "opacity-60 cursor-not-allowed",
               )}
-              title={descriptor.description ?? descriptor.label}
+              title={descriptor.description ?? (isSpeed ? "Fast mode" : descriptor.label)}
             >
               <HugeiconsIcon icon={Icon} className="size-3.5" />
-              {descriptor.id === "fastMode" && <span className="truncate">{descriptor.label}</span>}
+              <span className="truncate">{isSpeed ? "Fast mode" : descriptor.label}</span>
               <Switch
                 checked={checked}
                 disabled={props.disabled}
                 onCheckedChange={(nextChecked) => {
-                  props.onOptionChange(descriptor.id, nextChecked)
+                  if (descriptor.type === "select") {
+                    const matched = descriptor.options.find((opt) => {
+                      const optId = opt.id.toLowerCase()
+                      return nextChecked
+                        ? optId === "fast" || optId === "priority" || optId === "turbo" || optId === "on" || optId === "true" || optId === "enabled"
+                        : optId === "default" || optId === "standard" || optId === "auto" || optId === "off" || optId === "false" || optId === "disabled"
+                    })
+                    const fallbackValue = nextChecked ? (descriptor.options.find((o) => o.id !== "default" && o.id !== "standard")?.id ?? "fast") : "default"
+                    props.onOptionChange(descriptor.id, matched ? matched.id : fallbackValue)
+                  } else {
+                    props.onOptionChange(descriptor.id, nextChecked)
+                  }
                 }}
                 className="scale-[0.7] -mr-1"
               />
