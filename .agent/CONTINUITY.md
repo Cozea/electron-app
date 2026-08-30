@@ -1,6 +1,7 @@
 # Continuity
 
 ## [PLANS]
+- 2026-08-30T14:09:58Z [USER] Fix the agent-tile chat composer so its input surface and text colors adapt correctly to Navy, Wine, Clay, and Forest.
 - 2026-08-30T03:05:34Z [USER] Commit and push every current non-ignored workspace change on the existing non-main UI branch.
 - 2026-08-30T03:03:47Z [USER] Remove the unnecessary `Available now` tag from the DevApps Store built-in section.
 - 2026-08-30T03:00:11Z [USER] Make the DevApps Store organization tag and release-count badge visible and theme-appropriate in Navy, Wine, Clay, and Forest while preserving their working Light/Dark treatment.
@@ -56,6 +57,7 @@
 - 2026-06-10T08:58Z [USER] Apply the best fix for the diagnosed memory-info warning.
 
 ## [DECISIONS]
+- 2026-08-30T14:09:58Z [CODE] Give the composer its own semantic surface role: preserve white in Light, use the existing raised surface in Dark and all four chromatic themes, use theme primary/foreground roles for Send, and use the full muted text role for readable placeholder copy.
 - 2026-08-30T03:03:47Z [CODE] Treat the built-in section heading, description, and per-app `Built in` labels as sufficient availability communication; remove the duplicate section-level badge and its orphaned translations.
 - 2026-08-30T03:00:11Z [CODE] Replace Store-local hardcoded indigo utilities with one semantic organization-accent foreground/surface pair: retain indigo in Light/Dark and map Navy to blue, Wine to rose, Clay to amber, and Forest to green with small-text contrast above 4.5:1.
 - 2026-08-30T02:52:47Z [CODE] Treat inviting as a section-level action rather than a member row: align `Invite device` with the Members heading, reveal a focused inline form above the list, and keep the member card limited to member records.
@@ -106,6 +108,9 @@
 - 2026-06-10T08:38Z [TOOL] Reinstalled `node_modules` with `bun install --frozen-lockfile`; `bun.lock` and `package.json` were not changed.
 
 ## [PROGRESS]
+- 2026-08-30T14:10:57Z [TOOL] Committed the agent-composer theme fix as `ea4418c6` (`fix: theme agent chat composer`) and pushed it from `c3f7dafc` to `origin/codex/ui-design-polish` after a successful dry run.
+- 2026-08-30T14:09:58Z [CODE] Replaced the composer shell's `bg-white`/Dark-only split with `--assistant-composer-surface`, made Send semantic, raised placeholder contrast from a 35%-alpha exception, and added a focused theme regression.
+- 2026-08-30T03:06:23Z [TOOL] Committed the preceding 17-file UI batch as `c3f7dafc` (`feat: refine settings and authentication UI`) and pushed it from `4baf1e86` to `origin/codex/ui-design-polish` after a successful dry run.
 - 2026-08-30T03:03:47Z [CODE] Removed the `Available now` badge, simplified the built-in section header wrapper, deleted the unused English/Spanish keys, and added a source regression guarding against reintroduction.
 - 2026-08-30T03:00:11Z [CODE] Added theme-scoped Store organization accent tokens, applied them to the organization and release-count badges, and added focused coverage preventing hardcoded-indigo regressions without changing Store data or backend behavior.
 - 2026-08-30T02:52:47Z [CODE] Relocated the device invite action above the Members card, added an accessible expandable form with auto-focus/Cancel/submit behavior, localized its label in English and Spanish, and added source-order regression coverage.
@@ -146,6 +151,7 @@
 - 2026-06-10T08:58Z [CODE] Patched `electron/services/WorkbenchSessionManager.ts` to cache/throttle memory pressure checks with a 2000 ms TTL and catch native `process.getSystemMemoryInfo()` failures, falling back to the last known pressure state.
 
 ## [DISCOVERIES]
+- 2026-08-30T14:09:58Z [CODE] The composer hardcoded `bg-white` and relied on Tailwind's `.dark` variant, but Navy/Wine/Clay/Forest use independent root classes; themed muted text was therefore painted over a Light-only surface. Its placeholder also reduced the muted role to 35% opacity.
 - 2026-08-30T03:00:11Z [TOOL] The two Store badges bypassed the chromatic palettes through identical `indigo-500/10` utilities. The replacement pairs model at 7.07:1 Navy, 6.09:1 Wine, 7.49:1 Clay, and 8.53:1 Forest; live Electron inspection confirmed each hue is visible, then restored the original Light theme.
 - 2026-08-30T02:52:47Z [TOOL] Live Electron inspection confirmed the compact state reads as Members heading + top-right invite action + member-only card; opening the action places the focused Device ID form above the card, and Cancel restores the compact state. The app was returned to its prior Store view.
 - 2026-08-30T02:46:45Z [TOOL] Live Electron interaction confirmed the measured indicator lands beneath the different Details and Members label widths and tab selection still swaps the correct panel; the active tab was restored to Details after inspection.
@@ -198,6 +204,9 @@
 - 2026-06-10T08:58Z [TOOL] Runtime verification: stopped duplicate stale dev processes, started one fresh `bun run dev` instance; renderer listened on `http://localhost:5183/`, assistant runtime on `127.0.0.1:3773`, app reached `main-window-ready-to-show`, and fresh `.agent/dev-current.log` had no `Unable to retrieve system memory information` or `UnhandledPromiseRejectionWarning` matches.
 
 ## [OUTCOMES]
+- 2026-08-30T14:10:57Z [TOOL] The chromatic agent-composer fix is published on the non-main branch `origin/codex/ui-design-polish` at feature commit `ea4418c6`; GitHub again reported the same one high-severity Dependabot alert on the default branch.
+- 2026-08-30T14:09:58Z [TOOL] Agent composer chromatic theming completed with frontend-only changes. Four focused files / 21 tests, typecheck, lint, production build, targeted design detector, live Wine-theme inspection, contrast calculations, and `git diff --check` pass; chromatic entered-text contrast is 10.96–13.64:1 and placeholder contrast is 5.40–6.78:1. The build emitted only its existing mixed-import notice.
+- 2026-08-30T03:06:23Z [TOOL] The accumulated settings/authentication/Store UI batch was published as `c3f7dafc` to `origin/codex/ui-design-polish`; GitHub reported one existing high-severity Dependabot alert on the default branch, which did not block the push.
 - 2026-08-30T03:03:47Z [TOOL] DevApps Store availability-tag removal completed with frontend-only changes. The focused Store test passed 6 tests; typecheck, lint, production build, design detector, live Vite module inspection, and `git diff --check` pass. The build emitted only its existing mixed-import notice.
 - 2026-08-30T03:00:11Z [TOOL] DevApps Store chromatic badge theming completed with frontend-only changes. Two focused files / 7 tests, typecheck, lint, production build, contrast calculations, four-theme live Electron inspection, HMR, and `git diff --check` pass; the build emitted only its existing mixed-import notice.
 - 2026-08-30T02:52:47Z [TOOL] Members invite placement completed with frontend-only changes. Two focused test files / 4 tests, typecheck, lint, production build, pre/post layout detector, live Electron interaction/visual inspection, and `git diff --check` pass; the build emitted only its existing mixed-import notice.
