@@ -155,17 +155,6 @@ function isDevServerTilePresent(tileId: string): boolean {
   })
 }
 
-function hasDevServerSurface(context: ThreadWorkbenchContext): boolean {
-  return Object.values(useProjectWorkbenchStore.getState().workbenches).some((workbench) =>
-    workbench.workspaceId === context.workspaceId &&
-    workbench.laneId === context.laneId &&
-    workbench.order.some((tileId) => {
-      const tile = workbench.tiles[tileId]
-      return tile?.type === "devServer" && !tile.devAppId
-    }),
-  )
-}
-
 async function ensureThreadSurface(
   threadId: string,
   options: {
@@ -209,47 +198,14 @@ async function ensureThreadSurface(
   return state
 }
 
-async function waitForBrowserTile(tileId: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() <= deadline) {
-    if (await window.electronAPI.workbenchBrowser.getState({ tileId })) return
-    await new Promise((resolve) => window.setTimeout(resolve, 25))
-  }
-  throw new PreviewHostError(
-    "PreviewAutomationTimeoutError",
-    "The Dev Server preview surface did not initialize before the request timed out.",
-  )
-}
-
 async function readStatus(tileId: string | null): Promise<PreviewAutomationStatus> {
-  if (!tileId) {
-    return {
-      available: true,
-      visible: false,
-      tabId: null,
-      url: null,
-      title: null,
-      loading: false,
-    }
-  }
-  const state = await window.electronAPI.workbenchBrowser.getState({ tileId })
-  if (!state && isDevServerTilePresent(tileId)) {
-    return {
-      available: true,
-      visible: false,
-      tabId: tileId,
-      url: null,
-      title: "Dev Server",
-      loading: false,
-    }
-  }
   return {
-    available: Boolean(state),
-    visible: Boolean(state?.visible),
-    tabId: state ? tileId : null,
-    url: state?.url || null,
-    title: state?.title || null,
-    loading: Boolean(state?.isLoading),
+    available: false,
+    visible: false,
+    tabId: tileId,
+    url: null,
+    title: tileId && isDevServerTilePresent(tileId) ? "Dev Server" : null,
+    loading: false,
   }
 }
 
@@ -278,7 +234,7 @@ async function readDevServerStatus(
     port: process.port,
     runId: process.runId,
     phase: process.phase,
-    headless: process.running && !hasDevServerSurface(context),
+    headless: process.running,
     reusedProcess,
     surface: surfaceStatus,
   }
@@ -329,102 +285,6 @@ async function waitForDevServerReady(
   )
 }
 
-function normalizeNavigationUrl(input: Record<string, unknown>): string {
-  const target = asRecord(input.target)
-  let value = typeof input.url === "string" ? input.url.trim() : ""
-  if (target.kind === "environment-port" && typeof target.port === "number") {
-    const protocol = target.protocol === "https" ? "https" : "http"
-    const path = typeof target.path === "string"
-      ? target.path.startsWith("/") ? target.path : `/${target.path}`
-      : ""
-    value = `${protocol}://127.0.0.1:${target.port}${path}`
-  }
-  if (!value) {
-    throw new PreviewHostError("PreviewAutomationExecutionError", "A preview URL is required.")
-  }
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
-    value = /^(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(value)
-      ? `http://${value}`
-      : `https://${value}`
-  }
-  const parsed = new URL(value)
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new PreviewHostError(
-      "PreviewAutomationExecutionError",
-      "Only HTTP and HTTPS preview URLs are supported.",
-    )
-  }
-  return parsed.toString()
-}
-
-async function ensureBrowserTileForUrl(
-  surface: ThreadSurfaceState,
-  url: string,
-  timeoutMs: number,
-): Promise<void> {
-  const { context, handle } = surface
-  useProjectWorkbenchStore.getState().actions.updateRuntimePreviewTile(
-    context.projectId,
-    context.laneId,
-    handle.tileId,
-    { previewOverrideUrl: url },
-    context.workspaceId,
-  )
-  await waitForBrowserTile(handle.tileId, Math.min(timeoutMs, 5_000))
-}
-
-async function waitForNavigation(tileId: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() <= deadline) {
-    const state = await window.electronAPI.workbenchBrowser.getState({ tileId })
-    if (state && !state.isLoading) return
-    await new Promise((resolve) => window.setTimeout(resolve, 40))
-  }
-  throw new PreviewHostError(
-    "PreviewAutomationTimeoutError",
-    "Preview navigation did not finish before the request timed out.",
-  )
-}
-
-function appendAction(
-  tileId: string,
-  request: PreviewAutomationRequest,
-  status: PreviewAutomationActionEvent["status"],
-  startedAt: string,
-  error?: string,
-): void {
-  const current = runtime.actionTimelineByTile.get(tileId) ?? []
-  const event: PreviewAutomationActionEvent = {
-    id: request.requestId,
-    action: request.operation,
-    status,
-    startedAt,
-    ...(status === "running" ? {} : { completedAt: new Date().toISOString() }),
-    ...(error ? { error } : {}),
-  }
-  const withoutPrevious = current.filter((item) => item.id !== request.requestId)
-  runtime.actionTimelineByTile.set(tileId, [...withoutPrevious, event].slice(-24))
-}
-
-function throwForActionResult(result: {
-  ok: boolean
-  error?: string
-  message?: string
-}): void {
-  if (result.ok) return
-  const message = result.message ?? "Preview action failed."
-  switch (result.error) {
-    case "invalid_selector":
-      throw new PreviewHostError("PreviewAutomationInvalidSelectorError", message)
-    case "not_editable":
-      throw new PreviewHostError("PreviewAutomationTargetNotEditableError", message)
-    case "timeout":
-      throw new PreviewHostError("PreviewAutomationTimeoutError", message)
-    default:
-      throw new PreviewHostError("PreviewAutomationExecutionError", message)
-  }
-}
-
 async function runRequest(request: PreviewAutomationRequest): Promise<unknown> {
   const input = asRecord(request.input)
   const current = runtime.surfacesByThread.get(request.threadId)
@@ -472,9 +332,6 @@ async function runRequest(request: PreviewAutomationRequest): Promise<unknown> {
         )
       }
       await waitForDevServerReady(context, request.timeoutMs)
-      await waitForBrowserTile(handle.tileId, Math.min(request.timeoutMs, 5_000))
-    } else if (before.running && before.ready) {
-      await waitForBrowserTile(handle.tileId, Math.min(request.timeoutMs, 5_000))
     }
     return await readDevServerStatus(context, surface, before.running)
   }
@@ -483,164 +340,10 @@ async function runRequest(request: PreviewAutomationRequest): Promise<unknown> {
     return await readStatus(current?.handle.tileId ?? null)
   }
 
-  const preferredTileId = request.tabId ? String(request.tabId) : undefined
-  const surface = await ensureThreadSurface(request.threadId, {
-    preferredTileId,
-    forceNew: request.operation === "open" && input.reuseExistingTab === false,
-  })
-  const { tileId, leaseToken, scopeKey, created } = surface.handle
-
-  if (!renewDevServerSurfaceLease(tileId, leaseToken)) {
-    throw new PreviewHostError(
-      "PreviewAutomationControlInterruptedError",
-      "The user took control of this Dev Server surface.",
-    )
-  }
-
-  const startedAt = new Date().toISOString()
-  appendAction(tileId, request, "running", startedAt)
-  try {
-    let result: unknown
-    switch (request.operation) {
-      case "open": {
-        if (typeof input.url === "string" && input.url.trim()) {
-          const url = normalizeNavigationUrl(input)
-          await ensureBrowserTileForUrl(surface, url, request.timeoutMs)
-          await window.electronAPI.workbenchBrowser.navigate({ tileId, url })
-          await waitForNavigation(tileId, request.timeoutMs)
-        }
-        // New agent surfaces deliberately remain inactive. An explicit open
-        // may reveal an existing surface without rearranging it.
-        if (!created && (input.open === true || input.show === true)) {
-          focusDevServerSurface(scopeKey, tileId)
-        }
-        result = await readStatus(tileId)
-        break
-      }
-      case "navigate": {
-        const url = normalizeNavigationUrl(input)
-        if (!await window.electronAPI.workbenchBrowser.getState({ tileId })) {
-          await ensureBrowserTileForUrl(surface, url, request.timeoutMs)
-        }
-        const state = await window.electronAPI.workbenchBrowser.navigate({ tileId, url })
-        if (!state) {
-          throw new PreviewHostError("PreviewAutomationTabNotFoundError", "Dev Server preview is not open.")
-        }
-        if (input.readiness !== "none") {
-          await waitForNavigation(tileId, request.timeoutMs)
-        }
-        result = await readStatus(tileId)
-        break
-      }
-      case "snapshot": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const snapshot = await window.electronAPI.workbenchBrowser.devServerPreviewSnapshot({ tileId })
-        if (!snapshot) {
-          throw new PreviewHostError("PreviewAutomationTabNotFoundError", "Dev Server preview is not open.")
-        }
-        result = {
-          ...snapshot,
-          consoleEntries: [],
-          networkEntries: [],
-          actionTimeline: runtime.actionTimelineByTile.get(tileId) ?? [],
-        }
-        break
-      }
-      case "click": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewClick({
-          tileId,
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-          ...(typeof input.x === "number" ? { x: input.x } : {}),
-          ...(typeof input.y === "number" ? { y: input.y } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "type": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewType({
-          tileId,
-          text: typeof input.text === "string" ? input.text : "",
-          clear: input.clear === true,
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "press": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const modifiers = Array.isArray(input.modifiers)
-          ? input.modifiers.filter((modifier): modifier is "Alt" | "Control" | "Meta" | "Shift" =>
-              modifier === "Alt" || modifier === "Control" || modifier === "Meta" || modifier === "Shift")
-          : undefined
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewPress({
-          tileId,
-          key: typeof input.key === "string" ? input.key : "",
-          modifiers,
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "scroll": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewScroll({
-          tileId,
-          ...(typeof input.deltaX === "number" ? { deltaX: input.deltaX } : {}),
-          ...(typeof input.deltaY === "number" ? { deltaY: input.deltaY } : {}),
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "waitFor": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewWaitFor({
-          tileId,
-          timeoutMs: request.timeoutMs,
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-          ...(typeof input.text === "string" ? { text: input.text } : {}),
-          ...(typeof input.urlIncludes === "string" ? { urlIncludes: input.urlIncludes } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      default:
-        throw new PreviewHostError(
-          "PreviewAutomationUnsupportedClientError",
-          `This Cozea Dev Server host does not support ${request.operation}.`,
-        )
-    }
-
-    if (!renewDevServerSurfaceLease(tileId, leaseToken)) {
-      throw new PreviewHostError(
-        "PreviewAutomationControlInterruptedError",
-        "The user took control of this Dev Server surface.",
-      )
-    }
-    appendAction(tileId, request, "succeeded", startedAt)
-    return result
-  } catch (error) {
-    appendAction(
-      tileId,
-      request,
-      error instanceof PreviewHostError && error.tag === "PreviewAutomationControlInterruptedError"
-        ? "interrupted"
-        : "failed",
-      startedAt,
-      error instanceof Error ? error.message : String(error),
-    )
-    throw error
-  }
+  throw new PreviewHostError(
+    "PreviewAutomationUnavailableError",
+    "The embedded browser is unavailable while the T3 browser is being ported.",
+  )
 }
 
 async function serializeThreadRequest<T>(

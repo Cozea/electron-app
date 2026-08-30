@@ -10,8 +10,17 @@ import type {
 import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { DevServerService } from './DevServerService'
 import { TerminalService } from './TerminalService'
-import { WorkbenchBrowserService } from './WorkbenchBrowserService'
 import { NativePreviewManager } from './nativePreview/NativePreviewManager'
+
+interface BrowserLifecycleService {
+  getState(tileId: string): { storageScope?: string } | null
+  destroyTile(tileId: string): boolean
+}
+
+const unavailableBrowserLifecycleService: BrowserLifecycleService = {
+  getState: () => null,
+  destroyTile: () => false,
+}
 
 interface PersistedWorkbenchSessionRecord {
   projectId: string
@@ -44,7 +53,7 @@ interface LiveWorkbenchSessionRecord {
 }
 
 interface WorkbenchSessionManagerServices {
-  browserService: WorkbenchBrowserService
+  browserService?: BrowserLifecycleService
   nativePreviewManager: NativePreviewManager
 }
 
@@ -231,7 +240,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
   private readonly terminalService = TerminalService.getInstance()
   private readonly devServerService = DevServerService.getInstance()
-  private readonly browserService: WorkbenchBrowserService
+  private readonly browserService: BrowserLifecycleService
   private readonly nativePreviewManager: NativePreviewManager
   private readonly sessions = new Map<string, LiveWorkbenchSessionRecord>()
   private readonly policySweepTimer: NodeJS.Timeout
@@ -272,7 +281,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
   private constructor(services: WorkbenchSessionManagerServices) {
     super()
-    this.browserService = services.browserService
+    this.browserService = services.browserService ?? unavailableBrowserLifecycleService
     this.nativePreviewManager = services.nativePreviewManager
 
     const persisted = readRegistryState()

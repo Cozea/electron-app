@@ -20,10 +20,7 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Toggle } from "@/components/ui/toggle"
-import {
-  BROWSER_FOCUS_URL_EVENT,
-  normalizeUrlInput,
-} from "@/features/projects/browser/urlInput"
+import { normalizeUrlInput } from "@/features/projects/browser/urlInput"
 import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,
@@ -37,11 +34,6 @@ import {
   dispatchDevServerTileCommand,
   isSameDevServerPreviewUrl,
 } from "@/features/projects/devserver/devServerTileCommands"
-import {
-  type BrowserTileModel,
-  acquireBrowserTileModel,
-  releaseBrowserTileModel,
-} from "@/features/projects/browser/browserTileModel"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
@@ -306,91 +298,21 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   )
 })
 
-/**
- * Self-contained address bar for browser panels, rendered directly by the
- * dock header. It subscribes to the workbench store and the browser tile
- * model itself instead of going through the registered-element registry:
- * registry elements carry closures from the panel-content tree, and any
- * registration/subscription skew (panel remounts, HMR module duplication)
- * left the header rendering stale elements whose state setters were dead —
- * the visible-but-untypeable URL bar.
- */
+/** Read-only browser metadata retained while the legacy host is absent. */
 const BrowserPanelHeaderControls = memo(function BrowserPanelHeaderControls({
   tileId,
 }: {
   tileId: string
 }) {
   const runtime = useWorkbenchDockRuntime()
-  const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
-  const tileUrl = useProjectWorkbenchStore((state) => {
+  const tile = useProjectWorkbenchStore((state) => {
     const workbench = selectProjectWorkbench(runtime.projectId, runtime.laneId, runtime.workspaceId)(state)
-    const tile = workbench?.tiles[tileId]
-    return tile && tile.type === "browser" ? tile.url : ""
+    const candidate = workbench?.tiles[tileId]
+    return candidate && candidate.type === "browser" ? candidate : null
   })
-  const [draftUrl, setDraftUrl] = useState(tileUrl)
-  const [navState, setNavState] = useState({ canGoBack: false, canGoForward: false, favicon: null as string | null })
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const modelRef = useRef<BrowserTileModel | null>(null)
-
-  useEffect(() => {
-    setDraftUrl(tileUrl)
-  }, [tileUrl])
-
-  useEffect(() => {
-    const model = acquireBrowserTileModel(tileId, { persistent: true })
-    modelRef.current = model
-    const unsubscribe = model.subscribe((state) => {
-      setNavState((current) =>
-        current.canGoBack === state.canGoBack &&
-        current.canGoForward === state.canGoForward &&
-        current.favicon === (state.favicon ?? null)
-          ? current
-          : { canGoBack: state.canGoBack, canGoForward: state.canGoForward, favicon: state.favicon ?? null },
-      )
-    })
-    return () => {
-      unsubscribe()
-      modelRef.current = null
-      void releaseBrowserTileModel(tileId)
-    }
-  }, [tileId])
-
-  useEffect(() => {
-    const focusInput = () => {
-      window.requestAnimationFrame(() => {
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      })
-    }
-    const onLocal = (event: Event) => {
-      if ((event as CustomEvent<{ tileId: string }>).detail?.tileId !== tileId) return
-      focusInput()
-    }
-    const unsubscribeCommand = window.electronAPI.workbenchBrowser.onCommand((command) => {
-      if (command.tileId !== tileId || command.type !== "focus-url") return
-      focusInput()
-    })
-    window.addEventListener(BROWSER_FOCUS_URL_EVENT, onLocal)
-    return () => {
-      unsubscribeCommand()
-      window.removeEventListener(BROWSER_FOCUS_URL_EVENT, onLocal)
-    }
-  }, [tileId])
-
-  const submitDraftUrl = () => {
-    const normalized = normalizeUrlInput(draftUrl)
-    if (!normalized) return
-    workbenchActions.updateBrowserTile(
-      runtime.projectId,
-      runtime.laneId,
-      tileId,
-      { url: normalized, title: "Browser" },
-      runtime.workspaceId,
-    )
-  }
 
   const navChipClass =
-    "h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
+    "h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground"
 
   return (
     <div className="cozea-workbench-header-controls flex h-full min-w-0 items-center px-1">
@@ -400,10 +322,8 @@ const BrowserPanelHeaderControls = memo(function BrowserPanelHeaderControls({
           variant="ghost"
           size="icon"
           className={navChipClass}
-          disabled={!navState.canGoBack}
-          onClick={() => {
-            void modelRef.current?.goBack()
-          }}
+          disabled
+          title="Embedded browser unavailable"
           aria-label="Back"
         >
           <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-3.5 w-3.5" />
@@ -413,33 +333,26 @@ const BrowserPanelHeaderControls = memo(function BrowserPanelHeaderControls({
           variant="ghost"
           size="icon"
           className={navChipClass}
-          disabled={!navState.canGoForward}
-          onClick={() => {
-            void modelRef.current?.goForward()
-          }}
+          disabled
+          title="Embedded browser unavailable"
           aria-label="Forward"
         >
           <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
         </Button>
         <div className="flex min-w-0 flex-1 items-center gap-1.5 bg-transparent px-1">
-          {navState.favicon ? (
-            <img src={navState.favicon} alt="" className="size-[16px] shrink-0 rounded-sm object-contain" />
-          ) : draftUrl.startsWith("https://") ? (
+          {tile?.favicon ? (
+            <img src={tile.favicon} alt="" className="size-[16px] shrink-0 rounded-sm object-contain" />
+          ) : tile?.url.startsWith("https://") ? (
             <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
           ) : null}
           <Input
-            ref={inputRef}
-            value={draftUrl}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setDraftUrl(event.target.value)}
-            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                submitDraftUrl()
-              }
-            }}
+            value={tile?.url ?? ""}
+            readOnly
+            disabled
             placeholder="Search or enter address"
+            title="Address editing is unavailable until the T3 browser is ported"
             className={cn(
-              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
+              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-muted-foreground shadow-none placeholder:text-muted-foreground/60 disabled:cursor-not-allowed disabled:opacity-100 dark:border-none dark:bg-transparent",
             )}
           />
         </div>
@@ -626,8 +539,6 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
     return null
   }
 
-  const serverUrl = run.url ?? (run.port ? buildLocalDevServerUrl(run.port) : "")
-
   if (isDevServerRunActive(run.status)) {
     return (
       <>
@@ -636,14 +547,15 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          disabled={surface === "devServer" && !serverUrl}
+          disabled={surface === "devServer"}
           onClick={() => {
             if (surface === "mobileSimulator") {
               dispatchDevServerTileCommand({ tileId, type: "refresh-simulators" })
               return
             }
-            void window.electronAPI.workbenchBrowser.reload({ tileId })
+            return
           }}
+          title={surface === "mobileSimulator" ? undefined : "Embedded browser unavailable"}
           aria-label={surface === "mobileSimulator" ? "Refresh simulator" : "Reload preview"}
         >
           <HugeiconsIcon icon={__RefreshCcwHugeIcon} className="h-3.5 w-3.5" />
