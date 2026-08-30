@@ -108,6 +108,7 @@
 - 2026-06-10T08:38Z [TOOL] Reinstalled `node_modules` with `bun install --frozen-lockfile`; `bun.lock` and `package.json` were not changed.
 
 ## [PROGRESS]
+- 2026-08-30T14:10:57Z [TOOL] Committed the agent-composer theme fix as `ea4418c6` (`fix: theme agent chat composer`) and pushed it from `c3f7dafc` to `origin/codex/ui-design-polish` after a successful dry run.
 - 2026-08-30T14:09:58Z [CODE] Replaced the composer shell's `bg-white`/Dark-only split with `--assistant-composer-surface`, made Send semantic, raised placeholder contrast from a 35%-alpha exception, and added a focused theme regression.
 - 2026-08-30T03:06:23Z [TOOL] Committed the preceding 17-file UI batch as `c3f7dafc` (`feat: refine settings and authentication UI`) and pushed it from `4baf1e86` to `origin/codex/ui-design-polish` after a successful dry run.
 - 2026-08-30T03:03:47Z [CODE] Removed the `Available now` badge, simplified the built-in section header wrapper, deleted the unused English/Spanish keys, and added a source regression guarding against reintroduction.
@@ -203,6 +204,7 @@
 - 2026-06-10T08:58Z [TOOL] Runtime verification: stopped duplicate stale dev processes, started one fresh `bun run dev` instance; renderer listened on `http://localhost:5183/`, assistant runtime on `127.0.0.1:3773`, app reached `main-window-ready-to-show`, and fresh `.agent/dev-current.log` had no `Unable to retrieve system memory information` or `UnhandledPromiseRejectionWarning` matches.
 
 ## [OUTCOMES]
+- 2026-08-30T14:10:57Z [TOOL] The chromatic agent-composer fix is published on the non-main branch `origin/codex/ui-design-polish` at feature commit `ea4418c6`; GitHub again reported the same one high-severity Dependabot alert on the default branch.
 - 2026-08-30T14:09:58Z [TOOL] Agent composer chromatic theming completed with frontend-only changes. Four focused files / 21 tests, typecheck, lint, production build, targeted design detector, live Wine-theme inspection, contrast calculations, and `git diff --check` pass; chromatic entered-text contrast is 10.96–13.64:1 and placeholder contrast is 5.40–6.78:1. The build emitted only its existing mixed-import notice.
 - 2026-08-30T03:06:23Z [TOOL] The accumulated settings/authentication/Store UI batch was published as `c3f7dafc` to `origin/codex/ui-design-polish`; GitHub reported one existing high-severity Dependabot alert on the default branch, which did not block the push.
 - 2026-08-30T03:03:47Z [TOOL] DevApps Store availability-tag removal completed with frontend-only changes. The focused Store test passed 6 tests; typecheck, lint, production build, design detector, live Vite module inspection, and `git diff --check` pass. The build emitted only its existing mixed-import notice.
