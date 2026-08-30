@@ -6,7 +6,9 @@ import {
   ESCALATING_CAPABILITIES,
   grantFingerprint,
   grantsUnrestrictedAccess,
+  isAllowedShellOpenUrl,
   isDevAppCapability,
+  resolveRevealTarget,
   normalizeCapabilities,
   normalizeGrant,
   trustTierFor,
@@ -133,5 +135,83 @@ describe("Capability vocabulary — rejecting unknown input", () => {
     expect(normalizeGrant({ agentInvocable: 1 }).agentInvocable).toBe(false)
     expect(normalizeGrant({}).agentInvocable).toBe(false)
     expect(normalizeGrant({ agentInvocable: true }).agentInvocable).toBe(true)
+  })
+})
+
+describe("shell.open — narrowed to web schemes", () => {
+  it("allows the schemes a link actually needs", () => {
+    expect(isAllowedShellOpenUrl("https://example.com/docs")).toBe(true)
+    expect(isAllowedShellOpenUrl("http://localhost:3000")).toBe(true)
+    expect(isAllowedShellOpenUrl("mailto:someone@example.com")).toBe(true)
+  })
+
+  it("refuses file: URLs, which browse the disk rather than the web", () => {
+    expect(isAllowedShellOpenUrl("file:///Users/admin/.ssh/id_rsa")).toBe(false)
+    expect(isAllowedShellOpenUrl("FILE:///etc/passwd")).toBe(false)
+  })
+
+  it("refuses custom app schemes, which reach installed handlers", () => {
+    for (const url of ["vscode://file/etc/passwd", "slack://open", "ssh://host", "smb://share"]) {
+      expect(isAllowedShellOpenUrl(url), `${url} allowed`).toBe(false)
+    }
+  })
+
+  it("refuses malformed and over-long input", () => {
+    expect(isAllowedShellOpenUrl("not a url")).toBe(false)
+    expect(isAllowedShellOpenUrl("")).toBe(false)
+    expect(isAllowedShellOpenUrl(`https://example.com/${"x".repeat(3000)}`)).toBe(false)
+  })
+})
+
+describe("shell.reveal — bounded to the workspace and the app's own data", () => {
+  const join = (root: string, rel: string) => `${root}/${rel}`
+  const normalize = (value: string) => {
+    const parts: string[] = []
+    for (const segment of value.split("/")) {
+      if (segment === "" || segment === ".") continue
+      if (segment === "..") parts.pop()
+      else parts.push(segment)
+    }
+    return `/${parts.join("/")}`
+  }
+  const roots = { workspaceRoot: "/Users/admin/proj", dataDir: "/Users/admin/data/pub_1" }
+
+  it("resolves a location inside the workspace", () => {
+    expect(resolveRevealTarget("workspace", "dist", roots, join, normalize)).toBe("/Users/admin/proj/dist")
+    expect(resolveRevealTarget("workspace", "out/report.pdf", roots, join, normalize))
+      .toBe("/Users/admin/proj/out/report.pdf")
+  })
+
+  it("resolves a location inside the app's own data directory", () => {
+    expect(resolveRevealTarget("data", "logs", roots, join, normalize)).toBe("/Users/admin/data/pub_1/logs")
+  })
+
+  // The same relative path must mean exactly one place. Inferring the root from what
+  // happens to exist would make the boundary depend on filesystem state.
+  it("resolves the same relative path to different places per root, never ambiguously", () => {
+    expect(resolveRevealTarget("workspace", "logs", roots, join, normalize)).toBe("/Users/admin/proj/logs")
+    expect(resolveRevealTarget("data", "logs", roots, join, normalize)).toBe("/Users/admin/data/pub_1/logs")
+  })
+
+  it("refuses traversal out of either root", () => {
+    expect(resolveRevealTarget("workspace", "../../.ssh", roots, join, normalize)).toBeNull()
+    expect(resolveRevealTarget("workspace", "dist/../../../etc", roots, join, normalize)).toBeNull()
+    expect(resolveRevealTarget("data", "../../proj/.env", roots, join, normalize)).toBeNull()
+  })
+
+  it("refuses an absolute path rather than reinterpreting it", () => {
+    expect(resolveRevealTarget("workspace", "/etc/passwd", roots, join, normalize)).toBeNull()
+  })
+
+  it("refuses the data root when no data directory is configured", () => {
+    const only = { workspaceRoot: "/Users/admin/proj" }
+    expect(resolveRevealTarget("workspace", "dist", only, join, normalize)).toBe("/Users/admin/proj/dist")
+    expect(resolveRevealTarget("data", "logs", only, join, normalize)).toBeNull()
+  })
+
+  it("keeps revealing a project folder in the scoped tier", () => {
+    // Tier inflation is the real risk: if scoped cannot do the ordinary things a dev
+    // tool does, every app declares fs.read and the tier stops meaning anything.
+    expect(trustTierFor(["shell.reveal", "project.read"])).toBe("scoped")
   })
 })

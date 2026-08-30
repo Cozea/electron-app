@@ -37,6 +37,7 @@ export type DevAppCapability =
   // ── Reach ────────────────────────────────────────────────────────────────────
   | "net.outbound"
   | "shell.open"
+  | "shell.reveal"
 
 export const ALL_DEV_APP_CAPABILITIES: ReadonlyArray<DevAppCapability> = [
   "project.read",
@@ -50,6 +51,7 @@ export const ALL_DEV_APP_CAPABILITIES: ReadonlyArray<DevAppCapability> = [
   "process.spawn",
   "net.outbound",
   "shell.open",
+  "shell.reveal",
 ]
 
 /**
@@ -79,6 +81,7 @@ const TIER_BY_CAPABILITY: Readonly<Record<DevAppCapability, DevAppTrustTier>> = 
   "git.write": "scoped",
   "net.outbound": "scoped",
   "shell.open": "scoped",
+  "shell.reveal": "scoped",
   "fs.read": "privileged",
   "fs.write": "privileged",
   "terminal.spawn": "privileged",
@@ -177,5 +180,65 @@ export const CAPABILITY_DESCRIPTIONS: Readonly<Record<DevAppCapability, string>>
   "terminal.spawn": "Run commands on your Mac",
   "process.spawn": "Start programs on your Mac",
   "net.outbound": "Connect to the internet",
-  "shell.open": "Open links and apps outside Cozea",
+  "shell.open": "Open web links in your browser",
+  "shell.reveal": "Show this project's files in Finder",
+}
+
+/**
+ * Schemes `shell.open` may hand to the OS.
+ *
+ * `shell.openExternal` dispatches through LaunchServices, so an unrestricted URL is not
+ * a web link — `file:` browses the disk and any installed app's custom scheme becomes
+ * reachable, several of which have argument-injection histories. That would make a
+ * capability sitting in the scoped tier a route to the whole machine.
+ *
+ * This mirrors the allowlist main.ts already applies to window-open and will-navigate,
+ * rather than introducing a new rule.
+ */
+export const SHELL_OPEN_ALLOWED_SCHEMES: ReadonlyArray<string> = ["https:", "http:", "mailto:"]
+
+export function isAllowedShellOpenUrl(value: string): boolean {
+  if (typeof value !== "string" || value.length === 0 || value.length > 2048) return false
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  return SHELL_OPEN_ALLOWED_SCHEMES.includes(url.protocol.toLowerCase())
+}
+
+/** Which of an app's two permitted areas a reveal targets. */
+export type DevAppRevealRoot = "workspace" | "data"
+
+/**
+ * Resolves a location `shell.reveal` may open, or null when it escapes its bounds.
+ *
+ * Follows the `project:openFolder` precedent: the worker names a *relative* location and
+ * the host resolves it, so the worker never supplies an absolute path there is something
+ * to escape from.
+ *
+ * The root is named explicitly rather than inferred. Trying the workspace first and
+ * falling back to the data directory would make `logs` mean different places depending
+ * on what happens to exist — resolution must not be ambiguous when it is the thing
+ * enforcing a boundary.
+ */
+export function resolveRevealTarget(
+  root: DevAppRevealRoot,
+  relativePath: string,
+  roots: { workspaceRoot: string; dataDir?: string },
+  join: (root: string, relative: string) => string,
+  normalize: (value: string) => string,
+): string | null {
+  if (typeof relativePath !== "string" || relativePath.length > 1024) return null
+  if (relativePath.includes("\0")) return null
+  // An absolute path is not a relative location; refuse rather than reinterpret it.
+  if (relativePath.startsWith("/")) return null
+
+  const base = root === "workspace" ? roots.workspaceRoot : roots.dataDir
+  if (!base) return null
+
+  const normalizedRoot = normalize(base)
+  const resolved = normalize(join(normalizedRoot, relativePath))
+  return resolved === normalizedRoot || resolved.startsWith(`${normalizedRoot}/`) ? resolved : null
 }
