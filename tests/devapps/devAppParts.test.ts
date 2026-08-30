@@ -119,3 +119,26 @@ describe("DevApp surfaces — derived, never declared", () => {
       .toEqual(["agentTool", "backgroundService"])
   })
 })
+
+describe("Registry surface resolution", () => {
+  it("lists every built-in on the tile surface", async () => {
+    const { listAppsForSurface } = await import("@/features/devapps/registry")
+    expect(listAppsForSurface("tile")).toHaveLength(BUILTIN_DEV_APPS.length)
+  })
+
+  it("lists no built-in on the agent surface yet", async () => {
+    // Nothing shipping declares tools, so the agent surface is correctly empty rather
+    // than being populated by apps that have nothing callable to expose.
+    const { listAppsForSurface } = await import("@/features/devapps/registry")
+    expect(listAppsForSurface("agentTool")).toEqual([])
+  })
+
+  it("lists only the apps that keep a process on the background surface", async () => {
+    const { listAppsForSurface } = await import("@/features/devapps/registry")
+    const ids = listAppsForSurface("backgroundService").map((app) => app.id)
+    expect(ids).toContain("dev-server")
+    expect(ids).toContain("terminal")
+    // A browser tile holds nothing that outlives it.
+    expect(ids).not.toContain("browser")
+  })
+})
