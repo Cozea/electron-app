@@ -15,6 +15,7 @@ export type DevAppWorkbenchTileTarget =
   | "assistantChat"
   | "browser"
   | "devServer"
+  | "llama"
   | "mobileSimulator"
   | "orgDevApp"
   | "terminal"
@@ -100,6 +101,12 @@ export interface DevAppMobileSimulatorLaunchSpec extends DevAppLaunchBase {
   singleton: true
 }
 
+export interface DevAppLlamaLaunchSpec extends DevAppLaunchBase {
+  kind: "llama"
+  tileType: "llama"
+  singleton: true
+}
+
 export interface DevAppAssistantLaunchSpec extends DevAppLaunchBase {
   kind: "assistantChat"
   tileType: "assistantChat"
@@ -110,6 +117,7 @@ export type DevAppLaunchSpec =
   | DevAppAssistantLaunchSpec
   | DevAppBrowserLaunchSpec
   | DevAppDevServerLaunchSpec
+  | DevAppLlamaLaunchSpec
   | DevAppMobileSimulatorLaunchSpec
   | PublishedDevAppLaunchSpec
   | ProjectDevAppLaunchSpec

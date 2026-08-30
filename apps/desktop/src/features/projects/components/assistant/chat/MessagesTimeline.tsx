@@ -2031,6 +2031,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const normalizedPresentation = normalizeToolRowPresentation({
     title: workEntry.toolTitle,
     detail: workEntry.detail,
+    changedFiles: workEntry.changedFiles,
   });
   const heading = normalizedPresentation?.heading ?? toolWorkEntryHeading(workEntry);
   // Already a basename for file work; the full path rides along for the tooltip.

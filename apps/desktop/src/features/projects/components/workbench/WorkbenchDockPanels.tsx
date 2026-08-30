@@ -55,6 +55,7 @@ import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
+  type WorkbenchLlamaTile as WorkbenchLlamaTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   type WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
@@ -106,6 +107,10 @@ const loadWorkbenchMobileSimulatorTile = () =>
   import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchMobileSimulatorTile,
   }))
+const loadWorkbenchLlamaTile = () =>
+  import("@/features/projects/components/workbench/WorkbenchLlamaTile").then((m) => ({
+    default: m.WorkbenchLlamaTile,
+  }))
 const loadWorkbenchOrgDevAppTile = () =>
   import("@/features/projects/components/workbench/WorkbenchOrgDevAppTile").then((m) => ({
     default: m.WorkbenchOrgDevAppTile,
@@ -122,6 +127,7 @@ const loadWorkbenchTerminalTile = () =>
 const LazyWorkbenchAssistantChatTile = lazy(loadWorkbenchAssistantChatTile)
 const LazyWorkbenchBrowserTile = lazy(loadWorkbenchBrowserTile)
 const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
+const LazyWorkbenchLlamaTile = lazy(loadWorkbenchLlamaTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchOrgDevAppTile = lazy(loadWorkbenchOrgDevAppTile)
 const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
@@ -162,6 +168,8 @@ function resolveTabTileTypeLabel(tile: WorkbenchTile | null): string {
       return "Terminal"
     case "devServer":
       return "Dev Server"
+    case "llama":
+      return "Llama"
     case "mobileSimulator":
       return "Simulator"
     case "orgDevApp":
@@ -713,7 +721,25 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   const { t } = useTranslation()
   const runtime = useWorkbenchDockRuntime()
   const activePanel = props.activePanel
-  const isMaximized = activePanel?.api.isMaximized() ?? false
+  const [isMaximized, setIsMaximized] = useState(() => activePanel?.api.isMaximized() ?? false)
+
+  useEffect(() => {
+    setIsMaximized(activePanel?.api.isMaximized() ?? false)
+
+    const disposable = props.containerApi?.onDidMaximizedGroupChange((event) => {
+      setIsMaximized(event.isMaximized)
+    })
+
+    const groupChangeDisposable = activePanel?.api.onDidGroupChange?.(() => {
+      setIsMaximized(activePanel.api.isMaximized())
+    })
+
+    return () => {
+      disposable?.dispose()
+      groupChangeDisposable?.dispose?.()
+    }
+  }, [props.containerApi, activePanel])
+
   const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
   const isSoleSelectionTile = useProjectWorkbenchStore((state) => {
     const wb = selectProjectWorkbench(
@@ -830,8 +856,10 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
           event.stopPropagation()
           if (activePanel.api.isMaximized()) {
             activePanel.api.exitMaximized()
+            setIsMaximized(false)
           } else {
             activePanel.api.maximize()
+            setIsMaximized(true)
           }
         }}
       >
@@ -1156,6 +1184,45 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   )
 })
 
+const LlamaPanel = memo(function LlamaPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.workspaceId,
+    props.params.tileId,
+  )
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "llama") {
+    return (
+      <WorkbenchTileChrome
+        title="Llama"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <Suspense fallback={changesSuspenseFallback}>
+      <LazyWorkbenchLlamaTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchLlamaTileRecord}
+        workspaceId={runtime.workspaceId}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      />
+    </Suspense>
+  )
+})
+
 const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
@@ -1238,6 +1305,7 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   browser: BrowserPanel,
   terminal: TerminalPanel,
   devServer: DevServerPanel,
+  llama: LlamaPanel,
   mobileSimulator: MobileSimulatorPanel,
   orgDevApp: OrgDevAppPanel,
   assistantChat: AssistantChatPanel,

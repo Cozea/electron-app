@@ -66,6 +66,7 @@ function getFloatingBoxForComponent(component: string): {
       return { width: 760, height: 420, x: 72, y: 72 }
     case "browser":
     case "devServer":
+    case "llama":
     case "mobileSimulator":
       return { width: 900, height: 640, x: 72, y: 56 }
     case "changes":
@@ -90,6 +91,7 @@ function getPopoutBoxForComponent(component: string): {
       return { left: screenLeft + 90, top: screenTop + 100, width: 900, height: 520 }
     case "browser":
     case "devServer":
+    case "llama":
     case "mobileSimulator":
       return { left: screenLeft + 80, top: screenTop + 70, width: 1100, height: 780 }
     case "changes":

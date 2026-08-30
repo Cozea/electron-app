@@ -1,5 +1,6 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
 import { useMemo, useEffect, useState } from "react"
+import { SiOllama } from "react-icons/si"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import {
@@ -37,7 +38,7 @@ import type {
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
+import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
 const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[4px]"
 const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
@@ -103,6 +104,15 @@ function SurfaceTileGlyph(props: {
         )
       }
       return <HugeiconsIcon icon={__PhoneHugeIcon} className={className} aria-hidden />
+    case "llama":
+      if (devApp) {
+        return (
+          <span className={SIDEBAR_APP_ICON_CLASS}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
+      return <SiOllama className={className} aria-hidden />
     case "terminal":
     default:
       if (devApp) {

@@ -163,3 +163,90 @@ describe("normalizedToolAction", () => {
     expect(normalizedToolAction({ title: "Read file", detail: `Read: {"file_path":"/a"}` })).toBeNull();
   });
 });
+
+describe("providers that name the tool in the title", () => {
+  // OpenCode sends `title = part.tool` and puts the tool's OUTPUT in detail.
+  const openCode = (title: string, detail: string) =>
+    normalizeToolRowPresentation({ title, detail });
+
+  it("maps a bare tool-name title to the same verb", () => {
+    expect(openCode("read", "1: import x\n2: export y")?.heading).toBe("Read");
+    expect(openCode("bash", "ok\n")?.heading).toBe("Ran");
+    expect(openCode("edit", "")?.heading).toBe("Edited");
+    expect(openCode("grep", "TODO")?.heading).toBe("Searched");
+  });
+
+  it("never shows tool output as the row preview", () => {
+    // Multi-line and long details are stdout or file contents, not arguments.
+    expect(openCode("read", "1: import x\n2: export y")?.detail).toBeUndefined();
+    expect(openCode("bash", "x".repeat(200))?.detail).toBeUndefined();
+  });
+
+  it("keeps a short single-line detail only where it is unambiguously an argument", () => {
+    // A command's detail is the command itself, so it is safe to show. A
+    // search's detail is the match output, not the query — showing it would
+    // label a result as if it were the search term, so it is dropped.
+    expect(openCode("bash", "bun test")?.detail).toBe("bun test");
+    expect(openCode("grep", "TODO")?.detail).toBeUndefined();
+  });
+
+  it("leaves unrecognized bare titles to the existing rendering", () => {
+    expect(openCode("Reasoning", "thinking")).toBeNull();
+    expect(openCode("Plan", "steps")).toBeNull();
+  });
+});
+
+describe("truncated payloads", () => {
+  it("recovers the file from an edit whose JSON was cut off", () => {
+    // Claude caps the serialized input at 397 chars, so a large edit arrives
+    // as an unparseable prefix. The path is still in there.
+    const cut = `Edit: {"file_path":"/repo/src/a.ts","new_string":"${"x".repeat(500)}`.slice(0, 397);
+    const result = normalizeToolRowPresentation({ title: "File change", detail: cut });
+    expect(result?.heading).toBe("Edited");
+    expect(result?.detail).toBe("a.ts");
+    expect(result?.path).toBe("/repo/src/a.ts");
+  });
+
+  it("omits a stat rather than reporting one from a half-written value", () => {
+    const cut = `Edit: {"file_path":"/repo/a.ts","new_string":"abc`;
+    expect(normalizeToolRowPresentation({ title: "File change", detail: cut })?.stat).toBeUndefined();
+  });
+
+  it("returns no args when nothing complete can be salvaged", () => {
+    expect(parseToolDetail(`Read: {"file_pa`)?.args).toBeNull();
+  });
+});
+
+describe("structured paths beat parsed ones", () => {
+  it("prefers the runtime-reported path over one parsed from a truncated detail", () => {
+    // The detail was cut mid-payload; changedFiles is authoritative.
+    const cut = `Edit: {"file_path":"/repo/src/a.t`;
+    const result = normalizeToolRowPresentation({
+      title: "File change",
+      detail: cut,
+      changedFiles: ["/repo/src/actual.ts"],
+    });
+    expect(result?.detail).toBe("actual.ts");
+    expect(result?.path).toBe("/repo/src/actual.ts");
+  });
+
+  it("still falls back to the parsed path when nothing structured arrived", () => {
+    const result = normalizeToolRowPresentation({
+      title: "File change",
+      detail: `Edit: {"file_path":"/repo/src/a.ts"}`,
+      changedFiles: [],
+    });
+    expect(result?.path).toBe("/repo/src/a.ts");
+  });
+
+  it("names the file for title-named providers that report paths structurally", () => {
+    // OpenCode puts output in detail, so the path can only come from here.
+    const result = normalizeToolRowPresentation({
+      title: "edit",
+      detail: "3 replacements made\nin 1 file",
+      changedFiles: ["/repo/src/b.ts"],
+    });
+    expect(result?.heading).toBe("Edited");
+    expect(result?.detail).toBe("b.ts");
+  });
+});
