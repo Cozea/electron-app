@@ -304,11 +304,24 @@ function detailLooksLikeOutput(detail: string | undefined): boolean {
 export function normalizeToolRowPresentation(input: {
   readonly title: string | undefined;
   readonly detail: string | undefined;
+  /**
+   * Paths the runtime reported structurally. Always preferred over a path
+   * parsed out of the detail string, which providers truncate.
+   */
+  readonly changedFiles?: ReadonlyArray<string> | undefined;
 }): ToolDetailPresentation | null {
+  const structuredPath = input.changedFiles?.[0];
+  const withStructuredPath = (
+    presentation: ToolDetailPresentation,
+  ): ToolDetailPresentation =>
+    structuredPath && presentation.path !== structuredPath
+      ? { ...presentation, detail: basename(structuredPath), path: structuredPath }
+      : presentation;
+
   // Providers that embed the tool name in the detail (`Read: {json}`).
   if (isGenericToolTitle(input.title)) {
     const parsed = parseToolDetail(input.detail);
-    if (parsed) return presentToolDetail(parsed);
+    if (parsed) return withStructuredPath(presentToolDetail(parsed));
     return null;
   }
 
@@ -317,12 +330,13 @@ export function normalizeToolRowPresentation(input: {
   // alone rather than a wall of stdout.
   const named = toolNameTitle(input.title);
   if (named) {
-    const presentation = presentToolDetail({
-      toolName: named,
-      args: null,
-      text: detailLooksLikeOutput(input.detail) ? null : (input.detail?.trim() ?? null),
-    });
-    return presentation;
+    return withStructuredPath(
+      presentToolDetail({
+        toolName: named,
+        args: null,
+        text: detailLooksLikeOutput(input.detail) ? null : (input.detail?.trim() ?? null),
+      }),
+    );
   }
 
   return null;
@@ -351,6 +365,7 @@ const HEADING_ACTIONS: ReadonlyMap<string, NormalizedToolAction> = new Map([
 export function normalizedToolAction(input: {
   readonly title: string | undefined;
   readonly detail: string | undefined;
+  readonly changedFiles?: ReadonlyArray<string> | undefined;
 }): NormalizedToolAction | null {
   const presentation = normalizeToolRowPresentation(input);
   if (!presentation) return null;

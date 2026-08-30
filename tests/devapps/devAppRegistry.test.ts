@@ -28,6 +28,7 @@ describe("DevApps registry", () => {
       "dev-server",
       "terminal",
       "mobile-simulator",
+      "llama",
       "codex",
       "claude",
       "cursor",
@@ -43,6 +44,7 @@ describe("DevApps registry", () => {
       "dev-server",
       "terminal",
       "mobile-simulator",
+      "llama",
       "codex",
       "cursor",
     ])

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import type { ContextMenuItem, ProviderKind } from "@cozea/assistant-contracts"
+import { SiOllama } from "react-icons/si"
 
 import { Button } from "@/components/ui/button"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
@@ -43,7 +44,7 @@ interface WorkbenchTileChromeProps {
   headerMode?: "native" | "embedded"
   hideTitlePill?: boolean
   hideWindowActions?: boolean
-  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "mobileSimulator" | "orgDevApp"
+  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "llama" | "mobileSimulator" | "orgDevApp"
   devAppId?: string | null
   logoDataUrl?: string | null
   assistantProvider?: string | null
@@ -86,6 +87,7 @@ function resolveTileDevApp(
   if (
     tileType === "browser" ||
     tileType === "devServer" ||
+    tileType === "llama" ||
     tileType === "mobileSimulator" ||
     tileType === "terminal"
   ) {
@@ -126,6 +128,8 @@ function resolveTileFallbackIcon(
       return AddCircle
     case "devServer":
       return DevServer
+    case "llama":
+      return SiOllama
     case "orgDevApp":
       return Globe
     case "mobileSimulator":

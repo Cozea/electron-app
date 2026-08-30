@@ -43,6 +43,7 @@ export interface WorkbenchTabGroupPreset {
 export function resolveTabGroupPreset(component: string): WorkbenchTabGroupPreset {
   switch (component) {
     case "assistantChat":
+    case "llama":
       return { label: "Agent", color: "agent" }
     case "browser":
     case "devServer":
@@ -69,6 +70,7 @@ function getPanelConstraintsForComponent(
     case "orgDevApp":
       return RUNTIME_PANEL_CONSTRAINTS
     case "assistantChat":
+    case "llama":
       return ASSISTANT_PANEL_CONSTRAINTS
     case "changes":
       return CHANGES_PANEL_CONSTRAINTS
@@ -103,12 +105,13 @@ function placePanelLeftOfChanges(
 
 export function getDockComponentName(
   type: WorkbenchTileType,
-): "selection" | "browser" | "terminal" | "devServer" | "mobileSimulator" | "assistantChat" | "orgDevApp" {
+): "selection" | "browser" | "terminal" | "devServer" | "llama" | "mobileSimulator" | "assistantChat" | "orgDevApp" {
   switch (type) {
     case "browser":
     case "selection":
     case "terminal":
     case "devServer":
+    case "llama":
     case "mobileSimulator":
     case "assistantChat":
     case "orgDevApp":
@@ -132,6 +135,7 @@ export function getPanelRendererForTile(
   switch (type) {
     case "browser":
     case "devServer":
+    case "llama":
     case "mobileSimulator":
     case "orgDevApp":
     case "terminal":

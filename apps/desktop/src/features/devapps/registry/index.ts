@@ -5,6 +5,7 @@ import { claudeDevAppManifest } from "@/features/devapps/apps/claude/manifest"
 import { codexDevAppManifest } from "@/features/devapps/apps/codex/manifest"
 import { cursorDevAppManifest } from "@/features/devapps/apps/cursor/manifest"
 import { devServerDevAppManifest } from "@/features/devapps/apps/dev-server/manifest"
+import { llamaDevAppManifest } from "@/features/devapps/apps/llama/manifest"
 import { mobileSimulatorDevAppManifest } from "@/features/devapps/apps/mobile-simulator/manifest"
 import { openCodeDevAppManifest } from "@/features/devapps/apps/opencode/manifest"
 import { terminalDevAppManifest } from "@/features/devapps/apps/terminal/manifest"
@@ -36,6 +37,7 @@ const DEV_APP_ID_BY_ASSISTANT_PROVIDER: Partial<Record<ProviderKind, string>> = 
 const DEV_APP_ID_BY_SURFACE_TILE_TYPE = {
   browser: "browser",
   devServer: "dev-server",
+  llama: "llama",
   mobileSimulator: "mobile-simulator",
   terminal: "terminal",
 } as const
@@ -45,6 +47,7 @@ export const BUILTIN_DEV_APPS: ReadonlyArray<DevAppManifest> = [
   devServerDevAppManifest,
   terminalDevAppManifest,
   mobileSimulatorDevAppManifest,
+  llamaDevAppManifest,
   codexDevAppManifest,
   claudeDevAppManifest,
   cursorDevAppManifest,

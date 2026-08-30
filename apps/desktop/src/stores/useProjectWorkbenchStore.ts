@@ -95,6 +95,7 @@ export type WorkbenchTileType =
   | "browser"
   | "terminal"
   | "devServer"
+  | "llama"
   | "mobileSimulator"
   | "orgDevApp"
   | "selection"
@@ -173,6 +174,10 @@ export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
   viewMode?: WorkbenchRuntimePreviewViewMode
 }
 
+export interface WorkbenchLlamaTile extends WorkbenchBaseTile {
+  type: "llama"
+}
+
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
   type: "selection"
   mode: WorkbenchSelectionTileMode
@@ -206,6 +211,7 @@ export type WorkbenchTile =
   | WorkbenchBrowserTile
   | WorkbenchTerminalTile
   | WorkbenchDevServerTile
+  | WorkbenchLlamaTile
   | WorkbenchMobileSimulatorTile
   | WorkbenchOrgDevAppTile
   | WorkbenchSelectionTile
@@ -320,7 +326,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
     openSingletonTile: (
       projectId: string,
       laneId: string,
-      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator">,
+      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "llama">,
       options?: CreateTileOptions,
       workspaceId?: string | null,
     ) => string
@@ -388,6 +394,7 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   browser: "Browser",
   terminal: "Terminal",
   devServer: "Dev Server",
+  llama: "Llama",
   mobileSimulator: "Mobile Simulator",
   orgDevApp: "DevApp",
   selection: "Add DevApp",
@@ -665,6 +672,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
       return tile
     }
     case "mobileSimulator":
+    case "llama":
       return { id, type, title, createdAt }
     case "orgDevApp":
       return {

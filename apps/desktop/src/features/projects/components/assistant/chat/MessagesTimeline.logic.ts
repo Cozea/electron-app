@@ -156,7 +156,11 @@ export function toolGroupAction(entry: WorkLogEntry): ToolGroupAction {
   if (entry.itemType === "web_search") return "search";
   // Providers that only report a category leave the real tool name in the
   // detail; recover it so the group summary can still count reads and edits.
-  const recovered = normalizedToolAction({ title: entry.toolTitle, detail: entry.detail });
+  const recovered = normalizedToolAction({
+    title: entry.toolTitle,
+    detail: entry.detail,
+    changedFiles: entry.changedFiles,
+  });
   if (recovered) return recovered;
   return "other";
 }
