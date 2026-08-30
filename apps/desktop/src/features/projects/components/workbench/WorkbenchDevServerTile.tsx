@@ -10,22 +10,18 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/i18n"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
+import { BrowserUnavailableSurface } from "@/features/projects/components/workbench/BrowserUnavailableSurface"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import {
   buildLocalDevServerUrl,
   DEV_SERVER_TILE_COMMAND_EVENT,
-  getDevServerPreviewRecoveryKey,
   isSameDevServerPreviewUrl,
   type DevServerTileCommand,
 } from "@/features/projects/devserver/devServerTileCommands"
 import {
   buildDevServerRunKey,
-  reportDevServerPreviewHttpStatus,
-  useDevServerRunStore,
 } from "@/features/projects/devserver/devServerRunStore"
 import { interruptDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
@@ -57,9 +53,6 @@ import {
 } from "@/stores/useProjectWorkbenchStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
-
-import { HugeiconsIcon } from '@hugeicons/react'
-import { ComputerVideoIcon as __ComputerVideoHugeIcon } from '@hugeicons/core-free-icons'
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
   switch (status) {
@@ -370,97 +363,6 @@ function WorkbenchRuntimePreviewTile({
     />
   )
 
-  const showEmbeddedPreview =
-    viewMode === "preview" &&
-    previewServerActive &&
-    (isMobileSimulatorSurface || previewDestination === "cozea")
-  const showWebEmbeddedPreview = showEmbeddedPreview && !usesNativePreview
-  const {
-    hostRef,
-    state: previewState,
-    boundsReady,
-    overlayPaused,
-    placeholderScreenshot,
-    actions: previewActions,
-  } = useWorkbenchBrowserView({
-    tileId: tile.id,
-    url: showWebEmbeddedPreview ? activeDisplayUrl : "",
-    sessionKey: runtimeSessionKey,
-    projectId: runtimeProjectId,
-    laneId: runtimeLaneId,
-    visible: showWebEmbeddedPreview && panelActivity.visible,
-    storageScope: "ephemeral",
-    workspaceId: runtimeWorkspaceId ?? undefined,
-    persistModel: true,
-    onUrlObserved: (nextUrl) => {
-      if (tile.type !== "devServer") return
-      // In-preview navigation becomes persisted intent; landing back on the
-      // server's own URL clears it so the tile follows the server again.
-      const runKey = runtimeWorkspaceId
-        ? buildDevServerRunKey(runtimeWorkspaceId, runtimeLaneId)
-        : null
-      const run = runKey ? useDevServerRunStore.getState().runs[runKey] : undefined
-      const serverUrl = run?.url ?? (run?.port ? buildLocalDevServerUrl(run.port) : "")
-      const nextOverride = isSameDevServerPreviewUrl(serverUrl, nextUrl) ? null : nextUrl
-      workbenchActions.updateRuntimePreviewTile(
-        projectId,
-        laneId,
-        tile.id,
-        { previewOverrideUrl: nextOverride },
-        workspaceId,
-      )
-    },
-    onNewPageRequest: (request) => {
-      const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
-        url: request.url,
-        storageScope: "workspace",
-      }, workspaceId)
-      workbenchActions.setActiveTile(projectId, laneId, nextTileId, workspaceId)
-    },
-  })
-  const previewDisplayError = previewState.loadError ?? previewState.httpError ?? null
-  const previewRecoveryKey = getDevServerPreviewRecoveryKey({
-    status: devServer.status,
-    runId: devServer.runId ?? null,
-    url: activeDisplayUrl,
-    loadError: previewState.loadError ?? null,
-    visible: showWebEmbeddedPreview && panelActivity.visible,
-  })
-  const recoveredPreviewKeyRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!previewRecoveryKey || recoveredPreviewKeyRef.current === previewRecoveryKey) {
-      return
-    }
-    recoveredPreviewKeyRef.current = previewRecoveryKey
-    void previewActions.reload().catch((cause: unknown) => {
-      console.warn("[dev-server-preview] automatic recovery reload failed", cause)
-    })
-  }, [previewActions, previewRecoveryKey])
-
-  useEffect(() => {
-    if (!runtimeRunKey || !showWebEmbeddedPreview) return
-    reportDevServerPreviewHttpStatus(
-      runtimeRunKey,
-      previewState.httpStatusCode,
-      previewState.httpStatusText,
-    )
-  }, [
-    previewState.httpStatusCode,
-    previewState.httpStatusText,
-    runtimeRunKey,
-    showWebEmbeddedPreview,
-  ])
-
-  const showServerLogs = useCallback(() => {
-    workbenchActions.updateRuntimePreviewTile(
-      projectId,
-      laneId,
-      tile.id,
-      { viewMode: "code" },
-      workspaceId,
-    )
-  }, [laneId, projectId, tile.id, workbenchActions, workspaceId])
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -746,95 +648,13 @@ function WorkbenchRuntimePreviewTile({
   )
 
   const webEmbeddedPreviewBody = (
-    <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
-      {!activeDisplayUrl ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] flex items-center justify-center bg-content-surface p-6 text-center">
-          <Empty className="w-full max-w-md py-8">
-            <EmptyHeader>
-              <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
-                <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="h-7 w-7" />
-              </EmptyMedia>
-              <EmptyTitle className="text-base font-medium">
-                {devServer.status === "starting"
-                  ? "Local preview will attach here."
-                  : devServer.status === "error"
-                    ? "Dev server couldn't start"
-                    : "No preview yet"}
-              </EmptyTitle>
-              <EmptyDescription>
-                {devServer.status === "starting"
-                  ? "The browser shell is ready. As soon as the dev server exposes a URL, the page will appear here."
-                  : devServer.status === "error"
-                    ? devServer.error ?? "Check the server logs, then try again."
-                    : "Start the dev server to load the local preview here."}
-              </EmptyDescription>
-              {devServer.status === "starting" ? (
-                <div className="flex justify-center pt-2">
-                  <div className="cozea-loader" />
-                </div>
-              ) : null}
-            </EmptyHeader>
-          </Empty>
-        </div>
-      ) : null}
-      {activeDisplayUrl && previewDisplayError ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
-          <div className="max-w-md space-y-2">
-            <div className="text-sm font-medium text-foreground">
-              {previewState.httpError
-                ? `Preview returned HTTP ${previewState.httpStatusCode ?? "error"}`
-                : "This preview could not be loaded."}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {previewState.httpError
-                ? `${previewDisplayError}. The server is still running, but this page produced no visible error document.`
-                : previewDisplayError}
-            </div>
-            <div className="flex justify-center gap-2 pt-2">
-              <Button type="button" size="sm" variant="secondary" onClick={() => void previewActions.reload()}>
-                Reload
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={showServerLogs}>
-                Server logs
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {activeDisplayUrl && placeholderScreenshot && !previewDisplayError ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
-          <div
-            className="absolute inset-0 bg-no-repeat"
-            style={{
-              backgroundImage: `url("${placeholderScreenshot}")`,
-              // Never '100% 100%': the capture is the view's last painted frame,
-              // taken at the size it had *before* the grid relayout that
-              // triggered this pause (floating a sibling out resizes this tile).
-              // Stretching it to the new box warps the page. Cover keeps the
-              // aspect and anchors the page's top-left, which is the part a
-              // reader recognises.
-              backgroundSize: 'cover',
-              backgroundPosition: 'top left',
-            }}
-            aria-hidden
-          />
-        </div>
-      ) : null}
-      {activeDisplayUrl && overlayPaused && !placeholderScreenshot && !previewDisplayError ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
-          <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
-        </div>
-      ) : null}
-      {activeDisplayUrl ? (
-        <div
-          ref={hostRef}
-          className={cn(
-            "absolute top-[1px] bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
-            (!boundsReady || previewDisplayError) ? "pointer-events-none opacity-0" : "opacity-100",
-          )}
-        />
-      ) : null}
-    </div>
+    <BrowserUnavailableSurface
+      url={activeDisplayUrl || null}
+      description={devServer.status === "error"
+        ? devServer.error ?? "The Dev Server failed to start. Open the server logs for details."
+        : "The Dev Server remains available, but its embedded preview is offline until the T3 browser port lands."}
+      onOpenExternal={activeDisplayUrl ? () => openPreviewExternally(true) : undefined}
+    />
   )
 
   const nativeIosPreviewBody = (

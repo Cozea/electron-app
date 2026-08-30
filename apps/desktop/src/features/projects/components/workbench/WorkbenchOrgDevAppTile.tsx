@@ -5,13 +5,9 @@ import { useQuery } from "convex/react"
 import { api } from "../../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
+import { BrowserUnavailableSurface } from "@/features/projects/components/workbench/BrowserUnavailableSurface"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
-import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
-import {
-  type WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord,
-  useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+import type { WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord } from "@/stores/useProjectWorkbenchStore"
 import { useTranslation } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,18 +25,12 @@ interface WorkbenchOrgDevAppTileProps {
 }
 
 export function WorkbenchOrgDevAppTile({
-  projectId,
-  laneId,
   tile,
-  workspaceId,
-  workbenchSessionKey,
   panelApi,
   containerApi,
 }: WorkbenchOrgDevAppTileProps) {
   const { t } = useTranslation()
   const { convexUserId } = useAuth()
-  const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
-  const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const [prepareError, setPrepareError] = useState<string | null>(null)
   const [originUrl, setOriginUrl] = useState("")
   const [prepareAttempt, setPrepareAttempt] = useState(0)
@@ -137,7 +127,7 @@ export function WorkbenchOrgDevAppTile({
     return () => {
       cancelled = true
     }
-  }, [artifact, laneId, prepareAttempt, projectId, serviceApproved, t, tile.id, workbenchActions, workspaceId])
+  }, [artifact, prepareAttempt, serviceApproved, t, tile.id, tile.publicationId])
 
   useEffect(() => () => {
     if (tile.runtimeKind !== "service") return
@@ -171,38 +161,12 @@ export function WorkbenchOrgDevAppTile({
     }
   }, [artifact?.contentHash, artifact?.runtimeKind, serviceApproved, showLogs, tile.publicationId])
 
-  const resolvedUrl = originUrl
-
-  const {
-    hostRef,
-    state,
-    boundsReady,
-    overlayPaused,
-    placeholderScreenshot,
-    actions,
-  } = useWorkbenchBrowserView({
-    tileId: tile.id,
-    url: resolvedUrl,
-    sessionKey: workbenchSessionKey,
-    projectId,
-    laneId,
-    workspaceId: tile.publicationId,
-    visible: panelActivity.visible && Boolean(resolvedUrl) && !prepareError && artifact !== null && !showLogs && !showConfiguration,
-    persistModel: true,
-    storageScope: "orgDevApp",
-    partitionKey: tile.publicationId,
-    navigationPolicy: "orgDevApp",
-    onTitleObserved: (title) => {
-      workbenchActions.updateTileTitle(projectId, laneId, tile.id, title, workspaceId)
-    },
-  })
-
   const statusMessage = useMemo(() => {
     if (prepareError) return prepareError
     if (serviceNeedsApproval) return "This Service DevApp runs trusted organization code on this Mac."
-    if (!resolvedUrl || state.isLoading) return artifact?.runtimeKind === "service" ? "Starting Service DevApp…" : t("orgDevApp.open.preparing")
+    if (!originUrl) return artifact?.runtimeKind === "service" ? "Starting Service DevApp…" : t("orgDevApp.open.preparing")
     return null
-  }, [artifact?.runtimeKind, prepareError, resolvedUrl, serviceNeedsApproval, state.isLoading, t])
+  }, [artifact?.runtimeKind, originUrl, prepareError, serviceNeedsApproval, t])
 
   return (
     <WorkbenchTileChrome
@@ -244,7 +208,7 @@ export function WorkbenchOrgDevAppTile({
       ) : null}
       contentClassName="relative h-full overflow-hidden bg-content-surface"
     >
-      {statusMessage && (!boundsReady || prepareError || serviceNeedsApproval) ? (
+      {statusMessage ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
           <p className={prepareError ? "max-w-md text-sm text-destructive" : "max-w-md text-sm text-muted-foreground"}>
             {statusMessage}
@@ -288,23 +252,9 @@ export function WorkbenchOrgDevAppTile({
             </div>
           ) : null}
         </div>
-      ) : null}
-      <div ref={hostRef} className="absolute inset-0" />
-      {overlayPaused && placeholderScreenshot ? (
-        <img
-          alt=""
-          src={placeholderScreenshot}
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        />
-      ) : null}
-      {state.loadError ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/80 p-6 text-center">
-          <p className="max-w-md text-sm text-destructive">{state.loadError}</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => void actions.reload()}>
-            {t("orgDevApp.open.retry")}
-          </Button>
-        </div>
-      ) : null}
+      ) : (
+        <BrowserUnavailableSurface description="The DevApp runtime is ready, but its protected embedded surface is offline until the T3 browser port lands." />
+      )}
       {showLogs ? (
         <div className="absolute inset-x-4 bottom-4 z-20 max-h-64 overflow-auto bg-background p-3 shadow-xl">
           <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground">
@@ -367,15 +317,6 @@ export function WorkbenchOrgDevAppTile({
           </div>
         </div>
       ) : null}
-      <button
-        type="button"
-        className="sr-only"
-        onClick={() => {
-          void actions.reload()
-        }}
-      >
-        Reload
-      </button>
     </WorkbenchTileChrome>
   )
 }

@@ -28,9 +28,7 @@ import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
-import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
-import { registerBrowserAutomationHandlers } from './ipc/registerBrowserAutomationHandlers'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
@@ -79,7 +77,6 @@ import {
 import { DevServerService } from './services/DevServerService'
 import { LocalAutomationResolverService } from './runtime/LocalAutomationResolverService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
-import { WorkbenchBrowserService } from './services/WorkbenchBrowserService'
 import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
 import { listAvailableEditors, openFileInExternalEditor } from './lib/externalEditor'
 
@@ -1071,16 +1068,6 @@ let canCreateMainWindow = false
 const orgDevAppArtifactService = new OrgDevAppArtifactService(
   () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
 )
-const workbenchBrowserService = new WorkbenchBrowserService({
-  getMainWindow: () => win,
-  // Match the main renderer: native preview child surfaces remain paintable
-  // for development UI automation while packaged builds retain throttling.
-  backgroundThrottling: app.isPackaged,
-  configureOrgDevAppSession: (targetSession, partitionKey) => {
-    orgDevAppArtifactService.registerProtocolForSession(targetSession, partitionKey)
-  },
-})
-
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
@@ -1698,21 +1685,12 @@ registerWorkspaceSyncHandlers(ipcMain)
 
 registerYjsHandlers(ipcMain)
 
-registerWorkbenchBrowserHandlers(ipcMain, {
-  service: workbenchBrowserService,
-})
-
 registerOrgDevAppHandlers(ipcMain, {
   service: orgDevAppArtifactService,
 })
 
-registerBrowserAutomationHandlers(ipcMain, {
-  service: workbenchBrowserService,
-})
-
 registerWorkbenchSessionHandlers(ipcMain, {
   getMainWindow: () => win,
-  browserService: workbenchBrowserService,
 })
 
 registerDevServerHandlers(ipcMain, {
@@ -1724,7 +1702,6 @@ registerContextMenuHandlers(ipcMain, {
 })
 
 app.on('window-all-closed', () => {
-  workbenchBrowserService.dispose()
   orgDevAppArtifactService.dispose()
   setBroadcastMainWindow(null)
   win = null
@@ -1747,7 +1724,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   appIsQuitting = true
   logAssistantBridge('app-before-quit')
-  workbenchBrowserService.dispose()
   orgDevAppArtifactService.dispose()
   PreviewSnapshotService.getInstance().dispose()
   LocalAutomationResolverService.getInstance().dispose()

@@ -2,13 +2,11 @@ import type { BrowserWindow, IpcMain } from 'electron'
 
 import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
 import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
-import { WorkbenchBrowserService } from '../services/WorkbenchBrowserService'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
 
 interface RegisterWorkbenchSessionHandlersDeps {
   getMainWindow: () => BrowserWindow | null
-  browserService: WorkbenchBrowserService
 }
 
 const WORKBENCH_SESSION_STATE_CHANGED_CHANNEL = 'workbenchSession:stateChanged'
@@ -18,7 +16,6 @@ export function registerWorkbenchSessionHandlers(
   deps: RegisterWorkbenchSessionHandlersDeps,
 ): void {
   const service = WorkbenchSessionManager.getInstance({
-    browserService: deps.browserService,
     nativePreviewManager: NativePreviewManager.getInstance(),
   })
 
