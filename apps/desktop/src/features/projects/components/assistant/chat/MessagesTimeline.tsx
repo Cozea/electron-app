@@ -73,6 +73,7 @@ import { commandProgramName } from "./shellCommandProgram";
 import { normalizeToolRowPresentation } from "./toolDetailPresentation";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { ProviderAuthenticationHelp } from "./ProviderRemediationAction";
 import {
   computeMessageDurationStart,
   deriveTurnHeaderIndex,
@@ -545,6 +546,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     generationStatusPhase,
     timelineEntries,
   ]);
+
+  const latestAssistantMessageId = useMemo(() => {
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const row = rows[index];
+      if (row?.kind === "message" && row.message.role === "assistant") {
+        return row.message.id;
+      }
+    }
+    return null;
+  }, [rows]);
 
   const firstAlwaysRenderedRowIndex = useMemo(() => {
     const firstTailRowIndex = Math.max(rows.length - ALWAYS_UNVIRTUALIZED_TAIL_ROWS, 0);
@@ -1144,6 +1155,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   cwd={markdownCwd}
                   isStreaming={Boolean(row.message.streaming)}
                   variant="timeline"
+                />
+                <ProviderAuthenticationHelp
+                  provider={selectedProvider}
+                  message={row.message.text}
+                  messageId={String(row.message.id)}
+                  isStreaming={Boolean(row.message.streaming)}
+                  isSuperseded={row.message.id !== latestAssistantMessageId}
                 />
                 {(() => {
                   const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);

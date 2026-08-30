@@ -1,9 +1,32 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ServerProvider } from "@cozea/assistant-contracts";
+import {
+  ProviderAuthenticationHelp,
+  resolveProviderRemediation,
+} from "@/features/projects/components/assistant/chat/ProviderRemediationAction";
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner";
+import { markProviderRemediationResolved } from "@/features/projects/components/assistant/chat/providerRemediationResolutionStore";
+
+function createMemorySessionStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key) => values.delete(key),
+    setItem: (key, value) => values.set(key, value),
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("ProviderStatusBanner", () => {
   it("renders unchanged command feedback and captured updater output", () => {
@@ -42,5 +65,124 @@ describe("ProviderStatusBanner", () => {
     expect(markup).toContain("The installed provider version did not change.");
     expect(markup).toContain("Update details");
     expect(markup).toContain("Already up-to-date.");
+  });
+
+  it("shows exact Claude login instructions with a copy action", () => {
+    const status = {
+      instanceId: "claudeAgent",
+      provider: "claudeAgent",
+      driver: "claudeAgent",
+      enabled: true,
+      installed: true,
+      version: "2.1.251",
+      status: "error",
+      auth: { status: "unauthenticated" },
+      checkedAt: "2026-08-29T10:00:00.000Z",
+      message: "Authentication required.",
+      models: [],
+      slashCommands: [],
+      skills: [],
+    } as ServerProvider;
+
+    const markup = renderToStaticMarkup(createElement(ProviderStatusBanner, { status }));
+
+    expect(markup).toContain("Open Terminal");
+    expect(markup).toContain("claude auth login");
+    expect(markup).toContain("Copy");
+    expect(markup).toContain("Complete the Anthropic sign-in");
+    expect(markup).toContain("Start login in Cozea");
+  });
+
+  it.each([
+    ["claudeAgent", "claude auth login"],
+    ["codex", "codex login"],
+    ["cursor", "agent login"],
+    ["opencode", "opencode auth login"],
+    ["gemini", "gemini"],
+  ])("provides the exact terminal command for %s", (provider, command) => {
+    const remediation = resolveProviderRemediation(
+      provider,
+      "The provider cannot start yet.",
+      true,
+    );
+
+    expect(remediation).toMatchObject({ kind: "login", command });
+  });
+
+  it("keeps installation remediation ahead of authentication guidance", () => {
+    const remediation = resolveProviderRemediation(
+      "claudeAgent",
+      "Claude is not installed or not on PATH.",
+      true,
+    );
+
+    expect(remediation).toEqual({
+      kind: "install",
+      toolId: "claude",
+      label: "Install Claude Code CLI",
+    });
+  });
+
+  it("turns Claude's in-chat /login reply into visible authentication help", () => {
+    const message = "Not logged in · Please run /login";
+    const markup = renderToStaticMarkup(
+      createElement(ProviderAuthenticationHelp, {
+        provider: "claudeAgent",
+        message,
+      }),
+    );
+
+    expect(resolveProviderRemediation("claudeAgent", message)).toMatchObject({
+      kind: "login",
+      command: "claude auth login",
+    });
+    expect(markup).toContain("Sign in to Claude");
+    expect(markup).toContain("claude auth login");
+    expect(markup).toContain("Copy");
+    expect(markup).toContain("Start login in Cozea");
+  });
+
+  it("does not add authentication help to ordinary or streaming replies", () => {
+    const ordinaryMarkup = renderToStaticMarkup(
+      createElement(ProviderAuthenticationHelp, {
+        provider: "claudeAgent",
+        message: "I can help with that project.",
+      }),
+    );
+    const streamingMarkup = renderToStaticMarkup(
+      createElement(ProviderAuthenticationHelp, {
+        provider: "claudeAgent",
+        message: "Not logged in · Please run /login",
+        isStreaming: true,
+      }),
+    );
+    const supersededMarkup = renderToStaticMarkup(
+      createElement(ProviderAuthenticationHelp, {
+        provider: "claudeAgent",
+        message: "Not logged in · Please run /login",
+        isSuperseded: true,
+      }),
+    );
+
+    expect(ordinaryMarkup).toBe("");
+    expect(streamingMarkup).toBe("");
+    expect(supersededMarkup).toBe("");
+  });
+
+  it("restores a successful login after its timeline message remounts", () => {
+    vi.stubGlobal("window", { sessionStorage: createMemorySessionStorage() });
+    markProviderRemediationResolved("claude:auth-message-1");
+
+    const markup = renderToStaticMarkup(
+      createElement(ProviderAuthenticationHelp, {
+        provider: "claudeAgent",
+        message: "Not logged in · Please run /login",
+        messageId: "auth-message-1",
+      }),
+    );
+
+    expect(markup).toContain("Signed in to Claude");
+    expect(markup).toContain("Signed in successfully.");
+    expect(markup).not.toContain("Start login in Cozea");
   });
 });
