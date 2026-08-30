@@ -4,17 +4,14 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
  * Elements that force an overlapping native surface to hide itself.
  *
  * Tooltips are deliberately NOT marked, here or in the tooltip primitives.
- * Occlusion is all-or-nothing: a match hides the entire WebContentsView and
- * captures a screenshot to stand in for it, so marking a hover hint would
- * strobe the whole tile and fire a page capture on every pass across a
- * toolbar. A tooltip lost behind a native surface is the cheaper failure.
- * The same reasoning drives the `tooltipStyle` opt-outs in the popover and
- * anchored-toast primitives. Fixing this properly means partial occlusion
- * (shrinking the surface rect around the overlay), not another marker.
+ * Occlusion is all-or-nothing for the remaining native surfaces, such as the
+ * iOS simulator. Marking a hover hint would strobe the whole tile on every
+ * pass across a toolbar, so a tooltip lost behind a native surface is the
+ * cheaper failure. The same reasoning drives the `tooltipStyle` opt-outs in
+ * the popover and anchored-toast primitives.
  */
 export const NATIVE_SURFACE_OVERLAY_SELECTOR = [
   '[data-native-surface-overlay="true"]',
-  '[data-workbench-browser-overlay="true"]',
   // dockview renders its own popups (tab context menu, tabs-overflow list,
   // tab-group chip menu) into `.dv-popover-anchor`, and floating groups into
   // `.dv-resize-container`. Neither carries our marker, so without these a
@@ -113,7 +110,6 @@ function isRectOverlapping(a: NativeSurfaceRect, b: NativeSurfaceRect): boolean 
 function getOverlayReason(element: HTMLElement): string | null {
   return (
     element.dataset.nativeSurfaceOverlayReason?.trim() ||
-    element.dataset.workbenchBrowserOverlayReason?.trim() ||
     element.dataset.slot?.trim() ||
     null
   )
@@ -251,8 +247,6 @@ function ensureObservers(): void {
         'data-native-surface-overlay',
         'data-native-surface-overlay-reason',
         'data-state',
-        'data-workbench-browser-overlay',
-        'data-workbench-browser-overlay-reason',
         'hidden',
         'style',
       ],

@@ -19,9 +19,8 @@ export async function connect() {
       `No renderer on port ${DEBUG_PORT}. Start the app with \`bun run dev:chrome-devtools\` first.`,
     )
   }
-  // Embedded WebContentsViews (workbench browser tiles) share the debug port
-  // and also report type "page" — match the app renderer by title, then by
-  // dev-server/packaged origin, never just the first page target.
+  // Match the app renderer by title, then by dev-server/packaged origin, never
+  // just the first page target. Other Electron pages can share the debug port.
   const pages = targets.filter((t) => t.type === "page")
   const page =
     pages.find((t) => t.title === "Cozea") ??

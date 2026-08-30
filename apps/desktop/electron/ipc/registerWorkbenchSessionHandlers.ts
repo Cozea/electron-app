@@ -125,47 +125,6 @@ export function registerWorkbenchSessionHandlers(
   )
 
   ipcMain.handle(
-    'workbenchSession:getBrowserBinding',
-    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; tileId: string }) => {
-      return service.getBrowserBinding(options)
-    },
-  )
-
-  ipcMain.handle(
-    'workbenchSession:bindBrowser',
-    async (
-      _event,
-      options: {
-        sessionKey?: string | null
-        projectId: string
-        laneId: string
-        tileId: string
-        browserTileId: string
-        workspaceId?: string | null
-      },
-    ) => {
-      return await service.bindBrowser(options)
-    },
-  )
-
-  ipcMain.handle(
-    'workbenchSession:releaseBrowser',
-    (
-      _event,
-      options: {
-        sessionKey?: string | null
-        projectId: string
-        laneId: string
-        workspaceId?: string | null
-        tileId: string
-        destroy?: boolean
-      },
-    ) => {
-      return service.releaseBrowser(options)
-    },
-  )
-
-  ipcMain.handle(
     'workbenchSession:setNativePreviewSession',
     (
       _event,

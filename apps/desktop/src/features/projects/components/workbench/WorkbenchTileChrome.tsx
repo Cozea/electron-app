@@ -506,8 +506,8 @@ export function WorkbenchTileChrome({
       {splitOverlayActive ? (
         <div
           className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none rounded-[inherit]"
-          data-workbench-browser-overlay="true"
-          data-workbench-browser-overlay-reason="Split controls"
+          data-native-surface-overlay="true"
+          data-native-surface-overlay-reason="Split controls"
         >
           <div className="grid grid-cols-3 grid-rows-3 gap-2 p-4 pointer-events-auto">
             <div
