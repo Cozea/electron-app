@@ -1207,7 +1207,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     >
       <div
         className={cn(
-          "mt-3 flex flex-col rounded-2xl border border-border/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-colors dark:border-white/[0.08] dark:bg-surface-raised dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
+          "mt-3 flex flex-col rounded-2xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
           composerMenuOpen ? "overflow-visible" : "overflow-hidden",
         )}
         onBlurCapture={handleComposerShellBlurCapture}
@@ -1635,7 +1635,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               ) : (
                 <button
                   type="submit"
-                  className="flex size-8 items-center justify-center rounded-full bg-zinc-800 text-white shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:hover:scale-105 enabled:hover:bg-zinc-900 enabled:active:scale-95 disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none dark:bg-primary dark:text-primary-foreground"
+                  className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:hover:scale-105 enabled:hover:bg-primary/90 enabled:active:scale-95 disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none"
                   disabled={
                     !isChatReady ||
                     (props.composer.trim().length === 0 && props.composerImages.length === 0) ||
