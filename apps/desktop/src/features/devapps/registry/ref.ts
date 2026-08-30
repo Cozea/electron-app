@@ -15,6 +15,14 @@ import type { DevAppLaunchSpec, DevAppManifest } from "@/features/devapps/regist
  */
 export type DevAppRef =
   | { kind: "builtin"; appId: string }
+  /**
+   * An unpublished package being developed on this machine.
+   *
+   * Identified by an opaque id derived from its local path rather than by the path
+   * itself: refs are persisted in workbench state and handed to agents, and a developer's
+   * directory layout does not belong in either. It also keeps the ref grammar tight.
+   */
+  | { kind: "development"; sourceId: string }
   | {
       kind: "publication"
       organizationId: string
@@ -41,6 +49,7 @@ function isValidSegment(value: string): boolean {
 
 export function formatDevAppRef(ref: DevAppRef): string {
   if (ref.kind === "builtin") return `${DEV_APP_REF_SCHEME}:builtin/${ref.appId}`
+  if (ref.kind === "development") return `${DEV_APP_REF_SCHEME}:dev/${ref.sourceId}`
   const version = ref.version === "latest" ? "" : `@${ref.version}`
   return `${DEV_APP_REF_SCHEME}:${ref.organizationId}/${ref.publicationId}${version}`
 }
@@ -49,8 +58,10 @@ export function formatDevAppRef(ref: DevAppRef): string {
  * Parses a ref, returning null rather than throwing on anything malformed.
  *
  * Never assume the input is well-formed or trusted: refs come from persisted workbench
- * state and from agent-authored manifests. `builtin` is reserved as an organization
- * segment so a publication can never impersonate a first-party app.
+ * state and from agent-authored manifests. `builtin` and `dev` are both reserved as
+ * organization segments, so a publication can impersonate neither a first-party app nor
+ * an in-development one — the second matters because development trust is provisional and
+ * must never be mistaken for approval given to a published release.
  */
 export function parseDevAppRef(value: string): DevAppRef | null {
   if (typeof value !== "string" || value.length === 0 || value.length > MAX_REF_LENGTH) return null
@@ -68,6 +79,12 @@ export function parseDevAppRef(value: string): DevAppRef | null {
   if (owner === "builtin") {
     if (rest.includes("@") || !isValidSegment(rest)) return null
     return { kind: "builtin", appId: rest }
+  }
+
+  if (owner === "dev") {
+    // No version: an in-development package has no releases to pin.
+    if (rest.includes("@") || !isValidSegment(rest)) return null
+    return { kind: "development", sourceId: rest }
   }
 
   if (!isValidSegment(owner)) return null
@@ -91,6 +108,9 @@ export function parseDevAppRef(value: string): DevAppRef | null {
 export function devAppRefsEqual(left: DevAppRef, right: DevAppRef): boolean {
   if (left.kind !== right.kind) return false
   if (left.kind === "builtin" && right.kind === "builtin") return left.appId === right.appId
+  if (left.kind === "development" && right.kind === "development") {
+    return left.sourceId === right.sourceId
+  }
   if (left.kind === "publication" && right.kind === "publication") {
     return (
       left.organizationId === right.organizationId &&
@@ -104,6 +124,11 @@ export function devAppRefsEqual(left: DevAppRef, right: DevAppRef): boolean {
 /** True when both refs name the same app, disregarding which release they point at. */
 export function devAppRefsSameApp(left: DevAppRef, right: DevAppRef): boolean {
   if (left.kind === "builtin" && right.kind === "builtin") return left.appId === right.appId
+  // Deliberately not equal to any publication, even the one it is being developed into:
+  // "same app" is what trust and installation decisions key on.
+  if (left.kind === "development" && right.kind === "development") {
+    return left.sourceId === right.sourceId
+  }
   if (left.kind === "publication" && right.kind === "publication") {
     return left.organizationId === right.organizationId && left.publicationId === right.publicationId
   }
