@@ -1290,7 +1290,7 @@ function ComposerPromptEditorInner({
           }
           placeholder={
             terminalContexts.length > 0 ? null : (
-              <div className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] leading-relaxed text-muted-foreground/35">
+              <div className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] leading-relaxed text-muted-foreground">
                 {placeholder}
               </div>
             )
