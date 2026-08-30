@@ -3,8 +3,10 @@ import {
   DockviewReact,
   themeAbyssSpaced,
   themeLightSpaced,
+  type DockviewGroupPanel,
   type DockviewTheme,
   type GetTabContextMenuItemsParams,
+  type IDockviewPanel,
 } from "dockview-react"
 
 import "dockview-react/dist/styles/dockview.css"
@@ -141,56 +143,99 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         panelId: panel.id,
       })
 
+      // A tab already living in a floating overlay or a popout window gets the
+      // inverse action instead of being offered a second detach it cannot do.
+      const groupLocation = params.group.api.location.type
+      const isDetached = groupLocation === "floating" || groupLocation === "popout"
+      const tabCount = params.group.panels.length
+      const hasSiblingTabs = tabCount > 1
+
+      const popOut = (item: IDockviewPanel | DockviewGroupPanel) => {
+        void params.api
+          .addPopoutGroup(item, {
+            position: getPopoutBoxForComponent(panel.api.component),
+            onDidOpen: (event) => {
+              event.window.document.title = panel.api.title ?? "Cozea Panel"
+            },
+            onWillClose: () => {
+              params.api.focus()
+            },
+          })
+          .catch((error) => {
+            console.warn("[WorkbenchDockview] Failed to pop out panel", error)
+          })
+      }
+
+      const maximizeItems = isDetached
+        ? []
+        : [
+            {
+              label: panel.api.isMaximized() ? "Restore" : "Maximize",
+              action: () => {
+                if (panel.api.isMaximized()) {
+                  panel.api.exitMaximized()
+                } else {
+                  panel.api.maximize()
+                }
+              },
+            },
+          ]
+
+      const detachItems = isDetached
+        ? [
+            {
+              // `moveTo` without a target group creates a fresh grid group and
+              // moves the whole overlay into it — dockview's own redock path,
+              // the same one shift+drag uses.
+              label: groupLocation === "popout" ? "Return to main window" : "Dock",
+              action: () => params.group.api.moveTo({ position: "right" }),
+            },
+          ]
+        : [
+            {
+              label: hasSiblingTabs ? "Float tab" : "Float",
+              action: () =>
+                params.api.addFloatingGroup(
+                  panel,
+                  getFloatingBoxForComponent(panel.api.component),
+                ),
+            },
+            ...(hasSiblingTabs
+              ? [
+                  {
+                    label: `Float all ${tabCount} tabs`,
+                    action: () =>
+                      params.api.addFloatingGroup(
+                        params.group,
+                        getFloatingBoxForComponent(panel.api.component),
+                      ),
+                  },
+                ]
+              : []),
+            {
+              label: hasSiblingTabs ? "Pop out tab" : "Pop out",
+              action: () => popOut(panel),
+            },
+            ...(hasSiblingTabs
+              ? [
+                  {
+                    label: `Pop out all ${tabCount} tabs`,
+                    action: () => popOut(params.group),
+                  },
+                ]
+              : []),
+          ]
+
       const isSoleSelection = tile?.type === "selection" && (workbench?.order.length ?? 0) <= 1
       if (isSoleSelection) {
-        return [
-          {
-            label: panel.api.isMaximized() ? "Restore" : "Maximize",
-            action: () => {
-              if (panel.api.isMaximized()) {
-                panel.api.exitMaximized()
-              } else {
-                panel.api.maximize()
-              }
-            },
-          },
-        ]
+        // Deliberately no detach actions: floating the only tile would empty
+        // the grid. The dock action still shows if it got detached by drag.
+        return [...maximizeItems, ...(isDetached ? detachItems : [])]
       }
 
       return [
-        {
-          label: panel.api.isMaximized() ? "Restore" : "Maximize",
-          action: () => {
-            if (panel.api.isMaximized()) {
-              panel.api.exitMaximized()
-            } else {
-              panel.api.maximize()
-            }
-          },
-        },
-        {
-          label: "Float",
-          action: () => params.api.addFloatingGroup(
-            panel,
-            getFloatingBoxForComponent(panel.api.component),
-          ),
-        },
-        {
-          label: "Pop out",
-          action: () => {
-            void params.api.addPopoutGroup(panel, {
-              position: getPopoutBoxForComponent(panel.api.component),
-              onDidOpen: (event) => {
-                event.window.document.title = panel.api.title ?? "Cozea Panel"
-              },
-              onWillClose: () => {
-                params.api.focus()
-              },
-            }).catch((error) => {
-              console.warn("[WorkbenchDockview] Failed to pop out panel", error)
-            })
-          },
-        },
+        ...maximizeItems,
+        ...detachItems,
         "separator" as const,
         ...(currentTabGroup
           ? [{

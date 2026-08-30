@@ -481,7 +481,28 @@ export function useWorkbenchBrowserView(
 
     scheduleBoundsSyncRef.current = schedule
 
-    const resizeObserver = new ResizeObserver(schedule)
+    // ResizeObserver callbacks are delivered inside the rendering steps, after
+    // layout and before paint, so the rect is already final when this runs.
+    // Deferring to rAF from here pushes the bounds IPC out to the *next* frame
+    // for no benefit — syncBounds already dedupes by value, which is the only
+    // thing the rAF was buying. Send synchronously instead.
+    //
+    // Worth one frame of the native view's lag behind a sash drag. Peak-drift
+    // measurement could not resolve it (peak is dominated by drag velocity,
+    // which is not controlled between runs) but it is perceptible in use. The
+    // remaining lag is the IPC hop plus the compositor and is not reachable
+    // from the renderer.
+    //
+    // Only the ResizeObserver takes this path. The scroll / window-resize /
+    // dock-layout-change listeners keep `schedule`: they can fire before layout
+    // has settled, where a synchronous read would force a reflow.
+    const syncNow = () => {
+      cancelAnimationFrame(frame)
+      frame = 0
+      syncBounds()
+    }
+
+    const resizeObserver = new ResizeObserver(syncNow)
     resizeObserver.observe(element)
 
     window.addEventListener("resize", schedule)
