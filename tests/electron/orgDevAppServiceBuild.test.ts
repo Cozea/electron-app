@@ -95,7 +95,10 @@ describe("Service DevApp build adapter", () => {
     }))
 
     const service = new OrgDevAppArtifactService(() => cacheRoot)
-    await expect(service.buildAndPack(projectRoot)).rejects.toThrow(/unsupported native code/)
+    // The rejection now names every fault at once and cites the offending path, rather
+    // than throwing on the first file it happens to meet.
+    await expect(service.buildAndPack(projectRoot)).rejects.toThrow(/native code/)
+    await expect(service.buildAndPack(projectRoot)).rejects.toThrow(/binding\.node/)
   })
 
   it.runIf(process.platform === "darwin" && process.arch === "arm64")("starts through the authenticated release gateway and keeps secrets main-process only", async () => {
