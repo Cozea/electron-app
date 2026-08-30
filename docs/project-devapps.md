@@ -1,5 +1,11 @@
 # Org DevApps
 
+> **Temporary rendering blackout (2026-08-31):** Artifact verification, trust approval,
+> environment configuration, runtime leases, logs, and stop/restart continue to run. The legacy
+> embedded browser host is removed, so ready static and service releases render the shared
+> unavailable surface until the T3 browser session host is ported. Protected custom-scheme and
+> authenticated loopback origins are never offered to the external-browser action.
+
 Org DevApps publish an immutable **static** or **service** artifact to a Cozea-owned organization.
 Every org member can open every published DevApp in that org. Consumers never receive the source
 project, a local path, a development command, or a dependency-install recipe.
@@ -62,18 +68,18 @@ If the project has no linked local folder, no `build` script, or no static `inde
 1. Store **Your org** and the workbench launcher load `devApps.listMine` / `listForOrganization`.
 2. Choosing an org DevApp resolves to `addTile` + `tileType: "orgDevApp"` (`publishedDevApp` launch kind).
 3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), verifies the ZIP/hash,
-   and caches the immutable release under app data. Static releases navigate to
-   `cozea-devapp://<hash>.release/index.html`.
+   and caches the immutable release under app data. The static custom-scheme origin is retained as
+   protected runtime metadata but is not rendered or opened externally during the blackout.
 4. A service release validates platform, manifest, entrypoint, symlinks, and native-code exclusions;
    blocks on missing environment values; shows trusted-code approval bound to its content and
    permission hashes; then starts with Cozea's Electron executable in Node mode, a minimal
    environment, a publication-scoped data directory, and a 1 GiB V8 heap ceiling.
-5. The main-process gateway routes only a publication session's secret header plus exact content
-   host to that publication's leased runtime. It proxies HTTP and WebSocket upgrades. The tile sees
-   `http://<hash>.service.localhost:<gateway-port>/`, never the service's random raw port.
-6. `WorkbenchBrowserService` uses a per-publication session partition and exact-release navigation
-   scope. Cross-release, other localhost, `file:`, and arbitrary `http:` navigation is rejected.
-   Top-level HTTPS links open in the system browser; HTTPS API requests remain available to the app.
+5. The main-process gateway continues to bind a secret header and exact content host to the leased
+   runtime. Its authenticated loopback origin remains internal and is not rendered or exposed to
+   the external-browser action during the blackout.
+6. `OrgDevAppArtifactService` keeps hardened custom-protocol support, but no per-publication browser
+   session is connected until the T3 session host is ported. The former isolation/navigation rules
+   remain mandatory in `shared/browserPortParityLedger.ts`.
 7. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
 
 Service releases run separately on each authorized Mac. Local files/databases are device-local;
@@ -81,9 +87,9 @@ shared data still requires an external HTTPS backend. Service code is trusted or
 the beta, not an OS-enforced sandbox.
 
 Access is re-evaluated reactively while a tile is open. Archiving the publication or removing the
-device from the organization hides the native surface and prevents cached reopening. Download,
-camera, microphone, location, display-capture, USB, serial, HID, notification, and other browser
-permission requests are denied.
+device from the organization stops access and prevents cached reopening. Browser permissions and
+downloads cannot currently be requested because there is no guest; default-deny behavior remains a
+mandatory T3 parity requirement.
 
 ## Artifact and cache limits
 

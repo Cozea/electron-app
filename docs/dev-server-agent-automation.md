@@ -1,5 +1,11 @@
 # Agent-controlled Dev Server preview
 
+> **Temporary rendering blackout (2026-08-31):** Dev Server process management remains active, but
+> the embedded preview host has been removed pending the direct T3 browser port. Status/ensure/attach
+> continue to manage the singleton process and tile shell. The surface reports `available: false`, a
+> running process reports `headless: true`, and every page interaction fails immediately with
+> `PreviewAutomationUnavailableError`.
+
 Cozea exposes project previews to the vendored T3 agent runtime through the workbench's built-in Dev Server runtime and surface. It never treats an ordinary Browser tile as spare agent infrastructure.
 
 ## Product contract
@@ -31,7 +37,8 @@ The vendored T3 preview toolkit adds three Dev Server-specific operations:
 
 `open: true` may reveal a reused surface. A newly created agent surface always remains an inactive background tab until the user selects it. `dev_server_ensure` always reuses an unleased surface when safe; only `dev_server_attach` honors `reuseExistingSurface: false` to request another view, never another process.
 
-`preview_open` only attaches a Dev Server surface. It does not start or restart the server; callers use `dev_server_ensure` first when a process is required.
+During the blackout, `preview_open` is unavailable. Callers use `dev_server_ensure` for process
+management and may use `dev_server_attach` to retain or create the corresponding tile shell.
 
 When these tools are present, every supported provider routes ordinary requests such as “start the dev server” through `dev_server_ensure` before any shell inspection or terminal launch. This keeps natural-language starts inside the same singleton and discovery path as the Play button. Codex receives the policy as developer instructions, Claude as an append to its system preset, and OpenCode as its per-turn system prompt. The pinned Cursor ACP v0.11.3 schema has no system/developer field, so Cursor receives the same policy in a delimited first prompt block. The policy is omitted when the T3 MCP session is absent; terminal startup remains a fallback only when the Dev Server tools are absent or explicitly report that the operation is unsupported.
 
@@ -41,38 +48,39 @@ The agent may pass a custom `command` only when the user explicitly supplied or 
 
 The native Swift helper and generated Core ML model live under `native/local-automation-helper`. Development startup builds a debug helper without interrupting an existing app session. Distribution preparation builds an arm64 release helper and copies it with the model into Electron resources. The helper is a long-lived JSON-lines subprocess; a timeout, crash, unsupported platform, or absent model degrades to deterministic ranking rather than blocking Play.
 
-## Supported preview operations
+## Temporarily available operations
 
-The Cozea host advertises this bounded set:
+The host keeps the protocol shape stable but only these operations are functional:
 
-- `status`, `open`, `navigate`
-- `snapshot`
-- `click`, `type`, `press`, `scroll`, `waitFor`
 - `devServerStatus`, `devServerEnsure`, `devServerAttach`
 
-Snapshots include URL, title, loading state, visible text, an accessibility-oriented interactive-element list with bounds, a PNG screenshot, and the host's bounded action timeline. Locator support is intentionally narrow: CSS selectors plus `text=...` and `role=...[name=...]` forms. Interaction scripts are host-generated; arbitrary page JavaScript is not accepted.
-
-Resize, color-scheme emulation, arbitrary evaluate, and recording are not advertised. The normal flag-gated Browser automation adapter remains a separate legacy surface.
+`status` reports the unavailable surface. `open`, `navigate`, `snapshot`, `click`, `type`, `press`,
+`scroll`, and `waitFor` return `PreviewAutomationUnavailableError` without browser IPC or polling.
+Resize, color-scheme emulation, arbitrary evaluate, and recording remain unadvertised. There is no
+separate flag-gated Browser automation adapter.
 
 ## Runtime bridge
 
-The renderer registers one effective T3 `PreviewAutomationHost` candidate even when several assistant hooks are mounted. It maps T3 environment and thread identifiers to the open Cozea workspace, assistant tile, and leased Dev Server surface. Requests then cross dedicated preload IPC into `WorkbenchBrowserService`; lifecycle ensure/status crosses the dedicated Dev Server IPC into `DevServerService`.
+The renderer registers one effective T3 `PreviewAutomationHost` candidate even when several
+assistant hooks are mounted. It maps T3 environment and thread identifiers to the open Cozea
+workspace, assistant tile, and leased Dev Server shell. Lifecycle ensure/status crosses the
+dedicated Dev Server IPC into `DevServerService`; no browser IPC exists.
 
 The renderer host may reconnect without changing the process or surface identities. A direct user takeover produces a control-interrupted response so the agent can attach another view deliberately.
 
-Managed preview URLs use `127.0.0.1`, matching the main-process readiness probe. Persisted `localhost` and IPv6-loopback addresses on the same port are treated as the canonical server URL rather than as user navigation overrides. Native preview views are hidden after attachment and again during renderer re-acquisition; measured tile bounds are required before a view may become visible, which prevents a stale pre-reload view from covering the workbench. Re-acquisition also compares the requested preview URL with the native view's authoritative URL, so a renderer that mounts around an already-ready process still navigates instead of leaving a blank browser behind a populated toolbar.
-
-A cold preview may attempt navigation just before the managed server begins accepting connections. If Electron reports that transport failure after the run has reached ready, the tile automatically reloads once for that `(runId, URL)`. A repeated failure for the same run is left visible and actionable instead of creating a reload loop; restarting the process or navigating to another URL permits one fresh recovery.
+Managed process probes use `127.0.0.1` and remain authoritative for readiness. Persisted preview URL
+overrides are retained as tile data but are not loaded until the T3 browser port provides a surface.
+The removed guest-derived HTTP health and automatic reload behavior is recorded in the parity ledger.
 
 Main-process lifecycle transitions are pushed to every mounted renderer through `devServer:state`. The run store folds those events immediately, including readiness that arrives while a start promise is still pending and stop/exit transitions initiated from another surface. Renderer reloads also reconcile from `DevServerService` without replacing the process.
 
 Development windows and their native preview child views disable Electron background throttling so macOS Computer Use can keep the real surfaces paintable while the automation host owns foreground focus. Packaged builds retain Electron's default background power behavior.
 
-## HTTP error rendering
+## HTTP error parity
 
-Process readiness and page health are separate. A listening dev server remains active when a route returns HTTP 4xx/5xx; Cozea records the main-frame response code instead of treating it as an Electron transport failure. HTTP 5xx marks the renderer's run projection `unhealthy` while preserving the process, port, terminal, and Stop control. A later successful response restores `ready`.
-
-Framework-provided error pages remain visible. After an HTTP error finishes loading, the native browser host performs a bounded boolean visibility check that reads no page content. If the document has renderable elements, Cozea leaves the native surface untouched. If the response contains only hidden metadata or scripts, Cozea hides the empty native surface and renders a host error panel with the HTTP status, Reload, and Server logs actions. Ordinary Browser tiles use the same fallback without changing Dev Server lifecycle state.
+Process readiness remains separate from page health, but no guest page currently exists. The former
+blank-error-document, framework-error-page, and transport-precedence behavior is preserved as
+pending requirements in `shared/browserPortParityLedger.ts`.
 
 ## QA matrix
 
@@ -85,11 +93,11 @@ Verify all of the following before release:
 5. Pointer or keyboard input interrupts the active lease.
 6. Closing the owning surface leaves the process running and exposes the sidebar `Running` row.
 7. Selecting the row reattaches a surface without a second process.
-8. Browser and DevApp tiles remain unchanged.
-9. Snapshot and fixed interaction operations work after reconnect.
-10. Electron validation uses Computer Use against the real app; do not use Playwright for this flow.
-11. Reloading the renderer around a ready process preserves the run ID, Stop control, canonical URL, and loaded native preview.
-12. A visible framework 4xx/5xx page remains native and interactive; a script-only blank error response shows the host error panel.
-13. HTTP 5xx marks the live run unhealthy without stopping it, and a later successful reload restores ready.
-14. Stop then Play may show an initial connection-refused document, but it reloads once after the new run becomes ready without a user click and without looping on a persistent failure.
-15. Codex, Claude, OpenCode, and Cursor all receive the managed Dev Server routing policy when—and only when—the T3 MCP session is attached.
+8. Browser, Dev Server, Project DevApp, and Org DevApp tiles render the shared unavailable surface.
+9. Every preview interaction fails immediately with `PreviewAutomationUnavailableError`.
+10. No browser IPC, guest child surface, timeout, or automatic page reload occurs.
+11. Reloading the renderer around a ready process preserves the run ID, terminal, Stop control, and
+    persisted preview URL override.
+12. Codex, Claude, OpenCode, and Cursor all receive the managed Dev Server routing policy when—and
+    only when—the T3 MCP session is attached.
+13. Electron validation uses Computer Use against the real app; do not use Playwright for this flow.
