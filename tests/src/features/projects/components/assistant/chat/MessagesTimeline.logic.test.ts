@@ -47,6 +47,16 @@ describe("deriveActiveTurnHeaderIndex", () => {
     expect(deriveActiveTurnHeaderIndex(entries, null)).toBe(3);
   });
 
+  it("ignores a stale previous-turn id during the next prompt handoff", () => {
+    const entries = [
+      message("old-user", "user"),
+      message("old-answer", "assistant", "turn-old"),
+      message("new-user", "user"),
+    ];
+
+    expect(deriveActiveTurnHeaderIndex(entries, "turn-old")).toBe(3);
+  });
+
   it("keeps a completed historical turn pinned after its own user message", () => {
     const entries = [
       message("first-user", "user"),

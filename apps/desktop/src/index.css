@@ -76,6 +76,8 @@
   --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
   --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
   --assistant-composer-surface: oklch(1 0 0);
+  --assistant-user-message-surface: oklch(0.21 0.006 285.885);
+  --assistant-user-message-foreground: oklch(1 0 0);
   --store-organization-accent: oklch(0.457 0.24 277.023);
   --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
   /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
@@ -1061,6 +1063,8 @@ body {
   --left-sidebar-accent: oklch(0.19 0.01 258);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --assistant-composer-surface: var(--surface-raised);
+  --assistant-user-message-surface: var(--surface-raised);
+  --assistant-user-message-foreground: var(--foreground);
   --store-organization-accent: oklch(0.785 0.115 274.713);
   --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
 }
@@ -1108,6 +1112,8 @@ body {
   --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(222 30% 16%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
+  --assistant-user-message-surface: hsl(216 42% 24%);
+  --assistant-user-message-foreground: var(--foreground);
 }
 
 .wine {
@@ -1151,6 +1157,8 @@ body {
   --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(340 28% 18%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
+  --assistant-user-message-surface: hsl(340 42% 25%);
+  --assistant-user-message-foreground: var(--foreground);
 }
 
 .clay {
@@ -1194,6 +1202,8 @@ body {
   --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(25 24% 17%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
+  --assistant-user-message-surface: hsl(25 38% 25%);
+  --assistant-user-message-foreground: var(--foreground);
   --tool-surface: color-mix(in oklch, var(--secondary) 80%, transparent);
   --tool-surface-foreground: var(--secondary-foreground);
   --tool-border: color-mix(in oklch, var(--border) 72%, black 28%);
@@ -1248,6 +1258,8 @@ body {
   --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(150 20% 17%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
+  --assistant-user-message-surface: hsl(150 34% 23%);
+  --assistant-user-message-foreground: var(--foreground);
 }
 
 @layer base {
