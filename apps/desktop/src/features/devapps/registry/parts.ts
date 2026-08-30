@@ -1,3 +1,5 @@
+import type { DevAppCapability } from "@shared/devAppCapabilities"
+
 import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
 
 /**
@@ -30,12 +32,12 @@ export interface DevAppViewPart {
  * Privileged code running in a Cozea-managed host, holding the capabilities the manifest
  * declared and the user approved.
  *
- * `capabilities` is deliberately untyped here. The vocabulary hardens permanently once
- * approvals exist in the field, so it is settled in its own phase rather than invented
- * as a side effect of this refactor.
+ * Capabilities are drawn from the settled vocabulary in `@shared/devAppCapabilities`,
+ * which is deliberately scoped: `project.read` is bounded to the granting workspace and
+ * is a different capability from machine-wide `fs.read`.
  */
 export interface DevAppWorkerPart {
-  capabilities: ReadonlyArray<string>
+  capabilities: ReadonlyArray<DevAppCapability>
   /** Whether the worker exposes operations agents may call. */
   exposesTools?: boolean
 }
@@ -88,8 +90,8 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
       return { view: NATIVE_VIEW("browser") }
 
     case "terminal":
-      // A terminal is the clearest example of the split: native chrome over a privileged
-      // pty. Its capabilities are named provisionally until the vocabulary is settled.
+      // A terminal is the clearest example of the split: native chrome over a
+      // privileged pty.
       return {
         view: NATIVE_VIEW("terminal"),
         worker: { capabilities: ["terminal.spawn"] },
@@ -98,7 +100,7 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
     case "devServer":
       return {
         view: NATIVE_VIEW("devServer"),
-        worker: { capabilities: ["process.spawn", "fs.read:project"] },
+        worker: { capabilities: ["process.spawn", "project.read"] },
         service: { runtimeKind: "node", location: "device", singleton: true },
       }
 
@@ -117,7 +119,7 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
     case "assistantChat":
       return {
         view: NATIVE_VIEW("assistantChat"),
-        worker: { capabilities: ["fs.read:project", "fs.write:project", "process.spawn"] },
+        worker: { capabilities: ["project.read", "project.write", "process.spawn"] },
       }
 
     case "publishedDevApp":
