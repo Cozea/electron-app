@@ -9,9 +9,8 @@ import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/projects/lib/workbenchIntent"
 import {
-  browseForDirectory,
-  deriveNameFromPath,
   deriveProviderFromRepoUrl,
+  resolveImportedProjectName,
 } from "@/features/projects/lib/localProjectImport"
 import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup"
 import {
@@ -104,6 +103,7 @@ export function useLocalProjectImport() {
 
   const importPickedLocalFolder = useCallback(async (
     selectedPath: string,
+    requestedName = "",
   ): Promise<LocalProjectImportOutcome> => {
     const localFolderPath = selectedPath.trim()
     if (!localFolderPath) {
@@ -116,7 +116,7 @@ export function useLocalProjectImport() {
     }
 
     try {
-      const projectName = deriveNameFromPath(localFolderPath) || "Project"
+      const projectName = resolveImportedProjectName(requestedName, localFolderPath)
       let preflight = await window.electronAPI.workspace!.preflightExistingFolder({
         folderPath: localFolderPath,
       })
@@ -239,17 +239,7 @@ export function useLocalProjectImport() {
     updateProjectStatus,
   ])
 
-  const importLocalFolder = useCallback(async (): Promise<LocalProjectImportOutcome> => {
-    const selectedPath = await browseForDirectory("Select local project folder")
-    if (!selectedPath?.trim()) {
-      return "cancelled"
-    }
-
-    return importPickedLocalFolder(selectedPath)
-  }, [importPickedLocalFolder])
-
   return {
     importPickedLocalFolder,
-    importLocalFolder,
   }
 }

@@ -167,6 +167,35 @@ describe('workbench store selectors', () => {
     })
   })
 
+  it('keeps a published DevApp logo in its sidebar summary', () => {
+    const actions = useProjectWorkbenchStore.getState().actions
+    actions.ensureWorkbench('project-1', 'collab')
+    const devAppTileId = actions.addTile('project-1', 'collab', 'orgDevApp', {
+      title: 'Customer portal',
+      orgDevAppPublicationId: 'publication-1',
+      orgDevAppOrganizationId: 'organization-1',
+      orgDevAppContentHash: 'content-hash-1',
+      orgDevAppEntryPath: 'index.html',
+      orgDevAppLogoDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    })
+
+    const workbench =
+      useProjectWorkbenchStore.getState().workbenches[
+        buildWorkbenchScopeKey('project-1', 'collab')
+      ]!
+
+    expect(buildWorkbenchLaneSidebarSummary(workbench).surfaces).toEqual([
+      {
+        id: devAppTileId,
+        type: 'orgDevApp',
+        title: 'Customer portal',
+        favicon: null,
+        devAppId: 'publication-1',
+        logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    ])
+  })
+
   it('replaces singleton DevApp metadata and clears it when the built-in Dev Server opens', () => {
     const actions = useProjectWorkbenchStore.getState().actions
     const firstTileId = actions.openSingletonTile(

@@ -66,6 +66,7 @@
   --tool-diff-deleted-line-number-fg: #f87171;
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
   --left-sidebar-surface: var(--content-surface);
+  --left-sidebar-glass-color-weight: 18%;
   --left-sidebar-accent: color-mix(in oklch, var(--left-sidebar-surface) 86%, var(--foreground) 14%);
   --left-sidebar-border: color-mix(in oklch, var(--foreground) 12%, transparent);
   --app-scrollbar-size: 8px;
@@ -74,6 +75,8 @@
   --app-scrollbar-thumb: color-mix(in oklch, var(--foreground) 20%, transparent);
   --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
   --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
+  --store-organization-accent: oklch(0.457 0.24 277.023);
+  --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
   /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
   --app-copy-font-size: 13px;
   --app-copy-line-height: 20px;
@@ -743,7 +746,11 @@ body {
 
 /* Primary left sidebars: translucent surface + blur (native window vibrancy/Mica shows through). */
 .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--left-sidebar-surface) 18%, transparent) !important;
+  background-color: color-mix(
+    in oklch,
+    var(--left-sidebar-surface) var(--left-sidebar-glass-color-weight),
+    transparent
+  ) !important;
   backdrop-filter: blur(28px) saturate(1.25);
   -webkit-backdrop-filter: blur(28px) saturate(1.25);
   isolation: isolate;
@@ -756,7 +763,6 @@ body {
 .wine .sidebar-glass [data-slot="sidebar-inner"],
 .forest .sidebar-glass [data-slot="sidebar-inner"],
 .clay .sidebar-glass [data-slot="sidebar-inner"] {
-  background-color: color-mix(in oklch, var(--left-sidebar-surface) 30%, transparent) !important;
   backdrop-filter: blur(22px) saturate(1.12);
   -webkit-backdrop-filter: blur(22px) saturate(1.12);
   box-shadow: inset -32px 0 36px -22px rgb(0 0 0 / 0.18);
@@ -1050,8 +1056,11 @@ body {
   --sidebar-ring: oklch(0.556 0 0);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 30%;
   --left-sidebar-accent: oklch(0.19 0.01 258);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
+  --store-organization-accent: oklch(0.785 0.115 274.713);
+  --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
 }
 
 .navy {
@@ -1064,6 +1073,8 @@ body {
   --popover-foreground: hsl(210 33% 96%);
   --primary: hsl(210 78% 62%);
   --primary-foreground: hsl(216 100% 98%);
+  --store-organization-accent: hsl(210 92% 72%);
+  --store-organization-accent-surface: hsl(210 78% 62% / 16%);
   --secondary: hsl(222 26% 17%);
   --secondary-foreground: hsl(210 33% 96%);
   --muted: hsl(222 24% 17%);
@@ -1090,8 +1101,9 @@ body {
   --sidebar-accent-foreground: hsl(210 30% 94%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(210 78% 62%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(222 30% 16%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
@@ -1106,6 +1118,8 @@ body {
   --popover-foreground: hsl(330 24% 96%);
   --primary: hsl(345 72% 50%);
   --primary-foreground: hsl(0 0% 100%);
+  --store-organization-accent: hsl(345 86% 72%);
+  --store-organization-accent-surface: hsl(345 72% 50% / 16%);
   --secondary: hsl(340 30% 19%);
   --secondary-foreground: hsl(330 24% 94%);
   --muted: hsl(340 28% 19%);
@@ -1130,8 +1144,9 @@ body {
   --sidebar-accent-foreground: hsl(330 22% 92%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(345 72% 50%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(340 28% 18%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }
@@ -1146,6 +1161,8 @@ body {
   --popover-foreground: hsl(35 25% 94%);
   --primary: hsl(28 65% 52%);
   --primary-foreground: hsl(25 30% 8%);
+  --store-organization-accent: hsl(32 88% 68%);
+  --store-organization-accent-surface: hsl(28 65% 52% / 16%);
   --secondary: hsl(25 22% 20%);
   --secondary-foreground: hsl(35 25% 94%);
   --muted: hsl(26 20% 20%);
@@ -1170,8 +1187,9 @@ body {
   --sidebar-accent-foreground: hsl(35 25% 94%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(28 65% 52%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(25 24% 17%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --tool-surface: color-mix(in oklch, var(--secondary) 80%, transparent);
@@ -1197,6 +1215,8 @@ body {
   --popover-foreground: hsl(148 20% 96%);
   --primary: hsl(150 42% 34%);
   --primary-foreground: hsl(144 50% 94%);
+  --store-organization-accent: hsl(148 60% 68%);
+  --store-organization-accent-surface: hsl(150 42% 34% / 18%);
   --secondary: hsl(150 24% 19%);
   --secondary-foreground: hsl(148 20% 94%);
   --muted: hsl(150 22% 19%);
@@ -1221,8 +1241,9 @@ body {
   --sidebar-accent-foreground: hsl(148 18% 92%);
   --sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
   --sidebar-ring: hsl(150 42% 34%);
-  --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 35%);
+  --main-nav-sidebar-surface: var(--sidebar);
   --left-sidebar-surface: var(--main-nav-sidebar-surface);
+  --left-sidebar-glass-color-weight: 62%;
   --left-sidebar-accent: hsl(150 20% 17%);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
 }

@@ -1,8 +1,23 @@
-<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="256" height="256" rx="68" fill="#08090C"/>
-  <circle cx="128" cy="128" r="67" stroke="white" stroke-width="14"/>
-  <path d="M128 61C151 61 171.696 72.4051 183.945 89.9448H128V61Z" fill="white"/>
-  <path d="M189.452 100C194.068 108.521 196.694 118.283 196.694 128.667C196.694 153.333 181.61 174.476 160.194 183.374L134.89 139.538L189.452 100Z" fill="white" fill-opacity="0.88"/>
-  <path d="M123.621 194.558C88.5414 192.329 60.6938 163.215 60.6938 128.667C60.6938 107.304 71.338 88.4156 87.6219 76.9407L113.062 121L123.621 194.558Z" fill="white" fill-opacity="0.92"/>
-  <circle cx="128" cy="128" r="21" fill="#08090C" stroke="white" stroke-width="10"/>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="112" y1="62" x2="414" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4F6FA"/>
+    </linearGradient>
+    <linearGradient id="globe" x1="176" y1="146" x2="344" y2="376" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7185F7"/>
+      <stop offset="1" stop-color="#465BD6"/>
+    </linearGradient>
+    <clipPath id="globe-clip">
+      <circle cx="256" cy="256" r="128"/>
+    </clipPath>
+  </defs>
+
+  <rect x="34" y="34" width="444" height="444" rx="116" fill="url(#tile)" stroke="#E3E7EE" stroke-width="8"/>
+  <circle cx="256" cy="256" r="128" fill="url(#globe)"/>
+  <g clip-path="url(#globe-clip)" stroke="#FAFBFF" stroke-linecap="round">
+    <ellipse cx="256" cy="256" rx="58" ry="128" stroke-width="18"/>
+    <path d="M132 210H380" stroke-width="18"/>
+    <path d="M132 302H380" stroke-width="18"/>
+  </g>
 </svg>

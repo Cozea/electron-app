@@ -77,6 +77,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
       <ProviderRemediationAction
         provider={provider}
         message={status.message ?? defaultMessage}
+        authenticationRequired={status.auth.status === "unauthenticated"}
       />
       {updateAvailable && status.versionAdvisory?.canUpdate ? (
         <Button

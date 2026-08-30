@@ -6,7 +6,6 @@ import {
   showDesktopContextMenu,
 } from "@/lib/desktopBridgeClient"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
-import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
 type ProjectCreationMenuAction = "empty" | "local"
@@ -38,17 +37,28 @@ function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: n
 export function useProjectCreationMenu() {
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
-  const { importLocalFolder, importPickedLocalFolder } = useLocalProjectImport()
+
+  const chooseLocalFolder = useCallback(async () => {
+    const selectedPath = await browseForDirectory("Select local project folder")
+    if (!selectedPath?.trim()) {
+      return
+    }
+
+    openCreateProjectDialog({
+      mode: "local",
+      localFolderPath: selectedPath,
+    })
+  }, [openCreateProjectDialog])
 
   const openDirect = useCallback(
     (mode: CreateProjectDialogMode = "empty") => {
       if (mode === "local") {
-        void importLocalFolder()
+        void chooseLocalFolder()
         return
       }
       openCreateProjectDialog({ mode })
     },
-    [importLocalFolder, openCreateProjectDialog],
+    [chooseLocalFolder, openCreateProjectDialog],
   )
 
   const openMenu = useCallback(
@@ -71,17 +81,13 @@ export function useProjectCreationMenu() {
       }
 
       if (selection === "local") {
-        const selectedPath = await browseForDirectory("Select local project folder")
-        if (!selectedPath?.trim()) {
-          return
-        }
-        void importPickedLocalFolder(selectedPath)
+        await chooseLocalFolder()
         return
       }
 
       openCreateProjectDialog({ mode: selection })
     },
-    [importLocalFolder, importPickedLocalFolder, openCreateProjectDialog, t],
+    [chooseLocalFolder, openCreateProjectDialog, t],
   )
 
   return {

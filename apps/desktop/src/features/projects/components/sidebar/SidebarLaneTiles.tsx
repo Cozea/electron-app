@@ -3,6 +3,7 @@ import { useMemo, useEffect, useState } from "react"
 import { SiOllama } from "react-icons/si"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
+import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
@@ -24,6 +25,7 @@ import {
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { cn, formatRelativeTimeLabel } from "@/lib/utils"
 import {
+  hasProjectSidebarChildren,
   SIDEBAR_PILL_ACTIVE_CLASS,
   SIDEBAR_PILL_NESTED_ROW_CLASS,
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
@@ -46,6 +48,7 @@ const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
 function SurfaceTileGlyph(props: {
   favicon?: string | null
   devAppId?: string | null
+  logoDataUrl?: string | null
   title: string
   type: WorkbenchSidebarSurfaceTileSummary["type"]
   className?: string
@@ -55,7 +58,11 @@ function SurfaceTileGlyph(props: {
     props.type === "orgDevApp" ? null : getDevAppForSurfaceTileType(props.type)
 
   if (props.type === "orgDevApp") {
-    return <HugeiconsIcon icon={__GlobeHugeIcon} className={className} aria-hidden />
+    return (
+      <span className={SIDEBAR_APP_ICON_CLASS}>
+        <PublishedDevAppIcon name={props.title} logoDataUrl={props.logoDataUrl} />
+      </span>
+    )
   }
 
   if (props.type === "devServer" && props.devAppId) {
@@ -403,7 +410,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
     font: SIDEBAR_LANE_LABEL_FONT,
   })
 
-  if (agents.length === 0 && surfaces.length === 0 && !hasHeadlessDevServer) {
+  if (!hasProjectSidebarChildren(activeLaneSummary, hasHeadlessDevServer)) {
     return null
   }
 
@@ -469,6 +476,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
             <SurfaceTileGlyph
               favicon={tile.favicon}
               devAppId={tile.devAppId}
+              logoDataUrl={tile.logoDataUrl}
               title={tile.title}
               type={tile.type}
               className={cn(

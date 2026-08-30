@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
-import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 import { useTranslation } from "@/lib/i18n"
 
@@ -23,7 +22,6 @@ export default function NewProject() {
   const navigate = useViewTransitionNavigate()
   const { convexUserId } = useAuth()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
-  const { importPickedLocalFolder } = useLocalProjectImport()
   const { t } = useTranslation()
   // The effect's callback deps change identity when auth finishes resolving;
   // without the guard that re-run opened the directory picker a second time.
@@ -54,11 +52,11 @@ export default function NewProject() {
           return
         }
 
-        void importPickedLocalFolder(selectedPath).then((outcome) => {
-          if (outcome !== "imported") {
-            navigate("/projects", { replace: true })
-          }
+        openCreateProjectDialog({
+          mode: "local",
+          localFolderPath: selectedPath,
         })
+        navigate("/projects", { replace: true })
       })
       return
     }
@@ -66,7 +64,7 @@ export default function NewProject() {
     hasStartedRef.current = true
     openCreateProjectDialog({ mode: nextMode })
     navigate("/projects", { replace: true })
-  }, [convexUserId, importPickedLocalFolder, navigate, openCreateProjectDialog])
+  }, [convexUserId, navigate, openCreateProjectDialog])
 
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

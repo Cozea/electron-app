@@ -1,20 +1,20 @@
 import { useCallback } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { useCreateProjectDialogStore } from '@/stores/useCreateProjectDialogStore'
+import { useProjectCreationMenu } from '@/features/projects/hooks/useProjectCreationMenu'
 import { useTranslation } from '@/lib/i18n'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowRight01Icon as __ArrowRightHugeIcon, FolderLibraryIcon as __FolderLibraryHugeIcon, PlusSignIcon as __PlusHugeIcon, SparklesIcon as __SparklesHugeIcon } from '@hugeicons/core-free-icons'
 
 export function Onboarding() {
-  const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
+  const { openCreateProjectDialog } = useProjectCreationMenu()
   const { t } = useTranslation()
   const handleCreateProject = useCallback(() => {
-    openCreateProjectDialog({ mode: 'empty' })
+    openCreateProjectDialog('empty')
   }, [openCreateProjectDialog])
   const handleImportFolder = useCallback(() => {
-    openCreateProjectDialog({ mode: 'local' })
+    openCreateProjectDialog('local')
   }, [openCreateProjectDialog])
 
   return (
