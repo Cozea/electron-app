@@ -242,3 +242,31 @@ export function resolveRevealTarget(
   const resolved = normalize(join(normalizedRoot, relativePath))
   return resolved === normalizedRoot || resolved.startsWith(`${normalizedRoot}/`) ? resolved : null
 }
+
+/**
+ * The approval key a worker grant is recorded under.
+ *
+ * Deliberately a different shape from the service approval key
+ * (`publicationId:contentHash:permissionSetHash`). Worker grants and service permissions
+ * are separate propositions approved separately, and folding capabilities into the
+ * service `permissionSetHash` would rewrite the hash of every release already published
+ * — silently invalidating approvals users have already given.
+ *
+ * The `worker:` prefix keeps the two namespaces from ever colliding in the shared
+ * approval list.
+ */
+export function devAppGrantApprovalKey(
+  publicationId: string,
+  contentHash: string,
+  grant: DevAppGrant,
+): string {
+  const normalizedPublication = publicationId.trim()
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(normalizedPublication)) {
+    throw new Error("The DevApp publication ID is invalid.")
+  }
+  const normalizedHash = contentHash.trim().toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(normalizedHash)) {
+    throw new Error("The DevApp content hash is invalid.")
+  }
+  return `worker:${normalizedPublication}:${normalizedHash}:${grantFingerprint(grant)}`
+}

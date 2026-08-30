@@ -34,10 +34,23 @@ export type DevAppWorkerSpawn = (options: {
   publicationId: string
 }) => DevAppWorkerProcess
 
+/**
+ * What a worker is bound to for its whole life.
+ *
+ * Established when the worker starts and never taken from a request. A worker that could
+ * name its own workspace could reach past the grant it was approved under, so handlers
+ * receive the binding and ignore any workspace the params claim.
+ */
+export interface DevAppWorkerBinding {
+  workspaceId: string
+  workspaceRoot: string
+  dataDir?: string
+}
+
 /** Handles a request the gate has already authorized. */
 export type DevAppWorkerMethodHandler = (
   request: DevAppWorkerRequest,
-  context: { publicationId: string },
+  context: { publicationId: string; binding: DevAppWorkerBinding },
 ) => Promise<unknown>
 
 export type DevAppWorkerStatus = "starting" | "ready" | "stopped" | "crashed"
@@ -57,6 +70,7 @@ const MAX_PENDING_REQUESTS = 64
 interface ActiveWorker {
   process: DevAppWorkerProcess
   grant: DevAppGrant
+  binding: DevAppWorkerBinding
   entrypoint: string
   state: DevAppWorkerState
   leases: Set<string>
@@ -90,6 +104,7 @@ export class DevAppWorkerHost {
     publicationId: string
     entrypoint: string
     grant: DevAppGrant
+    binding: DevAppWorkerBinding
     leaseId: string
   }): DevAppWorkerState {
     const existing = this.workers.get(options.publicationId)
@@ -101,7 +116,13 @@ export class DevAppWorkerHost {
   }
 
   private launch(
-    options: { publicationId: string; entrypoint: string; grant: DevAppGrant; leaseId: string },
+    options: {
+      publicationId: string
+      entrypoint: string
+      grant: DevAppGrant
+      binding: DevAppWorkerBinding
+      leaseId: string
+    },
     restarts: number,
   ): DevAppWorkerState {
     const state: DevAppWorkerState = {
@@ -116,6 +137,7 @@ export class DevAppWorkerHost {
     const worker: ActiveWorker = {
       process,
       grant: options.grant,
+      binding: options.binding,
       entrypoint: options.entrypoint,
       state,
       leases: new Set([options.leaseId]),
@@ -219,7 +241,7 @@ export class DevAppWorkerHost {
 
     worker.inFlight += 1
     try {
-      const result = await handler(message, { publicationId })
+      const result = await handler(message, { publicationId, binding: worker.binding })
       this.respond(worker, { kind: "response", id: message.id, result: result ?? null })
     } catch (error) {
       // Handler failures must not leak host internals to worker code.

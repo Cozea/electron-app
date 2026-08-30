@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   ALL_DEV_APP_CAPABILITIES,
   CAPABILITY_DESCRIPTIONS,
+  devAppGrantApprovalKey,
   ESCALATING_CAPABILITIES,
   grantFingerprint,
   grantsUnrestrictedAccess,
@@ -213,5 +214,47 @@ describe("shell.reveal — bounded to the workspace and the app's own data", () 
     // Tier inflation is the real risk: if scoped cannot do the ordinary things a dev
     // tool does, every app declares fs.read and the tier stops meaning anything.
     expect(trustTierFor(["shell.reveal", "project.read"])).toBe("scoped")
+  })
+})
+
+describe("Grant approval keys — separate from service approvals", () => {
+  const hash = "a".repeat(64)
+
+  it("namespaces worker grants so they cannot collide with service approvals", () => {
+    // A service approval is `publicationId:contentHash:permissionSetHash`. If a worker
+    // key could take that shape, one approval could satisfy the other.
+    const key = devAppGrantApprovalKey("pub_1", hash, normalizeGrant({ capabilities: ["project.read"] }))
+    expect(key.startsWith("worker:")).toBe(true)
+    expect(key.split(":").length).toBeGreaterThan(3)
+  })
+
+  it("changes when the capabilities change", () => {
+    const before = devAppGrantApprovalKey("pub_1", hash, normalizeGrant({ capabilities: ["project.read"] }))
+    const after = devAppGrantApprovalKey("pub_1", hash, normalizeGrant({ capabilities: ["project.read", "project.write"] }))
+    expect(before).not.toBe(after)
+  })
+
+  it("changes when agent invocation is enabled, forcing re-approval", () => {
+    const watched = devAppGrantApprovalKey("pub_1", hash, normalizeGrant({ capabilities: ["project.write"] }))
+    const autonomous = devAppGrantApprovalKey("pub_1", hash, normalizeGrant({ capabilities: ["project.write"], agentInvocable: true }))
+    expect(watched).not.toBe(autonomous)
+  })
+
+  it("is stable across declaration order, so reordering does not revoke a grant", () => {
+    const a = devAppGrantApprovalKey("pub_1", hash, normalizeGrant({ capabilities: ["git.read", "project.read"] }))
+    const b = devAppGrantApprovalKey("pub_1", hash, normalizeGrant({ capabilities: ["project.read", "git.read"] }))
+    expect(a).toBe(b)
+  })
+
+  it("binds to the release, so a new release re-asks", () => {
+    const grant = normalizeGrant({ capabilities: ["project.read"] })
+    expect(devAppGrantApprovalKey("pub_1", hash, grant))
+      .not.toBe(devAppGrantApprovalKey("pub_1", "b".repeat(64), grant))
+  })
+
+  it("rejects malformed identifiers rather than recording an unusable key", () => {
+    const grant = normalizeGrant({ capabilities: [] })
+    expect(() => devAppGrantApprovalKey("pub 1", hash, grant)).toThrow()
+    expect(() => devAppGrantApprovalKey("pub_1", "not-a-hash", grant)).toThrow()
   })
 })
