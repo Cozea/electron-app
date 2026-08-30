@@ -159,3 +159,52 @@ describe("DevApp refs — deriving identity from what already ships", () => {
     expect(parseDevAppRef(stored)).toBeTruthy()
   })
 })
+
+describe("Development refs", () => {
+  it("round-trips", () => {
+    const ref = { kind: "development", sourceId: "src_9fa2" } as const
+    expect(parseDevAppRef(formatDevAppRef(ref))).toEqual(ref)
+  })
+
+  it("reserves dev as an owner so a publication cannot claim one", () => {
+    // An org literally named "dev" would otherwise be able to publish something that
+    // parses as an in-development package, which is trusted on a different footing.
+    const parsed = parseDevAppRef("cozea-devapp:dev/pub_1")
+    expect(parsed).toEqual({ kind: "development", sourceId: "pub_1" })
+  })
+
+  it("refuses a version on a development ref, which has no releases", () => {
+    expect(parseDevAppRef("cozea-devapp:dev/src_1@2")).toBeNull()
+  })
+
+  it("refuses a malformed source id", () => {
+    for (const value of [
+      "cozea-devapp:dev/",
+      "cozea-devapp:dev/../etc",
+      "cozea-devapp:dev/a b",
+      "cozea-devapp:dev//x",
+      "cozea-devapp:dev/-leading",
+    ]) {
+      expect(parseDevAppRef(value), value).toBeNull()
+    }
+  })
+
+  it("is never the same app as a publication or a built-in", () => {
+    const development = { kind: "development", sourceId: "terminal" } as const
+    expect(devAppRefsSameApp(development, { kind: "builtin", appId: "terminal" })).toBe(false)
+    expect(devAppRefsSameApp(development, {
+      kind: "publication",
+      organizationId: "org_1",
+      publicationId: "terminal",
+      version: "latest",
+    })).toBe(false)
+    expect(devAppRefsEqual(development, { kind: "builtin", appId: "terminal" })).toBe(false)
+  })
+
+  it("distinguishes two development sources", () => {
+    expect(devAppRefsSameApp(
+      { kind: "development", sourceId: "a" },
+      { kind: "development", sourceId: "b" },
+    )).toBe(false)
+  })
+})
