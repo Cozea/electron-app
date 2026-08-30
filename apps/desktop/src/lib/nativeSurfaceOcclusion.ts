@@ -1,7 +1,27 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
-export const NATIVE_SURFACE_OVERLAY_SELECTOR =
-  '[data-native-surface-overlay="true"], [data-workbench-browser-overlay="true"]'
+/**
+ * Elements that force an overlapping native surface to hide itself.
+ *
+ * Tooltips are deliberately NOT marked, here or in the tooltip primitives.
+ * Occlusion is all-or-nothing: a match hides the entire WebContentsView and
+ * captures a screenshot to stand in for it, so marking a hover hint would
+ * strobe the whole tile and fire a page capture on every pass across a
+ * toolbar. A tooltip lost behind a native surface is the cheaper failure.
+ * The same reasoning drives the `tooltipStyle` opt-outs in the popover and
+ * anchored-toast primitives. Fixing this properly means partial occlusion
+ * (shrinking the surface rect around the overlay), not another marker.
+ */
+export const NATIVE_SURFACE_OVERLAY_SELECTOR = [
+  '[data-native-surface-overlay="true"]',
+  '[data-workbench-browser-overlay="true"]',
+  // dockview renders its own popups (tab context menu, tabs-overflow list,
+  // tab-group chip menu) into `.dv-popover-anchor`, and floating groups into
+  // `.dv-resize-container`. Neither carries our marker, so without these a
+  // native surface paints straight over them and the popup is unreachable.
+  '.dv-popover-anchor > *',
+  '.dv-resize-container',
+].join(', ')
 
 const DEFAULT_OVERLAY_MARGIN = 8
 
@@ -127,7 +147,10 @@ function readOcclusionState(registration: NativeSurfaceRegistration): NativeSurf
   const overlays = Array.from(document.querySelectorAll<HTMLElement>(registration.overlaySelector))
 
   for (const overlay of overlays) {
-    if (overlay === registration.element) continue
+    // `contains` also covers `overlay === registration.element`. A floated
+    // browser tile lives inside its own `.dv-resize-container`, so without the
+    // ancestor half it would occlude itself the moment it is floated.
+    if (overlay.contains(registration.element)) continue
     if (!isOverlayCandidateVisible(overlay)) continue
 
     const overlayRect = expandRect(overlay.getBoundingClientRect(), registration.overlayMargin)

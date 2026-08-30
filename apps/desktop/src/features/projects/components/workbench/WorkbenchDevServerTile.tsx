@@ -805,7 +805,17 @@ function WorkbenchRuntimePreviewTile({
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
           <div
             className="absolute inset-0 bg-no-repeat"
-            style={{ backgroundImage: `url("${placeholderScreenshot}")`, backgroundSize: '100% 100%' }}
+            style={{
+              backgroundImage: `url("${placeholderScreenshot}")`,
+              // Never '100% 100%': the capture is the view's last painted frame,
+              // taken at the size it had *before* the grid relayout that
+              // triggered this pause (floating a sibling out resizes this tile).
+              // Stretching it to the new box warps the page. Cover keeps the
+              // aspect and anchors the page's top-left, which is the part a
+              // reader recognises.
+              backgroundSize: 'cover',
+              backgroundPosition: 'top left',
+            }}
             aria-hidden
           />
         </div>
