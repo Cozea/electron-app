@@ -5,6 +5,12 @@ Source: Cozea `main` @ `197c7d25` — scanned all `ipcMain.handle` under `electr
 
 Companion docs: `docs/t3code-implementation-plan.md` (Track Inv), `docs/substrate-store-inventory.md`, `docs/substrate-gap-table.md`, `docs/substrate-t3-pin.md`.
 
+> **Removal delta (2026-08-31):** This remains a historical inventory of the stated source commit.
+> The current branch has deleted all 19 `workbenchBrowser:*` handlers plus
+> `workbenchSession:getBrowserBinding`, `workbenchSession:bindBrowser`, and
+> `workbenchSession:releaseBrowser`. Their preload exposure is also gone. Any `keep-ipc` disposition
+> for those 22 rows below is superseded; the future T3 browser must not restore this API surface.
+
 ## Summary counts
 
 | Disposition | Count |

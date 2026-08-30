@@ -1,51 +1,45 @@
-import { describe, expect, it } from "vitest"
+import fs from "node:fs";
+import path from "node:path";
 
-import {
-  getWorkbenchBrowserDisplayError,
-  shouldLoadWorkbenchBrowserUrl,
-} from "@/features/projects/components/workbench/useWorkbenchBrowserView"
+import { describe, expect, it } from "vitest";
 
-describe("shouldLoadWorkbenchBrowserUrl", () => {
-  it("loads an already-requested URL when the native view is still blank", () => {
-    expect(shouldLoadWorkbenchBrowserUrl({
-      requestedUrl: "http://127.0.0.1:4173",
-      lastRequestedUrl: "http://127.0.0.1:4173",
-      currentUrl: "",
-      loadError: null,
-    })).toBe(true)
-  })
+import { isExternallyOpenableBrowserUrl } from "@/features/projects/components/workbench/BrowserUnavailableSurface";
+import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
-  it("does not reload a matching healthy URL", () => {
-    expect(shouldLoadWorkbenchBrowserUrl({
-      requestedUrl: "http://127.0.0.1:4173",
-      lastRequestedUrl: "http://127.0.0.1:4173",
-      currentUrl: "http://127.0.0.1:4173",
-      loadError: null,
-    })).toBe(false)
-  })
+const browserTileSource = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
+  ),
+  "utf8",
+);
 
-  it("retries the current URL after a native load error", () => {
-    expect(shouldLoadWorkbenchBrowserUrl({
-      requestedUrl: "http://127.0.0.1:4173",
-      lastRequestedUrl: "http://127.0.0.1:4173",
-      currentUrl: "http://127.0.0.1:4173",
-      loadError: "net::ERR_CONNECTION_REFUSED",
-    })).toBe(true)
-  })
-})
+describe("browser blackout surface", () => {
+  it("allows external opening only for HTTP(S) URLs", () => {
+    expect(isExternallyOpenableBrowserUrl("https://example.com/docs")).toBe(true);
+    expect(isExternallyOpenableBrowserUrl("http://127.0.0.1:4173")).toBe(true);
+    expect(isExternallyOpenableBrowserUrl("cozea-devapp://release/index.html")).toBe(false);
+    expect(isExternallyOpenableBrowserUrl("file:///tmp/private")).toBe(false);
+    expect(isExternallyOpenableBrowserUrl("javascript:alert(1)")).toBe(false);
+    expect(isExternallyOpenableBrowserUrl("not a url")).toBe(false);
+  });
 
-describe("getWorkbenchBrowserDisplayError", () => {
-  it("prefers transport errors over blank HTTP response errors", () => {
-    expect(getWorkbenchBrowserDisplayError({
-      loadError: "net::ERR_CONNECTION_REFUSED",
-      httpError: "HTTP 500 Internal Server Error",
-    })).toBe("net::ERR_CONNECTION_REFUSED")
-  })
+  it("uses the generic shell API only after the URL policy accepts the URL", () => {
+    expect(browserTileSource).toContain("window.electronAPI.shell.openExternal(externalUrl)");
+    expect(browserTileSource).toContain("isExternallyOpenableBrowserUrl(tile.url)");
+    expect(browserTileSource).not.toContain("electronAPI.workbenchBrowser");
+  });
 
-  it("surfaces a blank HTTP response error when navigation itself succeeded", () => {
-    expect(getWorkbenchBrowserDisplayError({
-      loadError: null,
-      httpError: "HTTP 500 Internal Server Error",
-    })).toBe("HTTP 500 Internal Server Error")
-  })
-})
+  it.each([
+    "navigation.initial-blank",
+    "navigation.sequential-urls",
+    "navigation.history-reload-find-zoom-devtools",
+    "navigation.popup-policy",
+  ])("preserves %s as a mandatory T3 port requirement", (id) => {
+    expect(getBrowserPortParityRequirement(id)).toMatchObject({
+      id,
+      area: "navigation",
+      status: "pending-t3-port",
+    });
+  });
+});

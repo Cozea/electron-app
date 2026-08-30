@@ -1,34 +1,27 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "vitest";
 
-import {
-  evaluateAutomationNavigateUrl,
-  isLoopbackHostname,
-  normalizeAutomationUrlInput,
-} from "../../../apps/desktop/electron/browser-automation/urlPolicy"
+import { isExternallyOpenableBrowserUrl } from "@/features/projects/components/workbench/BrowserUnavailableSurface";
+import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
-describe("browser automation url policy", () => {
-  it("accepts loopback http(s) URLs", () => {
-    expect(evaluateAutomationNavigateUrl("http://localhost:5173/").allowed).toBe(true)
-    expect(evaluateAutomationNavigateUrl("https://127.0.0.1:3000/app").allowed).toBe(true)
-    expect(evaluateAutomationNavigateUrl("http://[::1]:8080/").allowed).toBe(true)
-  })
+describe("browser URL policy during blackout", () => {
+  it("allows public and loopback HTTP(S) external opening", () => {
+    expect(isExternallyOpenableBrowserUrl("http://localhost:5173/")).toBe(true);
+    expect(isExternallyOpenableBrowserUrl("https://127.0.0.1:3000/app")).toBe(true);
+    expect(isExternallyOpenableBrowserUrl("https://example.com")).toBe(true);
+  });
 
-  it("normalizes schemeless localhost", () => {
-    expect(normalizeAutomationUrlInput("localhost:5173")).toBe("http://localhost:5173")
-    const decision = evaluateAutomationNavigateUrl("localhost:5173/foo")
-    expect(decision.allowed).toBe(true)
-    expect(decision.normalizedUrl).toContain("http://localhost:5173/foo")
-  })
+  it("rejects custom, file, data, script, and malformed URLs", () => {
+    expect(isExternallyOpenableBrowserUrl("cozea-devapp://release/index.html")).toBe(false);
+    expect(isExternallyOpenableBrowserUrl("file:///tmp/x")).toBe(false);
+    expect(isExternallyOpenableBrowserUrl("data:text/plain,hello")).toBe(false);
+    expect(isExternallyOpenableBrowserUrl("javascript:alert(1)")).toBe(false);
+    expect(isExternallyOpenableBrowserUrl("")).toBe(false);
+  });
 
-  it("rejects public hosts and non-http schemes", () => {
-    expect(evaluateAutomationNavigateUrl("https://example.com").allowed).toBe(false)
-    expect(evaluateAutomationNavigateUrl("file:///tmp/x").allowed).toBe(false)
-    expect(evaluateAutomationNavigateUrl("")).toMatchObject({ allowed: false })
-  })
-
-  it("recognizes loopback hostnames", () => {
-    expect(isLoopbackHostname("localhost")).toBe(true)
-    expect(isLoopbackHostname("127.0.0.1")).toBe(true)
-    expect(isLoopbackHostname("example.com")).toBe(false)
-  })
-})
+  it("preserves loopback-only agent navigation as a T3 port requirement", () => {
+    expect(getBrowserPortParityRequirement("automation.loopback-navigation")).toMatchObject({
+      area: "automation",
+      status: "pending-t3-port",
+    });
+  });
+});

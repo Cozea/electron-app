@@ -1,34 +1,23 @@
-import { describe, expect, it } from "vitest"
+import fs from "node:fs";
+import path from "node:path";
 
-import {
-  COZEA_BROWSER_AGENT_AUTOMATION_FLAG,
-  isBrowserAgentAutomationEnabled,
-  readBrowserAutomationFlags,
-} from "../../../apps/desktop/electron/browser-automation/flags"
+import { describe, expect, it } from "vitest";
 
-describe("browser automation flags", () => {
-  it("defaults to off", () => {
-    expect(readBrowserAutomationFlags({}).enabled).toBe(false)
-    expect(isBrowserAgentAutomationEnabled({})).toBe(false)
-  })
+describe("removed browser automation feature flag", () => {
+  it("cannot re-enable the deleted adapter through environment configuration", () => {
+    const firstPartySource = ["apps/desktop/electron", "apps/desktop/src", "shared"].map(
+      (relativePath) => path.join(process.cwd(), relativePath),
+    );
 
-  it("enables on truthy COZEA_BROWSER_AGENT_AUTOMATION values", () => {
-    for (const value of ["1", "true", "TRUE", "on", "yes"]) {
-      expect(readBrowserAutomationFlags({ COZEA_BROWSER_AGENT_AUTOMATION: value }).enabled).toBe(
-        true,
-      )
-    }
-  })
+    const readTree = (directory: string): string[] =>
+      fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const entryPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) return readTree(entryPath);
+        return /\.(?:ts|tsx)$/.test(entry.name) ? [fs.readFileSync(entryPath, "utf8")] : [];
+      });
 
-  it("stays off on falsy values", () => {
-    for (const value of ["0", "false", "off", "no", ""]) {
-      expect(readBrowserAutomationFlags({ COZEA_BROWSER_AGENT_AUTOMATION: value }).enabled).toBe(
-        false,
-      )
-    }
-  })
-
-  it("exposes the canonical flag id", () => {
-    expect(COZEA_BROWSER_AGENT_AUTOMATION_FLAG).toBe("cozea.browser.agentAutomation")
-  })
-})
+    expect(firstPartySource.flatMap(readTree).join("\n")).not.toContain(
+      "COZEA_BROWSER_AGENT_AUTOMATION",
+    );
+  });
+});

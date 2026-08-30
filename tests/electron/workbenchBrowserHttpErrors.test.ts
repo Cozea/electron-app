@@ -1,33 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from "vitest";
 
-vi.mock('electron', () => ({
-  BrowserWindow: class {},
-  WebContentsView: class {},
-  session: { fromPartition: vi.fn() },
-  shell: { openExternal: vi.fn() },
-}))
+import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
-import {
-  formatWorkbenchBrowserHttpError,
-  shouldSurfaceWorkbenchBrowserHttpError,
-} from '../../apps/desktop/electron/services/WorkbenchBrowserService'
-
-describe('workbench browser HTTP errors', () => {
-  it('formats the response status without inventing status text', () => {
-    expect(formatWorkbenchBrowserHttpError(500, 'Internal Server Error'))
-      .toBe('HTTP 500 Internal Server Error')
-    expect(formatWorkbenchBrowserHttpError(502, ''))
-      .toBe('HTTP 502')
-  })
-
-  it('surfaces blank HTTP error documents', () => {
-    expect(shouldSurfaceWorkbenchBrowserHttpError(500, false)).toBe(true)
-    expect(shouldSurfaceWorkbenchBrowserHttpError(404, false)).toBe(true)
-  })
-
-  it('preserves framework-provided error pages and successful blank pages', () => {
-    expect(shouldSurfaceWorkbenchBrowserHttpError(500, true)).toBe(false)
-    expect(shouldSurfaceWorkbenchBrowserHttpError(204, false)).toBe(false)
-    expect(shouldSurfaceWorkbenchBrowserHttpError(null, false)).toBe(false)
-  })
-})
+describe("workbench browser HTTP error parity", () => {
+  it.each([
+    "http-errors.transport-precedence",
+    "http-errors.blank-error-document",
+    "http-errors.framework-document",
+  ])("preserves %s as a mandatory T3 port requirement", (id) => {
+    expect(getBrowserPortParityRequirement(id)).toMatchObject({
+      id,
+      area: "http-errors",
+      status: "pending-t3-port",
+    });
+  });
+});

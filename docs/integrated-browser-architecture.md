@@ -1,6 +1,14 @@
 # Integrated Browser Architecture
 
-This document outlines how the new VS Code Integrated Browser appears to work from the open-source codebase, and how to port the same overall shape into Cozea's Electron workbench.
+> **Status (2026-08-31): historical design reference.** Cozea's legacy native browser host and its
+> IPC/preload/model stack have been deleted. Browser, Dev Server, Project DevApp, and Org DevApp
+> tiles currently retain their persisted shells and non-browser runtimes while rendering a shared
+> unavailable surface. The next implementation phase is a direct port of the T3 browser; no legacy
+> fallback or feature flag remains. Mandatory parity requirements live in
+> `shared/browserPortParityLedger.ts`.
+
+This document records the earlier VS Code-oriented architecture investigation. It is not a
+description of the current Cozea runtime and must not be used to restore the deleted host.
 
 It is written for the current `ProjectWorkbenchPage` / Dockview tile architecture on the `codex/preview-assistant-cleanup` branch.
 

@@ -1,5 +1,10 @@
 # Integrated Browser Implementation Checklist
 
+> **Superseded (2026-08-31).** The native host described below has been removed, not refactored.
+> Current browser-backed tiles render a shared unavailable surface while preserving tile metadata
+> and Dev Server/DevApp runtimes. The only approved next browser implementation is the direct T3
+> port, gated by `shared/browserPortParityLedger.ts`. The checklist below remains historical context.
+
 This checklist is the execution companion to `docs/integrated-browser-architecture.md`.
 
 It is intentionally Cozea-specific and maps directly onto the current `codex/preview-assistant-cleanup` workbench.
