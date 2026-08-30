@@ -48,7 +48,7 @@ function timelineEntryTurnId(entry: TimelineEntry): TurnId | null {
   return entry.entry.turnId ?? null;
 }
 
-/** Pin a turn header after its triggering user message and before generated content. */
+/** Pin a completed turn header after its triggering user message and before generated content. */
 export function deriveTurnHeaderIndex(
   timelineEntries: ReadonlyArray<TimelineEntry>,
   turnId: TurnId | null | undefined,
@@ -79,7 +79,32 @@ export function deriveTurnHeaderIndex(
   return triggeringUserMessageIndex >= 0 ? triggeringUserMessageIndex + 1 : firstOwnedEntryIndex;
 }
 
-export const deriveActiveTurnHeaderIndex = deriveTurnHeaderIndex;
+/**
+ * Keep the active turn header attached to the newest user prompt.
+ *
+ * During submit handoff, the projected turn id can briefly remain on the
+ * previous completed turn. Only trust owned entries that occur after the
+ * newest user message; otherwise the turn is still pending projection and the
+ * header belongs immediately after that prompt.
+ */
+export function deriveActiveTurnHeaderIndex(
+  timelineEntries: ReadonlyArray<TimelineEntry>,
+  turnId: TurnId | null | undefined,
+): number {
+  const latestUserMessageIndex = timelineEntries.findLastIndex(
+    (entry) => entry.kind === "message" && entry.message.role === "user",
+  );
+  const firstOwnedEntryAfterLatestUser = turnId
+    ? timelineEntries.findIndex(
+        (entry, index) =>
+          index > latestUserMessageIndex && timelineEntryTurnId(entry) === turnId,
+      )
+    : -1;
+
+  return firstOwnedEntryAfterLatestUser >= 0
+    ? firstOwnedEntryAfterLatestUser
+    : latestUserMessageIndex + 1;
+}
 
 /**
  * Explicit provider reasoning is the only state that renders as Thinking.
