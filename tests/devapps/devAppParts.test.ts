@@ -142,3 +142,87 @@ describe("Registry surface resolution", () => {
     expect(ids).not.toContain("browser")
   })
 })
+
+describe("Packages resolve through the same parts model as installed apps", () => {
+  const parsePackage = async (value: unknown) => {
+    const { parseDevAppPackage } = await import("@shared/devAppPackage")
+    const result = parseDevAppPackage(JSON.stringify(value))
+    expect(result.manifest).not.toBeNull()
+    return result.manifest!
+  }
+
+  it("gives a view-only package exactly the tile surface", async () => {
+    const { partsForPackage } = await import("@/features/devapps/registry/parts")
+    const parts = partsForPackage(
+      await parsePackage({ manifestVersion: 1, name: "A", view: { entry: "index.html" } }),
+    )
+    expect(parts).toEqual({ view: { source: "package" } })
+    expect(derivableSurfaces(parts)).toEqual(["tile"])
+  })
+
+  it("never lets an authored package claim a native view", async () => {
+    // `native` means a component compiled into Cozea. A package that could claim it
+    // would be asking to be rendered as first-party chrome.
+    const { partsForPackage } = await import("@/features/devapps/registry/parts")
+    const parts = partsForPackage(
+      await parsePackage({
+        manifestVersion: 1,
+        name: "A",
+        // `source` is not a manifest field. The point is that writing it changes nothing.
+        view: { entry: "index.html", source: "native" },
+      }),
+    )
+    expect(parts.view?.source).toBe("package")
+  })
+
+  it("derives the agent surface from the package's own exposesTools", async () => {
+    const { partsForPackage } = await import("@/features/devapps/registry/parts")
+    const speaking = partsForPackage(
+      await parsePackage({
+        manifestVersion: 1,
+        name: "A",
+        worker: { entry: "w.js", capabilities: ["project.read"], exposesTools: true },
+      }),
+    )
+    expect(derivableSurfaces(speaking)).toEqual(["agentTool", "backgroundService"])
+  })
+
+  it("carries a package's capabilities through unchanged", async () => {
+    const { partsForPackage } = await import("@/features/devapps/registry/parts")
+    const parts = partsForPackage(
+      await parsePackage({
+        manifestVersion: 1,
+        name: "A",
+        worker: { entry: "w.js", capabilities: ["project.read", "git.read"] },
+      }),
+    )
+    expect(parts.worker?.capabilities).toEqual(["project.read", "git.read"])
+  })
+
+  it("gives a static-service package no background surface, matching a published one", async () => {
+    const { partsForPackage } = await import("@/features/devapps/registry/parts")
+    const parts = partsForPackage(
+      await parsePackage({
+        manifestVersion: 1,
+        name: "A",
+        view: { entry: "index.html" },
+        service: { runtimeKind: "static" },
+      }),
+    )
+    expect(derivableSurfaces(parts)).toEqual(["tile"])
+    expect(derivableSurfaces(partsForLaunchSpec({
+      kind: "publishedDevApp",
+      tileType: "orgDevApp",
+      publicationId: "p",
+      organizationId: "o",
+      organizationName: "O",
+      releaseId: "r",
+      releaseVersion: 1,
+      name: "A",
+      framework: "vite-react",
+      contentHash: "a".repeat(64),
+      entryPath: "index.html",
+      runtimeKind: "static",
+    }))).toEqual(["tile"])
+  })
+})
