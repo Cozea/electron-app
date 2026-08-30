@@ -1,0 +1,410 @@
+import { describe, expect, it, vi } from "vitest"
+
+import { DevAppDevelopmentTrustStore } from "../../shared/devAppDevelopmentTrust"
+import type { OrgDevAppPreflightReport } from "../../shared/orgDevAppDiagnostics"
+import {
+  DevAppPreviewSession,
+  developmentWorkerKey,
+  type DevAppPreviewFs,
+} from "../../apps/desktop/electron/services/DevAppPreviewSession"
+import type { DevAppWorkerState } from "../../apps/desktop/electron/services/DevAppWorkerHost"
+
+const WORKSPACE = "/Users/admin/proj"
+const SOURCE = "/Users/admin/proj/apps/inventory"
+
+const CLEAN_PREFLIGHT: OrgDevAppPreflightReport = {
+  ok: true,
+  framework: "vite-react",
+  expectedRuntimeKind: "static",
+  diagnostics: [],
+}
+
+const workerState = (publicationId: string): DevAppWorkerState => ({
+  publicationId,
+  status: "ready",
+  restarts: 0,
+  lastError: null,
+  logs: [],
+})
+
+function makeFs(files: Record<string, string>, links: Record<string, string> = {}): DevAppPreviewFs {
+  return {
+    readFile: (p) => files[p] ?? null,
+    exists: (p) => p in files || p in links || p === SOURCE || p === WORKSPACE,
+    realpath: (p) => links[p] ?? (p in files || p === SOURCE || p === WORKSPACE ? p : null),
+  }
+}
+
+function makeSession(options: {
+  manifest?: unknown
+  files?: Record<string, string>
+  links?: Record<string, string>
+  preflight?: OrgDevAppPreflightReport
+} = {}) {
+  const manifestPath = `${SOURCE}/cozea-devapp.json`
+  const files: Record<string, string> = {
+    ...(options.manifest === undefined
+      ? { [manifestPath]: JSON.stringify({ manifestVersion: 1, name: "Inventory", view: { entry: "dist/index.html" } }) }
+      : options.manifest === null
+        ? {}
+        : { [manifestPath]: JSON.stringify(options.manifest) }),
+    ...options.files,
+  }
+
+  const worker = {
+    start: vi.fn((input: { publicationId: string }) => workerState(input.publicationId)),
+    stop: vi.fn(),
+    release: vi.fn(),
+    getState: vi.fn(() => null),
+  }
+  const preflight = vi.fn(() => options.preflight ?? CLEAN_PREFLIGHT)
+  const trust = new DevAppDevelopmentTrustStore(() => 1_000_000)
+
+  const session = new DevAppPreviewSession({
+    fs: makeFs(files, options.links),
+    join: (...parts) => parts.join("/"),
+    resolve: (value) => value,
+    hashPath: () => "src_abc123",
+    preflight,
+    trust,
+    worker,
+  })
+
+  const open = () => session.open({
+    sourcePath: SOURCE,
+    workspaceId: "ws_1",
+    workspaceRoot: WORKSPACE,
+    leaseId: "tile_1",
+  })
+
+  return { session, worker, preflight, trust, open, files }
+}
+
+describe("Preview session — refuses what it should not load", () => {
+  it("refuses a source outside the project", () => {
+    const { session } = makeSession()
+    const status = session.open({
+      sourcePath: "/Users/admin/.ssh",
+      workspaceId: "ws_1",
+      workspaceRoot: WORKSPACE,
+      leaseId: "tile_1",
+    })
+    expect(status.status).toBe("invalid")
+  })
+
+  it("refuses a sibling directory whose name merely starts with the project path", () => {
+    const { session } = makeSession()
+    const status = session.open({
+      sourcePath: `${WORKSPACE}-secrets/app`,
+      workspaceId: "ws_1",
+      workspaceRoot: WORKSPACE,
+      leaseId: "tile_1",
+    })
+    expect(status.status).toBe("invalid")
+  })
+
+  it("reports a missing manifest as a fixable diagnostic, not a crash", () => {
+    const { open } = makeSession({ manifest: null })
+    const status = open()
+    expect(status).toMatchObject({ status: "invalid" })
+    expect(status.status === "invalid" && status.diagnostics[0]?.code).toBe("manifest-missing")
+  })
+
+  it("passes the manifest parser's diagnostics straight through", () => {
+    const { open } = makeSession({
+      manifest: { manifestVersion: 1, name: "A", worker: { entry: "w.js", capabilities: ["nope"] } },
+    })
+    const status = open()
+    expect(status.status === "invalid" && status.diagnostics.map((d) => d.code))
+      .toContain("manifest-unknown-capability")
+  })
+})
+
+describe("Preview session — approval comes first", () => {
+  const withWorker = {
+    manifestVersion: 1,
+    name: "Inventory",
+    view: { entry: "dist/index.html" },
+    worker: { entry: "worker.js", capabilities: ["project.read"] },
+  }
+
+  it("does not start a worker before the user has approved", () => {
+    const { open, worker } = makeSession({
+      manifest: withWorker,
+      files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    const status = open()
+    expect(status.status).toBe("needsApproval")
+    expect(status.status === "needsApproval" && status.missing).toEqual(["project.read"])
+    expect(worker.start).not.toHaveBeenCalled()
+  })
+
+  it("starts the worker once approved, bound to the workspace", () => {
+    const { open, session, worker } = makeSession({
+      manifest: withWorker,
+      files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    open()
+    const status = session.approve("src_abc123")
+    expect(status?.status).toBe("running")
+    expect(worker.start).toHaveBeenCalledWith(expect.objectContaining({
+      entrypoint: `${SOURCE}/worker.js`,
+      grant: { capabilities: ["project.read"], agentInvocable: false },
+      binding: { workspaceId: "ws_1", workspaceRoot: WORKSPACE },
+    }))
+  })
+
+  it("namespaces the worker key so it cannot address a published worker", () => {
+    const { open, session, worker } = makeSession({
+      manifest: withWorker,
+      files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    open()
+    session.approve("src_abc123")
+    expect(worker.start.mock.calls[0]![0].publicationId).toBe("dev:src_abc123")
+    expect(developmentWorkerKey("src_abc123")).toBe("dev:src_abc123")
+  })
+
+  it("runs a view-only package with no worker at all", () => {
+    const { open, session, worker } = makeSession({
+      files: { [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    open()
+    const status = session.approve("src_abc123")
+    expect(status?.status).toBe("running")
+    expect(status?.status === "running" && status.worker).toBeNull()
+    expect(worker.start).not.toHaveBeenCalled()
+  })
+})
+
+describe("Preview session — hot reload cannot widen a grant", () => {
+  const manifestPath = `${SOURCE}/cozea-devapp.json`
+  const narrow = {
+    manifestVersion: 1,
+    name: "Inventory",
+    view: { entry: "dist/index.html" },
+    worker: { entry: "worker.js", capabilities: ["project.read"] },
+  }
+
+  function running() {
+    const files: Record<string, string> = {
+      [manifestPath]: JSON.stringify(narrow),
+      [`${SOURCE}/worker.js`]: "//",
+      [`${SOURCE}/dist/index.html`]: "<html>",
+    }
+    const worker = {
+      start: vi.fn((input: { publicationId: string }) => workerState(input.publicationId)),
+      stop: vi.fn(),
+      release: vi.fn(),
+      getState: vi.fn(() => null),
+    }
+    const session = new DevAppPreviewSession({
+      fs: {
+        readFile: (p) => files[p] ?? null,
+        exists: (p) => p in files || p === SOURCE || p === WORKSPACE,
+        realpath: (p) => (p in files || p === SOURCE || p === WORKSPACE ? p : null),
+      },
+      join: (...parts) => parts.join("/"),
+      resolve: (value) => value,
+      hashPath: () => "src_abc123",
+      preflight: () => CLEAN_PREFLIGHT,
+      trust: new DevAppDevelopmentTrustStore(() => 1_000_000),
+      worker,
+    })
+    session.open({ sourcePath: SOURCE, workspaceId: "ws_1", workspaceRoot: WORKSPACE, leaseId: "tile_1" })
+    session.approve("src_abc123")
+    return { session, worker, files }
+  }
+
+  it("stops the worker and asks again when the manifest asks for more", () => {
+    // Without this, editing a file on disk would be a way to gain capabilities the user
+    // was never shown.
+    const { session, worker, files } = running()
+    files[manifestPath] = JSON.stringify({
+      ...narrow,
+      worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"] },
+    })
+    const status = session.reload("src_abc123")
+    expect(status?.status).toBe("needsApproval")
+    expect(status?.status === "needsApproval" && status.missing).toEqual(["process.spawn"])
+    expect(worker.stop).toHaveBeenCalledWith("dev:src_abc123")
+  })
+
+  it("keeps running when the manifest narrows, with the narrowed grant", () => {
+    const { session, files } = running()
+    files[manifestPath] = JSON.stringify({
+      ...narrow,
+      worker: { entry: "worker.js", capabilities: [] },
+    })
+    const status = session.reload("src_abc123")
+    expect(status?.status).toBe("running")
+    expect(status?.status === "running" && status.grant.capabilities).toEqual([])
+  })
+
+  it("does not restart the worker for an ordinary reload", () => {
+    // The host joins an already-running worker, so a view reload must not kill in-flight
+    // worker work.
+    const { session, worker } = running()
+    session.reload("src_abc123")
+    expect(worker.stop).not.toHaveBeenCalled()
+  })
+
+  it("advances a reload token the view can key off", () => {
+    const { session } = running()
+    const before = session.status("src_abc123")
+    const after = session.reload("src_abc123")
+    expect(before?.status === "running" && before.reloadToken).toBe(0)
+    expect(after?.status === "running" && after.reloadToken).toBe(1)
+  })
+
+  it("stops the worker when the manifest is deleted mid-session", () => {
+    const { session, worker, files } = running()
+    delete files[manifestPath]
+    expect(session.reload("src_abc123")?.status).toBe("invalid")
+    expect(worker.stop).toHaveBeenCalledWith("dev:src_abc123")
+  })
+
+  it("stops the worker when the manifest becomes unparsable", () => {
+    const { session, worker, files } = running()
+    files[manifestPath] = "{ broken"
+    expect(session.reload("src_abc123")?.status).toBe("invalid")
+    expect(worker.stop).toHaveBeenCalled()
+  })
+
+  it("returns null for a source that was never opened", () => {
+    const { session } = running()
+    expect(session.reload("src_other")).toBeNull()
+    expect(session.status("src_other")).toBeNull()
+  })
+})
+
+describe("Preview session — where the view comes from", () => {
+  const approved = (manifest: unknown, files: Record<string, string> = {}, links = {}) => {
+    const made = makeSession({ manifest, files, links })
+    made.open()
+    return made.session.approve("src_abc123")
+  }
+
+  it("prefers a declared dev server, so hot reload is available", () => {
+    const status = approved({
+      manifestVersion: 1,
+      name: "A",
+      view: { entry: "dist/index.html", dev: { url: "http://localhost:5173" } },
+    }, { [`${SOURCE}/dist/index.html`]: "<html>" })
+    expect(status?.status === "running" && status.view)
+      .toEqual({ kind: "devServer", url: "http://localhost:5173" })
+  })
+
+  it("falls back to the built output publishing would pack", () => {
+    const status = approved({
+      manifestVersion: 1,
+      name: "A",
+      view: { entry: "dist/index.html" },
+    }, { [`${SOURCE}/dist/index.html`]: "<html>" })
+    expect(status?.status === "running" && status.view)
+      .toEqual({ kind: "builtOutput", entryPath: `${SOURCE}/dist/index.html` })
+  })
+
+  it("says what to do when there is neither", () => {
+    const status = approved({
+      manifestVersion: 1,
+      name: "A",
+      view: { entry: "dist/index.html", dev: { command: "bun run dev" } },
+    })
+    expect(status?.status === "running" && status.view).toMatchObject({
+      kind: "unavailable",
+      fix: expect.stringContaining("bun run dev"),
+    })
+  })
+
+  it("refuses a view entry that symlinks out of the package", () => {
+    // The manifest parser cannot see the filesystem: `dist/index.html` is a textually
+    // clean path even when it is a link to /etc/passwd.
+    const status = approved(
+      { manifestVersion: 1, name: "A", view: { entry: "dist/index.html" } },
+      { [`${SOURCE}/dist/index.html`]: "<html>" },
+      { [`${SOURCE}/dist/index.html`]: "/etc/passwd" },
+    )
+    expect(status?.status === "running" && status.view.kind).toBe("unavailable")
+  })
+
+  it("refuses a worker entry that symlinks out of the package", () => {
+    const made = makeSession({
+      manifest: {
+        manifestVersion: 1,
+        name: "A",
+        view: { entry: "dist/index.html" },
+        worker: { entry: "worker.js", capabilities: [] },
+      },
+      files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
+      links: { [`${SOURCE}/worker.js`]: "/usr/local/bin/anything" },
+    })
+    made.open()
+    const status = made.session.approve("src_abc123")
+    expect(status?.status === "running" && status.worker).toBeNull()
+    expect(made.worker.start).not.toHaveBeenCalled()
+  })
+})
+
+describe("Preview session — preflight runs the whole time", () => {
+  it("reports preflight before approval, so a broken project says so early", () => {
+    const failing: OrgDevAppPreflightReport = {
+      ok: false,
+      framework: "next",
+      expectedRuntimeKind: "service",
+      diagnostics: [{
+        code: "next-missing-standalone",
+        severity: "blocker",
+        message: "next.config needs output: 'standalone'.",
+      }],
+    }
+    const { open } = makeSession({
+      manifest: {
+        manifestVersion: 1,
+        name: "A",
+        view: { entry: "dist/index.html" },
+        worker: { entry: "w.js", capabilities: ["project.read"] },
+      },
+      preflight: failing,
+    })
+    const status = open()
+    expect(status.status).toBe("needsApproval")
+    expect(status.status === "needsApproval" && status.preflight.diagnostics[0]?.code)
+      .toBe("next-missing-standalone")
+  })
+
+  it("re-runs preflight on every reload rather than caching a stale verdict", () => {
+    const { open, session, preflight } = makeSession({
+      files: { [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    open()
+    session.approve("src_abc123")
+    const before = preflight.mock.calls.length
+    session.reload("src_abc123")
+    expect(preflight.mock.calls.length).toBeGreaterThan(before)
+  })
+})
+
+describe("Preview session — closing", () => {
+  it("releases the lease rather than killing a worker another lease holds", () => {
+    const { open, session, worker } = makeSession({
+      manifest: {
+        manifestVersion: 1,
+        name: "A",
+        view: { entry: "dist/index.html" },
+        worker: { entry: "worker.js", capabilities: [] },
+      },
+      files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    open()
+    session.approve("src_abc123")
+    session.close("src_abc123")
+    expect(worker.release).toHaveBeenCalledWith("dev:src_abc123", "tile_1")
+    expect(session.status("src_abc123")).toBeNull()
+  })
+
+  it("is a no-op for a source that was never opened", () => {
+    const { session } = makeSession()
+    expect(() => session.close("src_other")).not.toThrow()
+  })
+})
