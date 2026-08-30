@@ -1,4 +1,5 @@
 import type { DevAppCapability } from "@shared/devAppCapabilities"
+import type { DevAppPackage } from "@shared/devAppPackage"
 
 import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
 
@@ -135,5 +136,38 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
         view: { source: "package" },
         service: { runtimeKind: "node", location: "device", singleton: true },
       }
+  }
+}
+
+/**
+ * Expresses an authored package as parts.
+ *
+ * This is what keeps development honest. A package loaded from a local path and the same
+ * package once published both become `DevAppParts`, so surface availability, the worker
+ * host, and the capability gate see one shape. "Works in dev, fails on publish" needs
+ * the two paths to differ somewhere, and this is the join that stops them from differing
+ * here.
+ */
+export function partsForPackage(manifest: DevAppPackage): DevAppParts {
+  return {
+    // Authored views are always package-sourced. `native` is reserved for components
+    // compiled into Cozea, which a published package can never become.
+    ...(manifest.view ? { view: { source: "package" as const } } : {}),
+    ...(manifest.worker
+      ? {
+        worker: {
+          capabilities: manifest.worker.capabilities,
+          ...(manifest.worker.exposesTools ? { exposesTools: true } : {}),
+        },
+      }
+      : {}),
+    ...(manifest.service
+      ? {
+        service: {
+          runtimeKind: manifest.service.runtimeKind,
+          location: "device" as const,
+        },
+      }
+      : {}),
   }
 }
