@@ -1,0 +1,992 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/yzi4di",
+    "id": "yzi4di",
+    "slide": 15,
+    "layoutId": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F9FC",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Helvetica Neue"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/ojmt4v65",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "alt": "Subtle graphite and brushed-metal presentation background",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "b0673c32-4926-4419-8eb9-156cde9ff28d",
+        "contentType": "image/png",
+        "byteLength": 1594239
+      }
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2pcfm9sb",
+      "id": "2",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "rgba(5, 7, 10, 0.47059)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3qlgvetw",
+      "id": "3",
+      "bbox": [
+        56,
+        18,
+        116,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#596677",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cfexsjad",
+      "id": "4",
+      "bbox": [
+        172,
+        18,
+        34,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#55B6FF",
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/dgny1oby",
+      "id": "5",
+      "name": "deck-section",
+      "bbox": [
+        56,
+        26,
+        500,
+        22
+      ],
+      "geometry": "rect",
+      "text": "COZEA  /  OPPORTUNITY",
+      "textPreview": "COZEA  /  OPPORTUNITY",
+      "resolvedFontSize": 13.33,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13.33,
+        "typeface": "Helvetica Neue",
+        "color": "#AEB9C7",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "COZEA  /  OPPORTUNITY"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "COZEA  /  OPPORTUNITY",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 13.33,
+            "typeface": "Helvetica Neue",
+            "color": "#AEB9C7",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "COZEA  /  OPPORTUNITY",
+              "fontSize": 13.33,
+              "typeface": "Helvetica Neue",
+              "color": "#AEB9C7",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qdwfqts7",
+      "id": "6",
+      "name": "slide-title",
+      "bbox": [
+        56,
+        64,
+        1168,
+        62
+      ],
+      "geometry": "rect",
+      "text": "A focused developer wedge can support a venture-scale business",
+      "textPreview": "A focused developer wedge can support a venture-scale business",
+      "resolvedFontSize": 36,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 36,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "A focused developer wedge can support a venture-scale business"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "A focused developer wedge can support a venture-scale business",
+          "lineSpacingPercent": 96000,
+          "resolvedTextStyle": {
+            "fontSize": 36,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 0.96
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "A focused developer wedge can support a venture-scale business",
+              "fontSize": 36,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 0.96
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/be5gzets",
+      "id": "7",
+      "name": "slide-subtitle",
+      "bbox": [
+        56,
+        130,
+        1168,
+        54
+      ],
+      "geometry": "rect",
+      "text": "Seat-based team revenue scales quickly even before adding enterprise platform fees or services. The scenarios below are illustrative, not forecasts.",
+      "textPreview": "Seat-based team revenue scales quickly even before adding enterprise platform fees or services. The scenarios below are illustrative, not...",
+      "resolvedFontSize": 20.83,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 21.33,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.98,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Seat-based team revenue scales quickly even before adding enterprise platform fees or services. The scenarios below are"
+          },
+          {
+            "index": 2,
+            "text": "illustrative, not forecasts."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Seat-based team revenue scales quickly even before adding enterprise platform fees or services. The scenarios below are illustrative, not forecasts.",
+          "lineSpacingPercent": 108000,
+          "resolvedTextStyle": {
+            "fontSize": 21.33,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.08
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Seat-based team revenue scales quickly even before adding enterprise platform fees or services. The scenarios below are illustrative, not forecasts.",
+              "fontSize": 21.33,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.08
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "chart",
+      "scope": "slide",
+      "aid": "ch/4za9czql",
+      "id": "8",
+      "bbox": [
+        70,
+        238,
+        730,
+        360
+      ],
+      "chartType": "bar"
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lk7y58bu",
+      "id": "9",
+      "bbox": [
+        862,
+        246,
+        170,
+        24
+      ],
+      "geometry": "rect",
+      "text": "MODELED INPUTS",
+      "textPreview": "MODELED INPUTS",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "MODELED INPUTS"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "MODELED INPUTS",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "MODELED INPUTS",
+              "fontSize": 14,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/pknitgrq",
+      "id": "10",
+      "bbox": [
+        862,
+        292,
+        150,
+        60
+      ],
+      "geometry": "rect",
+      "text": "$30",
+      "textPreview": "$30",
+      "resolvedFontSize": 47.62,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 48,
+        "typeface": "Helvetica Neue",
+        "color": "#55B6FF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.99,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "$30"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "$30",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 48,
+            "typeface": "Helvetica Neue",
+            "color": "#55B6FF",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "$30",
+              "fontSize": 48,
+              "typeface": "Helvetica Neue",
+              "color": "#55B6FF",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/oje1kba5",
+      "id": "11",
+      "bbox": [
+        862,
+        354,
+        314,
+        52
+      ],
+      "geometry": "rect",
+      "text": "monthly seat price for the first two scenarios",
+      "textPreview": "monthly seat price for the first two scenarios",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "monthly seat price for the first two"
+          },
+          {
+            "index": 2,
+            "text": "scenarios"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "monthly seat price for the first two scenarios",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "monthly seat price for the first two scenarios",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3i50r69k",
+      "id": "12",
+      "bbox": [
+        862,
+        430,
+        314,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2hwjilsz",
+      "id": "13",
+      "bbox": [
+        862,
+        454,
+        150,
+        60
+      ],
+      "geometry": "rect",
+      "text": "$40",
+      "textPreview": "$40",
+      "resolvedFontSize": 47.62,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 48,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.99,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "$40"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "$40",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 48,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "$40",
+              "fontSize": 48,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/do7ix0rm",
+      "id": "14",
+      "bbox": [
+        862,
+        516,
+        314,
+        70
+      ],
+      "geometry": "rect",
+      "text": "monthly seat price for the 500K-seat scenario; equal to Cursor Standard Teams pricing",
+      "textPreview": "monthly seat price for the 500K-seat scenario; equal to Cursor Standard Teams pricing",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "monthly seat price for the 500K-seat"
+          },
+          {
+            "index": 2,
+            "text": "scenario; equal to Cursor Standard"
+          },
+          {
+            "index": 3,
+            "text": "Teams pricing"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "monthly seat price for the 500K-seat scenario; equal to Cursor Standard Teams pricing",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "monthly seat price for the 500K-seat scenario; equal to Cursor Standard Teams pricing",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cny1ova1",
+      "id": "15",
+      "bbox": [
+        70,
+        618,
+        1106,
+        38
+      ],
+      "geometry": "rect",
+      "text": "The strategic question is not whether developer spend exists—it is whether Cozea can earn a durable share by owning cross-provider team workflows.",
+      "textPreview": "The strategic question is not whether developer spend exists—it is whether Cozea can earn a durable share by owning cross-provider team w...",
+      "resolvedFontSize": 15.35,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "center",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.85,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The strategic question is not whether developer spend exists—it is whether Cozea can earn a durable share by owning cross-provider team workflows."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The strategic question is not whether developer spend exists—it is whether Cozea can earn a durable share by owning cross-provider team workflows.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "center",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The strategic question is not whether developer spend exists—it is whether Cozea can earn a durable share by owning cross-provider team workflows.",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "center",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/bmp0vq9w",
+      "id": "16",
+      "bbox": [
+        56,
+        676,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qlgjmlsb",
+      "id": "17",
+      "name": "source-footer",
+      "bbox": [
+        56,
+        684,
+        1030,
+        20
+      ],
+      "geometry": "rect",
+      "text": "Illustrative calculation: seats × monthly price × 12. Cursor $40 reference sourced from official 2026 pricing.",
+      "textPreview": "Illustrative calculation: seats × monthly price × 12. Cursor $40 reference sourced from official 2026 pricing.",
+      "resolvedFontSize": 10.67,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 10.67,
+        "typeface": "Helvetica Neue",
+        "color": "#717B8C",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Illustrative calculation: seats × monthly price × 12. Cursor $40 reference sourced from official 2026 pricing."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Illustrative calculation: seats × monthly price × 12. Cursor $40 reference sourced from official 2026 pricing.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 10.67,
+            "typeface": "Helvetica Neue",
+            "color": "#717B8C",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Illustrative calculation: seats × monthly price × 12. Cursor $40 reference sourced from official 2026 pricing.",
+              "fontSize": 10.67,
+              "typeface": "Helvetica Neue",
+              "color": "#717B8C",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ts3ilwri",
+      "id": "18",
+      "name": "page-number",
+      "bbox": [
+        1178,
+        682,
+        38,
+        20
+      ],
+      "geometry": "rect",
+      "text": "15",
+      "textPreview": "15",
+      "resolvedFontSize": 12,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "center",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "15"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "15",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "center",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "15",
+              "fontSize": 12,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "center",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

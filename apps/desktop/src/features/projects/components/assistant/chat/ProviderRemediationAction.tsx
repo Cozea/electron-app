@@ -1,17 +1,33 @@
+import { CheckmarkCircle02Icon, Copy01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import type { AgentToolId } from "@shared/electronApiTypes"
+import {
+  isProviderRemediationResolved,
+  markProviderRemediationResolved,
+} from "./providerRemediationResolutionStore"
 
-type RemediationKind = "install" | "login"
-
-interface ProviderRemediation {
-  kind: RemediationKind
+interface InstallRemediation {
+  kind: "install"
   toolId: AgentToolId
   label: string
 }
+
+interface LoginRemediation {
+  kind: "login"
+  toolId: AgentToolId
+  providerName: string
+  command: string
+  nextStep: string
+  canStartInCozea: boolean
+}
+
+export type ProviderRemediation = InstallRemediation | LoginRemediation
 
 const PROVIDER_TOOL_IDS: Record<string, AgentToolId> = {
   claudeAgent: "claude",
@@ -29,28 +45,64 @@ const TOOL_LABELS: Record<string, string> = {
   opencode: "OpenCode CLI",
 }
 
-/** Tools with an automated browser login flow (fixed argv in the main
- * process); install works for any tool with a known package/installer. */
-const LOGIN_LABELS: Partial<Record<AgentToolId, string>> = {
-  claude: "Run claude auth login",
-  codex: "Run codex login",
-  cursor: "Run agent login",
+/**
+ * Exact terminal entry points for each supported agent. Cozea can also start
+ * the three browser-login flows already exposed by the native bridge.
+ */
+const LOGIN_INSTRUCTIONS: Partial<
+  Record<AgentToolId, Omit<LoginRemediation, "kind" | "toolId">>
+> = {
+  claude: {
+    providerName: "Claude",
+    command: "claude auth login",
+    nextStep: "Complete the Anthropic sign-in in your browser, then return to Cozea.",
+    canStartInCozea: true,
+  },
+  codex: {
+    providerName: "Codex",
+    command: "codex login",
+    nextStep: "Complete the OpenAI sign-in in your browser, then return to Cozea.",
+    canStartInCozea: true,
+  },
+  cursor: {
+    providerName: "Cursor",
+    command: "agent login",
+    nextStep: "Complete the Cursor sign-in in your browser, then return to Cozea.",
+    canStartInCozea: true,
+  },
+  opencode: {
+    providerName: "OpenCode",
+    command: "opencode auth login",
+    nextStep: "Choose a provider and complete its authentication flow, then return to Cozea.",
+    canStartInCozea: false,
+  },
+  gemini: {
+    providerName: "Gemini",
+    command: "gemini",
+    nextStep: 'Select “Sign in with Google,” finish in your browser, then return to Cozea.',
+    canStartInCozea: false,
+  },
 }
 
 export function resolveProviderRemediation(
   provider: string | null | undefined,
   message: string | null | undefined,
+  authenticationRequired = false,
 ): ProviderRemediation | null {
-  if (!provider || !message) return null
+  if (!provider || (!message && !authenticationRequired)) return null
   const toolId = PROVIDER_TOOL_IDS[provider]
   if (!toolId) return null
 
-  if (/not installed|not on PATH/i.test(message)) {
+  if (message && /not installed|not on PATH/i.test(message)) {
     return { kind: "install", toolId, label: `Install ${TOOL_LABELS[toolId] ?? toolId}` }
   }
-  const loginLabel = LOGIN_LABELS[toolId]
-  if (loginLabel && /not authenticated|login required|log ?in and try again/i.test(message)) {
-    return { kind: "login", toolId, label: loginLabel }
+  const loginInstructions = LOGIN_INSTRUCTIONS[toolId]
+  const messageRequiresLogin =
+    /not authenticated|unauthenticated|not logged in|authentication required|login required|log ?in and try again|sign ?in required|please (?:log|sign) ?in|(?:please\s+)?run\s+\/login\b/i.test(
+      message ?? "",
+    )
+  if (loginInstructions && (authenticationRequired || messageRequiresLogin)) {
+    return { kind: "login", toolId, ...loginInstructions }
   }
   return null
 }
@@ -71,20 +123,29 @@ async function refreshProviderAvailability(): Promise<void> {
 }
 
 /**
- * One-click fix for "CLI not installed" / "not authenticated" provider
- * errors: runs the headless install (login shell) or the CLI's own browser
- * login flow through the main process — no terminal needed. Device-code
- * login flows surface an inline code field wired to the CLI's stdin.
+ * Actionable help for "CLI not installed" / "not authenticated" provider
+ * errors. Authentication states always show the exact terminal command, and
+ * native-supported tools retain their one-click browser login flow.
  */
 export function ProviderRemediationAction(props: {
   provider: string | null | undefined
   message: string | null | undefined
+  authenticationRequired?: boolean
+  /** Keeps a successful UI result stable when virtualized content remounts. */
+  persistenceKey?: string
   /** Called after a successful run so the host can re-probe/retry. */
   onResolved?: () => void
 }) {
-  const remediation = resolveProviderRemediation(props.provider, props.message)
-  const [runState, setRunState] = useState<RunState>({ phase: "idle" })
+  const remediation = resolveProviderRemediation(
+    props.provider,
+    props.message,
+    props.authenticationRequired,
+  )
+  const [runState, setRunState] = useState<RunState>(() =>
+    isProviderRemediationResolved(props.persistenceKey) ? { phase: "done" } : { phase: "idle" },
+  )
   const [codeDraft, setCodeDraft] = useState("")
+  const { copyToClipboard, isCopied } = useCopyToClipboard()
   const mountedRef = useRef(true)
   const runStateRef = useRef(runState)
   runStateRef.current = runState
@@ -107,20 +168,29 @@ export function ProviderRemediationAction(props: {
   }, [])
 
   // New message/provider: a previous outcome no longer applies.
-  const remediationKey = remediation ? `${remediation.kind}:${remediation.toolId}` : null
+  const remediationKey = remediation
+    ? `${remediation.kind}:${remediation.toolId}:${props.persistenceKey ?? "transient"}`
+    : null
   const lastKeyRef = useRef(remediationKey)
   useEffect(() => {
     if (lastKeyRef.current !== remediationKey) {
       lastKeyRef.current = remediationKey
-      setRunState({ phase: "idle" })
+      setRunState(
+        isProviderRemediationResolved(props.persistenceKey)
+          ? { phase: "done" }
+          : { phase: "idle" },
+      )
       setCodeDraft("")
     }
-  }, [remediationKey])
+  }, [props.persistenceKey, remediationKey])
 
   if (!remediation) return null
 
   const finish = (next: RunState) => {
     if (!mountedRef.current) return
+    if (next.phase === "done") {
+      markProviderRemediationResolved(props.persistenceKey)
+    }
     setRunState(next)
     if (next.phase === "done") {
       void refreshProviderAvailability()
@@ -186,7 +256,11 @@ export function ProviderRemediationAction(props: {
   }
 
   if (runState.phase === "done") {
-    return <span className="shrink-0 text-xs text-success">Done — try again.</span>
+    return (
+      <span className="shrink-0 text-xs text-success">
+        {remediation.kind === "login" ? "Signed in successfully." : "Done — try again."}
+      </span>
+    )
   }
 
   if (runState.phase === "running" && runState.awaitingCode) {
@@ -219,6 +293,62 @@ export function ProviderRemediationAction(props: {
     )
   }
 
+  if (remediation.kind === "login") {
+    return (
+      <div className="w-full max-w-md space-y-2.5 text-left">
+        <p className="text-xs leading-5 text-muted-foreground">
+          Open Terminal, paste this command, and complete the sign-in flow.
+        </p>
+        <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/70 p-1.5 pl-3">
+          <code className="min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap font-mono text-xs text-foreground">
+            {remediation.command}
+          </code>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 shrink-0 gap-1.5 px-2 text-xs sm:h-7"
+            onClick={() => copyToClipboard(remediation.command)}
+            aria-label={isCopied ? "Command copied" : "Copy login command"}
+          >
+            <HugeiconsIcon
+              icon={isCopied ? CheckmarkCircle02Icon : Copy01Icon}
+              className={isCopied ? "size-3.5 text-success" : "size-3.5"}
+            />
+            {isCopied ? "Copied" : "Copy"}
+          </Button>
+        </div>
+        <p className="text-[11px] leading-4 text-muted-foreground">{remediation.nextStep}</p>
+        {runState.phase === "failed" ? (
+          <p className="text-xs text-destructive" role="alert">
+            {runState.error}
+          </p>
+        ) : null}
+        {remediation.canStartInCozea ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2.5 text-xs sm:h-7"
+            disabled={runState.phase === "running"}
+            onClick={() => void runLogin()}
+          >
+            {runState.phase === "running" ? (
+              <span className="flex items-center gap-1.5">
+                <span className="loader" />
+                Waiting for browser login…
+              </span>
+            ) : runState.phase === "failed" ? (
+              "Retry login in Cozea"
+            ) : (
+              "Start login in Cozea"
+            )}
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <span className="flex shrink-0 items-center gap-2">
       {runState.phase === "failed" ? (
@@ -233,13 +363,13 @@ export function ProviderRemediationAction(props: {
         className="h-6 shrink-0 px-2 text-xs sm:h-6"
         disabled={runState.phase === "running"}
         onClick={() => {
-          void (remediation.kind === "install" ? runInstall() : runLogin())
+          void runInstall()
         }}
       >
         {runState.phase === "running" ? (
           <span className="flex items-center gap-1.5">
             <span className="loader" />
-            {remediation.kind === "install" ? "Installing…" : "Waiting for browser login…"}
+            Installing…
           </span>
         ) : runState.phase === "failed" ? (
           "Retry"
@@ -248,5 +378,64 @@ export function ProviderRemediationAction(props: {
         )}
       </Button>
     </span>
+  )
+}
+
+/**
+ * Inline recovery for providers that report missing authentication as a
+ * regular assistant reply instead of a provider or thread error state.
+ */
+export function ProviderAuthenticationHelp(props: {
+  provider: string | null | undefined
+  message: string | null | undefined
+  messageId?: string
+  isStreaming?: boolean
+  isSuperseded?: boolean
+}) {
+  const remediation = resolveProviderRemediation(props.provider, props.message)
+  if (props.isStreaming || props.isSuperseded || remediation?.kind !== "login") return null
+
+  return (
+    <ProviderAuthenticationHelpContent
+      provider={props.provider}
+      message={props.message}
+      messageId={props.messageId}
+      remediation={remediation}
+    />
+  )
+}
+
+function ProviderAuthenticationHelpContent(props: {
+  provider: string | null | undefined
+  message: string | null | undefined
+  messageId?: string
+  remediation: LoginRemediation
+}) {
+  const persistenceKey = props.messageId
+    ? `${props.remediation.toolId}:${props.messageId}`
+    : undefined
+  const [isResolved, setIsResolved] = useState(() =>
+    isProviderRemediationResolved(persistenceKey),
+  )
+
+  useEffect(() => {
+    setIsResolved(isProviderRemediationResolved(persistenceKey))
+  }, [persistenceKey])
+
+  return (
+    <section
+      className="mt-3 w-full max-w-md rounded-xl bg-secondary/55 px-3 py-3 text-left"
+      aria-label={`${isResolved ? "Signed in to" : "Sign in to"} ${props.remediation.providerName}`}
+    >
+      <h3 className="mb-1 text-xs font-medium text-foreground">
+        {isResolved ? "Signed in to" : "Sign in to"} {props.remediation.providerName}
+      </h3>
+      <ProviderRemediationAction
+        provider={props.provider}
+        message={props.message}
+        persistenceKey={persistenceKey}
+        onResolved={() => setIsResolved(true)}
+      />
+    </section>
   )
 }

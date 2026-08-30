@@ -1,0 +1,2686 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/qyakxt",
+    "id": "qyakxt",
+    "slide": 11,
+    "layoutId": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F9FC",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Helvetica Neue"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/14nylove",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "alt": "Subtle graphite and brushed-metal presentation background",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "a66ad722-f85a-4e4a-bcab-943e119f613c",
+        "contentType": "image/png",
+        "byteLength": 1594239
+      }
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/r2xg3mls",
+      "id": "2",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "rgba(5, 7, 10, 0.47059)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/q1ozahk7",
+      "id": "3",
+      "bbox": [
+        56,
+        18,
+        116,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#596677",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/18zi9w3u",
+      "id": "4",
+      "bbox": [
+        172,
+        18,
+        34,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#55B6FF",
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/07qhgr29",
+      "id": "5",
+      "name": "deck-section",
+      "bbox": [
+        56,
+        26,
+        500,
+        22
+      ],
+      "geometry": "rect",
+      "text": "COZEA  /  COMPETITION",
+      "textPreview": "COZEA  /  COMPETITION",
+      "resolvedFontSize": 13.33,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13.33,
+        "typeface": "Helvetica Neue",
+        "color": "#AEB9C7",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "COZEA  /  COMPETITION"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "COZEA  /  COMPETITION",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 13.33,
+            "typeface": "Helvetica Neue",
+            "color": "#AEB9C7",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "COZEA  /  COMPETITION",
+              "fontSize": 13.33,
+              "typeface": "Helvetica Neue",
+              "color": "#AEB9C7",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/f6x076lo",
+      "id": "6",
+      "name": "slide-title",
+      "bbox": [
+        56,
+        64,
+        1168,
+        62
+      ],
+      "geometry": "rect",
+      "text": "Cozea is a control plane, not another coding model",
+      "textPreview": "Cozea is a control plane, not another coding model",
+      "resolvedFontSize": 44,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 44,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Cozea is a control plane, not another coding model"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Cozea is a control plane, not another coding model",
+          "lineSpacingPercent": 96000,
+          "resolvedTextStyle": {
+            "fontSize": 44,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 0.96
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cozea is a control plane, not another coding model",
+              "fontSize": 44,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 0.96
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/e5oze1k3",
+      "id": "7",
+      "name": "slide-subtitle",
+      "bbox": [
+        56,
+        130,
+        1168,
+        54
+      ],
+      "geometry": "rect",
+      "text": "Cursor, Codex, and Claude Code validate agentic development; Cozea differentiates by coordinating multiple providers and multiple teammates in a shared programmable workspace.",
+      "textPreview": "Cursor, Codex, and Claude Code validate agentic development; Cozea differentiates by coordinating multiple providers and multiple teammat...",
+      "resolvedFontSize": 20.83,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 21.33,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.98,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Cursor, Codex, and Claude Code validate agentic development; Cozea differentiates by coordinating multiple providers and"
+          },
+          {
+            "index": 2,
+            "text": "multiple teammates in a shared programmable workspace."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Cursor, Codex, and Claude Code validate agentic development; Cozea differentiates by coordinating multiple providers and multiple teammates in a shared programmable workspace.",
+          "lineSpacingPercent": 108000,
+          "resolvedTextStyle": {
+            "fontSize": 21.33,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.08
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cursor, Codex, and Claude Code validate agentic development; Cozea differentiates by coordinating multiple providers and multiple teammates in a shared programmable workspace.",
+              "fontSize": 21.33,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.08
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/hcvyxc3a",
+      "id": "8",
+      "bbox": [
+        66,
+        226,
+        164,
+        36
+      ],
+      "geometry": "rect",
+      "text": "Product",
+      "textPreview": "Product",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Product"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Product",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Product",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/gbmh472p",
+      "id": "9",
+      "bbox": [
+        246,
+        226,
+        266,
+        36
+      ],
+      "geometry": "rect",
+      "text": "Primary promise",
+      "textPreview": "Primary promise",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Primary promise"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Primary promise",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Primary promise",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ixgbytor",
+      "id": "10",
+      "bbox": [
+        528,
+        226,
+        212,
+        36
+      ],
+      "geometry": "rect",
+      "text": "Provider posture",
+      "textPreview": "Provider posture",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Provider posture"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Provider posture",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Provider posture",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jy9c7ypc",
+      "id": "11",
+      "bbox": [
+        756,
+        226,
+        236,
+        36
+      ],
+      "geometry": "rect",
+      "text": "Team collaboration",
+      "textPreview": "Team collaboration",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Team collaboration"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Team collaboration",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Team collaboration",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kzit036x",
+      "id": "12",
+      "bbox": [
+        1008,
+        226,
+        204,
+        36
+      ],
+      "geometry": "rect",
+      "text": "Extensibility",
+      "textPreview": "Extensibility",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Extensibility"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Extensibility",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Extensibility",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/50ru987i",
+      "id": "13",
+      "bbox": [
+        58,
+        272,
+        1162,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#F5F7FB",
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/610b2do3",
+      "id": "14",
+      "bbox": [
+        58,
+        278,
+        1162,
+        88
+      ],
+      "geometry": "rect",
+      "fillColor": "#102B3D",
+      "lineColor": "#1976D2",
+      "lineWidth": 1
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/729cbipo",
+      "id": "15",
+      "bbox": [
+        66,
+        290,
+        164,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Cozea",
+      "textPreview": "Cozea",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Cozea"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Cozea",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cozea",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/s3it4n69",
+      "id": "16",
+      "bbox": [
+        246,
+        290,
+        266,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Team operating system for agentic software work",
+      "textPreview": "Team operating system for agentic software work",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Team operating system for"
+          },
+          {
+            "index": 2,
+            "text": "agentic software work"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Team operating system for agentic software work",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Team operating system for agentic software work",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/toruds7e",
+      "id": "17",
+      "bbox": [
+        528,
+        290,
+        212,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Provider-neutral; hosts Codex, Claude, Cursor, OpenCode",
+      "textPreview": "Provider-neutral; hosts Codex, Claude, Cursor, OpenCode",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Provider-neutral; hosts"
+          },
+          {
+            "index": 2,
+            "text": "Codex, Claude, Cursor,"
+          },
+          {
+            "index": 3,
+            "text": "OpenCode"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Provider-neutral; hosts Codex, Claude, Cursor, OpenCode",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Provider-neutral; hosts Codex, Claude, Cursor, OpenCode",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/upkb6doz",
+      "id": "18",
+      "bbox": [
+        756,
+        290,
+        236,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Live shared workbench and project context",
+      "textPreview": "Live shared workbench and project context",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Live shared workbench and"
+          },
+          {
+            "index": 2,
+            "text": "project context"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Live shared workbench and project context",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Live shared workbench and project context",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/fqtcfipk",
+      "id": "19",
+      "bbox": [
+        1008,
+        290,
+        204,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Organization-wide DevApps and workflow composition",
+      "textPreview": "Organization-wide DevApps and workflow composition",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Organization-wide"
+          },
+          {
+            "index": 2,
+            "text": "DevApps and workflow"
+          },
+          {
+            "index": 3,
+            "text": "composition"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Organization-wide DevApps and workflow composition",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Organization-wide DevApps and workflow composition",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ruts3ils",
+      "id": "20",
+      "bbox": [
+        58,
+        368,
+        1162,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qtkbux47",
+      "id": "21",
+      "bbox": [
+        66,
+        380,
+        164,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Cursor",
+      "textPreview": "Cursor",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Cursor"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Cursor",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cursor",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/dwva5s3y",
+      "id": "22",
+      "bbox": [
+        246,
+        380,
+        266,
+        70
+      ],
+      "geometry": "rect",
+      "text": "AI-native editor, cloud agents, and team administration",
+      "textPreview": "AI-native editor, cloud agents, and team administration",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "AI-native editor, cloud agents, and"
+          },
+          {
+            "index": 2,
+            "text": "team administration"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "AI-native editor, cloud agents, and team administration",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "AI-native editor, cloud agents, and team administration",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cv2twnmd",
+      "id": "23",
+      "bbox": [
+        528,
+        380,
+        212,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Multi-model inside Cursor's product and pricing layer",
+      "textPreview": "Multi-model inside Cursor's product and pricing layer",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Multi-model inside Cursor's"
+          },
+          {
+            "index": 2,
+            "text": "product and pricing layer"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Multi-model inside Cursor's product and pricing layer",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Multi-model inside Cursor's product and pricing layer",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 24,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3qtszi5g",
+      "id": "24",
+      "bbox": [
+        756,
+        380,
+        236,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Team billing, analytics, shared context and cloud agents",
+      "textPreview": "Team billing, analytics, shared context and cloud agents",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Team billing, analytics, shared"
+          },
+          {
+            "index": 2,
+            "text": "context and cloud agents"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Team billing, analytics, shared context and cloud agents",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Team billing, analytics, shared context and cloud agents",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 25,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/25kbqd4b",
+      "id": "25",
+      "bbox": [
+        1008,
+        380,
+        204,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Rules, skills, plugins, SDK and marketplace",
+      "textPreview": "Rules, skills, plugins, SDK and marketplace",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Rules, skills, plugins, SDK"
+          },
+          {
+            "index": 2,
+            "text": "and marketplace"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Rules, skills, plugins, SDK and marketplace",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Rules, skills, plugins, SDK and marketplace",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 26,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/psba1snm",
+      "id": "26",
+      "bbox": [
+        58,
+        458,
+        1162,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 27,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/4r2tsnm1",
+      "id": "27",
+      "bbox": [
+        66,
+        470,
+        164,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Codex",
+      "textPreview": "Codex",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Codex"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Codex",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Codex",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 28,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/f29svy5k",
+      "id": "28",
+      "bbox": [
+        246,
+        470,
+        266,
+        70
+      ],
+      "geometry": "rect",
+      "text": "OpenAI command center for parallel coding agents",
+      "textPreview": "OpenAI command center for parallel coding agents",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "OpenAI command center for"
+          },
+          {
+            "index": 2,
+            "text": "parallel coding agents"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "OpenAI command center for parallel coding agents",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "OpenAI command center for parallel coding agents",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 29,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u10bmd4z",
+      "id": "29",
+      "bbox": [
+        528,
+        470,
+        212,
+        70
+      ],
+      "geometry": "rect",
+      "text": "OpenAI-first model and agent ecosystem",
+      "textPreview": "OpenAI-first model and agent ecosystem",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "OpenAI-first model and"
+          },
+          {
+            "index": 2,
+            "text": "agent ecosystem"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "OpenAI-first model and agent ecosystem",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "OpenAI-first model and agent ecosystem",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 30,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/k7ypwz2x",
+      "id": "30",
+      "bbox": [
+        756,
+        470,
+        236,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Threads, worktrees, review, and handoff around agent tasks",
+      "textPreview": "Threads, worktrees, review, and handoff around agent tasks",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Threads, worktrees, review, and"
+          },
+          {
+            "index": 2,
+            "text": "handoff around agent tasks"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Threads, worktrees, review, and handoff around agent tasks",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Threads, worktrees, review, and handoff around agent tasks",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 31,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/587q543i",
+      "id": "31",
+      "bbox": [
+        1008,
+        470,
+        204,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Skills and automations within Codex",
+      "textPreview": "Skills and automations within Codex",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Skills and automations"
+          },
+          {
+            "index": 2,
+            "text": "within Codex"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Skills and automations within Codex",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Skills and automations within Codex",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 32,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/i5g7u9kr",
+      "id": "32",
+      "bbox": [
+        58,
+        548,
+        1162,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 33,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/j6p83elc",
+      "id": "33",
+      "bbox": [
+        66,
+        560,
+        164,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Claude Code",
+      "textPreview": "Claude Code",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Claude Code"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Claude Code",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Claude Code",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 34,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/sbyp0j2t",
+      "id": "34",
+      "bbox": [
+        246,
+        560,
+        266,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Anthropic coding agent in terminal and IDE surfaces",
+      "textPreview": "Anthropic coding agent in terminal and IDE surfaces",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Anthropic coding agent in terminal"
+          },
+          {
+            "index": 2,
+            "text": "and IDE surfaces"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Anthropic coding agent in terminal and IDE surfaces",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Anthropic coding agent in terminal and IDE surfaces",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 35,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tw7q9oje",
+      "id": "35",
+      "bbox": [
+        528,
+        560,
+        212,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Anthropic-first; configurable enterprise gateways",
+      "textPreview": "Anthropic-first; configurable enterprise gateways",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Anthropic-first; configurable"
+          },
+          {
+            "index": 2,
+            "text": "enterprise gateways"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Anthropic-first; configurable enterprise gateways",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Anthropic-first; configurable enterprise gateways",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 36,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/69g7y9k3",
+      "id": "36",
+      "bbox": [
+        756,
+        560,
+        236,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Agent teams, subagents, and developer-controlled sessions",
+      "textPreview": "Agent teams, subagents, and developer-controlled sessions",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Agent teams, subagents, and"
+          },
+          {
+            "index": 2,
+            "text": "developer-controlled sessions"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Agent teams, subagents, and developer-controlled sessions",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Agent teams, subagents, and developer-controlled sessions",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 37,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/7ap87e18",
+      "id": "37",
+      "bbox": [
+        1008,
+        560,
+        204,
+        70
+      ],
+      "geometry": "rect",
+      "text": "Hooks, MCP, SDK, and CLI workflows",
+      "textPreview": "Hooks, MCP, SDK, and CLI workflows",
+      "resolvedFontSize": 16.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Hooks, MCP, SDK, and CLI"
+          },
+          {
+            "index": 2,
+            "text": "workflows"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Hooks, MCP, SDK, and CLI workflows",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.06
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Hooks, MCP, SDK, and CLI workflows",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.06
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 38,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ofepof2p",
+      "id": "38",
+      "bbox": [
+        58,
+        638,
+        1162,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 39,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/90nqxk3a",
+      "id": "39",
+      "bbox": [
+        238,
+        226,
+        1,
+        414
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 40,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1wzixk3e",
+      "id": "40",
+      "bbox": [
+        520,
+        226,
+        1,
+        414
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 41,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/gvqh4f2t",
+      "id": "41",
+      "bbox": [
+        748,
+        226,
+        1,
+        414
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 42,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/fuh0valo",
+      "id": "42",
+      "bbox": [
+        1000,
+        226,
+        1,
+        414
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 43,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/etoz2pk3",
+      "id": "43",
+      "bbox": [
+        58,
+        640,
+        170,
+        24
+      ],
+      "geometry": "rect",
+      "text": "Positioning discipline",
+      "textPreview": "Positioning discipline",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "Helvetica Neue",
+        "color": "#55B6FF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Positioning discipline"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Positioning discipline",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Helvetica Neue",
+            "color": "#55B6FF",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Positioning discipline",
+              "fontSize": 14,
+              "typeface": "Helvetica Neue",
+              "color": "#55B6FF",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 44,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tsfitk3i",
+      "id": "44",
+      "bbox": [
+        230,
+        636,
+        990,
+        32
+      ],
+      "geometry": "rect",
+      "text": "Do not claim that incumbents lack agents, worktrees, teams, or extensions. Win on cross-provider human collaboration and workflow composition.",
+      "textPreview": "Do not claim that incumbents lack agents, worktrees, teams, or extensions. Win on cross-provider human collaboration and workflow composi...",
+      "resolvedFontSize": 14.08,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16.51,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.85,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Do not claim that incumbents lack agents, worktrees, teams, or extensions. Win on cross-provider human collaboration and workflow composition."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Do not claim that incumbents lack agents, worktrees, teams, or extensions. Win on cross-provider human collaboration and workflow composition.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16.51,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Do not claim that incumbents lack agents, worktrees, teams, or extensions. Win on cross-provider human collaboration and workflow composition.",
+              "fontSize": 16.51,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 45,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/s76h0f2x",
+      "id": "45",
+      "bbox": [
+        56,
+        676,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 46,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/r6xgralc",
+      "id": "46",
+      "name": "source-footer",
+      "bbox": [
+        56,
+        684,
+        1030,
+        20
+      ],
+      "geometry": "rect",
+      "text": "Sources: official Cozea, Cursor, OpenAI, and Anthropic product pages. Comparison reflects primary product posture, not exhaustive parity.",
+      "textPreview": "Sources: official Cozea, Cursor, OpenAI, and Anthropic product pages. Comparison reflects primary product posture, not exhaustive parity.",
+      "resolvedFontSize": 10.67,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 10.67,
+        "typeface": "Helvetica Neue",
+        "color": "#717B8C",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Sources: official Cozea, Cursor, OpenAI, and Anthropic product pages. Comparison reflects primary product posture, not exhaustive parity."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Sources: official Cozea, Cursor, OpenAI, and Anthropic product pages. Comparison reflects primary product posture, not exhaustive parity.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 10.67,
+            "typeface": "Helvetica Neue",
+            "color": "#717B8C",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Sources: official Cozea, Cursor, OpenAI, and Anthropic product pages. Comparison reflects primary product posture, not exhaustive parity.",
+              "fontSize": 10.67,
+              "typeface": "Helvetica Neue",
+              "color": "#717B8C",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 47,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/65ozy5kr",
+      "id": "47",
+      "name": "page-number",
+      "bbox": [
+        1178,
+        682,
+        38,
+        20
+      ],
+      "geometry": "rect",
+      "text": "11",
+      "textPreview": "11",
+      "resolvedFontSize": 12,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "center",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "11"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "11",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "center",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "11",
+              "fontSize": 12,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "center",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

@@ -13,6 +13,7 @@ import {
   SettingsSectionDescription,
   SettingsSectionTitle,
 } from "@/components/settings/SettingsChrome";
+import { PublicIdDisclosure } from "@/components/settings/PublicIdDisclosure";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -53,7 +54,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({
     pushNotifications: true,
   });
-  const [copied, setCopied] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
 
@@ -71,13 +71,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       ? `${user.firstName} ${user.lastName || ""}`.trim()
       : t("settings.account.thisDevice");
   const identityKey = profile?.identityKey ?? user?.deviceId ?? user?.id ?? "";
-
-  const copyIdentityKey = async () => {
-    if (!identityKey) return;
-    await navigator.clipboard.writeText(identityKey);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2_000);
-  };
 
   const handlePrefChange = async (key: keyof UserPrefs, value: boolean) => {
     if (!convexUserId) return;
@@ -128,21 +121,12 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
           <SettingsRow isFirst className="items-center">
             <div className="min-w-0 flex-1">
               <span className="text-xs font-medium text-foreground">{t("settings.account.thisDevice")}</span>
-              <p className="max-w-[34rem] truncate font-mono text-[11px] text-muted-foreground">
-                {identityKey || t("common.loading")}
-              </p>
+              <PublicIdDisclosure
+                value={identityKey}
+                label={t("settings.account.deviceIdentity")}
+                className="max-w-[42rem]"
+              />
             </div>
-            <SettingsRowControl>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-[11px]"
-                disabled={!identityKey}
-                onClick={() => void copyIdentityKey()}
-              >
-                {copied ? t("common.copied") : t("common.copy")}
-              </Button>
-            </SettingsRowControl>
           </SettingsRow>
         </SettingsGroup>
       </section>

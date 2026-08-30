@@ -161,7 +161,10 @@ export function AppStorePage() {
                     {t("appStore.page.privateDevAppsDesc")}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-indigo-500/10 px-3 py-1 text-xs text-indigo-700 dark:text-indigo-300">
+                <span
+                  data-store-organization-accent
+                  className="shrink-0 rounded-full bg-[var(--store-organization-accent-surface)] px-3 py-1 text-xs text-[var(--store-organization-accent)]"
+                >
                   {visibleOrgDevApps.length}{" "}
                   {visibleOrgDevApps.length === 1
                     ? t("appStore.page.release")
@@ -203,7 +206,8 @@ export function AppStorePage() {
                           </div>
                           <Badge
                             variant="secondary"
-                            className="h-6 rounded-full bg-indigo-500/10 px-2.5 text-[11px] font-normal text-indigo-700 dark:text-indigo-300"
+                            data-store-organization-accent
+                            className="h-6 rounded-full bg-[var(--store-organization-accent-surface)] px-2.5 text-[11px] font-normal text-[var(--store-organization-accent)]"
                           >
                             {t("appStore.page.privateBadge")}
                           </Badge>
@@ -221,7 +225,7 @@ export function AppStorePage() {
           ) : null}
 
           {visiblePreviewApps.length > 0 ? <section className="space-y-4">
-            <div className="flex items-end justify-between gap-4 px-1">
+            <div className="px-1">
               <div className="space-y-1">
                 <h2 className="text-xl font-medium tracking-[-0.03em] text-foreground">
                   {t('appStore.page.builtIn')}
@@ -230,9 +234,6 @@ export function AppStorePage() {
                   {t('appStore.page.builtInDesc')}
                 </p>
               </div>
-              <span className="rounded-full bg-muted/70 px-3 py-1 text-xs text-muted-foreground">
-                {t('appStore.page.availableNow')}
-              </span>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

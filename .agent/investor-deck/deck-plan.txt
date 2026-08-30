@@ -1,0 +1,28 @@
+Communication job
+
+By the end, early-stage software and AI investors should understand that Cozea can become both the provider-neutral team control plane for agentic development and the organization-wide distribution layer for internal DevApps, believe that a functioning product creates a credible wedge, and see a disciplined first-round plan to prove repeatable team adoption.
+
+Audience
+
+Pre-seed and seed investors evaluating AI developer tools, collaboration infrastructure, and enterprise software.
+
+Purpose
+
+Detailed investor read deck. It must stand alone without a live presenter, distinguish current product evidence from proposed strategy, and avoid invented traction, revenue, or customer claims.
+
+Narrative arc
+
+1. Agent capability is rising faster than team coordination.
+2. The market validates demand, but incumbent products optimize agents or individual developers.
+3. Cozea supplies the shared operating layer across people, providers, and tools.
+4. Product architecture, programmable workflows, and organization-wide DevApp distribution create defensibility.
+5. Free adoption plus team and enterprise controls create monetization.
+6. A focused first round funds commercial proof, not speculative scale.
+
+Visual route
+
+Codex Grid composition reference: white canvas, strong black typography, pale gray structural panels, thin rules, restrained light-blue accent, authentic Cozea screenshots as the dominant visual evidence. Candidate silhouettes: slide-08 image split, slide-10 text/checklist, slide-17 timeline, slide-19 metric-led. Adjacent slides vary between image-led, narrative, comparison, timeline, table, and metric compositions.
+
+Fundraising recommendation
+
+Founder-selected first-round ask: $1M for 10% ownership, equivalent to $10M post-money economics. The round is framed as a focused 15–18 month proof window for retention, paid adoption, and team expansion; final instrument and closing mechanics require counsel.

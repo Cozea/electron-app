@@ -1224,6 +1224,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               <ProviderRemediationAction
                 provider={props.selectedProvider}
                 message={threadRuntimeDetail}
+                authenticationRequired={props.providerSnapshot?.auth.status === "unauthenticated"}
               />
             }
           />

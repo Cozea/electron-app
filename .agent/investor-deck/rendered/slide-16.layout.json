@@ -1,0 +1,1685 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/vtjdbm",
+    "id": "vtjdbm",
+    "slide": 16,
+    "layoutId": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F9FC",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Helvetica Neue"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/0be5k7ud",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "alt": "Subtle graphite and brushed-metal presentation background",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "a7e2ff1e-9af7-4a49-af33-4490c6d3d89c",
+        "contentType": "image/png",
+        "byteLength": 1594239
+      }
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/atkzupsb",
+      "id": "2",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "rgba(5, 7, 10, 0.47059)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/vut03utw",
+      "id": "3",
+      "bbox": [
+        56,
+        18,
+        116,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#596677",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kj2h0zat",
+      "id": "4",
+      "bbox": [
+        172,
+        18,
+        34,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#55B6FF",
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/5kvi94ry",
+      "id": "5",
+      "name": "deck-section",
+      "bbox": [
+        56,
+        26,
+        500,
+        22
+      ],
+      "geometry": "rect",
+      "text": "COZEA  /  STAGE",
+      "textPreview": "COZEA  /  STAGE",
+      "resolvedFontSize": 13.33,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13.33,
+        "typeface": "Helvetica Neue",
+        "color": "#AEB9C7",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "COZEA  /  STAGE"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "COZEA  /  STAGE",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 13.33,
+            "typeface": "Helvetica Neue",
+            "color": "#AEB9C7",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "COZEA  /  STAGE",
+              "fontSize": 13.33,
+              "typeface": "Helvetica Neue",
+              "color": "#AEB9C7",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ihkzypsn",
+      "id": "6",
+      "name": "slide-title",
+      "bbox": [
+        56,
+        64,
+        1168,
+        62
+      ],
+      "geometry": "rect",
+      "text": "The product is beyond concept; the round funds commercial proof",
+      "textPreview": "The product is beyond concept; the round funds commercial proof",
+      "resolvedFontSize": 35,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 35,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The product is beyond concept; the round funds commercial proof"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The product is beyond concept; the round funds commercial proof",
+          "lineSpacingPercent": 96000,
+          "resolvedTextStyle": {
+            "fontSize": 35,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 0.96
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The product is beyond concept; the round funds commercial proof",
+              "fontSize": 35,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 0.96
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jit07u98",
+      "id": "7",
+      "name": "slide-subtitle",
+      "bbox": [
+        56,
+        130,
+        1168,
+        54
+      ],
+      "geometry": "rect",
+      "text": "Cozea already contains significant systems depth. The next valuation step comes from retained teams and repeatable paid demand.",
+      "textPreview": "Cozea already contains significant systems depth. The next valuation step comes from retained teams and repeatable paid demand.",
+      "resolvedFontSize": 20.83,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 21.33,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.98,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Cozea already contains significant systems depth. The next valuation step comes from retained teams and repeatable paid"
+          },
+          {
+            "index": 2,
+            "text": "demand."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Cozea already contains significant systems depth. The next valuation step comes from retained teams and repeatable paid demand.",
+          "lineSpacingPercent": 108000,
+          "resolvedTextStyle": {
+            "fontSize": 21.33,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.08
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cozea already contains significant systems depth. The next valuation step comes from retained teams and repeatable paid demand.",
+              "fontSize": 21.33,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.08
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0nihofa9",
+      "id": "8",
+      "bbox": [
+        58,
+        224,
+        200,
+        24
+      ],
+      "geometry": "rect",
+      "text": "PRODUCT EVIDENCE",
+      "textPreview": "PRODUCT EVIDENCE",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "PRODUCT EVIDENCE"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "PRODUCT EVIDENCE",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "PRODUCT EVIDENCE",
+              "fontSize": 14,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lorix0bu",
+      "id": "9",
+      "bbox": [
+        58,
+        266,
+        250,
+        90
+      ],
+      "geometry": "rect",
+      "text": "8",
+      "textPreview": "8",
+      "resolvedFontSize": 54,
+      "resolvedTextStyle": {
+        "anchor": 3,
+        "fontSize": 54,
+        "typeface": "Helvetica Neue",
+        "color": "#55B6FF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "bottom",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "8"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "8",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 54,
+            "typeface": "Helvetica Neue",
+            "color": "#55B6FF",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "8",
+              "fontSize": 54,
+              "typeface": "Helvetica Neue",
+              "color": "#55B6FF",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lsjmlwfy",
+      "id": "10",
+      "bbox": [
+        58,
+        362,
+        250,
+        54
+      ],
+      "geometry": "rect",
+      "text": "built-in DevApps across development and assistant workflows",
+      "textPreview": "built-in DevApps across development and assistant workflows",
+      "resolvedFontSize": 14.84,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.82,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "built-in DevApps across development"
+          },
+          {
+            "index": 2,
+            "text": "and assistant workflows"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "built-in DevApps across development and assistant workflows",
+          "lineSpacingPercent": 110000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.1
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "built-in DevApps across development and assistant workflows",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.1
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kralsred",
+      "id": "11",
+      "bbox": [
+        338,
+        266,
+        250,
+        90
+      ],
+      "geometry": "rect",
+      "text": "4",
+      "textPreview": "4",
+      "resolvedFontSize": 54,
+      "resolvedTextStyle": {
+        "anchor": 3,
+        "fontSize": 54,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "bottom",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "4"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "4",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 54,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "4",
+              "fontSize": 54,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jq14jmxs",
+      "id": "12",
+      "bbox": [
+        338,
+        362,
+        250,
+        54
+      ],
+      "geometry": "rect",
+      "text": "provider kinds supported in the local assistant runtime",
+      "textPreview": "provider kinds supported in the local assistant runtime",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "provider kinds supported in"
+          },
+          {
+            "index": 2,
+            "text": "the local assistant runtime"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "provider kinds supported in the local assistant runtime",
+          "lineSpacingPercent": 110000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.1
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "provider kinds supported in the local assistant runtime",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.1
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/yps3qhw7",
+      "id": "13",
+      "bbox": [
+        58,
+        446,
+        250,
+        90
+      ],
+      "geometry": "rect",
+      "text": "E2E",
+      "textPreview": "E2E",
+      "resolvedFontSize": 46,
+      "resolvedTextStyle": {
+        "anchor": 3,
+        "fontSize": 46,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "bottom",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "E2E"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "E2E",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 46,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "E2E",
+              "fontSize": 46,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tg3mpgfu",
+      "id": "14",
+      "bbox": [
+        58,
+        542,
+        250,
+        54
+      ],
+      "geometry": "rect",
+      "text": "encrypted collaboration updates, snapshots, and awareness payloads",
+      "textPreview": "encrypted collaboration updates, snapshots, and awareness payloads",
+      "resolvedFontSize": 15.35,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.85,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "encrypted collaboration updates,"
+          },
+          {
+            "index": 2,
+            "text": "snapshots, and awareness payloads"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "encrypted collaboration updates, snapshots, and awareness payloads",
+          "lineSpacingPercent": 110000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.1
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "encrypted collaboration updates, snapshots, and awareness payloads",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.1
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/sfu5wbe9",
+      "id": "15",
+      "bbox": [
+        338,
+        446,
+        250,
+        90
+      ],
+      "geometry": "rect",
+      "text": "AGPL",
+      "textPreview": "AGPL",
+      "resolvedFontSize": 46,
+      "resolvedTextStyle": {
+        "anchor": 3,
+        "fontSize": 46,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "bottom",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "AGPL"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "AGPL",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 46,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "AGPL",
+              "fontSize": 46,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/7u14n6x4",
+      "id": "16",
+      "bbox": [
+        338,
+        542,
+        250,
+        54
+      ],
+      "geometry": "rect",
+      "text": "open-source software and self-hosting posture",
+      "textPreview": "open-source software and self-hosting posture",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "open-source software and"
+          },
+          {
+            "index": 2,
+            "text": "self-hosting posture"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "open-source software and self-hosting posture",
+          "lineSpacingPercent": 110000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.1
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "open-source software and self-hosting posture",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.1
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/6tsnu1wj",
+      "id": "17",
+      "bbox": [
+        646,
+        224,
+        1,
+        400
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/hk3mtgv6",
+      "id": "18",
+      "bbox": [
+        704,
+        224,
+        270,
+        24
+      ],
+      "geometry": "rect",
+      "text": "WHAT THE ROUND MUST PROVE",
+      "textPreview": "WHAT THE ROUND MUST PROVE",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "Helvetica Neue",
+        "color": "#55B6FF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "WHAT THE ROUND MUST PROVE"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "WHAT THE ROUND MUST PROVE",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Helvetica Neue",
+            "color": "#55B6FF",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "WHAT THE ROUND MUST PROVE",
+              "fontSize": 14,
+              "typeface": "Helvetica Neue",
+              "color": "#55B6FF",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/gju50bel",
+      "id": "19",
+      "bbox": [
+        704,
+        280,
+        492,
+        300
+      ],
+      "geometry": "rect",
+      "text": "Retention — teams return weekly because shared workflows and project context compound.\nOrganization pull — one useful DevApp or workflow reliably brings additional teammates into Cozea.\nWillingness to pay — managed collaboration, visibility, and governance convert to paid accounts.\nDistribution — repeatable channels acquire teams without founder-only effort.\nEnterprise readiness — security, identity, deployment, and support requirements are productized.",
+      "textPreview": "Retention — teams return weekly because shared workflows and project context compound. | Organization pull — one useful DevApp or workflo...",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 10,
+        "lines": [
+          {
+            "index": 1,
+            "text": "• Retention — teams return weekly because shared"
+          },
+          {
+            "index": 2,
+            "text": "workflows and project context compound."
+          },
+          {
+            "index": 3,
+            "text": "• Organization pull — one useful DevApp or workflow"
+          },
+          {
+            "index": 4,
+            "text": "reliably brings additional teammates into Cozea."
+          },
+          {
+            "index": 5,
+            "text": "• Willingness to pay — managed collaboration, visibility,"
+          },
+          {
+            "index": 6,
+            "text": "and governance convert to paid accounts."
+          },
+          {
+            "index": 7,
+            "text": "• Distribution — repeatable channels acquire teams"
+          },
+          {
+            "index": 8,
+            "text": "without founder-only effort."
+          },
+          {
+            "index": 9,
+            "text": "• Enterprise readiness — security, identity, deployment,"
+          },
+          {
+            "index": 10,
+            "text": "and support requirements are productized."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Retention — teams return weekly because shared workflows and project context compound.",
+          "bulletCharacter": "•",
+          "marginLeft": 22,
+          "indent": -12,
+          "lineSpacingPercent": 104000,
+          "spaceAfter": 15,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "alignment": "left",
+            "lineSpacing": 1.04
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Retention — ",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.04
+            },
+            {
+              "index": 2,
+              "text": "teams return weekly because shared workflows and project context compound.",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "alignment": "left",
+              "lineSpacing": 1.04
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "Organization pull — one useful DevApp or workflow reliably brings additional teammates into Cozea.",
+          "bulletCharacter": "•",
+          "marginLeft": 22,
+          "indent": -12,
+          "lineSpacingPercent": 104000,
+          "spaceAfter": 15,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "alignment": "left",
+            "lineSpacing": 1.04
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Organization pull — ",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.04
+            },
+            {
+              "index": 2,
+              "text": "one useful DevApp or workflow reliably brings additional teammates into Cozea.",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "alignment": "left",
+              "lineSpacing": 1.04
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "text": "Willingness to pay — managed collaboration, visibility, and governance convert to paid accounts.",
+          "bulletCharacter": "•",
+          "marginLeft": 22,
+          "indent": -12,
+          "lineSpacingPercent": 104000,
+          "spaceAfter": 15,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "alignment": "left",
+            "lineSpacing": 1.04
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Willingness to pay — ",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.04
+            },
+            {
+              "index": 2,
+              "text": "managed collaboration, visibility, and governance convert to paid accounts.",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "alignment": "left",
+              "lineSpacing": 1.04
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "text": "Distribution — repeatable channels acquire teams without founder-only effort.",
+          "bulletCharacter": "•",
+          "marginLeft": 22,
+          "indent": -12,
+          "lineSpacingPercent": 104000,
+          "spaceAfter": 15,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "alignment": "left",
+            "lineSpacing": 1.04
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Distribution — ",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.04
+            },
+            {
+              "index": 2,
+              "text": "repeatable channels acquire teams without founder-only effort.",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "alignment": "left",
+              "lineSpacing": 1.04
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "text": "Enterprise readiness — security, identity, deployment, and support requirements are productized.",
+          "bulletCharacter": "•",
+          "marginLeft": 22,
+          "indent": -12,
+          "lineSpacingPercent": 104000,
+          "spaceAfter": 15,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "alignment": "left",
+            "lineSpacing": 1.04
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Enterprise readiness — ",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.04
+            },
+            {
+              "index": 2,
+              "text": "security, identity, deployment, and support requirements are productized.",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "alignment": "left",
+              "lineSpacing": 1.04
+            }
+          ]
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0zmxcjqt",
+      "id": "20",
+      "bbox": [
+        704,
+        594,
+        156,
+        24
+      ],
+      "geometry": "rect",
+      "text": "Investor implication",
+      "textPreview": "Investor implication",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15,
+        "typeface": "Helvetica Neue",
+        "color": "#55B6FF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Investor implication"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Investor implication",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15,
+            "typeface": "Helvetica Neue",
+            "color": "#55B6FF",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Investor implication",
+              "fontSize": 15,
+              "typeface": "Helvetica Neue",
+              "color": "#55B6FF",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/10vylo7e",
+      "id": "21",
+      "bbox": [
+        862,
+        590,
+        334,
+        42
+      ],
+      "geometry": "rect",
+      "text": "Features justify attention; commercial evidence earns the next round.",
+      "textPreview": "Features justify attention; commercial evidence earns the next round.",
+      "resolvedFontSize": 16.67,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.88,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Features justify attention; commercial"
+          },
+          {
+            "index": 2,
+            "text": "evidence earns the next round."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Features justify attention; commercial evidence earns the next round.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Features justify attention; commercial evidence earns the next round.",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ex4fa983",
+      "id": "22",
+      "bbox": [
+        56,
+        676,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/zydgjep8",
+      "id": "23",
+      "name": "source-footer",
+      "bbox": [
+        56,
+        684,
+        1030,
+        20
+      ],
+      "geometry": "rect",
+      "text": "Product evidence: website, app repository, and founder-provided latest DevApp scope; no user or revenue metrics asserted.",
+      "textPreview": "Product evidence: website, app repository, and founder-provided latest DevApp scope; no user or revenue metrics asserted.",
+      "resolvedFontSize": 10.67,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 10.67,
+        "typeface": "Helvetica Neue",
+        "color": "#717B8C",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Product evidence: website, app repository, and founder-provided latest DevApp scope; no user or revenue metrics asserted."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Product evidence: website, app repository, and founder-provided latest DevApp scope; no user or revenue metrics asserted.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 10.67,
+            "typeface": "Helvetica Neue",
+            "color": "#717B8C",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Product evidence: website, app repository, and founder-provided latest DevApp scope; no user or revenue metrics asserted.",
+              "fontSize": 10.67,
+              "typeface": "Helvetica Neue",
+              "color": "#717B8C",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 24,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/o3mxg3q5",
+      "id": "24",
+      "name": "page-number",
+      "bbox": [
+        1178,
+        682,
+        38,
+        20
+      ],
+      "geometry": "rect",
+      "text": "16",
+      "textPreview": "16",
+      "resolvedFontSize": 12,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "center",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "16"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "16",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "center",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "16",
+              "fontSize": 12,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "center",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

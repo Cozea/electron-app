@@ -17,6 +17,10 @@ export const PROJECT_DEVAPP_LOGO_MAX_PIXELS = 16_000_000;
 const SUPPORTED_LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DATA_URL_PREFIX_PATTERN = /^data:image\/(png|jpeg|webp);base64,/;
 const BASE64_PAYLOAD_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+// Early published DevApps saved the former 72px bundled Xcode artwork after
+// enlarging it to a 256px WebP. Keep the record intact, but do not present that
+// pixelated derivative as a custom logo in the UI.
+const LEGACY_LOW_RES_LOGO_FINGERPRINTS = new Set(["15291:591fae54"]);
 
 export interface ProjectDevAppLogoFileLike {
   size: number;
@@ -76,6 +80,22 @@ export function isProjectDevAppLogoDataUrl(value: unknown): value is string {
     return header.length >= 3 && byte(0) === 0xff && byte(1) === 0xd8 && byte(2) === 0xff;
   }
   return header.length >= 12 && header.slice(0, 4) === "RIFF" && header.slice(8, 12) === "WEBP";
+}
+
+function fingerprintProjectDevAppLogoDataUrl(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${value.length}:${hash.toString(16).padStart(8, "0")}`;
+}
+
+export function resolveProjectDevAppDisplayLogoDataUrl(value: unknown): string | null {
+  if (!isProjectDevAppLogoDataUrl(value)) return null;
+  return LEGACY_LOW_RES_LOGO_FINGERPRINTS.has(fingerprintProjectDevAppLogoDataUrl(value))
+    ? null
+    : value;
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {

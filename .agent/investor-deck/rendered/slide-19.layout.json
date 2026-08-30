@@ -1,0 +1,2300 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/r539qd",
+    "id": "r539qd",
+    "slide": 19,
+    "layoutId": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F9FC",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Helvetica Neue"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "a83ba4d4-3a23-42da-b035-ce40339777a1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "3ba4f758-84bb-449b-9fee-bb6320a23cda",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/za54jmlo",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "alt": "Subtle graphite and brushed-metal presentation background",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "5c318a08-abfa-4089-b47c-dafdf9552803",
+        "contentType": "image/png",
+        "byteLength": 1594239
+      }
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/dc32tkzq",
+      "id": "2",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "rgba(5, 7, 10, 0.47059)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cra10zy5",
+      "id": "3",
+      "bbox": [
+        56,
+        18,
+        116,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#596677",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/zelkvuhg",
+      "id": "4",
+      "bbox": [
+        172,
+        18,
+        34,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#55B6FF",
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ydcj2pgb",
+      "id": "5",
+      "name": "deck-section",
+      "bbox": [
+        56,
+        26,
+        500,
+        22
+      ],
+      "geometry": "rect",
+      "text": "COZEA  /  RISKS",
+      "textPreview": "COZEA  /  RISKS",
+      "resolvedFontSize": 13.33,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13.33,
+        "typeface": "Helvetica Neue",
+        "color": "#AEB9C7",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "COZEA  /  RISKS"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "COZEA  /  RISKS",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 13.33,
+            "typeface": "Helvetica Neue",
+            "color": "#AEB9C7",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "COZEA  /  RISKS",
+              "fontSize": 13.33,
+              "typeface": "Helvetica Neue",
+              "color": "#AEB9C7",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lg32x4zm",
+      "id": "6",
+      "name": "slide-title",
+      "bbox": [
+        56,
+        64,
+        1168,
+        62
+      ],
+      "geometry": "rect",
+      "text": "The key risks are real—and testable in this round",
+      "textPreview": "The key risks are real—and testable in this round",
+      "resolvedFontSize": 40,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 40,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The key risks are real—and testable in this round"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The key risks are real—and testable in this round",
+          "lineSpacingPercent": 96000,
+          "resolvedTextStyle": {
+            "fontSize": 40,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 0.96
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The key risks are real—and testable in this round",
+              "fontSize": 40,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 0.96
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kfu14zy1",
+      "id": "7",
+      "name": "slide-subtitle",
+      "bbox": [
+        56,
+        130,
+        1168,
+        54
+      ],
+      "geometry": "rect",
+      "text": "A credible investor case should show how Cozea will learn faster than incumbents can close the gap.",
+      "textPreview": "A credible investor case should show how Cozea will learn faster than incumbents can close the gap.",
+      "resolvedFontSize": 21.33,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 21.33,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "A credible investor case should show how Cozea will learn faster than incumbents can close the gap."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "A credible investor case should show how Cozea will learn faster than incumbents can close the gap.",
+          "lineSpacingPercent": 108000,
+          "resolvedTextStyle": {
+            "fontSize": 21.33,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.08
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "A credible investor case should show how Cozea will learn faster than incumbents can close the gap.",
+              "fontSize": 21.33,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.08
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/7ilkzehs",
+      "id": "8",
+      "bbox": [
+        64,
+        222,
+        228,
+        30
+      ],
+      "geometry": "rect",
+      "text": "Risk",
+      "textPreview": "Risk",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Risk"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Risk",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Risk",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/mhcj69g7",
+      "id": "9",
+      "bbox": [
+        308,
+        222,
+        274,
+        30
+      ],
+      "geometry": "rect",
+      "text": "Why it matters",
+      "textPreview": "Why it matters",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Why it matters"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Why it matters",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Why it matters",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/obqpcna1",
+      "id": "10",
+      "bbox": [
+        598,
+        222,
+        278,
+        30
+      ],
+      "geometry": "rect",
+      "text": "Mitigation",
+      "textPreview": "Mitigation",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Mitigation"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Mitigation",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Mitigation",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/pczqlsbm",
+      "id": "11",
+      "bbox": [
+        892,
+        222,
+        324,
+        30
+      ],
+      "geometry": "rect",
+      "text": "Proof required by next round",
+      "textPreview": "Proof required by next round",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 16,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Proof required by next round"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Proof required by next round",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Proof required by next round",
+              "fontSize": 16,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2po7adsv",
+      "id": "12",
+      "bbox": [
+        56,
+        264,
+        1168,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#F5F7FB",
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/nah8jitg",
+      "id": "13",
+      "bbox": [
+        64,
+        280,
+        228,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Platform encroachment",
+      "textPreview": "Platform encroachment",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Platform encroachment"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Platform encroachment",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Platform encroachment",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cfqpgnax",
+      "id": "14",
+      "bbox": [
+        308,
+        280,
+        274,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Cursor, OpenAI, and Anthropic are rapidly adding agents, teams, worktrees, and extensions.",
+      "textPreview": "Cursor, OpenAI, and Anthropic are rapidly adding agents, teams, worktrees, and extensions.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Cursor, OpenAI, and Anthropic are"
+          },
+          {
+            "index": 2,
+            "text": "rapidly adding agents, teams,"
+          },
+          {
+            "index": 3,
+            "text": "worktrees, and extensions."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Cursor, OpenAI, and Anthropic are rapidly adding agents, teams, worktrees, and extensions.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cursor, OpenAI, and Anthropic are rapidly adding agents, teams, worktrees, and extensions.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/xgzqpsbi",
+      "id": "15",
+      "bbox": [
+        598,
+        280,
+        278,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Stay provider-neutral and focus on live multi-human coordination plus programmable cross-tool workflows.",
+      "textPreview": "Stay provider-neutral and focus on live multi-human coordination plus programmable cross-tool workflows.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Stay provider-neutral and focus on live"
+          },
+          {
+            "index": 2,
+            "text": "multi-human coordination plus"
+          },
+          {
+            "index": 3,
+            "text": "programmable cross-tool workflows."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Stay provider-neutral and focus on live multi-human coordination plus programmable cross-tool workflows.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Stay provider-neutral and focus on live multi-human coordination plus programmable cross-tool workflows.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ad87exsr",
+      "id": "16",
+      "bbox": [
+        892,
+        280,
+        324,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Teams choose Cozea even when they already pay for a provider-native tool.",
+      "textPreview": "Teams choose Cozea even when they already pay for a provider-native tool.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Teams choose Cozea even when they already"
+          },
+          {
+            "index": 2,
+            "text": "pay for a provider-native tool."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Teams choose Cozea even when they already pay for a provider-native tool.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Teams choose Cozea even when they already pay for a provider-native tool.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/beh8n2tc",
+      "id": "17",
+      "bbox": [
+        56,
+        352,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kjapk7a9",
+      "id": "18",
+      "bbox": [
+        64,
+        364,
+        228,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Open-source monetization",
+      "textPreview": "Open-source monetization",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Open-source"
+          },
+          {
+            "index": 2,
+            "text": "monetization"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Open-source monetization",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Open-source monetization",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lkjqtcbe",
+      "id": "19",
+      "bbox": [
+        308,
+        364,
+        274,
+        68
+      ],
+      "geometry": "rect",
+      "text": "AGPL and a free core can limit direct seat monetization if paid value is not distinct.",
+      "textPreview": "AGPL and a free core can limit direct seat monetization if paid value is not distinct.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "AGPL and a free core can limit direct"
+          },
+          {
+            "index": 2,
+            "text": "seat monetization if paid value is not"
+          },
+          {
+            "index": 3,
+            "text": "distinct."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "AGPL and a free core can limit direct seat monetization if paid value is not distinct.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "AGPL and a free core can limit direct seat monetization if paid value is not distinct.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/t0fqdc3y",
+      "id": "20",
+      "bbox": [
+        598,
+        364,
+        278,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Charge for managed collaboration, governance, deployment, visibility, and support—not access to local code.",
+      "textPreview": "Charge for managed collaboration, governance, deployment, visibility, and support—not access to local code.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Charge for managed collaboration,"
+          },
+          {
+            "index": 2,
+            "text": "governance, deployment, visibility, and"
+          },
+          {
+            "index": 3,
+            "text": "support—not access to local code."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Charge for managed collaboration, governance, deployment, visibility, and support—not access to local code.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Charge for managed collaboration, governance, deployment, visibility, and support—not access to local code.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8z6p472d",
+      "id": "21",
+      "bbox": [
+        892,
+        364,
+        324,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Free-to-paid conversion and clear enterprise willingness to pay.",
+      "textPreview": "Free-to-paid conversion and clear enterprise willingness to pay.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Free-to-paid conversion and clear enterprise"
+          },
+          {
+            "index": 2,
+            "text": "willingness to pay."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Free-to-paid conversion and clear enterprise willingness to pay.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Free-to-paid conversion and clear enterprise willingness to pay.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/7yx8b2ls",
+      "id": "22",
+      "bbox": [
+        56,
+        436,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/6xo72xk7",
+      "id": "23",
+      "bbox": [
+        64,
+        448,
+        228,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Provider fragility",
+      "textPreview": "Provider fragility",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Provider fragility"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Provider fragility",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Provider fragility",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 24,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/h4zqhc3u",
+      "id": "24",
+      "bbox": [
+        308,
+        448,
+        274,
+        68
+      ],
+      "geometry": "rect",
+      "text": "CLI and SDK behavior can change, breaking adapters or creating support cost.",
+      "textPreview": "CLI and SDK behavior can change, breaking adapters or creating support cost.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "CLI and SDK behavior can change,"
+          },
+          {
+            "index": 2,
+            "text": "breaking adapters or creating support"
+          },
+          {
+            "index": 3,
+            "text": "cost."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "CLI and SDK behavior can change, breaking adapters or creating support cost.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "CLI and SDK behavior can change, breaking adapters or creating support cost.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 25,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/g3qp8729",
+      "id": "25",
+      "bbox": [
+        598,
+        448,
+        278,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Maintain a stable provider contract, version gates, runtime diagnostics, and multiple supported providers.",
+      "textPreview": "Maintain a stable provider contract, version gates, runtime diagnostics, and multiple supported providers.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Maintain a stable provider contract,"
+          },
+          {
+            "index": 2,
+            "text": "version gates, runtime diagnostics, and"
+          },
+          {
+            "index": 3,
+            "text": "multiple supported providers."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Maintain a stable provider contract, version gates, runtime diagnostics, and multiple supported providers.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Maintain a stable provider contract, version gates, runtime diagnostics, and multiple supported providers.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 26,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/v2x8f2lo",
+      "id": "26",
+      "bbox": [
+        892,
+        448,
+        324,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Fast adapter recovery and low provider-related churn or support burden.",
+      "textPreview": "Fast adapter recovery and low provider-related churn or support burden.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Fast adapter recovery and low"
+          },
+          {
+            "index": 2,
+            "text": "provider-related churn or support burden."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Fast adapter recovery and low provider-related churn or support burden.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Fast adapter recovery and low provider-related churn or support burden.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 27,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u1o76hk3",
+      "id": "27",
+      "bbox": [
+        56,
+        520,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 28,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/x8v65s3q",
+      "id": "28",
+      "bbox": [
+        64,
+        532,
+        228,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Security + onboarding",
+      "textPreview": "Security + onboarding",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 18,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Security + onboarding"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Security + onboarding",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Security + onboarding",
+              "fontSize": 18,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 29,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/w7mpwn25",
+      "id": "29",
+      "bbox": [
+        308,
+        532,
+        274,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Collaboration, local execution, and enterprise deployment raise trust and complexity requirements.",
+      "textPreview": "Collaboration, local execution, and enterprise deployment raise trust and complexity requirements.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Collaboration, local execution, and"
+          },
+          {
+            "index": 2,
+            "text": "enterprise deployment raise trust and"
+          },
+          {
+            "index": 3,
+            "text": "complexity requirements."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Collaboration, local execution, and enterprise deployment raise trust and complexity requirements.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Collaboration, local execution, and enterprise deployment raise trust and complexity requirements.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 30,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/mdkn6t0n",
+      "id": "30",
+      "bbox": [
+        598,
+        532,
+        278,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Default-safe tool scopes, encrypted collaboration, clear device recovery, identity controls, and design-partner security reviews.",
+      "textPreview": "Default-safe tool scopes, encrypted collaboration, clear device recovery, identity controls, and design-partner security reviews.",
+      "resolvedFontSize": 13.63,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.86,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 4,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Default-safe tool scopes, encrypted"
+          },
+          {
+            "index": 2,
+            "text": "collaboration, clear device recovery, identity"
+          },
+          {
+            "index": 3,
+            "text": "controls, and design-partner security"
+          },
+          {
+            "index": 4,
+            "text": "reviews."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Default-safe tool scopes, encrypted collaboration, clear device recovery, identity controls, and design-partner security reviews.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Default-safe tool scopes, encrypted collaboration, clear device recovery, identity controls, and design-partner security reviews.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 31,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/net4zy18",
+      "id": "31",
+      "bbox": [
+        892,
+        532,
+        324,
+        68
+      ],
+      "geometry": "rect",
+      "text": "Security review completion, low activation time, and reliable team onboarding.",
+      "textPreview": "Security review completion, low activation time, and reliable team onboarding.",
+      "resolvedFontSize": 15.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15.8,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Security review completion, low activation"
+          },
+          {
+            "index": 2,
+            "text": "time, and reliable team onboarding."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Security review completion, low activation time, and reliable team onboarding.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 15.8,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Security review completion, low activation time, and reliable team onboarding.",
+              "fontSize": 15.8,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 32,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/of258jit",
+      "id": "32",
+      "bbox": [
+        56,
+        604,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 33,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/90bm1oje",
+      "id": "33",
+      "bbox": [
+        300,
+        222,
+        1,
+        384
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 34,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/a1knat0z",
+      "id": "34",
+      "bbox": [
+        590,
+        222,
+        1,
+        384
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 35,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/b2t43y1k",
+      "id": "35",
+      "bbox": [
+        884,
+        222,
+        1,
+        384
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 36,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/w325c3i5",
+      "id": "36",
+      "bbox": [
+        56,
+        628,
+        180,
+        24
+      ],
+      "geometry": "rect",
+      "text": "Fundraising message",
+      "textPreview": "Fundraising message",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "Helvetica Neue",
+        "color": "#55B6FF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Fundraising message"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Fundraising message",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Helvetica Neue",
+            "color": "#55B6FF",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Fundraising message",
+              "fontSize": 14,
+              "typeface": "Helvetica Neue",
+              "color": "#55B6FF",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 37,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/x4vm58jq",
+      "id": "37",
+      "bbox": [
+        242,
+        624,
+        982,
+        32
+      ],
+      "geometry": "rect",
+      "text": "The round is sized to answer these risks with evidence before scaling burn.",
+      "textPreview": "The round is sized to answer these risks with evidence before scaling burn.",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Helvetica Neue",
+        "color": "#F5F7FB",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The round is sized to answer these risks with evidence before scaling burn."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The round is sized to answer these risks with evidence before scaling burn.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Helvetica Neue",
+            "color": "#F5F7FB",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The round is sized to answer these risks with evidence before scaling burn.",
+              "fontSize": 19,
+              "typeface": "Helvetica Neue",
+              "color": "#F5F7FB",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 38,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/q503y90v",
+      "id": "38",
+      "bbox": [
+        56,
+        676,
+        1168,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#303A48",
+      "lineWidth": 0
+    },
+    {
+      "order": 39,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/r694ru10",
+      "id": "39",
+      "name": "source-footer",
+      "bbox": [
+        56,
+        684,
+        1030,
+        20
+      ],
+      "geometry": "rect",
+      "text": "Sources: see notes",
+      "textPreview": "Sources: see notes",
+      "resolvedFontSize": 10.67,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 10.67,
+        "typeface": "Helvetica Neue",
+        "color": "#717B8C",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Sources: see notes"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Sources: see notes",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 10.67,
+            "typeface": "Helvetica Neue",
+            "color": "#717B8C",
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Sources: see notes",
+              "fontSize": 10.67,
+              "typeface": "Helvetica Neue",
+              "color": "#717B8C",
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 40,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/7qhcf6ps",
+      "id": "40",
+      "name": "page-number",
+      "bbox": [
+        1178,
+        682,
+        38,
+        20
+      ],
+      "geometry": "rect",
+      "text": "19",
+      "textPreview": "19",
+      "resolvedFontSize": 12,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12,
+        "typeface": "Helvetica Neue",
+        "color": "#A9B2C1",
+        "bold": true,
+        "alignment": "center",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "19"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "19",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Helvetica Neue",
+            "color": "#A9B2C1",
+            "bold": true,
+            "alignment": "center",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "19",
+              "fontSize": 12,
+              "typeface": "Helvetica Neue",
+              "color": "#A9B2C1",
+              "bold": true,
+              "alignment": "center",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

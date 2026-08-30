@@ -6,6 +6,7 @@ import { SiOllama } from "react-icons/si"
 import { Button } from "@/components/ui/button"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
+import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
@@ -161,11 +162,7 @@ function WorkbenchTileGlyph({
   if (tileType === "orgDevApp") {
     return (
       <span className={appWrapperClassName}>
-        {logoDataUrl ? (
-          <img src={logoDataUrl} alt="" className="size-full object-cover" />
-        ) : (
-          <Globe className={fallbackClassName} />
-        )}
+        <PublishedDevAppIcon name={title} logoDataUrl={logoDataUrl} />
       </span>
     )
   }

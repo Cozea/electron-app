@@ -243,6 +243,7 @@ export interface WorkbenchSidebarSurfaceTileSummary {
   title: string
   favicon?: string | null
   devAppId?: string
+  logoDataUrl?: string | null
 }
 
 export interface WorkbenchLaneSidebarSummary {
@@ -1191,6 +1192,7 @@ export function buildWorkbenchLaneSidebarSummary(
         : tile.type === "orgDevApp" && tile.publicationId
           ? { devAppId: tile.publicationId }
           : {}),
+      ...(tile.type === "orgDevApp" ? { logoDataUrl: tile.logoDataUrl ?? null } : {}),
     })
   }
 
