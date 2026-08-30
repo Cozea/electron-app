@@ -4,8 +4,15 @@ import { normalizeGrant } from "../../shared/devAppCapabilities"
 import type { DevAppWorkerResponse } from "../../shared/devAppWorkerProtocol"
 import {
   DevAppWorkerHost,
+  type DevAppWorkerBinding,
   type DevAppWorkerProcess,
 } from "../../apps/desktop/electron/services/DevAppWorkerHost"
+
+const BINDING: DevAppWorkerBinding = {
+  workspaceId: "ws_1",
+  workspaceRoot: "/Users/admin/proj",
+  dataDir: "/Users/admin/data/pub_1",
+}
 
 /** A worker process standing in for utilityProcess, so supervision is testable alone. */
 class FakeWorker implements DevAppWorkerProcess {
@@ -66,6 +73,7 @@ function makeHost(options: {
     publicationId: "pub_1",
     entrypoint: "worker.js",
     grant: normalizeGrant({ capabilities: options.capabilities ?? ["project.read"] }),
+    binding: BINDING,
     leaseId: "tile_1",
   })
   return { host, spawned, state, current: () => spawned[spawned.length - 1]! }
@@ -140,6 +148,7 @@ describe("Worker host — lifecycle", () => {
       publicationId: "pub_1",
       entrypoint: "worker.js",
       grant: normalizeGrant({ capabilities: ["project.read"] }),
+      binding: BINDING,
       leaseId: "agent_1",
     })
     expect(spawned).toHaveLength(1)
@@ -151,6 +160,7 @@ describe("Worker host — lifecycle", () => {
       publicationId: "pub_1",
       entrypoint: "worker.js",
       grant: normalizeGrant({ capabilities: ["project.read"] }),
+      binding: BINDING,
       leaseId: "agent_1",
     })
     host.release("pub_1", "tile_1")
@@ -248,8 +258,30 @@ describe("Worker host — spawn wiring", () => {
       publicationId: "pub_9",
       entrypoint: "server/worker.js",
       grant: normalizeGrant({ capabilities: [] }),
+      binding: BINDING,
       leaseId: "tile_1",
     })
     expect(spawn).toHaveBeenCalledWith({ entrypoint: "server/worker.js", publicationId: "pub_9" })
+  })
+})
+
+describe("Worker host — the binding reaches handlers", () => {
+  it("hands handlers the binding the worker started with", async () => {
+    const seen: DevAppWorkerBinding[] = []
+    const spawned: FakeWorker[] = []
+    const host = new DevAppWorkerHost(
+      () => { const w = new FakeWorker(); spawned.push(w); return w },
+      { "project.readFile": async (_r, ctx) => { seen.push(ctx.binding); return "ok" } },
+    )
+    host.start({
+      publicationId: "pub_1",
+      entrypoint: "worker.js",
+      grant: normalizeGrant({ capabilities: ["project.read"] }),
+      binding: BINDING,
+      leaseId: "tile_1",
+    })
+    spawned[0]!.send({ kind: "request", id: "1", method: "project.readFile" })
+    await flush()
+    expect(seen[0]).toEqual(BINDING)
   })
 })
