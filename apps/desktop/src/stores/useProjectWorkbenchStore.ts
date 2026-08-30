@@ -4,7 +4,7 @@ import type {
   ProviderKind,
   RuntimeMode,
 } from "@cozea/assistant-contracts"
-import type { BrowserStorageScope } from "@shared/browserHostTypes"
+import type { BrowserStorageScope } from "@shared/browserTileTypes"
 import type { SerializedDockview } from "dockview-react"
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"

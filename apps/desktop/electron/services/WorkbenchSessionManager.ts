@@ -12,16 +12,6 @@ import { DevServerService } from './DevServerService'
 import { TerminalService } from './TerminalService'
 import { NativePreviewManager } from './nativePreview/NativePreviewManager'
 
-interface BrowserLifecycleService {
-  getState(tileId: string): { storageScope?: string } | null
-  destroyTile(tileId: string): boolean
-}
-
-const unavailableBrowserLifecycleService: BrowserLifecycleService = {
-  getState: () => null,
-  destroyTile: () => false,
-}
-
 interface PersistedWorkbenchSessionRecord {
   projectId: string
   laneId: string
@@ -48,12 +38,10 @@ interface LiveWorkbenchSessionRecord {
   lastFocusedAt: number
   lastBackgroundedAt: number | null
   terminalBindings: Record<string, string>
-  browserBindings: Record<string, string>
   nativePreviewLocator: NativePreviewSessionLocator | null
 }
 
 interface WorkbenchSessionManagerServices {
-  browserService?: BrowserLifecycleService
   nativePreviewManager: NativePreviewManager
 }
 
@@ -64,7 +52,6 @@ const MAX_BACKGROUND_WARM_SESSIONS = 2
 const SESSION_POLICY_SWEEP_INTERVAL_MS = 30_000
 const BACKGROUND_WARM_IDLE_MS = 2 * 60 * 1000
 const BACKGROUND_WARM_ACTIVE_PREVIEW_IDLE_MS = 10 * 60 * 1000
-const FROZEN_EPHEMERAL_BROWSER_IDLE_MS = 60 * 1000
 const LOW_MEMORY_FREE_THRESHOLD_KB = 1_500_000
 const LOW_MEMORY_FREE_RATIO = 0.12
 const MEMORY_PRESSURE_CHECK_TTL_MS = 2_000
@@ -240,7 +227,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
   private readonly terminalService = TerminalService.getInstance()
   private readonly devServerService = DevServerService.getInstance()
-  private readonly browserService: BrowserLifecycleService
   private readonly nativePreviewManager: NativePreviewManager
   private readonly sessions = new Map<string, LiveWorkbenchSessionRecord>()
   private readonly policySweepTimer: NodeJS.Timeout
@@ -281,7 +267,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
   private constructor(services: WorkbenchSessionManagerServices) {
     super()
-    this.browserService = services.browserService ?? unavailableBrowserLifecycleService
     this.nativePreviewManager = services.nativePreviewManager
 
     const persisted = readRegistryState()
@@ -298,7 +283,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
         lifecycle:
           record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
         terminalBindings: {},
-        browserBindings: {},
         nativePreviewLocator: null,
       }
       const existing = this.sessions.get(derivedSessionKey)
@@ -351,7 +335,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
       lastFocusedAt: now,
       lastBackgroundedAt: now,
       terminalBindings: {},
-      browserBindings: {},
       nativePreviewLocator: null,
     }
   }
@@ -551,27 +534,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
           continue
         }
 
-        let sessionChanged = false
-        const shouldTrimEphemeralBrowsers =
-          underMemoryPressure || (!record.pinned && backgroundAge >= FROZEN_EPHEMERAL_BROWSER_IDLE_MS)
-
-        if (shouldTrimEphemeralBrowsers && Object.keys(record.browserBindings).length > 0) {
-          for (const [tileId, browserTileId] of Object.entries(record.browserBindings)) {
-            const browserState = this.browserService.getState(browserTileId)
-            if (browserState?.storageScope !== 'ephemeral') {
-              continue
-            }
-
-            this.browserService.destroyTile(browserTileId)
-            delete record.browserBindings[tileId]
-            sessionChanged = true
-          }
-        }
-
-        if (sessionChanged) {
-          this.emitState(sessionKey, record)
-          mutated = true
-        }
       }
 
       if (mutated) {
@@ -619,7 +581,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
     const devServer = record.workspaceId
       ? this.devServerService.getState(record.workspaceId, record.laneId)
       : { running: false, port: null, runId: null }
-    const hasBrowserSurface = Object.keys(record.browserBindings).length > 0
     const hasNativePreviewSession = record.nativePreviewLocator
       ? Boolean(this.nativePreviewManager.getSessionState(record.nativePreviewLocator))
       : false
@@ -636,7 +597,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       lastBackgroundedAt: record.lastBackgroundedAt,
       terminalBindings: { ...record.terminalBindings },
       devServer,
-      hasBrowserSurface,
+      hasBrowserSurface: false,
       hasNativePreviewSession,
     }
   }
@@ -831,11 +792,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
     record.terminalBindings = {}
 
-    for (const browserTileId of Object.values(record.browserBindings)) {
-      this.browserService.destroyTile(browserTileId)
-    }
-    record.browserBindings = {}
-
     if (record.workspaceId) {
       await this.devServerService.stop(record.workspaceId, record.laneId).catch(() => ({ success: false }))
     }
@@ -1009,86 +965,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
     this.persist()
     this.emitState(sessionKey, record)
     return { success: true, terminalId }
-  }
-
-  getBrowserBinding(input: {
-    sessionKey?: string | null
-    projectId: string
-    laneId: string
-    tileId: string
-  }): string | null {
-    const sessionKey = this.resolveSessionKey(input)
-    if (!sessionKey) {
-      return null
-    }
-    const record = this.sessions.get(sessionKey)
-    if (!record) {
-      return null
-    }
-
-    const browserTileId = record.browserBindings[input.tileId]
-    if (!browserTileId) {
-      return null
-    }
-
-    if (!this.browserService.getState(browserTileId)) {
-      this.warnOwnershipMismatch("browser_binding_stale", {
-        sessionKey,
-        tileId: input.tileId,
-        browserTileId,
-      })
-      delete record.browserBindings[input.tileId]
-      this.persist()
-      this.emitState(sessionKey, record)
-      return null
-    }
-
-    return browserTileId
-  }
-
-  bindBrowser(input: {
-    sessionKey?: string | null
-    projectId: string
-    laneId: string
-    tileId: string
-    browserTileId: string
-    workspaceId?: string | null
-  }): WorkbenchSessionSnapshot {
-    const sanitizedInput = this.sanitizeSessionInput(input)
-    const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
-    record.browserBindings[input.tileId] = input.browserTileId
-    this.persist()
-    return this.emitState(sessionKey, record)
-  }
-
-  releaseBrowser(input: {
-    sessionKey?: string | null
-    projectId: string
-    laneId: string
-    tileId: string
-    destroy?: boolean
-  }): { success: boolean; browserTileId?: string } {
-    const sessionKey = this.resolveSessionKey(input)
-    if (!sessionKey) {
-      return { success: true }
-    }
-    const record = this.sessions.get(sessionKey)
-    if (!record) {
-      return { success: true }
-    }
-
-    const browserTileId = record.browserBindings[input.tileId]
-    if (!browserTileId) {
-      return { success: true }
-    }
-
-    delete record.browserBindings[input.tileId]
-    if (input.destroy) {
-      this.browserService.destroyTile(browserTileId)
-    }
-    this.persist()
-    this.emitState(sessionKey, record)
-    return { success: true, browserTileId }
   }
 
   async setNativePreviewSession(input: {

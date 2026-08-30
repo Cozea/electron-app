@@ -271,97 +271,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     openSettings: (route = '/settings/account') => ipcRenderer.invoke('window:openSettings', { route }),
   },
-  workbenchBrowser: {
-    ensureTile: (options: {
-      tileId: string
-      initialUrl?: string
-      storageScope?: import("../../../shared/browserHostTypes").BrowserStorageScope
-      workspaceId?: string
-      partitionKey?: string
-      navigationPolicy?: import("../../../shared/browserHostTypes").BrowserNavigationPolicy
-    }) =>
-      ipcRenderer.invoke('workbenchBrowser:ensureTile', options),
-    destroyTile: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:destroyTile', options),
-    setBounds: (options: {
-      tileId: string
-      bounds?: { x: number; y: number; width: number; height: number }
-      visible?: boolean
-    }) => ipcRenderer.invoke('workbenchBrowser:setBounds', options),
-    navigate: (options: { tileId: string; url: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:navigate', options),
-    getState: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:getState', options),
-    getViewBounds: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:getViewBounds', options),
-    goBack: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:goBack', options),
-    goForward: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:goForward', options),
-    reload: (options: { tileId: string; hard?: boolean }) =>
-      ipcRenderer.invoke('workbenchBrowser:reload', options),
-    focus: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:focus', options),
-    toggleDevTools: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:toggleDevTools', options),
-    openExternal: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:openExternal', options),
-    zoomIn: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:zoomIn', options),
-    zoomOut: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:zoomOut', options),
-    resetZoom: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:resetZoom', options),
-    findInPage: (options: {
-      tileId: string
-      text: string
-      forward?: boolean
-      recompute?: boolean
-      matchCase?: boolean
-    }) => ipcRenderer.invoke('workbenchBrowser:findInPage', options),
-    stopFindInPage: (options: { tileId: string; keepSelection?: boolean }) =>
-      ipcRenderer.invoke('workbenchBrowser:stopFindInPage', options),
-    getSelectedText: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:getSelectedText', options),
-    captureScreenshot: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:captureScreenshot', options),
-    devServerPreviewSnapshot: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewSnapshot', options),
-    devServerPreviewClick: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewClickInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewClick', options),
-    devServerPreviewType: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewTypeInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewType', options),
-    devServerPreviewPress: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewPressInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewPress', options),
-    devServerPreviewScroll: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewScrollInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewScroll', options),
-    devServerPreviewWaitFor: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewWaitForInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewWaitFor', options),
-    onStateChange: (callback: (state: import('../../../shared/electronApiTypes').WorkbenchBrowserViewState) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        state: import('../../../shared/electronApiTypes').WorkbenchBrowserViewState,
-      ) => callback(state)
-      ipcRenderer.on('workbenchBrowser:state', handler)
-      return () => ipcRenderer.removeListener('workbenchBrowser:state', handler)
-    },
-    onNewPageRequest: (callback: (request: import('../../../shared/browserHostTypes').BrowserNewPageRequest) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        request: import('../../../shared/browserHostTypes').BrowserNewPageRequest,
-      ) => callback(request)
-      ipcRenderer.on('workbenchBrowser:new-page-request', handler)
-      return () => ipcRenderer.removeListener('workbenchBrowser:new-page-request', handler)
-    },
-    onCommand: (callback: (command: import('../../../shared/browserHostTypes').BrowserUiCommand) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        command: import('../../../shared/browserHostTypes').BrowserUiCommand,
-      ) => callback(command)
-      ipcRenderer.on('workbenchBrowser:command', handler)
-      return () => ipcRenderer.removeListener('workbenchBrowser:command', handler)
-    },
-  },
   orgDevApp: {
     buildAndUpload: (options: {
       workspaceId: string
@@ -385,18 +294,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     releaseRuntime: (options: { contentHash: string; publicationId: string; leaseId: string }) => ipcRenderer.invoke('orgDevApp:releaseRuntime', options),
     stopRuntime: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:stopRuntime', options),
     getRuntimeState: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeState', options),
-  },
-  /** Agent browser automation MVP (flag `cozea.browser.agentAutomation`, default off). */
-  browserAutomation: {
-    status: () => ipcRenderer.invoke('browserAutomation:status'),
-    navigate: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationNavigateInput) =>
-      ipcRenderer.invoke('browserAutomation:navigate', options),
-    snapshot: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationTileInput) =>
-      ipcRenderer.invoke('browserAutomation:snapshot', options),
-    click: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationClickInput) =>
-      ipcRenderer.invoke('browserAutomation:click', options),
-    type: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationTypeInput) =>
-      ipcRenderer.invoke('browserAutomation:type', options),
   },
   workbenchSession: {
     ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
@@ -433,23 +330,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       tileId: string
       close?: boolean
     }) => ipcRenderer.invoke('workbenchSession:releaseTerminal', options),
-    getBrowserBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) =>
-      ipcRenderer.invoke('workbenchSession:getBrowserBinding', options),
-    bindBrowser: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      tileId: string
-      browserTileId: string
-      workspaceId?: string | null
-    }) => ipcRenderer.invoke('workbenchSession:bindBrowser', options),
-    releaseBrowser: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      tileId: string
-      destroy?: boolean
-    }) => ipcRenderer.invoke('workbenchSession:releaseBrowser', options),
     setNativePreviewSession: (options: {
       sessionKey?: string | null
       projectId: string

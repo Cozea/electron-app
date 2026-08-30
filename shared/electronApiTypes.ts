@@ -1296,28 +1296,6 @@ export type AuthRefreshResult =
       statusCode?: number
     }
 
-export interface WorkbenchBrowserViewState {
-  tileId: string
-  url: string
-  title: string
-  isLoading: boolean
-  canGoBack: boolean
-  canGoForward: boolean
-  favicon?: string | null
-  focused: boolean
-  visible: boolean
-  isDevToolsOpen: boolean
-  storageScope: import('./browserHostTypes').BrowserStorageScope
-  zoomFactor: number
-  canZoomIn: boolean
-  canZoomOut: boolean
-  find: import('./browserHostTypes').BrowserFindState
-  loadError?: string | null
-  httpStatusCode?: number | null
-  httpStatusText?: string | null
-  httpError?: string | null
-}
-
 export type WorkbenchSessionLifecycle =
   | 'active'
   | 'backgroundWarm'
@@ -1467,53 +1445,6 @@ export interface ElectronAPI {
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
     openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
-  workbenchBrowser: {
-    ensureTile: (options: {
-      tileId: string
-      initialUrl?: string
-      storageScope?: import('./browserHostTypes').BrowserStorageScope
-      workspaceId?: string
-      partitionKey?: string
-      navigationPolicy?: import('./browserHostTypes').BrowserNavigationPolicy
-    }) => Promise<WorkbenchBrowserViewState>
-    destroyTile: (options: { tileId: string }) => Promise<boolean>
-    setBounds: (options: {
-      tileId: string
-      bounds?: { x: number; y: number; width: number; height: number }
-      visible?: boolean
-    }) => Promise<boolean>
-    navigate: (options: { tileId: string; url: string }) => Promise<WorkbenchBrowserViewState | null>
-    getState: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    getViewBounds: (options: { tileId: string }) => Promise<{ bounds: { x: number; y: number; width: number; height: number }; visible: boolean } | null>
-    goBack: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    goForward: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    reload: (options: { tileId: string; hard?: boolean }) => Promise<WorkbenchBrowserViewState | null>
-    focus: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    toggleDevTools: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    openExternal: (options: { tileId: string }) => Promise<{ success: boolean; error?: string }>
-    zoomIn: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    zoomOut: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    resetZoom: (options: { tileId: string }) => Promise<WorkbenchBrowserViewState | null>
-    findInPage: (options: {
-      tileId: string
-      text: string
-      forward?: boolean
-      recompute?: boolean
-      matchCase?: boolean
-    }) => Promise<WorkbenchBrowserViewState | null>
-    stopFindInPage: (options: { tileId: string; keepSelection?: boolean }) => Promise<WorkbenchBrowserViewState | null>
-    getSelectedText: (options: { tileId: string }) => Promise<string>
-    captureScreenshot: (options: { tileId: string }) => Promise<string | null>
-    devServerPreviewSnapshot: (options: { tileId: string }) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewSnapshotResult | null>
-    devServerPreviewClick: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewClickInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
-    devServerPreviewType: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewTypeInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
-    devServerPreviewPress: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewPressInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
-    devServerPreviewScroll: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewScrollInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
-    devServerPreviewWaitFor: (options: import('./devServerPreviewAutomationTypes').DevServerPreviewWaitForInput) => Promise<import('./devServerPreviewAutomationTypes').DevServerPreviewActionResult>
-    onStateChange: (callback: (state: WorkbenchBrowserViewState) => void) => () => void
-    onNewPageRequest: (callback: (request: import('./browserHostTypes').BrowserNewPageRequest) => void) => () => void
-    onCommand: (callback: (command: import('./browserHostTypes').BrowserUiCommand) => void) => () => void
-  }
   orgDevApp: {
     buildAndUpload: (options: {
       workspaceId: string
@@ -1575,44 +1506,6 @@ export interface ElectronAPI {
       | { success: false; error: string }
     >
   }
-  /**
-   * Agent browser automation MVP behind `cozea.browser.agentAutomation`
-   * (env `COZEA_BROWSER_AGENT_AUTOMATION`, default off).
-   */
-  browserAutomation: {
-    status: () => Promise<
-      import('./browserAutomationTypes').BrowserAutomationResult<
-        import('./browserAutomationTypes').BrowserAutomationStatus
-      >
-    >
-    navigate: (
-      options: import('./browserAutomationTypes').BrowserAutomationNavigateInput,
-    ) => Promise<
-      import('./browserAutomationTypes').BrowserAutomationResult<{
-        tileId: string
-        url: string
-        title: string
-        isLoading: boolean
-      }>
-    >
-    snapshot: (
-      options: import('./browserAutomationTypes').BrowserAutomationTileInput,
-    ) => Promise<
-      import('./browserAutomationTypes').BrowserAutomationResult<
-        import('./browserAutomationTypes').BrowserAutomationSnapshot
-      >
-    >
-    click: (
-      options: import('./browserAutomationTypes').BrowserAutomationClickInput,
-    ) => Promise<
-      import('./browserAutomationTypes').BrowserAutomationResult<{ clicked: true }>
-    >
-    type: (
-      options: import('./browserAutomationTypes').BrowserAutomationTypeInput,
-    ) => Promise<
-      import('./browserAutomationTypes').BrowserAutomationResult<{ typed: true }>
-    >
-  }
   workbenchSession: {
     ensureSession: (options: {
       sessionKey?: string | null
@@ -1671,27 +1564,6 @@ export interface ElectronAPI {
       tileId: string
       close?: boolean
     }) => Promise<{ success: boolean; terminalId?: string }>
-    getBrowserBinding: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      tileId: string
-    }) => Promise<string | null>
-    bindBrowser: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      tileId: string
-      browserTileId: string
-      projectPath?: string | null
-    }) => Promise<WorkbenchSessionSnapshot>
-    releaseBrowser: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      tileId: string
-      destroy?: boolean
-    }) => Promise<{ success: boolean; browserTileId?: string }>
     setNativePreviewSession: (options: {
       sessionKey?: string | null
       projectId: string

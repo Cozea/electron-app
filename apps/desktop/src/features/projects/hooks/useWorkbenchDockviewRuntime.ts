@@ -53,12 +53,6 @@ import {
 
 const CHANGES_PANEL_ID = "cozea-changes-panel";
 
-function disposeBrowserTileModelDeferred(tileId: string) {
-  return import("@/features/projects/browser/browserTileModel").then((module) =>
-    module.disposeBrowserTileModel(tileId),
-  );
-}
-
 function getPathFromDroppedFile(file: File): string | null {
   const maybePath = (file as File & { path?: unknown }).path;
   return typeof maybePath === "string" && maybePath.length > 0 ? maybePath : null;
@@ -1088,21 +1082,6 @@ export function useWorkbenchDockviewRuntime(
         if (removedTile?.type === "devServer") {
           releaseDevServerSurfaceLease(panel.id);
         }
-        if (removedTile?.type === "browser") {
-          void window.electronAPI.workbenchSession
-            .releaseBrowser({
-              sessionKey: input.workbenchSessionKey,
-              projectId: input.projectId,
-              laneId: input.activeLaneId,
-              tileId: panel.id,
-            })
-            .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to release browser for removed panel", error);
-            });
-          void disposeBrowserTileModelDeferred(panel.id).catch((error) => {
-            console.warn("[WorkbenchBrowser] Failed to dispose browser model", error);
-          });
-        }
         if (removedTile?.type === "terminal") {
           void window.electronAPI.workbenchSession
             .releaseTerminal({
@@ -1137,16 +1116,6 @@ export function useWorkbenchDockviewRuntime(
             });
           } else {
             void window.electronAPI.workbenchSession
-              .releaseBrowser({
-                sessionKey: input.workbenchSessionKey,
-                projectId: input.projectId,
-                laneId: input.activeLaneId,
-                tileId: panel.id,
-              })
-              .catch((error) => {
-                console.warn("[WorkbenchSession] Failed to release runtime browser surface", error);
-              });
-            void window.electronAPI.workbenchSession
               .releaseTerminal({
                 sessionKey: input.workbenchSessionKey,
                 projectId: input.projectId,
@@ -1177,9 +1146,6 @@ export function useWorkbenchDockviewRuntime(
                 console.warn("[WorkbenchSession] Failed to release runtime terminal", error);
               });
           }
-          void disposeBrowserTileModelDeferred(panel.id).catch((error) => {
-            console.warn("[WorkbenchBrowser] Failed to dispose runtime browser model", error);
-          });
           if (removedTile.type === "mobileSimulator") {
             void window.electronAPI.workbenchSession
               .setNativePreviewSession({

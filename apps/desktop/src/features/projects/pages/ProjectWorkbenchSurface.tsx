@@ -443,15 +443,15 @@ export function ProjectWorkbenchSurface() {
               <button
                 type="button"
                 aria-label={t('workbench.surface.closeSettings')}
-                data-workbench-browser-overlay="true"
-                data-workbench-browser-overlay-reason="Settings overlay"
+                data-native-surface-overlay="true"
+                data-native-surface-overlay-reason="Settings overlay"
                 className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
                 onClick={closeSettingsOverlay}
               />
 
               <aside
-                data-workbench-browser-overlay="true"
-                data-workbench-browser-overlay-reason="Settings overlay"
+                data-native-surface-overlay="true"
+                data-native-surface-overlay-reason="Settings overlay"
                 className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
               >
                 <div className="min-h-0 flex-1 overflow-hidden">
