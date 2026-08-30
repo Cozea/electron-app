@@ -75,6 +75,7 @@
   --app-scrollbar-thumb: color-mix(in oklch, var(--foreground) 20%, transparent);
   --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
   --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
+  --assistant-composer-surface: oklch(1 0 0);
   --store-organization-accent: oklch(0.457 0.24 277.023);
   --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
   /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
@@ -1059,6 +1060,7 @@ body {
   --left-sidebar-glass-color-weight: 30%;
   --left-sidebar-accent: oklch(0.19 0.01 258);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
+  --assistant-composer-surface: var(--surface-raised);
   --store-organization-accent: oklch(0.785 0.115 274.713);
   --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
 }
@@ -1509,6 +1511,7 @@ body {
      surfaces invisible). */
   --content-surface: color-mix(in oklch, var(--background) 95%, var(--foreground) 5%);
   --surface-raised: var(--secondary);
+  --assistant-composer-surface: var(--surface-raised);
   --table-row-hover: color-mix(in oklch, var(--secondary) 86%, var(--foreground) 14%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
 }
