@@ -76,6 +76,7 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import { ProviderAuthenticationHelp } from "./ProviderRemediationAction";
 import {
   computeMessageDurationStart,
+  deriveActiveTurnHeaderIndex,
   deriveTurnHeaderIndex,
   normalizeCompactToolLabel,
   omitSupersededLifecycleMarkers,
@@ -356,7 +357,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         const completedIndex = rowsAtIndex.findIndex((row) => row.id === statusId);
         if (completedIndex >= 0) rowsAtIndex.splice(completedIndex, 1);
       }
-      addTurnStatusRow(deriveTurnHeaderIndex(timelineEntries, activeTurnId), {
+      addTurnStatusRow(deriveActiveTurnHeaderIndex(timelineEntries, activeTurnId), {
         kind: "turn-status",
         id: statusId,
         createdAt: activeWorkStartedAt ?? "",
@@ -1046,7 +1047,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 )}
                 {(displayedUserMessage.visibleText.trim().length > 0 ||
                   terminalContexts.length > 0) && (
-                  <div className="relative w-fit max-w-full rounded-2xl bg-zinc-900 text-white shadow-xs transition-colors dark:bg-surface-raised dark:text-foreground px-4 py-2.5">
+                  <div className="relative w-fit max-w-full rounded-2xl bg-[var(--assistant-user-message-surface)] px-4 py-2.5 text-[var(--assistant-user-message-foreground)] shadow-xs transition-colors">
                     <div className="flex w-full min-w-0 items-start gap-1.5">
                       <div
                         className={cn(
@@ -1064,7 +1065,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       {needsUserBodyTruncate ? (
                         <button
                           type="button"
-                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/15 hover:text-white dark:text-muted-foreground/60 dark:hover:bg-muted/80 dark:hover:text-foreground/80"
+                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[var(--assistant-user-message-foreground)] opacity-70 transition-[background-color,opacity] hover:bg-[color-mix(in_oklch,var(--assistant-user-message-foreground)_15%,transparent)] hover:opacity-100"
                           aria-expanded={userMessageExpanded}
                           aria-label={
                             userMessageExpanded ? "Collapse user message" : "Expand user message"

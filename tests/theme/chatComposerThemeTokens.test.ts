@@ -20,6 +20,17 @@ const promptEditor = readFileSync(
   ),
   "utf8",
 )
+const messagesTimeline = readFileSync(
+  resolve(
+    process.cwd(),
+    "apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.tsx",
+  ),
+  "utf8",
+)
+
+function readThemeBlock(theme: "navy" | "wine" | "clay" | "forest"): string {
+  return stylesheet.match(new RegExp(`\\.${theme} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? ""
+}
 
 describe("agent chat composer theme surface", () => {
   it("uses semantic surface and action colors instead of Light/Dark-only utilities", () => {
@@ -40,5 +51,28 @@ describe("agent chat composer theme surface", () => {
       /\.navy,\s*\.wine,\s*\.forest,\s*\.clay \{([\s\S]*?)\n\}/,
     )?.[1]
     expect(chromaticBlock).toContain("--assistant-composer-surface: var(--surface-raised);")
+  })
+
+  it("gives submitted user prompts a readable surface for every theme", () => {
+    expect(messagesTimeline).toContain("bg-[var(--assistant-user-message-surface)]")
+    expect(messagesTimeline).toContain("text-[var(--assistant-user-message-foreground)]")
+    expect(messagesTimeline).not.toContain("bg-zinc-900 text-white")
+    expect(messagesTimeline).not.toContain("dark:bg-surface-raised dark:text-foreground")
+
+    expect(stylesheet).toContain("--assistant-user-message-surface: oklch(0.21 0.006 285.885);")
+    expect(stylesheet).toContain("--assistant-user-message-surface: var(--surface-raised);")
+    expect(stylesheet).toContain("--assistant-user-message-foreground: var(--foreground);")
+    expect(readThemeBlock("navy")).toContain(
+      "--assistant-user-message-surface: hsl(216 42% 24%);",
+    )
+    expect(readThemeBlock("wine")).toContain(
+      "--assistant-user-message-surface: hsl(340 42% 25%);",
+    )
+    expect(readThemeBlock("clay")).toContain(
+      "--assistant-user-message-surface: hsl(25 38% 25%);",
+    )
+    expect(readThemeBlock("forest")).toContain(
+      "--assistant-user-message-surface: hsl(150 34% 23%);",
+    )
   })
 })
