@@ -1,6 +1,11 @@
 # Continuity
 
 ## [PLANS]
+- 2026-08-30T14:31:51Z [USER] Commit and push the current agent-chat status-placement and submitted-prompt theming fixes on the existing non-main UI branch.
+- 2026-08-30T14:29:09Z [USER] Adapt submitted user-prompt bubble colors in agent tile chats to Navy, Wine, Clay, and Forest instead of leaving the same neutral color across all four.
+- 2026-08-30T14:23:32Z [USER] Stop the currently running Cozea desktop development app.
+- 2026-08-30T14:22:10Z [USER] Keep the agent tile's active `Working` status directly beneath the newest submitted prompt instead of leaving it attached to an earlier turn near the top of the chat.
+- 2026-08-30T14:14:38Z [USER] Restart the Cozea desktop development app from the current UI branch.
 - 2026-08-30T14:09:58Z [USER] Fix the agent-tile chat composer so its input surface and text colors adapt correctly to Navy, Wine, Clay, and Forest.
 - 2026-08-30T03:05:34Z [USER] Commit and push every current non-ignored workspace change on the existing non-main UI branch.
 - 2026-08-30T03:03:47Z [USER] Remove the unnecessary `Available now` tag from the DevApps Store built-in section.
@@ -57,6 +62,8 @@
 - 2026-06-10T08:58Z [USER] Apply the best fix for the diagnosed memory-info warning.
 
 ## [DECISIONS]
+- 2026-08-30T14:29:09Z [CODE] Give submitted user messages their own semantic surface/foreground pair: preserve Zinc/white in Light and the raised neutral in Dark, while assigning restrained, high-contrast blue, burgundy, umber, and green surfaces to Navy, Wine, Clay, and Forest respectively.
+- 2026-08-30T14:22:10Z [CODE] Give active and completed turn headers separate placement rules: completed statuses remain anchored to their historical turn, while an active status may trust matching turn content only after the newest user prompt and otherwise falls immediately after that prompt.
 - 2026-08-30T14:09:58Z [CODE] Give the composer its own semantic surface role: preserve white in Light, use the existing raised surface in Dark and all four chromatic themes, use theme primary/foreground roles for Send, and use the full muted text role for readable placeholder copy.
 - 2026-08-30T03:03:47Z [CODE] Treat the built-in section heading, description, and per-app `Built in` labels as sufficient availability communication; remove the duplicate section-level badge and its orphaned translations.
 - 2026-08-30T03:00:11Z [CODE] Replace Store-local hardcoded indigo utilities with one semantic organization-accent foreground/surface pair: retain indigo in Light/Dark and map Navy to blue, Wine to rose, Clay to amber, and Forest to green with small-text contrast above 4.5:1.
@@ -151,6 +158,8 @@
 - 2026-06-10T08:58Z [CODE] Patched `electron/services/WorkbenchSessionManager.ts` to cache/throttle memory pressure checks with a 2000 ms TTL and catch native `process.getSystemMemoryInfo()` failures, falling back to the last known pressure state.
 
 ## [DISCOVERIES]
+- 2026-08-30T14:29:09Z [CODE] The composer shell already used a semantic chromatic surface, but submitted user-message bubbles still relied on `bg-zinc-900` plus a `.dark` override; Navy, Wine, Clay, and Forest are independent root classes, so every one retained the same neutral Zinc surface.
+- 2026-08-30T14:22:10Z [CODE] During the optimistic submit-to-projection handoff, `isWorking` is already true while `thread.latestTurn` can still identify the previous completed turn; the shared historical header resolver therefore found the old turn and placed the new live status after its old prompt. The vendored upstream timeline guards this case by considering only owned entries after the newest user message.
 - 2026-08-30T14:09:58Z [CODE] The composer hardcoded `bg-white` and relied on Tailwind's `.dark` variant, but Navy/Wine/Clay/Forest use independent root classes; themed muted text was therefore painted over a Light-only surface. Its placeholder also reduced the muted role to 35% opacity.
 - 2026-08-30T03:00:11Z [TOOL] The two Store badges bypassed the chromatic palettes through identical `indigo-500/10` utilities. The replacement pairs model at 7.07:1 Navy, 6.09:1 Wine, 7.49:1 Clay, and 8.53:1 Forest; live Electron inspection confirmed each hue is visible, then restored the original Light theme.
 - 2026-08-30T02:52:47Z [TOOL] Live Electron inspection confirmed the compact state reads as Members heading + top-right invite action + member-only card; opening the action places the focused Device ID form above the card, and Cancel restores the compact state. The app was returned to its prior Store view.
@@ -204,6 +213,10 @@
 - 2026-06-10T08:58Z [TOOL] Runtime verification: stopped duplicate stale dev processes, started one fresh `bun run dev` instance; renderer listened on `http://localhost:5183/`, assistant runtime on `127.0.0.1:3773`, app reached `main-window-ready-to-show`, and fresh `.agent/dev-current.log` had no `Unable to retrieve system memory information` or `UnhandledPromiseRejectionWarning` matches.
 
 ## [OUTCOMES]
+- 2026-08-30T14:29:09Z [TOOL] Agent user-prompt chromatic theming completed with frontend-only semantic tokens. Two focused files / 23 tests, typecheck, lint, production build, compiled-CSS inspection, contrast calculations, and `git diff --check` pass; prompt-text contrast is 10.79:1 Navy, 10.75:1 Wine, 8.85:1 Clay, and 8.57:1 Forest. The detector reported only unchanged Inter and timeline padding-transition warnings. A new repo-owned `bun run dev` process was observed with a 2026-08-30T14:23:51Z start time after the prior session closed; its origin is UNCONFIRMED, so it was left running to preserve external state.
+- 2026-08-30T14:23:32Z [TOOL] Gracefully stopped the exact active `bun run dev` session; renderer port 5183, shadow-runtime port 4783, and T3 port 13773 are all closed.
+- 2026-08-30T14:22:10Z [TOOL] Agent active-status placement completed with frontend-only timeline logic. The stale previous-turn regression now anchors `Working` immediately after the newest prompt; 1 focused file / 20 tests, typecheck, lint, production build, one layout detector pass, live HMR, and `git diff --check` pass. The build emitted only its existing mixed-import notice.
+- 2026-08-30T14:14:38Z [TOOL] Gracefully stopped the exact prior development session and restarted Cozea from `codex/ui-design-polish` with `bun run dev`; Electron reached `main-window-ready-to-show`, the renderer responds on `localhost:5183`, the shadow runtime reports ready on `127.0.0.1:4783`, and T3 reports ready on `127.0.0.1:13773`. The new launch remains active.
 - 2026-08-30T14:10:57Z [TOOL] The chromatic agent-composer fix is published on the non-main branch `origin/codex/ui-design-polish` at feature commit `ea4418c6`; GitHub again reported the same one high-severity Dependabot alert on the default branch.
 - 2026-08-30T14:09:58Z [TOOL] Agent composer chromatic theming completed with frontend-only changes. Four focused files / 21 tests, typecheck, lint, production build, targeted design detector, live Wine-theme inspection, contrast calculations, and `git diff --check` pass; chromatic entered-text contrast is 10.96–13.64:1 and placeholder contrast is 5.40–6.78:1. The build emitted only its existing mixed-import notice.
 - 2026-08-30T03:06:23Z [TOOL] The accumulated settings/authentication/Store UI batch was published as `c3f7dafc` to `origin/codex/ui-design-polish`; GitHub reported one existing high-severity Dependabot alert on the default branch, which did not block the push.
