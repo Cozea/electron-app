@@ -50,6 +50,7 @@ describe("resolveWorkbenchSelectionLaunchRequest", () => {
           framework: "vite-react",
           contentHash: "a".repeat(64),
           entryPath: "index.html",
+          runtimeKind: "static",
         },
       }),
     ).toEqual({
@@ -66,6 +67,7 @@ describe("resolveWorkbenchSelectionLaunchRequest", () => {
         orgDevAppOrganizationId: "org_1",
         orgDevAppContentHash: "a".repeat(64),
         orgDevAppEntryPath: "index.html",
+        orgDevAppRuntimeKind: "static",
         orgDevAppLogoDataUrl: null,
       },
     })
