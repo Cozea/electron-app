@@ -128,16 +128,21 @@ describe("Service DevApp build adapter", () => {
     service.approveRuntime(packed.contentHash, publicationId, packed.permissionSetHash!)
     service.setRuntimeEnvironment(packed.contentHash, publicationId, { TEST_SECRET: "correct" })
 
-    let beforeSendHeaders: ((details: { requestHeaders: Record<string, string> }, callback: (result: { requestHeaders: Record<string, string> }) => void) => void) | null = null
+    type HeaderHook = (
+      details: { requestHeaders: Record<string, string> },
+      callback: (result: { requestHeaders: Record<string, string> }) => void,
+    ) => void
+    // Held in an object so the assignment inside the listener is not narrowed away.
+    const hook: { current: HeaderHook | null } = { current: null }
     const fakeSession = {
       protocol: { handle: vi.fn() },
       webRequest: {
-        onBeforeSendHeaders: (_filter: unknown, listener: typeof beforeSendHeaders) => { beforeSendHeaders = listener },
+        onBeforeSendHeaders: (_filter: unknown, listener: HeaderHook) => { hook.current = listener },
       },
     }
     service.registerProtocolForSession(fakeSession as never, publicationId)
     let gatewayHeaders: Record<string, string> = {}
-    beforeSendHeaders?.({ requestHeaders: {} }, (result) => { gatewayHeaders = result.requestHeaders })
+    hook.current?.({ requestHeaders: {} }, (result) => { gatewayHeaders = result.requestHeaders })
 
     const state = await service.startRuntime(packed.contentHash, publicationId, packed.permissionSetHash, "tile_test")
     try {

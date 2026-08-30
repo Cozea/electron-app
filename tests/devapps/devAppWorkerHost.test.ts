@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { normalizeGrant } from "../../shared/devAppCapabilities"
+import { normalizeGrant, type DevAppCapability } from "../../shared/devAppCapabilities"
 import type { DevAppWorkerResponse } from "../../shared/devAppWorkerProtocol"
 import {
   DevAppWorkerHost,
@@ -54,7 +54,7 @@ class FakeWorker implements DevAppWorkerProcess {
 }
 
 function makeHost(options: {
-  capabilities?: string[]
+  capabilities?: DevAppCapability[]
   handler?: (method: string) => Promise<unknown>
 } = {}) {
   const spawned: FakeWorker[] = []
@@ -232,7 +232,7 @@ describe("Worker host — lifecycle", () => {
 
 describe("Worker host — request pressure", () => {
   it("refuses once too many requests are in flight", async () => {
-    let release: (() => void) | null = null
+    let release = () => {}
     const gate = new Promise<void>((resolve) => { release = resolve })
     const { current } = makeHost({
       capabilities: ["project.read"],
@@ -246,7 +246,7 @@ describe("Worker host — request pressure", () => {
 
     const refusals = current().responses.filter((r) => r.error?.code === "internal-error")
     expect(refusals.length).toBeGreaterThan(0)
-    release?.()
+    release()
   })
 })
 

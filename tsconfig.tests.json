@@ -1,0 +1,50 @@
+{
+  "extends": "./apps/desktop/tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tests.tsbuildinfo",
+    "baseUrl": "./apps/desktop",
+    "types": ["vite/client", "node"]
+  },
+  "include": ["tests"],
+  /*
+   * Test files were never part of a typecheck project, so contract changes could
+   * leave a suite compiling against a shape that no longer exists — vitest
+   * transpiles without checking. These files carry errors that predate the gate.
+   * Nothing may be added to this list; entries come off it as they are fixed.
+   */
+  "exclude": [
+    /*
+     * Compiles against Cloudflare Worker ambient globals, which this project does
+     * not load. The worker source it imports is typechecked by
+     * cloudflare/worker/tsconfig.json, which passes.
+     */
+    "tests/identity/deviceAuthJwt.test.ts",
+
+    "tests/assistant/assistantDerivations.test.ts",
+    "tests/assistant/chat/session-logic.test.ts",
+    "tests/assistant/providerStatusBanner.test.ts",
+    "tests/assistant/threadArtifacts.test.ts",
+    "tests/auth/authCallbackState.test.ts",
+    "tests/dev-server/DevServerService.ensure.test.ts",
+    "tests/dev-server/devServerRunStore.test.ts",
+    "tests/electron/browser-automation/BrowserAutomationAdapter.test.ts",
+    "tests/electron/nativePreviewManager.real.test.ts",
+    "tests/electron/nativePreviewManager.test.ts",
+    "tests/electron/substrateOtlpExporter.test.ts",
+    "tests/filesystem/projectDetectorPackageManager.test.ts",
+    "tests/git/gitRouteAccess.test.ts",
+    "tests/git/gitSyncMetadataCache.test.ts",
+    "tests/native-preview-runtime/network/AsyncBoundedResponseBuffer.test.ts",
+    "tests/projects/resolveDroppedLocalFolderPath.test.ts",
+    "tests/providers/googleReasoningCapabilities.test.ts",
+    "tests/src/features/projects/lib/deleteAssistantThread.test.ts",
+    "tests/src/stores/workbenchPersistedMigration.test.ts",
+    "tests/substrate/rpcOrchestrationHandlers.test.ts",
+    "tests/substrate/t3EffectRpcClient.test.ts",
+    "tests/substrate/t3OrchestrationProjectionReplay.test.ts",
+    "tests/substrate/t3ServerConfigCutover.test.ts",
+    "tests/workbench/workbenchBranchDisplay.test.ts",
+    "tests/workbench/workbenchSessionOwnership.test.ts",
+    "tests/workspace/workspaceProjectAccess.test.ts"
+  ]
+}

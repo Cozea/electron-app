@@ -110,6 +110,11 @@ jobs:
             source "$BASH_ENV"
             bun run typecheck:electron
       - run:
+          name: Typecheck tests
+          command: |
+            source "$BASH_ENV"
+            bun run typecheck:tests
+      - run:
           name: Lint
           command: |
             source "$BASH_ENV"

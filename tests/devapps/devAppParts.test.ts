@@ -96,8 +96,8 @@ describe("DevApp surfaces — derived, never declared", () => {
   })
 
   it("offers an agent surface only when a worker exposes tools", () => {
-    const silent: DevAppParts = { worker: { capabilities: ["git"] } }
-    const speaking: DevAppParts = { worker: { capabilities: ["git"], exposesTools: true } }
+    const silent: DevAppParts = { worker: { capabilities: ["git.read"] } }
+    const speaking: DevAppParts = { worker: { capabilities: ["git.read"], exposesTools: true } }
     expect(derivableSurfaces(silent)).not.toContain("agentTool")
     expect(derivableSurfaces(speaking)).toContain("agentTool")
   })
@@ -115,7 +115,7 @@ describe("DevApp surfaces — derived, never declared", () => {
 
   it("supports a headless worker with no tile at all", () => {
     // The shape today's closed union cannot express: an app with no view.
-    expect(derivableSurfaces({ worker: { capabilities: ["git"], exposesTools: true } }))
+    expect(derivableSurfaces({ worker: { capabilities: ["git.read"], exposesTools: true } }))
       .toEqual(["agentTool", "backgroundService"])
   })
 })
