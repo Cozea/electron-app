@@ -75,6 +75,8 @@
   --app-scrollbar-thumb: color-mix(in oklch, var(--foreground) 20%, transparent);
   --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
   --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
+  --store-organization-accent: oklch(0.457 0.24 277.023);
+  --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
   /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
   --app-copy-font-size: 13px;
   --app-copy-line-height: 20px;
@@ -1057,6 +1059,8 @@ body {
   --left-sidebar-glass-color-weight: 30%;
   --left-sidebar-accent: oklch(0.19 0.01 258);
   --left-sidebar-border: color-mix(in oklch, var(--sidebar), black 20%);
+  --store-organization-accent: oklch(0.785 0.115 274.713);
+  --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
 }
 
 .navy {
@@ -1069,6 +1073,8 @@ body {
   --popover-foreground: hsl(210 33% 96%);
   --primary: hsl(210 78% 62%);
   --primary-foreground: hsl(216 100% 98%);
+  --store-organization-accent: hsl(210 92% 72%);
+  --store-organization-accent-surface: hsl(210 78% 62% / 16%);
   --secondary: hsl(222 26% 17%);
   --secondary-foreground: hsl(210 33% 96%);
   --muted: hsl(222 24% 17%);
@@ -1112,6 +1118,8 @@ body {
   --popover-foreground: hsl(330 24% 96%);
   --primary: hsl(345 72% 50%);
   --primary-foreground: hsl(0 0% 100%);
+  --store-organization-accent: hsl(345 86% 72%);
+  --store-organization-accent-surface: hsl(345 72% 50% / 16%);
   --secondary: hsl(340 30% 19%);
   --secondary-foreground: hsl(330 24% 94%);
   --muted: hsl(340 28% 19%);
@@ -1153,6 +1161,8 @@ body {
   --popover-foreground: hsl(35 25% 94%);
   --primary: hsl(28 65% 52%);
   --primary-foreground: hsl(25 30% 8%);
+  --store-organization-accent: hsl(32 88% 68%);
+  --store-organization-accent-surface: hsl(28 65% 52% / 16%);
   --secondary: hsl(25 22% 20%);
   --secondary-foreground: hsl(35 25% 94%);
   --muted: hsl(26 20% 20%);
@@ -1205,6 +1215,8 @@ body {
   --popover-foreground: hsl(148 20% 96%);
   --primary: hsl(150 42% 34%);
   --primary-foreground: hsl(144 50% 94%);
+  --store-organization-accent: hsl(148 60% 68%);
+  --store-organization-accent-surface: hsl(150 42% 34% / 18%);
   --secondary: hsl(150 24% 19%);
   --secondary-foreground: hsl(148 20% 94%);
   --muted: hsl(150 22% 19%);

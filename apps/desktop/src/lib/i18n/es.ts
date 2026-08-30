@@ -50,6 +50,8 @@ const es: Record<TranslationKey, string> = {
   "settings.drawer.title": "Configuración",
   "settings.drawer.description":
     "Explora y actualiza la configuración del dispositivo, apariencia, organizaciones y herramientas.",
+  "settings.publicId.show": "Mostrar ID",
+  "settings.publicId.hide": "Ocultar ID",
 
   // ── Configuración: Cuenta ───────────────────────────────────────────
   "settings.account.profileTitle": "Perfil",
@@ -132,8 +134,13 @@ const es: Record<TranslationKey, string> = {
   "settings.organizations.members": "Miembros",
   "settings.organizations.invites": "Invitaciones",
   "settings.organizations.devApps": "DevApps",
+  "settings.organizations.tabs.label": "Configuración de la organización",
+  "settings.organizations.tabs.details": "Detalles",
+  "settings.organizations.tabs.members": "Miembros",
+  "settings.organizations.tabs.devApps": "Dev Apps",
   "settings.organizations.inviteEmail": "Invitar por correo",
   "settings.organizations.invite": "Invitar",
+  "settings.organizations.inviteDevice": "Invitar dispositivo",
   "settings.organizations.groupId": "ID del grupo",
   "settings.organizations.groupIdDescription":
     "Este es el ID público de este grupo de dispositivos. Es seguro copiarlo y compartirlo.",
@@ -281,7 +288,6 @@ const es: Record<TranslationKey, string> = {
   "appStore.page.heroDesc": "La tienda mostrará herramientas de alta señal para vistas previas, agentes, entornos de ejecución y flujos de trabajo de equipo en un lugar curado.",
   "appStore.page.builtIn": "DevApps integradas",
   "appStore.page.builtInDesc": "Aplicaciones del registro ya disponibles en el lanzador y la tienda.",
-  "appStore.page.availableNow": "Disponible ahora",
   "appStore.page.badgeBuiltIn": "Integrada",
   "appStore.page.privateDevApps": "Tu organización",
   "appStore.page.privateDevAppsDesc": "Artefactos compilados publicados en las organizaciones a las que perteneces. Abrirlos nunca usa localhost ni el código fuente del proyecto.",

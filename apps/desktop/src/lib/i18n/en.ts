@@ -48,6 +48,8 @@ const en = {
   "settings.drawer.title": "Settings",
   "settings.drawer.description":
     "Browse and update device, appearance, organization, and tooling settings.",
+  "settings.publicId.show": "Show ID",
+  "settings.publicId.hide": "Hide ID",
 
   // ── Settings: Account ───────────────────────────────────────────────
   "settings.account.profileTitle": "Profile",
@@ -125,8 +127,13 @@ const en = {
   "settings.organizations.members": "Members",
   "settings.organizations.invites": "Invites",
   "settings.organizations.devApps": "DevApps",
+  "settings.organizations.tabs.label": "Organization settings",
+  "settings.organizations.tabs.details": "Details",
+  "settings.organizations.tabs.members": "Members",
+  "settings.organizations.tabs.devApps": "Dev Apps",
   "settings.organizations.inviteEmail": "Invite by email",
   "settings.organizations.invite": "Invite",
+  "settings.organizations.inviteDevice": "Invite device",
   "settings.organizations.groupId": "Group ID",
   "settings.organizations.groupIdDescription":
     "This is the public ID for this device group. It is safe to copy and share.",
@@ -271,7 +278,6 @@ const en = {
   "appStore.page.heroDesc": "The store will surface high-signal tools for previews, agents, runtimes, and team workflows in one curated place.",
   "appStore.page.builtIn": "Built-in DevApps",
   "appStore.page.builtInDesc": "Registry-backed apps already available across the launcher and store.",
-  "appStore.page.availableNow": "Available now",
   "appStore.page.badgeBuiltIn": "Built in",
   "appStore.page.privateDevApps": "Your org",
   "appStore.page.privateDevAppsDesc": "Built artifacts published to organizations you belong to. Opening them never uses localhost or project source.",
