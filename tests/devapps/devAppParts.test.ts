@@ -1,0 +1,121 @@
+import { describe, expect, it } from "vitest"
+
+import { BUILTIN_DEV_APPS } from "@/features/devapps/registry"
+import {
+  derivableSurfaces,
+  partsForLaunchSpec,
+  type DevAppParts,
+} from "@/features/devapps/registry/parts"
+import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
+
+const PUBLISHED_STATIC: DevAppLaunchSpec = {
+  kind: "publishedDevApp",
+  tileType: "orgDevApp",
+  publicationId: "pub_1",
+  organizationId: "org_1",
+  organizationName: "Cozea",
+  releaseId: "rel_1",
+  releaseVersion: 1,
+  name: "Docs",
+  framework: "vite-react",
+  contentHash: "a".repeat(64),
+  entryPath: "index.html",
+  runtimeKind: "static",
+}
+
+const PUBLISHED_SERVICE: DevAppLaunchSpec = {
+  ...PUBLISHED_STATIC,
+  runtimeKind: "service",
+  entryPath: "server/server.js",
+  framework: "nextjs",
+}
+
+describe("DevApp parts — expressing what ships today", () => {
+  // The point of the decomposition: if a real DevApp cannot be described as parts, the
+  // model is wrong, and this is where that must surface.
+  it("expresses every built-in as a composition of parts", () => {
+    for (const manifest of BUILTIN_DEV_APPS) {
+      const parts = partsForLaunchSpec(manifest.launch)
+      expect(parts, `${manifest.id} produced no parts`).toBeTruthy()
+      expect(
+        Boolean(parts.view || parts.worker || parts.service),
+        `${manifest.id} produced an empty composition`,
+      ).toBe(true)
+    }
+  })
+
+  it("gives every built-in a tile surface, since each one renders", () => {
+    for (const manifest of BUILTIN_DEV_APPS) {
+      const surfaces = derivableSurfaces(partsForLaunchSpec(manifest.launch))
+      expect(surfaces, `${manifest.id} lost its tile surface`).toContain("tile")
+    }
+  })
+
+  it("marks native views as native and package views as package", () => {
+    const browser = BUILTIN_DEV_APPS.find((app) => app.id === "browser")!
+    expect(partsForLaunchSpec(browser.launch).view).toEqual({ source: "native", rendererId: "browser" })
+    expect(partsForLaunchSpec(PUBLISHED_STATIC).view).toEqual({ source: "package" })
+  })
+
+  it("splits a terminal into unprivileged chrome over a privileged worker", () => {
+    const terminal = BUILTIN_DEV_APPS.find((app) => app.id === "terminal")!
+    const parts = partsForLaunchSpec(terminal.launch)
+    expect(parts.view?.source).toBe("native")
+    expect(parts.worker?.capabilities).toContain("terminal.spawn")
+    // The view itself must never hold capability — that is the whole boundary.
+    expect(parts.view).not.toHaveProperty("capabilities")
+  })
+})
+
+describe("DevApp parts — published releases", () => {
+  it("maps a static release to a view with no running process", () => {
+    const parts = partsForLaunchSpec(PUBLISHED_STATIC)
+    expect(parts).toEqual({ view: { source: "package" } })
+    expect(parts.service).toBeUndefined()
+  })
+
+  it("maps a service release to a view plus an unprivileged service", () => {
+    const parts = partsForLaunchSpec(PUBLISHED_SERVICE)
+    expect(parts.view).toEqual({ source: "package" })
+    expect(parts.service).toEqual({ runtimeKind: "node", location: "device" })
+    // A published service holds no capabilities; that is what separates it from a worker.
+    expect(parts.worker).toBeUndefined()
+  })
+
+  it("preserves the singleton constraint the Dev Server depends on", () => {
+    const devServer = BUILTIN_DEV_APPS.find((app) => app.id === "dev-server")!
+    expect(partsForLaunchSpec(devServer.launch).service?.singleton).toBe(true)
+  })
+})
+
+describe("DevApp surfaces — derived, never declared", () => {
+  it("offers no agent surface to a view-only app", () => {
+    // Browser and Dev Server tiles are view-first, so there is nothing callable to
+    // expose. That is the correct outcome rather than a gap to paper over.
+    expect(derivableSurfaces({ view: { source: "package" } })).toEqual(["tile"])
+  })
+
+  it("offers an agent surface only when a worker exposes tools", () => {
+    const silent: DevAppParts = { worker: { capabilities: ["git"] } }
+    const speaking: DevAppParts = { worker: { capabilities: ["git"], exposesTools: true } }
+    expect(derivableSurfaces(silent)).not.toContain("agentTool")
+    expect(derivableSurfaces(speaking)).toContain("agentTool")
+  })
+
+  it("offers a background surface to anything with a long-lived process", () => {
+    expect(derivableSurfaces({ service: { runtimeKind: "node", location: "device" } }))
+      .toContain("backgroundService")
+    expect(derivableSurfaces({ worker: { capabilities: [] } })).toContain("backgroundService")
+  })
+
+  it("offers no background surface to a static service, which is only files", () => {
+    expect(derivableSurfaces({ view: { source: "package" }, service: { runtimeKind: "static", location: "device" } }))
+      .toEqual(["tile"])
+  })
+
+  it("supports a headless worker with no tile at all", () => {
+    // The shape today's closed union cannot express: an app with no view.
+    expect(derivableSurfaces({ worker: { capabilities: ["git"], exposesTools: true } }))
+      .toEqual(["agentTool", "backgroundService"])
+  })
+})
