@@ -7,10 +7,6 @@ import { CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as
 import * as React from "react"
 import { Select as BaseSelect } from "@base-ui/react"
 
-import {
-  preflightNativeSurfaceOcclusion,
-  useNativeSurfaceOverlayLifecycle,
-} from "@/lib/nativeSurfaceOcclusion"
 import { cn } from "@/lib/utils"
 
 interface SelectProps extends Omit<React.ComponentProps<typeof BaseSelect.Root>, 'value' | 'defaultValue' | 'onValueChange' | 'onOpenChange'> {
@@ -44,35 +40,16 @@ function SelectTrigger({
   size = "default",
   children,
   asChild,
-  onKeyDownCapture,
-  onPointerDownCapture,
   ...props
 }: React.ComponentProps<typeof BaseSelect.Trigger> & {
   size?: "sm" | "default"
   asChild?: boolean
 }) {
-  const triggerProps: Pick<
-    React.ComponentProps<typeof BaseSelect.Trigger>,
-    "onKeyDownCapture" | "onPointerDownCapture"
-  > = {
-    onKeyDownCapture: (event) => {
-      if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
-        preflightNativeSurfaceOcclusion("Select menu opening")
-      }
-      onKeyDownCapture?.(event)
-    },
-    onPointerDownCapture: (event) => {
-      preflightNativeSurfaceOcclusion("Select menu opening")
-      onPointerDownCapture?.(event)
-    },
-  }
-
   if (asChild) {
     return (
       <BaseSelect.Trigger
         data-slot="select-trigger"
         render={children as any}
-        {...triggerProps}
         {...props}
       />
     )
@@ -82,7 +59,6 @@ function SelectTrigger({
     <BaseSelect.Trigger
       data-slot="select-trigger"
       data-size={size}
-      {...triggerProps}
       className={cn(
         "data-[placeholder]:text-muted-foreground relative flex w-fit cursor-pointer items-center justify-between gap-2 rounded-lg border border-input bg-popover not-dark:bg-clip-padding px-[calc(--spacing(3)-1px)] text-sm text-foreground whitespace-nowrap shadow-xs/5 transition-shadow outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-disabled:not-active:before:shadow-[0_1px_--theme(--color-black/4%)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-64 disabled:shadow-none dark:bg-input/32 dark:not-disabled:before:shadow-[0_-1px_--theme(--color-white/6%)] hover:bg-accent/50 dark:hover:bg-input/64 data-[size=default]:h-9 sm:data-[size=default]:h-8 data-[size=sm]:h-8 sm:data-[size=sm]:h-7 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4",
         className
@@ -105,14 +81,10 @@ function SelectContent({
   style,
   ...props
 }: React.ComponentProps<typeof BaseSelect.Popup> & { position?: string; align?: string }) {
-  useNativeSurfaceOverlayLifecycle()
-
   return (
     <BaseSelect.Portal>
       <BaseSelect.Positioner align={align as any} sideOffset={4} className="z-50">
         <BaseSelect.Popup
-          data-native-surface-overlay="true"
-          data-native-surface-overlay-reason="Select menu"
           data-slot="select-content"
           className={cn(
             "titlebar-no-drag relative z-50 flex min-w-32 flex-col origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",

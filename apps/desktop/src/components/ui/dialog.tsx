@@ -7,10 +7,6 @@ import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 import * as React from "react"
 import { Dialog as BaseDialog } from "@base-ui/react"
 
-import {
-  preflightNativeSurfaceOcclusion,
-  useNativeSurfaceOverlayLifecycle,
-} from "@/lib/nativeSurfaceOcclusion"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -21,38 +17,19 @@ function Dialog({ ...props }: React.ComponentProps<typeof BaseDialog.Root>) {
 function DialogTrigger({
   asChild,
   children,
-  onKeyDownCapture,
-  onPointerDownCapture,
   ...props
 }: React.ComponentProps<typeof BaseDialog.Trigger> & { asChild?: boolean }) {
-  const triggerProps: Pick<
-    React.ComponentProps<typeof BaseDialog.Trigger>,
-    "onKeyDownCapture" | "onPointerDownCapture"
-  > = {
-    onKeyDownCapture: (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        preflightNativeSurfaceOcclusion("Dialog opening")
-      }
-      onKeyDownCapture?.(event)
-    },
-    onPointerDownCapture: (event) => {
-      preflightNativeSurfaceOcclusion("Dialog opening")
-      onPointerDownCapture?.(event)
-    },
-  }
-
   if (asChild) {
     return (
       <BaseDialog.Trigger
         data-slot="dialog-trigger"
         render={children as any}
-        {...triggerProps}
         {...props}
       />
     )
   }
   return (
-    <BaseDialog.Trigger data-slot="dialog-trigger" {...triggerProps} {...props}>
+    <BaseDialog.Trigger data-slot="dialog-trigger" {...props}>
       {children}
     </BaseDialog.Trigger>
   )
@@ -77,12 +54,8 @@ function DialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof BaseDialog.Backdrop>) {
-  useNativeSurfaceOverlayLifecycle()
-
   return (
     <BaseDialog.Backdrop
-      data-native-surface-overlay="true"
-      data-native-surface-overlay-reason="Dialog backdrop"
       data-slot="dialog-overlay"
       className={cn(
         "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",

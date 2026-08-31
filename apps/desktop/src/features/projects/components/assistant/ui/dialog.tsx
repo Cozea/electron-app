@@ -7,10 +7,6 @@ import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type * as React from "react";
 
-import {
-  preflightNativeSurfaceOcclusion,
-  useNativeSurfaceOverlayLifecycle,
-} from "@/lib/nativeSurfaceOcclusion";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 import { ScrollArea } from "./scroll-area";
@@ -21,27 +17,8 @@ const Dialog = DialogPrimitive.Root;
 
 const DialogPortal = DialogPrimitive.Portal;
 
-function DialogTrigger({
-  onKeyDownCapture,
-  onPointerDownCapture,
-  ...props
-}: DialogPrimitive.Trigger.Props) {
-  return (
-    <DialogPrimitive.Trigger
-      data-slot="dialog-trigger"
-      onKeyDownCapture={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          preflightNativeSurfaceOcclusion("Dialog opening");
-        }
-        onKeyDownCapture?.(event);
-      }}
-      onPointerDownCapture={(event) => {
-        preflightNativeSurfaceOcclusion("Dialog opening");
-        onPointerDownCapture?.(event);
-      }}
-      {...props}
-    />
-  );
+function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
 }
 
 function DialogClose(props: DialogPrimitive.Close.Props) {
@@ -49,16 +26,12 @@ function DialogClose(props: DialogPrimitive.Close.Props) {
 }
 
 function DialogBackdrop({ className, ...props }: DialogPrimitive.Backdrop.Props) {
-  useNativeSurfaceOverlayLifecycle();
-
   return (
     <DialogPrimitive.Backdrop
       className={cn(
         "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",
         className,
       )}
-      data-native-surface-overlay="true"
-      data-native-surface-overlay-reason="Dialog backdrop"
       data-slot="dialog-backdrop"
       {...props}
     />
