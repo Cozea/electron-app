@@ -30,6 +30,20 @@ Primary platform references: [Electron utility processes](https://www.electronjs
 [Electron process model](https://www.electronjs.org/docs/latest/tutorial/process-model), and
 [Node permission model](https://nodejs.org/api/permissions.html).
 
+## Development power is intentional
+
+A development DevApp is trusted project code, not a consumer installation. Its worker may reach
+the network directly, read its package, persist app-owned data, and use every host operation its
+approved capability grant and protocol version expose. Approval is source-and-grant scoped for the
+session, so ordinary edits do not trigger a new prompt unless the requested authority widens.
+
+The current protocol-v1 list below is an implementation boundary, not a product decision that
+development apps should remain weak. Declared `git.*`, machine-wide `fs.*`, `terminal.spawn`, and
+`process.spawn` capabilities do not yet have view-callable v1 methods. Completing those APIs must
+use a new explicit protocol version and honest full-machine approval copy; it should not be
+reframed as a reason to deny powerful local development workflows. Consumer/published execution
+remains a separate trust tier.
+
 ## Findings closed
 
 | Finding                                                                                                   | Resolution                                                                                                                                                                                                                                            |
