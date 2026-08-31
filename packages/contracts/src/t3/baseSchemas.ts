@@ -1,5 +1,5 @@
 // @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ 3acdc3b2f9751915b7da12862681413dad363945 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 04d8f7918b2c44666ecaaef3eebb723fabc9d7f5 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
