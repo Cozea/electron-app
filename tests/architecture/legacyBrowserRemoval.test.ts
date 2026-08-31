@@ -63,14 +63,19 @@ describe("legacy browser removal boundary", () => {
     expect(orgDevAppTile).toContain("<BrowserUnavailableSurface");
   });
 
-  it("keeps browser rendering detached from Electron startup and preload", () => {
+  it("keeps the removed host absent while mounting only the T3 webview foundation", () => {
     const main = read("apps/desktop/electron/main.ts");
     const preload = read("apps/desktop/electron/preload.ts");
     const sessionManager = read("apps/desktop/electron/services/WorkbenchSessionManager.ts");
 
     expect(main).not.toContain("registerWorkbenchBrowserHandlers");
     expect(main).not.toContain("registerBrowserAutomationHandlers");
+    expect(main).toContain("webviewTag: true");
+    expect(main).toContain("will-attach-webview");
     expect(preload).not.toContain("workbenchBrowser");
-    expect(sessionManager).toContain("hasBrowserSurface: false");
+    expect(preload).toContain("preview: previewBridge");
+    expect(sessionManager).toContain(
+      "hasBrowserSurface: this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey)",
+    );
   });
 });

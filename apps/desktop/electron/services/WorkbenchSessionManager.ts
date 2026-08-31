@@ -43,6 +43,10 @@ interface LiveWorkbenchSessionRecord {
 
 interface WorkbenchSessionManagerServices {
   nativePreviewManager: NativePreviewManager
+  browserSurfaces: {
+    hasSurfaceForWorkbenchSession: (sessionKey: string) => boolean
+    releaseSurfacesForWorkbenchSession: (sessionKey: string) => Promise<void>
+  }
 }
 
 type BackgroundLifecycle = Exclude<WorkbenchSessionLifecycle, 'active' | 'closed'>
@@ -228,6 +232,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
   private readonly terminalService = TerminalService.getInstance()
   private readonly devServerService = DevServerService.getInstance()
   private readonly nativePreviewManager: NativePreviewManager
+  private readonly browserSurfaces: WorkbenchSessionManagerServices['browserSurfaces']
   private readonly sessions = new Map<string, LiveWorkbenchSessionRecord>()
   private readonly policySweepTimer: NodeJS.Timeout
   private policySweepInFlight = false
@@ -268,6 +273,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
   private constructor(services: WorkbenchSessionManagerServices) {
     super()
     this.nativePreviewManager = services.nativePreviewManager
+    this.browserSurfaces = services.browserSurfaces
 
     const persisted = readRegistryState()
     const repairedPersistedSessions = repairPersistedSessionState(persisted)
@@ -453,7 +459,12 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   private hasRetainedPreviewRuntime(record: LiveWorkbenchSessionRecord): boolean {
-    return this.hasRunningDevServer(record) || this.hasRunningNativePreview(record)
+    const sessionKey = buildSessionKey(record.projectId, record.laneId, record.workspaceId)
+    return (
+      this.hasRunningDevServer(record) ||
+      this.hasRunningNativePreview(record) ||
+      this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey)
+    )
   }
 
   private isUnderMemoryPressure(): boolean {
@@ -527,6 +538,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
             underMemoryPressure ? 'policy:memory-pressure' : 'policy:idle-timeout',
           )
           this.emitState(sessionKey, record)
+          await this.browserSurfaces.releaseSurfacesForWorkbenchSession(sessionKey)
           mutated = true
         }
 
@@ -597,7 +609,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       lastBackgroundedAt: record.lastBackgroundedAt,
       terminalBindings: { ...record.terminalBindings },
       devServer,
-      hasBrowserSurface: false,
+      hasBrowserSurface: this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey),
       hasNativePreviewSession,
     }
   }
@@ -695,6 +707,9 @@ export class WorkbenchSessionManager extends EventEmitter<{
           nextLifecycle === 'backgroundWarm' ? 'rebalance:retain-warm' : 'rebalance:freeze-over-cap',
         )
         this.emitState(sessionKey, record)
+        if (nextLifecycle === 'backgroundFrozen') {
+          void this.browserSurfaces.releaseSurfacesForWorkbenchSession(sessionKey)
+        }
       }
     }
   }
@@ -756,6 +771,9 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
 
     const snapshot = this.emitState(sessionKey, record)
+    if (nextLifecycle === 'backgroundFrozen') {
+      void this.browserSurfaces.releaseSurfacesForWorkbenchSession(sessionKey)
+    }
     this.rebalanceBackgroundSessions(null)
     this.persist()
     void this.runPolicySweep()
@@ -801,6 +819,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
       record.nativePreviewLocator = null
     }
 
+    await this.browserSurfaces.releaseSurfacesForWorkbenchSession(sessionKey)
+
     const previousLifecycle = record.lifecycle
     record.lifecycle = 'closed'
     record.lastBackgroundedAt = Date.now()
@@ -826,6 +846,11 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     this.persist()
     return true
+  }
+
+  refreshBrowserSurfaceState(sessionKey: string): void {
+    const record = this.sessions.get(sessionKey)
+    if (record) this.emitState(sessionKey, record)
   }
 
   getSession(input: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }): WorkbenchSessionSnapshot | null {
