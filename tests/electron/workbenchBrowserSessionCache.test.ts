@@ -19,11 +19,11 @@ describe("workbench browser session-isolation parity", () => {
     });
   });
 
-  it("preserves Org DevApp session isolation as a mandatory T3 port requirement", () => {
+  it("records persistent publication-scoped Org DevApp sessions as a Cozea adaptation", () => {
     expect(getBrowserPortParityRequirement("session-isolation.org-devapp")).toMatchObject({
       id: "session-isolation.org-devapp",
       area: "session-isolation",
-      status: "pending-t3-port",
+      status: "cozea-adapted",
     });
   });
 });

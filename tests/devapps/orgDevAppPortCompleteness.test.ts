@@ -18,7 +18,7 @@ const tileSource = fs.readFileSync(
   "utf8",
 );
 
-describe("Org DevApp blackout completeness", () => {
+describe("Org DevApp T3 surface completeness", () => {
   it("keeps the dedicated always-mounted dock component", () => {
     expect(getDockComponentName("orgDevApp")).toBe("orgDevApp");
     expect(getPanelRendererForTile("orgDevApp")).toBe("always");
@@ -50,8 +50,16 @@ describe("Org DevApp blackout completeness", () => {
     ]) {
       expect(tileSource).toMatch(new RegExp(`orgDevApp\\s*\\.\\s*${operation}`));
     }
-    expect(tileSource).toContain("<BrowserUnavailableSurface");
+    expect(tileSource).toContain("<BrowserSurfaceSlot");
+    expect(tileSource).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
+    expect(tileSource).toContain('storageScope: "orgDevApp"');
+    expect(tileSource).toContain('kind: "orgDevApp"');
+    expect(tileSource).toContain("contentHash: artifact.contentHash");
+    expect(tileSource).toContain("runtimeGeneration");
+    expect(tileSource).toContain("setPreparedOrigin(null)");
+    expect(tileSource).not.toContain("<BrowserUnavailableSurface");
     expect(tileSource).toContain("runtimeState?.logs");
     expect(tileSource).not.toContain("shell.openExternal");
+    expect(tileSource).not.toContain("electronAPI.shell.openExternal");
   });
 });
