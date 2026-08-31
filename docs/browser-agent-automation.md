@@ -10,17 +10,33 @@ presentation, agent pointer, screenshots, native picture-in-picture, screencast 
 element/region/drawing picker. Picker attach/send intent is adapted into Cozea's active assistant
 composer while preserving the exact T3 annotation payload and screenshot crop.
 
-The all-surface automation protocol is the next gate. Until that gate commits:
+The renderer host advertises the complete operation set from pinned T3 revision
+`3acdc3b2f9751915b7da12862681413dad363945`: status, open, navigate, snapshot, click, type, press,
+scroll, evaluate, wait, recording start/stop, resize, color-scheme emulation, and the three Dev
+Server lifecycle operations. Every page operation is routed through T3's manager/CDP control path
+to the same living guest shown to the user.
 
-- `dev_server_status`, `dev_server_ensure`, and `dev_server_attach` continue to manage the
-  `(workspaceId, laneId)` singleton process and its workbench tile shell.
-- The embedded user surface is available, but the agent-operation adapter still reports it as
-  unavailable.
-- `open`, `navigate`, `snapshot`, `click`, `type`, `press`, `scroll`, and `waitFor` fail immediately
-  with `PreviewAutomationUnavailableError`. They do not invoke browser IPC or wait for a timeout.
+Target selection is deterministic and workbench-confined:
+
+1. An explicit runtime tab ID wins.
+2. Otherwise the assistant thread's last controlled live surface is reused.
+3. Otherwise the active browser-backed Dockview tile is used.
+4. `open` without an explicit target creates or reuses the thread's Dev Server surface; process
+   management remains the responsibility of `dev_server_ensure` and `dev_server_attach`.
+
+`status` extends the upstream status payload with the eligible workbench inventory: stable runtime
+tab ID, kind, title, URL, active state, and current human/agent controller. Browser, Dev Server,
+compatibility Project DevApp, and Org DevApp surfaces are all eligible. Org DevApp navigation still
+crosses its main-process release/origin policy, so automation cannot expose an authenticated
+loopback URL, cross publications, or bypass external-link routing.
+
+T3's control epoch remains authoritative. Direct pointer or keyboard input interrupts an active
+agent operation. Missing or detached guests, invalid selectors, non-editable targets, oversized
+evaluation results, disconnection, interruption, and timeouts return bounded diagnostics instead of
+falling back to another guest.
 
 The checked ledger in `shared/browserPortParityLedger.ts` records each pinned behavior as `ported`,
-`cozea-adapted`, `shell-inapplicable`, or pending only for the final automation gate. Dockview replaces
+`cozea-adapted`, or `shell-inapplicable`. Dockview replaces
 T3's right-panel routing and thread mini-player shell; native PiP retains the browser mirroring
 behavior. Browser-backed cross-window popout is disabled and restored popouts normalize into the
 main workbench, while same-window drag, split, maximize, and float remain supported.

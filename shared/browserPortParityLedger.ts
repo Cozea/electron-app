@@ -5,13 +5,13 @@ export type BrowserPortParityArea =
   | "preview-features"
   | "shell"
   | "automation"
-  | "security"
+  | "security";
 
 export interface BrowserPortParityRequirement {
-  id: string
-  area: BrowserPortParityArea
-  expectation: string
-  status: "pending-t3-port" | "ported" | "cozea-adapted" | "shell-inapplicable"
+  id: string;
+  area: BrowserPortParityArea;
+  expectation: string;
+  status: "ported" | "cozea-adapted" | "shell-inapplicable";
 }
 
 /**
@@ -137,33 +137,61 @@ export const T3_BROWSER_PORT_PARITY_LEDGER = [
     area: "automation",
     expectation:
       "Agent preview navigation accepts loopback HTTP(S) only and normalizes schemeless localhost.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "automation.snapshot",
     area: "automation",
     expectation:
       "Snapshots return URL, title, visible text, and bounded interactive-element metadata.",
-    status: "pending-t3-port",
+    status: "ported",
   },
   {
     id: "automation.click-type",
     area: "automation",
     expectation:
       "Click and type resolve bounded targets and distinguish missing from non-editable targets.",
-    status: "pending-t3-port",
+    status: "ported",
   },
   {
     id: "automation.serialized-input",
     area: "automation",
     expectation: "Selectors and text are serialized as data and cannot inject guest-page scripts.",
-    status: "pending-t3-port",
+    status: "ported",
   },
   {
     id: "automation.scroll-wait-bounds",
     area: "automation",
     expectation: "Scroll and wait inputs normalize non-finite values and enforce bounded timeouts.",
-    status: "pending-t3-port",
+    status: "ported",
+  },
+  {
+    id: "automation.workbench-targeting",
+    area: "automation",
+    expectation:
+      "Explicit runtime tab IDs win, followed by the thread's last controlled guest and the active browser-backed tile in the same workbench.",
+    status: "cozea-adapted",
+  },
+  {
+    id: "automation.evaluate-recording",
+    area: "automation",
+    expectation:
+      "Evaluate and screencast recording operate on the same living guest and keep recording ownership scoped to the assistant thread.",
+    status: "ported",
+  },
+  {
+    id: "automation.viewport-appearance",
+    area: "automation",
+    expectation:
+      "Agent resize waits for the declared and rendered viewport, rolls back stale failures, and color-scheme emulation targets the living guest.",
+    status: "ported",
+  },
+  {
+    id: "automation.human-interruption",
+    area: "automation",
+    expectation:
+      "Direct pointer or keyboard input advances T3's control epoch and interrupts an in-flight agent operation with a bounded diagnostic.",
+    status: "ported",
   },
   {
     id: "security.permissions-downloads",
@@ -185,8 +213,8 @@ export const T3_BROWSER_PORT_PARITY_LEDGER = [
       "Org DevApp custom-scheme and authenticated loopback URLs remain internal to their isolated session.",
     status: "cozea-adapted",
   },
-] as const satisfies readonly BrowserPortParityRequirement[]
+] as const satisfies readonly BrowserPortParityRequirement[];
 
 export function getBrowserPortParityRequirement(id: string): BrowserPortParityRequirement | null {
-  return T3_BROWSER_PORT_PARITY_LEDGER.find((requirement) => requirement.id === id) ?? null
+  return T3_BROWSER_PORT_PARITY_LEDGER.find((requirement) => requirement.id === id) ?? null;
 }

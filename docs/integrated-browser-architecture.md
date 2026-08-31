@@ -11,7 +11,9 @@
 > guests: responsive presets and rails, capture, recording, picker annotations, PiP, color scheme,
 > audio, favicon, pointer, and zoom presentation. Browser-backed panels cannot cross into a Dockview
 > popout window, but same-window drag, split, and float remain available. No legacy fallback or
-> feature flag remains.
+> feature flag remains. The complete pinned automation set targets every living browser-backed
+> surface in the assistant's workbench with explicit/last-controlled/active-tile resolution, T3
+> control-epoch interruption, responsive resize, appearance, evaluate, and recording support.
 > Mandatory parity requirements live in
 > `shared/browserPortParityLedger.ts`.
 
