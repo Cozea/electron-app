@@ -111,8 +111,8 @@ export class DevAppPreviewService {
     }
   }
 
-  approve(sourceId: string): DevAppPreviewStatus | null {
-    const status = this.session.approve(sourceId)
+  approve(sourceId: string, approvalFingerprint: string): DevAppPreviewStatus | null {
+    const status = this.session.approve(sourceId, approvalFingerprint)
     if (status) {
       this.trackEntryPath(sourceId, status)
       this.broadcast(sourceId, status)
@@ -124,11 +124,11 @@ export class DevAppPreviewService {
     return this.session.status(sourceId)
   }
 
-  close(sourceId: string): void {
+  close(sourceId: string, leaseId: string): void {
+    if (!this.session.close(sourceId, leaseId)) return
     this.watcher.stop(sourceId)
     this.roots.delete(sourceId)
     this.entryPaths.delete(sourceId)
-    this.session.close(sourceId)
   }
 
   registerProtocolForSession(targetSession: Session, sourceId: string): void {

@@ -277,6 +277,10 @@ See `docs/device-identity.md` for the protocol and deployment requirements.
   Top-level external HTTPS opens outside restricted DevApp tiles. Service code
   is trusted organization code for the private beta, not an OS-enforced filesystem/network sandbox;
   see `docs/service-devapps-implementation-plan.md` for the post-beta container/VM milestone.
+- Unpublished `cozea-devapp.json` workers run only in development preview after explicit expiring
+  approval. Their utility process uses Node permissions as defense in depth but is not an OS
+  sandbox and can reach the network. Published worker execution and autonomous worker tools remain
+  blocked until the container/VM runtime; see `docs/devapp-worker-security-review.md`.
 - The historical machine-local `localProjectDevAppStore` and Dev Server source metadata remain only
   as compatibility support for already-persisted development tiles. Do not add new Store or publish
   callers to that catalog.

@@ -4,6 +4,7 @@ import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 
 import { autoUpdater } from 'electron-updater'
@@ -1086,15 +1087,16 @@ const orgDevAppArtifactService = new OrgDevAppArtifactService(
 /**
  * The worker host, and the development preview that drives it.
  *
- * One host serves both published apps and previews: a development package gets no
- * separate runtime, which is what keeps "works in dev, fails on publish" from having
- * anywhere to hide. Its workers are keyed `dev:` so the two can never address each other.
+ * Published worker execution remains intentionally disconnected until the container runtime
+ * exists. Development workers use the same versioned host/gate intended for that future path,
+ * and are keyed `dev:` so they cannot address a publication namespace.
  */
 const devAppWorkerHost = new DevAppWorkerHost(
-  createUtilityProcessSpawn(({ entrypoint, publicationId }) => {
-    const dataDir = path.join(app.getPath('userData'), 'devapp-data', publicationId)
+  createUtilityProcessSpawn(({ entrypoint, packageRoot, publicationId }) => {
+    const dataKey = createHash('sha256').update(publicationId).digest('hex')
+    const dataDir = path.join(app.getPath('userData'), 'devapp-data', dataKey)
     fs.mkdirSync(dataDir, { recursive: true })
-    return { entrypoint, publicationId, dataDir }
+    return { entrypoint, packageRoot, publicationId, dataDir }
   }),
   createDevAppWorkerHandlers(createNodeDevAppHostServices()),
 )

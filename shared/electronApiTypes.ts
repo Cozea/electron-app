@@ -1521,13 +1521,13 @@ export interface ElectronAPI {
       relativePath: string
       leaseId: string
     }) => Promise<import('./devAppPreviewTypes').DevAppPreviewOpenResult>
-    approve: (options: { sourceId: string }) => Promise<
+    approve: (options: { sourceId: string; approvalFingerprint: string }) => Promise<
       import('./devAppPreviewTypes').DevAppPreviewResult
     >
     status: (options: { sourceId: string }) => Promise<
       import('./devAppPreviewTypes').DevAppPreviewResult
     >
-    close: (options: { sourceId: string }) => Promise<{ success: true }>
+    close: (options: { sourceId: string; leaseId: string }) => Promise<{ success: true }>
     onStatus: (
       listener: (payload: {
         sourceId: string

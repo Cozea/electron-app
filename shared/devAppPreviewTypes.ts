@@ -35,6 +35,10 @@ export type DevAppPreviewStatus =
     sourceId: string
     name: string
     requested: DevAppGrant
+    /** Worker code executes out of process but is not an OS sandbox. */
+    workerExecution: boolean
+    /** Binds approval to the exact request the user was shown. */
+    approvalFingerprint: string
     missing: string[]
     badge: DevAppTrustBadge
     preflight: OrgDevAppPreflightReport

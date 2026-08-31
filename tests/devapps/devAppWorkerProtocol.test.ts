@@ -6,6 +6,7 @@ import {
   DEV_APP_WORKER_PROTOCOL_MIN_VERSION,
   DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
   DEV_APP_WORKER_PROTOCOL_VERSION,
+  MAX_DEV_APP_WORKER_MESSAGE_BYTES,
   DEV_APP_METHOD_CAPABILITIES,
   authorizeWorkerMethod,
   capabilityForMethod,
@@ -41,7 +42,7 @@ describe("Worker authorization — fails closed", () => {
   it("allows exactly the methods a grant names", () => {
     const grant = grantOf("project.read")
     expect(authorizeWorkerMethod("project.readFile", grant).allowed).toBe(true)
-    expect(authorizeWorkerMethod("project.listFiles", grant).allowed).toBe(true)
+    expect(authorizeWorkerMethod("project.listDirectory", grant).allowed).toBe(true)
     expect(authorizeWorkerMethod("project.writeFile", grant).allowed).toBe(false)
     expect(authorizeWorkerMethod("fs.readFile", grant).allowed).toBe(false)
   })
@@ -62,7 +63,7 @@ describe("Worker authorization — escalation does not widen the gate", () => {
   // directly — the honest description of a grant and the enforcement of it are separate.
   it("does not let an escalating capability satisfy another capability", () => {
     const grant = grantOf("terminal.spawn")
-    expect(authorizeWorkerMethod("terminal.create", grant).allowed).toBe(true)
+    expect(authorizeWorkerMethod("terminal.create", grant).allowed).toBe(false)
     expect(authorizeWorkerMethod("fs.readFile", grant).allowed).toBe(false)
     expect(authorizeWorkerMethod("project.writeFile", grant).allowed).toBe(false)
   })
@@ -74,7 +75,7 @@ describe("Worker authorization — escalation does not widen the gate", () => {
     expect(authorizeWorkerMethod("fs.readFile", scoped).allowed).toBe(false)
 
     const machine = grantOf("fs.read")
-    expect(authorizeWorkerMethod("fs.readFile", machine).allowed).toBe(true)
+    expect(authorizeWorkerMethod("fs.readFile", machine).allowed).toBe(false)
     expect(authorizeWorkerMethod("project.readFile", machine).allowed).toBe(false)
   })
 })
@@ -194,6 +195,25 @@ describe("Worker message parsing — untrusted input", () => {
       parseWorkerMessage({ kind: "request", id: "x".repeat(200), method: "project.readFile" }),
     ).toBeNull()
     expect(parseWorkerMessage({ kind: "request", id: "1", method: "m".repeat(200) })).toBeNull()
+  })
+
+  it("refuses oversized and cyclic structured-clone graphs safely", () => {
+    expect(
+      parseWorkerMessage({
+        kind: "request",
+        id: "1",
+        method: "project.writeFile",
+        params: { content: "x".repeat(MAX_DEV_APP_WORKER_MESSAGE_BYTES) },
+      }),
+    ).toBeNull()
+
+    const cyclic: Record<string, unknown> = {
+      kind: "request",
+      id: "1",
+      method: "project.readFile",
+    }
+    cyclic.self = cyclic
+    expect(parseWorkerMessage(cyclic)).not.toBeNull()
   })
 
   it("does not vouch for a parsed method, only its shape", () => {

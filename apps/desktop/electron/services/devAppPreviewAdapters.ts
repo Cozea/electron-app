@@ -3,6 +3,8 @@ import fs from "node:fs"
 
 import type { DevAppPreviewFs } from "./DevAppPreviewSession"
 
+const MAX_DEV_APP_MANIFEST_BYTES = 1024 * 1024
+
 /**
  * The real filesystem behind `DevAppPreviewSession`, and the source-id derivation.
  *
@@ -14,6 +16,7 @@ import type { DevAppPreviewFs } from "./DevAppPreviewSession"
 export const nodePreviewFs: DevAppPreviewFs = {
   readFile: (absolutePath) => {
     try {
+      if (fs.statSync(absolutePath).size > MAX_DEV_APP_MANIFEST_BYTES) return null
       return fs.readFileSync(absolutePath, "utf8")
     } catch {
       // Missing, unreadable, and "is a directory" are all the same answer to the caller:
