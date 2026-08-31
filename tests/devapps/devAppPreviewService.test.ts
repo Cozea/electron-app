@@ -189,6 +189,18 @@ describe("Preview service — hot reload", () => {
     service.dispose()
   })
 
+  it("reloads when the built output changes", async () => {
+    const { service, broadcasts, touch } = makeService()
+    open(service)
+    fs.writeFileSync(path.join(sourcePath, "dist", "index.html"), "<html>changed</html>")
+    touch("dist/index.html")
+
+    await vi.waitFor(() => expect(broadcasts.length).toBeGreaterThan(0))
+    const last = broadcasts[broadcasts.length - 1]!.status
+    expect(last.status === "running" && last.reloadToken).toBe(1)
+    service.dispose()
+  })
+
   it("does not broadcast for a change in an ignored directory", async () => {
     const { service, broadcasts, touch } = makeService()
     open(service)

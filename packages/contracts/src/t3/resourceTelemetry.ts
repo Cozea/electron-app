@@ -1,5 +1,5 @@
 // @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ 04d8f7918b2c44666ecaaef3eebb723fabc9d7f5 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 5725b2eb0dab80aa00fc17a220955359b14d75fe — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";

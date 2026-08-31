@@ -33,14 +33,18 @@ commands:
             source "$BASH_ENV"
             bun install --frozen-lockfile --ignore-scripts
             bun run postinstall
+            node node_modules/electron/install.js
 
   checkout_with_t3_submodule:
     steps:
-      - checkout:
-          submodules: true
+      - checkout
       - run:
           name: Sync vendor/t3code pin
-          command: node scripts/vendor/sync-t3code-pin.mjs
+          command: |
+            set -euo pipefail
+            git submodule sync -- vendor/t3code
+            git submodule update --init --depth 1 vendor/t3code
+            node scripts/vendor/sync-t3code-pin.mjs
 
   install_pnpm_unix:
     steps:
@@ -50,6 +54,7 @@ commands:
             set -euo pipefail
             corepack enable
             corepack prepare pnpm@11.10.0 --activate
+            cd vendor/t3code
             pnpm --version
 
 jobs:
@@ -68,8 +73,14 @@ jobs:
       VITE_FF_OFFSCREEN_SCREENSHOT: "1"
       VITE_FF_UTILITY_PROCESS_MANIFEST: "1"
     steps:
-      - checkout
+      - checkout_with_t3_submodule
       - install_dependencies_unix
+      - run:
+          name: Prepare pinned T3 runtime
+          command: |
+            set -euo pipefail
+            source "$BASH_ENV"
+            bun run prepare:t3-runtime
       - run:
           name: Validate build environment
           command: |

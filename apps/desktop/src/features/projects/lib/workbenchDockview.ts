@@ -49,6 +49,7 @@ export function resolveTabGroupPreset(component: string): WorkbenchTabGroupPrese
     case "devServer":
     case "mobileSimulator":
     case "orgDevApp":
+    case "devAppPreview":
       return { label: "Preview", color: "preview" }
     case "terminal":
       return { label: "Runtime", color: "runtime" }
@@ -68,6 +69,7 @@ function getPanelConstraintsForComponent(
     case "devServer":
     case "mobileSimulator":
     case "orgDevApp":
+    case "devAppPreview":
       return RUNTIME_PANEL_CONSTRAINTS
     case "assistantChat":
     case "llama":
@@ -105,7 +107,16 @@ function placePanelLeftOfChanges(
 
 export function getDockComponentName(
   type: WorkbenchTileType,
-): "selection" | "browser" | "terminal" | "devServer" | "llama" | "mobileSimulator" | "assistantChat" | "orgDevApp" {
+):
+  | "selection"
+  | "browser"
+  | "terminal"
+  | "devServer"
+  | "llama"
+  | "mobileSimulator"
+  | "assistantChat"
+  | "orgDevApp"
+  | "devAppPreview" {
   switch (type) {
     case "browser":
     case "selection":
@@ -115,6 +126,7 @@ export function getDockComponentName(
     case "mobileSimulator":
     case "assistantChat":
     case "orgDevApp":
+    case "devAppPreview":
       return type
     default:
       return "assistantChat"
@@ -129,15 +141,14 @@ export function getPanelParams(
   return { projectId, laneId, tileId }
 }
 
-export function getPanelRendererForTile(
-  type: WorkbenchTileType,
-): "always" | "onlyWhenVisible" {
+export function getPanelRendererForTile(type: WorkbenchTileType): "always" | "onlyWhenVisible" {
   switch (type) {
     case "browser":
     case "devServer":
     case "llama":
     case "mobileSimulator":
     case "orgDevApp":
+    case "devAppPreview":
     case "terminal":
     case "assistantChat":
       return "always"
@@ -250,6 +261,7 @@ export function buildAddPanelOptions(
     case "devServer":
     case "mobileSimulator":
     case "orgDevApp":
+    case "devAppPreview":
     case "terminal":
       if (referencePanel) {
         return {

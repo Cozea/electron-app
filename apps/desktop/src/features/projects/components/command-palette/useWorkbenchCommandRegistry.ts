@@ -2,6 +2,7 @@ import { useMemo } from "react"
 
 import type { KeybindingCommand } from "@cozea/assistant-contracts"
 
+import { resolveDevAppPreviewManifestPath } from "@/features/projects/lib/devAppPreviewSelection"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useNavigate } from "@/lib/router"
 import {
@@ -17,6 +18,7 @@ export interface WorkbenchCommandRegistryContext {
   readonly projectId: string | null
   readonly laneId: string
   readonly workspaceId: string | null
+  readonly projectRootPath: string | null
   readonly openSettings: () => void
   readonly closeSettings: () => void
   readonly isSettingsOpen: boolean
@@ -192,6 +194,48 @@ export function useWorkbenchCommandRegistry(
           addOrFocusTile("selection")
         },
       },
+      {
+        id: "workbench.previewDevApp",
+        title: "Workbench: Preview DevApp Package",
+        description: "Open a cozea-devapp.json package from this project",
+        group: "Workbench",
+        searchTerms: ["devapp", "development", "package", "preview", "cozea-devapp.json"],
+        run: async () => {
+          if (!workspaceId || !context.projectRootPath) {
+            await showDevAppPreviewSelectionError(
+              "This workspace is not ready to open a development preview yet.",
+            )
+            return
+          }
+
+          const selection = await window.electronAPI.dialog.selectFile({
+            title: "Select cozea-devapp.json",
+            filters: [{ name: "Cozea DevApp manifest", extensions: ["json"] }],
+          })
+          if (!selection.success || !selection.path) return
+
+          const relativePath = resolveDevAppPreviewManifestPath(
+            context.projectRootPath,
+            selection.path,
+          )
+          if (!relativePath) {
+            await showDevAppPreviewSelectionError(
+              "Choose a cozea-devapp.json file from inside this project.",
+            )
+            return
+          }
+
+          workbenchActions.addTile(
+            projectId,
+            laneId,
+            "devAppPreview",
+            {
+              devAppPreviewRelativePath: relativePath,
+            },
+            workspaceId,
+          )
+        },
+      },
     ]
 
     return commands
@@ -199,11 +243,24 @@ export function useWorkbenchCommandRegistry(
     context.isSettingsOpen,
     context.laneId,
     context.openSettings,
+    context.projectRootPath,
     context.projectId,
     context.workspaceId,
     navigate,
     workbenchActions,
   ])
+}
+
+async function showDevAppPreviewSelectionError(detail: string): Promise<void> {
+  await window.electronAPI.dialog.showMessageBox({
+    type: "error",
+    buttons: ["OK"],
+    defaultId: 0,
+    title: "Could not preview DevApp",
+    message: "Cozea couldn't open that development package.",
+    detail,
+    noLink: true,
+  })
 }
 
 export function executeKeybindingCommand(
