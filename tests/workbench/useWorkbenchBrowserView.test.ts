@@ -28,6 +28,10 @@ const hostedWebviewSource = fs.readFileSync(
   path.join(process.cwd(), "apps/desktop/src/features/projects/browser/HostedBrowserWebview.tsx"),
   "utf8",
 );
+const workbenchCssSource = fs.readFileSync(
+  path.join(process.cwd(), "apps/desktop/src/features/projects/components/workbench/workbench.css"),
+  "utf8",
+);
 
 describe("ported T3 Browser tile", () => {
   it("allows external opening only for HTTP(S) URLs", () => {
@@ -73,6 +77,7 @@ describe("ported T3 Browser tile", () => {
     expect(browserTileSource).not.toContain("<BrowserUnavailableSurface");
     expect(hostedWebviewSource).toContain("}, [preview, runtimeTabId]);");
     expect(hostedWebviewSource).not.toContain("[descriptor, preview, runtimeTabId]");
+    expect(hostedWebviewSource).not.toContain("{ ...current, state: surfaceState }");
     expect(hostedWebviewSource).toContain('useState(() => descriptor.initialUrl ?? "about:blank")');
     expect(hostedWebviewSource).toContain(
       "src={webviewGeneration === 0 ? initialSrc : recoverySrc}",
@@ -83,6 +88,17 @@ describe("ported T3 Browser tile", () => {
     expect(browserControlsSource).toContain("isExternallyOpenableBrowserUrl(committedUrl)");
     expect(browserControlsSource).toContain("window.electronAPI.shell.openExternal(externalUrl)");
     expect(browserControlsSource).not.toContain("electronAPI.workbenchBrowser");
+  });
+
+  it("keeps the address field flexible without stretching every header control", () => {
+    expect(browserControlsSource).toContain("data-browser-address-group");
+    expect(browserControlsSource).toContain("data-browser-find-button");
+    expect(workbenchCssSource).toMatch(
+      /\.cozea-workbench-dockview \.cozea-workbench-header-controls \{\s*width: 100%;\s*\}/,
+    );
+    expect(workbenchCssSource).not.toMatch(
+      /\.cozea-workbench-dockview \.cozea-workbench-header-controls > \* \{[^}]*(?:^|[;\s])width\s*:/m,
+    );
   });
 
   it.each([

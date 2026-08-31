@@ -308,9 +308,12 @@
   flex: 999 1 18rem;
 }
 
+.cozea-workbench-dockview .cozea-workbench-header-controls {
+  width: 100%;
+}
+
 .cozea-workbench-dockview .cozea-workbench-header-controls > * {
   min-width: 0;
-  width: 100%;
 }
 
 .cozea-workbench-dockview .dv-tabs-container {
