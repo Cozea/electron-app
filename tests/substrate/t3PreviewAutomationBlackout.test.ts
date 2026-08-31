@@ -408,6 +408,19 @@ describe("T3 preview automation host", () => {
     });
   });
 
+  it("bounds surface inventory to the shared contract limits", () => {
+    const surfaces = Array.from({ length: 65 }, (_, index) => ({
+      ...makeInventory("browser", `browser-${index}`, `runtime-browser-${index}`),
+      title: "x".repeat(513),
+    }));
+
+    const result = __t3PreviewAutomationHostTestUtils.surfaceInventoryStatus(surfaces);
+
+    expect(result).toHaveLength(64);
+    expect(result[0]?.title).toHaveLength(512);
+    expect(result.at(-1)?.tabId).toBe("runtime-browser-63");
+  });
+
   it.each(["devServerStatus", "devServerAttach", "devServerEnsure"] as const)(
     "keeps %s on the singleton process and living Dev Server surface",
     async (operation) => {
@@ -443,6 +456,52 @@ describe("T3 preview automation host", () => {
       }
     },
   );
+
+  it("discovers a newly created inactive Dev Server surface in the same request", async () => {
+    const actions = useProjectWorkbenchStore.getState().actions;
+    actions.ensureWorkbench("project-1", "collab", "workspace-1");
+    actions.addTile("project-1", "collab", "assistantChat", { threadId: THREAD_ID }, "workspace-1");
+
+    const placeholder = makeInventory("devServer", "pending-tile", "runtime-created-dev-server");
+    const bridge = installBridge(placeholder);
+    let createdSurface: BrowserSurfaceInventoryEntry | null = null;
+    bridge.listSurfaces.mockImplementation(async () => (createdSurface ? [createdSurface] : []));
+    surfaceControllerMocks.ensure.mockImplementation(async () => {
+      const tileId = actions.addTile(
+        "project-1",
+        "collab",
+        "devServer",
+        { activate: false, agentManaged: true },
+        "workspace-1",
+      );
+      createdSurface = { ...placeholder, tileId, active: false };
+      return {
+        tileId,
+        scopeKey: "scope-created",
+        leaseToken: "lease-created",
+        created: true,
+        focused: false,
+      };
+    });
+
+    const result = await __t3PreviewAutomationHostTestUtils.runRequest(
+      request("open", { open: false }),
+      "environment-1",
+    );
+
+    expect(result).toMatchObject({
+      available: true,
+      tabId: "runtime-created-dev-server",
+      surfaces: [
+        {
+          tabId: "runtime-created-dev-server",
+          kind: "devServer",
+          active: false,
+        },
+      ],
+    });
+    expect(surfaceControllerMocks.focus).not.toHaveBeenCalled();
+  });
 
   it("serializes bounded manager failures without reviving the blackout error", () => {
     expect(

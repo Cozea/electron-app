@@ -245,10 +245,10 @@ function resolveSurfaceTarget(
 function surfaceInventoryStatus(
   surfaces: ReadonlyArray<BrowserSurfaceInventoryEntry>,
 ): CozeaPreviewAutomationSurfaceStatus["surfaces"] {
-  return surfaces.map((surface) => ({
+  return surfaces.slice(0, 64).map((surface) => ({
     tabId: surface.runtimeTabId,
     kind: surface.kind,
-    title: surface.title,
+    title: surface.title.slice(0, 512),
     url: surface.url,
     active: surface.active,
     controller: surface.controller,
@@ -367,7 +367,15 @@ async function ensureThreadSurface(
     forceNew: options.forceNew,
     focus: false,
   });
-  const state = { context, handle };
+  const refreshedContext = findThreadWorkbenchContext(threadId);
+  if (!refreshedContext?.tileIds.has(handle.tileId)) {
+    releaseDevServerSurfaceLease(handle.tileId, handle.leaseToken);
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The agent-created Dev Server surface was not added to the requesting workbench.",
+    );
+  }
+  const state = { context: refreshedContext, handle };
   runtime.surfacesByThread.set(threadId, state);
   return state;
 }
@@ -727,15 +735,22 @@ async function runRequestInternal(
   if (request.operation === "open") {
     const openInput = request.input as PreviewAutomationOpenInput;
     let target: BrowserSurfaceInventoryEntry;
+    let targetContext = context;
     if (request.tabId) {
       target = await requireReadySurface(request, context);
     } else {
       const surface = await ensureThreadSurface(request.threadId, {
         forceNew: openInput.reuseExistingTab === false,
       });
+      targetContext = surface.context;
       const shouldPresent = openInput.open ?? openInput.show ?? true;
       if (shouldPresent) focusDevServerSurface(surface.handle.scopeKey, surface.handle.tileId);
-      target = await waitForReadySurface(context, surface.handle.tileId, request.timeoutMs, true);
+      target = await waitForReadySurface(
+        targetContext,
+        surface.handle.tileId,
+        request.timeoutMs,
+        true,
+      );
       runtime.lastControlledSurfaceByThread.set(request.threadId, target.runtimeTabId);
     }
     if (openInput.url) {
@@ -743,7 +758,7 @@ async function runRequestInternal(
       await bridge.navigate(target.runtimeTabId, url);
       await waitForNavigationReadiness(target.runtimeTabId, "load", request.timeoutMs);
     }
-    return await readStatus(context, target.runtimeTabId, target.runtimeTabId);
+    return await readStatus(targetContext, target.runtimeTabId, target.runtimeTabId);
   }
 
   if (request.operation === "recordingStop") {
@@ -909,6 +924,7 @@ export const __t3PreviewAutomationHostTestUtils = {
   readStatus,
   resolveBrowserRecordingStopTarget,
   resolveSurfaceTarget,
+  surfaceInventoryStatus,
   resetRuntime: () => {
     runtime.surfacesByThread.clear();
     runtime.lastControlledSurfaceByThread.clear();
