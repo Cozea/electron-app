@@ -21,7 +21,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Toggle } from "@/components/ui/toggle"
 import { BrowserNavigationControls } from "@/features/projects/browser/BrowserNavigationControls"
-import { normalizeUrlInput } from "@/features/projects/browser/urlInput"
+import {
+  browserAddressDisplayValue,
+  resolveBrowserAddressSubmission,
+} from "@/features/projects/browser/browserAddressState"
+import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
+import { runtimePreviewBrowserSurfaceTabId } from "@/features/projects/browser/runtimePreviewBrowserSurface"
+import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput"
 import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,
@@ -71,6 +77,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CommandLineIcon as __SquareTerminalHugeIcon,
   ComputerVideoIcon as __ComputerVideoHugeIcon,
+  LinkSquare02Icon as __ExternalLinkHugeIcon,
   LockIcon as __LockHugeIcon,
   ArrowExpand01Icon as __MaximizeHugeIcon,
   ArrowShrink01Icon as __RestoreHugeIcon,
@@ -343,16 +350,32 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
       ? tile.viewMode ?? "preview"
       : "preview"
 
-  const [draftUrl, setDraftUrl] = useState(displayUrl)
+  const runtimeTabId =
+    tile?.type === "devServer"
+      ? runtimePreviewBrowserSurfaceTabId({
+          projectId: runtime.projectId,
+          laneId: runtime.laneId,
+          workspaceId: runtime.workspaceId,
+          workbenchSessionKey: runtime.workbenchSessionKey,
+          tile,
+        })
+      : null
+  const browserSurfaceState = useBrowserSurfaceStateStore((state) =>
+    runtimeTabId ? state.byTabId[runtimeTabId] : undefined,
+  )
+  const committedUrl =
+    browserSurfaceState && browserSurfaceState.navStatus.kind !== "Idle"
+      ? browserSurfaceState.navStatus.url
+      : displayUrl
+
+  const [draftUrl, setDraftUrl] = useState(committedUrl)
+  const [inputFocused, setInputFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
-    // Upstream churn (server becoming ready, port changes) must not clobber
-    // an in-progress edit.
-    const input = inputRef.current
-    if (input && document.activeElement === input) return
-    setDraftUrl(displayUrl)
-  }, [displayUrl])
+    if (inputFocused) return
+    setDraftUrl(committedUrl)
+  }, [committedUrl, inputFocused])
 
   if (!tile || (tile.type !== "devServer" && tile.type !== "mobileSimulator")) {
     return null
@@ -369,9 +392,11 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
   }
 
   const submitDraftUrl = () => {
-    const normalized = normalizeUrlInput(draftUrl)
-    if (!normalized) return
+    const normalized = resolveBrowserAddressSubmission(draftUrl)
+    if (!normalized || !runtimeTabId) return
     setOverrideUrl(isSameDevServerPreviewUrl(serverUrl, normalized) ? null : normalized)
+    const preview = window.desktopBridge?.preview
+    if (preview) void preview.navigate(runtimeTabId, normalized).catch(() => undefined)
   }
 
   const viewToggle = (
@@ -416,9 +441,19 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
           <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
           <Input
             ref={inputRef}
-            value={draftUrl}
+            value={browserAddressDisplayValue({
+              committedUrl,
+              draft: draftUrl,
+              focused: inputFocused,
+            })}
             placeholder="Search or enter address"
             onChange={(event: ChangeEvent<HTMLInputElement>) => setDraftUrl(event.target.value)}
+            onFocus={() => {
+              setDraftUrl(committedUrl)
+              setInputFocused(true)
+              queueMicrotask(() => inputRef.current?.select())
+            }}
+            onBlur={() => setInputFocused(false)}
             onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
               if (event.key === "Enter") {
                 event.preventDefault()
@@ -426,7 +461,7 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
                 event.currentTarget.blur()
               } else if (event.key === "Escape") {
                 event.preventDefault()
-                setDraftUrl(displayUrl)
+                setDraftUrl(committedUrl)
                 event.currentTarget.blur()
               }
             }}
@@ -434,6 +469,19 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
               "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
             )}
           />
+          {isExternallyOpenableBrowserUrl(committedUrl) && !inputFocused ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
+              onClick={() => void window.electronAPI.shell.openExternal(committedUrl)}
+              aria-label="Open preview externally"
+              title="Open preview externally"
+            >
+              <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
+            </Button>
+          ) : null}
           {overrideUrl ? (
             <Button
               type="button"
@@ -478,6 +526,16 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
   const hasLaunchTerminal = useDevServerRunStore((state) =>
     Boolean(runKey && state.contexts[runKey]?.terminalId),
   )
+  const runtimeTabId =
+    tile?.type === "devServer"
+      ? runtimePreviewBrowserSurfaceTabId({
+          projectId: runtime.projectId,
+          laneId: runtime.laneId,
+          workspaceId: runtime.workspaceId,
+          workbenchSessionKey: runtime.workbenchSessionKey,
+          tile,
+        })
+      : null
 
   if (!runtimeTarget.workspaceId || !runKey) {
     return null
@@ -491,15 +549,17 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          disabled={surface === "devServer"}
+          disabled={surface === "devServer" && !runtimeTabId}
           onClick={() => {
             if (surface === "mobileSimulator") {
               dispatchDevServerTileCommand({ tileId, type: "refresh-simulators" })
               return
             }
-            return
+            const preview = window.desktopBridge?.preview
+            if (preview && runtimeTabId) {
+              void preview.refresh(runtimeTabId).catch(() => undefined)
+            }
           }}
-          title={surface === "mobileSimulator" ? undefined : "Embedded browser unavailable"}
           aria-label={surface === "mobileSimulator" ? "Refresh simulator" : "Reload preview"}
         >
           <HugeiconsIcon icon={__RefreshCcwHugeIcon} className="h-3.5 w-3.5" />

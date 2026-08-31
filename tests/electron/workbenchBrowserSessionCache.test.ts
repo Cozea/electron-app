@@ -11,14 +11,19 @@ describe("workbench browser session-isolation parity", () => {
     });
   });
 
-  it.each(["session-isolation.ephemeral-release", "session-isolation.org-devapp"])(
-    "preserves %s as a mandatory T3 port requirement",
-    (id) => {
-      expect(getBrowserPortParityRequirement(id)).toMatchObject({
-        id,
-        area: "session-isolation",
-        status: "pending-t3-port",
-      });
-    },
-  );
+  it("records ephemeral Dev Server and Project DevApp release cleanup as a Cozea adaptation", () => {
+    expect(getBrowserPortParityRequirement("session-isolation.ephemeral-release")).toMatchObject({
+      id: "session-isolation.ephemeral-release",
+      area: "session-isolation",
+      status: "cozea-adapted",
+    });
+  });
+
+  it("preserves Org DevApp session isolation as a mandatory T3 port requirement", () => {
+    expect(getBrowserPortParityRequirement("session-isolation.org-devapp")).toMatchObject({
+      id: "session-isolation.org-devapp",
+      area: "session-isolation",
+      status: "pending-t3-port",
+    });
+  });
 });

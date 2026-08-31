@@ -144,6 +144,7 @@ export class T3BrowserSurfaceService {
   private readonly descriptors = new Map<string, BrowserSurfaceDescriptor>();
   private readonly partitionsByScope = new Map<string, string>();
   private readonly sessionsByPartition = new Map<string, Session>();
+  private readonly partitionOperations = new Map<string, Promise<void>>();
   private readonly stateByTabId = new Map<string, CozeaBrowserSurfaceState>();
   private readonly activeByTabId = new Map<string, boolean>();
   private readonly listenersByTabId = new Map<string, AttachedSurfaceListeners>();
@@ -269,6 +270,26 @@ export class T3BrowserSurfaceService {
     return await this.managerPromise;
   }
 
+  private async runPartitionOperation<A>(
+    partition: string,
+    operation: () => Promise<A>,
+  ): Promise<A> {
+    const previous = this.partitionOperations.get(partition) ?? Promise.resolve();
+    const result = previous.catch(() => undefined).then(operation);
+    const completion = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.partitionOperations.set(partition, completion);
+    try {
+      return await result;
+    } finally {
+      if (this.partitionOperations.get(partition) === completion) {
+        this.partitionOperations.delete(partition);
+      }
+    }
+  }
+
   private async run<A>(
     operation: (manager: T3Manager) => T3Effect.Effect<A, unknown, never>,
   ): Promise<A> {
@@ -388,56 +409,76 @@ export class T3BrowserSurfaceService {
     }
 
     const partition = partitionForDescriptor(descriptor);
-    this.descriptors.set(descriptor.runtimeTabId, { ...descriptor });
-    this.partitionsByScope.set(descriptor.runtimeTabId, partition);
-    this.ensureSession(partition, descriptor);
+    return await this.runPartitionOperation(partition, async () => {
+      this.descriptors.set(descriptor.runtimeTabId, { ...descriptor });
+      this.partitionsByScope.set(descriptor.runtimeTabId, partition);
+      this.ensureSession(partition, descriptor);
 
-    await this.run((manager) => manager.getBrowserSession(descriptor.runtimeTabId));
-    const state = await this.run((manager) =>
-      manager.createTab(descriptor.runtimeTabId, {
-        zoomFactor: 1,
-        colorScheme: "system",
-      }),
-    );
-    this.acceptT3State(descriptor.runtimeTabId, state);
-    const initialUrl = descriptor.initialUrl;
-    if (initialUrl) {
-      this.updateExtendedState(descriptor.runtimeTabId, {
-        requestedUrl: initialUrl,
-        httpDiagnostic: null,
-      });
-      await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
-    }
+      await this.run((manager) => manager.getBrowserSession(descriptor.runtimeTabId));
+      const state = await this.run((manager) =>
+        manager.createTab(descriptor.runtimeTabId, {
+          zoomFactor: 1,
+          colorScheme: "system",
+        }),
+      );
+      this.acceptT3State(descriptor.runtimeTabId, state);
+      const initialUrl = descriptor.initialUrl;
+      if (initialUrl) {
+        this.updateExtendedState(descriptor.runtimeTabId, {
+          requestedUrl: initialUrl,
+          httpDiagnostic: null,
+        });
+        await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+      }
 
-    const preparedState = this.stateByTabId.get(descriptor.runtimeTabId);
-    if (!preparedState) throw new Error("The browser surface did not initialize.");
-    this.emitInventoryChange(descriptor.workbenchSessionKey);
-    return {
-      config: {
-        partition,
-        webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
-        preloadUrl: pathToFileURL(this.options.pickPreloadPath).href,
-      },
-      state: preparedState,
-    };
+      const preparedState = this.stateByTabId.get(descriptor.runtimeTabId);
+      if (!preparedState) throw new Error("The browser surface did not initialize.");
+      this.emitInventoryChange(descriptor.workbenchSessionKey);
+      return {
+        config: {
+          partition,
+          webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
+          preloadUrl: pathToFileURL(this.options.pickPreloadPath).href,
+        },
+        state: preparedState,
+      };
+    });
   }
 
   async releaseSurface(tabId: string): Promise<void> {
     const descriptor = this.descriptors.get(tabId);
-    this.detachCozeaListeners(tabId);
-    await this.run((manager) => manager.closeTab(tabId));
     const partition = descriptor ? partitionForDescriptor(descriptor) : null;
-    this.descriptors.delete(tabId);
-    this.partitionsByScope.delete(tabId);
-    this.stateByTabId.delete(tabId);
-    this.activeByTabId.delete(tabId);
-    if (partition && !partition.startsWith("persist:")) {
-      const stillUsed = Array.from(this.descriptors.values()).some(
-        (candidate) => partitionForDescriptor(candidate) === partition,
-      );
-      if (!stillUsed) this.sessionsByPartition.delete(partition);
+    const release = async () => {
+      this.detachCozeaListeners(tabId);
+      await this.run((manager) => manager.closeTab(tabId));
+      this.descriptors.delete(tabId);
+      this.partitionsByScope.delete(tabId);
+      this.stateByTabId.delete(tabId);
+      this.activeByTabId.delete(tabId);
+      if (partition && !partition.startsWith("persist:")) {
+        const stillUsed = Array.from(this.descriptors.values()).some(
+          (candidate) => partitionForDescriptor(candidate) === partition,
+        );
+        if (!stillUsed) {
+          const ephemeralSession = this.sessionsByPartition.get(partition);
+          if (ephemeralSession) {
+            await Promise.allSettled([
+              ephemeralSession.clearStorageData({
+                storages: ["cookies", "localstorage", "indexdb", "websql", "serviceworkers"],
+              }),
+              ephemeralSession.clearCache(),
+            ]);
+          }
+          this.sessionsByPartition.delete(partition);
+        }
+      }
+      if (descriptor) this.emitInventoryChange(descriptor.workbenchSessionKey);
+    };
+    if (partition) {
+      await this.runPartitionOperation(partition, release);
+    } else {
+      await release();
     }
-    if (descriptor) this.emitInventoryChange(descriptor.workbenchSessionKey);
   }
 
   async createTab(tabId: string, defaults?: DesktopPreviewTabDefaults): Promise<void> {

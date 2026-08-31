@@ -46,7 +46,7 @@ describe("legacy browser removal boundary", () => {
     expect(violations).toEqual([]);
   });
 
-  it("restores only Browser while later surface families remain deliberately blacked out", () => {
+  it("restores Browser and runtime previews while Org DevApps remain deliberately blacked out", () => {
     const browserTile = read(
       "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
     );
@@ -60,7 +60,9 @@ describe("legacy browser removal boundary", () => {
     expect(browserTile).toContain("<BrowserSurfaceSlot");
     expect(browserTile).toContain("useHostedBrowserSurface(descriptor)");
     expect(browserTile).not.toContain("<BrowserUnavailableSurface");
-    expect(runtimeTile).toContain("<BrowserUnavailableSurface");
+    expect(runtimeTile).toContain("<BrowserSurfaceSlot");
+    expect(runtimeTile).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
+    expect(runtimeTile).not.toContain("<BrowserUnavailableSurface");
     expect(runtimeTile).toContain("tile.devAppId");
     expect(orgDevAppTile).toContain("<BrowserUnavailableSurface");
   });

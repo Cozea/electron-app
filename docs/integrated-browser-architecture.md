@@ -3,9 +3,11 @@
 > **Status (2026-08-31): historical design reference.** Cozea's legacy native browser host and its
 > IPC/preload/model stack have been deleted. The ordinary Browser tile now runs on the pinned T3
 > manager and renderer-wide `<webview>` host, including queued initial navigation, repeated address
-> commits, history, find, zoom, DevTools, errors, and crash replacement. Dev Server, Project DevApp,
-> and Org DevApp tiles retain their runtimes behind the migration surface until their subsequent
-> gates. No legacy fallback or feature flag remains. Mandatory parity requirements live in
+> commits, history, find, zoom, DevTools, errors, and crash replacement. Dev Server and compatibility
+> Project DevApp tiles use the same host with per-tile ephemeral sessions while retaining their
+> independent process and terminal lifecycles. Org DevApp tiles retain their runtimes behind the
+> migration surface until their integration gate. No legacy fallback or feature flag remains.
+> Mandatory parity requirements live in
 > `shared/browserPortParityLedger.ts`.
 
 This document records the earlier VS Code-oriented architecture investigation. It is not a
