@@ -71,7 +71,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
   return createPortal(
     <div
       className={cn(
-        'fixed bottom-4 left-4 z-[120] w-[360px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl',
+        'fixed bottom-4 left-4 z-[var(--cozea-layer-toast)] w-[360px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl',
         'border border-black/10 bg-white text-zinc-900 shadow-[0_18px_45px_rgba(0,0,0,0.2)]',
         'animate-in fade-in slide-in-from-bottom-3 duration-300'
       )}
@@ -180,4 +180,3 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
     document.body
   )
 }
-

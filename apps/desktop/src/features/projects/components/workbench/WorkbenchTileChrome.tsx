@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import type { ContextMenuItem, ProviderKind } from "@cozea/assistant-contracts"
 import { SiOllama } from "react-icons/si"
 
 import { Button } from "@/components/ui/button"
+import { AnchoredAppOverlayPortal } from "@/components/ui/app-overlay-portal"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
@@ -213,12 +214,20 @@ export function WorkbenchTileChrome({
   const [isMaximized, setIsMaximized] = useState(() => panelApi.isMaximized())
   const [splitOverlayActive, setSplitOverlayActive] = useState(false)
   const [splitDirection, setSplitDirection] = useState<"top" | "bottom" | "left" | "right" | null>(null)
+  const [tileElement, setTileElement] = useState<HTMLDivElement | null>(null)
   
   const runtime = useWorkbenchDockRuntime()
   const tileHover = useElementPointerHover<HTMLDivElement>()
   const isHovered = tileHover.isHovered
   const splitStateRef = useRef({ active: false, direction: null as "top" | "bottom" | "left" | "right" | null })
   const useNativeHeader = headerMode === "native"
+  const setTileRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      tileHover.ref(node)
+      setTileElement(node)
+    },
+    [tileHover.ref],
+  )
 
   useRegisterWorkbenchDockHeaderControls(panelApi.id, {
     controls: useNativeHeader ? controls : null,
@@ -308,7 +317,7 @@ export function WorkbenchTileChrome({
   return (
     <div 
       className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-transparent relative", className)}
-      ref={tileHover.ref}
+      ref={setTileRef}
       onPointerEnter={tileHover.onPointerEnter}
       onPointerLeave={tileHover.onPointerLeave}
       onPointerMove={tileHover.onPointerMove}
@@ -465,8 +474,10 @@ export function WorkbenchTileChrome({
       </div>
 
       {splitOverlayActive ? (
-        <div
-          className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none rounded-[inherit]"
+        <AnchoredAppOverlayPortal
+          anchor={tileElement}
+          inset={1}
+          className="flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none overflow-hidden"
         >
           <div className="grid grid-cols-3 grid-rows-3 gap-2 p-4 pointer-events-auto">
             <div
@@ -529,7 +540,7 @@ export function WorkbenchTileChrome({
               <HugeiconsIcon icon={__ArrowDownHugeIcon} className="h-6 w-6" />
             </div>
           </div>
-        </div>
+        </AnchoredAppOverlayPortal>
       ) : null}
     </div>
   )

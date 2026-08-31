@@ -20,6 +20,13 @@ import type { WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord } from "@/s
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 import type { OrgDevAppRuntimeState } from "@shared/orgDevAppRuntime";
 import type { OrgDevAppEnvironmentStatus } from "@shared/orgDevAppEnvironment";
@@ -460,22 +467,29 @@ export function WorkbenchOrgDevAppTile({
           ) : null}
         </div>
       )}
-      {showLogs ? (
-        <div className="absolute inset-x-4 bottom-4 z-20 max-h-64 overflow-auto bg-background p-3 shadow-xl">
-          <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground">
-            {(runtimeState?.logs ?? []).join("\n") || "No service output yet."}
-          </pre>
-        </div>
-      ) : null}
+      <Dialog open={showLogs} onOpenChange={setShowLogs}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Service logs</DialogTitle>
+            <DialogDescription>Output from this DevApp's local service runtime.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-background p-3">
+            <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground">
+              {(runtimeState?.logs ?? []).join("\n") || "No service output yet."}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
       {showConfiguration && environmentStatus ? (
-        <div className="absolute inset-0 z-30 overflow-auto bg-background p-6">
-          <div className="mx-auto flex max-w-lg flex-col gap-4">
-            <div>
-              <h3 className="text-sm font-medium">Service configuration</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
+        <Dialog open onOpenChange={(open) => setShowConfiguration(open)}>
+          <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Service configuration</DialogTitle>
+              <DialogDescription>
                 Values stay encrypted on this Mac and are passed only to the service process.
-              </p>
-            </div>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
             {environmentStatus.requirements.map((requirement) => (
               <label key={requirement.name} className="flex flex-col gap-1.5 text-xs">
                 <span className="flex items-center gap-2">
@@ -556,8 +570,9 @@ export function WorkbenchOrgDevAppTile({
                 Save and restart
               </Button>
             </div>
-          </div>
-        </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </WorkbenchTileChrome>
   );
