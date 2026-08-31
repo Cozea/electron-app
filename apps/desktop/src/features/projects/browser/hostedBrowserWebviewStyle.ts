@@ -22,17 +22,24 @@ export const HIDDEN_BROWSER_WEBVIEW_OFFSET = -100_000;
 export function resolveHostedBrowserWebviewWrapperStyle(input: {
   readonly active: boolean;
   readonly cornerRadius?: number;
+  readonly stackingLayer?: number;
   readonly rect: BrowserSurfaceRect | null;
   readonly hiddenSize: HostedBrowserWebviewSize;
 }): HostedBrowserWebviewWrapperStyle {
-  const { active, cornerRadius = 0, hiddenSize, rect } = input;
+  const {
+    active,
+    cornerRadius = 0,
+    hiddenSize,
+    rect,
+    stackingLayer = APP_LAYERS.browserDocked,
+  } = input;
   if (active && rect) {
     return {
       left: rect.x,
       top: rect.y,
       width: rect.width,
       height: rect.height,
-      zIndex: APP_LAYERS.browserDocked,
+      zIndex: stackingLayer,
       pointerEvents: "auto",
       ...(cornerRadius > 0 ? { borderRadius: cornerRadius } : {}),
     };

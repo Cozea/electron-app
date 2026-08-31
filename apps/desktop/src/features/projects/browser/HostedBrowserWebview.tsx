@@ -20,6 +20,7 @@ import { commitBrowserViewport, useBrowserViewportStore } from "./browserViewpor
 import { resolveBrowserSurfacePanelRect, useBrowserSurfaceStore } from "./browserSurfaceStore";
 import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore";
 import { resolveHostedBrowserWebviewWrapperStyle } from "./hostedBrowserWebviewStyle";
+import { APP_LAYERS } from "@/lib/appLayers";
 import {
   INITIAL_WEBVIEW_CRASH_RECOVERY_STATE,
   planWebviewCrashRecovery,
@@ -92,6 +93,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
         fitSourceContent: current?.fitSourceContent ?? false,
         fittedSourceContent: current?.fittedSourceContent ?? null,
         rect: resolveBrowserSurfacePanelRect(state.byTabId, runtimeTabId),
+        stackingLayer: current?.stackingLayer ?? APP_LAYERS.browserDocked,
         visible: current?.visible ?? false,
       };
     }),
@@ -277,6 +279,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   const wrapperStyle = resolveHostedBrowserWebviewWrapperStyle({
     active,
     cornerRadius: presentation.cornerRadius,
+    stackingLayer: presentation.stackingLayer,
     rect: lastRect,
     hiddenSize,
   });

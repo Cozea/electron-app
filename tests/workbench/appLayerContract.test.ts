@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { APP_LAYERS } from "@/lib/appLayers";
+import { resolveDockviewBrowserSurfaceLayer } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
 
 const root = process.cwd();
 
@@ -61,5 +62,37 @@ describe("application layer contract", () => {
     expect(sharedSources.join("\n")).toContain("--cozea-layer-menu");
     expect(sharedSources.join("\n")).toContain("--cozea-layer-tooltip");
     expect(sharedSources.join("\n")).toContain("--cozea-layer-toast");
+  });
+
+  it("mirrors Dockview floating order into hosted browser layers", () => {
+    expect(resolveDockviewBrowserSurfaceLayer("grid", null)).toBe(APP_LAYERS.browserDocked);
+    expect(resolveDockviewBrowserSurfaceLayer("edge", "4")).toBe(APP_LAYERS.browserDocked);
+    expect(resolveDockviewBrowserSurfaceLayer("floating", null)).toBe(
+      APP_LAYERS.dockviewFloatBase,
+    );
+    expect(resolveDockviewBrowserSurfaceLayer("floating", "3")).toBe(
+      APP_LAYERS.dockviewFloatBase + 6,
+    );
+  });
+
+  it("removes the workbench stacking trap and publishes a layer from every browser slot", () => {
+    const keepAlive = read(
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchKeepAliveHost.tsx",
+    );
+    const activity = read(
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchActivity.tsx",
+    );
+    const browserTiles = [
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+    ].map(read);
+
+    expect(keepAlive).not.toContain("relative isolate");
+    expect(activity).not.toContain("{ zIndex: 1 }");
+    for (const tile of browserTiles) {
+      expect(tile).toContain("useDockviewBrowserSurfaceLayer");
+      expect(tile).toContain("stackingLayer={stackingLayer}");
+    }
   });
 });
