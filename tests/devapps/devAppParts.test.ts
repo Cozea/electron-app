@@ -197,6 +197,7 @@ describe("Packages resolve through the same parts model as installed apps", () =
       }),
     )
     expect(parts.worker?.capabilities).toEqual(["project.read", "git.read"])
+    expect(parts.worker?.protocolVersion).toBe(1)
   })
 
   it("gives a static-service package no background surface, matching a published one", async () => {

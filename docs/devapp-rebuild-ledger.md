@@ -3,18 +3,18 @@
 Where the nine-phase rebuild actually stands — what shipped, what shipped partially, and
 what was left suspended with the reason it stopped.
 
-| | |
-| --- | --- |
-| Original parent commits | 15 |
-| Phase 5 follow-up | 2 parent commits + 3 T3 fork commits |
-| New modules | 16 |
-| Test files | 17 |
-| Full suite | 197 files / 1523 tests passing (4 skipped) |
-| Phases complete | 3 of 9 |
+|                         |                                                           |
+| ----------------------- | --------------------------------------------------------- |
+| Original parent commits | 15                                                        |
+| Phase 5 follow-up       | 2 parent commits + 3 T3 fork commits                      |
+| New modules             | 16                                                        |
+| Test files              | 18                                                        |
+| Full suite              | 198 files / 1533 tests passing (1 file / 4 tests skipped) |
+| Phases complete         | 3 of 9                                                    |
 
 Originally audited at `78cb74bd` on `main`; live Phase 5 acceptance was refreshed on
-2026-09-01 from the current `main` line plus the dedicated acceptance branch. All three
-typecheck projects, focused tests, lint, and the production build pass. Phase scope is
+2026-09-01 from the current `main` line plus the dedicated acceptance and protocol branches.
+All three typecheck projects, focused tests, lint, the full suite, and the production build pass. Phase scope is
 quoted from the DevApp Rebuild Plan. Every "left suspended" item was checked in code
 rather than recalled.
 
@@ -33,7 +33,7 @@ storage and crosses projects. It can ask for capabilities from a settled vocabul
 privileged code out of process behind a gate that enforces them, and be developed locally
 against the exact path it will take once published.
 
-What does not exist yet is the half that makes it a *platform* rather than a better
+What does not exist yet is the half that makes it a _platform_ rather than a better
 runtime: nobody outside the team can author against it, worker-declared agent tools do not
 flow into ACP sessions, and installation is still a cache rather than an install. Agents can
 now create or attach a development preview and drive its living guest after the user grants
@@ -63,7 +63,7 @@ instead. Low cost, no dependents.
 
 **Shipped.** View, worker, and service as independent parts. All eight shipping variants
 round-trip through the model, which is what proved it could express the real system.
-Surfaces — tile, agent tool, background service — are *derived* from parts rather than
+Surfaces — tile, agent tool, background service — are _derived_ from parts rather than
 declared, so adding a surface later is one resolver rather than an edit to every manifest
 already published.
 
@@ -106,10 +106,10 @@ ordinary response rather than a kill, so an over-broad manifest is a fixable mis
 of an outage. Workers are bound to one workspace at start and handlers ignore any workspace
 a request names.
 
-**Left suspended.** The plan called for `MessageChannelMain` ports bridged to *views*
+**Left suspended.** The plan called for `MessageChannelMain` ports bridged to _views_
 through preload. That does not exist — `preload.ts` has zero worker references, so a worker
-can talk to main but a view cannot talk to a worker. Protocol versioning was meant to be
-decided before this phase shipped; it was not.
+can talk to main but a view cannot talk to a worker. The previously overdue protocol
+versioning policy is now implemented; the missing view bridge is the remaining Phase 4 gap.
 
 ### Phase 5 — Development mode and preview tile — **Delivered**
 
@@ -177,12 +177,18 @@ but nothing bridges a `MessageChannelMain` port through preload to the renderer.
 exists, a worker is reachable only by main — so the tile surface can show worker logs and
 crashes but cannot invoke anything.
 
-### Protocol versioning policy — cross-cutting, overdue
+### Protocol versioning policy — cross-cutting, completed 2026-09-01
 
-The plan said to decide this *before* Phase 4 shipped. Phase 4 shipped without it. Installed
-apps will target a protocol version and the host must state what it guarantees across
-upgrades; right now it guarantees nothing explicitly. This hardens the moment anyone outside
-the team authors a package, which is Phase 6.
+Manifest and worker protocol versions are independent. Each package targets one exact,
+positive worker protocol version; the host never silently downgrades it. Version 1 is the
+current and only supported contract. Pre-Phase-6 manifests and messages that omit the field
+normalize to version 1 only, while new authoring clients must write it explicitly.
+
+Main rejects unsupported package versions before spawning code, transfers the selected and
+supported versions in the port bootstrap, requires the selected version on every normalized
+request/response/event, and rejects explicit mismatches before authorization or dispatch.
+Future versions require their own parser and method table. The complete immutable-version and
+security policy is in `docs/devapp-worker-protocol.md`.
 
 ### Adversarial security review — cross-cutting, overdue
 
@@ -258,41 +264,44 @@ walk is the real acceptance test for Phase 5 and it has not happened.
 
 ### Contracts — `shared/`
 
-| Module | Role |
-| --- | --- |
-| `devAppCapabilities.ts` | vocabulary, tiers, grants |
-| `devAppWorkerProtocol.ts` | wire format, authorization table |
-| `devAppPackage.ts` | `cozea-devapp.json` parser |
-| `devAppDevelopmentTrust.ts` | provisional grants |
-| `devAppPreviewTypes.ts` | status the tile renders |
-| `devAppPreviewProtocol.ts` | the `.dev` origin |
-| `orgDevAppDiagnostics.ts` | error taxonomy |
-| `browserSurfaceSessions.ts` | partition isolation |
+| Module                      | Role                             |
+| --------------------------- | -------------------------------- |
+| `devAppCapabilities.ts`     | vocabulary, tiers, grants        |
+| `devAppWorkerProtocol.ts`   | wire format, authorization table |
+| `devAppPackage.ts`          | `cozea-devapp.json` parser       |
+| `devAppDevelopmentTrust.ts` | provisional grants               |
+| `devAppPreviewTypes.ts`     | status the tile renders          |
+| `devAppPreviewProtocol.ts`  | the `.dev` origin                |
+| `orgDevAppDiagnostics.ts`   | error taxonomy                   |
+| `browserSurfaceSessions.ts` | partition isolation              |
+
+The worker wire lifecycle and compatibility policy are documented in
+`docs/devapp-worker-protocol.md`.
 
 ### Host — `apps/desktop/electron/services/`
 
-| Module | Role |
-| --- | --- |
-| `DevAppWorkerHost.ts` | supervisor and gate |
-| `devAppWorkerHandlers.ts` | binding-enforced methods |
-| `devAppHostServices.ts` | real fs, shell, workspace |
-| `devAppUtilityProcess.ts` | the Electron adapter |
-| `DevAppPreviewSession.ts` | the authoring loop |
-| `DevAppPreviewService.ts` | session + watcher + IPC |
-| `DevAppPreviewWatcher.ts` | debounced reload |
-| `devAppPreviewAdapters.ts` | fs port, source ids |
-| `orgDevAppPreflight.ts` | the validator |
+| Module                     | Role                      |
+| -------------------------- | ------------------------- |
+| `DevAppWorkerHost.ts`      | supervisor and gate       |
+| `devAppWorkerHandlers.ts`  | binding-enforced methods  |
+| `devAppHostServices.ts`    | real fs, shell, workspace |
+| `devAppUtilityProcess.ts`  | the Electron adapter      |
+| `DevAppPreviewSession.ts`  | the authoring loop        |
+| `DevAppPreviewService.ts`  | session + watcher + IPC   |
+| `DevAppPreviewWatcher.ts`  | debounced reload          |
+| `devAppPreviewAdapters.ts` | fs port, source ids       |
+| `orgDevAppPreflight.ts`    | the validator             |
 
 ### Renderer — `apps/desktop/src/`
 
-| Module | Role |
-| --- | --- |
-| `features/devapps/registry/parts.ts` | parts and surfaces |
-| `features/devapps/registry/ref.ts` | durable names |
-| `features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx` | the tile |
-| `features/projects/devapps/devAppPreviewRuntimeStore.ts` | live status for automation |
-| `features/projects/devapps/devAppPreviewSurfaceController.ts` | package-to-Dockview placement |
-| `electron/ipc/registerDevAppPreviewHandlers.ts` | IPC boundary |
+| Module                                                                  | Role                          |
+| ----------------------------------------------------------------------- | ----------------------------- |
+| `features/devapps/registry/parts.ts`                                    | parts and surfaces            |
+| `features/devapps/registry/ref.ts`                                      | durable names                 |
+| `features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx` | the tile                      |
+| `features/projects/devapps/devAppPreviewRuntimeStore.ts`                | live status for automation    |
+| `features/projects/devapps/devAppPreviewSurfaceController.ts`           | package-to-Dockview placement |
+| `electron/ipc/registerDevAppPreviewHandlers.ts`                         | IPC boundary                  |
 
 ---
 
@@ -309,8 +318,9 @@ In dependency order, not preference order.
    lifecycle operations and fixes required for hidden capture and packaged selector injection;
    the parent host creates, attaches, targets, and controls the approved living guest.
 
-3. **Settle protocol versioning.** Overdue since Phase 4 and it hardens at Phase 6. Deciding
-   it costs a conversation now and a migration later.
+3. **Protocol versioning — complete 2026-09-01.** Exact version selection, v1-only legacy
+   aliases, bootstrap metadata, message envelopes, host enforcement, restart behavior, and
+   immutable-version policy now protect the Phase 6 authoring boundary.
 
 4. **Finish Phase 2 before Phase 6.** Phase 6 invites outside authors, and every surface they
    add pays the five-file cost. Consolidating the registry first is cheaper than

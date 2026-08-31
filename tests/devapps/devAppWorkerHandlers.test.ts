@@ -5,6 +5,7 @@ import {
   type DevAppHostServices,
 } from "../../apps/desktop/electron/services/devAppWorkerHandlers"
 import type { DevAppWorkerBinding } from "../../apps/desktop/electron/services/DevAppWorkerHost"
+import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../shared/devAppWorkerProtocol"
 
 const BINDING: DevAppWorkerBinding = {
   workspaceId: "ws_granted",
@@ -29,7 +30,13 @@ const call = (
   handlers: ReturnType<typeof createDevAppWorkerHandlers>,
   method: string,
   params: unknown,
-) => handlers[method]!({ kind: "request", id: "1", method, params }, {
+) => handlers[method]!({
+  kind: "request",
+  protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+  id: "1",
+  method,
+  params,
+}, {
   publicationId: "pub_1",
   binding: BINDING,
 })

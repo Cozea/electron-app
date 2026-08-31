@@ -14,10 +14,39 @@ import {
  * capability table is denied rather than allowed.
  */
 
-export const DEV_APP_WORKER_PROTOCOL_VERSION = 1
+/**
+ * Worker protocol versions are monotonic integers, independent from manifest versions.
+ *
+ * A package targets one exact version. The host never silently downgrades it: doing so
+ * could make a worker believe an operation or authorization rule exists when this Cozea
+ * build cannot enforce it. Hosts may retain several versions during a migration window;
+ * today the first protocol is the only supported one.
+ */
+export const DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS: ReadonlyArray<number> = [1]
+/** Missing pre-Phase-6 version fields always mean v1, even after newer versions ship. */
+export const DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION = 1
+export const DEV_APP_WORKER_PROTOCOL_MIN_VERSION = DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS[0]!
+export const DEV_APP_WORKER_PROTOCOL_VERSION = DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS.at(-1)!
+
+export function supportsDevAppWorkerProtocolVersion(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS.includes(value)
+  )
+}
+
+export interface DevAppWorkerPortBootstrap {
+  kind: "cozea-devapp-port"
+  /** The exact protocol selected from the package manifest. */
+  protocolVersion: number
+  /** The range this host can execute, for actionable client diagnostics. */
+  supportedProtocolVersions: { min: number; max: number }
+}
 
 export interface DevAppWorkerRequest {
   kind: "request"
+  protocolVersion: number
   /** Correlates a response. Opaque to the host beyond being a bounded string. */
   id: string
   method: string
@@ -26,6 +55,7 @@ export interface DevAppWorkerRequest {
 
 export interface DevAppWorkerResponse {
   kind: "response"
+  protocolVersion: number
   id: string
   result?: unknown
   error?: DevAppWorkerError
@@ -34,6 +64,7 @@ export interface DevAppWorkerResponse {
 /** Host-to-worker or worker-to-host, unacknowledged. */
 export interface DevAppWorkerEvent {
   kind: "event"
+  protocolVersion: number
   topic: string
   payload?: unknown
 }
@@ -154,14 +185,30 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * Deliberately not a type assertion. A worker can send whatever it likes, including a
  * shape that would satisfy TypeScript at compile time and nothing at runtime.
  */
-export function parseWorkerMessage(value: unknown): DevAppWorkerMessage | null {
+export function parseWorkerMessage(
+  value: unknown,
+  expectedProtocolVersion: number = DEV_APP_WORKER_PROTOCOL_VERSION,
+): DevAppWorkerMessage | null {
   if (!isPlainObject(value)) return null
+  if (!supportsDevAppWorkerProtocolVersion(expectedProtocolVersion)) return null
+  // Version parsers are intentionally explicit. Extending the supported-version list
+  // without adding the corresponding parser must fail closed, not inherit v1 shapes.
+  if (expectedProtocolVersion !== DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION) return null
+
+  // Early development workers predated the explicit envelope field. Missing means v1
+  // only; no later version inherits this alias, and an explicit mismatch always fails.
+  const protocolVersion =
+    value.protocolVersion === undefined
+      ? DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION
+      : value.protocolVersion
+  if (protocolVersion !== expectedProtocolVersion) return null
 
   if (value.kind === "request") {
     if (!isBoundedString(value.id, MAX_ID_LENGTH)) return null
     if (!isBoundedString(value.method, MAX_METHOD_LENGTH)) return null
     return {
       kind: "request",
+      protocolVersion,
       id: value.id,
       method: value.method,
       ...(value.params === undefined ? {} : { params: value.params }),
@@ -177,6 +224,7 @@ export function parseWorkerMessage(value: unknown): DevAppWorkerMessage | null {
     if (hasError && !isPlainObject(value.error)) return null
     return {
       kind: "response",
+      protocolVersion,
       id: value.id,
       ...(hasResult ? { result: value.result } : {}),
       ...(hasError ? { error: value.error as DevAppWorkerError } : {}),
@@ -187,6 +235,7 @@ export function parseWorkerMessage(value: unknown): DevAppWorkerMessage | null {
     if (!isBoundedString(value.topic, MAX_TOPIC_LENGTH)) return null
     return {
       kind: "event",
+      protocolVersion,
       topic: value.topic,
       ...(value.payload === undefined ? {} : { payload: value.payload }),
     }
@@ -195,8 +244,12 @@ export function parseWorkerMessage(value: unknown): DevAppWorkerMessage | null {
   return null
 }
 
-export function workerErrorResponse(id: string, error: DevAppWorkerError): DevAppWorkerResponse {
-  return { kind: "response", id, error }
+export function workerErrorResponse(
+  id: string,
+  error: DevAppWorkerError,
+  protocolVersion: number = DEV_APP_WORKER_PROTOCOL_VERSION,
+): DevAppWorkerResponse {
+  return { kind: "response", protocolVersion, id, error }
 }
 
 /**

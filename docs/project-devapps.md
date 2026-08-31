@@ -144,6 +144,12 @@ the publication cookie partition, and disappear when the preview closes. Public 
 opens externally; cross-source custom origins and unsupported schemes are rejected by the shared
 surface manager.
 
+Authored workers target an exact `worker.protocolVersion`. Main validates that version before
+spawning code, states the selected version and supported range when transferring the worker port,
+and rejects mismatched message envelopes before capability authorization. Pre-Phase-6 manifests
+that omit the field are interpreted as protocol 1 only; new authoring tools must write it
+explicitly. See [DevApp Worker Protocol](./devapp-worker-protocol.md).
+
 Project deletion owns both lifecycles: it removes the source project's machine-local publication
 and releases immediately, then the bounded Convex project cascade removes any org publication,
 release rows, and artifact blobs. Archiving a project does not delete either catalog.
