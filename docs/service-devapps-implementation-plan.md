@@ -227,7 +227,9 @@ Extend `devAppReleases` with validated release metadata:
 - optional bounded presentation metadata such as declared environment names, excluding values.
 
 Continue storing the artifact blob, content hash, framework, and active immutable release pointer.
-Existing rows without `runtimeKind` are interpreted as `static` until test data is reset.
+`runtimeKind`, artifact identity, and composable parts are required release data. The single beta
+row that predated this contract was backfilled once on 2026-09-01; the temporary migration and
+all runtime defaults were removed immediately afterward.
 
 `publish` must validate that the registered upload, declared runtime kind, manifest metadata, source
 project, organization, and authenticated publisher all agree. Consumer queries return only the

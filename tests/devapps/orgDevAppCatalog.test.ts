@@ -156,6 +156,8 @@ describe("org DevApp catalog access", () => {
         artifactStorageId: asId<"_storage">("storage_1"),
         entryPath: "index.html",
         contentHash: "b".repeat(64),
+        runtimeKind: "static",
+        parts: { view: { source: "package" } },
         createdBy: adminId,
         createdAt: 1,
       } as never,
@@ -194,6 +196,7 @@ describe("published DevApp manifests", () => {
         permissionSetHash: null,
         publisherIdentityKey: null,
         publisherDeviceLabel: null,
+        parts: { view: { source: "package" as const } },
       },
     }
     const spec = buildPublishedDevAppLaunchSpec(entry)
@@ -208,5 +211,6 @@ describe("published DevApp manifests", () => {
     expect(manifest.store.categoryLabel).toBe("Organization")
     expect(manifest.icon.src).toContain("/published/icon.png")
     expect(manifest.icon.className).toBe("scale-[1.25]")
+    expect(manifest.parts).toBe(entry.activeRelease.parts)
   })
 })

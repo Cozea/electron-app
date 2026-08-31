@@ -6,6 +6,7 @@ import {
   partsForLaunchSpec,
   type DevAppParts,
 } from "@/features/devapps/registry/parts"
+import { partsForPublishedRuntimeKind } from "@shared/devAppParts"
 import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
 
 const PUBLISHED_STATIC: DevAppLaunchSpec = {
@@ -21,13 +22,6 @@ const PUBLISHED_STATIC: DevAppLaunchSpec = {
   contentHash: "a".repeat(64),
   entryPath: "index.html",
   runtimeKind: "static",
-}
-
-const PUBLISHED_SERVICE: DevAppLaunchSpec = {
-  ...PUBLISHED_STATIC,
-  runtimeKind: "service",
-  entryPath: "server/server.js",
-  framework: "nextjs",
 }
 
 describe("DevApp parts — expressing what ships today", () => {
@@ -57,7 +51,7 @@ describe("DevApp parts — expressing what ships today", () => {
   it("marks native views as native and package views as package", () => {
     const browser = BUILTIN_DEV_APPS.find((app) => app.id === "browser")!
     expect(browser.parts.view).toEqual({ source: "native", rendererId: "browser" })
-    expect(partsForLaunchSpec(PUBLISHED_STATIC).view).toEqual({ source: "package" })
+    expect(partsForPublishedRuntimeKind("static").view).toEqual({ source: "package" })
   })
 
   it("splits a terminal into unprivileged chrome over a privileged worker", () => {
@@ -72,13 +66,13 @@ describe("DevApp parts — expressing what ships today", () => {
 
 describe("DevApp parts — published releases", () => {
   it("maps a static release to a view with no running process", () => {
-    const parts = partsForLaunchSpec(PUBLISHED_STATIC)
+    const parts = partsForPublishedRuntimeKind("static")
     expect(parts).toEqual({ view: { source: "package" } })
     expect(parts.service).toBeUndefined()
   })
 
   it("maps a service release to a view plus an unprivileged service", () => {
-    const parts = partsForLaunchSpec(PUBLISHED_SERVICE)
+    const parts = partsForPublishedRuntimeKind("service")
     expect(parts.view).toEqual({ source: "package" })
     expect(parts.service).toEqual({ runtimeKind: "node", location: "device" })
     // A published service holds no capabilities; that is what separates it from a worker.
@@ -88,6 +82,12 @@ describe("DevApp parts — published releases", () => {
   it("preserves the singleton constraint the Dev Server depends on", () => {
     const devServer = BUILTIN_DEV_APPS.find((app) => app.id === "dev-server")!
     expect(devServer.parts.service?.singleton).toBe(true)
+  })
+
+  it("refuses to reconstruct published parts from the launch adapter", () => {
+    expect(() => partsForLaunchSpec(PUBLISHED_STATIC)).toThrow(
+      "Published DevApp parts must come from the immutable release record",
+    )
   })
 })
 
@@ -214,19 +214,6 @@ describe("Packages resolve through the same parts model as installed apps", () =
       }),
     )
     expect(derivableSurfaces(parts)).toEqual(["tile"])
-    expect(derivableSurfaces(partsForLaunchSpec({
-      kind: "publishedDevApp",
-      tileType: "orgDevApp",
-      publicationId: "p",
-      organizationId: "o",
-      organizationName: "O",
-      releaseId: "r",
-      releaseVersion: 1,
-      name: "A",
-      framework: "vite-react",
-      contentHash: "a".repeat(64),
-      entryPath: "index.html",
-      runtimeKind: "static",
-    }))).toEqual(["tile"])
+    expect(derivableSurfaces(partsForPublishedRuntimeKind("static"))).toEqual(["tile"])
   })
 })

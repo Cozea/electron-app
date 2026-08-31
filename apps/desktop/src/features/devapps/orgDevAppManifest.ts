@@ -1,7 +1,7 @@
 import { resolveProjectDevAppDisplayLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
 import { buildPublishedDevAppIconDefinition } from "@/features/devapps/publishedDevAppIcon"
-import { partsForLaunchSpec } from "@/features/devapps/registry/parts"
 import type { DevAppManifest, PublishedDevAppLaunchSpec } from "@/features/devapps/registry/types"
+import type { DevAppParts } from "@shared/devAppParts"
 import { buildOrgDevAppUrl } from "@shared/orgDevAppProtocol"
 
 export interface OrgDevAppConsumerRecord {
@@ -25,6 +25,7 @@ export interface OrgDevAppConsumerRecord {
     permissionSetHash: string | null
     publisherIdentityKey: string | null
     publisherDeviceLabel: string | null
+    parts: DevAppParts
   }
 }
 
@@ -86,7 +87,7 @@ export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): De
       badgeLabel: entry.organizationName,
       featured: true,
     },
-    parts: partsForLaunchSpec(launch),
+    parts: entry.activeRelease.parts,
     launch,
   }
 }

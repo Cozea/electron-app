@@ -1,5 +1,15 @@
-import type { DevAppCapability } from "@shared/devAppCapabilities"
 import type { DevAppPackage } from "@shared/devAppPackage"
+import type { DevAppParts, DevAppViewPart } from "@shared/devAppParts"
+
+export {
+  derivableSurfaces,
+  type DevAppParts,
+  type DevAppServicePart,
+  type DevAppSurface,
+  type DevAppViewPart,
+  type DevAppViewSource,
+  type DevAppWorkerPart,
+} from "@shared/devAppParts"
 
 import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
 
@@ -11,72 +21,10 @@ import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
  * combination costs a variant, a renderer switch case, and store fields. Parts separate
  * those concerns so combinations compose instead.
  *
- * Surface discovery dispatches on this model. The launch spec remains the compatibility
- * runtime path until persisted releases carry parts; `partsForLaunchSpec` is the adapter
- * that keeps those older and dynamic records on the same surface model.
+ * Surface discovery dispatches on this model. Built-in and machine-local compatibility
+ * surfaces can still be expressed from their launch spec. Published release parts come
+ * only from their immutable Convex record.
  */
-
-/** How a tile's content is produced. Views are never privileged. */
-export type DevAppViewSource =
-  /** Rendered by a component compiled into Cozea. */
-  | "native"
-  /** Web content carried in an installed package, served from a per-release origin. */
-  | "package"
-
-export interface DevAppViewPart {
-  source: DevAppViewSource
-  /** For native views, the renderer this resolves to. */
-  rendererId?: string
-}
-
-/**
- * Privileged code running in a Cozea-managed host, holding the capabilities the manifest
- * declared and the user approved.
- *
- * Capabilities are drawn from the settled vocabulary in `@shared/devAppCapabilities`,
- * which is deliberately scoped: `project.read` is bounded to the granting workspace and
- * is a different capability from machine-wide `fs.read`.
- */
-export interface DevAppWorkerPart {
-  capabilities: ReadonlyArray<DevAppCapability>
-  /** Present for authored workers that cross the versioned DevApp host boundary. */
-  protocolVersion?: number
-  /** Whether the worker exposes operations agents may call. */
-  exposesTools?: boolean
-}
-
-/** An unprivileged long-lived server reached over an origin. */
-export interface DevAppServicePart {
-  runtimeKind: "static" | "node" | "container"
-  location: "device" | "hosted"
-  /** True when at most one instance may exist for its owning scope. */
-  singleton?: boolean
-}
-
-export interface DevAppParts {
-  view?: DevAppViewPart
-  worker?: DevAppWorkerPart
-  service?: DevAppServicePart
-}
-
-/**
- * Where a DevApp may appear. Derived from its parts, never declared by its author — so
- * adding a surface later is one resolver rather than an edit to every manifest and every
- * release already published.
- */
-export type DevAppSurface = "tile" | "agentTool" | "backgroundService"
-
-export function derivableSurfaces(parts: DevAppParts): DevAppSurface[] {
-  const surfaces: DevAppSurface[] = []
-  if (parts.view) surfaces.push("tile")
-  if (parts.worker?.exposesTools) surfaces.push("agentTool")
-  // Anything with a long-lived process can outlive the tile that opened it. A static
-  // service is only files, so it has nothing to keep running.
-  if (parts.worker || (parts.service && parts.service.runtimeKind !== "static")) {
-    surfaces.push("backgroundService")
-  }
-  return surfaces
-}
 
 const NATIVE_VIEW = (rendererId: string): DevAppViewPart => ({ source: "native", rendererId })
 
@@ -126,12 +74,7 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
       }
 
     case "publishedDevApp":
-      return {
-        view: { source: "package" },
-        ...(launch.runtimeKind === "service"
-          ? { service: { runtimeKind: "node" as const, location: "device" as const } }
-          : {}),
-      }
+      throw new Error("Published DevApp parts must come from the immutable release record")
 
     case "projectDevApp":
       return {

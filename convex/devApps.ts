@@ -1,5 +1,7 @@
 import { ConvexError, v } from "convex/values"
 
+import { partsForPublishedRuntimeKind } from "../shared/devAppParts"
+
 import type { Doc, Id } from "./_generated/dataModel"
 import { type MutationCtx, type QueryCtx } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
@@ -214,7 +216,7 @@ export const publish = mutation({
       throw new ConvexError("The DevApp upload is incomplete, expired, or belongs to another project")
     }
     const metadata = await ctx.db.system.get("_storage", reservation.storageId)
-    if ((reservation.runtimeKind ?? "static") !== args.runtimeKind) {
+    if (reservation.runtimeKind !== args.runtimeKind) {
       throw new ConvexError("The DevApp upload runtime kind does not match the release")
     }
     if (
@@ -291,6 +293,7 @@ export const publish = mutation({
       entryPath,
       contentHash: reservation.contentHash,
       runtimeKind: args.runtimeKind,
+      parts: partsForPublishedRuntimeKind(args.runtimeKind),
       ...(args.manifestVersion ? { manifestVersion: args.manifestVersion } : {}),
       ...(args.platform ? { platform: args.platform } : {}),
       ...(args.arch ? { arch: args.arch } : {}),
@@ -535,10 +538,10 @@ export const getArtifactUrl = query({
     return {
       url,
       contentHash: release.contentHash,
-      entryPath: release.entryPath ?? "index.html",
+      entryPath: release.entryPath,
       releaseId: release._id,
       version: release.version,
-      runtimeKind: release.runtimeKind ?? "static",
+      runtimeKind: release.runtimeKind,
       manifestVersion: release.manifestVersion ?? null,
       platform: release.platform ?? null,
       arch: release.arch ?? null,
