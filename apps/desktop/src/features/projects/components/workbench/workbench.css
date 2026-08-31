@@ -18,6 +18,7 @@
   --dv-tab-font-size: 12px;
   --dv-spacing-padding: 8px;
   --dv-border-radius: 12px;
+  --dv-overlay-z-index: var(--cozea-layer-dockview-float-base);
   --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   /* Resize sash + drop-target hint. dockview ties BOTH the active resize sash
      (the line you see hovering between two tiles to widen one) and the drag-over
@@ -65,6 +66,16 @@
      reads as the window breaking rather than as motion. Keep them solid. */
   --dv-floating-group-dragging-opacity: 1;
   background-color: transparent;
+}
+
+/* Dockview owns the geometry of floating windows, while Cozea owns the global
+   ordering contract shared with renderer-hosted webviews and body portals. */
+.cozea-workbench-dockview-theme .dv-popover-anchor > * {
+  z-index: var(--cozea-layer-menu) !important;
+}
+
+.cozea-workbench-dockview-theme .dv-drop-target-container {
+  z-index: var(--cozea-layer-dockview-drop-target) !important;
 }
 
 /* Dark scheme: --foreground is near-white here, so nudge the alphas up a touch

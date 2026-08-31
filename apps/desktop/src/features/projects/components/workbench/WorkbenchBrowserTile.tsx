@@ -20,6 +20,7 @@ import {
 } from "@/features/projects/browser/browserSurfaceIdentity";
 import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore";
 import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry";
+import { useDockviewBrowserSurfaceLayer } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome";
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore";
 import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/stores/useProjectWorkbenchStore";
@@ -193,6 +194,7 @@ export function WorkbenchBrowserTile({
 }: WorkbenchBrowserTileProps) {
   const actions = useProjectWorkbenchStore((state) => state.actions);
   const panelVisible = usePanelSurfaceVisibility(panelApi);
+  const stackingLayer = useDockviewBrowserSurfaceLayer(panelApi, containerApi);
   const resolvedSessionKey = resolveBrowserWorkbenchSessionKey({
     projectId,
     laneId,
@@ -273,6 +275,7 @@ export function WorkbenchBrowserTile({
           <BrowserSurfaceSlot
             tabId={runtimeTabId}
             visible={surfaceVisible}
+            stackingLayer={stackingLayer}
             className="absolute inset-0 size-full"
           />
           {showStartState ? <BrowserStartState /> : null}

@@ -73,7 +73,7 @@ export function WorkbenchKeepAliveHost({
   }
 
   return (
-    <div className="relative isolate h-full min-h-0 w-full min-w-0 overflow-hidden">
+    <div className="relative h-full min-h-0 w-full min-w-0 overflow-hidden">
       {sessions.map((session) => (
         <WorkbenchActivity
           key={session.scopeKey}

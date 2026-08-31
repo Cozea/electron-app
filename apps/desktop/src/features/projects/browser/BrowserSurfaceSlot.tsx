@@ -1,11 +1,13 @@
 import { useLayoutEffect, useRef } from "react";
 
 import { acquireBrowserSurface } from "./browserSurfaceStore";
+import { APP_LAYERS } from "@/lib/appLayers";
 
 export interface BrowserSurfaceSlotProps {
   readonly tabId: string;
   readonly visible: boolean;
   readonly cornerRadius?: number;
+  readonly stackingLayer?: number;
   readonly layoutVersion?: string | number;
   readonly className?: string;
   readonly fitSourceContent?: boolean;
@@ -15,12 +17,13 @@ export function BrowserSurfaceSlot({
   tabId,
   visible,
   cornerRadius = 0,
+  stackingLayer = APP_LAYERS.browserDocked,
   layoutVersion,
   className,
   fitSourceContent = false,
 }: BrowserSurfaceSlotProps) {
   const elementRef = useRef<HTMLDivElement | null>(null);
-  const presentationRef = useRef({ visible, cornerRadius });
+  const presentationRef = useRef({ visible, cornerRadius, stackingLayer });
   const updateRef = useRef<(() => void) | null>(null);
 
   useLayoutEffect(() => {
@@ -40,11 +43,17 @@ export function BrowserSurfaceSlot({
         nextRect,
         presentation.visible && rect.width > 0 && rect.height > 0,
         presentation.cornerRadius,
+        presentation.stackingLayer,
       );
       if (presentation.visible && !presented) {
         lease.release();
         lease = acquireBrowserSurface(tabId, fitSourceContent);
-        lease.present(nextRect, rect.width > 0 && rect.height > 0, presentation.cornerRadius);
+        lease.present(
+          nextRect,
+          rect.width > 0 && rect.height > 0,
+          presentation.cornerRadius,
+          presentation.stackingLayer,
+        );
       }
     };
     updateRef.current = update;
@@ -63,9 +72,9 @@ export function BrowserSurfaceSlot({
   }, [fitSourceContent, tabId]);
 
   useLayoutEffect(() => {
-    presentationRef.current = { visible, cornerRadius };
+    presentationRef.current = { visible, cornerRadius, stackingLayer };
     updateRef.current?.();
-  }, [cornerRadius, layoutVersion, visible]);
+  }, [cornerRadius, layoutVersion, stackingLayer, visible]);
 
   return <div ref={elementRef} className={className} data-browser-surface-slot={tabId} />;
 }

@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { APP_LAYERS } from "@/lib/appLayers";
+
 export interface BrowserSurfaceRect {
   readonly x: number;
   readonly y: number;
@@ -24,6 +26,7 @@ export interface BrowserSurfacePresentation {
   readonly fittedSourceContent: BrowserSurfaceContentPresentation | null;
   readonly fitSourceContent: boolean;
   readonly cornerRadius: number;
+  readonly stackingLayer: number;
   readonly updatedAt: number;
   readonly owner: symbol | null;
 }
@@ -37,13 +40,19 @@ interface BrowserSurfaceStoreState {
     rect: BrowserSurfaceRect,
     visible: boolean,
     cornerRadius: number,
+    stackingLayer: number,
   ) => void;
   readonly presentContent: (tabId: string, content: BrowserSurfaceContentPresentation) => void;
   readonly release: (tabId: string, owner: symbol) => void;
 }
 
 export interface BrowserSurfaceLease {
-  readonly present: (rect: BrowserSurfaceRect, visible: boolean, cornerRadius?: number) => boolean;
+  readonly present: (
+    rect: BrowserSurfaceRect,
+    visible: boolean,
+    cornerRadius?: number,
+    stackingLayer?: number,
+  ) => boolean;
   readonly release: () => void;
 }
 
@@ -77,19 +86,21 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
             fittedSourceContent: fitSourceContent ? (current?.content ?? null) : null,
             fitSourceContent,
             cornerRadius: current?.cornerRadius ?? 0,
+            stackingLayer: current?.stackingLayer ?? APP_LAYERS.browserDocked,
             updatedAt: Date.now(),
             owner,
           },
         },
       };
     }),
-  present: (tabId, owner, rect, visible, cornerRadius) =>
+  present: (tabId, owner, rect, visible, cornerRadius, stackingLayer) =>
     set((state) => {
       const current = state.byTabId[tabId];
       if (current?.owner !== owner) return state;
       if (
         current.visible === visible &&
         current.cornerRadius === cornerRadius &&
+        current.stackingLayer === stackingLayer &&
         rectEquals(current.rect, rect)
       ) {
         return state;
@@ -97,7 +108,14 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
       return {
         byTabId: {
           ...state.byTabId,
-          [tabId]: { ...current, rect, visible, cornerRadius, updatedAt: Date.now() },
+          [tabId]: {
+            ...current,
+            rect,
+            visible,
+            cornerRadius,
+            stackingLayer,
+            updatedAt: Date.now(),
+          },
         },
       };
     }),
@@ -115,6 +133,7 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
               fittedSourceContent: null,
               fitSourceContent: false,
               cornerRadius: 0,
+              stackingLayer: APP_LAYERS.browserDocked,
               updatedAt: Date.now(),
               owner: null,
             },
@@ -178,10 +197,17 @@ export function acquireBrowserSurface(
   useBrowserSurfaceStore.getState().claim(tabId, owner, fitSourceContent);
 
   return {
-    present: (rect, visible, cornerRadius = 0) => {
+    present: (
+      rect,
+      visible,
+      cornerRadius = 0,
+      stackingLayer = APP_LAYERS.browserDocked,
+    ) => {
       if (released) return false;
       if (useBrowserSurfaceStore.getState().byTabId[tabId]?.owner !== owner) return false;
-      useBrowserSurfaceStore.getState().present(tabId, owner, rect, visible, cornerRadius);
+      useBrowserSurfaceStore
+        .getState()
+        .present(tabId, owner, rect, visible, cornerRadius, stackingLayer);
       return true;
     },
     release: () => {
