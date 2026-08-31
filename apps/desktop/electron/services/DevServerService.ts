@@ -36,6 +36,7 @@ export interface DevServerProcessState {
   runId: string | null
   phase: 'bootstrapping' | 'launching' | 'running' | null
   headless: boolean
+  terminalId: string | null
 }
 
 interface ManagedDevServerRun {
@@ -429,6 +430,20 @@ export class DevServerService {
     return { success: true, ownsRuntime: true }
   }
 
+  /** Reconnect a new surface binding to the PTY that already owns this run. */
+  public attachSurface(
+    workspaceId: string,
+    laneId: string | null | undefined,
+    terminalId: string,
+  ): { success: boolean; ownsRuntime: boolean } {
+    const entry = this.processes.get(buildRunKey(workspaceId, laneId))
+    if (!entry || entry.terminalId !== terminalId) {
+      return { success: true, ownsRuntime: false }
+    }
+    entry.terminalDetached = false
+    return { success: true, ownsRuntime: true }
+  }
+
   public getState(workspaceId: string, laneId?: string | null): DevServerProcessState {
     const entry = this.processes.get(buildRunKey(workspaceId, laneId))
     return {
@@ -438,6 +453,7 @@ export class DevServerService {
       runId: entry?.runId ?? null,
       phase: entry?.phase ?? null,
       headless: Boolean(entry?.terminalDetached),
+      terminalId: entry?.terminalId ?? null,
     }
   }
 

@@ -70,6 +70,17 @@ const FRAMEWORK_FILES = new Set([
   'svelte.config.ts',
 ])
 
+const STATIC_SITE_ENTRIES: ReadonlyArray<{
+  entry: string
+  directory: string | null
+}> = [
+  { entry: 'index.html', directory: null },
+  { entry: 'dist/index.html', directory: 'dist' },
+  { entry: 'build/index.html', directory: 'build' },
+  { entry: 'out/index.html', directory: 'out' },
+  { entry: 'public/index.html', directory: 'public' },
+]
+
 function emptyFeatures(): DevCommandFeatures {
   return {
     manifestMatch: 0,
@@ -237,12 +248,18 @@ export function buildDevCommandCandidates(input: {
     if (candidate) candidates.push(candidate)
   }
 
-  if (evidence.files.includes('index.html')) {
+  const staticSite = STATIC_SITE_ENTRIES.find(({ entry }) => evidence.files.includes(entry))
+  if (staticSite) {
+    const directoryArgument = staticSite.directory
+      ? ` --directory ${staticSite.directory}`
+      : ''
     const candidate = makeCandidate({
-      command: 'python3 -m http.server {port} --bind 127.0.0.1',
+      command: `python3 -m http.server {port} --bind 127.0.0.1${directoryArgument}`,
       runtime: 'python',
       confidence: 0.94,
-      reason: 'Found a root static HTML entry point.',
+      reason: staticSite.directory
+        ? `Found a built static HTML entry point at ${staticSite.entry}.`
+        : 'Found a root static HTML entry point.',
       source: 'static_site',
       runtimeHealth,
       features: {
