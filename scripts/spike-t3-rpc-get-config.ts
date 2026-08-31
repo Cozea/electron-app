@@ -1,6 +1,6 @@
 /**
  * Run from vendor/t3code so workspace packages resolve:
- *   pnpm exec node --experimental-strip-types ../../scripts/spike-t3-rpc-get-config.ts <port> <wsTicket>
+ *   node --experimental-strip-types ../../scripts/spike-t3-rpc-get-config.ts <port> <wsTicket>
  */
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import { WS_METHODS, WsRpcGroup } from "@t3tools/contracts";
