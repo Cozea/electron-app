@@ -124,7 +124,6 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   useEffect(() => {
     if (!surfaceState) return;
     latestUrlRef.current = stateUrl(surfaceState) ?? latestUrlRef.current;
-    setPrepared((current) => (current ? { ...current, state: surfaceState } : current));
   }, [surfaceState]);
 
   useEffect(() => {

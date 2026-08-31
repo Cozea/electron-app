@@ -211,7 +211,10 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
         </Tooltip>
       </div>
 
-      <div className="group/address flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-muted/45 px-2 focus-within:bg-background focus-within:ring-1 focus-within:ring-ring/50">
+      <div
+        className="group/address flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-muted/45 px-2 focus-within:bg-background focus-within:ring-1 focus-within:ring-ring/50"
+        data-browser-address-group
+      >
         {favicon ? (
           <img src={favicon} alt="" className="size-3.5 shrink-0 rounded-sm object-contain" />
         ) : committedUrl.startsWith("https://") ? (
@@ -272,6 +275,7 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
             onClick={toggleFind}
             aria-label="Find in page"
             aria-pressed={findVisible}
+            data-browser-find-button
           >
             <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5" />
           </Button>
