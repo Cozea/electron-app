@@ -5,13 +5,15 @@ import {
   parseDevAppPackage,
   requestedGrant,
   type DevAppPackage,
-  type DevAppPackageDiagnostic,
 } from "../../../../shared/devAppPackage"
 import {
   developmentTrustBadge,
   type DevAppDevelopmentTrustStore,
-  type DevAppTrustBadge,
 } from "../../../../shared/devAppDevelopmentTrust"
+import type {
+  DevAppPreviewStatus,
+  DevAppPreviewView,
+} from "../../../../shared/devAppPreviewTypes"
 import type { DevAppWorkerBinding, DevAppWorkerState } from "./DevAppWorkerHost"
 
 /**
@@ -69,36 +71,6 @@ export interface DevAppPreviewOpenOptions {
   leaseId: string
 }
 
-export type DevAppPreviewView =
-  /** A framework dev server the author is already running. Hot reload comes free. */
-  | { kind: "devServer"; url: string }
-  /** The same built output publishing would pack. No hot reload, but no surprises either. */
-  | { kind: "builtOutput"; entryPath: string }
-  | { kind: "unavailable"; reason: string; fix?: string }
-
-export type DevAppPreviewStatus =
-  | { status: "invalid"; diagnostics: DevAppPackageDiagnostic[] }
-  | {
-    status: "needsApproval"
-    sourceId: string
-    name: string
-    requested: DevAppGrant
-    missing: string[]
-    badge: DevAppTrustBadge
-    preflight: OrgDevAppPreflightReport
-  }
-  | {
-    status: "running"
-    sourceId: string
-    name: string
-    view: DevAppPreviewView
-    grant: DevAppGrant
-    badge: DevAppTrustBadge
-    preflight: OrgDevAppPreflightReport
-    worker: DevAppWorkerState | null
-    /** Changes whenever the view should reload. */
-    reloadToken: number
-  }
 
 interface OpenSession {
   sourceId: string
@@ -356,3 +328,5 @@ function isInside(root: string, candidate: string): boolean {
   // Guards the `/a/project` vs `/a/project-secrets` case, where startsWith alone passes.
   return next === "/" || next === "\\"
 }
+
+export type { DevAppPreviewStatus, DevAppPreviewView }

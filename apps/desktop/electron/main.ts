@@ -29,6 +29,15 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
+import {
+  broadcastDevAppPreviewStatus,
+  registerDevAppPreviewHandlers,
+} from './ipc/registerDevAppPreviewHandlers'
+import { DevAppWorkerHost } from './services/DevAppWorkerHost'
+import { createUtilityProcessSpawn } from './services/devAppUtilityProcess'
+import { createDevAppWorkerHandlers } from './services/devAppWorkerHandlers'
+import { createNodeDevAppHostServices } from './services/devAppHostServices'
+import { DevAppPreviewService } from './services/DevAppPreviewService'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
@@ -1073,6 +1082,29 @@ let unregisterBrowserSurfaceHandlers: (() => void) | null = null
 const orgDevAppArtifactService = new OrgDevAppArtifactService(
   () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
 )
+
+/**
+ * The worker host, and the development preview that drives it.
+ *
+ * One host serves both published apps and previews: a development package gets no
+ * separate runtime, which is what keeps "works in dev, fails on publish" from having
+ * anywhere to hide. Its workers are keyed `dev:` so the two can never address each other.
+ */
+const devAppWorkerHost = new DevAppWorkerHost(
+  createUtilityProcessSpawn(({ entrypoint, publicationId }) => {
+    const dataDir = path.join(app.getPath('userData'), 'devapp-data', publicationId)
+    fs.mkdirSync(dataDir, { recursive: true })
+    return { entrypoint, publicationId, dataDir }
+  }),
+  createDevAppWorkerHandlers(createNodeDevAppHostServices()),
+)
+
+const devAppPreviewService = new DevAppPreviewService({
+  worker: devAppWorkerHost,
+  broadcast: (sourceId, status) => {
+    broadcastDevAppPreviewStatus(() => (win ? [win.webContents] : []), sourceId, status)
+  },
+})
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
@@ -1703,6 +1735,10 @@ registerOrgDevAppHandlers(ipcMain, {
   service: orgDevAppArtifactService,
 })
 
+registerDevAppPreviewHandlers(ipcMain, {
+  service: devAppPreviewService,
+})
+
 registerWorkbenchSessionHandlers(ipcMain, {
   getMainWindow: () => win,
   browserSurfaces: {
@@ -1724,6 +1760,8 @@ registerContextMenuHandlers(ipcMain, {
 
 app.on('window-all-closed', () => {
   orgDevAppArtifactService.dispose()
+  devAppPreviewService.dispose()
+  devAppWorkerHost.dispose()
   setBroadcastMainWindow(null)
   win = null
 
@@ -1746,6 +1784,8 @@ app.on('before-quit', () => {
   appIsQuitting = true
   logAssistantBridge('app-before-quit')
   orgDevAppArtifactService.dispose()
+  devAppPreviewService.dispose()
+  devAppWorkerHost.dispose()
   PreviewSnapshotService.getInstance().dispose()
   LocalAutomationResolverService.getInstance().dispose()
   void disposeWorkspaceCatalogRuntime()

@@ -86,6 +86,23 @@ describe("Development trust — what an app may run with", () => {
     expect(state.status === "approved" && state.effective.agentInvocable).toBe(false)
   })
 
+  it("needs no approval when the package asks for nothing", () => {
+    // There is no question to ask. Prompting anyway would train people to click through
+    // a dialog that never says anything, which is how the prompts that matter stop being
+    // read. The badge still marks the build unpublished.
+    const { store } = makeStore()
+    const state = store.resolve("src_1", grant([]))
+    expect(state.status).toBe("approved")
+    expect(state.status === "approved" && state.effective)
+      .toEqual({ capabilities: [], agentInvocable: false })
+  })
+
+  it("still asks the moment the package wants anything at all", () => {
+    const { store } = makeStore()
+    expect(store.resolve("src_1", grant(["project.metadata"])).status).toBe("unapproved")
+    expect(store.resolve("src_1", grant([], true)).status).toBe("unapproved")
+  })
+
   it("treats an escalating capability like any other — provisional is not laxer", () => {
     const { store } = makeStore()
     expect(store.resolve("src_1", grant(["terminal.spawn"])))

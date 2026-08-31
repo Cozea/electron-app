@@ -416,6 +416,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopRuntime: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:stopRuntime', options),
     getRuntimeState: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeState', options),
   },
+  devAppPreview: {
+    // The renderer names a workspace and a path inside it, never a directory: main joins
+    // the two against the root that authorization returns.
+    open: (options: {
+      workspaceId: string
+      laneId?: string | null
+      relativePath: string
+      leaseId: string
+    }) => ipcRenderer.invoke('devAppPreview:open', options),
+    approve: (options: { sourceId: string }) =>
+      ipcRenderer.invoke('devAppPreview:approve', options),
+    status: (options: { sourceId: string }) =>
+      ipcRenderer.invoke('devAppPreview:status', options),
+    close: (options: { sourceId: string }) => ipcRenderer.invoke('devAppPreview:close', options),
+    onStatus: (
+      listener: (payload: {
+        sourceId: string
+        status: import('@shared/devAppPreviewTypes').DevAppPreviewStatus
+      }) => void,
+    ) => {
+      const wrapped = (
+        _event: unknown,
+        payload: {
+          sourceId: string
+          status: import('@shared/devAppPreviewTypes').DevAppPreviewStatus
+        },
+      ) => listener(payload)
+      ipcRenderer.on('devAppPreview:status', wrapped)
+      return () => {
+        ipcRenderer.removeListener('devAppPreview:status', wrapped)
+      }
+    },
+  },
   workbenchSession: {
     ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:ensureSession', options),
