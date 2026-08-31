@@ -74,6 +74,7 @@ export type DevAppWorkerMessage = DevAppWorkerRequest | DevAppWorkerResponse | D
 export type DevAppWorkerErrorCode =
   | "unknown-method"
   | "capability-denied"
+  | "authorization-expired"
   | "invalid-params"
   | "invalid-message"
   | "worker-unavailable"
@@ -101,27 +102,7 @@ export const DEV_APP_METHOD_CAPABILITIES: Readonly<Record<string, DevAppCapabili
   "project.metadata": "project.metadata",
   "project.readFile": "project.read",
   "project.listDirectory": "project.read",
-  "project.listFiles": "project.read",
   "project.writeFile": "project.write",
-
-  "git.listBranches": "git.read",
-  "git.status": "git.read",
-  "git.checkout": "git.write",
-  "git.createWorktree": "git.write",
-
-  "fs.readFile": "fs.read",
-  "fs.readDir": "fs.read",
-  "fs.writeFile": "fs.write",
-
-  "terminal.create": "terminal.spawn",
-  "terminal.input": "terminal.spawn",
-  "terminal.resize": "terminal.spawn",
-  "terminal.kill": "terminal.spawn",
-
-  "process.spawn": "process.spawn",
-
-  "net.fetch": "net.outbound",
-
   "shell.open": "shell.open",
   "shell.reveal": "shell.reveal",
 }
@@ -170,6 +151,8 @@ export function authorizeWorkerMethod(method: string, grant: DevAppGrant): DevAp
 const MAX_ID_LENGTH = 128
 const MAX_METHOD_LENGTH = 64
 const MAX_TOPIC_LENGTH = 64
+/** Includes enough room for the host's bounded 5 MiB text-file operations. */
+export const MAX_DEV_APP_WORKER_MESSAGE_BYTES = 12 * 1024 * 1024
 
 function isBoundedString(value: unknown, max: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max
@@ -177,6 +160,48 @@ function isBoundedString(value: unknown, max: number): value is string {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Rejects oversized structured-clone graphs before authorization or handler dispatch.
+ *
+ * The port has already cloned the value by the time main sees it, so this is not an OS-level
+ * memory boundary. It does prevent a retained or repeatedly-dispatched graph from multiplying
+ * inside the host. Cycles are counted once and exotic cloneable containers are included.
+ */
+function isWithinMessageBudget(value: unknown): boolean {
+  let estimatedBytes = 0
+  const pending: unknown[] = [value]
+  const seen = new WeakSet<object>()
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (typeof current === "string") estimatedBytes += current.length * 2
+    else if (typeof current === "number" || typeof current === "bigint") estimatedBytes += 8
+    else if (typeof current === "boolean") estimatedBytes += 4
+    else if (current && typeof current === "object") {
+      if (seen.has(current)) continue
+      seen.add(current)
+      if (current instanceof ArrayBuffer) estimatedBytes += current.byteLength
+      else if (ArrayBuffer.isView(current)) estimatedBytes += current.byteLength
+      else if (current instanceof Map) {
+        estimatedBytes += current.size * 16
+        for (const [key, entry] of current) pending.push(key, entry)
+      } else if (current instanceof Set) {
+        estimatedBytes += current.size * 8
+        for (const entry of current) pending.push(entry)
+      } else {
+        const entries = Object.entries(current)
+        estimatedBytes += entries.length * 8
+        for (const [key, entry] of entries) {
+          estimatedBytes += key.length * 2
+          pending.push(entry)
+        }
+      }
+    }
+    if (estimatedBytes > MAX_DEV_APP_WORKER_MESSAGE_BYTES) return false
+  }
+  return true
 }
 
 /**
@@ -189,6 +214,7 @@ export function parseWorkerMessage(
   value: unknown,
   expectedProtocolVersion: number = DEV_APP_WORKER_PROTOCOL_VERSION,
 ): DevAppWorkerMessage | null {
+  if (!isWithinMessageBudget(value)) return null
   if (!isPlainObject(value)) return null
   if (!supportsDevAppWorkerProtocolVersion(expectedProtocolVersion)) return null
   // Version parsers are intentionally explicit. Extending the supported-version list

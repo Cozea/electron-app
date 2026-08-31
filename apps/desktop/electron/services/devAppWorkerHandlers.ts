@@ -25,7 +25,7 @@ export interface DevAppHostServices {
   listProjectDirectory: (options: { workspaceId: string; directory: string }) => Promise<string[]>
   projectMetadata: (options: { workspaceId: string }) => Promise<Record<string, unknown>>
   openExternalUrl: (url: string) => Promise<void>
-  revealPath: (absolutePath: string) => Promise<void>
+  revealPath: (options: { rootPath: string; relativePath: string }) => Promise<void>
 }
 
 export class DevAppRequestError extends Error {
@@ -112,6 +112,13 @@ export function createDevAppWorkerHandlers(
 
     "shell.reveal": async (request, { binding }) => {
       const params = paramsObject(request.params)
+      if (
+        params.root !== undefined &&
+        params.root !== "workspace" &&
+        params.root !== "data"
+      ) {
+        throw new DevAppRequestError("root must be workspace or data.")
+      }
       const rootName = params.root === "data" ? "data" : "workspace"
       const target = resolveRevealTarget(
         rootName as DevAppRevealRoot,
@@ -121,7 +128,11 @@ export function createDevAppWorkerHandlers(
         (value) => path.resolve(value),
       )
       if (!target) throw new DevAppRequestError("That location is outside this DevApp's reach.")
-      await services.revealPath(target)
+      const rootPath = rootName === "data" ? binding.dataDir! : binding.workspaceRoot
+      await services.revealPath({
+        rootPath,
+        relativePath: path.relative(path.resolve(rootPath), target) || ".",
+      })
       return { revealed: true }
     },
   }

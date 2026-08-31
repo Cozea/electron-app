@@ -42,7 +42,16 @@ export function registerDevAppPreviewHandlers(
       },
     ) => {
       try {
-        if (typeof options?.relativePath !== "string" || options.relativePath.length === 0) {
+        if (
+          typeof options?.workspaceId !== "string" ||
+          options.workspaceId.length === 0 ||
+          options.workspaceId.length > 160 ||
+          typeof options?.relativePath !== "string" ||
+          options.relativePath.length === 0 ||
+          options.relativePath.length > 512 ||
+          options.relativePath.includes("\0") ||
+          !isLeaseId(options.leaseId)
+        ) {
           return { success: false as const, error: "A path inside the project is required." }
         }
         const access = await resolveAuthorizedWorkspaceAccess({
@@ -68,12 +77,25 @@ export function registerDevAppPreviewHandlers(
     },
   )
 
-  ipcMain.handle("devAppPreview:approve", async (_event, options: { sourceId: string }) => {
+  ipcMain.handle("devAppPreview:approve", async (_event, options: {
+    sourceId: string
+    approvalFingerprint: string
+  }) => {
     if (!isSourceId(options?.sourceId)) return { success: false as const, error: "Unknown preview." }
-    const status = service.approve(options.sourceId)
-    return status
-      ? { success: true as const, preview: status }
-      : { success: false as const, error: "That preview is no longer open." }
+    if (typeof options.approvalFingerprint !== "string" || options.approvalFingerprint.length > 512) {
+      return { success: false as const, error: "The approval request is invalid." }
+    }
+    try {
+      const status = service.approve(options.sourceId, options.approvalFingerprint)
+      return status
+        ? { success: true as const, preview: status }
+        : { success: false as const, error: "That preview is no longer open." }
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Could not approve the preview.",
+      }
+    }
   })
 
   ipcMain.handle("devAppPreview:status", async (_event, options: { sourceId: string }) => {
@@ -84,10 +106,16 @@ export function registerDevAppPreviewHandlers(
       : { success: false as const, error: "That preview is no longer open." }
   })
 
-  ipcMain.handle("devAppPreview:close", async (_event, options: { sourceId: string }) => {
-    if (isSourceId(options?.sourceId)) service.close(options.sourceId)
+  ipcMain.handle("devAppPreview:close", async (_event, options: { sourceId: string; leaseId: string }) => {
+    if (isSourceId(options?.sourceId) && isLeaseId(options?.leaseId)) {
+      service.close(options.sourceId, options.leaseId)
+    }
     return { success: true as const }
   })
+}
+
+function isLeaseId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,192}$/.test(value)
 }
 
 /** Pushes status changes — reloads, crashes, preflight verdicts — to open windows. */

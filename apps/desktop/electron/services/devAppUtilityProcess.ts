@@ -1,3 +1,6 @@
+import fs from "node:fs"
+import path from "node:path"
+
 import { MessageChannelMain, utilityProcess } from "electron"
 
 import {
@@ -10,9 +13,9 @@ import type { DevAppWorkerProcess, DevAppWorkerSpawn } from "./DevAppWorkerHost"
 /**
  * Runs a DevApp worker in an Electron `utilityProcess`.
  *
- * A utility process is the right host for third-party code: it does not share a heap
- * with main the way `worker_threads` would, and unlike `child_process.fork` its lifetime
- * is managed by Electron, so a worker cannot outlive the app that spawned it.
+ * A utility process gives local development workers a separate heap and an
+ * Electron-managed lifetime. It is not an OS sandbox and is not the production runtime
+ * for third-party published workers; that path remains blocked on the container phase.
  *
  * This file is the boundary adapter — the only part of the worker system that touches
  * Electron directly. All supervision logic lives in `DevAppWorkerHost` against the
@@ -20,11 +23,11 @@ import type { DevAppWorkerProcess, DevAppWorkerSpawn } from "./DevAppWorkerHost"
  * and the capability gate testable without spawning anything.
  */
 
-const WORKER_ENV_ALLOWLIST = ["PATH", "HOME", "TMPDIR"] as const
-
 export interface DevAppUtilityProcessOptions {
   /** Absolute path to the worker entrypoint inside the installed package. */
   entrypoint: string
+  /** Real package root; the worker may read its own bundled code and assets only. */
+  packageRoot: string
   publicationId: string
   /** The app's own writable directory, the only path it is handed at startup. */
   dataDir: string
@@ -33,6 +36,7 @@ export interface DevAppUtilityProcessOptions {
 export function createUtilityProcessSpawn(
   resolveOptions: (input: {
     entrypoint: string
+    packageRoot: string
     publicationId: string
     protocolVersion: number
   }) => DevAppUtilityProcessOptions,
@@ -40,22 +44,33 @@ export function createUtilityProcessSpawn(
   return (input) => {
     const options = resolveOptions(input)
     const channel = new MessageChannelMain()
+    const packageRoot = fs.realpathSync.native(options.packageRoot)
+    const entrypoint = fs.realpathSync.native(options.entrypoint)
+    const dataDir = fs.realpathSync.native(options.dataDir)
+    if (!isInside(packageRoot, entrypoint)) {
+      throw new Error("The DevApp worker entrypoint is outside its package.")
+    }
 
-    // A minimal environment, matching how service releases are started: the worker gets
-    // no inherited shell, no credentials, and no project paths it was not granted.
-    const child = utilityProcess.fork(options.entrypoint, [], {
+    // The Node permission model is defense in depth around the capability port: direct
+    // filesystem access is confined to the package and app-owned data, while direct
+    // child-process, worker-thread, native-addon, inspector, and WASI access remains
+    // denied. Electron 40's bundled Node does not permission-gate network access.
+    // Published third-party workers therefore still require the container runtime;
+    // Node's model is not represented as an OS sandbox.
+    const child = utilityProcess.fork(entrypoint, [], {
       serviceName: `cozea-devapp-${options.publicationId}`,
       stdio: "pipe",
+      cwd: packageRoot,
+      execArgv: [
+        "--max-old-space-size=512",
+        "--permission",
+        `--allow-fs-read=${packageRoot}`,
+        `--allow-fs-read=${dataDir}`,
+        `--allow-fs-write=${dataDir}`,
+      ],
       env: {
         NODE_ENV: "production",
-        NODE_OPTIONS: "--max-old-space-size=512",
-        COZEA_DEVAPP_DATA_DIR: options.dataDir,
-        ...Object.fromEntries(
-          WORKER_ENV_ALLOWLIST.flatMap((name) => {
-            const value = process.env[name]
-            return value === undefined ? [] : [[name, value]]
-          }),
-        ),
+        COZEA_DEVAPP_DATA_DIR: dataDir,
       },
     })
 
@@ -107,4 +122,8 @@ export function createUtilityProcessSpawn(
     }
     return process_
   }
+}
+
+function isInside(root: string, candidate: string): boolean {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`)
 }

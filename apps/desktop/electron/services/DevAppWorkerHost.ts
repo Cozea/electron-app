@@ -1,4 +1,10 @@
-import type { DevAppGrant } from "../../../../shared/devAppCapabilities"
+import path from "node:path"
+
+import {
+  grantFingerprint,
+  normalizeGrant,
+  type DevAppGrant,
+} from "../../../../shared/devAppCapabilities"
 import {
   DEV_APP_WORKER_PROTOCOL_MIN_VERSION,
   DEV_APP_WORKER_PROTOCOL_VERSION,
@@ -34,6 +40,7 @@ export interface DevAppWorkerProcess {
 
 export type DevAppWorkerSpawn = (options: {
   entrypoint: string
+  packageRoot: string
   publicationId: string
   protocolVersion: number
 }) => DevAppWorkerProcess
@@ -70,16 +77,21 @@ export interface DevAppWorkerState {
 
 const MAX_LOG_LINES = 200
 const MAX_RESTARTS = 3
-const MAX_PENDING_REQUESTS = 64
+const MAX_PENDING_REQUESTS = 16
+const MAX_ACTIVE_WORKERS = 16
+const MAX_LEASES_PER_WORKER = 64
 
 interface ActiveWorker {
   process: DevAppWorkerProcess
   grant: DevAppGrant
   binding: DevAppWorkerBinding
   entrypoint: string
+  packageRoot: string
+  authorizationExpiresAt: number | null
   state: DevAppWorkerState
   leases: Set<string>
   inFlight: number
+  expiryTimer: unknown | null
   disposed: boolean
 }
 
@@ -88,13 +100,27 @@ export class DevAppWorkerHost {
 
   private readonly spawn: DevAppWorkerSpawn
   private readonly handlers: Readonly<Record<string, DevAppWorkerMethodHandler>>
+  private readonly now: () => number
+  private readonly setTimer: (callback: () => void, milliseconds: number) => unknown
+  private readonly clearTimer: (handle: unknown) => void
 
   constructor(
     spawn: DevAppWorkerSpawn,
     handlers: Readonly<Record<string, DevAppWorkerMethodHandler>>,
+    now: () => number = () => Date.now(),
+    timers: {
+      set: (callback: () => void, milliseconds: number) => unknown
+      clear: (handle: unknown) => void
+    } = {
+      set: (callback, milliseconds) => setTimeout(callback, milliseconds),
+      clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    },
   ) {
     this.spawn = spawn
     this.handlers = handlers
+    this.now = now
+    this.setTimer = timers.set
+    this.clearTimer = timers.clear
   }
 
   /**
@@ -108,33 +134,93 @@ export class DevAppWorkerHost {
   start(options: {
     publicationId: string
     entrypoint: string
+    packageRoot: string
     protocolVersion: number
     grant: DevAppGrant
+    authorizationExpiresAt: number | null
     binding: DevAppWorkerBinding
     leaseId: string
   }): DevAppWorkerState {
+    assertWorkerIdentity(options.publicationId, options.leaseId)
     if (!supportsDevAppWorkerProtocolVersion(options.protocolVersion)) {
       throw new RangeError(
         `Unsupported DevApp worker protocol ${String(options.protocolVersion)}; supported range is ${DEV_APP_WORKER_PROTOCOL_MIN_VERSION}-${DEV_APP_WORKER_PROTOCOL_VERSION}.`,
       )
     }
+    const entrypoint = path.resolve(options.entrypoint)
+    const packageRoot = path.resolve(options.packageRoot)
+    if (!isPathInside(packageRoot, entrypoint)) {
+      throw new Error("The DevApp worker entrypoint must be inside its package.")
+    }
+    if (
+      options.authorizationExpiresAt !== null &&
+      (!Number.isFinite(options.authorizationExpiresAt) || options.authorizationExpiresAt <= 0)
+    ) {
+      throw new Error("The DevApp worker authorization expiry is invalid.")
+    }
+    if (
+      options.authorizationExpiresAt !== null &&
+      options.authorizationExpiresAt <= this.now()
+    ) {
+      throw new Error("The DevApp worker authorization has expired.")
+    }
+    const normalizedOptions = {
+      ...options,
+      entrypoint,
+      packageRoot,
+      grant: normalizeGrant(options.grant),
+    }
     const existing = this.workers.get(options.publicationId)
     if (existing && !existing.disposed) {
-      if (existing.state.protocolVersion !== options.protocolVersion) {
+      if (existing.state.protocolVersion !== normalizedOptions.protocolVersion) {
         throw new Error("A running DevApp worker cannot change protocol versions in place.")
       }
-      existing.leases.add(options.leaseId)
+      if (!sameBinding(existing.binding, normalizedOptions.binding)) {
+        throw new Error("A running DevApp worker cannot change workspace bindings in place.")
+      }
+      const executionChanged =
+        existing.entrypoint !== normalizedOptions.entrypoint ||
+        existing.packageRoot !== normalizedOptions.packageRoot ||
+        grantFingerprint(existing.grant) !== grantFingerprint(normalizedOptions.grant) ||
+        existing.authorizationExpiresAt !== normalizedOptions.authorizationExpiresAt
+      if (executionChanged) {
+        const leases = new Set(existing.leases)
+        leases.add(normalizedOptions.leaseId)
+        if (leases.size > MAX_LEASES_PER_WORKER) {
+          throw new Error("This DevApp worker has too many active leases.")
+        }
+        this.stop(normalizedOptions.publicationId)
+        const state = this.launch(
+          { ...normalizedOptions, leaseId: leases.values().next().value! },
+          0,
+        )
+        const replacement = this.workers.get(normalizedOptions.publicationId)
+        if (replacement) for (const lease of leases) replacement.leases.add(lease)
+        return state
+      }
+      if (
+        !existing.leases.has(normalizedOptions.leaseId) &&
+        existing.leases.size >= MAX_LEASES_PER_WORKER
+      ) {
+        throw new Error("This DevApp worker has too many active leases.")
+      }
+      existing.leases.add(normalizedOptions.leaseId)
       return existing.state
     }
-    return this.launch(options, 0)
+    if (this.workers.size >= MAX_ACTIVE_WORKERS) {
+      throw new Error("Too many DevApp workers are active.")
+    }
+    return this.launch(normalizedOptions, 0)
   }
 
   private launch(
     options: {
       publicationId: string
       entrypoint: string
+      packageRoot: string
       protocolVersion: number
       grant: DevAppGrant
+      authorizationExpiresAt: number | null
       binding: DevAppWorkerBinding
       leaseId: string
     },
@@ -151,6 +237,7 @@ export class DevAppWorkerHost {
 
     const process = this.spawn({
       entrypoint: options.entrypoint,
+      packageRoot: options.packageRoot,
       publicationId: options.publicationId,
       protocolVersion: options.protocolVersion,
     })
@@ -159,16 +246,19 @@ export class DevAppWorkerHost {
       grant: options.grant,
       binding: options.binding,
       entrypoint: options.entrypoint,
+      packageRoot: options.packageRoot,
+      authorizationExpiresAt: options.authorizationExpiresAt,
       state,
       leases: new Set([options.leaseId]),
       inFlight: 0,
+      expiryTimer: null,
       disposed: false,
     }
     this.workers.set(options.publicationId, worker)
+    this.scheduleAuthorizationExpiry(options.publicationId, worker)
 
     process.onLog((line) => {
-      state.logs.push(line)
-      if (state.logs.length > MAX_LOG_LINES) state.logs.splice(0, state.logs.length - MAX_LOG_LINES)
+      this.appendLog(state, line)
     })
 
     process.onMessage((raw) => {
@@ -182,6 +272,10 @@ export class DevAppWorkerHost {
         current.state.status = "stopped"
         return
       }
+      if (current.expiryTimer !== null) {
+        this.clearTimer(current.expiryTimer)
+        current.expiryTimer = null
+      }
       // An exit nobody asked for is a crash. Restart while leases are still held, so a
       // worker dying does not take down the tile that is holding it open.
       current.state.status = "crashed"
@@ -191,7 +285,7 @@ export class DevAppWorkerHost {
         const relaunched = this.launch({ ...options, leaseId: leases[0]! }, restarts + 1)
         const next = this.workers.get(options.publicationId)
         if (next) for (const lease of leases) next.leases.add(lease)
-        relaunched.logs.push(...current.state.logs.slice(-20))
+        for (const line of current.state.logs.slice(-20)) this.appendLog(relaunched, line)
       }
     })
 
@@ -213,12 +307,31 @@ export class DevAppWorkerHost {
     worker.disposed = true
     worker.state.status = "stopped"
     worker.leases.clear()
+    if (worker.expiryTimer !== null) this.clearTimer(worker.expiryTimer)
+    worker.expiryTimer = null
     worker.process.kill()
     this.workers.delete(publicationId)
   }
 
   getState(publicationId: string): DevAppWorkerState | null {
     return this.workers.get(publicationId)?.state ?? null
+  }
+
+  private scheduleAuthorizationExpiry(publicationId: string, worker: ActiveWorker): void {
+    if (worker.authorizationExpiresAt === null) return
+    const remaining = worker.authorizationExpiresAt - this.now()
+    const delay = Math.max(0, Math.min(remaining, 2_147_483_647))
+    worker.expiryTimer = this.setTimer(() => {
+      const current = this.workers.get(publicationId)
+      if (!current || current !== worker || current.disposed) return
+      current.expiryTimer = null
+      if (current.authorizationExpiresAt !== null && current.authorizationExpiresAt <= this.now()) {
+        this.appendLog(current.state, "Stopped after its authorization expired.")
+        this.stop(publicationId)
+      } else {
+        this.scheduleAuthorizationExpiry(publicationId, current)
+      }
+    }, delay)
   }
 
   private async handleMessage(publicationId: string, raw: unknown): Promise<void> {
@@ -232,10 +345,30 @@ export class DevAppWorkerHost {
     if (!message) {
       // A malformed message is dropped rather than answered: there is no id to reply to,
       // and echoing unparsed input back would be its own hazard.
-      worker.state.logs.push("Dropped a malformed message from the worker.")
+      this.appendLog(worker.state, "Dropped a malformed message from the worker.")
       return
     }
     if (message.kind !== "request") return
+
+    if (
+      worker.authorizationExpiresAt !== null &&
+      worker.authorizationExpiresAt <= this.now()
+    ) {
+      this.respond(
+        worker,
+        workerErrorResponse(
+          message.id,
+          {
+            code: "authorization-expired",
+            message: "This DevApp's authorization has expired.",
+          },
+          worker.state.protocolVersion,
+        ),
+      )
+      this.appendLog(worker.state, "Stopped after its authorization expired.")
+      this.stop(publicationId)
+      return
+    }
 
     if (worker.inFlight >= MAX_PENDING_REQUESTS) {
       this.respond(
@@ -290,12 +423,16 @@ export class DevAppWorkerHost {
       })
     } catch (error) {
       // Handler failures must not leak host internals to worker code.
-      const detail: DevAppWorkerError = {
+      const detail = error instanceof Error ? error.message : "The request failed."
+      const responseError: DevAppWorkerError = {
         code: "internal-error",
-        message: error instanceof Error ? error.message : "The request failed.",
+        message: "The host could not complete this request.",
       }
-      worker.state.logs.push(`${message.method} failed: ${detail.message}`)
-      this.respond(worker, workerErrorResponse(message.id, detail, worker.state.protocolVersion))
+      this.appendLog(worker.state, `${message.method} failed: ${detail}`)
+      this.respond(
+        worker,
+        workerErrorResponse(message.id, responseError, worker.state.protocolVersion),
+      )
     } finally {
       worker.inFlight -= 1
     }
@@ -310,8 +447,37 @@ export class DevAppWorkerHost {
     }
   }
 
+  private appendLog(state: DevAppWorkerState, line: string): void {
+    state.logs.push(line.slice(0, 2048))
+    if (state.logs.length > MAX_LOG_LINES) {
+      state.logs.splice(0, state.logs.length - MAX_LOG_LINES)
+    }
+  }
+
   dispose(): void {
     // Snapshot first: stop() deletes from the map being iterated.
     for (const publicationId of Array.from(this.workers.keys())) this.stop(publicationId)
+  }
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`)
+}
+
+function sameBinding(left: DevAppWorkerBinding, right: DevAppWorkerBinding): boolean {
+  return (
+    left.workspaceId === right.workspaceId &&
+    path.resolve(left.workspaceRoot) === path.resolve(right.workspaceRoot) &&
+    (left.dataDir ? path.resolve(left.dataDir) : null) ===
+      (right.dataDir ? path.resolve(right.dataDir) : null)
+  )
+}
+
+function assertWorkerIdentity(publicationId: string, leaseId: string): void {
+  const validPublication =
+    /^[A-Za-z0-9_-]{1,128}$/.test(publicationId) || /^dev:[0-9a-f]{32}$/.test(publicationId)
+  if (!validPublication) throw new Error("The DevApp worker identity is invalid.")
+  if (typeof leaseId !== "string" || leaseId.length === 0 || leaseId.length > 192) {
+    throw new Error("The DevApp worker lease is invalid.")
   }
 }

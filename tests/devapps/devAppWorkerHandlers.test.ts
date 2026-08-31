@@ -6,6 +6,7 @@ import {
 } from "../../apps/desktop/electron/services/devAppWorkerHandlers"
 import type { DevAppWorkerBinding } from "../../apps/desktop/electron/services/DevAppWorkerHost"
 import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../shared/devAppWorkerProtocol"
+import { DEV_APP_METHOD_CAPABILITIES } from "../../shared/devAppWorkerProtocol"
 
 const BINDING: DevAppWorkerBinding = {
   workspaceId: "ws_granted",
@@ -42,6 +43,10 @@ const call = (
 })
 
 describe("Worker handlers — the binding wins over the request", () => {
+  it("implements every method protocol v1 advertises, and advertises every handler", () => {
+    const { handlers } = makeHandlers()
+    expect(Object.keys(handlers).sort()).toEqual(Object.keys(DEV_APP_METHOD_CAPABILITIES).sort())
+  })
   // The property that makes the grant mean anything: a worker approved for one
   // workspace must not reach another by asking.
   it("ignores a workspaceId supplied in params", async () => {
@@ -144,13 +149,19 @@ describe("Worker handlers — shell.reveal stays inside its roots", () => {
   it("reveals inside the workspace", async () => {
     const { handlers, services } = makeHandlers()
     await call(handlers, "shell.reveal", { path: "dist" })
-    expect(services.revealPath).toHaveBeenCalledWith("/Users/admin/proj/dist")
+    expect(services.revealPath).toHaveBeenCalledWith({
+      rootPath: "/Users/admin/proj",
+      relativePath: "dist",
+    })
   })
 
   it("reveals inside the app's own data directory when asked", async () => {
     const { handlers, services } = makeHandlers()
     await call(handlers, "shell.reveal", { root: "data", path: "logs" })
-    expect(services.revealPath).toHaveBeenCalledWith("/Users/admin/data/pub_1/logs")
+    expect(services.revealPath).toHaveBeenCalledWith({
+      rootPath: "/Users/admin/data/pub_1",
+      relativePath: "logs",
+    })
   })
 
   it("refuses a location outside both roots", async () => {
@@ -159,9 +170,10 @@ describe("Worker handlers — shell.reveal stays inside its roots", () => {
     expect(services.revealPath).not.toHaveBeenCalled()
   })
 
-  it("treats an unrecognized root as the workspace rather than guessing", async () => {
+  it("rejects an unrecognized root rather than guessing", async () => {
     const { handlers, services } = makeHandlers()
-    await call(handlers, "shell.reveal", { root: "machine", path: "dist" })
-    expect(services.revealPath).toHaveBeenCalledWith("/Users/admin/proj/dist")
+    await expect(call(handlers, "shell.reveal", { root: "machine", path: "dist" }))
+      .rejects.toThrow(/root/)
+    expect(services.revealPath).not.toHaveBeenCalled()
   })
 })

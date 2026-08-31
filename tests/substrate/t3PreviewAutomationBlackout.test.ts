@@ -505,6 +505,8 @@ describe("T3 preview automation host", () => {
           sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
           name: "Inventory",
           requested: { capabilities: ["project.metadata"], agentInvocable: false },
+          workerExecution: true,
+          approvalFingerprint: "v1;project.metadata;agent=0",
           missing: ["project.metadata"],
           badge: { tone: "development", label: "Development", detail: "Approval required." },
           preflight: {
