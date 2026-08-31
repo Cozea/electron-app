@@ -6,7 +6,7 @@ import { APP_LAYERS } from "@/lib/appLayers";
 export interface BrowserSurfaceSlotProps {
   readonly tabId: string;
   readonly visible: boolean;
-  readonly cornerRadius?: number;
+  readonly borderRadius?: string;
   readonly stackingLayer?: number;
   readonly layoutVersion?: string | number;
   readonly className?: string;
@@ -16,14 +16,14 @@ export interface BrowserSurfaceSlotProps {
 export function BrowserSurfaceSlot({
   tabId,
   visible,
-  cornerRadius = 0,
+  borderRadius = "0",
   stackingLayer = APP_LAYERS.browserDocked,
   layoutVersion,
   className,
   fitSourceContent = false,
 }: BrowserSurfaceSlotProps) {
   const elementRef = useRef<HTMLDivElement | null>(null);
-  const presentationRef = useRef({ visible, cornerRadius, stackingLayer });
+  const presentationRef = useRef({ visible, borderRadius, stackingLayer });
   const updateRef = useRef<(() => void) | null>(null);
 
   useLayoutEffect(() => {
@@ -42,7 +42,7 @@ export function BrowserSurfaceSlot({
       const presented = lease.present(
         nextRect,
         presentation.visible && rect.width > 0 && rect.height > 0,
-        presentation.cornerRadius,
+        presentation.borderRadius,
         presentation.stackingLayer,
       );
       if (presentation.visible && !presented) {
@@ -51,7 +51,7 @@ export function BrowserSurfaceSlot({
         lease.present(
           nextRect,
           rect.width > 0 && rect.height > 0,
-          presentation.cornerRadius,
+          presentation.borderRadius,
           presentation.stackingLayer,
         );
       }
@@ -72,9 +72,9 @@ export function BrowserSurfaceSlot({
   }, [fitSourceContent, tabId]);
 
   useLayoutEffect(() => {
-    presentationRef.current = { visible, cornerRadius, stackingLayer };
+    presentationRef.current = { visible, borderRadius, stackingLayer };
     updateRef.current?.();
-  }, [cornerRadius, layoutVersion, stackingLayer, visible]);
+  }, [borderRadius, layoutVersion, stackingLayer, visible]);
 
   return <div ref={elementRef} className={className} data-browser-surface-slot={tabId} />;
 }

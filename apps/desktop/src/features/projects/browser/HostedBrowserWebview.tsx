@@ -9,6 +9,8 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 
 import { BrowserDeviceToolbar } from "./BrowserDeviceToolbar";
+import { BrowserFindOverlay } from "./BrowserFindOverlay";
+import { BrowserSurfaceOverlays } from "./BrowserSurfaceOverlays";
 import { BrowserViewportResizeHandles } from "./BrowserViewportResizeHandles";
 import {
   browserViewportSettingKey,
@@ -89,7 +91,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
       const current = state.byTabId[runtimeTabId];
       return {
         content: current?.content ?? null,
-        cornerRadius: current?.cornerRadius ?? 0,
+        borderRadius: current?.borderRadius ?? "0",
         fitSourceContent: current?.fitSourceContent ?? false,
         fittedSourceContent: current?.fittedSourceContent ?? null,
         rect: resolveBrowserSurfacePanelRect(state.byTabId, runtimeTabId),
@@ -278,7 +280,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   if (!prepared) return null;
   const wrapperStyle = resolveHostedBrowserWebviewWrapperStyle({
     active,
-    cornerRadius: presentation.cornerRadius,
+    borderRadius: presentation.borderRadius,
     stackingLayer: presentation.stackingLayer,
     rect: lastRect,
     hiddenSize,
@@ -364,6 +366,19 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
           </>
         ) : null}
       </div>
+      {active ? (
+        <>
+          {descriptor.kind === "browser" ? (
+            <BrowserFindOverlay runtimeTabId={runtimeTabId} />
+          ) : null}
+          <BrowserSurfaceOverlays runtimeTabId={runtimeTabId} />
+          <div
+            className="pointer-events-none absolute inset-0 z-50 rounded-[inherit] ring-1 ring-inset ring-border/60"
+            aria-hidden="true"
+            data-browser-surface-frame
+          />
+        </>
+      ) : null}
     </div>
   );
 }

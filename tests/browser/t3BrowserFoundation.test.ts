@@ -121,18 +121,25 @@ describe("pinned T3 browser host foundation", () => {
 
   it("publishes a floating Dockview layer to the same living guest", () => {
     const lease = acquireBrowserSurface("tab");
-    lease.present({ x: 12, y: 34, width: 800, height: 600 }, true, 0, 1_006);
+    lease.present(
+      { x: 12, y: 34, width: 800, height: 600 },
+      true,
+      "0 0 12px 12px",
+      1_006,
+    );
     const presentation = useBrowserSurfaceStore.getState().byTabId.tab;
 
     expect(presentation?.stackingLayer).toBe(1_006);
-    expect(
-      resolveHostedBrowserWebviewWrapperStyle({
-        active: true,
-        rect: presentation?.rect ?? null,
-        hiddenSize: { width: 393, height: 852 },
-        stackingLayer: presentation?.stackingLayer,
-      }).zIndex,
-    ).toBe(1_006);
+    expect(resolveHostedBrowserWebviewWrapperStyle({
+      active: true,
+      rect: presentation?.rect ?? null,
+      borderRadius: presentation?.borderRadius,
+      hiddenSize: { width: 393, height: 852 },
+      stackingLayer: presentation?.stackingLayer,
+    })).toMatchObject({
+      borderRadius: "0 0 12px 12px",
+      zIndex: 1_006,
+    });
   });
 
   it("backs off crash replacement and resets after the upstream window", () => {

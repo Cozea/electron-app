@@ -3,6 +3,13 @@ import { useLayoutEffect, useState } from "react";
 
 import { APP_LAYERS } from "@/lib/appLayers";
 
+const DOCKVIEW_TILE_RADIUS = "12px";
+
+export interface DockviewBrowserSurfacePresentation {
+  readonly borderRadius: string;
+  readonly stackingLayer: number;
+}
+
 export function resolveDockviewBrowserSurfaceLayer(
   locationType: DockviewPanelApi["location"]["type"],
   ariaLevel: string | null,
@@ -13,18 +20,42 @@ export function resolveDockviewBrowserSurfaceLayer(
   return APP_LAYERS.dockviewFloatBase + floatingLevel * 2;
 }
 
-function readPanelLayer(panelApi: DockviewPanelApi): number {
-  if (panelApi.location.type !== "floating") return APP_LAYERS.browserDocked;
+export function resolveDockviewBrowserSurfaceBorderRadius(
+  headerPosition: ReturnType<DockviewPanelApi["group"]["api"]["getHeaderPosition"]>,
+): string {
+  switch (headerPosition) {
+    case "bottom":
+      return `${DOCKVIEW_TILE_RADIUS} ${DOCKVIEW_TILE_RADIUS} 0 0`;
+    case "left":
+      return `0 ${DOCKVIEW_TILE_RADIUS} ${DOCKVIEW_TILE_RADIUS} 0`;
+    case "right":
+      return `${DOCKVIEW_TILE_RADIUS} 0 0 ${DOCKVIEW_TILE_RADIUS}`;
+    case "top":
+    default:
+      return `0 0 ${DOCKVIEW_TILE_RADIUS} ${DOCKVIEW_TILE_RADIUS}`;
+  }
+}
+
+function readPanelPresentation(panelApi: DockviewPanelApi): DockviewBrowserSurfacePresentation {
+  const borderRadius = resolveDockviewBrowserSurfaceBorderRadius(
+    panelApi.group.api.getHeaderPosition(),
+  );
+  if (panelApi.location.type !== "floating") {
+    return { borderRadius, stackingLayer: APP_LAYERS.browserDocked };
+  }
 
   let ancestor: HTMLElement | null = panelApi.group.element;
   while (ancestor && !ancestor.hasAttribute("aria-level")) {
     ancestor = ancestor.parentElement;
   }
 
-  return resolveDockviewBrowserSurfaceLayer(
-    panelApi.location.type,
-    ancestor?.getAttribute("aria-level") ?? null,
-  );
+  return {
+    borderRadius,
+    stackingLayer: resolveDockviewBrowserSurfaceLayer(
+      panelApi.location.type,
+      ancestor?.getAttribute("aria-level") ?? null,
+    ),
+  };
 }
 
 /**
@@ -33,14 +64,21 @@ function readPanelLayer(panelApi: DockviewPanelApi): number {
  * ladder advances by two for each level, leaving the intervening layer free
  * for content hosted outside the Dockview DOM tree.
  */
-export function useDockviewBrowserSurfaceLayer(
+export function useDockviewBrowserSurfacePresentation(
   panelApi: DockviewPanelApi,
   containerApi: DockviewApi,
-): number {
-  const [layer, setLayer] = useState(() => readPanelLayer(panelApi));
+): DockviewBrowserSurfacePresentation {
+  const [presentation, setPresentation] = useState(() => readPanelPresentation(panelApi));
 
   useLayoutEffect(() => {
-    const update = () => setLayer(readPanelLayer(panelApi));
+    const update = () => {
+      const next = readPanelPresentation(panelApi);
+      setPresentation((current) =>
+        current.borderRadius === next.borderRadius && current.stackingLayer === next.stackingLayer
+          ? current
+          : next,
+      );
+    };
     const subscriptions = [
       panelApi.onDidGroupChange(update),
       panelApi.onDidLocationChange(update),
@@ -53,5 +91,5 @@ export function useDockviewBrowserSurfaceLayer(
     return () => subscriptions.forEach((subscription) => subscription.dispose());
   }, [containerApi, panelApi]);
 
-  return layer;
+  return presentation;
 }
