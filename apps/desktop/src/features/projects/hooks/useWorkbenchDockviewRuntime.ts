@@ -44,7 +44,10 @@ function normalizeBrowserBackedPopouts(api: DockviewApi, workbench: WorkbenchPro
   for (const panel of api.panels) {
     const tile = workbench.tiles[panel.id];
     const browserBacked =
-      tile?.type === "browser" || tile?.type === "devServer" || tile?.type === "orgDevApp";
+      tile?.type === "browser" ||
+      tile?.type === "devServer" ||
+      tile?.type === "orgDevApp" ||
+      tile?.type === "devAppPreview";
     if (browserBacked && panel.api.location.type === "popout") {
       panel.api.moveTo({ position: "right" });
     }
