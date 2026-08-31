@@ -31,6 +31,7 @@ import {
 } from "react"
 
 import { Button } from "@/components/ui/button"
+import { AppOverlayPortal } from "@/components/ui/app-overlay-portal"
 import { ComposerPendingApprovalActions } from "@/features/projects/components/assistant/chat/ComposerPendingApprovalActions"
 import { ComposerPendingApprovalPanel } from "@/features/projects/components/assistant/chat/ComposerPendingApprovalPanel"
 import { ComposerPendingUserInputPanel } from "@/features/projects/components/assistant/chat/ComposerPendingUserInputPanel"
@@ -1838,12 +1839,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       ) : null}
 
       {expandedImage && expandedImageItem ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Expanded image preview"
-        >
+        <AppOverlayPortal>
+          <div
+            className="fixed inset-0 z-[var(--cozea-layer-dialog)] flex items-center justify-center bg-black/75 px-4 py-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Expanded image preview"
+          >
           <button
             type="button"
             className="absolute inset-0 z-0 cursor-zoom-out"
@@ -1902,7 +1904,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="size-5" />
             </Button>
           ) : null}
-        </div>
+          </div>
+        </AppOverlayPortal>
       ) : null}
     </div>
   )

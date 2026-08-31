@@ -48,6 +48,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { AppOverlayPortal } from '@/components/ui/app-overlay-portal'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon as __PlusHugeIcon, Cancel01Icon as __XHugeIcon, CheckmarkCircle02Icon as __CheckCircle2HugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Clock01Icon as __Clock3HugeIcon, ComputerActivityIcon as __AppWindowHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __FileTextHugeIcon, LeftToRightListBulletIcon as __ListTodoHugeIcon, SquareArrowDownRightIcon as __ArrowUpRightHugeIcon } from '@hugeicons/core-free-icons'
@@ -1647,16 +1648,16 @@ export function TasksPage({
   return (
     <>
       {!isEmbedded ? (
-        <div
-          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]"
-          onClick={closeTasksModal}
-          aria-hidden="true"
-        />
-      ) : null}
-      {!isEmbedded ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-14 sm:p-6 sm:pt-16">
-          {shell}
-        </div>
+        <AppOverlayPortal>
+          <div
+            className="fixed inset-0 z-[var(--cozea-layer-dialog)] bg-black/45 backdrop-blur-[2px]"
+            onClick={closeTasksModal}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-0 z-[var(--cozea-layer-dialog)] flex items-start justify-center p-4 pt-14 sm:p-6 sm:pt-16">
+            {shell}
+          </div>
+        </AppOverlayPortal>
       ) : (
         shell
       )}

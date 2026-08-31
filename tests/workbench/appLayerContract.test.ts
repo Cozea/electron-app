@@ -123,4 +123,41 @@ describe("application layer contract", () => {
       expect(tile).not.toContain("BrowserFindOverlay");
     }
   });
+
+  it("routes custom application overlays through the shared body portal", () => {
+    const portal = read("apps/desktop/src/components/ui/app-overlay-portal.tsx");
+    const tileChrome = read(
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchTileChrome.tsx",
+    );
+    const workbench = read(
+      "apps/desktop/src/features/projects/pages/ProjectWorkbenchSurface.tsx",
+    );
+    const orgDevApp = read(
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+    );
+    const chat = read(
+      "apps/desktop/src/features/projects/components/assistant/chat/CozeaChatSurface.tsx",
+    );
+    const tasks = read("apps/desktop/src/features/projects/pages/TasksPage.tsx");
+
+    expect(portal).toContain("createPortal(children, document.body)");
+    expect(tileChrome).toContain("<AnchoredAppOverlayPortal");
+    expect(tileChrome).not.toContain('z-[100]');
+    expect(workbench).toContain("<Dialog");
+    expect(workbench).not.toContain("absolute inset-0 z-30");
+    expect(orgDevApp).toContain("<DialogContent");
+    expect(orgDevApp).not.toContain("absolute inset-x-4 bottom-4 z-20");
+    expect(chat).toContain("<AppOverlayPortal>");
+    expect(chat).not.toContain("fixed inset-0 z-50");
+    expect(tasks).toContain("<AppOverlayPortal>");
+    expect(tasks).not.toContain("fixed inset-0 z-50");
+  });
+
+  it("uses the shared panel activity subscription for every browser-backed tile", () => {
+    const browser = read(
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
+    );
+    expect(browser).toContain("useWorkbenchPanelActivityMode(panelApi)");
+    expect(browser).not.toContain("usePanelSurfaceVisibility");
+  });
 });
