@@ -92,6 +92,19 @@ export class DevAppDevelopmentTrustStore {
    */
   resolve(sourceId: string, requestedInput: DevAppGrant): DevAppDevelopmentTrustState {
     const requested = normalizeGrant(requestedInput)
+
+    // Nothing asked for is nothing to approve. Prompting here would train people to
+    // click through a dialog that never says anything, which is how a prompt that does
+    // matter stops being read. The badge still marks the build as unpublished, and the
+    // code still runs — the same thing the Dev Server tile already does for a project.
+    if (requested.capabilities.length === 0 && !requested.agentInvocable) {
+      return {
+        status: "approved",
+        effective: requested,
+        expiresAt: this.approvals.get(sourceId)?.expiresAt ?? this.now() + this.ttlMs,
+      }
+    }
+
     const approval = this.approvals.get(sourceId)
 
     if (!approval) {

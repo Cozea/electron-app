@@ -1506,6 +1506,33 @@ export interface ElectronAPI {
       | { success: false; error: string }
     >
   }
+  devAppPreview: {
+    /**
+     * Opens an unpublished package for preview.
+     *
+     * `relativePath` is relative to the workspace root. The renderer cannot name a
+     * directory: main joins it against the root that authorization returns.
+     */
+    open: (options: {
+      workspaceId: string
+      laneId?: string | null
+      relativePath: string
+      leaseId: string
+    }) => Promise<import('./devAppPreviewTypes').DevAppPreviewOpenResult>
+    approve: (options: { sourceId: string }) => Promise<
+      import('./devAppPreviewTypes').DevAppPreviewResult
+    >
+    status: (options: { sourceId: string }) => Promise<
+      import('./devAppPreviewTypes').DevAppPreviewResult
+    >
+    close: (options: { sourceId: string }) => Promise<{ success: true }>
+    onStatus: (
+      listener: (payload: {
+        sourceId: string
+        status: import('./devAppPreviewTypes').DevAppPreviewStatus
+      }) => void,
+    ) => () => void
+  }
   workbenchSession: {
     ensureSession: (options: {
       sessionKey?: string | null
