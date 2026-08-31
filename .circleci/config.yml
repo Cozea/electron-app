@@ -33,6 +33,7 @@ commands:
             source "$BASH_ENV"
             bun install --frozen-lockfile --ignore-scripts
             bun run postinstall
+            node node_modules/electron/install.js
 
   checkout_with_t3_submodule:
     steps:
