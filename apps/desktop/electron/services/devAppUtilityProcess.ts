@@ -1,5 +1,10 @@
 import { MessageChannelMain, utilityProcess } from "electron"
 
+import {
+  DEV_APP_WORKER_PROTOCOL_MIN_VERSION,
+  DEV_APP_WORKER_PROTOCOL_VERSION,
+  type DevAppWorkerPortBootstrap,
+} from "../../../../shared/devAppWorkerProtocol"
 import type { DevAppWorkerProcess, DevAppWorkerSpawn } from "./DevAppWorkerHost"
 
 /**
@@ -26,7 +31,11 @@ export interface DevAppUtilityProcessOptions {
 }
 
 export function createUtilityProcessSpawn(
-  resolveOptions: (input: { entrypoint: string; publicationId: string }) => DevAppUtilityProcessOptions,
+  resolveOptions: (input: {
+    entrypoint: string
+    publicationId: string
+    protocolVersion: number
+  }) => DevAppUtilityProcessOptions,
 ): DevAppWorkerSpawn {
   return (input) => {
     const options = resolveOptions(input)
@@ -52,7 +61,15 @@ export function createUtilityProcessSpawn(
 
     // Hand the worker one end of the port; the host keeps the other. Everything the
     // worker asks for travels over this channel and through the capability gate.
-    child.postMessage({ kind: "cozea-devapp-port" }, [channel.port2])
+    const bootstrap: DevAppWorkerPortBootstrap = {
+      kind: "cozea-devapp-port",
+      protocolVersion: input.protocolVersion,
+      supportedProtocolVersions: {
+        min: DEV_APP_WORKER_PROTOCOL_MIN_VERSION,
+        max: DEV_APP_WORKER_PROTOCOL_VERSION,
+      },
+    }
+    child.postMessage(bootstrap, [channel.port2])
 
     let exited = false
     const process_: DevAppWorkerProcess = {

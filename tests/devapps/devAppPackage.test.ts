@@ -6,6 +6,10 @@ import {
   requestedGrant,
   type DevAppPackageDiagnosticCode,
 } from "../../shared/devAppPackage"
+import {
+  DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION,
+  DEV_APP_WORKER_PROTOCOL_VERSION,
+} from "../../shared/devAppWorkerProtocol"
 
 const valid = {
   manifestVersion: 1,
@@ -45,6 +49,7 @@ describe("DevApp manifest — the happy path", () => {
     })
     expect(blockers(result)).toEqual([])
     expect(result.manifest?.worker?.capabilities).toEqual(["project.read", "git.read"])
+    expect(result.manifest?.worker?.protocolVersion).toBe(DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION)
     expect(result.manifest?.service).toEqual({ runtimeKind: "node", entry: "server.js" })
   })
 
@@ -56,6 +61,20 @@ describe("DevApp manifest — the happy path", () => {
     })
     expect(result.manifest?.name).toBe("Spaced")
     expect(result.manifest?.worker?.exposesTools).toBe(false)
+    expect(result.manifest?.worker?.protocolVersion).toBe(DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION)
+  })
+
+  it("reads an explicit supported worker protocol", () => {
+    const result = parse({
+      ...valid,
+      worker: {
+        entry: "w.js",
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+        capabilities: [],
+      },
+    })
+    expect(blockers(result)).toEqual([])
+    expect(result.manifest?.worker?.protocolVersion).toBe(DEV_APP_WORKER_PROTOCOL_VERSION)
   })
 
   it("drops a duplicated capability rather than asking for it twice", () => {
@@ -97,6 +116,30 @@ describe("DevApp manifest — fails closed", () => {
     const result = parse({ ...valid, manifestVersion: DEV_APP_MANIFEST_VERSION + 1 })
     expect(codes(result)).toContain("manifest-version-unsupported")
     expect(result.manifest).toBeNull()
+  })
+
+  it("refuses a worker protocol it cannot execute", () => {
+    const result = parse({
+      ...valid,
+      worker: {
+        entry: "w.js",
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION + 1,
+        capabilities: [],
+      },
+    })
+    expect(codes(result)).toContain("worker-protocol-version-unsupported")
+    expect(result.manifest).toBeNull()
+  })
+
+  it("refuses a malformed worker protocol version", () => {
+    for (const protocolVersion of [0, -1, 1.5, "1", null]) {
+      const result = parse({
+        ...valid,
+        worker: { entry: "w.js", protocolVersion, capabilities: [] },
+      })
+      expect(codes(result), String(protocolVersion)).toContain("manifest-field-invalid")
+      expect(result.manifest).toBeNull()
+    }
   })
 
   it("reports unparsable JSON as its own code, not a crash", () => {
