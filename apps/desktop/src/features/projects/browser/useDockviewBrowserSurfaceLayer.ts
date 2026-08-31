@@ -1,13 +1,17 @@
 import type { DockviewApi, DockviewPanelApi } from "dockview-react";
-import { useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 
 import { APP_LAYERS } from "@/lib/appLayers";
 
 const DOCKVIEW_TILE_RADIUS = "12px";
 
-export interface DockviewBrowserSurfacePresentation {
+interface DockviewBrowserSurfaceVisualPresentation {
   readonly borderRadius: string;
   readonly stackingLayer: number;
+}
+
+export interface DockviewBrowserSurfacePresentation extends DockviewBrowserSurfaceVisualPresentation {
+  readonly subscribePositionChanges: (listener: () => void) => () => void;
 }
 
 export function resolveDockviewBrowserSurfaceLayer(
@@ -36,7 +40,9 @@ export function resolveDockviewBrowserSurfaceBorderRadius(
   }
 }
 
-function readPanelPresentation(panelApi: DockviewPanelApi): DockviewBrowserSurfacePresentation {
+function readPanelPresentation(
+  panelApi: DockviewPanelApi,
+): DockviewBrowserSurfaceVisualPresentation {
   const borderRadius = resolveDockviewBrowserSurfaceBorderRadius(
     panelApi.group.api.getHeaderPosition(),
   );
@@ -69,6 +75,18 @@ export function useDockviewBrowserSurfacePresentation(
   containerApi: DockviewApi,
 ): DockviewBrowserSurfacePresentation {
   const [presentation, setPresentation] = useState(() => readPanelPresentation(panelApi));
+  const subscribePositionChanges = useCallback(
+    (listener: () => void) => {
+      const subscriptions = [
+        containerApi.onDidFloatingGroupBoundsChange((event) => {
+          if (event.element.contains(panelApi.group.element)) listener();
+        }),
+        containerApi.onDidLayoutChange(listener),
+      ];
+      return () => subscriptions.forEach((subscription) => subscription.dispose());
+    },
+    [containerApi, panelApi],
+  );
 
   useLayoutEffect(() => {
     const update = () => {
@@ -91,5 +109,8 @@ export function useDockviewBrowserSurfacePresentation(
     return () => subscriptions.forEach((subscription) => subscription.dispose());
   }, [containerApi, panelApi]);
 
-  return presentation;
+  return useMemo(
+    () => ({ ...presentation, subscribePositionChanges }),
+    [presentation, subscribePositionChanges],
+  );
 }

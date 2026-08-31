@@ -1,0 +1,366 @@
+diff --git a/dist/cjs/api/component.api.d.ts b/dist/cjs/api/component.api.d.ts
+index 187e760ca3212342e1bf6c265cfd483f9a047d58..680ab50471ea168cfc2407912d67d44270b3f191 100644
+--- a/dist/cjs/api/component.api.d.ts
++++ b/dist/cjs/api/component.api.d.ts
+@@ -1,4 +1,4 @@
+-import { DockviewActivePanelChangeEvent, DockviewLayoutMutationEvent, DockviewMaximizedGroupChangeEvent, DockviewPopoutGroupOptions, FloatingGroupOptions, GroupNavigationDirection, IDockviewComponent, MovePanelEvent, PopoutGroup, PopoutGroupChangePositionEvent, PopoutGroupChangeSizeEvent, SerializedDockview } from '../dockview/dockviewComponent';
++import { DockviewActivePanelChangeEvent, DockviewFloatingGroupBoundsChangeEvent, DockviewLayoutMutationEvent, DockviewMaximizedGroupChangeEvent, DockviewPopoutGroupOptions, FloatingGroupOptions, GroupNavigationDirection, IDockviewComponent, MovePanelEvent, PopoutGroup, PopoutGroupChangePositionEvent, PopoutGroupChangeSizeEvent, SerializedDockview } from '../dockview/dockviewComponent';
+ import { AddGroupOptions, AddPanelOptions, DockviewComponentOptions, DockviewDndOverlayEvent, MovementOptions } from '../dockview/options';
+ import { Parameters } from '../panel/types';
+ import { Direction } from '../gridview/baseComponentGridview';
+@@ -393,6 +393,8 @@ export declare class DockviewApi implements CommonApi<SerializedDockview> {
+      */
+     get onDidRemovePanel(): Event<IDockviewPanel>;
+     get onDidMovePanel(): Event<MovePanelEvent>;
++    /** Invoked whenever a floating group's viewport bounds change. */
++    get onDidFloatingGroupBoundsChange(): Event<DockviewFloatingGroupBoundsChangeEvent>;
+     /**
+      * Invoked after a layout is deserialzied using the `fromJSON` method.
+      */
+diff --git a/dist/cjs/api/component.api.js b/dist/cjs/api/component.api.js
+index c811fa718a9eca18152b3f9d4e4004033f7fd972..18bf890957bb0de26099c749afad9a716d2694a9 100644
+--- a/dist/cjs/api/component.api.js
++++ b/dist/cjs/api/component.api.js
+@@ -744,6 +744,14 @@ var DockviewApi = /** @class */ (function () {
+         enumerable: false,
+         configurable: true
+     });
++    Object.defineProperty(DockviewApi.prototype, "onDidFloatingGroupBoundsChange", {
++        /** Invoked whenever a floating group's viewport bounds change. */
++        get: function () {
++            return this.component.onDidFloatingGroupBoundsChange;
++        },
++        enumerable: false,
++        configurable: true
++    });
+     Object.defineProperty(DockviewApi.prototype, "onDidLayoutFromJSON", {
+         /**
+          * Invoked after a layout is deserialzied using the `fromJSON` method.
+diff --git a/dist/cjs/dockview/dockviewComponent.d.ts b/dist/cjs/dockview/dockviewComponent.d.ts
+index dace8e9162b81965e3d69686f780ffbdaa090ae2..112893ce94d20af8eec57304c1005b1bb4076f3d 100644
+--- a/dist/cjs/dockview/dockviewComponent.d.ts
++++ b/dist/cjs/dockview/dockviewComponent.d.ts
+@@ -112,6 +112,10 @@ export interface MovePanelEvent {
+     panel: IDockviewPanel;
+     from: DockviewGroupPanel;
+ }
++export interface DockviewFloatingGroupBoundsChangeEvent {
++    readonly group: DockviewGroupPanel;
++    readonly element: HTMLElement;
++}
+ type MoveGroupOptions = {
+     from: {
+         group: DockviewGroupPanel;
+@@ -226,6 +230,7 @@ export interface IDockviewComponent extends IBaseGrid<DockviewGroupPanel> {
+     readonly onDidActiveGroupChange: Event<DockviewGroupPanel | undefined>;
+     readonly onUnhandledDragOver: Event<DockviewDndOverlayEvent>;
+     readonly onDidMovePanel: Event<MovePanelEvent>;
++    readonly onDidFloatingGroupBoundsChange: Event<DockviewFloatingGroupBoundsChangeEvent>;
+     readonly onDidMaximizedGroupChange: Event<DockviewMaximizedGroupChangeEvent>;
+     readonly onDidPopoutGroupSizeChange: Event<PopoutGroupChangeSizeEvent>;
+     readonly onDidPopoutGroupPositionChange: Event<PopoutGroupChangePositionEvent>;
+@@ -320,6 +325,8 @@ export declare class DockviewComponent extends BaseGrid<DockviewGroupPanel> impl
+     readonly onDidActivePanelChange: Event<DockviewActivePanelChangeEvent>;
+     private readonly _onDidMovePanel;
+     readonly onDidMovePanel: Event<MovePanelEvent>;
++    private readonly _onDidFloatingGroupBoundsChange;
++    readonly onDidFloatingGroupBoundsChange: Event<DockviewFloatingGroupBoundsChangeEvent>;
+     private readonly _onDidCreateTabGroup;
+     readonly onDidCreateTabGroup: Event<DockviewTabGroupChangeEvent>;
+     private readonly _onDidDestroyTabGroup;
+@@ -416,6 +423,7 @@ export declare class DockviewComponent extends BaseGrid<DockviewGroupPanel> impl
+     get mountElement(): HTMLElement;
+     hasVisibleGridGroup(): boolean;
+     fireLayoutChange(): void;
++    fireFloatingGroupBoundsChange(group: DockviewGroupPanel, element: HTMLElement): void;
+     /**
+      * Promise that resolves when all popout groups from the last fromJSON call are restored.
+      * Useful for tests that need to wait for delayed popout creation.
+diff --git a/dist/cjs/dockview/dockviewComponent.js b/dist/cjs/dockview/dockviewComponent.js
+index 14c511a117a3438947c6660d67e3243ff837fab0..d6f1891d99a6aabbbbda9ea36c6493b6fb25a63c 100644
+--- a/dist/cjs/dockview/dockviewComponent.js
++++ b/dist/cjs/dockview/dockviewComponent.js
+@@ -207,6 +207,8 @@ var DockviewComponent = /** @class */ (function (_super) {
+         _this.onDidActivePanelChange = _this._onDidActivePanelChange.event;
+         _this._onDidMovePanel = new events_1.Emitter();
+         _this.onDidMovePanel = _this._onDidMovePanel.event;
++        _this._onDidFloatingGroupBoundsChange = new events_1.Emitter();
++        _this.onDidFloatingGroupBoundsChange = _this._onDidFloatingGroupBoundsChange.event;
+         _this._onDidCreateTabGroup = new events_1.Emitter();
+         _this.onDidCreateTabGroup = _this._onDidCreateTabGroup.event;
+         _this._onDidDestroyTabGroup = new events_1.Emitter();
+@@ -299,7 +301,7 @@ var DockviewComponent = /** @class */ (function (_super) {
+         if (options.debug) {
+             _this.addDisposables(new strictEventsSequencing_1.StrictEventsSequencing(_this));
+         }
+-        _this.addDisposables(_this.rootDropTargetContainer, _this.overlayRenderContainer, _this._onWillDragPanel, _this._onWillDragGroup, _this._onWillShowOverlay, _this._onDidActivePanelChange, _this._onDidAddPanel, _this._onDidRemovePanel, _this._onDidLayoutFromJSON, _this._onDidDrop, _this._onWillDrop, _this._onWillMutateLayout, _this._onDidMutateLayout, _this._onDidMovePanel, _this._onDidMovePanel.event(function () {
++        _this.addDisposables(_this.rootDropTargetContainer, _this.overlayRenderContainer, _this._onWillDragPanel, _this._onWillDragGroup, _this._onWillShowOverlay, _this._onDidActivePanelChange, _this._onDidAddPanel, _this._onDidRemovePanel, _this._onDidLayoutFromJSON, _this._onDidDrop, _this._onWillDrop, _this._onWillMutateLayout, _this._onDidMutateLayout, _this._onDidMovePanel, _this._onDidFloatingGroupBoundsChange, _this._onDidMovePanel.event(function () {
+             /**
+              * Update overlay positions after DOM layout completes to prevent 0×0 dimensions.
+              * With defaultRenderer="always" this results in panel content not showing after move operations.
+@@ -739,6 +741,9 @@ var DockviewComponent = /** @class */ (function (_super) {
+     DockviewComponent.prototype.fireLayoutChange = function () {
+         this._bufferOnDidLayoutChange.fire();
+     };
++    DockviewComponent.prototype.fireFloatingGroupBoundsChange = function (group, element) {
++        this._onDidFloatingGroupBoundsChange.fire({ group: group, element: element });
++    };
+     Object.defineProperty(DockviewComponent.prototype, "popoutRestorationPromise", {
+         /**
+          * Promise that resolves when all popout groups from the last fromJSON call are restored.
+diff --git a/dist/cjs/dockview/floatingGroupService.d.ts b/dist/cjs/dockview/floatingGroupService.d.ts
+index a46764c234de377eafba0d93a7ce8cac8783f5e3..54224f0f57484bfbda48a4d454997fc82f962826 100644
+--- a/dist/cjs/dockview/floatingGroupService.d.ts
++++ b/dist/cjs/dockview/floatingGroupService.d.ts
+@@ -11,6 +11,7 @@ import { SerializedFloatingGroup } from './dockviewComponent';
+  */
+ export interface IFloatingGroupHost {
+     fireLayoutChange(): void;
++    fireFloatingGroupBoundsChange(group: DockviewGroupPanel, element: HTMLElement): void;
+ }
+ export interface IFloatingGroupService extends IDisposable {
+     readonly floatingGroups: readonly DockviewFloatingGroupPanel[];
+diff --git a/dist/cjs/dockview/floatingGroupService.js b/dist/cjs/dockview/floatingGroupService.js
+index 848223412fc2b29f40e2206f2e038cea4c3e221e..d46198d48257dbf827cf2de32cb9b7f65e6428b2 100644
+--- a/dist/cjs/dockview/floatingGroupService.js
++++ b/dist/cjs/dockview/floatingGroupService.js
+@@ -97,6 +97,7 @@ var FloatingGroupService = /** @class */ (function () {
+         updateDialogLabel();
+         floatingGroupPanel.addDisposables(group.api.onDidActivePanelChange(function () { return updateDialogLabel(); }), overlay.onDidChange(function () {
+             gridview.layout(gridview.width, gridview.height);
++            _this._host.fireFloatingGroupBoundsChange(group, overlay.element);
+         }), overlay.onDidChangeEnd(function () {
+             _this._host.fireLayoutChange();
+         }), group.onDidChange(function (event) {
+diff --git a/dist/esm/api/component.api.d.ts b/dist/esm/api/component.api.d.ts
+index 187e760ca3212342e1bf6c265cfd483f9a047d58..680ab50471ea168cfc2407912d67d44270b3f191 100644
+--- a/dist/esm/api/component.api.d.ts
++++ b/dist/esm/api/component.api.d.ts
+@@ -1,4 +1,4 @@
+-import { DockviewActivePanelChangeEvent, DockviewLayoutMutationEvent, DockviewMaximizedGroupChangeEvent, DockviewPopoutGroupOptions, FloatingGroupOptions, GroupNavigationDirection, IDockviewComponent, MovePanelEvent, PopoutGroup, PopoutGroupChangePositionEvent, PopoutGroupChangeSizeEvent, SerializedDockview } from '../dockview/dockviewComponent';
++import { DockviewActivePanelChangeEvent, DockviewFloatingGroupBoundsChangeEvent, DockviewLayoutMutationEvent, DockviewMaximizedGroupChangeEvent, DockviewPopoutGroupOptions, FloatingGroupOptions, GroupNavigationDirection, IDockviewComponent, MovePanelEvent, PopoutGroup, PopoutGroupChangePositionEvent, PopoutGroupChangeSizeEvent, SerializedDockview } from '../dockview/dockviewComponent';
+ import { AddGroupOptions, AddPanelOptions, DockviewComponentOptions, DockviewDndOverlayEvent, MovementOptions } from '../dockview/options';
+ import { Parameters } from '../panel/types';
+ import { Direction } from '../gridview/baseComponentGridview';
+@@ -393,6 +393,8 @@ export declare class DockviewApi implements CommonApi<SerializedDockview> {
+      */
+     get onDidRemovePanel(): Event<IDockviewPanel>;
+     get onDidMovePanel(): Event<MovePanelEvent>;
++    /** Invoked whenever a floating group's viewport bounds change. */
++    get onDidFloatingGroupBoundsChange(): Event<DockviewFloatingGroupBoundsChangeEvent>;
+     /**
+      * Invoked after a layout is deserialzied using the `fromJSON` method.
+      */
+diff --git a/dist/esm/api/component.api.js b/dist/esm/api/component.api.js
+index 80be33b69d0fe4d712589236d76e3048dad68cf9..8d5f1cd9e185a715f1b845ceb7ca9b1f053a5728 100644
+--- a/dist/esm/api/component.api.js
++++ b/dist/esm/api/component.api.js
+@@ -523,6 +523,10 @@ export class DockviewApi {
+     get onDidMovePanel() {
+         return this.component.onDidMovePanel;
+     }
++    /** Invoked whenever a floating group's viewport bounds change. */
++    get onDidFloatingGroupBoundsChange() {
++        return this.component.onDidFloatingGroupBoundsChange;
++    }
+     /**
+      * Invoked after a layout is deserialzied using the `fromJSON` method.
+      */
+diff --git a/dist/esm/dockview/dockviewComponent.d.ts b/dist/esm/dockview/dockviewComponent.d.ts
+index dace8e9162b81965e3d69686f780ffbdaa090ae2..112893ce94d20af8eec57304c1005b1bb4076f3d 100644
+--- a/dist/esm/dockview/dockviewComponent.d.ts
++++ b/dist/esm/dockview/dockviewComponent.d.ts
+@@ -112,6 +112,10 @@ export interface MovePanelEvent {
+     panel: IDockviewPanel;
+     from: DockviewGroupPanel;
+ }
++export interface DockviewFloatingGroupBoundsChangeEvent {
++    readonly group: DockviewGroupPanel;
++    readonly element: HTMLElement;
++}
+ type MoveGroupOptions = {
+     from: {
+         group: DockviewGroupPanel;
+@@ -226,6 +230,7 @@ export interface IDockviewComponent extends IBaseGrid<DockviewGroupPanel> {
+     readonly onDidActiveGroupChange: Event<DockviewGroupPanel | undefined>;
+     readonly onUnhandledDragOver: Event<DockviewDndOverlayEvent>;
+     readonly onDidMovePanel: Event<MovePanelEvent>;
++    readonly onDidFloatingGroupBoundsChange: Event<DockviewFloatingGroupBoundsChangeEvent>;
+     readonly onDidMaximizedGroupChange: Event<DockviewMaximizedGroupChangeEvent>;
+     readonly onDidPopoutGroupSizeChange: Event<PopoutGroupChangeSizeEvent>;
+     readonly onDidPopoutGroupPositionChange: Event<PopoutGroupChangePositionEvent>;
+@@ -320,6 +325,8 @@ export declare class DockviewComponent extends BaseGrid<DockviewGroupPanel> impl
+     readonly onDidActivePanelChange: Event<DockviewActivePanelChangeEvent>;
+     private readonly _onDidMovePanel;
+     readonly onDidMovePanel: Event<MovePanelEvent>;
++    private readonly _onDidFloatingGroupBoundsChange;
++    readonly onDidFloatingGroupBoundsChange: Event<DockviewFloatingGroupBoundsChangeEvent>;
+     private readonly _onDidCreateTabGroup;
+     readonly onDidCreateTabGroup: Event<DockviewTabGroupChangeEvent>;
+     private readonly _onDidDestroyTabGroup;
+@@ -416,6 +423,7 @@ export declare class DockviewComponent extends BaseGrid<DockviewGroupPanel> impl
+     get mountElement(): HTMLElement;
+     hasVisibleGridGroup(): boolean;
+     fireLayoutChange(): void;
++    fireFloatingGroupBoundsChange(group: DockviewGroupPanel, element: HTMLElement): void;
+     /**
+      * Promise that resolves when all popout groups from the last fromJSON call are restored.
+      * Useful for tests that need to wait for delayed popout creation.
+diff --git a/dist/esm/dockview/dockviewComponent.js b/dist/esm/dockview/dockviewComponent.js
+index f9637a40aa5873dde08220bc5f7b2c3dde54975e..39c4a6e045823aee495371ec357af5be0fed5fdb 100644
+--- a/dist/esm/dockview/dockviewComponent.js
++++ b/dist/esm/dockview/dockviewComponent.js
+@@ -323,6 +323,9 @@ export class DockviewComponent extends BaseGrid {
+     fireLayoutChange() {
+         this._bufferOnDidLayoutChange.fire();
+     }
++    fireFloatingGroupBoundsChange(group, element) {
++        this._onDidFloatingGroupBoundsChange.fire({ group, element });
++    }
+     /**
+      * Promise that resolves when all popout groups from the last fromJSON call are restored.
+      * Useful for tests that need to wait for delayed popout creation.
+@@ -394,6 +397,8 @@ export class DockviewComponent extends BaseGrid {
+         this.onDidActivePanelChange = this._onDidActivePanelChange.event;
+         this._onDidMovePanel = new Emitter();
+         this.onDidMovePanel = this._onDidMovePanel.event;
++        this._onDidFloatingGroupBoundsChange = new Emitter();
++        this.onDidFloatingGroupBoundsChange = this._onDidFloatingGroupBoundsChange.event;
+         this._onDidCreateTabGroup = new Emitter();
+         this.onDidCreateTabGroup = this._onDidCreateTabGroup.event;
+         this._onDidDestroyTabGroup = new Emitter();
+@@ -479,7 +484,7 @@ export class DockviewComponent extends BaseGrid {
+         if (options.debug) {
+             this.addDisposables(new StrictEventsSequencing(this));
+         }
+-        this.addDisposables(this.rootDropTargetContainer, this.overlayRenderContainer, this._onWillDragPanel, this._onWillDragGroup, this._onWillShowOverlay, this._onDidActivePanelChange, this._onDidAddPanel, this._onDidRemovePanel, this._onDidLayoutFromJSON, this._onDidDrop, this._onWillDrop, this._onWillMutateLayout, this._onDidMutateLayout, this._onDidMovePanel, this._onDidMovePanel.event(() => {
++        this.addDisposables(this.rootDropTargetContainer, this.overlayRenderContainer, this._onWillDragPanel, this._onWillDragGroup, this._onWillShowOverlay, this._onDidActivePanelChange, this._onDidAddPanel, this._onDidRemovePanel, this._onDidLayoutFromJSON, this._onDidDrop, this._onWillDrop, this._onWillMutateLayout, this._onDidMutateLayout, this._onDidMovePanel, this._onDidFloatingGroupBoundsChange, this._onDidMovePanel.event(() => {
+             /**
+              * Update overlay positions after DOM layout completes to prevent 0×0 dimensions.
+              * With defaultRenderer="always" this results in panel content not showing after move operations.
+diff --git a/dist/esm/dockview/floatingGroupService.d.ts b/dist/esm/dockview/floatingGroupService.d.ts
+index a46764c234de377eafba0d93a7ce8cac8783f5e3..54224f0f57484bfbda48a4d454997fc82f962826 100644
+--- a/dist/esm/dockview/floatingGroupService.d.ts
++++ b/dist/esm/dockview/floatingGroupService.d.ts
+@@ -11,6 +11,7 @@ import { SerializedFloatingGroup } from './dockviewComponent';
+  */
+ export interface IFloatingGroupHost {
+     fireLayoutChange(): void;
++    fireFloatingGroupBoundsChange(group: DockviewGroupPanel, element: HTMLElement): void;
+ }
+ export interface IFloatingGroupService extends IDisposable {
+     readonly floatingGroups: readonly DockviewFloatingGroupPanel[];
+diff --git a/dist/esm/dockview/floatingGroupService.js b/dist/esm/dockview/floatingGroupService.js
+index 71c3d82cbf1b47f633a5cd24e377611ed0621529..7640bad7198b63b305596b7dde76fcabb85dff89 100644
+--- a/dist/esm/dockview/floatingGroupService.js
++++ b/dist/esm/dockview/floatingGroupService.js
+@@ -53,6 +53,7 @@ export class FloatingGroupService {
+         updateDialogLabel();
+         floatingGroupPanel.addDisposables(group.api.onDidActivePanelChange(() => updateDialogLabel()), overlay.onDidChange(() => {
+             gridview.layout(gridview.width, gridview.height);
++            this._host.fireFloatingGroupBoundsChange(group, overlay.element);
+         }), overlay.onDidChangeEnd(() => {
+             this._host.fireLayoutChange();
+         }), group.onDidChange((event) => {
+diff --git a/dist/package/main.cjs.js b/dist/package/main.cjs.js
+index 470f38ac75f5a205c643b2323dd84bcc4e872636..f36b15cc671c1710a5c223ef71438bc80fa57d2a 100644
+--- a/dist/package/main.cjs.js
++++ b/dist/package/main.cjs.js
+@@ -3668,6 +3668,10 @@ class DockviewApi {
+     get onDidMovePanel() {
+         return this.component.onDidMovePanel;
+     }
++    /** Invoked whenever a floating group's viewport bounds change. */
++    get onDidFloatingGroupBoundsChange() {
++        return this.component.onDidFloatingGroupBoundsChange;
++    }
+     /**
+      * Invoked after a layout is deserialzied using the `fromJSON` method.
+      */
+@@ -13388,6 +13392,7 @@ class FloatingGroupService {
+         updateDialogLabel();
+         floatingGroupPanel.addDisposables(group.api.onDidActivePanelChange(() => updateDialogLabel()), overlay.onDidChange(() => {
+             gridview.layout(gridview.width, gridview.height);
++            this._host.fireFloatingGroupBoundsChange(group, overlay.element);
+         }), overlay.onDidChangeEnd(() => {
+             this._host.fireLayoutChange();
+         }), group.onDidChange((event) => {
+@@ -15767,6 +15772,9 @@ class DockviewComponent extends BaseGrid {
+     fireLayoutChange() {
+         this._bufferOnDidLayoutChange.fire();
+     }
++    fireFloatingGroupBoundsChange(group, element) {
++        this._onDidFloatingGroupBoundsChange.fire({ group, element });
++    }
+     /**
+      * Promise that resolves when all popout groups from the last fromJSON call are restored.
+      * Useful for tests that need to wait for delayed popout creation.
+@@ -15838,6 +15846,8 @@ class DockviewComponent extends BaseGrid {
+         this.onDidActivePanelChange = this._onDidActivePanelChange.event;
+         this._onDidMovePanel = new Emitter();
+         this.onDidMovePanel = this._onDidMovePanel.event;
++        this._onDidFloatingGroupBoundsChange = new Emitter();
++        this.onDidFloatingGroupBoundsChange = this._onDidFloatingGroupBoundsChange.event;
+         this._onDidCreateTabGroup = new Emitter();
+         this.onDidCreateTabGroup = this._onDidCreateTabGroup.event;
+         this._onDidDestroyTabGroup = new Emitter();
+@@ -15923,7 +15933,7 @@ class DockviewComponent extends BaseGrid {
+         if (options.debug) {
+             this.addDisposables(new StrictEventsSequencing(this));
+         }
+-        this.addDisposables(this.rootDropTargetContainer, this.overlayRenderContainer, this._onWillDragPanel, this._onWillDragGroup, this._onWillShowOverlay, this._onDidActivePanelChange, this._onDidAddPanel, this._onDidRemovePanel, this._onDidLayoutFromJSON, this._onDidDrop, this._onWillDrop, this._onWillMutateLayout, this._onDidMutateLayout, this._onDidMovePanel, this._onDidMovePanel.event(() => {
++        this.addDisposables(this.rootDropTargetContainer, this.overlayRenderContainer, this._onWillDragPanel, this._onWillDragGroup, this._onWillShowOverlay, this._onDidActivePanelChange, this._onDidAddPanel, this._onDidRemovePanel, this._onDidLayoutFromJSON, this._onDidDrop, this._onWillDrop, this._onWillMutateLayout, this._onDidMutateLayout, this._onDidMovePanel, this._onDidFloatingGroupBoundsChange, this._onDidMovePanel.event(() => {
+             /**
+              * Update overlay positions after DOM layout completes to prevent 0×0 dimensions.
+              * With defaultRenderer="always" this results in panel content not showing after move operations.
+diff --git a/dist/package/main.esm.mjs b/dist/package/main.esm.mjs
+index 052a960dfcd1638870406482794fa242901031ff..3f9633a46e48b752181d50364ef28f48333ea439 100644
+--- a/dist/package/main.esm.mjs
++++ b/dist/package/main.esm.mjs
+@@ -3664,6 +3664,10 @@ class DockviewApi {
+     get onDidMovePanel() {
+         return this.component.onDidMovePanel;
+     }
++    /** Invoked whenever a floating group's viewport bounds change. */
++    get onDidFloatingGroupBoundsChange() {
++        return this.component.onDidFloatingGroupBoundsChange;
++    }
+     /**
+      * Invoked after a layout is deserialzied using the `fromJSON` method.
+      */
+@@ -13384,6 +13388,7 @@ class FloatingGroupService {
+         updateDialogLabel();
+         floatingGroupPanel.addDisposables(group.api.onDidActivePanelChange(() => updateDialogLabel()), overlay.onDidChange(() => {
+             gridview.layout(gridview.width, gridview.height);
++            this._host.fireFloatingGroupBoundsChange(group, overlay.element);
+         }), overlay.onDidChangeEnd(() => {
+             this._host.fireLayoutChange();
+         }), group.onDidChange((event) => {
+@@ -15763,6 +15768,9 @@ class DockviewComponent extends BaseGrid {
+     fireLayoutChange() {
+         this._bufferOnDidLayoutChange.fire();
+     }
++    fireFloatingGroupBoundsChange(group, element) {
++        this._onDidFloatingGroupBoundsChange.fire({ group, element });
++    }
+     /**
+      * Promise that resolves when all popout groups from the last fromJSON call are restored.
+      * Useful for tests that need to wait for delayed popout creation.
+@@ -15834,6 +15842,8 @@ class DockviewComponent extends BaseGrid {
+         this.onDidActivePanelChange = this._onDidActivePanelChange.event;
+         this._onDidMovePanel = new Emitter();
+         this.onDidMovePanel = this._onDidMovePanel.event;
++        this._onDidFloatingGroupBoundsChange = new Emitter();
++        this.onDidFloatingGroupBoundsChange = this._onDidFloatingGroupBoundsChange.event;
+         this._onDidCreateTabGroup = new Emitter();
+         this.onDidCreateTabGroup = this._onDidCreateTabGroup.event;
+         this._onDidDestroyTabGroup = new Emitter();
+@@ -15919,7 +15929,7 @@ class DockviewComponent extends BaseGrid {
+         if (options.debug) {
+             this.addDisposables(new StrictEventsSequencing(this));
+         }
+-        this.addDisposables(this.rootDropTargetContainer, this.overlayRenderContainer, this._onWillDragPanel, this._onWillDragGroup, this._onWillShowOverlay, this._onDidActivePanelChange, this._onDidAddPanel, this._onDidRemovePanel, this._onDidLayoutFromJSON, this._onDidDrop, this._onWillDrop, this._onWillMutateLayout, this._onDidMutateLayout, this._onDidMovePanel, this._onDidMovePanel.event(() => {
++        this.addDisposables(this.rootDropTargetContainer, this.overlayRenderContainer, this._onWillDragPanel, this._onWillDragGroup, this._onWillShowOverlay, this._onDidActivePanelChange, this._onDidAddPanel, this._onDidRemovePanel, this._onDidLayoutFromJSON, this._onDidDrop, this._onWillDrop, this._onWillMutateLayout, this._onDidMutateLayout, this._onDidMovePanel, this._onDidFloatingGroupBoundsChange, this._onDidMovePanel.event(() => {
+             /**
+              * Update overlay positions after DOM layout completes to prevent 0×0 dimensions.
+              * With defaultRenderer="always" this results in panel content not showing after move operations.

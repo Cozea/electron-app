@@ -200,7 +200,7 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
       </div>
 
       <div
-        className="group/address flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-muted/45 px-2 focus-within:bg-background focus-within:ring-1 focus-within:ring-ring/50"
+        className="group/address flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-transparent px-2 focus-within:bg-background focus-within:ring-1 focus-within:ring-ring/50"
         data-browser-address-group
       >
         {favicon ? (

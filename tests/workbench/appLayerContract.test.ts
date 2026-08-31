@@ -94,6 +94,7 @@ describe("application layer contract", () => {
       "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
       "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
       "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx",
     ].map(read);
 
     expect(keepAlive).not.toContain("relative isolate");
@@ -102,7 +103,26 @@ describe("application layer contract", () => {
       expect(tile).toContain("useDockviewBrowserSurfacePresentation");
       expect(tile).toContain("borderRadius={surfacePresentation.borderRadius}");
       expect(tile).toContain("stackingLayer={surfacePresentation.stackingLayer}");
+      expect(tile).toContain(
+        "subscribePositionChanges={surfacePresentation.subscribePositionChanges}",
+      );
     }
+  });
+
+  it("keeps renderer-hosted guests synchronized with live floating-group movement", () => {
+    const dockviewPatch = read("patches/dockview-core@7.0.4.patch");
+    const presentation = read(
+      "apps/desktop/src/features/projects/browser/useDockviewBrowserSurfaceLayer.ts",
+    );
+    const slot = read("apps/desktop/src/features/projects/browser/BrowserSurfaceSlot.tsx");
+
+    expect(dockviewPatch).toContain("onDidFloatingGroupBoundsChange");
+    expect(dockviewPatch).toContain("fireFloatingGroupBoundsChange(group, overlay.element)");
+    expect(presentation).toContain("containerApi.onDidFloatingGroupBoundsChange");
+    expect(presentation).toContain("event.element.contains(panelApi.group.element)");
+    expect(presentation).toContain("containerApi.onDidLayoutChange(listener)");
+    expect(slot).toContain("window.requestAnimationFrame");
+    expect(slot).toContain("subscribePositionChanges?.(scheduleUpdate)");
   });
 
   it("keeps browser-owned overlays beside the living guest in the global host", () => {
