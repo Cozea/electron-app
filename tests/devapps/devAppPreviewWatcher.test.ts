@@ -98,7 +98,6 @@ describe("Preview watcher — what is worth watching", () => {
       "node_modules/react/index.js",
       ".git/index",
       ".next/server/app.js",
-      "dist/bundle.js",
       "src/.DS_Store",
       "packages/x/node_modules/y/z.js",
       "",
@@ -108,7 +107,15 @@ describe("Preview watcher — what is worth watching", () => {
   })
 
   it("watches ordinary source and the manifest itself", () => {
-    for (const path of ["src/index.ts", "cozea-devapp.json", "worker/main.js", "public/logo.svg"]) {
+    for (const path of [
+      "src/index.ts",
+      "cozea-devapp.json",
+      "worker/main.js",
+      "public/logo.svg",
+      "dist/bundle.js",
+      "build/index.html",
+      "out/index.html",
+    ]) {
       expect(isIgnoredChange(path), path).toBe(false)
     }
   })

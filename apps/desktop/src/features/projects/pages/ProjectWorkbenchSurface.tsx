@@ -500,6 +500,7 @@ export function ProjectWorkbenchSurface() {
         projectId={projectId}
         laneId={activeLaneId}
         workspaceId={activeWorkbenchId}
+        projectRootPath={projectRootPath}
         openSettings={openSettingsOverlay}
         closeSettings={closeSettingsOverlay}
         isSettingsOpen={isSettingsOpen}
