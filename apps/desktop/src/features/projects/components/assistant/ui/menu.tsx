@@ -53,7 +53,7 @@ function MenuPopup({
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
-        className="z-50"
+        className="z-[var(--cozea-layer-menu)]"
         data-slot="menu-positioner"
         side={side}
         sideOffset={sideOffset}

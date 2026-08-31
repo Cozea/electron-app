@@ -1,4 +1,5 @@
 import type { BrowserSurfaceRect } from "./browserSurfaceStore";
+import { APP_LAYERS } from "@/lib/appLayers";
 
 export interface HostedBrowserWebviewSize {
   readonly width: number;
@@ -31,7 +32,7 @@ export function resolveHostedBrowserWebviewWrapperStyle(input: {
       top: rect.y,
       width: rect.width,
       height: rect.height,
-      zIndex: 30,
+      zIndex: APP_LAYERS.browserDocked,
       pointerEvents: "auto",
       ...(cornerRadius > 0 ? { borderRadius: cornerRadius } : {}),
     };
