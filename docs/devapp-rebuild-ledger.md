@@ -5,11 +5,12 @@ what was left suspended with the reason it stopped.
 
 | | |
 | --- | --- |
-| Commits | 15 |
-| New modules | 14 |
+| Original parent commits | 15 |
+| Phase 5 follow-up | 2 parent commits + 3 T3 fork commits |
+| New modules | 16 |
 | Test files | 17 |
-| Tests passing | 1507 |
-| Phases complete | 3.5 of 9 |
+| Full suite | 197 files / 1523 tests passing (4 skipped) |
+| Phases complete | 3 of 9 |
 
 Originally audited at `78cb74bd` on `main`; live Phase 5 acceptance was refreshed on
 2026-09-01 from the current `main` line plus the dedicated acceptance branch. All three
@@ -33,13 +34,14 @@ privileged code out of process behind a gate that enforces them, and be develope
 against the exact path it will take once published.
 
 What does not exist yet is the half that makes it a *platform* rather than a better
-runtime: nobody outside the team can author against it, agents cannot drive it, and
-installation is still a cache rather than an install.
+runtime: nobody outside the team can author against it, worker-declared agent tools do not
+flow into ACP sessions, and installation is still a cache rather than an install. Agents can
+now create or attach a development preview and drive its living guest after the user grants
+the package's requested session capabilities.
 
-> **The honest headline: 3 phases fully delivered, 3 partially, 3 untouched.**
-> Counting "delivered" generously would say six. The three partials each have a specific,
-> named gap that a later phase depends on — which is why they are counted as partials here
-> rather than quietly rounded up.
+> **The honest headline: 3 phases delivered, 3 partial, 3 untouched.**
+> The three partials each have a specific, named gap that a later phase depends on — which
+> is why they are counted as partials here rather than quietly rounded up.
 
 ---
 
@@ -109,7 +111,7 @@ through preload. That does not exist — `preload.ts` has zero worker references
 can talk to main but a view cannot talk to a worker. Protocol versioning was meant to be
 decided before this phase shipped; it was not.
 
-### Phase 5 — Development mode and preview tile — **Blocked at the last item**
+### Phase 5 — Development mode and preview tile — **Delivered**
 
 **Shipped.** The authoring loop, and the first phase that delivers user-visible capability.
 A `cozea-devapp.json` manifest that fails closed. Provisional trust that is never persisted
@@ -119,11 +121,16 @@ session, its own protocol origin, and a tile. The tile is now reachable from the
 workbench command palette, is routed through the browser-backed Dockview policies, and
 reloads when generated output under `dist`, `build`, or `out` changes.
 
-**Left suspended.** `devapp_preview_ensure` and `devapp_preview_attach` — the agent
-automation contract. Blocked on repository boundary, not effort: the operation list lives in
-`packages/contracts/src/t3/previewAutomation.ts`, which carries a "do not edit" banner and
-is copied byte-for-byte from the vendored t3code fork on every sync. The operations must be
-added in `Cozea/t3code` or the next sync silently reverts them.
+The `Cozea/t3code` fork now owns `devapp_preview_ensure` and
+`devapp_preview_attach`; the generated parent contracts are synchronized from pinned fork
+revision `5725b2eb`. Ensure creates or reuses a project-confined package tile without granting
+capabilities. Attach binds an existing approved package to its exact runtime tab. Generic T3
+snapshot and interaction operations then target the same living guest the user sees.
+
+`agentInvocable` remains a package-worker declaration, not a preview-control switch. A package
+with `agentInvocable: false` can still be inspected and interacted with when the user asks the
+assistant to control its approved development preview; it simply does not expose its worker as
+an autonomous agent surface.
 
 ### Phase 6 — Authoring contract and headless publish — **Not started**
 
@@ -151,15 +158,17 @@ semantics and the trust model for code Cozea executes on someone's behalf.
 
 ## Suspended, in detail
 
-### The agent automation contract — Phase 5, blocked
+### The agent automation contract — Phase 5, completed
 
-`devapp_preview_ensure` / `devapp_preview_attach` cannot be added in this repository.
-`packages/contracts/src/t3/previewAutomation.ts` is byte-identical to the vendored copy
-apart from a generated banner reading "do not edit", and `devServerEnsure` — the existing
-Cozea-specific operation — lives in the `Cozea/t3code` fork, which is why it survives syncs.
+`devapp_preview_ensure` / `devapp_preview_attach` now live in the `Cozea/t3code` fork, along
+with their MCP tools, handlers, schemas, and contract tests. The parent repository pins that
+fork revision and synchronizes its generated contract mirror, so a future contract sync
+preserves the operations instead of deleting them.
 
-Adding the operations here would be reverted the next time anyone runs
-`vendor:sync-t3-contracts`, with no error. The work belongs in the fork.
+The Cozea adapter owns only product-specific work: project-relative package confinement,
+Dockview placement, capability-approval status, workbench targeting, and translation from the
+development session into the shared T3 surface inventory. It never grants capabilities on the
+assistant's behalf.
 
 ### The view-to-worker bridge — Phase 4, not built
 
@@ -215,8 +224,8 @@ and is already used for dev-command candidates. Genuinely optional.
 
 ## Live verification status
 
-Two formerly unverified paths now have direct Electron evidence. One end-to-end acceptance
-walk remains.
+Three formerly unverified paths now have direct Electron evidence. One broader lifecycle walk
+remains.
 
 **The utilityProcess adapter — verified 2026-09-01.** A real development package with a
 worker started Electron's Node utility process after session-scoped capability approval.
@@ -229,6 +238,15 @@ accepted interaction, an unsupported manifest displayed its actionable preflight
 the persisted tile restored after app restart, and a `dist/index.html` edit hot-reloaded in
 place. This smoke found and fixed two real gaps: missing Dockview registration and generated
 output being ignored by the watcher.
+
+**Agent preview use — verified 2026-09-01.** A real Codex tile called
+`devapp_preview_ensure`, received `needsApproval` without a guest or tab ID, and could not
+bypass the session grant. After the user-scoped approval, `devapp_preview_attach` returned the
+exact living tab, `preview_snapshot` read the rendered page, `preview_click` activated
+“Verify interaction,” and a second snapshot read “Interaction verified in the living preview
+guest.” This smoke found and fixed two packaging/runtime gaps: hidden guests cannot rely on
+`webContents.capturePage()`, and Playwright's injected selector runtime must be embedded in the
+desktop bundle rather than resolved from the packaged main output at runtime.
 
 **The full loop, end to end.** Author a package, preview it, fix a preflight failure,
 publish, install, open. Each segment is tested; the whole path has never been walked. That
@@ -272,6 +290,8 @@ walk is the real acceptance test for Phase 5 and it has not happened.
 | `features/devapps/registry/parts.ts` | parts and surfaces |
 | `features/devapps/registry/ref.ts` | durable names |
 | `features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx` | the tile |
+| `features/projects/devapps/devAppPreviewRuntimeStore.ts` | live status for automation |
+| `features/projects/devapps/devAppPreviewSurfaceController.ts` | package-to-Dockview placement |
 | `electron/ipc/registerDevAppPreviewHandlers.ts` | IPC boundary |
 
 ---
@@ -285,10 +305,9 @@ In dependency order, not preference order.
    restart restoration, built-output hot reload, and lease teardown. The broader
    author-preview-fix-publish-install-open walk remains under the full-loop item above.
 
-2. **Add the automation operations in t3code.** The prerequisite preview-surface inventory
-   commit is now merged and pinned from `main`. Add `devAppPreviewEnsure` /
-   `devAppPreviewAttach` in the fork, sync the generated contracts, and wire the desktop
-   host. This closes Phase 5 properly.
+2. **Agent development-preview automation — complete 2026-09-01.** The fork owns the two
+   lifecycle operations and fixes required for hidden capture and packaged selector injection;
+   the parent host creates, attaches, targets, and controls the approved living guest.
 
 3. **Settle protocol versioning.** Overdue since Phase 4 and it hardens at Phase 6. Deciding
    it costs a conversation now and a migration later.

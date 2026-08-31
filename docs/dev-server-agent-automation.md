@@ -18,6 +18,8 @@ Cozea exposes project previews to the vendored T3 agent runtime through the work
 - Browser, Org DevApp, and Project DevApp tiles are outside the Dev Server _process-management_
   path, but their living guests are eligible for the same page-automation operations. Mobile
   Simulator tiles remain outside browser automation.
+- Development package previews have their own `devapp_preview_ensure` and
+  `devapp_preview_attach` lifecycle. They never start or attach a Dev Server process.
 
 ## Surface placement and ownership
 
@@ -75,6 +77,25 @@ policy remains authoritative for every agent request, including Org DevApp relea
 Runtime tab IDs are opaque, process-local handles bounded by T3's 128-character contract; they do
 not serialize or expose workbench, project, workspace, or tile identifiers.
 
+## Development DevApp preview tools
+
+The same pinned T3 toolkit exposes two package-development lifecycle operations:
+
+| Tool                    | Package effect                                                 | Surface effect                                                           |
+| ----------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `devapp_preview_ensure` | Opens or reuses a project-relative `cozea-devapp.json` package | Creates or reuses an inactive preview tile; `open: true` reveals it      |
+| `devapp_preview_attach` | Never creates a package session or grants capabilities         | Attaches to an existing approved preview by package path or exact tab ID |
+
+Both operations return the development phase, preflight diagnostics, requested capabilities,
+worker state, readiness, and the exact runtime tab when a living guest exists. A package that is
+invalid or waiting for approval returns immediately with no targetable guest. The assistant cannot
+grant requested capabilities; the user must approve them for the current application session.
+
+After approval, snapshot, click, type, press, scroll, evaluate, wait, capture, recording, resize,
+and appearance operations address the same guest through its returned runtime tab ID. The package's
+`agentInvocable` declaration controls whether its worker may become an autonomous agent surface; it
+does not disable explicit user-directed preview inspection or interaction.
+
 ## Runtime bridge
 
 The renderer registers one effective T3 `PreviewAutomationHost` candidate even when several
@@ -127,3 +148,9 @@ Verify all of the following before release:
 16. A newly created inactive Dev Server surface is returned by the same `preview_open` or
     `dev_server_ensure` request, and every returned runtime tab ID decodes through the pinned T3
     result schema.
+17. `devapp_preview_ensure` reports invalid and approval-required packages without bypassing the
+    gate; after approval, attach returns the living guest and generic snapshot/interaction observes
+    the same page the user sees.
+18. Hidden development guests capture through CDP and selector automation uses the bundled injected
+    runtime; neither path depends on window visibility or runtime Node resolution from the packaged
+    Electron output.
