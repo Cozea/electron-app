@@ -24,8 +24,14 @@ export const terminalDevAppManifest = {
     badgeLabel: "Built in",
     featured: true,
   },
+  parts: {
+    view: { source: "native", rendererId: "terminal" },
+    worker: { capabilities: ["terminal.spawn"] },
+  },
   launch: {
     kind: "terminal",
     tileType: "terminal",
   },
 } satisfies DevAppManifest
+
+export default terminalDevAppManifest

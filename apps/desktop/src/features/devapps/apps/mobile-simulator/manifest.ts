@@ -24,9 +24,15 @@ export const mobileSimulatorDevAppManifest = {
     badgeLabel: "Built in",
     featured: true,
   },
+  parts: {
+    view: { source: "native", rendererId: "mobileSimulator" },
+    worker: { capabilities: ["process.spawn"] },
+  },
   launch: {
     kind: "mobileSimulator",
     tileType: "mobileSimulator",
     singleton: true,
   },
 } satisfies DevAppManifest
+
+export default mobileSimulatorDevAppManifest

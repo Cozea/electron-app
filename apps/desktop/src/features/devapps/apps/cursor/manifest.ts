@@ -24,9 +24,15 @@ export const cursorDevAppManifest = {
     badgeLabel: "Built in",
     featured: true,
   },
+  parts: {
+    view: { source: "native", rendererId: "assistantChat" },
+    worker: { capabilities: ["project.read", "project.write", "process.spawn"] },
+  },
   launch: {
     kind: "assistantChat",
     tileType: "assistantChat",
     provider: "cursor",
   },
 } satisfies DevAppManifest
+
+export default cursorDevAppManifest
