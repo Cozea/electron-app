@@ -24,7 +24,6 @@ export const WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT = 118
 export const WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP = 28
 export const WORKBENCH_SELECTION_LAUNCHER_ROW_GAP = 24
 export const WORKBENCH_SELECTION_LAUNCHER_MAX_COLUMNS = 6
-export const WORKBENCH_SELECTION_LAUNCHER_MAX_ROWS = 2
 
 export function computeWorkbenchSelectionLauncherLayout({
   width,
@@ -35,7 +34,7 @@ export function computeWorkbenchSelectionLauncherLayout({
   columnGap = WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP,
   rowGap = WORKBENCH_SELECTION_LAUNCHER_ROW_GAP,
   maxColumns = WORKBENCH_SELECTION_LAUNCHER_MAX_COLUMNS,
-  maxRows = WORKBENCH_SELECTION_LAUNCHER_MAX_ROWS,
+  maxRows = Number.POSITIVE_INFINITY,
 }: ComputeWorkbenchSelectionLauncherLayoutOptions): WorkbenchSelectionLauncherLayout {
   const safeItemCount = Math.max(0, itemCount)
   const safeWidth = Math.max(0, width)
@@ -54,7 +53,8 @@ export function computeWorkbenchSelectionLauncherLayout({
     1,
     Math.min(maxColumns, fittingColumns, Math.max(1, safeItemCount)),
   )
-  const rows = Math.max(1, Math.min(maxRows, fittingRows))
+  const requiredRows = Math.ceil(Math.max(1, safeItemCount) / columns)
+  const rows = Math.max(1, Math.min(maxRows, fittingRows, requiredRows))
   const itemsPerPage = Math.max(1, columns * rows)
   const pageCount = Math.max(1, Math.ceil(Math.max(1, safeItemCount) / itemsPerPage))
 

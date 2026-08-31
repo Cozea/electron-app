@@ -10,6 +10,7 @@ export interface AssistantComposerDraftState {
 
 interface AssistantComposerDraftStoreState {
   draftsByTargetKey: Record<string, AssistantComposerDraftState>
+  lastModelSelectionByInstanceId: Record<string, ModelSelection>
   upsertDraft: (targetKey: string, patch: AssistantComposerDraftState) => void
   adoptDraft: (fromTargetKey: string, toTargetKey: string) => void
   clearDraft: (targetKey: string) => void
@@ -20,19 +21,31 @@ export const useAssistantComposerDraftStore = create<AssistantComposerDraftStore
   persist(
     (set, get) => ({
       draftsByTargetKey: {},
+      lastModelSelectionByInstanceId: {},
       upsertDraft: (targetKey, patch) => {
         if (!targetKey) {
           return
         }
-        set((state) => ({
-          draftsByTargetKey: {
-            ...state.draftsByTargetKey,
-            [targetKey]: {
-              ...state.draftsByTargetKey[targetKey],
-              ...patch,
+        set((state) => {
+          const modelSelection = patch.modelSelection
+          return {
+            draftsByTargetKey: {
+              ...state.draftsByTargetKey,
+              [targetKey]: {
+                ...state.draftsByTargetKey[targetKey],
+                ...patch,
+              },
             },
-          },
-        }))
+            ...(modelSelection
+              ? {
+                  lastModelSelectionByInstanceId: {
+                    ...state.lastModelSelectionByInstanceId,
+                    [modelSelection.instanceId]: modelSelection,
+                  },
+                }
+              : {}),
+          }
+        })
       },
       adoptDraft: (fromTargetKey, toTargetKey) => {
         if (!fromTargetKey || !toTargetKey || fromTargetKey === toTargetKey) {
@@ -87,6 +100,7 @@ export const useAssistantComposerDraftStore = create<AssistantComposerDraftStore
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         draftsByTargetKey: state.draftsByTargetKey,
+        lastModelSelectionByInstanceId: state.lastModelSelectionByInstanceId,
       }),
     },
   ),

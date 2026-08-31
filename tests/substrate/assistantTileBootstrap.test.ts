@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveAssistantTurnRunning,
   deriveTitleSeed,
+  resolveRememberedModelSelection,
 } from "../../apps/desktop/src/features/projects/components/workbench/assistant/workbenchAssistantShared";
 import { flushWorkbenchStorage } from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
 
@@ -49,5 +50,87 @@ describe("assistantTileBootstrap", () => {
         streamIsStreaming: false,
       }),
     ).toBe(false);
+  });
+
+  it("uses the last selected model when a fresh provider tile opens", () => {
+    const fallbackSelection = {
+      provider: "opencode" as const,
+      instanceId: "opencode:default",
+      model: "opencode/default-model",
+    };
+
+    expect(
+      resolveRememberedModelSelection({
+        fallbackSelection,
+        explicitTileModel: null,
+        rememberedSelection: {
+          provider: "opencode",
+          instanceId: "opencode:default",
+          model: "opencode/last-used-model",
+        },
+        selectableModels: [
+          { slug: "opencode/default-model", name: "Default model" },
+          { slug: "opencode/last-used-model", name: "Last used model" },
+        ],
+      }),
+    ).toMatchObject({ model: "opencode/last-used-model" });
+  });
+
+  it("keeps an existing tile's model ahead of the remembered default", () => {
+    const fallbackSelection = {
+      provider: "codex" as const,
+      instanceId: "codex:default",
+      model: "gpt-existing",
+    };
+
+    expect(
+      resolveRememberedModelSelection({
+        fallbackSelection,
+        explicitTileModel: "gpt-existing",
+        rememberedSelection: {
+          provider: "codex",
+          instanceId: "codex:default",
+          model: "gpt-remembered",
+        },
+        selectableModels: [
+          { slug: "gpt-existing", name: "Existing" },
+          { slug: "gpt-remembered", name: "Remembered" },
+        ],
+      }),
+    ).toBe(fallbackSelection);
+  });
+
+  it("ignores remembered models from another provider instance or a stale catalog", () => {
+    const fallbackSelection = {
+      provider: "claudeAgent" as const,
+      instanceId: "claudeAgent:default",
+      model: "claude-current",
+    };
+
+    expect(
+      resolveRememberedModelSelection({
+        fallbackSelection,
+        explicitTileModel: null,
+        rememberedSelection: {
+          provider: "claudeAgent",
+          instanceId: "claudeAgent:other",
+          model: "claude-other",
+        },
+        selectableModels: [{ slug: "claude-current", name: "Current" }],
+      }),
+    ).toBe(fallbackSelection);
+
+    expect(
+      resolveRememberedModelSelection({
+        fallbackSelection,
+        explicitTileModel: null,
+        rememberedSelection: {
+          provider: "claudeAgent",
+          instanceId: "claudeAgent:default",
+          model: "claude-removed",
+        },
+        selectableModels: [{ slug: "claude-current", name: "Current" }],
+      }),
+    ).toBe(fallbackSelection);
   });
 });

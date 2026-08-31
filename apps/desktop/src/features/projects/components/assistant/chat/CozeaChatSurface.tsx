@@ -43,6 +43,7 @@ import type {
 import { buildExpandedImagePreview } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
 import { MessagesTimeline } from "@/features/projects/components/assistant/chat/MessagesTimeline"
 import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
+import { shouldDismissModelPickerOnPointerDown } from "@/features/projects/components/assistant/chat/modelPickerDismissal"
 import { ModelPickerContent } from "@/features/projects/components/assistant/chat/ModelPickerContent"
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
 import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
@@ -440,6 +441,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
   const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
+  const modelPickerPanelRef = useRef<HTMLDivElement | null>(null)
+  const modelPickerTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modelPickerAnimationFrameRef = useRef<number | null>(null)
   const modelPickerCloseTimerRef = useRef<number | null>(null)
   const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
@@ -768,6 +771,27 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       modelPickerCloseTimerRef.current = null
       setShouldRenderModelPicker(false)
     }, MODEL_PICKER_PANEL_TRANSITION_MS)
+  }, [isModelPickerOpen])
+
+  useEffect(() => {
+    if (!isModelPickerOpen) return
+
+    const handleDocumentPointerDown = (event: PointerEvent) => {
+      if (
+        shouldDismissModelPickerOnPointerDown({
+          eventPath: event.composedPath(),
+          panel: modelPickerPanelRef.current,
+          trigger: modelPickerTriggerRef.current,
+        })
+      ) {
+        setIsModelPickerOpen(false)
+      }
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true)
+    return () => {
+      document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
+    }
   }, [isModelPickerOpen])
 
   useEffect(() => {
@@ -1349,6 +1373,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : null}
 
         <div
+          ref={modelPickerPanelRef}
           className={cn(
             "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-200 ease-out",
             isModelPickerVisible
@@ -1545,6 +1570,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
             <div data-chat-composer-actions="right" className="flex min-w-0 max-w-[calc(100%-48px)] shrink items-center gap-1.5">
               <ProviderModelPicker
+                triggerRef={modelPickerTriggerRef}
                 provider={props.selectedProvider}
                 activeInstanceId={props.selectedModelSelection.instanceId}
                 model={props.selectedModelSelection.model}
