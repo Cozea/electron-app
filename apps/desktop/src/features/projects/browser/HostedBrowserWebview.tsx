@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import { resolveBrowserSurfacePanelRect, useBrowserSurfaceStore } from "./browserSurfaceStore";
+import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore";
 import { resolveHostedBrowserWebviewWrapperStyle } from "./hostedBrowserWebviewStyle";
 import {
   INITIAL_WEBVIEW_CRASH_RECOVERY_STATE,
@@ -54,6 +55,9 @@ function stateUrl(state: CozeaBrowserSurfaceState | null): string | null {
 export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfaceDescriptor }) {
   const preview = window.desktopBridge?.preview;
   const runtimeTabId = descriptor.runtimeTabId;
+  const [initialSrc] = useState(() => descriptor.initialUrl ?? "about:blank");
+  const descriptorRef = useRef(descriptor);
+  descriptorRef.current = descriptor;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const webviewRef = useRef<ElectronWebview | null>(null);
   const crashRecoveryRef = useRef<WebviewCrashRecoveryState>(INITIAL_WEBVIEW_CRASH_RECOVERY_STATE);
@@ -61,7 +65,8 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   const readyRef = useRef<Promise<void>>(Promise.resolve());
   const [prepared, setPrepared] = useState<PreparedBrowserSurface | null>(null);
   const [webviewGeneration, setWebviewGeneration] = useState(0);
-  const [recoverySrc, setRecoverySrc] = useState("about:blank");
+  const [recoverySrc, setRecoverySrc] = useState(initialSrc);
+  const surfaceState = useBrowserSurfaceStateStore((state) => state.byTabId[runtimeTabId] ?? null);
   const presentation = useBrowserSurfaceStore(
     useShallow((state) => {
       const current = state.byTabId[runtimeTabId];
@@ -78,27 +83,29 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
     let disposed = false;
     crashRecoveryRef.current = INITIAL_WEBVIEW_CRASH_RECOVERY_STATE;
     const ready = enqueueSurfaceOperation(runtimeTabId, async () => {
-      const next = await preview.prepareSurface(descriptor);
-      latestUrlRef.current = stateUrl(next.state) ?? descriptor.initialUrl;
-      if (!disposed) setPrepared(next);
+      const initialDescriptor = descriptorRef.current;
+      const next = await preview.prepareSurface(initialDescriptor);
+      latestUrlRef.current = stateUrl(next.state) ?? initialDescriptor.initialUrl;
+      if (!disposed) {
+        useBrowserSurfaceStateStore.getState().apply(runtimeTabId, next.state);
+        setPrepared(next);
+      }
     });
     readyRef.current = ready;
     return () => {
       disposed = true;
+      useBrowserSurfaceStateStore.getState().remove(runtimeTabId);
       void enqueueSurfaceOperation(runtimeTabId, () => preview.releaseSurface(runtimeTabId)).catch(
         () => undefined,
       );
     };
-  }, [descriptor, preview, runtimeTabId]);
+  }, [preview, runtimeTabId]);
 
   useEffect(() => {
-    if (!preview) return;
-    return preview.onSurfaceStateChange((tabId, state) => {
-      if (tabId !== runtimeTabId) return;
-      latestUrlRef.current = stateUrl(state) ?? latestUrlRef.current;
-      setPrepared((current) => (current ? { ...current, state } : current));
-    });
-  }, [preview, runtimeTabId]);
+    if (!surfaceState) return;
+    latestUrlRef.current = stateUrl(surfaceState) ?? latestUrlRef.current;
+    setPrepared((current) => (current ? { ...current, state: surfaceState } : current));
+  }, [surfaceState]);
 
   useEffect(() => {
     if (!preview) return;
@@ -137,7 +144,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
       recoveryTimeout = setTimeout(() => {
         recoveryTimeout = null;
         if (!disposed) {
-          setRecoverySrc(latestUrlRef.current ?? "about:blank");
+          setRecoverySrc(latestUrlRef.current ?? initialSrc);
           setWebviewGeneration((generation) => generation + 1);
         }
       }, recovery.delayMs);
@@ -153,7 +160,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
       webview.removeEventListener("dom-ready", register);
       webview.removeEventListener("render-process-gone", recoverGuest);
     };
-  }, [prepared, preview, runtimeTabId, webviewGeneration]);
+  }, [initialSrc, prepared, preview, runtimeTabId, webviewGeneration]);
 
   if (!prepared) return null;
   const active = presentation.visible && presentation.rect !== null;
@@ -177,7 +184,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
       <webview
         key={webviewGeneration}
         ref={setWebviewRef}
-        src={webviewGeneration === 0 ? "about:blank" : recoverySrc}
+        src={webviewGeneration === 0 ? initialSrc : recoverySrc}
         partition={prepared.config.partition}
         webpreferences={prepared.config.webPreferences}
         {...(prepared.config.preloadUrl ? { preload: prepared.config.preloadUrl } : {})}

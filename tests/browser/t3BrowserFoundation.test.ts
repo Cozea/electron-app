@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
 import {
   acquireBrowserSurface,
@@ -14,9 +16,47 @@ import {
   planWebviewCrashRecovery,
   WEBVIEW_CRASH_RECOVERY_WINDOW_MS,
 } from "@/features/projects/browser/webviewCrashRecovery";
+import {
+  browserSurfaceRuntimeTabId,
+  resolveBrowserWorkbenchSessionKey,
+} from "@/features/projects/browser/browserSurfaceIdentity";
+import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore";
 
 describe("pinned T3 browser host foundation", () => {
-  beforeEach(() => useBrowserSurfaceStore.setState({ byTabId: {} }));
+  beforeEach(() => {
+    useBrowserSurfaceStore.setState({ byTabId: {} });
+    useBrowserSurfaceStateStore.setState({ byTabId: {} });
+  });
+
+  it("derives one stable runtime identity from session, kind, tile, and generation", () => {
+    const identity = {
+      projectId: "project",
+      laneId: "lane",
+      workspaceId: "workspace",
+      workbenchSessionKey: null,
+      tileId: "browser-1",
+      kind: "browser" as const,
+    };
+
+    expect(resolveBrowserWorkbenchSessionKey(identity)).toBe("project::lane::workspace");
+    expect(browserSurfaceRuntimeTabId(identity)).toBe(
+      browserSurfaceRuntimeTabId({ ...identity, runtimeGeneration: null }),
+    );
+    expect(browserSurfaceRuntimeTabId({ ...identity, runtimeGeneration: 2 })).not.toBe(
+      browserSurfaceRuntimeTabId(identity),
+    );
+  });
+
+  it("keeps the renderer-wide surface inventory snapshot shallow-stable", () => {
+    const hostSource = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "apps/desktop/src/features/projects/browser/ElectronBrowserHost.tsx",
+      ),
+      "utf8",
+    );
+    expect(hostSource).toContain("useShallow((state) => Object.values(state.byTabId))");
+  });
 
   it("gives the newest slot lease exclusive ownership and hides on release", () => {
     const staleLease = acquireBrowserSurface("tab");

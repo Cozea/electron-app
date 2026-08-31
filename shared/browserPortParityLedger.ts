@@ -9,64 +9,64 @@ export interface BrowserPortParityRequirement {
   id: string;
   area: BrowserPortParityArea;
   expectation: string;
-  status: "pending-t3-port";
+  status: "pending-t3-port" | "ported" | "cozea-adapted" | "shell-inapplicable";
 }
 
 /**
- * Requirements preserved from the removed native browser tests. The T3 port
- * must turn each entry into executable parity coverage before claiming browser
- * availability; recording an entry here is not evidence that it is implemented.
+ * Requirements preserved from the removed native browser tests. A non-pending
+ * entry must have executable parity coverage; recording it here alone is not
+ * evidence that it is implemented.
  */
 export const T3_BROWSER_PORT_PARITY_LEDGER = [
   {
     id: "navigation.initial-blank",
     area: "navigation",
     expectation: "A new tile accepts its saved URL instead of remaining on the guest blank page.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "navigation.sequential-urls",
     area: "navigation",
     expectation: "The address bar can navigate repeatedly after the first successful load.",
-    status: "pending-t3-port",
+    status: "ported",
   },
   {
     id: "navigation.history-reload-find-zoom-devtools",
     area: "navigation",
     expectation: "History, reload, find, zoom, and developer tools reflect the active guest.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "navigation.popup-policy",
     area: "navigation",
     expectation:
       "New-window requests follow the tile navigation policy without escaping isolation.",
-    status: "pending-t3-port",
+    status: "ported",
   },
   {
     id: "http-errors.transport-precedence",
     area: "http-errors",
     expectation: "Transport failures take precedence over HTTP response diagnostics.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "http-errors.blank-error-document",
     area: "http-errors",
     expectation:
       "Blank 4xx and 5xx documents surface the response status and optional status text.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "http-errors.framework-document",
     area: "http-errors",
     expectation: "Framework-provided error pages and successful blank responses remain visible.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "session-isolation.workspace",
     area: "session-isolation",
     expectation: "Workspace browser state is isolated by workspace identity.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "session-isolation.ephemeral-release",
