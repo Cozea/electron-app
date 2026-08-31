@@ -128,7 +128,7 @@ describe("Preview service — reads a real package off disk", () => {
     )
     expect(crossSource.status).toBe(400)
 
-    service.close(status.sourceId)
+    service.close(status.sourceId, "tile_1")
     const released = await protocolHandler(
       new Request(status.view.kind === "builtOutput" ? status.view.url : ""),
     )
@@ -164,6 +164,24 @@ describe("Preview service — the renderer cannot name a directory", () => {
     service.dispose()
   })
 
+  it("refuses a package symlink that resolves outside the workspace", () => {
+    const outside = path.join(root, "outside")
+    fs.mkdirSync(path.join(outside, "dist"), { recursive: true })
+    fs.writeFileSync(path.join(outside, "cozea-devapp.json"), manifest())
+    fs.writeFileSync(path.join(outside, "dist", "index.html"), "<html>outside</html>")
+    const linked = path.join(workspaceRoot, "linked")
+    fs.symlinkSync(outside, linked, "dir")
+    const { service } = makeService()
+    const status = service.open({
+      workspaceId: "ws_1",
+      workspaceRoot,
+      relativePath: "linked",
+      leaseId: "tile_1",
+    })
+    expect(status.status).toBe("invalid")
+    service.dispose()
+  })
+
   it("reports a folder with no manifest as a diagnostic", () => {
     const { service } = makeService()
     fs.mkdirSync(path.join(workspaceRoot, "empty"), { recursive: true })
@@ -174,6 +192,14 @@ describe("Preview service — the renderer cannot name a directory", () => {
       leaseId: "tile_1",
     })
     expect(status.status === "invalid" && status.diagnostics[0]?.code).toBe("manifest-missing")
+    service.dispose()
+  })
+
+  it("refuses an oversized manifest without reading it into main-process memory", () => {
+    fs.writeFileSync(path.join(sourcePath, "cozea-devapp.json"), " ".repeat(1024 * 1024 + 1))
+    const { service } = makeService()
+    const status = open(service)
+    expect(status.status).toBe("invalid")
     service.dispose()
   })
 })
@@ -216,7 +242,7 @@ describe("Preview service — hot reload", () => {
     const { service, broadcasts, touch } = makeService()
     const status = open(service)
     const sourceId = status.status === "running" ? status.sourceId : ""
-    service.close(sourceId)
+    service.close(sourceId, "tile_1")
     touch("cozea-devapp.json")
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(broadcasts).toEqual([])
@@ -236,8 +262,8 @@ describe("Preview service — approval", () => {
     expect(status.status).toBe("needsApproval")
     expect(worker.start).not.toHaveBeenCalled()
 
-    const sourceId = status.status === "needsApproval" ? status.sourceId : ""
-    const approved = service.approve(sourceId)
+    if (status.status !== "needsApproval") throw new Error("Expected approval")
+    const approved = service.approve(status.sourceId, status.approvalFingerprint)
     expect(approved?.status).toBe("running")
     expect(worker.start).toHaveBeenCalledOnce()
     service.dispose()
@@ -245,7 +271,34 @@ describe("Preview service — approval", () => {
 
   it("refuses to approve a preview that was never opened", () => {
     const { service } = makeService()
-    expect(service.approve("0".repeat(32))).toBeNull()
+    expect(service.approve("0".repeat(32), "v1;;agent=0")).toBeNull()
+    service.dispose()
+  })
+
+  it("does not approve capabilities added after the prompt was rendered", () => {
+    fs.writeFileSync(path.join(sourcePath, "worker.js"), "//")
+    fs.writeFileSync(
+      path.join(sourcePath, "cozea-devapp.json"),
+      manifest({ worker: { entry: "worker.js", capabilities: ["project.read"] } }),
+    )
+    const { service, worker, touch } = makeService()
+    const shown = open(service)
+    expect(shown.status).toBe("needsApproval")
+    if (shown.status !== "needsApproval") throw new Error("Expected approval")
+
+    fs.writeFileSync(
+      path.join(sourcePath, "cozea-devapp.json"),
+      manifest({
+        worker: {
+          entry: "worker.js",
+          capabilities: ["project.read", "process.spawn"],
+        },
+      }),
+    )
+    touch("cozea-devapp.json")
+    const result = service.approve(shown.sourceId, shown.approvalFingerprint)
+    expect(result?.status).toBe("needsApproval")
+    expect(worker.start).not.toHaveBeenCalled()
     service.dispose()
   })
 })

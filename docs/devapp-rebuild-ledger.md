@@ -8,12 +8,13 @@ what was left suspended with the reason it stopped.
 | Original parent commits | 15                                                        |
 | Phase 5 follow-up       | 2 parent commits + 3 T3 fork commits                      |
 | New modules             | 16                                                        |
-| Test files              | 18                                                        |
-| Full suite              | 199 files / 1538 tests passing (1 file / 4 tests skipped) |
+| Test files              | 20                                                        |
+| Full suite              | 201 files / 1563 tests passing (1 file / 4 tests skipped) |
 | Phases complete         | 3 of 9                                                    |
 
 Originally audited at `78cb74bd` on `main`; live Phase 5 acceptance was refreshed on
-2026-09-01 from the current `main` line plus the dedicated acceptance and protocol branches.
+2026-09-01 from the current `main` line plus the dedicated acceptance, protocol, registry, and
+worker-security branches.
 All three typecheck projects, focused tests, lint, the full suite, and the production build pass. Phase scope is
 quoted from the DevApp Rebuild Plan. Every "left suspended" item was checked in code
 rather than recalled.
@@ -29,9 +30,9 @@ by building blind and hoping.
 
 What exists now is a different system underneath the same UI. A DevApp is described as
 composable parts rather than picked from a closed list. It has a durable name that survives
-storage and crosses projects. It can ask for capabilities from a settled vocabulary, run
-privileged code out of process behind a gate that enforces them, and be developed locally
-against the exact path it will take once published.
+storage and crosses projects. It can ask for capabilities from a settled vocabulary and run a
+local development worker behind a versioned gate after explicit approval. Published worker
+execution remains blocked until its container runtime exists.
 
 What does not exist yet is the half that makes it a _platform_ rather than a better
 runtime: nobody outside the team can author against it, worker-declared agent tools do not
@@ -117,18 +118,25 @@ ordinary response rather than a kill, so an over-broad manifest is a fixable mis
 of an outage. Workers are bound to one workspace at start and handlers ignore any workspace
 a request names.
 
+The adversarial review now requires explicit approval for every development worker, revalidates
+the manifest at approval time, tears down expired grants even while idle, replaces processes when
+authority narrows, resolves symlinks at every host filesystem boundary, hides host errors from
+worker responses, bounds messages/resources, and requires the v1 method table to match the real
+handler set. Node permission flags and a minimal environment are defense in depth only.
+
 **Left suspended.** The plan called for `MessageChannelMain` ports bridged to _views_
 through preload. That does not exist — `preload.ts` has zero worker references, so a worker
 can talk to main but a view cannot talk to a worker. The previously overdue protocol
-versioning policy is now implemented; the missing view bridge is the remaining Phase 4 gap.
+versioning and adversarial-review gates are now complete; the missing view bridge is the remaining
+Phase 4 gap. Published workers are separately blocked on Phase 8 containment.
 
 ### Phase 5 — Development mode and preview tile — **Delivered**
 
 **Shipped.** The authoring loop, and the first phase that delivers user-visible capability.
 A `cozea-devapp.json` manifest that fails closed. Provisional trust that is never persisted
-and shares no namespace with published approvals. A preview session running the same
-parser, host, gate, and preflight a published app runs. A debounced watcher, its own browser
-session, its own protocol origin, and a tile. The tile is now reachable from the normal
+and shares no namespace with published approvals. A preview session running the shared parser,
+versioned host/gate, and publishing preflight intended for the eventual contained runtime. A
+debounced watcher, its own browser session, its own protocol origin, and a tile. The tile is now reachable from the normal
 workbench command palette, is routed through the browser-backed Dockview policies, and
 reloads when generated output under `dist`, `build`, or `out` changes.
 
@@ -143,6 +151,9 @@ with `agentInvocable: false` can still be inspected and interacted with when the
 assistant to control its approved development preview; it simply does not expose its worker as
 an autonomous agent surface.
 
+Every package that declares a worker now pauses for explicit session approval, including a worker
+that declares zero host capabilities. View-only packages remain prompt-free.
+
 ### Phase 6 — Authoring contract and headless publish — **Not started**
 
 `cozea-devapp.schema.json` generated from the internal source; `@cozea/devapp-api` typings
@@ -150,7 +161,9 @@ and the view-side port client; a scaffold command; programmatic publish that byp
 dialog flow; docs served publicly and as an MCP server inside Cozea.
 
 **Its single internal source now exists** — `shared/devAppPackage.ts` was written in Phase 5
-to be exactly that, so this phase starts from a settled format rather than inventing one.
+to be exactly that, so this phase starts from a settled format rather than inventing one. The
+schema, typings, view-only scaffold, documentation, and headless publish work may proceed before
+Phase 8; published/external worker execution may not.
 
 ### Phase 7 — Agent surface and installation semantics — **Not started**
 
@@ -163,7 +176,9 @@ update-available state instead of silently following `activeReleaseId`.
 
 A container runtime adapter, which turns the native-code ban from a blanket rule into a
 runtime-scoped one; a central build path; hosted location as a manifest value; shared state
-semantics and the trust model for code Cozea executes on someone's behalf.
+semantics and the trust model for code Cozea executes on someone's behalf. This phase is now an
+explicit prerequisite for published workers and autonomous worker tools, not an optional later
+hardening pass.
 
 ---
 
@@ -201,12 +216,18 @@ request/response/event, and rejects explicit mismatches before authorization or 
 Future versions require their own parser and method table. The complete immutable-version and
 security policy is in `docs/devapp-worker-protocol.md`.
 
-### Adversarial security review — cross-cutting, overdue
+### Adversarial security review — cross-cutting, completed 2026-09-01
 
-Also scheduled for before Phase 4. A worker holding `fs.write` and `terminal.spawn` is
-arbitrary code execution and deserves review as such. The boundaries were designed carefully
-and each has tests that fail when the guard is removed — but nobody adversarial has looked
-at them, and self-review is not the same thing.
+The review found that Electron `utilityProcess` is a full Node process rather than a sandbox, that
+Electron 40's Node permission model does not gate network access, and that a zero-capability worker
+could therefore run with ambient authority without a prompt. Published worker execution is now
+architecturally disconnected until Phase 8, every development worker requires explicit approval,
+and the host has process-identity, expiry, symlink, approval-TOCTOU, error-redaction, message,
+resource, and multi-lease defenses with regression coverage.
+
+Protocol v1 was also corrected to advertise exactly the six methods it implements; future methods
+require a new explicit protocol version. Residual local-development risks and phase ordering are in
+`docs/devapp-worker-security-review.md`.
 
 ### Registry consolidation — Phase 2, completed 2026-09-01
 
@@ -341,5 +362,17 @@ In dependency order, not preference order.
    of parallel tile lists. Cross-project durable-reference resolution remains the independent
    Phase 2 gap.
 
-5. **Get the capability model reviewed adversarially.** Before anyone outside the team can
-   author a worker — which is Phase 6 — not after.
+5. **Adversarial capability/runtime review — complete 2026-09-01.** The development boundary is
+   hardened and honestly disclosed; published worker execution is blocked on Phase 8 containment.
+
+6. **Put parts on immutable release records.** Complete the remaining Phase 1 storage/dispatch
+   boundary without changing existing static/service release behavior.
+
+7. **Resolve durable publication refs.** Add the Convex lookup and cross-project consumer that the
+   Phase 2 addressing primitive still lacks.
+
+8. **Finish the view-to-worker bridge.** Reuse protocol v1 and its capability gate; do not create a
+   renderer-owned authority path.
+
+9. **Start Phase 6 in two lanes.** Schema, typings, view-only scaffold, docs, and headless publish
+   may proceed. Published/external worker execution stays unavailable until Phase 8 lands.

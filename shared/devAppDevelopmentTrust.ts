@@ -19,9 +19,10 @@ import {
  * that release; it does not grant a local directory claiming to be the same app, and the
  * reverse is equally true. There is no key either side can compute that collides.
  *
- * It is not weaker than published trust. "Provisional" means shorter-lived and clearly
- * labelled, not laxer: the same capabilities are asked for, and escalating ones are still
- * escalating.
+ * It is not a substitute for published trust. "Provisional" means shorter-lived and
+ * clearly labelled: every worker execution is explicitly approved, the same capabilities
+ * are asked for, and escalating ones are still escalating. Published worker execution is
+ * blocked until the container runtime exists.
  */
 
 /** Prefix keeping development approvals out of the published `worker:` namespace. */
@@ -90,14 +91,22 @@ export class DevAppDevelopmentTrustStore {
    * approved — so an app that narrows its request runs narrowed, without a new prompt and
    * without quietly retaining the wider grant.
    */
-  resolve(sourceId: string, requestedInput: DevAppGrant): DevAppDevelopmentTrustState {
+  resolve(
+    sourceId: string,
+    requestedInput: DevAppGrant,
+    options: { requireExplicitApproval?: boolean } = {},
+  ): DevAppDevelopmentTrustState {
     const requested = normalizeGrant(requestedInput)
 
     // Nothing asked for is nothing to approve. Prompting here would train people to
     // click through a dialog that never says anything, which is how a prompt that does
     // matter stops being read. The badge still marks the build as unpublished, and the
     // code still runs — the same thing the Dev Server tile already does for a project.
-    if (requested.capabilities.length === 0 && !requested.agentInvocable) {
+    if (
+      !options.requireExplicitApproval &&
+      requested.capabilities.length === 0 &&
+      !requested.agentInvocable
+    ) {
       return {
         status: "approved",
         effective: requested,

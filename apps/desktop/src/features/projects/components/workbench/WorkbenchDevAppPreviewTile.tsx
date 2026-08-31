@@ -53,6 +53,7 @@ export function WorkbenchDevAppPreviewTile({
   const surfacePresentation = useDockviewBrowserSurfacePresentation(panelApi, containerApi);
   const [status, setStatus] = useState<DevAppPreviewStatus | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [hotReload, setHotReload] = useState(true);
   // State for rendering; a ref alongside it so unmount can close the preview it opened
   // even after the component has stopped re-rendering.
@@ -81,16 +82,27 @@ export function WorkbenchDevAppPreviewTile({
   useEffect(() => {
     if (!preview || !workspaceId || !tile.relativePath) return;
     let cancelled = false;
+    let openedSourceId: string | null = null;
+    // React Strict Mode may overlap a superseded open with the active one. A lease per
+    // effect attempt ensures cleanup for the older request cannot release the live tile.
+    const leaseId = `${tile.id}_${crypto.randomUUID()}`;
 
     void preview
       .open({
         workspaceId,
         laneId,
         relativePath: tile.relativePath,
-        leaseId: tile.id,
+        leaseId,
       })
       .then((result) => {
-        if (cancelled) return;
+        if (cancelled) {
+          if (result.success && result.preview.status !== "invalid") {
+            void preview
+              .close({ sourceId: result.preview.sourceId, leaseId })
+              .catch(() => undefined);
+          }
+          return;
+        }
         if (!result.success) {
           setOpenError(result.error);
           return;
@@ -99,6 +111,7 @@ export function WorkbenchDevAppPreviewTile({
         setHotReload(result.preview.hotReload);
         setStatus(result.preview);
         if (result.preview.status !== "invalid") {
+          openedSourceId = result.preview.sourceId;
           sourceIdRef.current = result.preview.sourceId;
           setSourceId(result.preview.sourceId);
         }
@@ -111,10 +124,13 @@ export function WorkbenchDevAppPreviewTile({
 
     return () => {
       cancelled = true;
-      const opened = sourceIdRef.current;
-      sourceIdRef.current = null;
-      setSourceId(null);
-      if (opened) void preview.close({ sourceId: opened }).catch(() => undefined);
+      if (sourceIdRef.current === openedSourceId) {
+        sourceIdRef.current = null;
+        setSourceId(null);
+      }
+      if (openedSourceId) {
+        void preview.close({ sourceId: openedSourceId, leaseId }).catch(() => undefined);
+      }
     };
   }, [laneId, preview, tile.id, tile.relativePath, workspaceId]);
 
@@ -127,14 +143,21 @@ export function WorkbenchDevAppPreviewTile({
   }, [preview]);
 
   const approve = useCallback(() => {
-    if (!preview || !sourceId) return;
+    if (!preview || !sourceId || status?.status !== "needsApproval") return;
+    setApprovalError(null);
     void preview
-      .approve({ sourceId })
+      .approve({ sourceId, approvalFingerprint: status.approvalFingerprint })
       .then((result) => {
-        if (result.success) setStatus(result.preview);
+        if (result.success) {
+          setStatus(result.preview);
+          return;
+        }
+        setApprovalError(result.error);
       })
-      .catch(() => undefined);
-  }, [preview, sourceId]);
+      .catch((error: unknown) => {
+        setApprovalError(error instanceof Error ? error.message : "Could not approve the preview.");
+      });
+  }, [preview, sourceId, status]);
 
   const running = status?.status === "running" ? status : null;
   const view = running?.view ?? null;
@@ -222,7 +245,7 @@ export function WorkbenchDevAppPreviewTile({
         ) : status?.status === "invalid" ? (
           <PreviewDiagnostics status={status} />
         ) : status?.status === "needsApproval" ? (
-          <PreviewApproval status={status} onApprove={approve} />
+          <PreviewApproval status={status} error={approvalError} onApprove={approve} />
         ) : running ? (
           <>
             {view?.kind === "unavailable" ? (
@@ -312,9 +335,11 @@ function PreviewDiagnostics({
 
 function PreviewApproval({
   status,
+  error,
   onApprove,
 }: {
   status: Extract<DevAppPreviewStatus, { status: "needsApproval" }>;
+  error: string | null;
   onApprove: () => void;
 }) {
   return (
@@ -327,6 +352,12 @@ function PreviewApproval({
           <p className="text-xs text-muted-foreground">{status.badge.detail}</p>
         </div>
         <ul className="space-y-1.5">
+          {status.workerExecution ? (
+            <li className="text-xs text-foreground">
+              Run unpublished Node worker code from this project. Filesystem and process access
+              are restricted, but network access is not OS-sandboxed.
+            </li>
+          ) : null}
           {status.requested.capabilities.map((capability) => (
             <li key={capability} className="text-xs text-foreground">
               {CAPABILITY_DESCRIPTIONS[capability as DevAppCapability] ?? capability}
@@ -338,6 +369,7 @@ function PreviewApproval({
             </li>
           ) : null}
         </ul>
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
         <Button size="sm" onClick={onApprove}>
           Allow for this session
         </Button>

@@ -1,5 +1,8 @@
 import type { OrgDevAppPreflightReport } from "../../../../shared/orgDevAppDiagnostics"
-import type { DevAppGrant } from "../../../../shared/devAppCapabilities"
+import {
+  grantFingerprint,
+  type DevAppGrant,
+} from "../../../../shared/devAppCapabilities"
 import {
   DEV_APP_MANIFEST_FILENAME,
   parseDevAppPackage,
@@ -21,10 +24,10 @@ import { buildDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol"
  * Runs an unpublished DevApp from a local directory.
  *
  * This is the authoring loop. Its one non-negotiable property is that development runs
- * the same view, worker, and protocol path an installed app runs: the manifest is parsed
- * by the same parser, capabilities are gated by the same host, and preflight is the same
- * check publishing performs. "Works in dev, fails on publish" needs those paths to differ
- * somewhere, and this session is written so there is nowhere for them to differ.
+ * the intended view, worker protocol, and preflight contracts: the manifest is parsed by
+ * the shared parser, capabilities are gated by the versioned host, and preflight is the
+ * same check publishing performs. Published worker execution remains disconnected until
+ * its container runtime exists; this local process is not represented as that sandbox.
  *
  * Preflight therefore runs continuously rather than at publish time. A developer iterating
  * against a dev server gets hot reload, but is told the whole time whether what they have
@@ -43,8 +46,10 @@ export interface DevAppPreviewWorkerHost {
   start: (options: {
     publicationId: string
     entrypoint: string
+    packageRoot: string
     protocolVersion: number
     grant: DevAppGrant
+    authorizationExpiresAt: number | null
     binding: DevAppWorkerBinding
     leaseId: string
   }) => DevAppWorkerState
@@ -77,12 +82,15 @@ interface OpenSession {
   sourceId: string
   sourcePath: string
   binding: DevAppWorkerBinding
-  leaseId: string
+  leases: Set<string>
   manifest: DevAppPackage
   workerKey: string | null
   workerProtocolVersion: number | null
   reloadToken: number
 }
+
+const MAX_OPEN_PREVIEW_SESSIONS = 64
+const MAX_LEASES_PER_PREVIEW = 64
 
 /**
  * Namespaces the worker host key.
@@ -104,13 +112,19 @@ export class DevAppPreviewSession {
   }
 
   open(options: DevAppPreviewOpenOptions): DevAppPreviewStatus {
-    const sourcePath = this.deps.resolve(options.sourcePath)
-    const workspaceRoot = this.deps.resolve(options.workspaceRoot)
+    if (!/^[A-Za-z0-9_-]{1,192}$/.test(options.leaseId)) {
+      throw new Error("The DevApp preview lease is invalid.")
+    }
+    const unresolvedSourcePath = this.deps.resolve(options.sourcePath)
+    const unresolvedWorkspaceRoot = this.deps.resolve(options.workspaceRoot)
+    const sourcePath = this.deps.fs.realpath(unresolvedSourcePath)
+    const workspaceRoot = this.deps.fs.realpath(unresolvedWorkspaceRoot)
 
     // A DevApp under development is developed inside a project. Requiring that keeps
     // "preview this folder" from being a way to read an arbitrary directory, and it is
-    // what makes binding the worker to this workspace the honest thing to do.
-    if (!isInside(workspaceRoot, sourcePath)) {
+    // what makes binding the worker to this workspace the honest thing to do. Real paths
+    // are required here: a lexical child may be a symlink to an arbitrary machine path.
+    if (!sourcePath || !workspaceRoot || !isInside(workspaceRoot, sourcePath)) {
       return {
         status: "invalid",
         diagnostics: [{
@@ -140,6 +154,25 @@ export class DevAppPreviewSession {
     if (!parsed.manifest) return { status: "invalid", diagnostics: parsed.diagnostics }
 
     const sourceId = this.deps.hashPath(sourcePath)
+    const existing = this.sessions.get(sourceId)
+    if (existing) {
+      if (
+        existing.sourcePath !== sourcePath ||
+        existing.binding.workspaceId !== options.workspaceId ||
+        existing.binding.workspaceRoot !== workspaceRoot
+      ) {
+        throw new Error("This DevApp preview is already bound to another workspace.")
+      }
+      if (!existing.leases.has(options.leaseId) && existing.leases.size >= MAX_LEASES_PER_PREVIEW) {
+        throw new Error("This DevApp preview has too many active surfaces.")
+      }
+      existing.manifest = parsed.manifest
+      existing.leases.add(options.leaseId)
+      return this.settle(existing)
+    }
+    if (this.sessions.size >= MAX_OPEN_PREVIEW_SESSIONS) {
+      throw new Error("Too many DevApp previews are open.")
+    }
     const session: OpenSession = {
       sourceId,
       sourcePath,
@@ -147,7 +180,7 @@ export class DevAppPreviewSession {
         workspaceId: options.workspaceId,
         workspaceRoot,
       },
-      leaseId: options.leaseId,
+      leases: new Set([options.leaseId]),
       manifest: parsed.manifest,
       workerKey: null,
       workerProtocolVersion: null,
@@ -169,6 +202,14 @@ export class DevAppPreviewSession {
     const session = this.sessions.get(sourceId)
     if (!session) return null
 
+    const invalid = this.refreshManifest(session, true)
+    return invalid ?? this.settle(session)
+  }
+
+  private refreshManifest(
+    session: OpenSession,
+    advanceReloadToken: boolean,
+  ): DevAppPreviewStatus | null {
     const source = this.deps.fs.readFile(
       this.deps.join(session.sourcePath, DEV_APP_MANIFEST_FILENAME),
     )
@@ -191,8 +232,8 @@ export class DevAppPreviewSession {
     }
 
     session.manifest = parsed.manifest
-    session.reloadToken += 1
-    return this.settle(session)
+    if (advanceReloadToken) session.reloadToken += 1
+    return null
   }
 
   status(sourceId: string): DevAppPreviewStatus | null {
@@ -200,28 +241,57 @@ export class DevAppPreviewSession {
     return session ? this.settle(session) : null
   }
 
-  close(sourceId: string): void {
+  /** Releases one surface lease, or every lease during application shutdown. */
+  close(sourceId: string, leaseId?: string): boolean {
     const session = this.sessions.get(sourceId)
-    if (!session) return
-    if (session.workerKey) this.deps.worker.release(session.workerKey, session.leaseId)
+    if (!session) return true
+    const released = leaseId ? [leaseId] : [...session.leases]
+    for (const lease of released) {
+      session.leases.delete(lease)
+      if (session.workerKey) this.deps.worker.release(session.workerKey, lease)
+    }
+    if (session.leases.size > 0) return false
     this.sessions.delete(sourceId)
+    return true
   }
 
   /** Records the user's approval of exactly what the current manifest asks for. */
-  approve(sourceId: string): DevAppPreviewStatus | null {
+  approve(sourceId: string, expectedGrantFingerprint: string): DevAppPreviewStatus | null {
+    // Re-read from disk at click time. The watcher is debounced, so checking only the
+    // in-memory manifest would leave a window where changed worker code could start
+    // under the approval for the previous manifest.
     const session = this.sessions.get(sourceId)
     if (!session) return null
-    this.deps.trust.approve(sourceId, requestedGrant(session.manifest))
+    const invalid = this.refreshManifest(session, false)
+    if (invalid) return invalid
+    const requested = requestedGrant(session.manifest)
+    // The manifest may change between rendering the prompt and clicking Approve. Never
+    // approve a request the user was not actually shown.
+    if (grantFingerprint(requested) !== expectedGrantFingerprint) {
+      return this.settle(session)
+    }
+    this.deps.trust.approve(sourceId, requested)
     return this.settle(session)
   }
 
   private settle(session: OpenSession): DevAppPreviewStatus {
     const requested = requestedGrant(session.manifest)
-    const trust = this.deps.trust.resolve(session.sourceId, requested)
+    const workerExecution = session.manifest.worker !== undefined
+    const trust = this.deps.trust.resolve(session.sourceId, requested, {
+      requireExplicitApproval: workerExecution,
+    })
     // Preflight runs on every settle, not only at publish, so a project that has drifted
     // out of publishable shape says so while it is still cheap to fix.
     const preflight = this.deps.preflight(session.sourcePath)
-    const badge = developmentTrustBadge(trust)
+    const defaultBadge = developmentTrustBadge(trust)
+    const badge = workerExecution
+      ? {
+          ...defaultBadge,
+          detail: trust.status === "approved"
+            ? "Unpublished worker code is running with restricted filesystem and process access, but it can reach the network and is not OS-sandboxed."
+            : "Unpublished worker code requires approval before it can run. It is not an OS sandbox.",
+        }
+      : defaultBadge
 
     if (trust.status !== "approved") {
       this.stopWorker(session)
@@ -230,6 +300,8 @@ export class DevAppPreviewSession {
         sourceId: session.sourceId,
         name: session.manifest.name,
         requested,
+        workerExecution,
+        approvalFingerprint: grantFingerprint(requested),
         missing: trust.status === "unapproved" ? [...trust.missing] : [...requested.capabilities],
         badge,
         preflight,
@@ -244,7 +316,11 @@ export class DevAppPreviewSession {
       grant: trust.effective,
       badge,
       preflight,
-      worker: this.ensureWorker(session, trust.effective),
+      worker: this.ensureWorker(
+        session,
+        trust.effective,
+        workerExecution ? trust.expiresAt : null,
+      ),
       reloadToken: session.reloadToken,
     }
   }
@@ -275,7 +351,11 @@ export class DevAppPreviewSession {
     }
   }
 
-  private ensureWorker(session: OpenSession, grant: DevAppGrant): DevAppWorkerState | null {
+  private ensureWorker(
+    session: OpenSession,
+    grant: DevAppGrant,
+    authorizationExpiresAt: number | null,
+  ): DevAppWorkerState | null {
     const worker = session.manifest.worker
     if (!worker) {
       this.stopWorker(session)
@@ -298,14 +378,19 @@ export class DevAppPreviewSession {
     }
     // Restarting on every settle would make a view reload kill in-flight worker work.
     // The host joins an already-running worker, so this is start-or-join.
-    const state = this.deps.worker.start({
-      publicationId: key,
-      entrypoint,
-      protocolVersion: worker.protocolVersion,
-      grant,
-      binding: session.binding,
-      leaseId: session.leaseId,
-    })
+    let state: DevAppWorkerState | null = null
+    for (const leaseId of session.leases) {
+      state = this.deps.worker.start({
+        publicationId: key,
+        entrypoint,
+        packageRoot: session.sourcePath,
+        protocolVersion: worker.protocolVersion,
+        grant,
+        authorizationExpiresAt,
+        binding: session.binding,
+        leaseId,
+      })
+    }
     session.workerKey = key
     session.workerProtocolVersion = worker.protocolVersion
     return state
