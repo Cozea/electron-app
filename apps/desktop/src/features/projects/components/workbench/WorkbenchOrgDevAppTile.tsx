@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../../convex/_generated/dataModel";
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
+import { BrowserSurfaceOverlays } from "@/features/projects/browser/BrowserSurfaceOverlays";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
@@ -454,6 +455,7 @@ export function WorkbenchOrgDevAppTile({
               </div>
             </div>
           ) : null}
+          {runtimeTabId ? <BrowserSurfaceOverlays runtimeTabId={runtimeTabId} /> : null}
         </div>
       )}
       {showLogs ? (

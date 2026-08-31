@@ -7,7 +7,11 @@
 > Project DevApp tiles use the same host with per-tile ephemeral sessions while retaining their
 > independent process and terminal lifecycles. Static and service Org DevApps use the same host with
 > persistent publication sessions, release-generation replacement, hardened protocol/gateway setup,
-> and main-process origin confinement. No legacy fallback or feature flag remains.
+> and main-process origin confinement. The full pinned T3 preview UX now runs against those living
+> guests: responsive presets and rails, capture, recording, picker annotations, PiP, color scheme,
+> audio, favicon, pointer, and zoom presentation. Browser-backed panels cannot cross into a Dockview
+> popout window, but same-window drag, split, and float remain available. No legacy fallback or
+> feature flag remains.
 > Mandatory parity requirements live in
 > `shared/browserPortParityLedger.ts`.
 

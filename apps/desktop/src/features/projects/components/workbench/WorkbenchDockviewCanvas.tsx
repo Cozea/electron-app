@@ -19,14 +19,9 @@ import {
   WorkbenchDockTab,
   WorkbenchDockWatermark,
 } from "@/features/projects/components/workbench/WorkbenchDockPanels"
-import {
-  resolveTabGroupPreset,
-} from "@/features/projects/lib/workbenchDockview"
+import { resolveTabGroupPreset } from "@/features/projects/lib/workbenchDockview"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
-import {
-  selectProjectWorkbench,
-  useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { cn } from "@/lib/utils"
 
 const WORKBENCH_TAB_GROUP_COLORS = [
@@ -68,6 +63,7 @@ function getFloatingBoxForComponent(component: string): {
       return { width: 760, height: 420, x: 72, y: 72 }
     case "browser":
     case "devServer":
+    case "orgDevApp":
     case "llama":
     case "mobileSimulator":
       return { width: 900, height: 640, x: 72, y: 56 }
@@ -93,6 +89,7 @@ function getPopoutBoxForComponent(component: string): {
       return { left: screenLeft + 90, top: screenTop + 100, width: 900, height: 520 }
     case "browser":
     case "devServer":
+    case "orgDevApp":
     case "llama":
     case "mobileSimulator":
       return { left: screenLeft + 80, top: screenTop + 70, width: 1100, height: 780 }
@@ -110,6 +107,12 @@ interface WorkbenchDockviewCanvasProps {
   onReady: ComponentProps<typeof DockviewReact>["onReady"]
 }
 
+function isBrowserBackedTile(tile: unknown): boolean {
+  if (!tile || typeof tile !== "object" || !("type" in tile)) return false
+  const type = (tile as { type?: string }).type
+  return type === "browser" || type === "devServer" || type === "orgDevApp"
+}
+
 // Memo boundary: dockview re-pushes props into every tab/panel portal root
 // whenever this component renders, so parent cascades (layout/surface churn)
 // must stop here. All props are primitives or stable callbacks.
@@ -121,10 +124,11 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
 }: WorkbenchDockviewCanvasProps) {
   const runtime = useWorkbenchDockRuntime()
   const dockviewTheme = useMemo(
-    () => buildCozeaDockviewTheme(
-      themeScheme === "dark" ? themeAbyssSpaced : themeLightSpaced,
-      themeScheme,
-    ),
+    () =>
+      buildCozeaDockviewTheme(
+        themeScheme === "dark" ? themeAbyssSpaced : themeLightSpaced,
+        themeScheme,
+      ),
     [themeScheme],
   )
 
@@ -149,6 +153,10 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
       const isDetached = groupLocation === "floating" || groupLocation === "popout"
       const tabCount = params.group.panels.length
       const hasSiblingTabs = tabCount > 1
+      const browserBackedPanel = isBrowserBackedTile(tile)
+      const groupContainsBrowserBackedPanel = params.group.panels.some((candidate) =>
+        isBrowserBackedTile(workbench?.tiles[candidate.id] ?? null),
+      )
 
       const popOut = (item: IDockviewPanel | DockviewGroupPanel) => {
         void params.api
@@ -195,10 +203,7 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
             {
               label: hasSiblingTabs ? "Float tab" : "Float",
               action: () =>
-                params.api.addFloatingGroup(
-                  panel,
-                  getFloatingBoxForComponent(panel.api.component),
-                ),
+                params.api.addFloatingGroup(panel, getFloatingBoxForComponent(panel.api.component)),
             },
             ...(hasSiblingTabs
               ? [
@@ -212,11 +217,15 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
                   },
                 ]
               : []),
-            {
-              label: hasSiblingTabs ? "Pop out tab" : "Pop out",
-              action: () => popOut(panel),
-            },
-            ...(hasSiblingTabs
+            ...(!browserBackedPanel
+              ? [
+                  {
+                    label: hasSiblingTabs ? "Pop out tab" : "Pop out",
+                    action: () => popOut(panel),
+                  },
+                ]
+              : []),
+            ...(hasSiblingTabs && !groupContainsBrowserBackedPanel
               ? [
                   {
                     label: `Pop out all ${tabCount} tabs`,
@@ -238,15 +247,17 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         ...detachItems,
         "separator" as const,
         ...(currentTabGroup
-          ? [{
-              label: `Remove from ${currentTabGroup.label}`,
-              action: () => {
-                params.api.removePanelFromTabGroup({
-                  groupId: params.group.id,
-                  panelId: panel.id,
-                })
+          ? [
+              {
+                label: `Remove from ${currentTabGroup.label}`,
+                action: () => {
+                  params.api.removePanelFromTabGroup({
+                    groupId: params.group.id,
+                    panelId: panel.id,
+                  })
+                },
               },
-            }]
+            ]
           : []),
         {
           label: `Group as ${preset.label}`,
@@ -285,10 +296,12 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         },
         "separator" as const,
         ...(tile?.type === "assistantChat"
-          ? [{
-              label: "Duplicate agent",
-              action: () => runtime.onDuplicateAssistantTile(panel.id),
-            }]
+          ? [
+              {
+                label: "Duplicate agent",
+                action: () => runtime.onDuplicateAssistantTile(panel.id),
+              },
+            ]
           : []),
         "close" as const,
         "closeOthers" as const,

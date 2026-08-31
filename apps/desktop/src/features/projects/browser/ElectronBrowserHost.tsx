@@ -5,6 +5,7 @@ import { useBrowserPointerStore } from "./browserPointerStore";
 import { useBrowserSurfaceRegistry } from "./browserSurfaceRegistry";
 import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore";
 import { HostedBrowserWebview } from "./HostedBrowserWebview";
+import { readPreviewAnnotationTheme } from "./annotationTheme";
 
 export function ElectronBrowserHost() {
   const surfaces = useBrowserSurfaceRegistry(useShallow((state) => Object.values(state.byTabId)));
@@ -21,6 +22,29 @@ export function ElectronBrowserHost() {
     return () => {
       stopPointerEvents();
       stopStateEvents();
+    };
+  }, []);
+
+  useEffect(() => {
+    const preview = window.desktopBridge?.preview;
+    if (!preview) return;
+    let frameId: number | null = null;
+    const publishTheme = () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        void preview.setAnnotationTheme(readPreviewAnnotationTheme()).catch(() => undefined);
+      });
+    };
+    publishTheme();
+    const observer = new MutationObserver(publishTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
   }, []);
 

@@ -90,6 +90,7 @@ import {
 } from "./MessagesTimeline.logic";
 import { PersistedFilesList } from "./PersistedFilesList";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
+import { extractTrailingPreviewAnnotations } from "@/features/projects/browser/previewAnnotation";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -641,12 +642,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking ? "working" : "settled",
       completionSummariesByMessageId.size,
     ].join(":");
-  }, [
-    activeTurnInProgress,
-    completionSummariesByMessageId.size,
-    isWorking,
-    rows,
-  ]);
+  }, [activeTurnInProgress, completionSummariesByMessageId.size, isWorking, rows]);
   const legendListExtraData = useMemo(
     () => ({
       allDirectoriesExpandedByTurnId,
@@ -857,7 +853,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     workEntry={workEntry}
                     workspaceRoot={workspaceRoot}
                     resolvedTheme={resolvedTheme}
-                    artifactUrl={workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined}
+                    artifactUrl={
+                      workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined
+                    }
                     onOpenArtifact={onOpenArtifact}
                     onOpenTurnDiff={onOpenTurnDiff}
                   />
@@ -971,7 +969,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       workEntry={workEntry}
                       workspaceRoot={workspaceRoot}
                       resolvedTheme={resolvedTheme}
-                      artifactUrl={workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined}
+                      artifactUrl={
+                        workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined
+                      }
                       onOpenArtifact={onOpenArtifact}
                     />
                   ))}
@@ -985,7 +985,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         row.message.role === "user" &&
         (() => {
           const userImages = row.message.attachments ?? [];
-          const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
+          const previewAnnotations = extractTrailingPreviewAnnotations(row.message.text);
+          const displayedUserMessage = deriveDisplayedUserMessageState(
+            previewAnnotations.promptText,
+          );
           const terminalContexts = displayedUserMessage.contexts;
           const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
           const messageId = row.message.id;
@@ -1045,6 +1048,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     )}
                   </div>
                 )}
+                {previewAnnotations.annotations.length > 0 ? (
+                  <div className="mb-1 flex w-full flex-wrap justify-end gap-1.5">
+                    {previewAnnotations.annotations.map((annotation) => (
+                      <div
+                        key={annotation.id}
+                        className="max-w-full rounded-lg border border-border/60 bg-card/70 px-3 py-2 text-left shadow-xs"
+                      >
+                        <p className="truncate text-xs font-medium text-foreground">
+                          {annotation.comment || annotation.title}
+                        </p>
+                        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                          {[
+                            annotation.targetSummary,
+                            annotation.styleChanges.length
+                              ? `${annotation.styleChanges.length} style change${annotation.styleChanges.length === 1 ? "" : "s"}`
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "Preview annotation"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {(displayedUserMessage.visibleText.trim().length > 0 ||
                   terminalContexts.length > 0) && (
                   <div className="relative w-fit max-w-full rounded-2xl bg-[var(--assistant-user-message-surface)] px-4 py-2.5 text-[var(--assistant-user-message-foreground)] shadow-xs transition-colors">
@@ -1094,8 +1121,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </span>
                   ) : null}
                   <div className="flex items-center gap-1">
-                    {displayedUserMessage.copyText ? (
-                      <MessageCopyButton text={displayedUserMessage.copyText} />
+                    {row.message.text ? (
+                      <MessageCopyButton text={row.message.text} />
                     ) : (
                       <button
                         type="button"
@@ -1229,7 +1256,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </div>
                     {row.message.completedAt || row.message.createdAt ? (
                       <span className="select-none tabular-nums">
-                        {formatMessageRelativeTime(row.message.completedAt ?? row.message.createdAt)}
+                        {formatMessageRelativeTime(
+                          row.message.completedAt ?? row.message.createdAt,
+                        )}
                       </span>
                     ) : null}
                   </div>
@@ -1573,9 +1602,17 @@ const LiveShimmerText = memo(function LiveShimmerText(props: {
   className?: string;
 }) {
   return (
-    <span className={cn("cozea-live-shimmer relative inline-block max-w-full overflow-hidden", props.className)}>
+    <span
+      className={cn(
+        "cozea-live-shimmer relative inline-block max-w-full overflow-hidden",
+        props.className,
+      )}
+    >
       <span className="text-muted-foreground/75">{props.children}</span>
-      <span aria-hidden className="cozea-live-shimmer-focus pointer-events-none absolute inset-y-0 select-none">
+      <span
+        aria-hidden
+        className="cozea-live-shimmer-focus pointer-events-none absolute inset-y-0 select-none"
+      >
         <span className="cozea-live-shimmer-counter block">
           <span className="cozea-live-shimmer-aligned block text-foreground">{props.children}</span>
         </span>
@@ -2127,9 +2164,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           <p
             className={cn(
               "truncate text-[11px] leading-5",
-              workEntry.status === "failed"
-                ? "text-destructive"
-                : "text-muted-foreground/75",
+              workEntry.status === "failed" ? "text-destructive" : "text-muted-foreground/75",
               isCommand && "font-mono",
             )}
             title={normalizedPresentation?.path ?? rawCommand ?? displayText}

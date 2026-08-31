@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
+import { BrowserSurfaceOverlays } from "@/features/projects/browser/BrowserSurfaceOverlays";
 import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError";
 import { useBrowserFindUiStore } from "@/features/projects/browser/browserFindUiStore";
 import {
@@ -292,11 +293,7 @@ export function WorkbenchBrowserTile({
             />
           ) : null}
           <BrowserFindOverlay runtimeTabId={runtimeTabId} />
-          {state?.controller !== "none" ? (
-            <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-full border border-border/70 bg-background/90 px-2.5 py-1 text-[11px] font-medium shadow-sm backdrop-blur">
-              {state?.controller === "agent" ? "Agent controlling browser" : "Human control"}
-            </div>
-          ) : null}
+          <BrowserSurfaceOverlays runtimeTabId={runtimeTabId} />
         </div>
       </WorkbenchTileChrome>
     </div>
