@@ -108,7 +108,10 @@ async function waitForEnvironment(baseUrl, deadlineMs = 30_000) {
   const started = Date.now();
   while (Date.now() - started < deadlineMs) {
     try {
-      const response = await fetch(`${baseUrl}/.well-known/t3/environment`);
+      const remainingMs = deadlineMs - (Date.now() - started);
+      const response = await fetch(`${baseUrl}/.well-known/t3/environment`, {
+        signal: AbortSignal.timeout(Math.max(1, Math.min(1_000, remainingMs))),
+      });
       if (response.ok) {
         return await response.json();
       }
@@ -166,8 +169,8 @@ async function listProvidersViaRpc(port, wsTicket) {
   fs.copyFileSync(probeSource, probeDest);
   try {
     const { stdout } = await runCommand(
-      "pnpm",
-      ["exec", "node", "--experimental-strip-types", "scripts/cozea-spike-rpc-get-config.ts", String(port), wsTicket],
+      process.execPath,
+      ["--experimental-strip-types", "scripts/cozea-spike-rpc-get-config.ts", String(port), wsTicket],
       { cwd: vendorRoot },
     );
     const parsed = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}");

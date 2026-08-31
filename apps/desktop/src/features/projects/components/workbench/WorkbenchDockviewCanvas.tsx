@@ -64,6 +64,7 @@ function getFloatingBoxForComponent(component: string): {
     case "browser":
     case "devServer":
     case "orgDevApp":
+    case "devAppPreview":
     case "llama":
     case "mobileSimulator":
       return { width: 900, height: 640, x: 72, y: 56 }
@@ -90,6 +91,7 @@ function getPopoutBoxForComponent(component: string): {
     case "browser":
     case "devServer":
     case "orgDevApp":
+    case "devAppPreview":
     case "llama":
     case "mobileSimulator":
       return { left: screenLeft + 80, top: screenTop + 70, width: 1100, height: 780 }
@@ -110,7 +112,9 @@ interface WorkbenchDockviewCanvasProps {
 function isBrowserBackedTile(tile: unknown): boolean {
   if (!tile || typeof tile !== "object" || !("type" in tile)) return false
   const type = (tile as { type?: string }).type
-  return type === "browser" || type === "devServer" || type === "orgDevApp"
+  return (
+    type === "browser" || type === "devServer" || type === "orgDevApp" || type === "devAppPreview"
+  )
 }
 
 // Memo boundary: dockview re-pushes props into every tab/panel portal root

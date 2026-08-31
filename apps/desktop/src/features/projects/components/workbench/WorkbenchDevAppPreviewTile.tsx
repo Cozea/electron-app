@@ -10,6 +10,10 @@ import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurf
 import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode";
+import {
+  publishDevAppPreviewRuntime,
+  releaseDevAppPreviewRuntime,
+} from "@/features/projects/devapps/devAppPreviewRuntimeStore";
 import type { WorkbenchDevAppPreviewTile as PreviewTileRecord } from "@/stores/useProjectWorkbenchStore";
 import { Button } from "@/components/ui/button";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
@@ -54,8 +58,24 @@ export function WorkbenchDevAppPreviewTile({
   // even after the component has stopped re-rendering.
   const [sourceId, setSourceId] = useState<string | null>(null);
   const sourceIdRef = useRef<string | null>(null);
+  const runtimeOwnerRef = useRef(Symbol(`devapp-preview:${tile.id}`));
 
   const preview = window.electronAPI?.devAppPreview;
+
+  useEffect(() => {
+    publishDevAppPreviewRuntime(runtimeOwnerRef.current, {
+      tileId: tile.id,
+      relativePath: tile.relativePath,
+      status,
+      hotReload,
+      openError,
+    });
+  }, [hotReload, openError, status, tile.id, tile.relativePath]);
+
+  useEffect(
+    () => () => releaseDevAppPreviewRuntime(runtimeOwnerRef.current, tile.id),
+    [tile.id],
+  );
 
   // Opening is what assigns the source id, so the tile holds no location of its own.
   useEffect(() => {

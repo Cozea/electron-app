@@ -37,6 +37,11 @@ import {
   registerDevServerSurfaceController,
   type DevServerSurfaceHandle,
 } from "@/features/projects/devserver/devServerSurfaceController";
+import {
+  normalizeDevAppPreviewRelativePath,
+  registerDevAppPreviewSurfaceController,
+  type DevAppPreviewSurfaceHandle,
+} from "@/features/projects/devapps/devAppPreviewSurfaceController";
 
 const CHANGES_PANEL_ID = "cozea-changes-panel";
 
@@ -44,7 +49,10 @@ function normalizeBrowserBackedPopouts(api: DockviewApi, workbench: WorkbenchPro
   for (const panel of api.panels) {
     const tile = workbench.tiles[panel.id];
     const browserBacked =
-      tile?.type === "browser" || tile?.type === "devServer" || tile?.type === "orgDevApp";
+      tile?.type === "browser" ||
+      tile?.type === "devServer" ||
+      tile?.type === "orgDevApp" ||
+      tile?.type === "devAppPreview";
     if (browserBacked && panel.api.location.type === "popout") {
       panel.api.moveTo({ position: "right" });
     }
@@ -623,6 +631,140 @@ export function useWorkbenchDockviewRuntime(
           scopeKey,
           tileId,
           leaseToken: lease.token,
+          created,
+          focused: Boolean(request.focus),
+        };
+      },
+      focusSurface: (tileId) => {
+        const panel = dockviewApiRef.current?.getPanel(tileId);
+        if (!panel || !input.projectId) return false;
+        panel.api.setActive();
+        workbenchActions.setActiveTile(
+          input.projectId,
+          input.activeLaneId,
+          tileId,
+          input.workspaceId,
+        );
+        return true;
+      },
+    });
+  }, [
+    dockviewReadyScopeKey,
+    getLiveWorkbench,
+    input.activeLaneId,
+    input.projectId,
+    input.workbenchScopeKey,
+    input.workspaceId,
+    workbenchActions,
+  ]);
+
+  useEffect(() => {
+    const api = dockviewApiRef.current;
+    const scopeKey = input.workbenchScopeKey;
+    if (!api || !scopeKey || !input.projectId || dockviewReadyScopeKey !== scopeKey) {
+      return;
+    }
+
+    return registerDevAppPreviewSurfaceController(scopeKey, {
+      ensureSurface: async (request): Promise<DevAppPreviewSurfaceHandle> => {
+        const liveWorkbench = getLiveWorkbench();
+        const liveApi = dockviewApiRef.current;
+        if (!liveWorkbench || !liveApi) {
+          throw new Error("The project workbench closed before the DevApp preview was ready.");
+        }
+
+        const relativePath = normalizeDevAppPreviewRelativePath(request.relativePath);
+        const preferredTile = request.preferredTileId
+          ? liveWorkbench.tiles[request.preferredTileId]
+          : null;
+        if (
+          preferredTile &&
+          (preferredTile.type !== "devAppPreview" ||
+            normalizeDevAppPreviewRelativePath(preferredTile.relativePath) !== relativePath)
+        ) {
+          throw new Error("The requested preview tab belongs to a different DevApp package.");
+        }
+
+        const existingTileId = preferredTile
+          ? preferredTile.id
+          : liveWorkbench.order.find((tileId) => {
+              const tile = liveWorkbench.tiles[tileId];
+              return (
+                tile?.type === "devAppPreview" &&
+                normalizeDevAppPreviewRelativePath(tile.relativePath) === relativePath
+              );
+            });
+
+        let tileId = existingTileId ?? null;
+        let created = false;
+        if (!tileId && request.create) {
+          tileId = workbenchActions.addTile(
+            request.projectId,
+            request.laneId,
+            "devAppPreview",
+            {
+              title: "DevApp (development)",
+              activate: false,
+              devAppPreviewRelativePath: relativePath,
+            },
+            request.workspaceId,
+          );
+          created = true;
+        }
+        if (!tileId) {
+          throw new Error("No existing development preview matches that package.");
+        }
+
+        const nextWorkbench = getLiveWorkbench();
+        const nextTile = nextWorkbench?.tiles[tileId];
+        if (!nextTile || nextTile.type !== "devAppPreview") {
+          throw new Error("The development preview closed before it could be attached.");
+        }
+
+        let panel = liveApi.getPanel(tileId);
+        if (!panel) {
+          const referencePanel = liveApi.getPanel(request.assistantTileId);
+          panel = liveApi.addPanel({
+            id: nextTile.id,
+            title: nextTile.title,
+            component: getDockComponentName(nextTile.type),
+            params: getPanelParams(request.projectId, request.laneId, nextTile.id),
+            renderer: getPanelRendererForTile(nextTile.type),
+            ...getPanelConstraintsForTile(nextTile.type),
+            ...(referencePanel
+              ? {
+                  position: {
+                    referencePanel: referencePanel.id,
+                    direction: "within" as const,
+                  },
+                }
+              : {}),
+          });
+
+          if (!request.focus) {
+            referencePanel?.api.setActive();
+            workbenchActions.setActiveTile(
+              request.projectId,
+              request.laneId,
+              referencePanel?.id ?? null,
+              request.workspaceId,
+            );
+          }
+        }
+
+        if (request.focus) {
+          panel?.api.setActive();
+          workbenchActions.setActiveTile(
+            request.projectId,
+            request.laneId,
+            tileId,
+            request.workspaceId,
+          );
+        }
+
+        return {
+          scopeKey,
+          tileId,
           created,
           focused: Boolean(request.focus),
         };

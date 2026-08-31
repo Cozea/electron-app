@@ -20,6 +20,7 @@ export interface WorkbenchCommandPaletteHostProps {
   readonly projectId: string | null
   readonly laneId: string
   readonly workspaceId: string | null
+  readonly projectRootPath: string | null
   readonly openSettings: () => void
   readonly closeSettings: () => void
   readonly isSettingsOpen: boolean
@@ -35,6 +36,7 @@ export function WorkbenchCommandPaletteHost(props: WorkbenchCommandPaletteHostPr
     projectId: props.projectId,
     laneId: props.laneId,
     workspaceId: props.workspaceId,
+    projectRootPath: props.projectRootPath,
     openSettings: props.openSettings,
     closeSettings: props.closeSettings,
     isSettingsOpen: props.isSettingsOpen,

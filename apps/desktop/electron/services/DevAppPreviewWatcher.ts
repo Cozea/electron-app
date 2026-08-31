@@ -41,9 +41,6 @@ const IGNORED_SEGMENTS = new Set([
   ".next",
   ".turbo",
   ".cache",
-  "dist",
-  "build",
-  "out",
   ".DS_Store",
 ])
 
