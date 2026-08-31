@@ -2,37 +2,14 @@
 
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
-import {
-  preflightNativeSurfaceOcclusion,
-  useNativeSurfaceOverlayLifecycle,
-} from "@/lib/nativeSurfaceOcclusion";
 import { cn } from "@/lib/utils";
 
 const PopoverCreateHandle = PopoverPrimitive.createHandle;
 
 const Popover = PopoverPrimitive.Root;
 
-function PopoverTrigger({
-  onKeyDownCapture,
-  onPointerDownCapture,
-  ...props
-}: PopoverPrimitive.Trigger.Props) {
-  return (
-    <PopoverPrimitive.Trigger
-      data-slot="popover-trigger"
-      onKeyDownCapture={(event) => {
-        if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
-          preflightNativeSurfaceOcclusion("Popover opening");
-        }
-        onKeyDownCapture?.(event);
-      }}
-      onPointerDownCapture={(event) => {
-        preflightNativeSurfaceOcclusion("Popover opening");
-        onPointerDownCapture?.(event);
-      }}
-      {...props}
-    />
-  );
+function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
 
 function PopoverPopup({
@@ -53,15 +30,13 @@ function PopoverPopup({
   tooltipStyle?: boolean;
   anchor?: PopoverPrimitive.Positioner.Props["anchor"];
 }) {
-  useNativeSurfaceOverlayLifecycle(!tooltipStyle);
-
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
-        className="z-50 h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
+        className="z-[var(--cozea-layer-menu)] h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
         data-slot="popover-positioner"
         side={side}
         sideOffset={sideOffset}
@@ -73,8 +48,6 @@ function PopoverPopup({
               "w-fit text-balance rounded-md text-xs shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]",
             className,
           )}
-          data-native-surface-overlay={tooltipStyle ? undefined : "true"}
-          data-native-surface-overlay-reason={tooltipStyle ? undefined : "Popover"}
           data-slot="popover-popup"
           {...props}
         >

@@ -18,6 +18,7 @@
   --dv-tab-font-size: 12px;
   --dv-spacing-padding: 8px;
   --dv-border-radius: 12px;
+  --dv-overlay-z-index: var(--cozea-layer-dockview-float-base);
   --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   /* Resize sash + drop-target hint. dockview ties BOTH the active resize sash
      (the line you see hovering between two tiles to widen one) and the drag-over
@@ -60,7 +61,21 @@
   --dv-separator-border: transparent;
   --dv-paneview-header-border-color: transparent;
   --dv-floating-group-border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  /* dockview ghosts a float to 0.5 opacity while it is being dragged so you can
+     see the layout underneath. Our floats carry real window chrome, so the fade
+     reads as the window breaking rather than as motion. Keep them solid. */
+  --dv-floating-group-dragging-opacity: 1;
   background-color: transparent;
+}
+
+/* Dockview owns the geometry of floating windows, while Cozea owns the global
+   ordering contract shared with renderer-hosted webviews and body portals. */
+.cozea-workbench-dockview-theme .dv-popover-anchor > * {
+  z-index: var(--cozea-layer-menu) !important;
+}
+
+.cozea-workbench-dockview-theme .dv-drop-target-container {
+  z-index: var(--cozea-layer-dockview-drop-target) !important;
 }
 
 /* Dark scheme: --foreground is near-white here, so nudge the alphas up a touch
@@ -84,6 +99,131 @@
   background-color: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+/* Floating groups are moved by dragging dockview's contentless title bar
+   (`floatingGroupDragHandle` defaults to "titlebar"). Stock rendering has two
+   problems: the bar is painted with the tab-header colour so it reads as stray
+   padding, and the Spaced theme insets the group by --dv-spacing-padding while
+   leaving the bar outside that inset, so the bar overhangs the card.
+
+   Fix the structure rather than the symptom: drop the inset, move the card
+   edges (border, radius, shadow) up onto the resize container, and let the bar
+   and the group share them as one window. */
+.cozea-workbench-dockview-theme .dv-resize-container-with-titlebar {
+  --dv-floating-titlebar-height: 16px;
+  background-color: var(--content-surface) !important;
+  border-radius: var(--dv-border-radius, 12px);
+  /* No `overflow: hidden` here: the resize handles are positioned outside the
+     container box (`.dv-resize-handle-top` sits at top: -2px, -10px on coarse
+     pointers) and clipping them breaks edge-resizing. The group below rounds
+     its own bottom corners instead. */
+}
+
+.cozea-workbench-dockview-theme .dv-resize-container-with-titlebar > .dv-grid-view {
+  padding: 0;
+}
+
+/* The group no longer draws its own edges inside a float — the container does.
+   These must out-specify the `:root.light` / `:root:not(.light)` .dv-groupview
+   card rules below (4 class-level selectors + !important), or the tile paints
+   its own border and shadow inside the container's and the float reads as a
+   doubled outline. */
+:root.light
+  .cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar
+  .dv-groupview,
+:root:not(.light)
+  .cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar
+  .dv-groupview,
+.dark .cozea-workbench-dockview-theme .dv-resize-container-with-titlebar .dv-groupview,
+.cozea-workbench-dockview-theme--dark
+  .dv-resize-container-with-titlebar
+  .dv-groupview {
+  border: none !important;
+  border-radius: 0 0 var(--dv-border-radius, 12px) var(--dv-border-radius, 12px) !important;
+  box-shadow: none !important;
+}
+
+/* Same for the dark-mode specular rim, drawn as a ::before overlay. */
+:root.light
+  .cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar
+  .dv-groupview::before,
+:root:not(.light)
+  .cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar
+  .dv-groupview::before,
+.dark
+  .cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar
+  .dv-groupview::before,
+.cozea-workbench-dockview-theme--dark
+  .dv-resize-container-with-titlebar
+  .dv-groupview::before {
+  content: none !important;
+  box-shadow: none !important;
+}
+
+/* Same edge treatment the docked tiles get, lifted to the float container. */
+:root.light
+  .cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar {
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent) !important;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 6px 20px rgb(0 0 0 / 0.07) !important;
+}
+
+.dark .cozea-workbench-dockview-theme .dv-resize-container-with-titlebar,
+.cozea-workbench-dockview-theme--dark .dv-resize-container-with-titlebar,
+:root:not(.light)
+  .cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar {
+  border: 0.5px solid color-mix(in oklch, var(--foreground) 7%, transparent) !important;
+  box-shadow:
+    0 1px 3px 0 rgb(0 0 0 / 0.5),
+    0 8px 24px -4px rgb(0 0 0 / 0.6) !important;
+}
+
+/* The bar itself: transparent over the container surface with no divider, so
+   it reads as continuous with the tab header rather than a slab stacked on a
+   card. The grip pill alone marks it as the move handle. */
+.cozea-workbench-dockview-theme .dv-resize-container-with-titlebar > .dv-floating-titlebar {
+  position: relative;
+  background-color: transparent;
+  border-bottom: none;
+  transition: background-color 120ms ease;
+}
+
+/* The grip pill is the only cue that this strip is the move handle. */
+.cozea-workbench-dockview-theme .dv-resize-container-with-titlebar > .dv-floating-titlebar::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+  transition: background-color 120ms ease;
+}
+
+.cozea-workbench-dockview-theme .dv-resize-container-with-titlebar > .dv-floating-titlebar:hover {
+  background-color: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.cozea-workbench-dockview-theme
+  .dv-resize-container-with-titlebar
+  > .dv-floating-titlebar:hover::after {
+  background-color: color-mix(in oklch, var(--foreground) 42%, transparent);
+}
+
+.cozea-workbench-dockview-theme .dv-resize-container-dragging > .dv-floating-titlebar,
+.cozea-workbench-dockview-theme .dv-resize-container-dragging > .dv-floating-titlebar::after {
+  cursor: grabbing;
 }
 
 .cozea-workbench-dockview .dv-groupview.dv-active-group {
@@ -179,9 +319,12 @@
   flex: 999 1 18rem;
 }
 
+.cozea-workbench-dockview .cozea-workbench-header-controls {
+  width: 100%;
+}
+
 .cozea-workbench-dockview .cozea-workbench-header-controls > * {
   min-width: 0;
-  width: 100%;
 }
 
 .cozea-workbench-dockview .dv-tabs-container {

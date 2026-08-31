@@ -25,6 +25,7 @@ import {
 } from "./orgDevAppZip"
 import { orgDevAppArtifactLimits } from "../../../../shared/orgDevAppLimits"
 import { uploadPackedDevApp } from "./orgDevAppUpload"
+import { preflightProject, scanOutputTree } from "./orgDevAppPreflight"
 import {
   parseServiceDevAppManifest,
   normalizeServiceDevAppPath,
@@ -272,48 +273,25 @@ function readPublisherServiceConfig(projectRoot: string): PublisherServiceConfig
   }
 }
 
+/**
+ * Rejects a service output that cannot be published.
+ *
+ * Delegates to the preflight scanner so there is one implementation of "what makes a
+ * service tree unpublishable", and so every fault is reported at once. The previous
+ * inline walk called `realpathSync` on symlinks unguarded, which meant a dangling link —
+ * routine in a pnpm tree — escaped as a bare ENOENT instead of an explicable error.
+ */
 function assertPortableServiceTree(root: string): void {
-  const resolvedRoot = fs.realpathSync(root)
-  const rootPrefix = `${resolvedRoot}${path.sep}`
-  const stack = [root]
-  const visitedDirectories = new Set<string>()
-  while (stack.length > 0) {
-    const current = stack.pop()
-    if (!current) continue
-    const realCurrent = fs.realpathSync(current)
-    if (visitedDirectories.has(realCurrent)) continue
-    visitedDirectories.add(realCurrent)
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const full = path.join(current, entry.name)
-      if (entry.isSymbolicLink()) {
-        const target = fs.realpathSync(full)
-        if (target !== resolvedRoot && !target.startsWith(rootPrefix)) {
-          throw new Error(`The Service DevApp build contains a symbolic link outside its output: ${entry.name}`)
-        }
-      }
-      const stat = fs.statSync(full)
-      if (stat.isDirectory()) {
-        stack.push(full)
-        continue
-      }
-      if (!stat.isFile()) continue
-      if (/\.(?:node|dylib|so)$/i.test(entry.name)) {
-        throw new Error(`The Service DevApp build contains unsupported native code: ${entry.name}`)
-      }
-      const handle = fs.openSync(full, "r")
-      try {
-        const magic = Buffer.alloc(4)
-        if (fs.readSync(handle, magic, 0, 4, 0) === 4) {
-          const value = magic.readUInt32BE(0)
-          if ([0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe].includes(value)) {
-            throw new Error(`The Service DevApp build contains an unsupported Mach-O executable: ${entry.name}`)
-          }
-        }
-      } finally {
-        fs.closeSync(handle)
-      }
-    }
-  }
+  const blocking = scanOutputTree(root, { runtimeKind: "service" })
+    .filter((diagnostic) => diagnostic.severity === "blocker")
+  if (blocking.length === 0) return
+  const detail = blocking
+    .map((diagnostic) => {
+      const paths = diagnostic.paths?.length ? ` (${diagnostic.paths.slice(0, 4).join(", ")})` : ""
+      return `- ${diagnostic.message}${paths}`
+    })
+    .join("\n")
+  throw new Error(`This Service DevApp build cannot be published:\n${detail}`)
 }
 
 function stageNextStandalone(projectRoot: string): { outputDir: string; manifest: ServiceDevAppManifest } | null {
@@ -453,8 +431,14 @@ function runCommand(
     })
     onChild(child)
     let stderr = ""
+    let stdout = ""
     child.stderr?.on("data", (chunk: Buffer | string) => {
       stderr += chunk.toString()
+    })
+    // Next and Vite write build diagnostics to stdout, so stderr alone leaves a failed
+    // build reported as a bare exit code with no explanation attached.
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString()
     })
     child.on("error", (error) => {
       onChild(null)
@@ -466,7 +450,7 @@ function runCommand(
         resolve()
         return
       }
-      const detail = stderr.trim().slice(-4000)
+      const detail = (stderr.trim() || stdout.trim()).slice(-4000)
       reject(
         new Error(
           detail
@@ -902,8 +886,16 @@ export class OrgDevAppArtifactService {
     options: { operationId?: string } = {},
   ): Promise<OrgDevAppBuildResult> {
     const resolvedRoot = path.resolve(projectRoot)
-    if (!fs.existsSync(path.join(resolvedRoot, "package.json"))) {
-      throw new Error("This folder is not a Node project, so Cozea cannot build a static DevApp from it.")
+
+    // Report everything statically knowable before spending minutes on a build. Without
+    // this a project with three faults costs three builds to discover them.
+    const preflight = preflightProject(resolvedRoot)
+    const blocking = preflight.diagnostics.filter((diagnostic) => diagnostic.severity === "blocker")
+    if (blocking.length > 0) {
+      const detail = blocking
+        .map((diagnostic) => `- ${diagnostic.message}${diagnostic.fix ? ` ${diagnostic.fix}` : ""}`)
+        .join("\n")
+      throw new Error(`This project cannot be published as a DevApp yet:\n${detail}`)
     }
 
     const framework = detectFrameworkLabel(resolvedRoot)
@@ -932,7 +924,21 @@ export class OrgDevAppArtifactService {
         ?? (framework === "nuxt" ? stageNuxtService(resolvedRoot) : null)
       if (!staged) {
         if (framework === "nextjs") {
+          // Distinguish "never configured standalone" from "configured it, but the
+          // staged tree was unusable" — the same message for both made a real staging
+          // failure read as a config mistake the publisher had already fixed.
+          const standaloneRoot = path.join(resolvedRoot, ".next", "standalone")
+          if (fs.existsSync(standaloneRoot)) {
+            throw new Error(
+              "This Next.js app built a standalone output, but Cozea could not find its server entrypoint. Confirm the build completed and that .next/standalone contains server.js.",
+            )
+          }
           throw new Error("This Next.js app needs `output: 'standalone'` in next.config before it can be published as a Service DevApp.")
+        }
+        if (framework === "nuxt" || framework === "astro" || framework === "remix" || framework === "sveltekit") {
+          throw new Error(
+            `Cozea has no automatic service adapter for ${framework}. Declare a self-contained output with package.json cozeaDevApp.service, or build a static site.`,
+          )
         }
         throw staticError
       }

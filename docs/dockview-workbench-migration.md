@@ -1,5 +1,11 @@
 # Dockview Workbench Migration
 
+> **Historical migration log.** Statements below that retain `WebContentsView` describe the
+> superseded implementation. The active workbench uses one renderer-wide T3 `<webview>` host and
+> the semantic overlay contract in
+> [`docs/workbench-overlay-architecture.md`](./workbench-overlay-architecture.md). Dockview owns
+> layout; it does not own a second browser or overlay system.
+
 ## Summary
 
 This document tracks the replacement of the current `react-grid-layout` workbench shell with a real IDE-style Dockview shell.

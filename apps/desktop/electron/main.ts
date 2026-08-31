@@ -28,13 +28,23 @@ import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
-import { registerWorkbenchBrowserHandlers } from './ipc/registerWorkbenchBrowserHandlers'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
-import { registerBrowserAutomationHandlers } from './ipc/registerBrowserAutomationHandlers'
+import {
+  broadcastDevAppPreviewStatus,
+  registerDevAppPreviewHandlers,
+} from './ipc/registerDevAppPreviewHandlers'
+import { DevAppWorkerHost } from './services/DevAppWorkerHost'
+import { createUtilityProcessSpawn } from './services/devAppUtilityProcess'
+import { createDevAppWorkerHandlers } from './services/devAppWorkerHandlers'
+import { createNodeDevAppHostServices } from './services/devAppHostServices'
+import { DevAppPreviewService } from './services/DevAppPreviewService'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
+import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
 import { OrgDevAppArtifactService } from './services/OrgDevAppArtifactService'
+import { T3BrowserSurfaceService } from './services/T3BrowserSurfaceService'
+import { WorkbenchSessionManager } from './services/WorkbenchSessionManager'
 import { ORG_DEVAPP_SCHEME } from '../../../shared/orgDevAppProtocol'
 
 protocol.registerSchemesAsPrivileged([
@@ -79,7 +89,6 @@ import {
 import { DevServerService } from './services/DevServerService'
 import { LocalAutomationResolverService } from './runtime/LocalAutomationResolverService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
-import { WorkbenchBrowserService } from './services/WorkbenchBrowserService'
 import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
 import { listAvailableEditors, openFileInExternalEditor } from './lib/externalEditor'
 
@@ -1068,19 +1077,34 @@ type AppBrowserWindow = InstanceType<typeof BrowserWindow>
 
 let win: AppBrowserWindow | null = null
 let canCreateMainWindow = false
+let t3BrowserSurfaceService: T3BrowserSurfaceService | null = null
+let unregisterBrowserSurfaceHandlers: (() => void) | null = null
 const orgDevAppArtifactService = new OrgDevAppArtifactService(
   () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
 )
-const workbenchBrowserService = new WorkbenchBrowserService({
-  getMainWindow: () => win,
-  // Match the main renderer: native preview child surfaces remain paintable
-  // for development UI automation while packaged builds retain throttling.
-  backgroundThrottling: app.isPackaged,
-  configureOrgDevAppSession: (targetSession, partitionKey) => {
-    orgDevAppArtifactService.registerProtocolForSession(targetSession, partitionKey)
+
+/**
+ * The worker host, and the development preview that drives it.
+ *
+ * One host serves both published apps and previews: a development package gets no
+ * separate runtime, which is what keeps "works in dev, fails on publish" from having
+ * anywhere to hide. Its workers are keyed `dev:` so the two can never address each other.
+ */
+const devAppWorkerHost = new DevAppWorkerHost(
+  createUtilityProcessSpawn(({ entrypoint, publicationId }) => {
+    const dataDir = path.join(app.getPath('userData'), 'devapp-data', publicationId)
+    fs.mkdirSync(dataDir, { recursive: true })
+    return { entrypoint, publicationId, dataDir }
+  }),
+  createDevAppWorkerHandlers(createNodeDevAppHostServices()),
+)
+
+const devAppPreviewService = new DevAppPreviewService({
+  worker: devAppWorkerHost,
+  broadcast: (sourceId, status) => {
+    broadcastDevAppPreviewStatus(() => (win ? [win.webContents] : []), sourceId, status)
   },
 })
-
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
@@ -1434,6 +1458,8 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webviewTag: true,
       // Keep development windows paintable while macOS UI automation owns
       // foreground focus. Production retains Electron's power-saving default.
       backgroundThrottling: isReleaseBuild,
@@ -1460,6 +1486,13 @@ function createWindow() {
         }
       : false,
     trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
+  })
+
+  if (!t3BrowserSurfaceService) {
+    throw new Error('The T3 browser surface service was not initialized before window creation.')
+  }
+  void t3BrowserSurfaceService.setMainWindow(win).catch((error) => {
+    console.error('[BrowserSurface] Failed to attach the main window', error)
   })
 
   attachPreviewDebugLogging(win, 'main')
@@ -1698,21 +1731,23 @@ registerWorkspaceSyncHandlers(ipcMain)
 
 registerYjsHandlers(ipcMain)
 
-registerWorkbenchBrowserHandlers(ipcMain, {
-  service: workbenchBrowserService,
-})
-
 registerOrgDevAppHandlers(ipcMain, {
   service: orgDevAppArtifactService,
 })
 
-registerBrowserAutomationHandlers(ipcMain, {
-  service: workbenchBrowserService,
+registerDevAppPreviewHandlers(ipcMain, {
+  service: devAppPreviewService,
 })
 
 registerWorkbenchSessionHandlers(ipcMain, {
   getMainWindow: () => win,
-  browserService: workbenchBrowserService,
+  browserSurfaces: {
+    hasSurfaceForWorkbenchSession: (sessionKey) =>
+      t3BrowserSurfaceService?.hasSurfaceForWorkbenchSession(sessionKey) ?? false,
+    releaseSurfacesForWorkbenchSession: async (sessionKey) => {
+      await t3BrowserSurfaceService?.releaseSurfacesForWorkbenchSession(sessionKey)
+    },
+  },
 })
 
 registerDevServerHandlers(ipcMain, {
@@ -1724,8 +1759,9 @@ registerContextMenuHandlers(ipcMain, {
 })
 
 app.on('window-all-closed', () => {
-  workbenchBrowserService.dispose()
   orgDevAppArtifactService.dispose()
+  devAppPreviewService.dispose()
+  devAppWorkerHost.dispose()
   setBroadcastMainWindow(null)
   win = null
 
@@ -1747,13 +1783,20 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   appIsQuitting = true
   logAssistantBridge('app-before-quit')
-  workbenchBrowserService.dispose()
   orgDevAppArtifactService.dispose()
+  devAppPreviewService.dispose()
+  devAppWorkerHost.dispose()
   PreviewSnapshotService.getInstance().dispose()
   LocalAutomationResolverService.getInstance().dispose()
   void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
   void stopSubstrateShadowServer()
+  unregisterBrowserSurfaceHandlers?.()
+  unregisterBrowserSurfaceHandlers = null
+  if (t3BrowserSurfaceService) {
+    void t3BrowserSurfaceService.dispose()
+    t3BrowserSurfaceService = null
+  }
 })
 
 app.on('activate', () => {
@@ -1766,9 +1809,36 @@ registerAssistantRuntimeBridgeHandlers()
 registerSubstrateShadowBridgeHandlers()
 app.on('gpu-info-update', refreshGpuDiagnostics)
 
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-attach-webview', (event, webPreferences, params) => {
+    const mainWindow = win
+    const service = t3BrowserSurfaceService
+    const isMainWindowOwner =
+      mainWindow && !mainWindow.isDestroyed() && contents === mainWindow.webContents
+    if (!isMainWindowOwner || !service?.canAttachWebview(webPreferences, params)) {
+      event.preventDefault()
+    }
+  })
+})
+
 app.whenReady().then(() => {
   logBootTiming('app-ready')
   orgDevAppArtifactService.registerProtocol()
+  t3BrowserSurfaceService = new T3BrowserSurfaceService({
+    getMainWindow: () => win,
+    orgDevAppArtifactService,
+    devAppPreviewService,
+    artifactsDirectory: path.join(app.getPath('userData'), 'browser-artifacts'),
+    pickPreloadPath: path.join(__dirname, '../preload/preview-pick-preload.cjs'),
+    pictureInPicturePreloadPath: path.join(__dirname, '../preload/preview-pip-preload.cjs'),
+  })
+  unregisterBrowserSurfaceHandlers = registerBrowserSurfaceHandlers(ipcMain, {
+    service: t3BrowserSurfaceService,
+    getMainWindow: () => win,
+  })
+  t3BrowserSurfaceService.onInventoryChange((sessionKey) => {
+    WorkbenchSessionManager.getInstance().refreshBrowserSurfaceState(sessionKey)
+  })
   refreshGpuDiagnostics()
   loadSyncState()
   logBootTiming('sync-state-loaded')

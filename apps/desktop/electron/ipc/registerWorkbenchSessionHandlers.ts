@@ -2,13 +2,15 @@ import type { BrowserWindow, IpcMain } from 'electron'
 
 import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
 import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
-import { WorkbenchBrowserService } from '../services/WorkbenchBrowserService'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
 
 interface RegisterWorkbenchSessionHandlersDeps {
   getMainWindow: () => BrowserWindow | null
-  browserService: WorkbenchBrowserService
+  browserSurfaces: {
+    hasSurfaceForWorkbenchSession: (sessionKey: string) => boolean
+    releaseSurfacesForWorkbenchSession: (sessionKey: string) => Promise<void>
+  }
 }
 
 const WORKBENCH_SESSION_STATE_CHANGED_CHANNEL = 'workbenchSession:stateChanged'
@@ -18,8 +20,8 @@ export function registerWorkbenchSessionHandlers(
   deps: RegisterWorkbenchSessionHandlersDeps,
 ): void {
   const service = WorkbenchSessionManager.getInstance({
-    browserService: deps.browserService,
     nativePreviewManager: NativePreviewManager.getInstance(),
+    browserSurfaces: deps.browserSurfaces,
   })
 
   const publishState = (snapshot: WorkbenchSessionSnapshot) => {
@@ -124,47 +126,6 @@ export function registerWorkbenchSessionHandlers(
       },
     ) => {
       return service.releaseTerminal(options)
-    },
-  )
-
-  ipcMain.handle(
-    'workbenchSession:getBrowserBinding',
-    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; tileId: string }) => {
-      return service.getBrowserBinding(options)
-    },
-  )
-
-  ipcMain.handle(
-    'workbenchSession:bindBrowser',
-    async (
-      _event,
-      options: {
-        sessionKey?: string | null
-        projectId: string
-        laneId: string
-        tileId: string
-        browserTileId: string
-        workspaceId?: string | null
-      },
-    ) => {
-      return await service.bindBrowser(options)
-    },
-  )
-
-  ipcMain.handle(
-    'workbenchSession:releaseBrowser',
-    (
-      _event,
-      options: {
-        sessionKey?: string | null
-        projectId: string
-        laneId: string
-        workspaceId?: string | null
-        tileId: string
-        destroy?: boolean
-      },
-    ) => {
-      return service.releaseBrowser(options)
     },
   )
 

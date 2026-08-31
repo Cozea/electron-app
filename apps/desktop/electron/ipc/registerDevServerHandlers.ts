@@ -243,6 +243,31 @@ export function registerDevServerHandlers(
   )
 
   ipcMain.handle(
+    'devServer:attachSurface',
+    async (
+      _event,
+      {
+        workspaceId,
+        laneId,
+        terminalId,
+      }: { workspaceId: string; laneId?: string | null; terminalId: string },
+    ): Promise<{ success: boolean; ownsRuntime: boolean; error?: string }> => {
+      try {
+        await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
+      } catch (error) {
+        return {
+          success: false,
+          ownsRuntime: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+      const result = service.attachSurface(workspaceId, laneId, terminalId)
+      emitState(workspaceId, laneId)
+      return result
+    },
+  )
+
+  ipcMain.handle(
     'devServer:resize',
     (): { success: boolean } => {
       // No-op for process-based server
@@ -275,7 +300,7 @@ export function registerDevServerHandlers(
         await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
         return service.getState(workspaceId, laneId)
       } catch {
-        return { running: false, ready: false, port: null, runId: null, phase: null, headless: false }
+        return { running: false, ready: false, port: null, runId: null, phase: null, headless: false, terminalId: null }
       }
     }
   )

@@ -16,6 +16,8 @@ vi.mock('@/utils/projectDetector', () => ({
   getInstallCommand: vi.fn(() => 'npm install'),
 }))
 
+import { getDevServerConfig } from '@/utils/projectDetector'
+
 import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,
@@ -144,6 +146,7 @@ const getStateMock = vi.fn(async () => ({
   phase: null,
   headless: false,
 }))
+const getDevServerConfigMock = vi.mocked(getDevServerConfig)
 
 function makeContext(workspaceId: string, overrides: Partial<DevServerRunContext> = {}): DevServerRunContext {
   return {
@@ -198,6 +201,15 @@ beforeEach(() => {
     runId: null,
     phase: null,
     headless: false,
+  })
+  getDevServerConfigMock.mockResolvedValue({
+    command: 'npm run dev',
+    port: 5173,
+    label: 'npm run dev',
+    suggestions: [],
+    requiresUserSelection: false,
+    packageDirectory: null,
+    commandVerified: true,
   })
 })
 
@@ -307,6 +319,66 @@ describe('startDevServerRun', () => {
     expect(run.status).toBe('error')
     expect(run.error).toContain('no reachable port')
     expect(run.failureReason).toBe('server_unreachable')
+  })
+
+  it('surfaces ranked command suggestions when discovery needs a user choice', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    getDevServerConfigMock.mockResolvedValue({
+      command: 'npm run dev',
+      port: 5173,
+      label: 'Choose a command',
+      suggestions: [
+        {
+          command: 'npm run dev',
+          runtime: 'node',
+          confidence: 0.8,
+          reason: 'Found a dev script.',
+        },
+        {
+          command: 'npm run web',
+          runtime: 'node',
+          confidence: 0.79,
+          reason: 'Found a web script.',
+        },
+      ],
+      requiresUserSelection: true,
+      packageDirectory: null,
+      commandVerified: false,
+    })
+
+    await startDevServerRun(key)
+
+    expect(startMock).not.toHaveBeenCalled()
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'error',
+      error: 'Choose which command Cozea should use for this Dev Server.',
+      requiresCommandSelection: true,
+      commandSuggestions: [
+        expect.objectContaining({ command: 'npm run dev' }),
+        expect.objectContaining({ command: 'npm run web' }),
+      ],
+    })
+  })
+
+  it('starts the exact command selected in the tile chooser', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    registerDevServerRunContext(key, makeContext(workspaceId))
+    startMock.mockResolvedValue({ success: true, port: 5190, runId: 'run-selected' })
+
+    await startDevServerRun(key, { command: 'npm run web', port: 5190 })
+
+    expect(startMock).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'npm run web', port: 5190 }),
+    )
+    expect(useDevServerRunStore.getState().runs[key]).toMatchObject({
+      status: 'ready',
+      port: 5190,
+      requiresCommandSelection: false,
+      commandSuggestions: [],
+    })
   })
 })
 

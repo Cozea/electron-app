@@ -3,8 +3,10 @@ import {
   DockviewReact,
   themeAbyssSpaced,
   themeLightSpaced,
+  type DockviewGroupPanel,
   type DockviewTheme,
   type GetTabContextMenuItemsParams,
+  type IDockviewPanel,
 } from "dockview-react"
 
 import "dockview-react/dist/styles/dockview.css"
@@ -17,14 +19,9 @@ import {
   WorkbenchDockTab,
   WorkbenchDockWatermark,
 } from "@/features/projects/components/workbench/WorkbenchDockPanels"
-import {
-  resolveTabGroupPreset,
-} from "@/features/projects/lib/workbenchDockview"
+import { resolveTabGroupPreset } from "@/features/projects/lib/workbenchDockview"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
-import {
-  selectProjectWorkbench,
-  useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { cn } from "@/lib/utils"
 
 const WORKBENCH_TAB_GROUP_COLORS = [
@@ -66,6 +63,7 @@ function getFloatingBoxForComponent(component: string): {
       return { width: 760, height: 420, x: 72, y: 72 }
     case "browser":
     case "devServer":
+    case "orgDevApp":
     case "llama":
     case "mobileSimulator":
       return { width: 900, height: 640, x: 72, y: 56 }
@@ -91,6 +89,7 @@ function getPopoutBoxForComponent(component: string): {
       return { left: screenLeft + 90, top: screenTop + 100, width: 900, height: 520 }
     case "browser":
     case "devServer":
+    case "orgDevApp":
     case "llama":
     case "mobileSimulator":
       return { left: screenLeft + 80, top: screenTop + 70, width: 1100, height: 780 }
@@ -108,6 +107,12 @@ interface WorkbenchDockviewCanvasProps {
   onReady: ComponentProps<typeof DockviewReact>["onReady"]
 }
 
+function isBrowserBackedTile(tile: unknown): boolean {
+  if (!tile || typeof tile !== "object" || !("type" in tile)) return false
+  const type = (tile as { type?: string }).type
+  return type === "browser" || type === "devServer" || type === "orgDevApp"
+}
+
 // Memo boundary: dockview re-pushes props into every tab/panel portal root
 // whenever this component renders, so parent cascades (layout/surface churn)
 // must stop here. All props are primitives or stable callbacks.
@@ -119,10 +124,11 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
 }: WorkbenchDockviewCanvasProps) {
   const runtime = useWorkbenchDockRuntime()
   const dockviewTheme = useMemo(
-    () => buildCozeaDockviewTheme(
-      themeScheme === "dark" ? themeAbyssSpaced : themeLightSpaced,
-      themeScheme,
-    ),
+    () =>
+      buildCozeaDockviewTheme(
+        themeScheme === "dark" ? themeAbyssSpaced : themeLightSpaced,
+        themeScheme,
+      ),
     [themeScheme],
   )
 
@@ -141,67 +147,117 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         panelId: panel.id,
       })
 
+      // A tab already living in a floating overlay or a popout window gets the
+      // inverse action instead of being offered a second detach it cannot do.
+      const groupLocation = params.group.api.location.type
+      const isDetached = groupLocation === "floating" || groupLocation === "popout"
+      const tabCount = params.group.panels.length
+      const hasSiblingTabs = tabCount > 1
+      const browserBackedPanel = isBrowserBackedTile(tile)
+      const groupContainsBrowserBackedPanel = params.group.panels.some((candidate) =>
+        isBrowserBackedTile(workbench?.tiles[candidate.id] ?? null),
+      )
+
+      const popOut = (item: IDockviewPanel | DockviewGroupPanel) => {
+        void params.api
+          .addPopoutGroup(item, {
+            position: getPopoutBoxForComponent(panel.api.component),
+            onDidOpen: (event) => {
+              event.window.document.title = panel.api.title ?? "Cozea Panel"
+            },
+            onWillClose: () => {
+              params.api.focus()
+            },
+          })
+          .catch((error) => {
+            console.warn("[WorkbenchDockview] Failed to pop out panel", error)
+          })
+      }
+
+      const maximizeItems = isDetached
+        ? []
+        : [
+            {
+              label: panel.api.isMaximized() ? "Restore" : "Maximize",
+              action: () => {
+                if (panel.api.isMaximized()) {
+                  panel.api.exitMaximized()
+                } else {
+                  panel.api.maximize()
+                }
+              },
+            },
+          ]
+
+      const detachItems = isDetached
+        ? [
+            {
+              // `moveTo` without a target group creates a fresh grid group and
+              // moves the whole overlay into it — dockview's own redock path,
+              // the same one shift+drag uses.
+              label: groupLocation === "popout" ? "Return to main window" : "Dock",
+              action: () => params.group.api.moveTo({ position: "right" }),
+            },
+          ]
+        : [
+            {
+              label: hasSiblingTabs ? "Float tab" : "Float",
+              action: () =>
+                params.api.addFloatingGroup(panel, getFloatingBoxForComponent(panel.api.component)),
+            },
+            ...(hasSiblingTabs
+              ? [
+                  {
+                    label: `Float all ${tabCount} tabs`,
+                    action: () =>
+                      params.api.addFloatingGroup(
+                        params.group,
+                        getFloatingBoxForComponent(panel.api.component),
+                      ),
+                  },
+                ]
+              : []),
+            ...(!browserBackedPanel
+              ? [
+                  {
+                    label: hasSiblingTabs ? "Pop out tab" : "Pop out",
+                    action: () => popOut(panel),
+                  },
+                ]
+              : []),
+            ...(hasSiblingTabs && !groupContainsBrowserBackedPanel
+              ? [
+                  {
+                    label: `Pop out all ${tabCount} tabs`,
+                    action: () => popOut(params.group),
+                  },
+                ]
+              : []),
+          ]
+
       const isSoleSelection = tile?.type === "selection" && (workbench?.order.length ?? 0) <= 1
       if (isSoleSelection) {
-        return [
-          {
-            label: panel.api.isMaximized() ? "Restore" : "Maximize",
-            action: () => {
-              if (panel.api.isMaximized()) {
-                panel.api.exitMaximized()
-              } else {
-                panel.api.maximize()
-              }
-            },
-          },
-        ]
+        // Deliberately no detach actions: floating the only tile would empty
+        // the grid. The dock action still shows if it got detached by drag.
+        return [...maximizeItems, ...(isDetached ? detachItems : [])]
       }
 
       return [
-        {
-          label: panel.api.isMaximized() ? "Restore" : "Maximize",
-          action: () => {
-            if (panel.api.isMaximized()) {
-              panel.api.exitMaximized()
-            } else {
-              panel.api.maximize()
-            }
-          },
-        },
-        {
-          label: "Float",
-          action: () => params.api.addFloatingGroup(
-            panel,
-            getFloatingBoxForComponent(panel.api.component),
-          ),
-        },
-        {
-          label: "Pop out",
-          action: () => {
-            void params.api.addPopoutGroup(panel, {
-              position: getPopoutBoxForComponent(panel.api.component),
-              onDidOpen: (event) => {
-                event.window.document.title = panel.api.title ?? "Cozea Panel"
-              },
-              onWillClose: () => {
-                params.api.focus()
-              },
-            }).catch((error) => {
-              console.warn("[WorkbenchDockview] Failed to pop out panel", error)
-            })
-          },
-        },
+        ...maximizeItems,
+        ...detachItems,
         "separator" as const,
         ...(currentTabGroup
-          ? [{
-              label: `Remove from ${currentTabGroup.label}`,
-              action: () => {
-                params.api.removePanelFromTabGroup({
-                  groupId: params.group.id,
-                  panelId: panel.id,
-                })
+          ? [
+              {
+                label: `Remove from ${currentTabGroup.label}`,
+                action: () => {
+                  params.api.removePanelFromTabGroup({
+                    groupId: params.group.id,
+                    panelId: panel.id,
+                  })
+                },
               },
-            }]
+            ]
           : []),
         {
           label: `Group as ${preset.label}`,
@@ -240,10 +296,12 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         },
         "separator" as const,
         ...(tile?.type === "assistantChat"
-          ? [{
-              label: "Duplicate agent",
-              action: () => runtime.onDuplicateAssistantTile(panel.id),
-            }]
+          ? [
+              {
+                label: "Duplicate agent",
+                action: () => runtime.onDuplicateAssistantTile(panel.id),
+              },
+            ]
           : []),
         "close" as const,
         "closeOthers" as const,

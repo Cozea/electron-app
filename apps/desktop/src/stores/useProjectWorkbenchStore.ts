@@ -4,7 +4,7 @@ import type {
   ProviderKind,
   RuntimeMode,
 } from "@cozea/assistant-contracts"
-import type { BrowserStorageScope } from "@shared/browserHostTypes"
+import type { BrowserStorageScope } from "@shared/browserTileTypes"
 import type { SerializedDockview } from "dockview-react"
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
@@ -98,6 +98,7 @@ export type WorkbenchTileType =
   | "llama"
   | "mobileSimulator"
   | "orgDevApp"
+  | "devAppPreview"
   | "selection"
   | "tasks"
   | "assistantChat"
@@ -137,6 +138,21 @@ export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
   runtimeKind?: "static" | "service"
   logoDataUrl?: string | null
   storageScope?: BrowserStorageScope
+}
+
+/**
+ * An unpublished DevApp being developed in this project.
+ *
+ * Carries only the path relative to the workspace root. The absolute location is never
+ * persisted and never crosses to the renderer: main joins this against the root that
+ * authorization returns, so a tile restored from stored state cannot name a directory
+ * outside the project it belongs to.
+ */
+export interface WorkbenchDevAppPreviewTile extends WorkbenchBaseTile {
+  type: "devAppPreview"
+  relativePath: string
+  /** Assigned by the host on open; absent until then. */
+  sourceId?: string | null
 }
 
 export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
@@ -214,6 +230,7 @@ export type WorkbenchTile =
   | WorkbenchLlamaTile
   | WorkbenchMobileSimulatorTile
   | WorkbenchOrgDevAppTile
+  | WorkbenchDevAppPreviewTile
   | WorkbenchSelectionTile
   | WorkbenchTasksTile
   | WorkbenchAssistantChatTile
@@ -272,6 +289,8 @@ export interface CreateTileOptions {
   orgDevAppEntryPath?: string | null
   orgDevAppRuntimeKind?: "static" | "service" | null
   orgDevAppLogoDataUrl?: string | null
+  /** Path to a package under development, relative to the workspace root. */
+  devAppPreviewRelativePath?: string | null
   autoStart?: boolean
   /** Add the surface without changing the user's active Dockview tab. */
   activate?: boolean
@@ -398,6 +417,7 @@ const TILE_TITLES: Record<WorkbenchTileType, string> = {
   llama: "Llama",
   mobileSimulator: "Mobile Simulator",
   orgDevApp: "DevApp",
+  devAppPreview: "DevApp (development)",
   selection: "Add DevApp",
   tasks: "Tasks",
   assistantChat: "AI Agent",
@@ -675,6 +695,17 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     case "mobileSimulator":
     case "llama":
       return { id, type, title, createdAt }
+    case "devAppPreview":
+      return {
+        id,
+        type,
+        title,
+        createdAt,
+        // Relative on purpose: the absolute location is never persisted, so a restored
+        // tile cannot name a directory outside the project it belongs to.
+        relativePath: options.devAppPreviewRelativePath?.trim() || "",
+        sourceId: null,
+      }
     case "orgDevApp":
       return {
         id,

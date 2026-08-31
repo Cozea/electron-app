@@ -60,6 +60,26 @@ describe('local dev-command automation', () => {
     expect(result.selectedCommand).toBe('python3 -m http.server {port} --bind 127.0.0.1')
   })
 
+  it.each([
+    ['dist/index.html', 'dist'],
+    ['build/index.html', 'build'],
+    ['out/index.html', 'out'],
+    ['public/index.html', 'public'],
+  ])('serves conventional built output %s from its directory', (entry, directory) => {
+    const projectPath = makeProject()
+    fs.mkdirSync(path.dirname(path.join(projectPath, entry)), { recursive: true })
+    fs.writeFileSync(path.join(projectPath, entry), '<!doctype html>')
+
+    const result = resolveProject(projectPath)
+
+    expect(result.selectedCommand).toBe(
+      `python3 -m http.server {port} --bind 127.0.0.1 --directory ${directory}`,
+    )
+    expect(result.candidates[0]?.reason).toBe(
+      `Found a built static HTML entry point at ${entry}.`,
+    )
+  })
+
   it('prefers the package-manager dev script over a production preview script', () => {
     const projectPath = makeProject()
     fs.writeFileSync(path.join(projectPath, 'bun.lock'), '')

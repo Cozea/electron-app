@@ -5,6 +5,7 @@ import {
   resolveRememberedModelSelection,
 } from "../../apps/desktop/src/features/projects/components/workbench/assistant/workbenchAssistantShared";
 import { flushWorkbenchStorage } from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
+import { ProviderInstanceId } from "@cozea/assistant-contracts"
 
 describe("assistantTileBootstrap", () => {
   it("derives clean thread titles from initial user prompts", () => {
@@ -55,7 +56,7 @@ describe("assistantTileBootstrap", () => {
   it("uses the last selected model when a fresh provider tile opens", () => {
     const fallbackSelection = {
       provider: "opencode" as const,
-      instanceId: "opencode:default",
+      instanceId: ProviderInstanceId.make("opencode"),
       model: "opencode/default-model",
     };
 
@@ -65,7 +66,7 @@ describe("assistantTileBootstrap", () => {
         explicitTileModel: null,
         rememberedSelection: {
           provider: "opencode",
-          instanceId: "opencode:default",
+          instanceId: ProviderInstanceId.make("opencode"),
           model: "opencode/last-used-model",
         },
         selectableModels: [
@@ -79,7 +80,7 @@ describe("assistantTileBootstrap", () => {
   it("keeps an existing tile's model ahead of the remembered default", () => {
     const fallbackSelection = {
       provider: "codex" as const,
-      instanceId: "codex:default",
+      instanceId: ProviderInstanceId.make("codex"),
       model: "gpt-existing",
     };
 
@@ -89,7 +90,7 @@ describe("assistantTileBootstrap", () => {
         explicitTileModel: "gpt-existing",
         rememberedSelection: {
           provider: "codex",
-          instanceId: "codex:default",
+          instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-remembered",
         },
         selectableModels: [
@@ -103,7 +104,7 @@ describe("assistantTileBootstrap", () => {
   it("ignores remembered models from another provider instance or a stale catalog", () => {
     const fallbackSelection = {
       provider: "claudeAgent" as const,
-      instanceId: "claudeAgent:default",
+      instanceId: ProviderInstanceId.make("claudeAgent"),
       model: "claude-current",
     };
 
@@ -113,7 +114,7 @@ describe("assistantTileBootstrap", () => {
         explicitTileModel: null,
         rememberedSelection: {
           provider: "claudeAgent",
-          instanceId: "claudeAgent:other",
+          instanceId: ProviderInstanceId.make("claudeAgent-other"),
           model: "claude-other",
         },
         selectableModels: [{ slug: "claude-current", name: "Current" }],
@@ -126,7 +127,7 @@ describe("assistantTileBootstrap", () => {
         explicitTileModel: null,
         rememberedSelection: {
           provider: "claudeAgent",
-          instanceId: "claudeAgent:default",
+          instanceId: ProviderInstanceId.make("claudeAgent"),
           model: "claude-removed",
         },
         selectableModels: [{ slug: "claude-current", name: "Current" }],

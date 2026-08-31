@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import type { Id } from "../../convex/_generated/dataModel"
+import type { Id, TableNames } from "../../convex/_generated/dataModel"
+import type { SystemTableNames } from "convex/server"
 import {
   consumerPayloadHasSource,
   isOrgMember,
@@ -9,7 +10,7 @@ import {
 } from "../../convex/lib/orgAccess"
 import { buildPublishedDevAppLaunchSpec, buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
 
-function asId<T extends string>(value: string): Id<T> {
+function asId<T extends TableNames | SystemTableNames>(value: string): Id<T> {
   return value as Id<T>
 }
 
@@ -37,10 +38,16 @@ interface TestTables {
 }
 
 class FakeIndexedQuery<T extends Record<string, unknown>> {
+  private readonly rows: readonly T[]
+  private readonly filters: ReadonlyArray<{ field: string; value: unknown }>
+
   constructor(
-    private readonly rows: readonly T[],
-    private readonly filters: ReadonlyArray<{ field: string; value: unknown }> = [],
-  ) {}
+    rows: readonly T[],
+    filters: ReadonlyArray<{ field: string; value: unknown }> = [],
+  ) {
+    this.rows = rows
+    this.filters = filters
+  }
 
   eq(field: string, value: unknown): FakeIndexedQuery<T> {
     return new FakeIndexedQuery(this.rows, [...this.filters, { field, value }])
@@ -54,24 +61,31 @@ class FakeIndexedQuery<T extends Record<string, unknown>> {
 }
 
 class FakeQuery<T extends Record<string, unknown>> {
-  constructor(private readonly rows: readonly T[]) {}
+  private readonly rows: readonly T[]
+
+  constructor(rows: readonly T[]) {
+    this.rows = rows
+  }
 
   withIndex(_indexName: string, build: (query: FakeIndexedQuery<T>) => FakeIndexedQuery<T>) {
     return build(new FakeIndexedQuery(this.rows))
   }
 }
 
-function createCtx(tables: TestTables) {
-  return {
+type OrgAccessCtx = Parameters<typeof isOrgMember>[0]
+
+function createCtx(tables: TestTables): OrgAccessCtx {
+  const ctx = {
     db: {
       async get(id: string) {
         return tables.organizations.find((row) => row._id === id) ?? null
       },
       query(table: keyof TestTables) {
-        return new FakeQuery(tables[table] as Array<Record<string, unknown>>)
+        return new FakeQuery(tables[table] as unknown as Array<Record<string, unknown>>)
       },
     },
   }
+  return ctx as unknown as OrgAccessCtx
 }
 
 describe("org DevApp catalog access", () => {
@@ -173,6 +187,13 @@ describe("published DevApp manifests", () => {
         framework: "vite-react",
         entryPath: "index.html",
         contentHash: "c".repeat(64),
+        runtimeKind: "static" as const,
+        manifestVersion: null,
+        platform: null,
+        arch: null,
+        permissionSetHash: null,
+        publisherIdentityKey: null,
+        publisherDeviceLabel: null,
       },
     }
     const spec = buildPublishedDevAppLaunchSpec(entry)

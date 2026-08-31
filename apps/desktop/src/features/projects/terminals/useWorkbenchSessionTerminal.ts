@@ -106,6 +106,37 @@ export function useWorkbenchSessionTerminal({
         tileId,
       })
 
+      // Closing the last Dev Server surface intentionally keeps its PTY and
+      // process alive. A new tile has a new id, so it cannot recover that PTY
+      // from the workbench binding alone; ask the process registry for the
+      // owning terminal before allocating an unrelated empty shell.
+      if (!nextTerminalId && terminalKind === "dev-server") {
+        const processState = await window.electronAPI.devServer.getState({
+          workspaceId,
+          laneId,
+        })
+        const processTerminalId = processState.running ? processState.terminalId : null
+        const processSnapshot = processTerminalId
+          ? await window.electronAPI.terminal.getSnapshot({ terminalId: processTerminalId })
+          : null
+        if (processTerminalId && processSnapshot?.running !== false) {
+          nextTerminalId = processTerminalId
+          await window.electronAPI.workbenchSession.bindTerminal({
+            sessionKey: workbenchSessionKey,
+            projectId,
+            laneId,
+            tileId,
+            terminalId: processTerminalId,
+            workspaceId,
+          })
+          await window.electronAPI.devServer.attachSurface({
+            workspaceId,
+            laneId,
+            terminalId: processTerminalId,
+          })
+        }
+      }
+
       let snapshot =
         nextTerminalId
           ? await window.electronAPI.terminal.getSnapshot({ terminalId: nextTerminalId })

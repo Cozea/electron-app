@@ -13,6 +13,14 @@
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
   --radius: 0.625rem;
+  /* Renderer-wide presentation order. Keep in sync with lib/appLayers.ts. */
+  --cozea-layer-browser-docked: 30;
+  --cozea-layer-dockview-float-base: 1000;
+  --cozea-layer-dockview-drop-target: 8000;
+  --cozea-layer-dialog: 9000;
+  --cozea-layer-menu: 9100;
+  --cozea-layer-tooltip: 9200;
+  --cozea-layer-toast: 9300;
   /* Light shell: pure white background and white tiles */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

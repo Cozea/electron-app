@@ -47,6 +47,7 @@ import { useActiveWorkspaceOrNull } from "@/features/projects/workspaces/ActiveW
 import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
 import { WorkbenchCommandPaletteHost } from "@/features/projects/components/command-palette/WorkbenchCommandPaletteHost";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 const LazyProjectSettingsPage = lazy(() =>
   import("@/features/projects/pages/ProjectSettingsPage").then((module) => ({
@@ -438,30 +439,26 @@ export function ProjectWorkbenchSurface() {
             />
           </div>
 
-          {isSettingsOpen ? (
-            <>
-              <button
-                type="button"
-                aria-label={t('workbench.surface.closeSettings')}
-                data-workbench-browser-overlay="true"
-                data-workbench-browser-overlay-reason="Settings overlay"
-                className="absolute inset-0 z-20 bg-background/30 transition-colors hover:bg-background/35"
-                onClick={closeSettingsOverlay}
-              />
-
-              <aside
-                data-workbench-browser-overlay="true"
-                data-workbench-browser-overlay-reason="Settings overlay"
-                className="absolute inset-0 z-30 flex w-full max-w-full flex-col bg-background"
-              >
+          <Dialog
+            open={isSettingsOpen}
+            onOpenChange={(open) => {
+              if (!open) closeSettingsOverlay();
+            }}
+          >
+            <DialogContent
+              showCloseButton={false}
+              className="inset-0 left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 gap-0 rounded-none border-0 bg-background p-0 sm:max-w-none"
+              aria-label={t('workbench.surface.closeSettings')}
+            >
+              <aside className="flex min-h-0 w-full flex-1 flex-col bg-background">
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <Suspense fallback={<WorkbenchOverlayLoading />}>
                     <LazyProjectSettingsPage presentation="embedded" onRequestClose={closeSettingsOverlay} />
                   </Suspense>
                 </div>
               </aside>
-            </>
-          ) : null}
+            </DialogContent>
+          </Dialog>
 
           {taskCards.length > 0 ? (
             <aside className="flex w-[320px] shrink-0 flex-col border-l border-border/60">

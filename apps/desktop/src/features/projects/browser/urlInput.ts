@@ -28,6 +28,15 @@ export function normalizeUrlInput(value: string): string {
   return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
 }
 
+export function isExternallyOpenableBrowserUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === "http:" || url.protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
 /** Tile-local request to focus the address bar (Cmd+L from the tile body). */
 export const BROWSER_FOCUS_URL_EVENT = "cozea:browser-focus-url"
 

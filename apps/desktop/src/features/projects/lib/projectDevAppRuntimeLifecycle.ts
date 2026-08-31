@@ -25,17 +25,6 @@ export async function releaseProjectDevAppRuntimeTarget(
     workspaceId: target.workspaceId,
   });
 
-  await window.electronAPI.workbenchSession
-    .releaseBrowser({
-      sessionKey: session.sessionKey,
-      projectId: target.projectId,
-      laneId: target.laneId,
-      tileId,
-    })
-    .catch((error) => {
-      console.warn("[ProjectDevApp] Failed to release the source browser binding", error);
-    });
-
   const terminalResult = await window.electronAPI.workbenchSession
     .releaseTerminal({
       sessionKey: session.sessionKey,

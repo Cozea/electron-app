@@ -239,6 +239,8 @@ The AI chat runs **after** project creation, inside the workbench.
 - The chat surface (`CozeaChatSurface`) shows a message timeline, composer, and — when the AI proposes file changes — a diff approval panel
 - Generated images are thread-scoped artifacts. Each assistant tile has persistent `Chat` / `Artifacts` views; hiding chat must not unmount its controller or stream. See `docs/assistant-artifacts.md`.
 - Users approve proposed changes before they are written to disk via `sync:writeFiles` IPC
+- Browser, Dev Server, compatibility Project DevApp, and Org DevApp tiles use one renderer-wide T3 `<webview>` host. Never add `WebContentsView`, browser bounds IPC, screenshot substitution, native-surface occlusion, or a fallback browser host.
+- Application overlays share the semantic body-portal/layer contract in `docs/workbench-overlay-architecture.md`. Browser-owned presentation belongs in `HostedBrowserWebview`; custom application overlays use `AppOverlayPortal` or its bounded anchored variant instead of raw global z-index values.
 
 ## How Device Identity Works
 
@@ -270,7 +272,9 @@ See `docs/device-identity.md` for the protocol and deployment requirements.
   publication-owned local runtimes, encrypted environment configuration, release-bound trusted-code
   approval, and an authenticated release-scoped loopback gateway. Next.js standalone and Nuxt are
   automatic; other self-contained Node outputs use `package.json.cozeaDevApp.service`.
-- Browser permissions are denied and top-level external HTTPS opens outside the tile. Service code
+- Browser guests use the pinned T3 permission allowlist (clipboard read/sanitized write,
+  notifications, and geolocation); all other permissions and unmanaged downloads are denied.
+  Top-level external HTTPS opens outside restricted DevApp tiles. Service code
   is trusted organization code for the private beta, not an OS-enforced filesystem/network sandbox;
   see `docs/service-devapps-implementation-plan.md` for the post-beta container/VM milestone.
 - The historical machine-local `localProjectDevAppStore` and Dev Server source metadata remain only
@@ -279,15 +283,18 @@ See `docs/device-identity.md` for the protocol and deployment requirements.
 
 See `docs/project-devapps.md` for the full lifecycle and operational notes.
 
-## How Agent Dev Server Preview Works
+## How Agent Browser and Dev Server Preview Works
 
-- Agent preview automation uses the built-in workbench **Dev Server** surface, never an ordinary Browser tile or an Org/Project DevApp surface.
+- `dev_server_status`, `dev_server_ensure`, and `dev_server_attach` use the built-in workbench **Dev Server** workflow for process management. Once a guest exists, page automation can target every live Browser, Dev Server, compatibility Project DevApp, and Org DevApp surface in the assistant's workbench.
 - There is one dev-server process per `(workspaceId, laneId)`. `dev_server_ensure` is idempotent: it reuses a ready process and joins a launch already in progress. Only an explicit user restart/stop replaces or stops it.
 - Normal `dev_server_ensure` calls omit `command`. Cozea builds a bounded candidate set from project evidence and ranks it with a tiny macOS Core ML helper, falling back deterministically; the model never generates shell text. A successful ready command is cached by evidence fingerprint. Agents may pass a command only when the user explicitly supplied or confirmed it, with a brokered `{port}` placeholder where needed. If an agent already started a server itself, it attaches and navigates to that port instead of ensuring another process.
+- Static discovery includes root `index.html` plus `dist/`, `build/`, `out/`, and `public/` built outputs. When several safe candidates remain, the Dev Server tile shows a bounded command chooser and launches the selected candidate through the same authorized lifecycle.
 - A process may have zero or more Dev Server surfaces. Closing its last surface leaves the process headless; the sidebar then shows `Dev Server — Running` so the user can reattach it.
+- Reattachment binds the new tile to the singleton process's original PTY so accumulated logs and process ownership survive the tile-id change.
 - Agent-created surfaces are inactive tabs in the requesting assistant's Dockview group. The user can select that tab or drag it into another grid cell without interrupting the server or the assistant.
-- Preview control is leased per assistant thread. Direct user interaction interrupts the lease; a competing agent gets another surface attached to the same process rather than taking control or starting a duplicate process.
-- The Cozea host advertises status/open/navigate/snapshot/click/type/press/scroll/wait operations only. Arbitrary evaluation, recording, appearance, and viewport resize are intentionally unavailable.
+- Preview control is leased per assistant thread. Direct user interaction interrupts the T3 control epoch; a competing agent gets another Dev Server surface attached to the same process rather than taking control or starting a duplicate process.
+- Explicit runtime tab IDs win. Without one, automation uses the thread's last controlled surface, then the active browser-backed tile in the same workbench. `open` and `dev_server_ensure` still default to the thread's Dev Server workflow.
+- The Cozea host advertises the complete pinned T3 set: status, open, navigate, snapshot, click, type, press, scroll, evaluate, wait, recording start/stop, resize, color scheme, and the three Dev Server lifecycle operations.
 
 See `docs/dev-server-agent-automation.md` for the lifecycle, tool semantics, and QA matrix.
 

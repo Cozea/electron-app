@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
@@ -8,12 +8,22 @@ import { ThreadArtifactsView } from "@/features/projects/components/assistant/ar
 import { WorkbenchAssistantDiffDialog } from "@/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog"
 import { useWorkbenchAssistantTileController } from "@/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
+import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { registerPreviewAnnotationComposerTarget } from "@/features/projects/browser/previewAnnotationComposerRegistry"
 import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/stores/useProjectWorkbenchStore"
-import { flushWorkbenchStorage, selectProjectWorkbench, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+import {
+  flushWorkbenchStorage,
+  selectProjectWorkbench,
+  useProjectWorkbenchStore,
+} from "@/stores/useProjectWorkbenchStore"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from "@hugeicons/react"
-import { BubbleChatIcon as __ChatHugeIcon, Delete02Icon as __DeleteHugeIcon, Image01Icon as __ImageHugeIcon } from "@hugeicons/core-free-icons"
+import {
+  BubbleChatIcon as __ChatHugeIcon,
+  Delete02Icon as __DeleteHugeIcon,
+  Image01Icon as __ImageHugeIcon,
+} from "@hugeicons/core-free-icons"
 
 interface WorkbenchAssistantChatTileProps {
   projectId: string
@@ -27,14 +37,52 @@ interface WorkbenchAssistantChatTileProps {
 }
 
 export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProps) {
-  const { chatTitle, diffDialog, closeDiffDialog, handleDeleteThread, surfaceProps, artifacts, artifactMedia } =
-    useWorkbenchAssistantTileController({
-      projectId: props.projectId,
-      laneId: props.laneId,
-      workspaceId: props.workspaceId,
-      projectRootPath: props.projectRootPath,
-      tile: props.tile,
-    })
+  const runtime = useWorkbenchDockRuntime()
+  const {
+    chatTitle,
+    diffDialog,
+    closeDiffDialog,
+    handleDeleteThread,
+    surfaceProps,
+    artifacts,
+    artifactMedia,
+    attachPreviewAnnotation,
+  } = useWorkbenchAssistantTileController({
+    projectId: props.projectId,
+    laneId: props.laneId,
+    workspaceId: props.workspaceId,
+    projectRootPath: props.projectRootPath,
+    tile: props.tile,
+  })
+  const activeRef = useRef(props.panelApi.isActive && props.panelApi.isVisible)
+  useEffect(() => {
+    const update = () => {
+      activeRef.current = props.panelApi.isActive && props.panelApi.isVisible
+    }
+    const activeSubscription = props.panelApi.onDidActiveChange(update)
+    const visibilitySubscription = props.panelApi.onDidVisibilityChange(update)
+    update()
+    return () => {
+      activeSubscription.dispose()
+      visibilitySubscription.dispose()
+    }
+  }, [props.panelApi])
+  useEffect(
+    () =>
+      registerPreviewAnnotationComposerTarget({
+        id: props.tile.id,
+        workbenchSessionKey: runtime.workbenchSessionKey ?? `${props.projectId}:${props.laneId}`,
+        active: () => activeRef.current,
+        attach: attachPreviewAnnotation,
+      }),
+    [
+      attachPreviewAnnotation,
+      props.laneId,
+      props.projectId,
+      props.tile.id,
+      runtime.workbenchSessionKey,
+    ],
+  )
   const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
   const currentTile = useProjectWorkbenchStore((state) => {
     const wb = selectProjectWorkbench(props.projectId, props.laneId, props.workspaceId)(state)
@@ -141,7 +189,11 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
             className={cn("absolute inset-0", viewMode !== "chat" && "hidden")}
             aria-hidden={viewMode !== "chat"}
           >
-            <CozeaChatSurface {...surfaceProps} artifactUrlsById={artifactMedia.urlsById} onOpenArtifact={openArtifact} />
+            <CozeaChatSurface
+              {...surfaceProps}
+              artifactUrlsById={artifactMedia.urlsById}
+              onOpenArtifact={openArtifact}
+            />
           </div>
           <div
             className={cn("absolute inset-0", viewMode !== "artifacts" && "hidden")}

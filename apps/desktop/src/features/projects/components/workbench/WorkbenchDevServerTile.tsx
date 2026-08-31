@@ -3,29 +3,39 @@ import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import type {
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,
+  DevCommandSuggestion,
   ExternalBrowserId,
 } from "@shared/electronApiTypes"
+import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
 import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
-import { useTranslation } from "@/lib/i18n"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { useTranslation } from "@/lib/i18n"
+import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
+import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
+import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError"
+import { resolveBrowserWorkbenchSessionKey } from "@/features/projects/browser/browserSurfaceIdentity"
+import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
+import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry"
+import {
+  runtimePreviewBrowserSurfaceGeneration,
+  runtimePreviewBrowserSurfaceKind,
+  runtimePreviewBrowserSurfaceTabId,
+} from "@/features/projects/browser/runtimePreviewBrowserSurface"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchBrowserView } from "@/features/projects/components/workbench/useWorkbenchBrowserView"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import {
   buildLocalDevServerUrl,
   DEV_SERVER_TILE_COMMAND_EVENT,
-  getDevServerPreviewRecoveryKey,
   isSameDevServerPreviewUrl,
   type DevServerTileCommand,
 } from "@/features/projects/devserver/devServerTileCommands"
 import {
   buildDevServerRunKey,
-  reportDevServerPreviewHttpStatus,
-  useDevServerRunStore,
+  startDevServerRun,
 } from "@/features/projects/devserver/devServerRunStore"
 import { interruptDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
@@ -58,8 +68,12 @@ import {
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { ComputerVideoIcon as __ComputerVideoHugeIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  CommandLineIcon as __CommandLineHugeIcon,
+  ComputerVideoIcon as __ComputerVideoHugeIcon,
+  PlayIcon as __PlayHugeIcon,
+} from "@hugeicons/core-free-icons"
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
   switch (status) {
@@ -100,6 +114,123 @@ const NATIVE_PREVIEW_ROUTE: PageRoute = {
 // `projectId::laneId::unbound` scopes collided across workspaces.
 const NATIVE_PREVIEW_PENDING_SCOPE = "cozea::native-preview::pending"
 
+function RuntimePreviewStartState({
+  status,
+  error,
+  requiresCommandSelection,
+  commandSuggestions,
+  onSelectCommand,
+  onRetry,
+  onShowLogs,
+}: {
+  status: DevServerStatus
+  error: string | null
+  requiresCommandSelection: boolean
+  commandSuggestions: DevCommandSuggestion[]
+  onSelectCommand: (command: string) => void
+  onRetry: () => void
+  onShowLogs: () => void
+}) {
+  const title =
+    status === "starting"
+      ? "Starting Dev Server…"
+      : status === "error"
+        ? "Dev Server failed to start"
+        : "Start the Dev Server to open its preview"
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-content-surface p-6 text-center">
+      <Empty className="w-full max-w-lg py-8">
+        <EmptyHeader>
+          <EmptyMedia className="h-12 w-12 rounded-2xl border border-border/60 bg-secondary/70 shadow-sm [&>svg]:h-6 [&>svg]:w-6 [&>svg]:text-muted-foreground">
+            <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="h-6 w-6" />
+          </EmptyMedia>
+          <EmptyTitle className="text-base font-medium">{title}</EmptyTitle>
+          <EmptyDescription className="max-w-md leading-5">
+            {error ??
+              (status === "starting"
+                ? "Cozea is preparing the project runtime. The living T3 preview will attach as soon as the process exposes a URL."
+                : "Launch the project runtime here, then keep the same page alive while you edit, resize, split, or float the tile.")}
+          </EmptyDescription>
+        </EmptyHeader>
+        {status === "starting" ? (
+          <div className="flex justify-center pt-1" aria-label="Starting Dev Server">
+            <div className="cozea-loader" />
+          </div>
+        ) : null}
+        {requiresCommandSelection && commandSuggestions.length > 0 ? (
+          <div className="mt-2 grid w-full max-w-md gap-2 text-left">
+            {commandSuggestions.slice(0, 5).map((suggestion) => (
+              <button
+                key={suggestion.command}
+                type="button"
+                className="group flex w-full items-start gap-3 rounded-lg border border-border/60 bg-secondary/35 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-secondary/65"
+                onClick={() => onSelectCommand(suggestion.command)}
+              >
+                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-background/70 text-muted-foreground group-hover:text-foreground">
+                  <HugeiconsIcon icon={__CommandLineHugeIcon} className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-xs text-foreground">
+                    {suggestion.command}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                    {suggestion.reason}
+                  </span>
+                </span>
+                <HugeiconsIcon
+                  icon={__PlayHugeIcon}
+                  className="mt-1 size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
+                />
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {status === "error" ? (
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
+            {!requiresCommandSelection ? (
+              <Button type="button" size="sm" variant="secondary" onClick={onRetry}>
+                Try again
+              </Button>
+            ) : null}
+            <Button type="button" size="sm" variant="outline" onClick={onShowLogs}>
+              Server logs
+            </Button>
+          </div>
+        ) : null}
+      </Empty>
+    </div>
+  )
+}
+
+function RuntimePreviewPageError({
+  title,
+  description,
+  url,
+  onReload,
+}: {
+  title: string
+  description: string
+  url: string
+  onReload: () => void
+}) {
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-content-surface p-6 text-center">
+      <div className="flex max-w-lg flex-col items-center gap-3">
+        <div className="space-y-1.5">
+          <div className="text-sm font-medium text-foreground">{title}</div>
+          <div className="text-xs leading-5 text-muted-foreground">{description}</div>
+        </div>
+        <div className="w-full max-w-md truncate rounded-md border border-border/60 bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+          {url}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onReload}>
+          Reload preview
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 interface WorkbenchDevServerTileProps {
   projectId: string
   laneId: string
@@ -134,9 +265,7 @@ function useRuntimeWorkbenchSessionKey({
     }
 
     let cancelled = false
-    setSourceSession((current) =>
-      current?.identity === targetIdentity ? current : null,
-    )
+    setSourceSession((current) => (current?.identity === targetIdentity ? current : null))
 
     void window.electronAPI.workbenchSession
       .ensureSession({
@@ -169,9 +298,7 @@ function useRuntimeWorkbenchSessionKey({
     return currentSessionKey
   }
 
-  return sourceSession?.identity === targetIdentity
-    ? sourceSession.sessionKey
-    : null
+  return sourceSession?.identity === targetIdentity ? sourceSession.sessionKey : null
 }
 
 function WorkbenchRuntimePreviewTile({
@@ -191,6 +318,7 @@ function WorkbenchRuntimePreviewTile({
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const updateTerminalDisplay = useTerminalStore((state) => state.actions.updateTerminalDisplay)
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
+  const surfacePresentation = useDockviewBrowserSurfacePresentation(panelApi, containerApi)
   const runtimeTarget = useMemo(
     () =>
       tile.type === "devServer"
@@ -227,17 +355,15 @@ function WorkbenchRuntimePreviewTile({
     })
   }, [runtimeTarget, runtimeTargetIdentity, tile.id])
   const storedFramework =
-    tile.type === "devServer" ? tile.devAppFramework ?? projectFramework : projectFramework
+    tile.type === "devServer" ? (tile.devAppFramework ?? projectFramework) : projectFramework
   const storedDevCommand =
-    tile.type === "devServer" ? tile.devAppCommand ?? projectDevCommand : projectDevCommand
+    tile.type === "devServer" ? (tile.devAppCommand ?? projectDevCommand) : projectDevCommand
   const storedDevPort =
-    tile.type === "devServer" ? tile.devAppPort ?? projectDevPort : projectDevPort
-  const autoStart = tile.type === "devServer" ? tile.autoStart ?? false : false
-  const devAppReleaseId = tile.type === "devServer" ? tile.devAppReleaseId ?? null : null
+    tile.type === "devServer" ? (tile.devAppPort ?? projectDevPort) : projectDevPort
+  const autoStart = tile.type === "devServer" ? (tile.autoStart ?? false) : false
+  const devAppReleaseId = tile.type === "devServer" ? (tile.devAppReleaseId ?? null) : null
   const storedCommandSource =
-    tile.type === "devServer" && tile.devAppId && tile.devAppCommand
-      ? "devAppRelease"
-      : "detected"
+    tile.type === "devServer" && tile.devAppId && tile.devAppCommand ? "devAppRelease" : "detected"
   const markAutoStartConsumed = useCallback(() => {
     workbenchActions.updateRuntimePreviewTile(
       projectId,
@@ -263,14 +389,21 @@ function WorkbenchRuntimePreviewTile({
 
     let cancelled = false
 
-    void getFrameworkInfo(runtimeWorkspaceId, (storedFramework as Framework | null) ?? null, storedDevCommand, storedDevPort)
+    void getFrameworkInfo(
+      runtimeWorkspaceId,
+      (storedFramework as Framework | null) ?? null,
+      storedDevCommand,
+      storedDevPort,
+    )
       .then((frameworkInfo) => {
         if (cancelled) return
         setResolvedFramework(frameworkInfo.framework)
       })
       .catch(() => {
         if (cancelled) return
-        setResolvedFramework(storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null)
+        setResolvedFramework(
+          storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
+        )
       })
 
     return () => {
@@ -290,8 +423,12 @@ function WorkbenchRuntimePreviewTile({
     { id: "system", name: "System Default" },
   ])
   const [defaultBrowserId, setDefaultBrowserId] = useState<ExternalBrowserId>("system")
-  const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => readStoredExternalBrowserPreference())
-  const [previewDestination, setPreviewDestination] = useState<PreviewDestination>(() => readStoredPreviewDestinationPreference())
+  const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() =>
+    readStoredExternalBrowserPreference(),
+  )
+  const [previewDestination, setPreviewDestination] = useState<PreviewDestination>(() =>
+    readStoredPreviewDestinationPreference(),
+  )
 
   const [terminalRetryKey, setTerminalRetryKey] = useState(0)
   const { terminalId, error: terminalError } = useWorkbenchSessionTerminal({
@@ -354,14 +491,88 @@ function WorkbenchRuntimePreviewTile({
   })
   const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
   const previewServerActive =
-    devServer.status === "ready" || devServer.status === "unhealthy" || devServer.status === "starting"
+    devServer.status === "ready" ||
+    devServer.status === "unhealthy" ||
+    devServer.status === "starting"
 
-  const previewOverrideUrl = tile.type === "devServer" ? tile.previewOverrideUrl ?? null : null
+  const previewOverrideUrl = tile.type === "devServer" ? (tile.previewOverrideUrl ?? null) : null
   const effectivePreviewOverrideUrl = isSameDevServerPreviewUrl(previewOverrideUrl, previewUrl)
     ? null
     : previewOverrideUrl
   const displayUrl = effectivePreviewOverrideUrl ?? previewUrl
   const activeDisplayUrl = previewServerActive ? displayUrl : ""
+  const runtimeTabId =
+    tile.type === "devServer"
+      ? runtimePreviewBrowserSurfaceTabId({
+          projectId,
+          laneId,
+          workspaceId,
+          workbenchSessionKey,
+          tile,
+        })
+      : null
+  const browserSurfaceDescriptor = useMemo<BrowserSurfaceDescriptor | null>(() => {
+    if (
+      surfaceType !== "web" ||
+      tile.type !== "devServer" ||
+      !runtimeWorkspaceId ||
+      !runtimeTabId
+    ) {
+      return null
+    }
+    return {
+      runtimeTabId,
+      tileId: tile.id,
+      workbenchSessionKey: resolveBrowserWorkbenchSessionKey({
+        projectId,
+        laneId,
+        workspaceId,
+        workbenchSessionKey,
+      }),
+      kind: runtimePreviewBrowserSurfaceKind(tile),
+      title: tile.title || (tile.devAppId ? "Project DevApp" : "Dev Server"),
+      initialUrl: activeDisplayUrl || null,
+      storageScope: "ephemeral",
+      workspaceId,
+      laneId,
+      runtimeGeneration: runtimePreviewBrowserSurfaceGeneration(tile),
+    }
+  }, [
+    activeDisplayUrl,
+    laneId,
+    projectId,
+    runtimeTabId,
+    runtimeWorkspaceId,
+    surfaceType,
+    tile,
+    workbenchSessionKey,
+    workspaceId,
+  ])
+  useHostedBrowserSurface(browserSurfaceDescriptor)
+  const browserSurfaceState = useBrowserSurfaceStateStore((state) =>
+    runtimeTabId ? state.byTabId[runtimeTabId] : undefined,
+  )
+  const browserPageError = resolveBrowserPageError(browserSurfaceState)
+  const previewBridge = window.desktopBridge?.preview
+  const lastAutomaticNavigationRef = useRef({
+    runtimeTabId,
+    url: activeDisplayUrl || null,
+  })
+
+  useEffect(() => {
+    if (!runtimeTabId || !previewBridge) return
+    const previous = lastAutomaticNavigationRef.current
+    if (previous.runtimeTabId !== runtimeTabId) {
+      lastAutomaticNavigationRef.current = { runtimeTabId, url: activeDisplayUrl || null }
+      return
+    }
+    const nextUrl = activeDisplayUrl || null
+    if (previous.url === nextUrl) return
+    lastAutomaticNavigationRef.current = { runtimeTabId, url: nextUrl }
+    if (nextUrl) {
+      void previewBridge.navigate(runtimeTabId, nextUrl).catch(() => undefined)
+    }
+  }, [activeDisplayUrl, previewBridge, runtimeTabId])
 
   const terminalShell = (
     <div
@@ -370,97 +581,6 @@ function WorkbenchRuntimePreviewTile({
     />
   )
 
-  const showEmbeddedPreview =
-    viewMode === "preview" &&
-    previewServerActive &&
-    (isMobileSimulatorSurface || previewDestination === "cozea")
-  const showWebEmbeddedPreview = showEmbeddedPreview && !usesNativePreview
-  const {
-    hostRef,
-    state: previewState,
-    boundsReady,
-    overlayPaused,
-    placeholderScreenshot,
-    actions: previewActions,
-  } = useWorkbenchBrowserView({
-    tileId: tile.id,
-    url: showWebEmbeddedPreview ? activeDisplayUrl : "",
-    sessionKey: runtimeSessionKey,
-    projectId: runtimeProjectId,
-    laneId: runtimeLaneId,
-    visible: showWebEmbeddedPreview && panelActivity.visible,
-    storageScope: "ephemeral",
-    workspaceId: runtimeWorkspaceId ?? undefined,
-    persistModel: true,
-    onUrlObserved: (nextUrl) => {
-      if (tile.type !== "devServer") return
-      // In-preview navigation becomes persisted intent; landing back on the
-      // server's own URL clears it so the tile follows the server again.
-      const runKey = runtimeWorkspaceId
-        ? buildDevServerRunKey(runtimeWorkspaceId, runtimeLaneId)
-        : null
-      const run = runKey ? useDevServerRunStore.getState().runs[runKey] : undefined
-      const serverUrl = run?.url ?? (run?.port ? buildLocalDevServerUrl(run.port) : "")
-      const nextOverride = isSameDevServerPreviewUrl(serverUrl, nextUrl) ? null : nextUrl
-      workbenchActions.updateRuntimePreviewTile(
-        projectId,
-        laneId,
-        tile.id,
-        { previewOverrideUrl: nextOverride },
-        workspaceId,
-      )
-    },
-    onNewPageRequest: (request) => {
-      const nextTileId = workbenchActions.addTile(projectId, laneId, "browser", {
-        url: request.url,
-        storageScope: "workspace",
-      }, workspaceId)
-      workbenchActions.setActiveTile(projectId, laneId, nextTileId, workspaceId)
-    },
-  })
-  const previewDisplayError = previewState.loadError ?? previewState.httpError ?? null
-  const previewRecoveryKey = getDevServerPreviewRecoveryKey({
-    status: devServer.status,
-    runId: devServer.runId ?? null,
-    url: activeDisplayUrl,
-    loadError: previewState.loadError ?? null,
-    visible: showWebEmbeddedPreview && panelActivity.visible,
-  })
-  const recoveredPreviewKeyRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!previewRecoveryKey || recoveredPreviewKeyRef.current === previewRecoveryKey) {
-      return
-    }
-    recoveredPreviewKeyRef.current = previewRecoveryKey
-    void previewActions.reload().catch((cause: unknown) => {
-      console.warn("[dev-server-preview] automatic recovery reload failed", cause)
-    })
-  }, [previewActions, previewRecoveryKey])
-
-  useEffect(() => {
-    if (!runtimeRunKey || !showWebEmbeddedPreview) return
-    reportDevServerPreviewHttpStatus(
-      runtimeRunKey,
-      previewState.httpStatusCode,
-      previewState.httpStatusText,
-    )
-  }, [
-    previewState.httpStatusCode,
-    previewState.httpStatusText,
-    runtimeRunKey,
-    showWebEmbeddedPreview,
-  ])
-
-  const showServerLogs = useCallback(() => {
-    workbenchActions.updateRuntimePreviewTile(
-      projectId,
-      laneId,
-      tile.id,
-      { viewMode: "code" },
-      workspaceId,
-    )
-  }, [laneId, projectId, tile.id, workbenchActions, workspaceId])
   const lastExternalPreviewKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -477,14 +597,22 @@ function WorkbenchRuntimePreviewTile({
       workspaceId: runtimeWorkspaceId ?? undefined,
       port: devServer.port ?? undefined,
     })
-  }, [devServer.port, runtimeWorkspaceId, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
+  }, [
+    devServer.port,
+    runtimeWorkspaceId,
+    storedDevCommand,
+    terminalId,
+    tile.title,
+    updateTerminalDisplay,
+  ])
 
   useEffect(() => {
     let cancelled = false
 
     const loadAvailableBrowsers = async () => {
       try {
-        const result = await window.electronAPI.shell.listAvailableBrowsers() as AvailableExternalBrowserResult
+        const result =
+          (await window.electronAPI.shell.listAvailableBrowsers()) as AvailableExternalBrowserResult
         if (cancelled || result.browsers.length === 0) return
         setAvailableBrowsers(result.browsers)
         setDefaultBrowserId(result.defaultBrowserId)
@@ -501,7 +629,10 @@ function WorkbenchRuntimePreviewTile({
   }, [])
 
   useEffect(() => {
-    const resolvedBrowserId = resolvePreferredExternalBrowserId(availableBrowsers, selectedBrowserId)
+    const resolvedBrowserId = resolvePreferredExternalBrowserId(
+      availableBrowsers,
+      selectedBrowserId,
+    )
     if (resolvedBrowserId === selectedBrowserId) return
     setSelectedBrowserId(resolvedBrowserId)
   }, [availableBrowsers, selectedBrowserId])
@@ -573,14 +704,13 @@ function WorkbenchRuntimePreviewTile({
 
   const effectiveSelectedBrowser = useMemo(() => {
     return (
-      visibleBrowsers.find((browser) => browser.id === effectiveBrowserId)
-      ?? availableBrowsers.find((browser) => browser.id === effectiveBrowserId)
-      ?? availableBrowsers[0]
-      ?? { id: "system" as const, name: "System Default" }
+      visibleBrowsers.find((browser) => browser.id === effectiveBrowserId) ??
+      availableBrowsers.find((browser) => browser.id === effectiveBrowserId) ??
+      availableBrowsers[0] ?? { id: "system" as const, name: "System Default" }
     )
   }, [availableBrowsers, effectiveBrowserId, visibleBrowsers])
 
-  const externalPreviewUrl = usesNativePreview ? nativeStreamUrl ?? previewUrl : previewUrl
+  const externalPreviewUrl = usesNativePreview ? (nativeStreamUrl ?? previewUrl) : previewUrl
 
   const openPreviewExternally = useCallback(
     async (force = false) => {
@@ -606,7 +736,7 @@ function WorkbenchRuntimePreviewTile({
         })
       }
     },
-    [effectiveBrowserId, externalPreviewUrl, t]
+    [effectiveBrowserId, externalPreviewUrl, t],
   )
 
   // The dock header owns the simulator refresh button but only this tile
@@ -691,7 +821,13 @@ function WorkbenchRuntimePreviewTile({
     }
 
     void openPreviewExternally()
-  }, [externalPreviewUrl, isMobileSimulatorSurface, openPreviewExternally, previewDestination, viewMode])
+  }, [
+    externalPreviewUrl,
+    isMobileSimulatorSurface,
+    openPreviewExternally,
+    previewDestination,
+    viewMode,
+  ])
 
   const codeBody = terminalError ? (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
@@ -745,83 +881,64 @@ function WorkbenchRuntimePreviewTile({
     </div>
   )
 
+  const reloadEmbeddedPreview = () => {
+    if (!runtimeTabId || !previewBridge || !activeDisplayUrl) return
+    void previewBridge.navigate(runtimeTabId, activeDisplayUrl).catch(() => undefined)
+  }
+  const showServerLogs = () => {
+    workbenchActions.updateRuntimePreviewTile(
+      projectId,
+      laneId,
+      tile.id,
+      { viewMode: "code" },
+      workspaceId,
+    )
+  }
+  const webSurfaceVisible =
+    Boolean(activeDisplayUrl) &&
+    panelActivity.visible &&
+    viewMode === "preview" &&
+    previewDestination === "cozea" &&
+    !browserPageError
   const webEmbeddedPreviewBody = (
     <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
+      {runtimeTabId ? (
+        <BrowserSurfaceSlot
+          tabId={runtimeTabId}
+          visible={webSurfaceVisible}
+          borderRadius={surfacePresentation.borderRadius}
+          stackingLayer={surfacePresentation.stackingLayer}
+          subscribePositionChanges={surfacePresentation.subscribePositionChanges}
+          className="absolute inset-0 size-full"
+        />
+      ) : null}
       {!activeDisplayUrl ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] flex items-center justify-center bg-content-surface p-6 text-center">
-          <Empty className="w-full max-w-md py-8">
-            <EmptyHeader>
-              <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
-                <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="h-7 w-7" />
-              </EmptyMedia>
-              <EmptyTitle className="text-base font-medium">
-                {devServer.status === "starting"
-                  ? "Local preview will attach here."
-                  : devServer.status === "error"
-                    ? "Dev server couldn't start"
-                    : "No preview yet"}
-              </EmptyTitle>
-              <EmptyDescription>
-                {devServer.status === "starting"
-                  ? "The browser shell is ready. As soon as the dev server exposes a URL, the page will appear here."
-                  : devServer.status === "error"
-                    ? devServer.error ?? "Check the server logs, then try again."
-                    : "Start the dev server to load the local preview here."}
-              </EmptyDescription>
-              {devServer.status === "starting" ? (
-                <div className="flex justify-center pt-2">
-                  <div className="cozea-loader" />
-                </div>
-              ) : null}
-            </EmptyHeader>
-          </Empty>
-        </div>
+        <RuntimePreviewStartState
+          status={devServer.status}
+          error={devServer.error}
+          requiresCommandSelection={devServer.requiresCommandSelection}
+          commandSuggestions={devServer.commandSuggestions}
+          onSelectCommand={(command) => {
+            if (runtimeRunKey) void startDevServerRun(runtimeRunKey, { command })
+          }}
+          onRetry={() => void devServer.start()}
+          onShowLogs={showServerLogs}
+        />
       ) : null}
-      {activeDisplayUrl && previewDisplayError ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-content-surface p-6 text-center">
-          <div className="max-w-md space-y-2">
-            <div className="text-sm font-medium text-foreground">
-              {previewState.httpError
-                ? `Preview returned HTTP ${previewState.httpStatusCode ?? "error"}`
-                : "This preview could not be loaded."}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {previewState.httpError
-                ? `${previewDisplayError}. The server is still running, but this page produced no visible error document.`
-                : previewDisplayError}
-            </div>
-            <div className="flex justify-center gap-2 pt-2">
-              <Button type="button" size="sm" variant="secondary" onClick={() => void previewActions.reload()}>
-                Reload
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={showServerLogs}>
-                Server logs
-              </Button>
-            </div>
-          </div>
-        </div>
+      {browserPageError?.kind === "transport" ? (
+        <RuntimePreviewPageError
+          title="The preview could not be reached"
+          description={`${browserPageError.description} (${browserPageError.code}). The Dev Server process is still managed independently.`}
+          url={browserPageError.url}
+          onReload={reloadEmbeddedPreview}
+        />
       ) : null}
-      {activeDisplayUrl && placeholderScreenshot && !previewDisplayError ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[85] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
-          <div
-            className="absolute inset-0 bg-no-repeat"
-            style={{ backgroundImage: `url("${placeholderScreenshot}")`, backgroundSize: '100% 100%' }}
-            aria-hidden
-          />
-        </div>
-      ) : null}
-      {activeDisplayUrl && overlayPaused && !placeholderScreenshot && !previewDisplayError ? (
-        <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[90] overflow-hidden rounded-[inherit] bg-content-surface pointer-events-none">
-          <div className="absolute inset-0 bg-background/18 backdrop-blur-[1px]" aria-hidden />
-        </div>
-      ) : null}
-      {activeDisplayUrl ? (
-        <div
-          ref={hostRef}
-          className={cn(
-            "absolute top-[1px] bottom-[1px] left-[1px] right-[1px] overflow-hidden bg-content-surface",
-            (!boundsReady || previewDisplayError) ? "pointer-events-none opacity-0" : "opacity-100",
-          )}
+      {browserPageError?.kind === "http" ? (
+        <RuntimePreviewPageError
+          title={`${browserPageError.diagnostic.statusCode} ${browserPageError.diagnostic.statusText || "HTTP error"}`}
+          description="The server returned an empty error response. Its process status is unchanged."
+          url={browserPageError.diagnostic.url}
+          onReload={reloadEmbeddedPreview}
         />
       ) : null}
     </div>
@@ -858,8 +975,8 @@ function WorkbenchRuntimePreviewTile({
       {runtimeTarget.usesProjectDevAppSource
         ? t("workbench.selection.localDevAppUnavailableDescription")
         : isMobileSimulatorSurface
-        ? "Open or relink a local project folder to run a mobile simulator here."
-        : "Open or relink a local project folder to manage a dev server here."}
+          ? "Open or relink a local project folder to run a mobile simulator here."
+          : "Open or relink a local project folder to manage a dev server here."}
     </div>
   ) : (
     <div className="h-full min-h-0 bg-content-surface">
@@ -869,8 +986,12 @@ function WorkbenchRuntimePreviewTile({
       >
         <div className={cn("h-full min-h-0", viewMode === "preview" ? "block" : "hidden")}>
           {isMobileSimulatorSurface
-            ? (supportsIosNativePreview ? nativeIosPreviewBody : nativeUnsupportedBody)
-            : (previewDestination === "cozea" ? cozeaEmbeddedPreviewBody : externalPreviewBody)}
+            ? supportsIosNativePreview
+              ? nativeIosPreviewBody
+              : nativeUnsupportedBody
+            : previewDestination === "cozea"
+              ? cozeaEmbeddedPreviewBody
+              : externalPreviewBody}
         </div>
       </Activity>
       <Activity
@@ -903,7 +1024,9 @@ function WorkbenchRuntimePreviewTile({
         tileType={isMobileSimulatorSurface ? "mobileSimulator" : "devServer"}
         devAppId={tile.type === "devServer" ? tile.devAppId : undefined}
       >
-        <div data-workbench-browser-content="true" className="h-full min-h-0 bg-content-surface">{body}</div>
+        <div data-workbench-browser-content="true" className="h-full min-h-0 bg-content-surface">
+          {body}
+        </div>
       </WorkbenchTileChrome>
     </div>
   )

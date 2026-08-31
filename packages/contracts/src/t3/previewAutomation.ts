@@ -1,5 +1,5 @@
 // @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ a3a8cbd60539b4af4de8f96c892dbd07a2b6c041 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 3acdc3b2f9751915b7da12862681413dad363945 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
 import { Schema } from "effect";
 
 import { EnvironmentId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -87,19 +87,17 @@ export const DevServerAutomationInput = Schema.Struct({
   command: Schema.optional(
     TrimmedNonEmptyString.check(Schema.isMaxLength(1024)).annotate({
       description:
-        "Exceptional explicit launch command supplied or confirmed by the user. Omit normally so Cozea can resolve a bounded local candidate. Use {port} where the brokered port must be inserted, for example python3 -m http.server {port}.",
+        "Optional launch command when project detection cannot choose one. Use {port} where the brokered port must be inserted, for example python3 -m http.server {port}.",
     }),
   ).annotate({
     description:
-      "Exceptional user-supplied or user-confirmed launch command. Omit normally so Cozea can resolve a bounded local candidate. Use {port} where the brokered port must be inserted.",
+      "Optional launch command when project detection cannot choose one. Use {port} where the brokered port must be inserted.",
   }),
   port: Schema.optional(
-    Schema.Int.check(Schema.isGreaterThan(0))
-      .check(Schema.isLessThan(65_536))
-      .annotate({
-        description:
-          "Preferred local port for command. The port broker may choose another free port, so custom commands should use the {port} placeholder.",
-      }),
+    Schema.Int.check(Schema.isGreaterThan(0)).check(Schema.isLessThan(65_536)).annotate({
+      description:
+        "Preferred local port for command. The port broker may choose another free port, so custom commands should use the {port} placeholder.",
+    }),
   ).annotate({
     description:
       "Preferred local port. Custom commands should use {port} so port brokerage remains authoritative.",
@@ -113,7 +111,7 @@ export const DevServerAutomationInput = Schema.Struct({
   reuseExistingSurface: Schema.optional(
     Schema.Boolean.annotate({
       description:
-        "Reuse an unleased Dev Server surface when possible. Ensure always reuses when safe; this option only requests another view when attaching to an existing runtime.",
+        "Reuse an unleased Dev Server surface when possible. Defaults to true; false creates another view without another process.",
     }),
   ),
 }).annotate({

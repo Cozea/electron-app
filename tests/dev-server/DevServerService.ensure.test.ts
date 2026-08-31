@@ -136,6 +136,19 @@ describe('DevServerService.ensure', () => {
       ready: true,
       runId: 'headless-run',
       headless: true,
+      terminalId: 'owner-terminal',
     })
+
+    expect(service.attachSurface(workspaceId, 'collab', 'other-terminal')).toEqual({
+      success: true,
+      ownsRuntime: false,
+    })
+    expect(service.getState(workspaceId, 'collab').headless).toBe(true)
+
+    expect(service.attachSurface(workspaceId, 'collab', 'owner-terminal')).toEqual({
+      success: true,
+      ownsRuntime: true,
+    })
+    expect(service.getState(workspaceId, 'collab').headless).toBe(false)
   })
 })

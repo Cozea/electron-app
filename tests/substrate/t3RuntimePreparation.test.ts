@@ -3,6 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { resolveT3RuntimeRoot } from '../../apps/server/src/t3/paths'
+import { sanitizePortableRuntimeSymlinks } from '../../scripts/prepare-t3-runtime.mjs'
 
 const repositoryRoot = path.resolve(__dirname, '../..')
 
@@ -46,5 +47,42 @@ describe('T3 runtime preparation', () => {
     expect(builderConfig).toContain('from: "../../build/t3-runtime"')
     expect(builderConfig).toContain('from: "../../build/t3-runtime/node_modules"')
     expect(prepareScript).toContain('"pnpm-store"')
+  })
+
+  it('removes pnpm deploy self-links that escape the packaged runtime', () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(repositoryRoot, '.agent', 't3-runtime-link-test-'))
+    const runtimeRoot = path.join(temporaryRoot, 'runtime')
+    const linkDirectory = path.join(runtimeRoot, 'node_modules', 'pnpm-store', 'node_modules')
+    const externalServer = path.join(temporaryRoot, 'vendor', 'apps', 'server')
+    fs.mkdirSync(linkDirectory, { recursive: true })
+    fs.mkdirSync(externalServer, { recursive: true })
+    fs.symlinkSync(externalServer, path.join(linkDirectory, 't3'))
+
+    try {
+      expect(sanitizePortableRuntimeSymlinks(runtimeRoot)).toEqual([
+        path.join('node_modules', 'pnpm-store', 'node_modules', 't3'),
+      ])
+      expect(fs.existsSync(path.join(linkDirectory, 't3'))).toBe(false)
+    } finally {
+      fs.rmSync(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects unexpected symlinks that escape the packaged runtime', () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(repositoryRoot, '.agent', 't3-runtime-link-test-'))
+    const runtimeRoot = path.join(temporaryRoot, 'runtime')
+    const linkDirectory = path.join(runtimeRoot, 'node_modules')
+    const externalPackage = path.join(temporaryRoot, 'external-package')
+    fs.mkdirSync(linkDirectory, { recursive: true })
+    fs.mkdirSync(externalPackage, { recursive: true })
+    fs.symlinkSync(externalPackage, path.join(linkDirectory, 'unexpected'))
+
+    try {
+      expect(() => sanitizePortableRuntimeSymlinks(runtimeRoot)).toThrow(
+        'Portable T3 deployment contains an external symlink',
+      )
+    } finally {
+      fs.rmSync(temporaryRoot, { recursive: true, force: true })
+    }
   })
 })

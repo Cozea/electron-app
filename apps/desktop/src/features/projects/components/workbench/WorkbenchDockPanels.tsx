@@ -20,10 +20,15 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Toggle } from "@/components/ui/toggle"
+import { BrowserNavigationControls } from "@/features/projects/browser/BrowserNavigationControls"
+import { BrowserPreviewActionsForTile } from "@/features/projects/browser/BrowserPreviewActions"
 import {
-  BROWSER_FOCUS_URL_EVENT,
-  normalizeUrlInput,
-} from "@/features/projects/browser/urlInput"
+  browserAddressDisplayValue,
+  resolveBrowserAddressSubmission,
+} from "@/features/projects/browser/browserAddressState"
+import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
+import { runtimePreviewBrowserSurfaceTabId } from "@/features/projects/browser/runtimePreviewBrowserSurface"
+import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput"
 import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,
@@ -37,11 +42,6 @@ import {
   dispatchDevServerTileCommand,
   isSameDevServerPreviewUrl,
 } from "@/features/projects/devserver/devServerTileCommands"
-import {
-  type BrowserTileModel,
-  acquireBrowserTileModel,
-  releaseBrowserTileModel,
-} from "@/features/projects/browser/browserTileModel"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
@@ -59,6 +59,7 @@ import {
   type WorkbenchLlamaTile as WorkbenchLlamaTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   type WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord,
+  type WorkbenchDevAppPreviewTile as WorkbenchDevAppPreviewTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
   selectProjectWorkbench,
@@ -76,10 +77,9 @@ import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  ArrowLeft01Icon as __ArrowLeftHugeIcon,
-  ArrowRight01Icon as __ArrowRightHugeIcon,
   CommandLineIcon as __SquareTerminalHugeIcon,
   ComputerVideoIcon as __ComputerVideoHugeIcon,
+  LinkSquare02Icon as __ExternalLinkHugeIcon,
   LockIcon as __LockHugeIcon,
   ArrowExpand01Icon as __MaximizeHugeIcon,
   ArrowShrink01Icon as __RestoreHugeIcon,
@@ -116,6 +116,10 @@ const loadWorkbenchOrgDevAppTile = () =>
   import("@/features/projects/components/workbench/WorkbenchOrgDevAppTile").then((m) => ({
     default: m.WorkbenchOrgDevAppTile,
   }))
+const loadWorkbenchDevAppPreviewTile = () =>
+  import("@/features/projects/components/workbench/WorkbenchDevAppPreviewTile").then((m) => ({
+    default: m.WorkbenchDevAppPreviewTile,
+  }))
 const loadWorkbenchSelectionTile = () =>
   import("@/features/projects/components/workbench/WorkbenchSelectionTile").then((m) => ({
     default: m.WorkbenchSelectionTile,
@@ -131,6 +135,7 @@ const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
 const LazyWorkbenchLlamaTile = lazy(loadWorkbenchLlamaTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchOrgDevAppTile = lazy(loadWorkbenchOrgDevAppTile)
+const LazyWorkbenchDevAppPreviewTile = lazy(loadWorkbenchDevAppPreviewTile)
 const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
 const LazyWorkbenchTerminalTile = lazy(loadWorkbenchTerminalTile)
 const LazyChangesPage = lazy(() =>
@@ -175,6 +180,8 @@ function resolveTabTileTypeLabel(tile: WorkbenchTile | null): string {
       return "Simulator"
     case "orgDevApp":
       return "DevApp"
+    case "devAppPreview":
+      return "DevApp preview"
     case "selection":
       return "Add"
     default:
@@ -195,6 +202,14 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
     return (
       <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
         <PublishedDevAppIcon name={tile.title} logoDataUrl={tile.logoDataUrl} />
+      </span>
+    )
+  }
+
+  if (tile?.type === "devAppPreview") {
+    return (
+      <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
+        <PublishedDevAppIcon name={tile.title} />
       </span>
     )
   }
@@ -306,146 +321,12 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   )
 })
 
-/**
- * Self-contained address bar for browser panels, rendered directly by the
- * dock header. It subscribes to the workbench store and the browser tile
- * model itself instead of going through the registered-element registry:
- * registry elements carry closures from the panel-content tree, and any
- * registration/subscription skew (panel remounts, HMR module duplication)
- * left the header rendering stale elements whose state setters were dead —
- * the visible-but-untypeable URL bar.
- */
 const BrowserPanelHeaderControls = memo(function BrowserPanelHeaderControls({
   tileId,
 }: {
   tileId: string
 }) {
-  const runtime = useWorkbenchDockRuntime()
-  const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
-  const tileUrl = useProjectWorkbenchStore((state) => {
-    const workbench = selectProjectWorkbench(runtime.projectId, runtime.laneId, runtime.workspaceId)(state)
-    const tile = workbench?.tiles[tileId]
-    return tile && tile.type === "browser" ? tile.url : ""
-  })
-  const [draftUrl, setDraftUrl] = useState(tileUrl)
-  const [navState, setNavState] = useState({ canGoBack: false, canGoForward: false, favicon: null as string | null })
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const modelRef = useRef<BrowserTileModel | null>(null)
-
-  useEffect(() => {
-    setDraftUrl(tileUrl)
-  }, [tileUrl])
-
-  useEffect(() => {
-    const model = acquireBrowserTileModel(tileId, { persistent: true })
-    modelRef.current = model
-    const unsubscribe = model.subscribe((state) => {
-      setNavState((current) =>
-        current.canGoBack === state.canGoBack &&
-        current.canGoForward === state.canGoForward &&
-        current.favicon === (state.favicon ?? null)
-          ? current
-          : { canGoBack: state.canGoBack, canGoForward: state.canGoForward, favicon: state.favicon ?? null },
-      )
-    })
-    return () => {
-      unsubscribe()
-      modelRef.current = null
-      void releaseBrowserTileModel(tileId)
-    }
-  }, [tileId])
-
-  useEffect(() => {
-    const focusInput = () => {
-      window.requestAnimationFrame(() => {
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      })
-    }
-    const onLocal = (event: Event) => {
-      if ((event as CustomEvent<{ tileId: string }>).detail?.tileId !== tileId) return
-      focusInput()
-    }
-    const unsubscribeCommand = window.electronAPI.workbenchBrowser.onCommand((command) => {
-      if (command.tileId !== tileId || command.type !== "focus-url") return
-      focusInput()
-    })
-    window.addEventListener(BROWSER_FOCUS_URL_EVENT, onLocal)
-    return () => {
-      unsubscribeCommand()
-      window.removeEventListener(BROWSER_FOCUS_URL_EVENT, onLocal)
-    }
-  }, [tileId])
-
-  const submitDraftUrl = () => {
-    const normalized = normalizeUrlInput(draftUrl)
-    if (!normalized) return
-    workbenchActions.updateBrowserTile(
-      runtime.projectId,
-      runtime.laneId,
-      tileId,
-      { url: normalized, title: "Browser" },
-      runtime.workspaceId,
-    )
-  }
-
-  const navChipClass =
-    "h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground"
-
-  return (
-    <div className="cozea-workbench-header-controls flex h-full min-w-0 items-center px-1">
-      <div className="flex min-w-0 items-center gap-1.5">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={navChipClass}
-          disabled={!navState.canGoBack}
-          onClick={() => {
-            void modelRef.current?.goBack()
-          }}
-          aria-label="Back"
-        >
-          <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={navChipClass}
-          disabled={!navState.canGoForward}
-          onClick={() => {
-            void modelRef.current?.goForward()
-          }}
-          aria-label="Forward"
-        >
-          <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
-        </Button>
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 bg-transparent px-1">
-          {navState.favicon ? (
-            <img src={navState.favicon} alt="" className="size-[16px] shrink-0 rounded-sm object-contain" />
-          ) : draftUrl.startsWith("https://") ? (
-            <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
-          ) : null}
-          <Input
-            ref={inputRef}
-            value={draftUrl}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setDraftUrl(event.target.value)}
-            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                submitDraftUrl()
-              }
-            }}
-            placeholder="Search or enter address"
-            className={cn(
-              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
-            )}
-          />
-        </div>
-      </div>
-    </div>
-  )
+  return <BrowserNavigationControls tileId={tileId} />
 })
 
 /**
@@ -466,36 +347,51 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const tile = useWorkbenchTile(runtime.projectId, runtime.laneId, runtime.workspaceId, tileId)
   const runtimeTarget =
-    tile?.type === "devServer"
-      ? resolveProjectDevAppRuntimeTarget(tile, runtime)
-      : runtime
+    tile?.type === "devServer" ? resolveProjectDevAppRuntimeTarget(tile, runtime) : runtime
   const runKey = runtimeTarget.workspaceId
     ? buildDevServerRunKey(runtimeTarget.workspaceId, runtimeTarget.laneId)
     : null
-  const run = useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined))
-    ?? DEFAULT_DEV_SERVER_RUN
+  const run =
+    useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined)) ??
+    DEFAULT_DEV_SERVER_RUN
 
   const serverUrl = run.url ?? (run.port ? buildLocalDevServerUrl(run.port) : "")
-  const overrideUrl = tile?.type === "devServer" ? tile.previewOverrideUrl ?? null : null
+  const overrideUrl = tile?.type === "devServer" ? (tile.previewOverrideUrl ?? null) : null
   const effectiveOverrideUrl = isSameDevServerPreviewUrl(overrideUrl, serverUrl)
     ? null
     : overrideUrl
   const displayUrl = effectiveOverrideUrl ?? serverUrl
   const viewMode =
     tile?.type === "devServer" || tile?.type === "mobileSimulator"
-      ? tile.viewMode ?? "preview"
+      ? (tile.viewMode ?? "preview")
       : "preview"
 
-  const [draftUrl, setDraftUrl] = useState(displayUrl)
+  const runtimeTabId =
+    tile?.type === "devServer"
+      ? runtimePreviewBrowserSurfaceTabId({
+          projectId: runtime.projectId,
+          laneId: runtime.laneId,
+          workspaceId: runtime.workspaceId,
+          workbenchSessionKey: runtime.workbenchSessionKey,
+          tile,
+        })
+      : null
+  const browserSurfaceState = useBrowserSurfaceStateStore((state) =>
+    runtimeTabId ? state.byTabId[runtimeTabId] : undefined,
+  )
+  const committedUrl =
+    browserSurfaceState && browserSurfaceState.navStatus.kind !== "Idle"
+      ? browserSurfaceState.navStatus.url
+      : displayUrl
+
+  const [draftUrl, setDraftUrl] = useState(committedUrl)
+  const [inputFocused, setInputFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
-    // Upstream churn (server becoming ready, port changes) must not clobber
-    // an in-progress edit.
-    const input = inputRef.current
-    if (input && document.activeElement === input) return
-    setDraftUrl(displayUrl)
-  }, [displayUrl])
+    if (inputFocused) return
+    setDraftUrl(committedUrl)
+  }, [committedUrl, inputFocused])
 
   if (!tile || (tile.type !== "devServer" && tile.type !== "mobileSimulator")) {
     return null
@@ -512,9 +408,11 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
   }
 
   const submitDraftUrl = () => {
-    const normalized = normalizeUrlInput(draftUrl)
-    if (!normalized) return
+    const normalized = resolveBrowserAddressSubmission(draftUrl)
+    if (!normalized || !runtimeTabId) return
     setOverrideUrl(isSameDevServerPreviewUrl(serverUrl, normalized) ? null : normalized)
+    const preview = window.desktopBridge?.preview
+    if (preview) void preview.navigate(runtimeTabId, normalized).catch(() => undefined)
   }
 
   const viewToggle = (
@@ -556,12 +454,25 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {viewToggle}
         <div className="flex min-w-0 flex-1 items-center gap-1.5 bg-transparent px-1">
-          <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <HugeiconsIcon
+            icon={__LockHugeIcon}
+            className="size-3.5 shrink-0 text-muted-foreground/70"
+          />
           <Input
             ref={inputRef}
-            value={draftUrl}
+            value={browserAddressDisplayValue({
+              committedUrl,
+              draft: draftUrl,
+              focused: inputFocused,
+            })}
             placeholder="Search or enter address"
             onChange={(event: ChangeEvent<HTMLInputElement>) => setDraftUrl(event.target.value)}
+            onFocus={() => {
+              setDraftUrl(committedUrl)
+              setInputFocused(true)
+              queueMicrotask(() => inputRef.current?.select())
+            }}
+            onBlur={() => setInputFocused(false)}
             onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
               if (event.key === "Enter") {
                 event.preventDefault()
@@ -569,7 +480,7 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
                 event.currentTarget.blur()
               } else if (event.key === "Escape") {
                 event.preventDefault()
-                setDraftUrl(displayUrl)
+                setDraftUrl(committedUrl)
                 event.currentTarget.blur()
               }
             }}
@@ -577,6 +488,19 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
               "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
             )}
           />
+          {isExternallyOpenableBrowserUrl(committedUrl) && !inputFocused ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
+              onClick={() => void window.electronAPI.shell.openExternal(committedUrl)}
+              aria-label="Open preview externally"
+              title="Open preview externally"
+            >
+              <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
+            </Button>
+          ) : null}
           {overrideUrl ? (
             <Button
               type="button"
@@ -610,23 +534,30 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(runtime.projectId, runtime.laneId, runtime.workspaceId, tileId)
   const runtimeTarget =
-    tile?.type === "devServer"
-      ? resolveProjectDevAppRuntimeTarget(tile, runtime)
-      : runtime
+    tile?.type === "devServer" ? resolveProjectDevAppRuntimeTarget(tile, runtime) : runtime
   const runKey = runtimeTarget.workspaceId
     ? buildDevServerRunKey(runtimeTarget.workspaceId, runtimeTarget.laneId)
     : null
-  const run = useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined))
-    ?? DEFAULT_DEV_SERVER_RUN
+  const run =
+    useDevServerRunStore((state) => (runKey ? state.runs[runKey] : undefined)) ??
+    DEFAULT_DEV_SERVER_RUN
   const hasLaunchTerminal = useDevServerRunStore((state) =>
     Boolean(runKey && state.contexts[runKey]?.terminalId),
   )
+  const runtimeTabId =
+    tile?.type === "devServer"
+      ? runtimePreviewBrowserSurfaceTabId({
+          projectId: runtime.projectId,
+          laneId: runtime.laneId,
+          workspaceId: runtime.workspaceId,
+          workbenchSessionKey: runtime.workbenchSessionKey,
+          tile,
+        })
+      : null
 
   if (!runtimeTarget.workspaceId || !runKey) {
     return null
   }
-
-  const serverUrl = run.url ?? (run.port ? buildLocalDevServerUrl(run.port) : "")
 
   if (isDevServerRunActive(run.status)) {
     return (
@@ -636,13 +567,16 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          disabled={surface === "devServer" && !serverUrl}
+          disabled={surface === "devServer" && !runtimeTabId}
           onClick={() => {
             if (surface === "mobileSimulator") {
               dispatchDevServerTileCommand({ tileId, type: "refresh-simulators" })
               return
             }
-            void window.electronAPI.workbenchBrowser.reload({ tileId })
+            const preview = window.desktopBridge?.preview
+            if (preview && runtimeTabId) {
+              void preview.refresh(runtimeTabId).catch(() => undefined)
+            }
           }}
           aria-label={surface === "mobileSimulator" ? "Refresh simulator" : "Reload preview"}
         >
@@ -692,7 +626,10 @@ export const WorkbenchDockHeaderControls = memo(function WorkbenchDockHeaderCont
     return <BrowserPanelHeaderControls tileId={activePanel.id} />
   }
 
-  if (activePanel?.api.component === "devServer" || activePanel?.api.component === "mobileSimulator") {
+  if (
+    activePanel?.api.component === "devServer" ||
+    activePanel?.api.component === "mobileSimulator"
+  ) {
     return (
       <DevServerPanelHeaderControls
         tileId={activePanel.id}
@@ -739,11 +676,7 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
 
   const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
   const isSoleSelectionTile = useProjectWorkbenchStore((state) => {
-    const wb = selectProjectWorkbench(
-      runtime.projectId,
-      runtime.laneId,
-      runtime.workspaceId,
-    )(state)
+    const wb = selectProjectWorkbench(runtime.projectId, runtime.laneId, runtime.workspaceId)(state)
     if (!wb || wb.order.length !== 1) return false
     const sole = wb.tiles[wb.order[0]]
     return sole?.type === "selection"
@@ -764,125 +697,142 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
         surface={activePanel.api.component === "devServer" ? "devServer" : "mobileSimulator"}
       />
     ) : (
-      registeredHeader?.actions ?? null
+      (registeredHeader?.actions ?? null)
     )
+  const browserPreviewActions =
+    activePanel.api.component === "browser" ||
+    activePanel.api.component === "devServer" ||
+    activePanel.api.component === "orgDevApp" ||
+    activePanel.api.component === "devAppPreview" ? (
+      <BrowserPreviewActionsForTile tileId={activePanel.id} />
+    ) : null
 
   return (
     <div className="cozea-workbench-header-actions flex h-full min-w-0 items-center gap-1 px-1">
+      {browserPreviewActions}
       {panelActions ? (
         <div className="cozea-workbench-header-panel-actions flex shrink-0 items-center gap-0.5">
           {panelActions}
         </div>
       ) : null}
       <Tooltip>
-      <TooltipTrigger asChild>
-      <button
-        type="button"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        aria-label={t('workbench.layout.optionsLabel')}
-        onClick={async (event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          const rect = event.currentTarget.getBoundingClientRect()
-          const position = {
-            x: Math.round(rect.left + rect.width / 2),
-            y: Math.round(rect.bottom),
-          }
-          const items: ContextMenuItem<"maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp">[] = [
-            {
-              id: isMaximized ? "restore" : "maximize",
-              label: isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize'),
-            },
-            { type: "separator", id: "sep1" as any },
-            {
-              id: "splitRight",
-              label: t('workbench.layout.splitRight'),
-            },
-            {
-              id: "splitLeft",
-              label: t('workbench.layout.splitLeft'),
-            },
-            { type: "separator", id: "sep2" as any },
-            {
-              id: "splitDown",
-              label: t('workbench.layout.splitDown'),
-            },
-            {
-              id: "splitUp",
-              label: t('workbench.layout.splitUp'),
-            },
-          ]
-          const action = await showDesktopContextMenu(items, position)
-          if (!action) return
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label={t("workbench.layout.optionsLabel")}
+            onClick={async (event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              const rect = event.currentTarget.getBoundingClientRect()
+              const position = {
+                x: Math.round(rect.left + rect.width / 2),
+                y: Math.round(rect.bottom),
+              }
+              const items: ContextMenuItem<
+                "maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp"
+              >[] = [
+                {
+                  id: isMaximized ? "restore" : "maximize",
+                  label: isMaximized
+                    ? t("workbench.layout.restore")
+                    : t("workbench.layout.maximize"),
+                },
+                { type: "separator", id: "sep1" as any },
+                {
+                  id: "splitRight",
+                  label: t("workbench.layout.splitRight"),
+                },
+                {
+                  id: "splitLeft",
+                  label: t("workbench.layout.splitLeft"),
+                },
+                { type: "separator", id: "sep2" as any },
+                {
+                  id: "splitDown",
+                  label: t("workbench.layout.splitDown"),
+                },
+                {
+                  id: "splitUp",
+                  label: t("workbench.layout.splitUp"),
+                },
+              ]
+              const action = await showDesktopContextMenu(items, position)
+              if (!action) return
 
-          switch (action) {
-            case "maximize":
-              activePanel.api.maximize()
-              break
-            case "restore":
-              activePanel.api.exitMaximized()
-              break
-            case "splitRight":
-              runtime.onSplitTile(activePanel.id, "right")
-              break
-            case "splitLeft":
-              runtime.onSplitTile(activePanel.id, "left")
-              break
-            case "splitDown":
-              runtime.onSplitTile(activePanel.id, "bottom")
-              break
-            case "splitUp":
-              runtime.onSplitTile(activePanel.id, "top")
-              break
-          }
-        }}
-      >
-        <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
-      </button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{t('workbench.layout.optionsLabel')}</TooltipContent>
+              switch (action) {
+                case "maximize":
+                  activePanel.api.maximize()
+                  break
+                case "restore":
+                  activePanel.api.exitMaximized()
+                  break
+                case "splitRight":
+                  runtime.onSplitTile(activePanel.id, "right")
+                  break
+                case "splitLeft":
+                  runtime.onSplitTile(activePanel.id, "left")
+                  break
+                case "splitDown":
+                  runtime.onSplitTile(activePanel.id, "bottom")
+                  break
+                case "splitUp":
+                  runtime.onSplitTile(activePanel.id, "top")
+                  break
+              }
+            }}
+          >
+            <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t("workbench.layout.optionsLabel")}</TooltipContent>
       </Tooltip>
       <Tooltip>
-      <TooltipTrigger asChild>
-      <button
-        type="button"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        aria-label={isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize')}
-        onClick={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          if (activePanel.api.isMaximized()) {
-            activePanel.api.exitMaximized()
-            setIsMaximized(false)
-          } else {
-            activePanel.api.maximize()
-            setIsMaximized(true)
-          }
-        }}
-      >
-        <HugeiconsIcon icon={isMaximized ? __RestoreHugeIcon : __MaximizeHugeIcon} className="h-3.5 w-3.5" />
-      </button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize')}
-      </TooltipContent>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label={
+              isMaximized ? t("workbench.layout.restore") : t("workbench.layout.maximize")
+            }
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              if (activePanel.api.isMaximized()) {
+                activePanel.api.exitMaximized()
+                setIsMaximized(false)
+              } else {
+                activePanel.api.maximize()
+                setIsMaximized(true)
+              }
+            }}
+          >
+            <HugeiconsIcon
+              icon={isMaximized ? __RestoreHugeIcon : __MaximizeHugeIcon}
+              className="h-3.5 w-3.5"
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isMaximized ? t("workbench.layout.restore") : t("workbench.layout.maximize")}
+        </TooltipContent>
       </Tooltip>
       <Tooltip>
-      <TooltipTrigger asChild>
-      <button
-        type="button"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-        aria-label={t('workbench.panel.close')}
-        onClick={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          activePanel.api.close()
-        }}
-      >
-        <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-      </button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{t('workbench.panel.close')}</TooltipContent>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            aria-label={t("workbench.panel.close")}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              activePanel.api.close()
+            }}
+          >
+            <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t("workbench.panel.close")}</TooltipContent>
       </Tooltip>
     </div>
   )
@@ -894,7 +844,9 @@ export const WorkbenchDockWatermark = memo(function WorkbenchDockWatermark(
   return null
 })
 
-const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const SelectionPanel = memo(function SelectionPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
   const { t } = useTranslation()
   const runtime = useWorkbenchDockRuntime()
   const storedTile = useWorkbenchTile(
@@ -939,7 +891,7 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
   if (!tile || tile.type !== "selection") {
     return (
       <WorkbenchTileChrome
-        title={t('workbench.selection.addDevApp')}
+        title={t("workbench.selection.addDevApp")}
         panelApi={props.api}
         containerApi={props.containerApi}
         chromeVariant="pill"
@@ -979,7 +931,9 @@ const SelectionPanel = memo(function SelectionPanel(props: IDockviewPanelProps<W
   )
 })
 
-const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const BrowserPanel = memo(function BrowserPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
     props.params.projectId,
@@ -992,11 +946,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
 
   if (!tile || tile.type !== "browser") {
     return (
-      <WorkbenchTileChrome
-        title="Browser"
-        panelApi={props.api}
-        containerApi={props.containerApi}
-      >
+      <WorkbenchTileChrome title="Browser" panelApi={props.api} containerApi={props.containerApi}>
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
     )
@@ -1010,6 +960,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
         tile={tile as WorkbenchBrowserTileRecord}
         workspaceId={runtime.workspaceId}
         workbenchSessionKey={runtime.workbenchSessionKey}
+        surfaceVisible={runtime.surfaceVisible}
         panelApi={props.api}
         containerApi={props.containerApi}
       />
@@ -1017,7 +968,9 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
   )
 })
 
-const OrgDevAppPanel = memo(function OrgDevAppPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const OrgDevAppPanel = memo(function OrgDevAppPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
     props.params.projectId,
@@ -1057,7 +1010,51 @@ const OrgDevAppPanel = memo(function OrgDevAppPanel(props: IDockviewPanelProps<W
   )
 })
 
-const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const DevAppPreviewPanel = memo(function DevAppPreviewPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.workspaceId,
+    props.params.tileId,
+  )
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "devAppPreview") {
+    return (
+      <WorkbenchTileChrome
+        title="DevApp (development)"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="devAppPreview"
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <Suspense fallback={changesSuspenseFallback}>
+      <LazyWorkbenchDevAppPreviewTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchDevAppPreviewTileRecord}
+        workspaceId={runtime.workspaceId}
+        workbenchSessionKey={runtime.workbenchSessionKey}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      />
+    </Suspense>
+  )
+})
+
+const TerminalPanel = memo(function TerminalPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
     props.params.projectId,
@@ -1097,7 +1094,9 @@ const TerminalPanel = memo(function TerminalPanel(props: IDockviewPanelProps<Wor
   )
 })
 
-const DevServerPanel = memo(function DevServerPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const DevServerPanel = memo(function DevServerPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
     props.params.projectId,
@@ -1181,9 +1180,7 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
   )
 })
 
-const LlamaPanel = memo(function LlamaPanel(
-  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
-) {
+const LlamaPanel = memo(function LlamaPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
     props.params.projectId,
@@ -1196,11 +1193,7 @@ const LlamaPanel = memo(function LlamaPanel(
 
   if (!tile || tile.type !== "llama") {
     return (
-      <WorkbenchTileChrome
-        title="Llama"
-        panelApi={props.api}
-        containerApi={props.containerApi}
-      >
+      <WorkbenchTileChrome title="Llama" panelApi={props.api} containerApi={props.containerApi}>
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
     )
@@ -1220,7 +1213,9 @@ const LlamaPanel = memo(function LlamaPanel(
   )
 })
 
-const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const AssistantChatPanel = memo(function AssistantChatPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
   const runtime = useWorkbenchDockRuntime()
   const tile = useWorkbenchTile(
     props.params.projectId,
@@ -1261,7 +1256,9 @@ const AssistantChatPanel = memo(function AssistantChatPanel(props: IDockviewPane
   )
 })
 
-const ChangesPanel = memo(function ChangesPanel(props: IDockviewPanelProps<WorkbenchDockPanelParams>) {
+const ChangesPanel = memo(function ChangesPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
   const runtime = useWorkbenchDockRuntime()
   const changesActions = useChangesSidebarStore((state) => state.actions)
   const [titleContent, setTitleContent] = useState<ReactNode>(null)
@@ -1276,9 +1273,7 @@ const ChangesPanel = memo(function ChangesPanel(props: IDockviewPanelProps<Workb
     >
       <header className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
         {titleContent ? <div className="flex shrink-0 items-center">{titleContent}</div> : null}
-        <div className="flex min-w-0 flex-1 items-center">
-          {controlsNode}
-        </div>
+        <div className="flex min-w-0 flex-1 items-center">{controlsNode}</div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -1305,6 +1300,7 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   llama: LlamaPanel,
   mobileSimulator: MobileSimulatorPanel,
   orgDevApp: OrgDevAppPanel,
+  devAppPreview: DevAppPreviewPanel,
   assistantChat: AssistantChatPanel,
   changes: ChangesPanel,
 }

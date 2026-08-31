@@ -7,37 +7,14 @@ import { Cancel01Icon as __XIconHugeIcon } from '@hugeicons/core-free-icons'
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 
-import {
-  preflightNativeSurfaceOcclusion,
-  useNativeSurfaceOverlayLifecycle,
-} from "@/lib/nativeSurfaceOcclusion"
 import { cn } from "@/lib/utils"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
 }
 
-function SheetTrigger({
-  onKeyDownCapture,
-  onPointerDownCapture,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
-  return (
-    <SheetPrimitive.Trigger
-      data-slot="sheet-trigger"
-      onKeyDownCapture={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          preflightNativeSurfaceOcclusion("Sheet opening")
-        }
-        onKeyDownCapture?.(event)
-      }}
-      onPointerDownCapture={(event) => {
-        preflightNativeSurfaceOcclusion("Sheet opening")
-        onPointerDownCapture?.(event)
-      }}
-      {...props}
-    />
-  )
+function SheetTrigger({ ...props }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
+  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
 }
 
 function SheetClose({
@@ -59,15 +36,11 @@ function SheetOverlay({
 }: React.ComponentProps<typeof SheetPrimitive.Overlay> & {
   disableAnimation?: boolean
 }) {
-  useNativeSurfaceOverlayLifecycle()
-
   return (
     <SheetPrimitive.Overlay
-      data-native-surface-overlay="true"
-      data-native-surface-overlay-reason="Sheet backdrop"
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/32 backdrop-blur-sm",
+        "fixed inset-0 z-[var(--cozea-layer-dialog)] bg-black/32 backdrop-blur-sm",
         !disableAnimation &&
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className
@@ -95,7 +68,7 @@ function SheetContent({
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "bg-popover text-popover-foreground fixed z-50 flex flex-col gap-4 shadow-lg/5",
+          "bg-popover text-popover-foreground fixed z-[var(--cozea-layer-dialog)] flex flex-col gap-4 shadow-lg/5",
           !disableAnimation &&
             "data-[state=open]:animate-in data-[state=closed]:animate-out transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
           side === "right" &&

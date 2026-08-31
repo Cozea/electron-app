@@ -3,6 +3,7 @@ import type { ContextMenuItem } from '@cozea/assistant-contracts'
 export * from '@shared/electronApiTypes'
 
 interface DesktopBridgeSurface {
+  preview?: import('@shared/browserSurfaceTypes').CozeaDesktopPreviewBridge
   getAssistantRuntimeStatus: () => Promise<{
     phase: 'idle' | 'starting' | 'ready' | 'error'
     wsUrl: string

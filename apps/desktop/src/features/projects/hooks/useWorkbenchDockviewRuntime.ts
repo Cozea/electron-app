@@ -1,17 +1,6 @@
 import { Debouncer } from "@tanstack/react-pacer";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type {
-  DockviewApi,
-  DockviewReadyEvent,
-  SerializedDockview,
-} from "dockview-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { DockviewApi, DockviewReadyEvent, SerializedDockview } from "dockview-react";
 
 import type { WorkbenchSelectionTile, WorkbenchTile } from "@/stores/useProjectWorkbenchStore";
 import {
@@ -39,9 +28,7 @@ import {
   clearPersistedWorkbenchLayout,
   writePersistedWorkbenchLayout,
 } from "@/features/projects/lib/workbenchLayoutPersistence";
-import {
-  CHANGES_TILE_MIN_WIDTH_COLLAPSED,
-} from "@/features/projects/lib/changesTileSizing";
+import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/projects/lib/changesTileSizing";
 import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime";
 import { releaseProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntimeLifecycle";
 import {
@@ -53,10 +40,15 @@ import {
 
 const CHANGES_PANEL_ID = "cozea-changes-panel";
 
-function disposeBrowserTileModelDeferred(tileId: string) {
-  return import("@/features/projects/browser/browserTileModel").then((module) =>
-    module.disposeBrowserTileModel(tileId),
-  );
+function normalizeBrowserBackedPopouts(api: DockviewApi, workbench: WorkbenchProjectState): void {
+  for (const panel of api.panels) {
+    const tile = workbench.tiles[panel.id];
+    const browserBacked =
+      tile?.type === "browser" || tile?.type === "devServer" || tile?.type === "orgDevApp";
+    if (browserBacked && panel.api.location.type === "popout") {
+      panel.api.moveTo({ position: "right" });
+    }
+  }
 }
 
 function getPathFromDroppedFile(file: File): string | null {
@@ -66,16 +58,17 @@ function getPathFromDroppedFile(file: File): string | null {
 
 function buildFileUrl(filePath: string): string {
   if (filePath.startsWith("/")) {
-    return `file://${filePath.split("/").map((part) => encodeURIComponent(part)).join("/")}`;
+    return `file://${filePath
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/")}`;
   }
   return `file://${encodeURI(filePath)}`;
 }
 
 // dockview drop events carry either a native OS drag or a pointer-based drag;
 // only the former has a dataTransfer to read an external URL/file from.
-function readNativeDataTransfer(
-  nativeEvent: DragEvent | PointerEvent,
-): DataTransfer | null {
+function readNativeDataTransfer(nativeEvent: DragEvent | PointerEvent): DataTransfer | null {
   return "dataTransfer" in nativeEvent ? nativeEvent.dataTransfer : null;
 }
 
@@ -175,7 +168,10 @@ export function useWorkbenchDockviewRuntime(
   const changesWidth = useChangesSidebarStore((state) => state.width);
   const changesMinWidth = useChangesSidebarStore((state) => state.minWidth);
   const closeChanges = useChangesSidebarStore((state) => state.actions.close);
-  const previewTileIds = useMemo(() => new Set(Object.keys(selectionPreviewTiles)), [selectionPreviewTiles]);
+  const previewTileIds = useMemo(
+    () => new Set(Object.keys(selectionPreviewTiles)),
+    [selectionPreviewTiles],
+  );
 
   const updateSelectionPreviewTiles = useCallback(
     (
@@ -251,6 +247,7 @@ export function useWorkbenchDockviewRuntime(
         if (input.persistedLayout) {
           try {
             api.fromJSON(input.persistedLayout, { reuseExistingPanels: false });
+            normalizeBrowserBackedPopouts(api, input.projectWorkbench);
             syncPanelTitles(api, input.projectWorkbench);
           } catch (error) {
             console.warn("[WorkbenchDockview] Failed to restore persisted layout", error);
@@ -524,12 +521,7 @@ export function useWorkbenchDockviewRuntime(
   useEffect(() => {
     const api = dockviewApiRef.current;
     const scopeKey = input.workbenchScopeKey;
-    if (
-      !api ||
-      !scopeKey ||
-      !input.projectId ||
-      dockviewReadyScopeKey !== scopeKey
-    ) {
+    if (!api || !scopeKey || !input.projectId || dockviewReadyScopeKey !== scopeKey) {
       return;
     }
 
@@ -707,10 +699,7 @@ export function useWorkbenchDockviewRuntime(
   }, []);
 
   const handleResolveSelectionTile = useCallback(
-    (
-      selectionTileId: string,
-      request: WorkbenchSelectionLaunchRequest,
-    ) => {
+    (selectionTileId: string, request: WorkbenchSelectionLaunchRequest) => {
       if (!input.projectId) return;
 
       void (async () => {
@@ -722,10 +711,9 @@ export function useWorkbenchDockviewRuntime(
           null;
         if (!api || !isSelectionTile(selectionTile) || !input.projectId) return;
 
-        const { resolveWorkbenchSelectionLaunchRequest } = await import(
-          "@/features/projects/lib/workbenchSelectionLaunch"
-        );
-        const resolvedLaunch = resolveWorkbenchSelectionLaunchRequest(request)
+        const { resolveWorkbenchSelectionLaunchRequest } =
+          await import("@/features/projects/lib/workbenchSelectionLaunch");
+        const resolvedLaunch = resolveWorkbenchSelectionLaunchRequest(request);
         const tileId =
           resolvedLaunch.action === "openSingletonTile"
             ? workbenchActions.openSingletonTile(
@@ -769,13 +757,7 @@ export function useWorkbenchDockviewRuntime(
         transientSelectionTileIdRef.current = null;
       })();
     },
-    [
-      getLiveWorkbench,
-      input.activeLaneId,
-      input.projectId,
-      input.workspaceId,
-      workbenchActions,
-    ],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
   );
 
   const handleDuplicateAssistantTile = useCallback(
@@ -828,13 +810,7 @@ export function useWorkbenchDockviewRuntime(
       );
       api.getPanel(nextTile.id)?.api.setActive();
     },
-    [
-      getLiveWorkbench,
-      input.activeLaneId,
-      input.projectId,
-      input.workspaceId,
-      workbenchActions,
-    ],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
   );
 
   const handleSplitTile = useCallback(
@@ -855,14 +831,18 @@ export function useWorkbenchDockviewRuntime(
         },
         input.workspaceId,
       );
-      
+
       const nextTile = getLiveWorkbench()?.tiles[nextTileId];
       if (!nextTile) return;
 
       const dockDirection =
-        direction === "right" ? "right" :
-        direction === "bottom" ? "below" :
-        direction === "left" ? "left" : "above";
+        direction === "right"
+          ? "right"
+          : direction === "bottom"
+            ? "below"
+            : direction === "left"
+              ? "left"
+              : "above";
 
       api.addPanel({
         id: nextTile.id,
@@ -885,13 +865,7 @@ export function useWorkbenchDockviewRuntime(
       );
       api.getPanel(nextTile.id)?.api.setActive();
     },
-    [
-      getLiveWorkbench,
-      input.activeLaneId,
-      input.projectId,
-      input.workspaceId,
-      workbenchActions,
-    ],
+    [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
   );
 
   const handleDockviewReady = useCallback(
@@ -917,10 +891,6 @@ export function useWorkbenchDockviewRuntime(
 
       event.api.onDidLayoutChange(() => {
         saveLayout();
-        // Native surfaces (browser tiles) sync their window-relative bounds
-        // from DOM rects; panel moves/drags can change position without a
-        // resize, so layout changes must nudge them explicitly.
-        window.dispatchEvent(new CustomEvent("cozea:dock-layout-change"));
       });
 
       event.api.onWillDragPanel((dragEvent) => {
@@ -1088,21 +1058,6 @@ export function useWorkbenchDockviewRuntime(
         if (removedTile?.type === "devServer") {
           releaseDevServerSurfaceLease(panel.id);
         }
-        if (removedTile?.type === "browser") {
-          void window.electronAPI.workbenchSession
-            .releaseBrowser({
-              sessionKey: input.workbenchSessionKey,
-              projectId: input.projectId,
-              laneId: input.activeLaneId,
-              tileId: panel.id,
-            })
-            .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to release browser for removed panel", error);
-            });
-          void disposeBrowserTileModelDeferred(panel.id).catch((error) => {
-            console.warn("[WorkbenchBrowser] Failed to dispose browser model", error);
-          });
-        }
         if (removedTile?.type === "terminal") {
           void window.electronAPI.workbenchSession
             .releaseTerminal({
@@ -1118,7 +1073,10 @@ export function useWorkbenchDockviewRuntime(
               }
             })
             .catch((error) => {
-              console.warn("[WorkbenchSession] Failed to release terminal for removed panel", error);
+              console.warn(
+                "[WorkbenchSession] Failed to release terminal for removed panel",
+                error,
+              );
             });
         }
         if (removedTile?.type === "devServer" || removedTile?.type === "mobileSimulator") {
@@ -1132,20 +1090,12 @@ export function useWorkbenchDockviewRuntime(
               : null;
 
           if (projectDevAppRuntime?.usesProjectDevAppSource) {
-            void releaseProjectDevAppRuntimeTarget(projectDevAppRuntime, panel.id).catch((error) => {
-              console.warn("[ProjectDevApp] Failed to release removed source runtime", error);
-            });
+            void releaseProjectDevAppRuntimeTarget(projectDevAppRuntime, panel.id).catch(
+              (error) => {
+                console.warn("[ProjectDevApp] Failed to release removed source runtime", error);
+              },
+            );
           } else {
-            void window.electronAPI.workbenchSession
-              .releaseBrowser({
-                sessionKey: input.workbenchSessionKey,
-                projectId: input.projectId,
-                laneId: input.activeLaneId,
-                tileId: panel.id,
-              })
-              .catch((error) => {
-                console.warn("[WorkbenchSession] Failed to release runtime browser surface", error);
-              });
             void window.electronAPI.workbenchSession
               .releaseTerminal({
                 sessionKey: input.workbenchSessionKey,
@@ -1177,9 +1127,6 @@ export function useWorkbenchDockviewRuntime(
                 console.warn("[WorkbenchSession] Failed to release runtime terminal", error);
               });
           }
-          void disposeBrowserTileModelDeferred(panel.id).catch((error) => {
-            console.warn("[WorkbenchBrowser] Failed to dispose runtime browser model", error);
-          });
           if (removedTile.type === "mobileSimulator") {
             void window.electronAPI.workbenchSession
               .setNativePreviewSession({
@@ -1190,7 +1137,10 @@ export function useWorkbenchDockviewRuntime(
                 stopPrevious: true,
               })
               .catch((error) => {
-                console.warn("[WorkbenchSession] Failed to stop native preview for removed panel", error);
+                console.warn(
+                  "[WorkbenchSession] Failed to stop native preview for removed panel",
+                  error,
+                );
               });
           }
         }
@@ -1209,12 +1159,7 @@ export function useWorkbenchDockviewRuntime(
               const tile = freshWorkbench.tiles[tileId];
               if (tile && !isObsoleteWorkbenchTile(tile)) {
                 event.api.addPanel(
-                  buildAddPanelOptions(
-                    event.api,
-                    tile,
-                    input.projectId,
-                    input.activeLaneId,
-                  ),
+                  buildAddPanelOptions(event.api, tile, input.projectId, input.activeLaneId),
                 );
               }
             }

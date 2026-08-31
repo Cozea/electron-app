@@ -54,10 +54,13 @@ function SurfaceTileGlyph(props: {
   className?: string
 }) {
   const className = props.className ?? "size-[18px] shrink-0 text-muted-foreground/75"
-  const devApp =
-    props.type === "orgDevApp" ? null : getDevAppForSurfaceTileType(props.type)
+  // Neither a published DevApp nor one under development is a built-in, so neither
+  // resolves to a built-in glyph.
+  const devApp = props.type === "orgDevApp" || props.type === "devAppPreview"
+    ? null
+    : getDevAppForSurfaceTileType(props.type)
 
-  if (props.type === "orgDevApp") {
+  if (props.type === "orgDevApp" || props.type === "devAppPreview") {
     return (
       <span className={SIDEBAR_APP_ICON_CLASS}>
         <PublishedDevAppIcon name={props.title} logoDataUrl={props.logoDataUrl} />
