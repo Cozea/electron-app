@@ -59,6 +59,7 @@ import {
   type WorkbenchLlamaTile as WorkbenchLlamaTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   type WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord,
+  type WorkbenchDevAppPreviewTile as WorkbenchDevAppPreviewTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   type WorkbenchTile,
   selectProjectWorkbench,
@@ -115,6 +116,10 @@ const loadWorkbenchOrgDevAppTile = () =>
   import("@/features/projects/components/workbench/WorkbenchOrgDevAppTile").then((m) => ({
     default: m.WorkbenchOrgDevAppTile,
   }))
+const loadWorkbenchDevAppPreviewTile = () =>
+  import("@/features/projects/components/workbench/WorkbenchDevAppPreviewTile").then((m) => ({
+    default: m.WorkbenchDevAppPreviewTile,
+  }))
 const loadWorkbenchSelectionTile = () =>
   import("@/features/projects/components/workbench/WorkbenchSelectionTile").then((m) => ({
     default: m.WorkbenchSelectionTile,
@@ -130,6 +135,7 @@ const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
 const LazyWorkbenchLlamaTile = lazy(loadWorkbenchLlamaTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchOrgDevAppTile = lazy(loadWorkbenchOrgDevAppTile)
+const LazyWorkbenchDevAppPreviewTile = lazy(loadWorkbenchDevAppPreviewTile)
 const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
 const LazyWorkbenchTerminalTile = lazy(loadWorkbenchTerminalTile)
 const LazyChangesPage = lazy(() =>
@@ -993,6 +999,48 @@ const OrgDevAppPanel = memo(function OrgDevAppPanel(
   )
 })
 
+const DevAppPreviewPanel = memo(function DevAppPreviewPanel(
+  props: IDockviewPanelProps<WorkbenchDockPanelParams>,
+) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.workspaceId,
+    props.params.tileId,
+  )
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "devAppPreview") {
+    return (
+      <WorkbenchTileChrome
+        title="DevApp (development)"
+        panelApi={props.api}
+        containerApi={props.containerApi}
+        chromeVariant="pill"
+        tileType="devAppPreview"
+      >
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <Suspense fallback={changesSuspenseFallback}>
+      <LazyWorkbenchDevAppPreviewTile
+        projectId={props.params.projectId}
+        laneId={props.params.laneId}
+        tile={tile as WorkbenchDevAppPreviewTileRecord}
+        workspaceId={runtime.workspaceId}
+        workbenchSessionKey={runtime.workbenchSessionKey}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+      />
+    </Suspense>
+  )
+})
+
 const TerminalPanel = memo(function TerminalPanel(
   props: IDockviewPanelProps<WorkbenchDockPanelParams>,
 ) {
@@ -1241,6 +1289,7 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   llama: LlamaPanel,
   mobileSimulator: MobileSimulatorPanel,
   orgDevApp: OrgDevAppPanel,
+  devAppPreview: DevAppPreviewPanel,
   assistantChat: AssistantChatPanel,
   changes: ChangesPanel,
 }
