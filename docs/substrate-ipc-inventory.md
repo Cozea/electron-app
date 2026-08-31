@@ -10,6 +10,12 @@ Companion docs: `docs/t3code-implementation-plan.md` (Track Inv), `docs/substrat
 > `workbenchSession:getBrowserBinding`, `workbenchSession:bindBrowser`, and
 > `workbenchSession:releaseBrowser`. Their preload exposure is also gone. Any `keep-ipc` disposition
 > for those 22 rows below is superseded; the future T3 browser must not restore this API surface.
+>
+> **Dev Server lifecycle delta (2026-08-31):** The current branch also has
+> `devServer:ensure`, `devServer:detachSurface`, and `devServer:attachSurface`. The last two preserve
+> the singleton process/PTY while the final visual surface closes and rebind the same PTY when a
+> headless runtime is reopened. The historical handler counts and table below intentionally remain
+> a record of the source commit named above.
 
 ## Summary counts
 

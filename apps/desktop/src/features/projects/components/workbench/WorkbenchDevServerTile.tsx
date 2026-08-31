@@ -3,6 +3,7 @@ import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import type {
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,
+  DevCommandSuggestion,
   ExternalBrowserId,
 } from "@shared/electronApiTypes"
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
@@ -10,6 +11,7 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { useTranslation } from "@/lib/i18n"
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
 import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
@@ -31,7 +33,10 @@ import {
   isSameDevServerPreviewUrl,
   type DevServerTileCommand,
 } from "@/features/projects/devserver/devServerTileCommands"
-import { buildDevServerRunKey } from "@/features/projects/devserver/devServerRunStore"
+import {
+  buildDevServerRunKey,
+  startDevServerRun,
+} from "@/features/projects/devserver/devServerRunStore"
 import { interruptDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
 import { KeepAliveTerminalView } from "@/features/projects/terminals/KeepAliveTerminalView"
@@ -62,6 +67,13 @@ import {
 } from "@/stores/useProjectWorkbenchStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
+
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  CommandLineIcon as __CommandLineHugeIcon,
+  ComputerVideoIcon as __ComputerVideoHugeIcon,
+  PlayIcon as __PlayHugeIcon,
+} from "@hugeicons/core-free-icons"
 
 function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
   switch (status) {
@@ -105,9 +117,19 @@ const NATIVE_PREVIEW_PENDING_SCOPE = "cozea::native-preview::pending"
 function RuntimePreviewStartState({
   status,
   error,
+  requiresCommandSelection,
+  commandSuggestions,
+  onSelectCommand,
+  onRetry,
+  onShowLogs,
 }: {
   status: DevServerStatus
   error: string | null
+  requiresCommandSelection: boolean
+  commandSuggestions: DevCommandSuggestion[]
+  onSelectCommand: (command: string) => void
+  onRetry: () => void
+  onShowLogs: () => void
 }) {
   const title =
     status === "starting"
@@ -117,10 +139,65 @@ function RuntimePreviewStartState({
         : "Start the Dev Server to open its preview"
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-content-surface p-6 text-center">
-      <div className="max-w-md space-y-1.5">
-        <div className="text-sm font-medium text-foreground">{title}</div>
-        {error ? <div className="text-xs leading-5 text-muted-foreground">{error}</div> : null}
-      </div>
+      <Empty className="w-full max-w-lg py-8">
+        <EmptyHeader>
+          <EmptyMedia className="h-12 w-12 rounded-2xl border border-border/60 bg-secondary/70 shadow-sm [&>svg]:h-6 [&>svg]:w-6 [&>svg]:text-muted-foreground">
+            <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="h-6 w-6" />
+          </EmptyMedia>
+          <EmptyTitle className="text-base font-medium">{title}</EmptyTitle>
+          <EmptyDescription className="max-w-md leading-5">
+            {error ??
+              (status === "starting"
+                ? "Cozea is preparing the project runtime. The living T3 preview will attach as soon as the process exposes a URL."
+                : "Launch the project runtime here, then keep the same page alive while you edit, resize, split, or float the tile.")}
+          </EmptyDescription>
+        </EmptyHeader>
+        {status === "starting" ? (
+          <div className="flex justify-center pt-1" aria-label="Starting Dev Server">
+            <div className="cozea-loader" />
+          </div>
+        ) : null}
+        {requiresCommandSelection && commandSuggestions.length > 0 ? (
+          <div className="mt-2 grid w-full max-w-md gap-2 text-left">
+            {commandSuggestions.slice(0, 5).map((suggestion) => (
+              <button
+                key={suggestion.command}
+                type="button"
+                className="group flex w-full items-start gap-3 rounded-lg border border-border/60 bg-secondary/35 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-secondary/65"
+                onClick={() => onSelectCommand(suggestion.command)}
+              >
+                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-background/70 text-muted-foreground group-hover:text-foreground">
+                  <HugeiconsIcon icon={__CommandLineHugeIcon} className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-xs text-foreground">
+                    {suggestion.command}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                    {suggestion.reason}
+                  </span>
+                </span>
+                <HugeiconsIcon
+                  icon={__PlayHugeIcon}
+                  className="mt-1 size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
+                />
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {status === "error" ? (
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
+            {!requiresCommandSelection ? (
+              <Button type="button" size="sm" variant="secondary" onClick={onRetry}>
+                Try again
+              </Button>
+            ) : null}
+            <Button type="button" size="sm" variant="outline" onClick={onShowLogs}>
+              Server logs
+            </Button>
+          </div>
+        ) : null}
+      </Empty>
     </div>
   )
 }
@@ -808,6 +885,15 @@ function WorkbenchRuntimePreviewTile({
     if (!runtimeTabId || !previewBridge || !activeDisplayUrl) return
     void previewBridge.navigate(runtimeTabId, activeDisplayUrl).catch(() => undefined)
   }
+  const showServerLogs = () => {
+    workbenchActions.updateRuntimePreviewTile(
+      projectId,
+      laneId,
+      tile.id,
+      { viewMode: "code" },
+      workspaceId,
+    )
+  }
   const webSurfaceVisible =
     Boolean(activeDisplayUrl) &&
     panelActivity.visible &&
@@ -827,7 +913,17 @@ function WorkbenchRuntimePreviewTile({
         />
       ) : null}
       {!activeDisplayUrl ? (
-        <RuntimePreviewStartState status={devServer.status} error={devServer.error} />
+        <RuntimePreviewStartState
+          status={devServer.status}
+          error={devServer.error}
+          requiresCommandSelection={devServer.requiresCommandSelection}
+          commandSuggestions={devServer.commandSuggestions}
+          onSelectCommand={(command) => {
+            if (runtimeRunKey) void startDevServerRun(runtimeRunKey, { command })
+          }}
+          onRetry={() => void devServer.start()}
+          onShowLogs={showServerLogs}
+        />
       ) : null}
       {browserPageError?.kind === "transport" ? (
         <RuntimePreviewPageError

@@ -47,6 +47,13 @@ When these tools are present, every supported provider routes ordinary requests 
 
 Normal `dev_server_ensure` calls omit `command`. Cozea extracts a bounded candidate set from project manifests, its capability catalog, safe README launch lines, and static-site evidence, then ranks those candidates through its tiny macOS Core ML helper. The model scores candidates only; it cannot generate or execute arbitrary shell text. If the helper or model is unavailable, the same feature contract has a deterministic fallback. A command is cached only after readiness succeeds, keyed by the project-evidence fingerprint.
 
+Static projects participate in the same discovery path. Cozea recognizes an `index.html` at the
+workspace root and the conventional built-output locations `dist/`, `build/`, `out/`, and
+`public/`; it serves the matching directory on a brokered loopback port. When several plausible
+commands remain, the tile presents the bounded ranked candidates with their evidence instead of
+failing with an instruction to use a chooser that is not visible. Choosing one launches that exact
+candidate through the normal authorized Dev Server IPC path.
+
 The agent may pass a custom `command` only when the user explicitly supplied or confirmed it. Custom commands should use the brokered `{port}` placeholder, for example `python3 -m http.server {port}`, so a port collision does not create a command/runtime mismatch. If the agent already launched a server itself, it should use `dev_server_attach` and navigate to that known port rather than call ensure and create a duplicate.
 
 The native Swift helper and generated Core ML model live under `native/local-automation-helper`. Development startup builds a debug helper without interrupting an existing app session. Distribution preparation builds an arm64 release helper and copies it with the model into Electron resources. The helper is a long-lived JSON-lines subprocess; a timeout, crash, unsupported platform, or absent model degrades to deterministic ranking rather than blocking Play.
@@ -96,7 +103,8 @@ Verify all of the following before release:
 4. A competing assistant receives another inactive surface tied to the same process.
 5. Pointer or keyboard input interrupts the active lease.
 6. Closing the owning surface leaves the process running and exposes the sidebar `Running` row.
-7. Selecting the row reattaches a surface without a second process.
+7. Selecting the row reattaches the process's original PTY and accumulated logs without a second
+   process or a replacement empty terminal.
 8. Browser, Dev Server, Project DevApp, and Org DevApp tiles render through the shared T3 host.
 9. Every advertised operation targets the visible living guest; evaluate, recording, resize, and
    color scheme work on all four browser-backed surface families.
