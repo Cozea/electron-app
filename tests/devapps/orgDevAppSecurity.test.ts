@@ -20,6 +20,10 @@ const upload = fs.readFileSync(
   "utf8",
 );
 const main = fs.readFileSync(path.join(root, "apps/desktop/electron/main.ts"), "utf8");
+const browserSurfaceService = fs.readFileSync(
+  path.join(root, "apps/desktop/electron/services/T3BrowserSurfaceService.ts"),
+  "utf8",
+);
 
 describe("org DevApp security lifecycle", () => {
   it("binds uploads to an authenticated reservation and verifies storage metadata", () => {
@@ -42,7 +46,7 @@ describe("org DevApp security lifecycle", () => {
     expect(devApps).toContain("return null");
   });
 
-  it("keeps hardened custom-protocol handling while detached from a browser session host", () => {
+  it("connects hardened custom-protocol handling only to prepared T3 publication sessions", () => {
     expect(artifacts).toContain(
       "registerProtocolForSession(targetSession: Session, partitionKey: string)",
     );
@@ -50,6 +54,25 @@ describe("org DevApp security lifecycle", () => {
     expect(artifacts).toContain("gatewayPublications");
     expect(main).toContain("orgDevAppArtifactService.registerProtocol()");
     expect(main).not.toContain("orgDevAppArtifactService.registerProtocolForSession(");
+    expect(browserSurfaceService).toContain(
+      "this.options.orgDevAppArtifactService.registerProtocolForSession(",
+    );
+    expect(browserSurfaceService).toContain("descriptor.publicationId");
+    expect(browserSurfaceService).toContain(
+      "`persist:cozea-devapp-${normalizeSessionSegment(descriptor.publicationId)}`",
+    );
+  });
+
+  it("confines navigation and never externalizes custom or authenticated loopback URLs", () => {
+    expect(browserSurfaceService).toContain("evaluateOrgDevAppNavigation");
+    expect(browserSurfaceService).toContain("getOrgDevAppNavigationScope");
+    expect(browserSurfaceService).toContain('.reason === "external-https"');
+    expect(browserSurfaceService).toContain('if (descriptor.kind !== "orgDevApp")');
+    expect(browserSurfaceService).toContain("this.pendingOrgNavigationByTabId.set(tabId, url)");
+    expect(browserSurfaceService).toContain("await guest.loadURL(url)");
+    expect(browserSurfaceService).not.toContain("isSafeExternalUrl");
+    expect(browserSurfaceService).toContain('browserSession.on("will-download"');
+    expect(browserSurfaceService).toContain("ALLOWED_PREVIEW_PERMISSIONS");
   });
 
   it("uses a bounded, integrity-checked, evictable local cache", () => {
@@ -65,11 +88,11 @@ describe("org DevApp security lifecycle", () => {
     "security.permissions-downloads",
     "security.external-navigation",
     "security.org-devapp-protocol",
-  ])("preserves %s as a mandatory T3 port requirement", (id) => {
+  ])("records executable Cozea/T3 coverage for %s", (id) => {
     expect(getBrowserPortParityRequirement(id)).toMatchObject({
       id,
       area: "security",
-      status: "pending-t3-port",
+      status: "cozea-adapted",
     });
   });
 });

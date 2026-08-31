@@ -80,7 +80,7 @@ export const T3_BROWSER_PORT_PARITY_LEDGER = [
     area: "session-isolation",
     expectation:
       "Each Org DevApp publication receives one persistent isolated session and one protocol setup.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "automation.loopback-navigation",
@@ -118,21 +118,22 @@ export const T3_BROWSER_PORT_PARITY_LEDGER = [
   {
     id: "security.permissions-downloads",
     area: "security",
-    expectation: "Embedded guests deny browser permissions and downloads by default.",
-    status: "pending-t3-port",
+    expectation:
+      "Embedded guests allow only T3's approved permission set and deny unmanaged downloads.",
+    status: "cozea-adapted",
   },
   {
     id: "security.external-navigation",
     area: "security",
     expectation: "Top-level public HTTP(S) navigation opens externally only when policy allows it.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "security.org-devapp-protocol",
     area: "security",
     expectation:
       "Org DevApp custom-scheme and authenticated loopback URLs remain internal to their isolated session.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
 ] as const satisfies readonly BrowserPortParityRequirement[];
 

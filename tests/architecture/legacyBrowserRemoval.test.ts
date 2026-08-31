@@ -46,7 +46,7 @@ describe("legacy browser removal boundary", () => {
     expect(violations).toEqual([]);
   });
 
-  it("restores Browser and runtime previews while Org DevApps remain deliberately blacked out", () => {
+  it("restores all four browser-backed surface families through the shared T3 host", () => {
     const browserTile = read(
       "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
     );
@@ -64,7 +64,9 @@ describe("legacy browser removal boundary", () => {
     expect(runtimeTile).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
     expect(runtimeTile).not.toContain("<BrowserUnavailableSurface");
     expect(runtimeTile).toContain("tile.devAppId");
-    expect(orgDevAppTile).toContain("<BrowserUnavailableSurface");
+    expect(orgDevAppTile).toContain("<BrowserSurfaceSlot");
+    expect(orgDevAppTile).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
+    expect(orgDevAppTile).not.toContain("<BrowserUnavailableSurface");
   });
 
   it("keeps the removed host absent while mounting only the T3 webview foundation", () => {

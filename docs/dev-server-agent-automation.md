@@ -1,10 +1,9 @@
 # Agent-controlled Dev Server preview
 
-> **Temporary rendering blackout (2026-08-31):** Dev Server process management remains active, but
-> the embedded preview host has been removed pending the direct T3 browser port. Status/ensure/attach
-> continue to manage the singleton process and tile shell. The surface reports `available: false`, a
-> running process reports `headless: true`, and every page interaction fails immediately with
-> `PreviewAutomationUnavailableError`.
+> **T3 surface cutover (2026-08-31):** Dev Server and compatibility Project DevApp previews now
+> render through the shared T3 `<webview>` host while their process, terminal, readiness, and
+> headless reattachment lifecycles remain independent. Agent page interaction remains temporarily
+> unavailable until the all-surface automation gate.
 
 Cozea exposes project previews to the vendored T3 agent runtime through the workbench's built-in Dev Server runtime and surface. It never treats an ordinary Browser tile as spare agent infrastructure.
 
@@ -29,16 +28,17 @@ Automation control is an expiring lease scoped to the assistant thread. Calls re
 
 The vendored T3 preview toolkit adds three Dev Server-specific operations:
 
-| Tool | Process effect | Surface effect |
-| --- | --- | --- |
-| `dev_server_status` | Read only | Reports the thread-bound surface, if any |
+| Tool                | Process effect                                      | Surface effect                                         |
+| ------------------- | --------------------------------------------------- | ------------------------------------------------------ |
+| `dev_server_status` | Read only                                           | Reports the thread-bound surface, if any               |
 | `dev_server_ensure` | Idempotently starts, joins, or reuses the singleton | Reuses an unleased surface or creates a background one |
-| `dev_server_attach` | Never starts or restarts | Reuses or creates a surface for an existing runtime |
+| `dev_server_attach` | Never starts or restarts                            | Reuses or creates a surface for an existing runtime    |
 
 `open: true` may reveal a reused surface. A newly created agent surface always remains an inactive background tab until the user selects it. `dev_server_ensure` always reuses an unleased surface when safe; only `dev_server_attach` honors `reuseExistingSurface: false` to request another view, never another process.
 
-During the blackout, `preview_open` is unavailable. Callers use `dev_server_ensure` for process
-management and may use `dev_server_attach` to retain or create the corresponding tile shell.
+Until the all-surface automation gate, `preview_open` remains unavailable. Callers use
+`dev_server_ensure` for process management and may use `dev_server_attach` to retain or create the
+corresponding live tile.
 
 When these tools are present, every supported provider routes ordinary requests such as “start the dev server” through `dev_server_ensure` before any shell inspection or terminal launch. This keeps natural-language starts inside the same singleton and discovery path as the Play button. Codex receives the policy as developer instructions, Claude as an append to its system preset, and OpenCode as its per-turn system prompt. The pinned Cursor ACP v0.11.3 schema has no system/developer field, so Cursor receives the same policy in a delimited first prompt block. The policy is omitted when the T3 MCP session is absent; terminal startup remains a fallback only when the Dev Server tools are absent or explicitly report that the operation is unsupported.
 
@@ -54,8 +54,9 @@ The host keeps the protocol shape stable but only these operations are functiona
 
 - `devServerStatus`, `devServerEnsure`, `devServerAttach`
 
-`status` reports the unavailable surface. `open`, `navigate`, `snapshot`, `click`, `type`, `press`,
-`scroll`, and `waitFor` return `PreviewAutomationUnavailableError` without browser IPC or polling.
+`status` reports the live surface as automation-unavailable. `open`, `navigate`, `snapshot`, `click`,
+`type`, `press`, `scroll`, and `waitFor` return `PreviewAutomationUnavailableError` without issuing
+guest commands or polling.
 Resize, color-scheme emulation, arbitrary evaluate, and recording remain unadvertised. There is no
 separate flag-gated Browser automation adapter.
 
@@ -64,13 +65,14 @@ separate flag-gated Browser automation adapter.
 The renderer registers one effective T3 `PreviewAutomationHost` candidate even when several
 assistant hooks are mounted. It maps T3 environment and thread identifiers to the open Cozea
 workspace, assistant tile, and leased Dev Server shell. Lifecycle ensure/status crosses the
-dedicated Dev Server IPC into `DevServerService`; no browser IPC exists.
+dedicated Dev Server IPC into `DevServerService`; rendering uses the separate shared T3 surface
+bridge.
 
 The renderer host may reconnect without changing the process or surface identities. A direct user takeover produces a control-interrupted response so the agent can attach another view deliberately.
 
 Managed process probes use `127.0.0.1` and remain authoritative for readiness. Persisted preview URL
-overrides are retained as tile data but are not loaded until the T3 browser port provides a surface.
-The removed guest-derived HTTP health and automatic reload behavior is recorded in the parity ledger.
+overrides are retained as tile data and navigate the same living guest. Guest page failures remain
+separate from process health and do not stop or replace the managed runtime.
 
 Main-process lifecycle transitions are pushed to every mounted renderer through `devServer:state`. The run store folds those events immediately, including readiness that arrives while a start promise is still pending and stop/exit transitions initiated from another surface. Renderer reloads also reconcile from `DevServerService` without replacing the process.
 
@@ -78,9 +80,9 @@ Development windows and their native preview child views disable Electron backgr
 
 ## HTTP error parity
 
-Process readiness remains separate from page health, but no guest page currently exists. The former
-blank-error-document, framework-error-page, and transport-precedence behavior is preserved as
-pending requirements in `shared/browserPortParityLedger.ts`.
+Process readiness remains separate from page health. The shared T3 guest reports transport errors;
+Cozea's response diagnostics show only final blank 4xx/5xx documents and leave framework-rendered
+error pages and successful blank documents visible.
 
 ## QA matrix
 
@@ -93,9 +95,9 @@ Verify all of the following before release:
 5. Pointer or keyboard input interrupts the active lease.
 6. Closing the owning surface leaves the process running and exposes the sidebar `Running` row.
 7. Selecting the row reattaches a surface without a second process.
-8. Browser, Dev Server, Project DevApp, and Org DevApp tiles render the shared unavailable surface.
+8. Browser, Dev Server, Project DevApp, and Org DevApp tiles render through the shared T3 host.
 9. Every preview interaction fails immediately with `PreviewAutomationUnavailableError`.
-10. No browser IPC, guest child surface, timeout, or automatic page reload occurs.
+10. No legacy browser IPC, native overlay guest, bounds synchronization, or screenshot substitution occurs.
 11. Reloading the renderer around a ready process preserves the run ID, terminal, Stop control, and
     persisted preview URL override.
 12. Codex, Claude, OpenCode, and Cursor all receive the managed Dev Server routing policy when—and

@@ -42,7 +42,12 @@ import type {
   PreparedBrowserSurface,
 } from "../../../../shared/browserSurfaceTypes";
 import { browserHttpDiagnosticForResponse } from "../../../../shared/browserHttpDiagnostics";
-import { parseOrgDevAppUrl } from "../../../../shared/orgDevAppProtocol";
+import {
+  evaluateOrgDevAppNavigation,
+  getOrgDevAppNavigationScope,
+  isContentHash,
+  normalizeContentHash,
+} from "../../../../shared/orgDevAppProtocol";
 import type { OrgDevAppArtifactService } from "./OrgDevAppArtifactService";
 
 import * as T3Effect from "../../../../vendor/t3code/apps/desktop/node_modules/effect/dist/Effect.js";
@@ -119,21 +124,50 @@ function isHttpUrl(rawUrl: string): boolean {
   }
 }
 
-function isSafeExternalUrl(rawUrl: string): boolean {
-  return isHttpUrl(rawUrl);
+function evaluateOrgSurfaceNavigation(descriptor: BrowserSurfaceDescriptor, rawUrl: string) {
+  const expectedScope = descriptor.initialUrl
+    ? getOrgDevAppNavigationScope(descriptor.initialUrl)
+    : null;
+  return evaluateOrgDevAppNavigation(rawUrl, expectedScope);
 }
 
-function sameOrigin(left: string, right: string): boolean {
-  try {
-    return new URL(left).origin === new URL(right).origin;
-  } catch {
-    return false;
+function shouldOpenOrgSurfaceExternally(
+  descriptor: BrowserSurfaceDescriptor,
+  rawUrl: string,
+): boolean {
+  const decision = evaluateOrgSurfaceNavigation(descriptor, rawUrl);
+  return !decision.allowed && decision.reason === "external-https";
+}
+
+function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): void {
+  if (descriptor.kind !== "orgDevApp") {
+    if (descriptor.storageScope === "orgDevApp") {
+      throw new Error("Only an Organization DevApp may use an Organization DevApp session.");
+    }
+    return;
   }
-}
-
-function sameStaticDevAppRelease(rawUrl: string, descriptor: BrowserSurfaceDescriptor): boolean {
-  const parsed = parseOrgDevAppUrl(rawUrl);
-  return Boolean(parsed && descriptor.contentHash && parsed.contentHash === descriptor.contentHash);
+  if (
+    descriptor.storageScope !== "orgDevApp" ||
+    !descriptor.publicationId ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(descriptor.publicationId) ||
+    !descriptor.contentHash ||
+    !isContentHash(descriptor.contentHash) ||
+    !descriptor.initialUrl ||
+    (descriptor.runtimeKind !== "static" && descriptor.runtimeKind !== "service")
+  ) {
+    throw new Error("The Organization DevApp surface descriptor is incomplete.");
+  }
+  const contentHash = normalizeContentHash(descriptor.contentHash);
+  const scope = getOrgDevAppNavigationScope(descriptor.initialUrl);
+  const expectedScope =
+    descriptor.runtimeKind === "static" ? `static:${contentHash}` : `service:${contentHash}:`;
+  const scopeMatches =
+    descriptor.runtimeKind === "static"
+      ? scope === expectedScope
+      : scope?.startsWith(expectedScope) === true;
+  if (!scopeMatches) {
+    throw new Error("The Organization DevApp URL does not match its prepared release.");
+  }
 }
 
 function cloneFindState(state: BrowserFindState): BrowserFindState {
@@ -147,6 +181,7 @@ export class T3BrowserSurfaceService {
   private readonly partitionOperations = new Map<string, Promise<void>>();
   private readonly stateByTabId = new Map<string, CozeaBrowserSurfaceState>();
   private readonly activeByTabId = new Map<string, boolean>();
+  private readonly pendingOrgNavigationByTabId = new Map<string, string>();
   private readonly listenersByTabId = new Map<string, AttachedSurfaceListeners>();
   private readonly stateListeners = new Set<
     (tabId: string, state: CozeaBrowserSurfaceState) => void
@@ -404,6 +439,7 @@ export class T3BrowserSurfaceService {
     if (!descriptor.runtimeTabId.trim() || !descriptor.tileId.trim()) {
       throw new Error("Browser surface identifiers must be non-empty.");
     }
+    validateOrgSurfaceDescriptor(descriptor);
     if (descriptor.initialUrl && !this.isAllowedNavigation(descriptor, descriptor.initialUrl)) {
       throw new Error(`The initial URL is not allowed for this ${descriptor.kind} surface.`);
     }
@@ -428,7 +464,9 @@ export class T3BrowserSurfaceService {
           requestedUrl: initialUrl,
           httpDiagnostic: null,
         });
-        await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+        if (descriptor.kind !== "orgDevApp") {
+          await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+        }
       }
 
       const preparedState = this.stateByTabId.get(descriptor.runtimeTabId);
@@ -455,6 +493,7 @@ export class T3BrowserSurfaceService {
       this.partitionsByScope.delete(tabId);
       this.stateByTabId.delete(tabId);
       this.activeByTabId.delete(tabId);
+      this.pendingOrgNavigationByTabId.delete(tabId);
       if (partition && !partition.startsWith("persist:")) {
         const stillUsed = Array.from(this.descriptors.values()).some(
           (candidate) => partitionForDescriptor(candidate) === partition,
@@ -525,6 +564,13 @@ export class T3BrowserSurfaceService {
 
     await this.run((manager) => manager.registerWebview(tabId, webContentsId));
     this.attachCozeaListeners(tabId, guest, descriptor);
+    const pendingOrgNavigation = this.pendingOrgNavigationByTabId.get(tabId);
+    if (pendingOrgNavigation) {
+      this.pendingOrgNavigationByTabId.delete(tabId);
+      if (guest.getURL() !== pendingOrgNavigation) {
+        await guest.loadURL(pendingOrgNavigation);
+      }
+    }
   }
 
   private attachCozeaListeners(
@@ -550,12 +596,18 @@ export class T3BrowserSurfaceService {
       if (!isMainFrame) return;
       navigationGeneration += 1;
       pendingHttpResponse = null;
-      this.updateExtendedState(tabId, { requestedUrl: url, httpDiagnostic: null });
+      this.updateExtendedState(tabId, {
+        requestedUrl: url,
+        httpDiagnostic: null,
+      });
     };
     const didNavigate = (_event: Event, url: string, statusCode: number, statusText: string) => {
       if (statusCode < 400) {
         pendingHttpResponse = null;
-        this.updateExtendedState(tabId, { requestedUrl: url, httpDiagnostic: null });
+        this.updateExtendedState(tabId, {
+          requestedUrl: url,
+          httpDiagnostic: null,
+        });
         return;
       }
       pendingHttpResponse = {
@@ -602,7 +654,7 @@ export class T3BrowserSurfaceService {
     const willNavigate = (event: Event, url: string) => {
       if (this.isAllowedNavigation(descriptor, url)) return;
       event.preventDefault();
-      if (descriptor.kind === "orgDevApp" && isSafeExternalUrl(url)) {
+      if (descriptor.kind === "orgDevApp" && shouldOpenOrgSurfaceExternally(descriptor, url)) {
         void shell.openExternal(url);
       }
     };
@@ -617,7 +669,10 @@ export class T3BrowserSurfaceService {
     guest.setWindowOpenHandler(({ url }) => {
       if (this.isAllowedNavigation(descriptor, url)) {
         void guest.loadURL(url).catch(() => undefined);
-      } else if (descriptor.kind === "orgDevApp" && isSafeExternalUrl(url)) {
+      } else if (
+        descriptor.kind === "orgDevApp" &&
+        shouldOpenOrgSurfaceExternally(descriptor, url)
+      ) {
         void shell.openExternal(url);
       }
       return { action: "deny" };
@@ -672,11 +727,7 @@ export class T3BrowserSurfaceService {
 
   private isAllowedNavigation(descriptor: BrowserSurfaceDescriptor, rawUrl: string): boolean {
     if (descriptor.kind !== "orgDevApp") return isHttpUrl(rawUrl);
-    if (!descriptor.initialUrl) return false;
-    if (descriptor.runtimeKind === "static") {
-      return sameStaticDevAppRelease(rawUrl, descriptor);
-    }
-    return sameOrigin(rawUrl, descriptor.initialUrl);
+    return evaluateOrgSurfaceNavigation(descriptor, rawUrl).allowed;
   }
 
   async navigate(tabId: string, url: string): Promise<void> {
@@ -684,7 +735,24 @@ export class T3BrowserSurfaceService {
     if (!descriptor || !this.isAllowedNavigation(descriptor, url)) {
       throw new Error(`Navigation is not allowed for browser surface ${tabId}.`);
     }
-    this.updateExtendedState(tabId, { requestedUrl: url, httpDiagnostic: null });
+    this.updateExtendedState(tabId, {
+      requestedUrl: url,
+      httpDiagnostic: null,
+    });
+    if (descriptor.kind === "orgDevApp") {
+      const webContentsId = this.stateByTabId.get(tabId)?.webContentsId;
+      const guest = webContentsId == null ? null : webContents.fromId(webContentsId);
+      if (!guest || guest.isDestroyed()) {
+        this.pendingOrgNavigationByTabId.set(tabId, url);
+        return;
+      }
+      if (guest.getURL() === url) {
+        guest.reload();
+      } else {
+        await guest.loadURL(url);
+      }
+      return;
+    }
     await this.run((manager) => manager.navigate(tabId, url));
   }
 
