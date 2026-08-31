@@ -5,14 +5,13 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../../convex/_generated/dataModel";
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
-import { BrowserSurfaceOverlays } from "@/features/projects/browser/BrowserSurfaceOverlays";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
 } from "@/features/projects/browser/browserSurfaceIdentity";
 import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError";
 import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry";
-import { useDockviewBrowserSurfaceLayer } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
+import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
 import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome";
@@ -47,7 +46,7 @@ export function WorkbenchOrgDevAppTile({
   const { t } = useTranslation();
   const { convexUserId } = useAuth();
   const panelActivity = useWorkbenchPanelActivityMode(panelApi);
-  const stackingLayer = useDockviewBrowserSurfaceLayer(panelApi, containerApi);
+  const surfacePresentation = useDockviewBrowserSurfacePresentation(panelApi, containerApi);
   const [prepareError, setPrepareError] = useState<string | null>(null);
   const [preparedOrigin, setPreparedOrigin] = useState<{
     releaseKey: string;
@@ -433,7 +432,8 @@ export function WorkbenchOrgDevAppTile({
             <BrowserSurfaceSlot
               tabId={runtimeTabId}
               visible={panelActivity.visible && !browserPageError}
-              stackingLayer={stackingLayer}
+              borderRadius={surfacePresentation.borderRadius}
+              stackingLayer={surfacePresentation.stackingLayer}
               className="absolute inset-0 size-full"
             />
           ) : null}
@@ -458,7 +458,6 @@ export function WorkbenchOrgDevAppTile({
               </div>
             </div>
           ) : null}
-          {runtimeTabId ? <BrowserSurfaceOverlays runtimeTabId={runtimeTabId} /> : null}
         </div>
       )}
       {showLogs ? (

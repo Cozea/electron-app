@@ -12,8 +12,7 @@ import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/i18n"
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
-import { useDockviewBrowserSurfaceLayer } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
-import { BrowserSurfaceOverlays } from "@/features/projects/browser/BrowserSurfaceOverlays"
+import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
 import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError"
 import { resolveBrowserWorkbenchSessionKey } from "@/features/projects/browser/browserSurfaceIdentity"
 import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
@@ -242,7 +241,7 @@ function WorkbenchRuntimePreviewTile({
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const updateTerminalDisplay = useTerminalStore((state) => state.actions.updateTerminalDisplay)
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
-  const stackingLayer = useDockviewBrowserSurfaceLayer(panelApi, containerApi)
+  const surfacePresentation = useDockviewBrowserSurfacePresentation(panelApi, containerApi)
   const runtimeTarget = useMemo(
     () =>
       tile.type === "devServer"
@@ -821,7 +820,8 @@ function WorkbenchRuntimePreviewTile({
         <BrowserSurfaceSlot
           tabId={runtimeTabId}
           visible={webSurfaceVisible}
-          stackingLayer={stackingLayer}
+          borderRadius={surfacePresentation.borderRadius}
+          stackingLayer={surfacePresentation.stackingLayer}
           className="absolute inset-0 size-full"
         />
       ) : null}
@@ -844,7 +844,6 @@ function WorkbenchRuntimePreviewTile({
           onReload={reloadEmbeddedPreview}
         />
       ) : null}
-      {runtimeTabId ? <BrowserSurfaceOverlays runtimeTabId={runtimeTabId} /> : null}
     </div>
   )
 

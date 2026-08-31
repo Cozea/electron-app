@@ -4,7 +4,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { APP_LAYERS } from "@/lib/appLayers";
-import { resolveDockviewBrowserSurfaceLayer } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
+import {
+  resolveDockviewBrowserSurfaceBorderRadius,
+  resolveDockviewBrowserSurfaceLayer,
+} from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
 
 const root = process.cwd();
 
@@ -75,6 +78,13 @@ describe("application layer contract", () => {
     );
   });
 
+  it("clips hosted guests to the exposed Dockview card corners", () => {
+    expect(resolveDockviewBrowserSurfaceBorderRadius("top")).toBe("0 0 12px 12px");
+    expect(resolveDockviewBrowserSurfaceBorderRadius("bottom")).toBe("12px 12px 0 0");
+    expect(resolveDockviewBrowserSurfaceBorderRadius("left")).toBe("0 12px 12px 0");
+    expect(resolveDockviewBrowserSurfaceBorderRadius("right")).toBe("12px 0 0 12px");
+  });
+
   it("removes the workbench stacking trap and publishes a layer from every browser slot", () => {
     const keepAlive = read(
       "apps/desktop/src/features/projects/components/workbench/WorkbenchKeepAliveHost.tsx",
@@ -91,8 +101,26 @@ describe("application layer contract", () => {
     expect(keepAlive).not.toContain("relative isolate");
     expect(activity).not.toContain("{ zIndex: 1 }");
     for (const tile of browserTiles) {
-      expect(tile).toContain("useDockviewBrowserSurfaceLayer");
-      expect(tile).toContain("stackingLayer={stackingLayer}");
+      expect(tile).toContain("useDockviewBrowserSurfacePresentation");
+      expect(tile).toContain("borderRadius={surfacePresentation.borderRadius}");
+      expect(tile).toContain("stackingLayer={surfacePresentation.stackingLayer}");
+    }
+  });
+
+  it("keeps browser-owned overlays beside the living guest in the global host", () => {
+    const host = read("apps/desktop/src/features/projects/browser/HostedBrowserWebview.tsx");
+    const localTiles = [
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
+      "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+    ].map(read);
+
+    expect(host).toContain("<BrowserSurfaceOverlays runtimeTabId={runtimeTabId} />");
+    expect(host).toContain("<BrowserFindOverlay runtimeTabId={runtimeTabId} />");
+    expect(host).toContain("data-browser-surface-frame");
+    for (const tile of localTiles) {
+      expect(tile).not.toContain("BrowserSurfaceOverlays");
+      expect(tile).not.toContain("BrowserFindOverlay");
     }
   });
 });
