@@ -34,7 +34,7 @@ export const SUBSTRATE_T3_SERVER_FLAG = "cozea.t3.server" as const;
 export const DEFAULT_T3_SERVER_PORT = 13_773;
 
 /** Upstream pin recorded by Track Inv (Phase 0). */
-export const SUBSTRATE_T3_PIN_SHA = "d830df40b5aa7c72a75c9a43632bb5383530638f";
+export const SUBSTRATE_T3_PIN_SHA = "04d8f7918b2c44666ecaaef3eebb723fabc9d7f5";
 
 export const DEFAULT_ASSISTANT_RUNTIME_HTTP_ORIGIN = "http://127.0.0.1:3773";
 export const ASSISTANT_RUNTIME_READINESS_PATH = "/__cozea/ready";

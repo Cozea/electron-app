@@ -13,6 +13,28 @@ interface BrowserSurfaceRuntimeIdentity extends BrowserWorkbenchSessionIdentity 
   readonly runtimeGeneration?: string | number | null;
 }
 
+interface BrowserSurfaceRuntimeIdRegistry {
+  readonly byIdentity: Map<string, string>;
+  nextFallbackId: number;
+}
+
+const RUNTIME_ID_REGISTRY_KEY = Symbol.for("cozea.browserSurfaceRuntimeIds");
+const runtimeHost = globalThis as {
+  [RUNTIME_ID_REGISTRY_KEY]?: BrowserSurfaceRuntimeIdRegistry;
+};
+const runtimeIds: BrowserSurfaceRuntimeIdRegistry = (runtimeHost[RUNTIME_ID_REGISTRY_KEY] ??= {
+  byIdentity: new Map(),
+  nextFallbackId: 0,
+});
+
+function newOpaqueRuntimeTabId(kind: BrowserSurfaceKind): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `cozea-preview:${kind}:${uuid}`;
+
+  runtimeIds.nextFallbackId += 1;
+  return `cozea-preview:${kind}:${Date.now().toString(36)}-${runtimeIds.nextFallbackId.toString(36)}`;
+}
+
 export function resolveBrowserWorkbenchSessionKey(
   identity: BrowserWorkbenchSessionIdentity,
 ): string {
@@ -26,10 +48,16 @@ export function resolveBrowserWorkbenchSessionKey(
 }
 
 export function browserSurfaceRuntimeTabId(identity: BrowserSurfaceRuntimeIdentity): string {
-  return JSON.stringify([
+  const canonicalIdentity = JSON.stringify([
     resolveBrowserWorkbenchSessionKey(identity),
     identity.kind,
     identity.tileId,
     identity.runtimeGeneration ?? null,
   ]);
+  const existing = runtimeIds.byIdentity.get(canonicalIdentity);
+  if (existing) return existing;
+
+  const runtimeTabId = newOpaqueRuntimeTabId(identity.kind);
+  runtimeIds.byIdentity.set(canonicalIdentity, runtimeTabId);
+  return runtimeTabId;
 }

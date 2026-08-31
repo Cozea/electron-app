@@ -39,12 +39,29 @@ describe("pinned T3 browser host foundation", () => {
     };
 
     expect(resolveBrowserWorkbenchSessionKey(identity)).toBe("project::lane::workspace");
-    expect(browserSurfaceRuntimeTabId(identity)).toBe(
-      browserSurfaceRuntimeTabId({ ...identity, runtimeGeneration: null }),
-    );
+    const runtimeTabId = browserSurfaceRuntimeTabId(identity);
+    expect(runtimeTabId).toBe(browserSurfaceRuntimeTabId({ ...identity, runtimeGeneration: null }));
+    expect(runtimeTabId.length).toBeLessThanOrEqual(128);
+    expect(runtimeTabId).not.toContain(identity.projectId);
+    expect(runtimeTabId).not.toContain(identity.tileId);
     expect(browserSurfaceRuntimeTabId({ ...identity, runtimeGeneration: 2 })).not.toBe(
-      browserSurfaceRuntimeTabId(identity),
+      runtimeTabId,
     );
+  });
+
+  it("keeps runtime tab IDs within the T3 contract for long workbench identities", () => {
+    const runtimeTabId = browserSurfaceRuntimeTabId({
+      projectId: `project-${"p".repeat(256)}`,
+      laneId: `lane-${"l".repeat(256)}`,
+      workspaceId: `workspace-${"w".repeat(256)}`,
+      workbenchSessionKey: `session-${"s".repeat(1024)}`,
+      tileId: `tile-${"t".repeat(256)}`,
+      kind: "devServer",
+      runtimeGeneration: `generation-${"g".repeat(256)}`,
+    });
+
+    expect(runtimeTabId.length).toBeLessThanOrEqual(128);
+    expect(runtimeTabId).toMatch(/^cozea-preview:devServer:/);
   });
 
   it("keeps the renderer-wide surface inventory snapshot shallow-stable", () => {
@@ -121,22 +138,19 @@ describe("pinned T3 browser host foundation", () => {
 
   it("publishes a floating Dockview layer to the same living guest", () => {
     const lease = acquireBrowserSurface("tab");
-    lease.present(
-      { x: 12, y: 34, width: 800, height: 600 },
-      true,
-      "0 0 12px 12px",
-      1_006,
-    );
+    lease.present({ x: 12, y: 34, width: 800, height: 600 }, true, "0 0 12px 12px", 1_006);
     const presentation = useBrowserSurfaceStore.getState().byTabId.tab;
 
     expect(presentation?.stackingLayer).toBe(1_006);
-    expect(resolveHostedBrowserWebviewWrapperStyle({
-      active: true,
-      rect: presentation?.rect ?? null,
-      borderRadius: presentation?.borderRadius,
-      hiddenSize: { width: 393, height: 852 },
-      stackingLayer: presentation?.stackingLayer,
-    })).toMatchObject({
+    expect(
+      resolveHostedBrowserWebviewWrapperStyle({
+        active: true,
+        rect: presentation?.rect ?? null,
+        borderRadius: presentation?.borderRadius,
+        hiddenSize: { width: 393, height: 852 },
+        stackingLayer: presentation?.stackingLayer,
+      }),
+    ).toMatchObject({
       borderRadius: "0 0 12px 12px",
       zIndex: 1_006,
     });
