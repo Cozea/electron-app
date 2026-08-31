@@ -1,5 +1,4 @@
 import {
-
   ApprovalRequestId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
@@ -17,6 +16,7 @@ import {
   type TurnId,
 } from "@cozea/assistant-contracts"
 import type { TerminalContextDraft } from "@/features/projects/components/assistant/lib/terminalContext"
+import type { PreviewAnnotationPayload } from "@cozea/contracts/t3/ipc"
 import {
   type ClipboardEventHandler,
   memo,
@@ -47,11 +47,23 @@ import { ModelPickerContent } from "@/features/projects/components/assistant/cha
 import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
 import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
 import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/chat/ThreadRuntimeBanner"
-import type { PendingApproval, PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
+import type {
+  PendingApproval,
+  PendingUserInput,
+} from "@/features/projects/components/assistant/chat/pendingRequests"
 import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
 import { ComposerPromptEditor } from "@/features/projects/components/assistant/chat/ComposerPromptEditor"
-import { detectComposerTrigger, replaceTextRange, collapseExpandedComposerCursor, expandCollapsedComposerCursor } from "@/features/projects/components/assistant/composer-logic"
-import { basenameOfPath, getVscodeIconUrlForEntry } from "@/features/projects/components/assistant/vscode-icons"
+import { ComposerPreviewAnnotationCards } from "@/features/projects/components/assistant/chat/ComposerPreviewAnnotationCards"
+import {
+  detectComposerTrigger,
+  replaceTextRange,
+  collapseExpandedComposerCursor,
+  expandCollapsedComposerCursor,
+} from "@/features/projects/components/assistant/composer-logic"
+import {
+  basenameOfPath,
+  getVscodeIconUrlForEntry,
+} from "@/features/projects/components/assistant/vscode-icons"
 import type { ContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
 import {
   buildPendingUserInputAnswers,
@@ -64,7 +76,7 @@ import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "@/lib/i18n"
 
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon as __PlusIconHugeIcon,
   AlertCircleIcon as __CircleAlertIconHugeIcon,
@@ -77,7 +89,7 @@ import {
   LeftToRightListBulletIcon as __ListTodoIconHugeIcon,
   LockIcon as __LockIconHugeIcon,
   Mic01Icon as __Mic01IconHugeIcon,
-} from '@hugeicons/core-free-icons'
+} from "@hugeicons/core-free-icons"
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
@@ -250,6 +262,7 @@ interface CozeaChatSurfaceProps {
   composer: string
   composerCursor: number
   composerImages: ReadonlyArray<ComposerImageDraft>
+  previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>
   terminalContexts: ReadonlyArray<TerminalContextDraft>
   onRemoveTerminalContext: (contextId: string) => void
   isSending: boolean
@@ -264,7 +277,11 @@ interface CozeaChatSurfaceProps {
   providers: ReadonlyArray<ServerProvider>
   modelOptionsByProvider: ProviderModelOptionsByProvider
   modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>
-  onProviderModelChange: (provider: ProviderKind, model: string, instanceId?: ProviderInstanceId) => void | Promise<void>
+  onProviderModelChange: (
+    provider: ProviderKind,
+    model: string,
+    instanceId?: ProviderInstanceId,
+  ) => void | Promise<void>
   onModelOptionChange: (id: string, value: string | boolean) => void | Promise<void>
   onToggleInteractionMode: () => void | Promise<void>
   onToggleRuntimeMode: () => void | Promise<void>
@@ -276,13 +293,19 @@ interface CozeaChatSurfaceProps {
   onComposerPaste: ClipboardEventHandler<HTMLElement>
   onAttachFiles: (files: File[]) => void
   onRemoveComposerImage: (imageId: string) => void
+  onRemovePreviewAnnotation: (annotationId: string) => void
   onSend: () => void | Promise<void>
   onInterrupt: () => void | Promise<void>
   onApprovalDecision: (
     requestId: string,
     decision: ProviderApprovalDecision,
   ) => void | Promise<void>
-  onUserInputDraftChange: (requestId: string, questionId: string, value: string, cursor?: number) => void
+  onUserInputDraftChange: (
+    requestId: string,
+    questionId: string,
+    value: string,
+    cursor?: number,
+  ) => void
   onSubmitUserInput: (requestId: string) => void | Promise<void>
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void | Promise<void>
   onDismissThreadError?: () => void
@@ -436,6 +459,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     enabled: dockComposerOnHover,
   })
   const composerDockHover = composerDockHoverState.isHovered
+  const previewAnnotationImageIds = useMemo(
+    () => new Set(props.previewAnnotations.map((annotation) => annotation.id)),
+    [props.previewAnnotations],
+  )
+  const regularComposerImages = useMemo(
+    () => props.composerImages.filter((image) => !previewAnnotationImageIds.has(image.id)),
+    [previewAnnotationImageIds, props.composerImages],
+  )
   const dragDepthRef = useRef(0)
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
   const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
@@ -524,7 +555,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const composerValue = activePendingProgress?.customAnswer ?? props.composer
   const composerExpandedCursor = useMemo(
     () => expandCollapsedComposerCursor(composerValue, props.composerCursor),
-    [composerValue, props.composerCursor]
+    [composerValue, props.composerCursor],
   )
   const composerTrigger = useMemo(
     () => detectComposerTrigger(composerValue, composerExpandedCursor),
@@ -572,21 +603,23 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         description: "Show available commands and provider skills",
       },
     ]
-    const providerItems: ComposerSlashMenuItem[] = (props.providerSnapshot?.slashCommands ?? []).map(
-      (command) => ({
-        id: `provider-slash-command:${props.selectedProvider}:${command.name}`,
-        type: "provider-slash-command",
-        command,
-        label: `/${command.name}`,
-        description: command.description ?? command.input?.hint ?? "Run provider command",
-      }),
-    )
+    const providerItems: ComposerSlashMenuItem[] = (
+      props.providerSnapshot?.slashCommands ?? []
+    ).map((command) => ({
+      id: `provider-slash-command:${props.selectedProvider}:${command.name}`,
+      type: "provider-slash-command",
+      command,
+      label: `/${command.name}`,
+      description: command.description ?? command.input?.hint ?? "Run provider command",
+    }))
     return filterSlashItems([...builtInItems, ...providerItems], composerSlashTrigger?.query ?? "")
   }, [composerSlashTrigger?.query, props.providerSnapshot?.slashCommands, props.selectedProvider])
   const modelMenuItems = useMemo<ComposerSlashMenuItem[]>(() => {
-    const allItems = (Object.entries(props.modelOptionsByProvider) as Array<
-      [ProviderKind, ReadonlyArray<{ slug: string; name: string }>]
-    >).flatMap(([provider, models]) =>
+    const allItems = (
+      Object.entries(props.modelOptionsByProvider) as Array<
+        [ProviderKind, ReadonlyArray<{ slug: string; name: string }>]
+      >
+    ).flatMap(([provider, models]) =>
       models.map((model) => ({
         id: `model:${provider}:${model.slug}`,
         type: "model" as const,
@@ -623,7 +656,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     composerPathTrigger || composerSlashTrigger || composerModelTrigger || composerSkillTrigger,
   )
   const visibleComposerMenuItems = composerMenuItems.slice(0, composerPathTrigger ? 3 : 6)
-  const hiddenComposerMenuItemCount = Math.max(0, composerMenuItems.length - visibleComposerMenuItems.length)
+  const hiddenComposerMenuItemCount = Math.max(
+    0,
+    composerMenuItems.length - visibleComposerMenuItems.length,
+  )
   const composerDisabled =
     !isChatReady ||
     props.isBinding ||
@@ -632,10 +668,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     (!activePendingProgress && props.isSending)
   const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation"
   const attachDisabled =
-    !isChatReady ||
-    props.isRunning ||
-    isComposerApprovalState ||
-    activePendingUserInput !== null
+    !isChatReady || props.isRunning || isComposerApprovalState || activePendingUserInput !== null
   const imageSizeLimitLabel = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`
   const markdownCwd = props.workspaceId ?? undefined
   const workspaceIdForFileActions = props.workspaceId ?? undefined
@@ -663,6 +696,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isNonEmptyReactNode(props.composerStatus) ||
     props.composer.trim().length > 0 ||
     props.composerImages.length > 0 ||
+    props.previewAnnotations.length > 0 ||
     props.isRunning ||
     props.isSending ||
     props.isInterrupting
@@ -673,8 +707,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     !props.workspaceId ||
     Boolean(
       props.providerSnapshot &&
-        props.providerSnapshot.status !== "ready" &&
-        props.providerSnapshot.status !== "disabled",
+      props.providerSnapshot.status !== "ready" &&
+      props.providerSnapshot.status !== "disabled",
     )
 
   // Empty thread: keep the composer visible so new sessions have an obvious input.
@@ -821,9 +855,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   }, [activePendingUserInput, defaultPendingQuestionIndex])
 
   useEffect(() => {
-    const activeRequestIds = new Set(props.pendingUserInputs.map((request) => String(request.requestId)))
+    const activeRequestIds = new Set(
+      props.pendingUserInputs.map((request) => String(request.requestId)),
+    )
     setPendingQuestionIndexByRequestId((current) => {
-      const nextEntries = Object.entries(current).filter(([requestId]) => activeRequestIds.has(requestId))
+      const nextEntries = Object.entries(current).filter(([requestId]) =>
+        activeRequestIds.has(requestId),
+      )
       if (nextEntries.length === Object.keys(current).length) {
         return current
       }
@@ -887,7 +925,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       return
     }
     setComposerHighlightedItemId((current) =>
-      current && composerMenuItems.some((item) => item.id === current) ? current : composerMenuItems[0]!.id,
+      current && composerMenuItems.some((item) => item.id === current)
+        ? current
+        : composerMenuItems[0]!.id,
     )
   }, [composerMenuItems, composerMenuOpen])
 
@@ -911,8 +951,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       if (!current || current.images.length <= 1) {
         return current
       }
-      const nextIndex =
-        (current.index + offset + current.images.length) % current.images.length
+      const nextIndex = (current.index + offset + current.images.length) % current.images.length
       return {
         ...current,
         index: nextIndex,
@@ -926,7 +965,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         String(activePendingUserInput.requestId),
         activePendingProgress.activeQuestion.id,
         nextValue,
-        nextCursor
+        nextCursor,
       )
       return
     }
@@ -947,7 +986,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     setActivePendingQuestionIndex(
       String(activePendingUserInput.requestId),
-      Math.min(activePendingProgress.questionIndex + 1, activePendingUserInput.questions.length - 1),
+      Math.min(
+        activePendingProgress.questionIndex + 1,
+        activePendingUserInput.questions.length - 1,
+      ),
     )
   }
 
@@ -984,7 +1026,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   }
 
   const expandedImageItem: ExpandedImageItem | null = expandedImage
-    ? expandedImage.images[expandedImage.index] ?? null
+    ? (expandedImage.images[expandedImage.index] ?? null)
     : null
 
   const handleSurfaceDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
@@ -1146,7 +1188,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   ) => {
     if (composerMenuOpen && composerMenuItems.length > 0) {
       if (key === "ArrowDown" || key === "ArrowUp") {
-        const currentIndex = composerMenuItems.findIndex((item) => item.id === composerHighlightedItemId)
+        const currentIndex = composerMenuItems.findIndex(
+          (item) => item.id === composerHighlightedItemId,
+        )
         const fallbackIndex = key === "ArrowDown" ? -1 : 0
         const normalizedIndex = currentIndex >= 0 ? currentIndex : fallbackIndex
         const offset = key === "ArrowDown" ? 1 : -1
@@ -1212,9 +1256,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         )}
         onBlurCapture={handleComposerShellBlurCapture}
       >
-        {props.composerStatus ? (
-          <div className="shrink-0">{props.composerStatus}</div>
-        ) : null}
+        {props.composerStatus ? <div className="shrink-0">{props.composerStatus}</div> : null}
         {threadRuntimeBannerState ? (
           <ThreadRuntimeBanner
             state={threadRuntimeBannerState}
@@ -1264,13 +1306,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <div className="shrink-0 border-b border-border/30 bg-background/10 py-1 pl-1 pr-8">
             <div className="w-[min(34rem,calc(100%-2rem))]">
               <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
-                  {composerPathTrigger
-                    ? "Files & Folders"
-                    : composerModelTrigger
-                      ? "Models"
-                      : composerSkillTrigger
-                        ? "Skills"
-                        : "Commands"}
+                {composerPathTrigger
+                  ? "Files & Folders"
+                  : composerModelTrigger
+                    ? "Models"
+                    : composerSkillTrigger
+                      ? "Skills"
+                      : "Commands"}
               </div>
               {isComposerMenuLoading ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching files...</div>
@@ -1332,7 +1374,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                           {item.type === "path" ? basenameOfPath(item.path) : item.label}
                         </span>
                         <span className="block truncate text-[11px] text-muted-foreground">
-                          {item.type === "path" ? (item.description || item.path) : item.description}
+                          {item.type === "path" ? item.description || item.path : item.description}
                         </span>
                       </span>
                     </button>
@@ -1382,10 +1424,24 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
         {!isComposerApprovalState &&
         !activePendingUserInput &&
-        props.composerImages.length > 0 ? (
+        props.previewAnnotations.length > 0 ? (
+          <div className="px-3 pt-3">
+            <ComposerPreviewAnnotationCards
+              annotations={props.previewAnnotations}
+              images={props.composerImages}
+              onRemove={props.onRemovePreviewAnnotation}
+              onExpandImage={(imageId) => {
+                const preview = buildExpandedImagePreview(props.composerImages, imageId)
+                if (preview) handleExpandImage(preview)
+              }}
+            />
+          </div>
+        ) : null}
+
+        {!isComposerApprovalState && !activePendingUserInput && regularComposerImages.length > 0 ? (
           <div className="px-3 pt-3">
             <div className="flex flex-wrap gap-2">
-              {props.composerImages.map((image) => (
+              {regularComposerImages.map((image) => (
                 <div
                   key={image.id}
                   className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
@@ -1395,7 +1451,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                     className="h-full w-full cursor-zoom-in"
                     aria-label={`Preview ${image.name}`}
                     onClick={() => {
-                      const preview = buildExpandedImagePreview(props.composerImages, image.id)
+                      const preview = buildExpandedImagePreview(regularComposerImages, image.id)
                       if (!preview) return
                       handleExpandImage(preview)
                     }}
@@ -1423,12 +1479,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         ) : null}
 
-        <div
-          className={cn(
-            "relative shrink-0 px-3 pb-2",
-            hasComposerHeader ? "pt-2.5" : "pt-3",
-          )}
-        >
+        <div className={cn("relative shrink-0 px-3 pb-2", hasComposerHeader ? "pt-2.5" : "pt-3")}>
           <input
             ref={composerFileInputRef}
             type="file"
@@ -1438,47 +1489,43 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             onChange={handleComposerFileInputChange}
             tabIndex={-1}
           />
-          <div
-            className={cn(
-              "px-3 py-2",
-              composerDisabled && "opacity-70",
-            )}
-          >
-          <ComposerPromptEditor
-            value={composerValue}
-            cursor={props.composerCursor}
-            skills={props.providerSnapshot?.skills ?? []}
-            terminalContexts={props.terminalContexts}
-            onRemoveTerminalContext={props.onRemoveTerminalContext}
-            onChange={handleComposerChange}
-            onCommandKeyDown={handleComposerCommandKey}
-            onPaste={props.onComposerPaste}
-            placeholder={
-              isComposerApprovalState
-                ? (activePendingApproval?.detail ?? (t as any)("assistant.chat.placeholder.resolveApproval"))
-                : activePendingProgress
-                  ? (t as any)("assistant.chat.placeholder.customAnswer")
-                  : showPlanFollowUpPrompt
-                    ? (t as any)("assistant.chat.placeholder.planFeedback")
-                    : props.isInterrupting
-                      ? props.isForceStopAvailable
-                        ? (t as any)("assistant.chat.placeholder.forceStop")
-                        : (t as any)("assistant.chat.placeholder.stopping")
-                    : props.runtimeErrorMessage
-                      ? (t as any)("assistant.chat.placeholder.runtimeUnavailable")
-                      : phase === "error"
-                        ? (t as any)("assistant.chat.placeholder.error")
-                        : phase === "interrupted"
-                          ? (t as any)("assistant.chat.placeholder.interrupted")
-                          : phase === "stopped"
-                            ? (t as any)("assistant.chat.placeholder.stopped")
-                      : phase === "disconnected"
-                        ? (t as any)("assistant.chat.placeholder.disconnected")
-                        : (t as any)("assistant.chat.placeholder.default")
-            }
-            className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
-            disabled={composerDisabled}
-          />
+          <div className={cn("px-3 py-2", composerDisabled && "opacity-70")}>
+            <ComposerPromptEditor
+              value={composerValue}
+              cursor={props.composerCursor}
+              skills={props.providerSnapshot?.skills ?? []}
+              terminalContexts={props.terminalContexts}
+              onRemoveTerminalContext={props.onRemoveTerminalContext}
+              onChange={handleComposerChange}
+              onCommandKeyDown={handleComposerCommandKey}
+              onPaste={props.onComposerPaste}
+              placeholder={
+                isComposerApprovalState
+                  ? (activePendingApproval?.detail ??
+                    (t as any)("assistant.chat.placeholder.resolveApproval"))
+                  : activePendingProgress
+                    ? (t as any)("assistant.chat.placeholder.customAnswer")
+                    : showPlanFollowUpPrompt
+                      ? (t as any)("assistant.chat.placeholder.planFeedback")
+                      : props.isInterrupting
+                        ? props.isForceStopAvailable
+                          ? (t as any)("assistant.chat.placeholder.forceStop")
+                          : (t as any)("assistant.chat.placeholder.stopping")
+                        : props.runtimeErrorMessage
+                          ? (t as any)("assistant.chat.placeholder.runtimeUnavailable")
+                          : phase === "error"
+                            ? (t as any)("assistant.chat.placeholder.error")
+                            : phase === "interrupted"
+                              ? (t as any)("assistant.chat.placeholder.interrupted")
+                              : phase === "stopped"
+                                ? (t as any)("assistant.chat.placeholder.stopped")
+                                : phase === "disconnected"
+                                  ? (t as any)("assistant.chat.placeholder.disconnected")
+                                  : (t as any)("assistant.chat.placeholder.default")
+              }
+              className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
+              disabled={composerDisabled}
+            />
           </div>
         </div>
 
@@ -1509,7 +1556,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 }}
                 title={`Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`}
               >
-                <HugeiconsIcon icon={__PlusIconHugeIcon} className="size-3.5 shrink-0 stroke-[2.25]" strokeWidth={2.25} />
+                <HugeiconsIcon
+                  icon={__PlusIconHugeIcon}
+                  className="size-3.5 shrink-0 stroke-[2.25]"
+                  strokeWidth={2.25}
+                />
                 {props.composerImages.length > 0 ? (
                   <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[10px] leading-none text-primary">
                     {props.composerImages.length}
@@ -1536,14 +1587,15 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   className="size-3.5 shrink-0"
                 />
                 <span className="whitespace-nowrap">
-                  {props.selectedRuntimeMode === "full-access"
-                    ? "Full"
-                    : "Approval"}
+                  {props.selectedRuntimeMode === "full-access" ? "Full" : "Approval"}
                 </span>
               </button>
             </div>
 
-            <div data-chat-composer-actions="right" className="flex min-w-0 max-w-[calc(100%-48px)] shrink items-center gap-1.5">
+            <div
+              data-chat-composer-actions="right"
+              className="flex min-w-0 max-w-[calc(100%-48px)] shrink items-center gap-1.5"
+            >
               <ProviderModelPicker
                 provider={props.selectedProvider}
                 activeInstanceId={props.selectedModelSelection.instanceId}
@@ -1560,7 +1612,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 onOpenChange={setIsModelPickerOpen}
               />
               {!activePendingProgress && props.activeContextWindow ? (
-                <ContextWindowMeter usage={props.activeContextWindow} hidePercentage className="px-0.5" />
+                <ContextWindowMeter
+                  usage={props.activeContextWindow}
+                  hidePercentage
+                  className="px-0.5"
+                />
               ) : null}
               <button
                 type="button"
@@ -1619,15 +1675,18 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   }}
                   aria-label={stopButtonLabel}
                   title={stopButtonLabel}
-                  disabled={
-                    !isChatReady ||
-                    (props.isInterrupting && !props.isForceStopAvailable)
-                  }
+                  disabled={!isChatReady || (props.isInterrupting && !props.isForceStopAvailable)}
                 >
                   {props.isInterrupting && !props.isForceStopAvailable ? (
                     <div className="loader" />
                   ) : (
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
                       <rect x="2" y="2" width="8" height="8" rx="1.5" />
                     </svg>
                   )}
@@ -1638,7 +1697,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:hover:scale-105 enabled:hover:bg-primary/90 enabled:active:scale-95 disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none"
                   disabled={
                     !isChatReady ||
-                    (props.composer.trim().length === 0 && props.composerImages.length === 0) ||
+                    (props.composer.trim().length === 0 &&
+                      props.composerImages.length === 0 &&
+                      props.previewAnnotations.length === 0) ||
                     props.isSending ||
                     props.isBinding
                   }
@@ -1665,7 +1726,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasProviderBanner =
     props.providerSnapshot &&
     (props.providerSnapshot.versionAdvisory?.status === "behind_latest" ||
-      (props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled"));
+      (props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled"))
 
   return (
     <div
@@ -1678,7 +1739,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     >
       {isDragOverSurface && (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-sm text-center rounded-[inherit]">
-          <HugeiconsIcon icon={__ImageAdd01IconHugeIcon} className="size-7 text-muted-foreground mb-4" />
+          <HugeiconsIcon
+            icon={__ImageAdd01IconHugeIcon}
+            className="size-7 text-muted-foreground mb-4"
+          />
           <h3 className="text-base font-medium text-foreground">Drop images to attach</h3>
           <p className="text-sm text-muted-foreground mt-1">Images will be added to your draft</p>
         </div>
@@ -1689,21 +1753,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           "relative flex min-h-0 flex-1 flex-col",
           dockComposerOnHover && "overflow-hidden",
         )}
-        onPointerEnter={
-          dockComposerOnHover
-            ? composerDockHoverState.onPointerEnter
-            : undefined
-        }
-        onPointerLeave={
-          dockComposerOnHover
-            ? composerDockHoverState.onPointerLeave
-            : undefined
-        }
-        onPointerMove={
-          dockComposerOnHover
-            ? composerDockHoverState.onPointerMove
-            : undefined
-        }
+        onPointerEnter={dockComposerOnHover ? composerDockHoverState.onPointerEnter : undefined}
+        onPointerLeave={dockComposerOnHover ? composerDockHoverState.onPointerLeave : undefined}
+        onPointerMove={dockComposerOnHover ? composerDockHoverState.onPointerMove : undefined}
       >
         {!props.workspaceId ? (
           <div className="px-3 py-3 sm:px-5 sm:py-4">

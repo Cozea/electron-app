@@ -2,8 +2,9 @@
 
 > **T3 surface cutover (2026-08-31):** Dev Server and compatibility Project DevApp previews now
 > render through the shared T3 `<webview>` host while their process, terminal, readiness, and
-> headless reattachment lifecycles remain independent. Agent page interaction remains temporarily
-> unavailable until the all-surface automation gate.
+> headless reattachment lifecycles remain independent. T3 responsive sizing, capture, recording,
+> picker, PiP, appearance, audio, zoom, and pointer presentation are active; agent page interaction
+> remains temporarily unavailable until the all-surface automation gate.
 
 Cozea exposes project previews to the vendored T3 agent runtime through the workbench's built-in Dev Server runtime and surface. It never treats an ordinary Browser tile as spare agent infrastructure.
 

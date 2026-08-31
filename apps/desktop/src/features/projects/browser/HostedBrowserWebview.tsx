@@ -6,6 +6,17 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
+import { cn } from "@/lib/utils";
+
+import { BrowserDeviceToolbar } from "./BrowserDeviceToolbar";
+import { BrowserViewportResizeHandles } from "./BrowserViewportResizeHandles";
+import {
+  browserViewportSettingKey,
+  resolveBrowserViewportLayout,
+  resolveFittedBrowserViewport,
+} from "./browserViewportLayout";
+import { subscribeBrowserViewportChange } from "./browserViewportActions";
+import { commitBrowserViewport, useBrowserViewportStore } from "./browserViewportStore";
 import { resolveBrowserSurfacePanelRect, useBrowserSurfaceStore } from "./browserSurfaceStore";
 import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore";
 import { resolveHostedBrowserWebviewWrapperStyle } from "./hostedBrowserWebviewStyle";
@@ -14,6 +25,8 @@ import {
   planWebviewCrashRecovery,
   type WebviewCrashRecoveryState,
 } from "./webviewCrashRecovery";
+import { useBrowserViewportResize } from "./useBrowserViewportResize";
+import { FILL_PREVIEW_VIEWPORT } from "./previewViewport";
 
 interface ElectronWebview extends HTMLElement {
   src: string;
@@ -66,12 +79,18 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   const [prepared, setPrepared] = useState<PreparedBrowserSurface | null>(null);
   const [webviewGeneration, setWebviewGeneration] = useState(0);
   const [recoverySrc, setRecoverySrc] = useState(initialSrc);
+  const [aspectRatioLocked, setAspectRatioLocked] = useState(false);
   const surfaceState = useBrowserSurfaceStateStore((state) => state.byTabId[runtimeTabId] ?? null);
+  const viewport =
+    useBrowserViewportStore((state) => state.byTabId[runtimeTabId]) ?? FILL_PREVIEW_VIEWPORT;
   const presentation = useBrowserSurfaceStore(
     useShallow((state) => {
       const current = state.byTabId[runtimeTabId];
       return {
+        content: current?.content ?? null,
         cornerRadius: current?.cornerRadius ?? 0,
+        fitSourceContent: current?.fitSourceContent ?? false,
+        fittedSourceContent: current?.fittedSourceContent ?? null,
         rect: resolveBrowserSurfacePanelRect(state.byTabId, runtimeTabId),
         visible: current?.visible ?? false,
       };
@@ -95,6 +114,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
     return () => {
       disposed = true;
       useBrowserSurfaceStateStore.getState().remove(runtimeTabId);
+      useBrowserViewportStore.getState().remove(runtimeTabId);
       void enqueueSurfaceOperation(runtimeTabId, () => preview.releaseSurface(runtimeTabId)).catch(
         () => undefined,
       );
@@ -162,37 +182,186 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
     };
   }, [initialSrc, prepared, preview, runtimeTabId, webviewGeneration]);
 
-  if (!prepared) return null;
   const active = presentation.visible && presentation.rect !== null;
+  const lastRect = presentation.rect;
+  const zoomFactor = surfaceState?.zoomFactor ?? 1;
+  const normalizedZoomFactor = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+  const viewportWidth = viewport._tag === "fill" ? null : viewport.width;
+  const viewportHeight = viewport._tag === "fill" ? null : viewport.height;
+  const viewportAspectRatio =
+    viewportWidth === null || viewportHeight === null ? null : viewportWidth / viewportHeight;
+  const lockedAspectRatio =
+    aspectRatioLocked && viewportAspectRatio !== null ? viewportAspectRatio : null;
+  const handleAspectRatioChange = useCallback((aspectRatio: number | null) => {
+    setAspectRatioLocked(aspectRatio !== null);
+  }, []);
+  const hiddenContentSize = presentation.content
+    ? {
+        width: presentation.content.width / presentation.content.scale,
+        height: presentation.content.height / presentation.content.scale,
+      }
+    : null;
+  const hiddenSize =
+    viewport._tag !== "fill"
+      ? {
+          width: viewport.width * normalizedZoomFactor,
+          height: viewport.height * normalizedZoomFactor,
+        }
+      : {
+          width: hiddenContentSize?.width ?? lastRect?.width ?? 1280,
+          height: hiddenContentSize?.height ?? lastRect?.height ?? 800,
+        };
+  const containerSize = active && lastRect ? lastRect : hiddenSize;
+  const deviceToolbarVisible = active && viewport._tag !== "fill" && !presentation.fitSourceContent;
+  const {
+    activeDrag,
+    commitViewportChange,
+    effectiveViewport,
+    handleResizeKeyDown,
+    handleResizePointerDown,
+    layout: viewportLayout,
+  } = useBrowserViewportResize({
+    tabId: runtimeTabId,
+    viewport,
+    zoomFactor,
+    containerSize,
+    deviceToolbarVisible,
+    aspectRatio: lockedAspectRatio,
+  });
+  const fittedSourceViewport =
+    presentation.fitSourceContent && lastRect
+      ? resolveFittedBrowserViewport(
+          viewport,
+          presentation.fittedSourceContent,
+          normalizedZoomFactor,
+        )
+      : null;
+  const layout =
+    fittedSourceViewport && lastRect
+      ? resolveBrowserViewportLayout(lastRect, fittedSourceViewport, normalizedZoomFactor)
+      : viewportLayout;
+
+  useEffect(
+    () =>
+      subscribeBrowserViewportChange(runtimeTabId, (next) =>
+        commitBrowserViewport(runtimeTabId, next),
+      ),
+    [runtimeTabId],
+  );
+
+  const syncContentPresentation = useCallback(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    useBrowserSurfaceStore.getState().presentContent(runtimeTabId, {
+      x: layout.viewportX,
+      y: layout.viewportY,
+      width: layout.viewportWidth,
+      height: layout.viewportHeight,
+      scale: layout.viewportScale,
+      scrollLeft: wrapper.scrollLeft,
+      scrollTop: wrapper.scrollTop,
+    });
+  }, [layout, runtimeTabId]);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(syncContentPresentation);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [syncContentPresentation]);
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    wrapper.scrollTo({ left: 0, top: 0 });
+  }, [runtimeTabId, viewport._tag, viewportHeight, viewportWidth]);
+
+  if (!prepared) return null;
   const wrapperStyle = resolveHostedBrowserWebviewWrapperStyle({
     active,
     cornerRadius: presentation.cornerRadius,
-    rect: presentation.rect,
-    hiddenSize: {
-      width: presentation.rect?.width ?? 1280,
-      height: presentation.rect?.height ?? 800,
-    },
+    rect: lastRect,
+    hiddenSize,
   });
 
   return (
     <div
       ref={wrapperRef}
-      className="fixed overflow-hidden bg-background"
-      style={wrapperStyle}
+      className="fixed overflow-hidden bg-muted/35"
+      style={{ ...wrapperStyle, overscrollBehavior: "contain" }}
+      onScroll={syncContentPresentation}
       data-preview-viewport={runtimeTabId}
     >
-      <webview
-        key={webviewGeneration}
-        ref={setWebviewRef}
-        src={webviewGeneration === 0 ? initialSrc : recoverySrc}
-        partition={prepared.config.partition}
-        webpreferences={prepared.config.webPreferences}
-        {...(prepared.config.preloadUrl ? { preload: prepared.config.preloadUrl } : {})}
-        data-runtime-tab-id={runtimeTabId}
-        data-preview-tab={runtimeTabId}
-        aria-hidden={active ? undefined : true}
-        className="absolute inset-0 flex size-full overflow-hidden bg-background"
-      />
+      <div className="relative" style={{ width: layout.canvasWidth, height: layout.canvasHeight }}>
+        {deviceToolbarVisible && effectiveViewport._tag !== "fill" ? (
+          <BrowserDeviceToolbar
+            setting={effectiveViewport}
+            width={Math.max(1, Math.round(containerSize.width))}
+            aspectRatio={lockedAspectRatio}
+            onAspectRatioChange={handleAspectRatioChange}
+            onChange={commitViewportChange}
+          />
+        ) : null}
+        <webview
+          key={webviewGeneration}
+          ref={setWebviewRef}
+          src={webviewGeneration === 0 ? initialSrc : recoverySrc}
+          partition={prepared.config.partition}
+          webpreferences={prepared.config.webPreferences}
+          {...(prepared.config.preloadUrl ? { preload: prepared.config.preloadUrl } : {})}
+          data-runtime-tab-id={runtimeTabId}
+          data-preview-tab={runtimeTabId}
+          data-preview-viewport-mode={effectiveViewport._tag}
+          data-preview-viewport-key={browserViewportSettingKey(effectiveViewport)}
+          data-preview-css-width={
+            fittedSourceViewport
+              ? fittedSourceViewport.width
+              : effectiveViewport._tag === "fill"
+                ? Math.max(1, Math.round(layout.viewportWidth / normalizedZoomFactor))
+                : effectiveViewport.width
+          }
+          data-preview-css-height={
+            fittedSourceViewport
+              ? fittedSourceViewport.height
+              : effectiveViewport._tag === "fill"
+                ? Math.max(1, Math.round(layout.viewportHeight / normalizedZoomFactor))
+                : effectiveViewport.height
+          }
+          aria-hidden={active ? undefined : true}
+          className={cn(
+            "absolute flex overflow-hidden bg-background",
+            active && !layout.fillsPanel && "ring-1 ring-border/70 shadow-sm",
+          )}
+          style={{
+            left: layout.viewportX,
+            top: layout.viewportY,
+            width: layout.viewportWidth / layout.viewportScale,
+            height: layout.viewportHeight / layout.viewportScale,
+            transform: layout.viewportScale < 1 ? `scale(${layout.viewportScale})` : undefined,
+            transformOrigin: "top left",
+          }}
+        />
+        {active && effectiveViewport._tag !== "fill" && !fittedSourceViewport ? (
+          <>
+            <BrowserViewportResizeHandles
+              layout={layout}
+              activeDirection={activeDrag?.direction ?? null}
+              onPointerDown={handleResizePointerDown}
+              onKeyDown={handleResizeKeyDown}
+            />
+            {activeDrag ? (
+              <div
+                className="pointer-events-none absolute z-40 -translate-x-1/2 rounded-md border border-border/80 bg-background/95 px-2 py-1 text-[11px] font-medium tabular-nums text-foreground shadow-md backdrop-blur-sm"
+                style={{
+                  left: layout.viewportX + layout.viewportWidth / 2,
+                  top: layout.viewportY + 10,
+                }}
+                aria-hidden="true"
+              >
+                {activeDrag.width} × {activeDrag.height}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

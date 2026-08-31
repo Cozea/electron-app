@@ -12,6 +12,7 @@ import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/i18n"
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
+import { BrowserSurfaceOverlays } from "@/features/projects/browser/BrowserSurfaceOverlays"
 import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError"
 import { resolveBrowserWorkbenchSessionKey } from "@/features/projects/browser/browserSurfaceIdentity"
 import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
@@ -30,9 +31,7 @@ import {
   isSameDevServerPreviewUrl,
   type DevServerTileCommand,
 } from "@/features/projects/devserver/devServerTileCommands"
-import {
-  buildDevServerRunKey,
-} from "@/features/projects/devserver/devServerRunStore"
+import { buildDevServerRunKey } from "@/features/projects/devserver/devServerRunStore"
 import { interruptDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
 import { KeepAliveTerminalView } from "@/features/projects/terminals/KeepAliveTerminalView"
@@ -189,9 +188,7 @@ function useRuntimeWorkbenchSessionKey({
     }
 
     let cancelled = false
-    setSourceSession((current) =>
-      current?.identity === targetIdentity ? current : null,
-    )
+    setSourceSession((current) => (current?.identity === targetIdentity ? current : null))
 
     void window.electronAPI.workbenchSession
       .ensureSession({
@@ -224,9 +221,7 @@ function useRuntimeWorkbenchSessionKey({
     return currentSessionKey
   }
 
-  return sourceSession?.identity === targetIdentity
-    ? sourceSession.sessionKey
-    : null
+  return sourceSession?.identity === targetIdentity ? sourceSession.sessionKey : null
 }
 
 function WorkbenchRuntimePreviewTile({
@@ -282,17 +277,15 @@ function WorkbenchRuntimePreviewTile({
     })
   }, [runtimeTarget, runtimeTargetIdentity, tile.id])
   const storedFramework =
-    tile.type === "devServer" ? tile.devAppFramework ?? projectFramework : projectFramework
+    tile.type === "devServer" ? (tile.devAppFramework ?? projectFramework) : projectFramework
   const storedDevCommand =
-    tile.type === "devServer" ? tile.devAppCommand ?? projectDevCommand : projectDevCommand
+    tile.type === "devServer" ? (tile.devAppCommand ?? projectDevCommand) : projectDevCommand
   const storedDevPort =
-    tile.type === "devServer" ? tile.devAppPort ?? projectDevPort : projectDevPort
-  const autoStart = tile.type === "devServer" ? tile.autoStart ?? false : false
-  const devAppReleaseId = tile.type === "devServer" ? tile.devAppReleaseId ?? null : null
+    tile.type === "devServer" ? (tile.devAppPort ?? projectDevPort) : projectDevPort
+  const autoStart = tile.type === "devServer" ? (tile.autoStart ?? false) : false
+  const devAppReleaseId = tile.type === "devServer" ? (tile.devAppReleaseId ?? null) : null
   const storedCommandSource =
-    tile.type === "devServer" && tile.devAppId && tile.devAppCommand
-      ? "devAppRelease"
-      : "detected"
+    tile.type === "devServer" && tile.devAppId && tile.devAppCommand ? "devAppRelease" : "detected"
   const markAutoStartConsumed = useCallback(() => {
     workbenchActions.updateRuntimePreviewTile(
       projectId,
@@ -318,14 +311,21 @@ function WorkbenchRuntimePreviewTile({
 
     let cancelled = false
 
-    void getFrameworkInfo(runtimeWorkspaceId, (storedFramework as Framework | null) ?? null, storedDevCommand, storedDevPort)
+    void getFrameworkInfo(
+      runtimeWorkspaceId,
+      (storedFramework as Framework | null) ?? null,
+      storedDevCommand,
+      storedDevPort,
+    )
       .then((frameworkInfo) => {
         if (cancelled) return
         setResolvedFramework(frameworkInfo.framework)
       })
       .catch(() => {
         if (cancelled) return
-        setResolvedFramework(storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null)
+        setResolvedFramework(
+          storedFramework && storedFramework !== "unknown" ? (storedFramework as Framework) : null,
+        )
       })
 
     return () => {
@@ -345,8 +345,12 @@ function WorkbenchRuntimePreviewTile({
     { id: "system", name: "System Default" },
   ])
   const [defaultBrowserId, setDefaultBrowserId] = useState<ExternalBrowserId>("system")
-  const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() => readStoredExternalBrowserPreference())
-  const [previewDestination, setPreviewDestination] = useState<PreviewDestination>(() => readStoredPreviewDestinationPreference())
+  const [selectedBrowserId, setSelectedBrowserId] = useState<ExternalBrowserId>(() =>
+    readStoredExternalBrowserPreference(),
+  )
+  const [previewDestination, setPreviewDestination] = useState<PreviewDestination>(() =>
+    readStoredPreviewDestinationPreference(),
+  )
 
   const [terminalRetryKey, setTerminalRetryKey] = useState(0)
   const { terminalId, error: terminalError } = useWorkbenchSessionTerminal({
@@ -409,9 +413,11 @@ function WorkbenchRuntimePreviewTile({
   })
   const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
   const previewServerActive =
-    devServer.status === "ready" || devServer.status === "unhealthy" || devServer.status === "starting"
+    devServer.status === "ready" ||
+    devServer.status === "unhealthy" ||
+    devServer.status === "starting"
 
-  const previewOverrideUrl = tile.type === "devServer" ? tile.previewOverrideUrl ?? null : null
+  const previewOverrideUrl = tile.type === "devServer" ? (tile.previewOverrideUrl ?? null) : null
   const effectivePreviewOverrideUrl = isSameDevServerPreviewUrl(previewOverrideUrl, previewUrl)
     ? null
     : previewOverrideUrl
@@ -428,7 +434,12 @@ function WorkbenchRuntimePreviewTile({
         })
       : null
   const browserSurfaceDescriptor = useMemo<BrowserSurfaceDescriptor | null>(() => {
-    if (surfaceType !== "web" || tile.type !== "devServer" || !runtimeWorkspaceId || !runtimeTabId) {
+    if (
+      surfaceType !== "web" ||
+      tile.type !== "devServer" ||
+      !runtimeWorkspaceId ||
+      !runtimeTabId
+    ) {
       return null
     }
     return {
@@ -508,14 +519,22 @@ function WorkbenchRuntimePreviewTile({
       workspaceId: runtimeWorkspaceId ?? undefined,
       port: devServer.port ?? undefined,
     })
-  }, [devServer.port, runtimeWorkspaceId, storedDevCommand, terminalId, tile.title, updateTerminalDisplay])
+  }, [
+    devServer.port,
+    runtimeWorkspaceId,
+    storedDevCommand,
+    terminalId,
+    tile.title,
+    updateTerminalDisplay,
+  ])
 
   useEffect(() => {
     let cancelled = false
 
     const loadAvailableBrowsers = async () => {
       try {
-        const result = await window.electronAPI.shell.listAvailableBrowsers() as AvailableExternalBrowserResult
+        const result =
+          (await window.electronAPI.shell.listAvailableBrowsers()) as AvailableExternalBrowserResult
         if (cancelled || result.browsers.length === 0) return
         setAvailableBrowsers(result.browsers)
         setDefaultBrowserId(result.defaultBrowserId)
@@ -532,7 +551,10 @@ function WorkbenchRuntimePreviewTile({
   }, [])
 
   useEffect(() => {
-    const resolvedBrowserId = resolvePreferredExternalBrowserId(availableBrowsers, selectedBrowserId)
+    const resolvedBrowserId = resolvePreferredExternalBrowserId(
+      availableBrowsers,
+      selectedBrowserId,
+    )
     if (resolvedBrowserId === selectedBrowserId) return
     setSelectedBrowserId(resolvedBrowserId)
   }, [availableBrowsers, selectedBrowserId])
@@ -604,14 +626,13 @@ function WorkbenchRuntimePreviewTile({
 
   const effectiveSelectedBrowser = useMemo(() => {
     return (
-      visibleBrowsers.find((browser) => browser.id === effectiveBrowserId)
-      ?? availableBrowsers.find((browser) => browser.id === effectiveBrowserId)
-      ?? availableBrowsers[0]
-      ?? { id: "system" as const, name: "System Default" }
+      visibleBrowsers.find((browser) => browser.id === effectiveBrowserId) ??
+      availableBrowsers.find((browser) => browser.id === effectiveBrowserId) ??
+      availableBrowsers[0] ?? { id: "system" as const, name: "System Default" }
     )
   }, [availableBrowsers, effectiveBrowserId, visibleBrowsers])
 
-  const externalPreviewUrl = usesNativePreview ? nativeStreamUrl ?? previewUrl : previewUrl
+  const externalPreviewUrl = usesNativePreview ? (nativeStreamUrl ?? previewUrl) : previewUrl
 
   const openPreviewExternally = useCallback(
     async (force = false) => {
@@ -637,7 +658,7 @@ function WorkbenchRuntimePreviewTile({
         })
       }
     },
-    [effectiveBrowserId, externalPreviewUrl, t]
+    [effectiveBrowserId, externalPreviewUrl, t],
   )
 
   // The dock header owns the simulator refresh button but only this tile
@@ -722,7 +743,13 @@ function WorkbenchRuntimePreviewTile({
     }
 
     void openPreviewExternally()
-  }, [externalPreviewUrl, isMobileSimulatorSurface, openPreviewExternally, previewDestination, viewMode])
+  }, [
+    externalPreviewUrl,
+    isMobileSimulatorSurface,
+    openPreviewExternally,
+    previewDestination,
+    viewMode,
+  ])
 
   const codeBody = terminalError ? (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
@@ -814,6 +841,7 @@ function WorkbenchRuntimePreviewTile({
           onReload={reloadEmbeddedPreview}
         />
       ) : null}
+      {runtimeTabId ? <BrowserSurfaceOverlays runtimeTabId={runtimeTabId} /> : null}
     </div>
   )
 
@@ -848,8 +876,8 @@ function WorkbenchRuntimePreviewTile({
       {runtimeTarget.usesProjectDevAppSource
         ? t("workbench.selection.localDevAppUnavailableDescription")
         : isMobileSimulatorSurface
-        ? "Open or relink a local project folder to run a mobile simulator here."
-        : "Open or relink a local project folder to manage a dev server here."}
+          ? "Open or relink a local project folder to run a mobile simulator here."
+          : "Open or relink a local project folder to manage a dev server here."}
     </div>
   ) : (
     <div className="h-full min-h-0 bg-content-surface">
@@ -859,8 +887,12 @@ function WorkbenchRuntimePreviewTile({
       >
         <div className={cn("h-full min-h-0", viewMode === "preview" ? "block" : "hidden")}>
           {isMobileSimulatorSurface
-            ? (supportsIosNativePreview ? nativeIosPreviewBody : nativeUnsupportedBody)
-            : (previewDestination === "cozea" ? cozeaEmbeddedPreviewBody : externalPreviewBody)}
+            ? supportsIosNativePreview
+              ? nativeIosPreviewBody
+              : nativeUnsupportedBody
+            : previewDestination === "cozea"
+              ? cozeaEmbeddedPreviewBody
+              : externalPreviewBody}
         </div>
       </Activity>
       <Activity
@@ -893,7 +925,9 @@ function WorkbenchRuntimePreviewTile({
         tileType={isMobileSimulatorSurface ? "mobileSimulator" : "devServer"}
         devAppId={tile.type === "devServer" ? tile.devAppId : undefined}
       >
-        <div data-workbench-browser-content="true" className="h-full min-h-0 bg-content-surface">{body}</div>
+        <div data-workbench-browser-content="true" className="h-full min-h-0 bg-content-surface">
+          {body}
+        </div>
       </WorkbenchTileChrome>
     </div>
   )

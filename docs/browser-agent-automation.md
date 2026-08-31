@@ -1,24 +1,29 @@
-# Browser automation removal and T3 parity ledger
+# T3 browser and automation parity ledger
 
-The legacy automation adapter for ordinary Browser tiles has been removed. It has no feature flag,
-main-process registration, preload surface, renderer bridge, or native guest host. Browser tiles now
-render the shared unavailable surface and may open only validated HTTP(S) URLs through the generic
-shell API.
+The legacy automation adapter and native browser host are removed. Browser, Dev Server, compatibility
+Project DevApp, and Org DevApp tiles now share the pinned T3 manager and one renderer-wide
+`<webview>` host. There is no feature flag, blackout surface, `WebContentsView`, or fallback host.
 
-The current T3 preview protocol remains registered for Dev Server process management:
+The pinned preview UX is active across all four surface families: responsive/freeform/device sizing,
+direct resize rails, aspect locking, rotation, color-scheme emulation, audio state, zoom and favicon
+presentation, agent pointer, screenshots, native picture-in-picture, screencast recording, and the T3
+element/region/drawing picker. Picker attach/send intent is adapted into Cozea's active assistant
+composer while preserving the exact T3 annotation payload and screenshot crop.
+
+The all-surface automation protocol is the next gate. Until that gate commits:
 
 - `dev_server_status`, `dev_server_ensure`, and `dev_server_attach` continue to manage the
   `(workspaceId, laneId)` singleton process and its workbench tile shell.
-- The reported embedded surface has `available: false`; a running process is reported as
-  `headless: true` during this migration.
+- The embedded user surface is available, but the agent-operation adapter still reports it as
+  unavailable.
 - `open`, `navigate`, `snapshot`, `click`, `type`, `press`, `scroll`, and `waitFor` fail immediately
   with `PreviewAutomationUnavailableError`. They do not invoke browser IPC or wait for a timeout.
 
-The removed tests' required behavior is recorded in
-`shared/browserPortParityLedger.ts`. Every ledger entry is explicitly `pending-t3-port`; the ledger
-prevents requirements from disappearing but is not implementation evidence. The direct T3 browser
-port must replace each pending entry with executable parity coverage before embedded browsing or
-preview interaction is re-enabled.
+The checked ledger in `shared/browserPortParityLedger.ts` records each pinned behavior as `ported`,
+`cozea-adapted`, `shell-inapplicable`, or pending only for the final automation gate. Dockview replaces
+T3's right-panel routing and thread mini-player shell; native PiP retains the browser mirroring
+behavior. Browser-backed cross-window popout is disabled and restored popouts normalize into the
+main workbench, while same-window drag, split, maximize, and float remain supported.
 
 See [`docs/dev-server-agent-automation.md`](./dev-server-agent-automation.md) for the retained
 process-management contract.
