@@ -43,6 +43,7 @@ export interface DevAppPreviewWorkerHost {
   start: (options: {
     publicationId: string
     entrypoint: string
+    protocolVersion: number
     grant: DevAppGrant
     binding: DevAppWorkerBinding
     leaseId: string
@@ -72,7 +73,6 @@ export interface DevAppPreviewOpenOptions {
   leaseId: string
 }
 
-
 interface OpenSession {
   sourceId: string
   sourcePath: string
@@ -80,6 +80,7 @@ interface OpenSession {
   leaseId: string
   manifest: DevAppPackage
   workerKey: string | null
+  workerProtocolVersion: number | null
   reloadToken: number
 }
 
@@ -149,6 +150,7 @@ export class DevAppPreviewSession {
       leaseId: options.leaseId,
       manifest: parsed.manifest,
       workerKey: null,
+      workerProtocolVersion: null,
       reloadToken: 0,
     }
     this.sessions.set(sourceId, session)
@@ -287,16 +289,25 @@ export class DevAppPreviewSession {
     }
 
     const key = developmentWorkerKey(session.sourceId)
+    if (
+      session.workerKey === key &&
+      session.workerProtocolVersion !== null &&
+      session.workerProtocolVersion !== worker.protocolVersion
+    ) {
+      this.stopWorker(session)
+    }
     // Restarting on every settle would make a view reload kill in-flight worker work.
     // The host joins an already-running worker, so this is start-or-join.
     const state = this.deps.worker.start({
       publicationId: key,
       entrypoint,
+      protocolVersion: worker.protocolVersion,
       grant,
       binding: session.binding,
       leaseId: session.leaseId,
     })
     session.workerKey = key
+    session.workerProtocolVersion = worker.protocolVersion
     return state
   }
 
@@ -304,6 +315,7 @@ export class DevAppPreviewSession {
     if (!session.workerKey) return
     this.deps.worker.stop(session.workerKey)
     session.workerKey = null
+    session.workerProtocolVersion = null
   }
 
   /**

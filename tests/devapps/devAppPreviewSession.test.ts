@@ -8,6 +8,7 @@ import {
   type DevAppPreviewFs,
 } from "../../apps/desktop/electron/services/DevAppPreviewSession"
 import type { DevAppWorkerState } from "../../apps/desktop/electron/services/DevAppWorkerHost"
+import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../shared/devAppWorkerProtocol"
 
 const WORKSPACE = "/Users/admin/proj"
 const SOURCE = "/Users/admin/proj/apps/inventory"
@@ -22,6 +23,7 @@ const CLEAN_PREFLIGHT: OrgDevAppPreflightReport = {
 
 const workerState = (publicationId: string): DevAppWorkerState => ({
   publicationId,
+  protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
   status: "ready",
   restarts: 0,
   lastError: null,
@@ -150,6 +152,7 @@ describe("Preview session — approval comes first", () => {
     expect(status?.status).toBe("running")
     expect(worker.start).toHaveBeenCalledWith(expect.objectContaining({
       entrypoint: `${SOURCE}/worker.js`,
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
       grant: { capabilities: ["project.read"], agentInvocable: false },
       binding: { workspaceId: "ws_1", workspaceRoot: WORKSPACE },
     }))
@@ -270,6 +273,23 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     files[manifestPath] = "{ broken"
     expect(session.reload(SOURCE_ID)?.status).toBe("invalid")
     expect(worker.stop).toHaveBeenCalled()
+  })
+
+  it("stops the worker when the manifest targets an unsupported protocol", () => {
+    const { session, worker, files } = running()
+    files[manifestPath] = JSON.stringify({
+      ...narrow,
+      worker: {
+        ...narrow.worker,
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION + 1,
+      },
+    })
+    const status = session.reload(SOURCE_ID)
+    expect(status?.status).toBe("invalid")
+    expect(
+      status?.status === "invalid" && status.diagnostics.map((diagnostic) => diagnostic.code),
+    ).toContain("worker-protocol-version-unsupported")
+    expect(worker.stop).toHaveBeenCalledWith(`dev:${SOURCE_ID}`)
   })
 
   it("returns null for a source that was never opened", () => {

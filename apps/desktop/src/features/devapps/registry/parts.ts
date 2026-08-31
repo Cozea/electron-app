@@ -39,6 +39,8 @@ export interface DevAppViewPart {
  */
 export interface DevAppWorkerPart {
   capabilities: ReadonlyArray<DevAppCapability>
+  /** Present for authored workers that cross the versioned DevApp host boundary. */
+  protocolVersion?: number
   /** Whether the worker exposes operations agents may call. */
   exposesTools?: boolean
 }
@@ -157,6 +159,7 @@ export function partsForPackage(manifest: DevAppPackage): DevAppParts {
       ? {
         worker: {
           capabilities: manifest.worker.capabilities,
+          protocolVersion: manifest.worker.protocolVersion,
           ...(manifest.worker.exposesTools ? { exposesTools: true } : {}),
         },
       }

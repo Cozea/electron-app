@@ -21,6 +21,7 @@ export type DevAppPreviewView =
 /** Mirrors the worker host's state, which the tile shows so a crash loop is diagnosable. */
 export interface DevAppPreviewWorkerState {
   publicationId: string
+  protocolVersion: number
   status: "starting" | "ready" | "stopped" | "crashed"
   restarts: number
   lastError: string | null

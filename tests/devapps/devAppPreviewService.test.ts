@@ -7,6 +7,7 @@ import type { Session } from "electron"
 import { DevAppPreviewService } from "../../apps/desktop/electron/services/DevAppPreviewService"
 import type { DevAppWatch } from "../../apps/desktop/electron/services/DevAppPreviewWatcher"
 import type { DevAppPreviewStatus } from "../../shared/devAppPreviewTypes"
+import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../shared/devAppWorkerProtocol"
 
 /**
  * Exercises the real filesystem adapter, the real path joining, and the real preflight.
@@ -47,6 +48,7 @@ function makeService() {
   const worker = {
     start: vi.fn((input: { publicationId: string }) => ({
       publicationId: input.publicationId,
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
       status: "ready" as const,
       restarts: 0,
       lastError: null,
