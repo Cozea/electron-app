@@ -174,6 +174,7 @@ export function WorkbenchBrowserTile({
             visible={surfaceVisible}
             borderRadius={surfacePresentation.borderRadius}
             stackingLayer={surfacePresentation.stackingLayer}
+            subscribePositionChanges={surfacePresentation.subscribePositionChanges}
             className="absolute inset-0 size-full"
           />
           {showStartState ? <BrowserStartState /> : null}

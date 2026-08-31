@@ -822,6 +822,7 @@ function WorkbenchRuntimePreviewTile({
           visible={webSurfaceVisible}
           borderRadius={surfacePresentation.borderRadius}
           stackingLayer={surfacePresentation.stackingLayer}
+          subscribePositionChanges={surfacePresentation.subscribePositionChanges}
           className="absolute inset-0 size-full"
         />
       ) : null}

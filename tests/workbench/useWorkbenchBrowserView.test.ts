@@ -96,6 +96,10 @@ describe("ported T3 Browser tile", () => {
 
   it("keeps the address field flexible without stretching every header control", () => {
     expect(browserControlsSource).toContain("data-browser-address-group");
+    expect(browserControlsSource).toContain(
+      "rounded-md bg-transparent px-2 focus-within:bg-background",
+    );
+    expect(browserControlsSource).not.toContain("rounded-md bg-muted/45 px-2 focus-within");
     expect(workbenchCssSource).toMatch(
       /\.cozea-workbench-dockview \.cozea-workbench-header-controls \{\s*width: 100%;\s*\}/,
     );

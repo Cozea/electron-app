@@ -11,6 +11,7 @@ export interface BrowserSurfaceSlotProps {
   readonly layoutVersion?: string | number;
   readonly className?: string;
   readonly fitSourceContent?: boolean;
+  readonly subscribePositionChanges?: (listener: () => void) => () => void;
 }
 
 export function BrowserSurfaceSlot({
@@ -21,6 +22,7 @@ export function BrowserSurfaceSlot({
   layoutVersion,
   className,
   fitSourceContent = false,
+  subscribePositionChanges,
 }: BrowserSurfaceSlotProps) {
   const elementRef = useRef<HTMLDivElement | null>(null);
   const presentationRef = useRef({ visible, borderRadius, stackingLayer });
@@ -56,20 +58,31 @@ export function BrowserSurfaceSlot({
         );
       }
     };
+    let frameId: number | null = null;
+    const scheduleUpdate = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        update();
+      });
+    };
     updateRef.current = update;
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
+    const unsubscribePositionChanges = subscribePositionChanges?.(scheduleUpdate);
     return () => {
+      unsubscribePositionChanges?.();
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
       observer.disconnect();
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
       if (updateRef.current === update) updateRef.current = null;
       lease.release();
     };
-  }, [fitSourceContent, tabId]);
+  }, [fitSourceContent, subscribePositionChanges, tabId]);
 
   useLayoutEffect(() => {
     presentationRef.current = { visible, borderRadius, stackingLayer };

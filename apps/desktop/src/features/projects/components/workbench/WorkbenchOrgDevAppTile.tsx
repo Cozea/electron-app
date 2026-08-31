@@ -441,6 +441,7 @@ export function WorkbenchOrgDevAppTile({
               visible={panelActivity.visible && !browserPageError}
               borderRadius={surfacePresentation.borderRadius}
               stackingLayer={surfacePresentation.stackingLayer}
+              subscribePositionChanges={surfacePresentation.subscribePositionChanges}
               className="absolute inset-0 size-full"
             />
           ) : null}

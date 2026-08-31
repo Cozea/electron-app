@@ -59,9 +59,22 @@ cannot cover the workbench card's rounded edge. Header-at-top, bottom, left, and
 all represented explicitly.
 
 Rectangle measurement stays in the renderer and is updated by the slot's resize, window, and
-capturing-scroll listeners. Same-window dock, split, resize, maximize, and float retain the same
-guest. Browser-backed cross-window popout remains disabled because the single renderer host does
-not cross `Window` ownership.
+capturing-scroll listeners. Position-only movement is an explicit Dockview contract: Cozea's
+`dockview-core@7.0.4` Bun patch exposes `onDidFloatingGroupBoundsChange`, fired from Dockview's own
+floating `Overlay.onDidChange` stream after every bounds mutation. The browser presentation hook
+filters the event by floating-container DOM membership, and `BrowserSurfaceSlot` coalesces those
+notifications to one rectangle publication per animation frame. This keeps a guest attached to a
+moving or resizing float without polling, a global mutation observer, bounds IPC, or a second
+geometry owner.
+
+The extension is committed in `patches/dockview-core@7.0.4.patch` and registered through Bun's
+`patchedDependencies`. A Dockview upgrade must regenerate and review the patch, retain the public
+event and payload, and pass the floating-movement invariant in
+`tests/workbench/appLayerContract.test.ts` before the version can change.
+
+Same-window dock, split, resize, maximize, and float retain the same guest. Browser-backed
+cross-window popout remains disabled because the single renderer host does not cross `Window`
+ownership.
 
 ## Lifecycle
 
@@ -89,7 +102,8 @@ clipping, host ownership of browser presentation, shared portal use, and the abs
 native-browser adaptations. Live Electron validation must include:
 
 - a Dockview tab menu over a living guest;
-- a living guest inside a same-window floating panel, followed by redocking;
+- a living guest inside a same-window floating panel that follows pointer movement, followed by
+  redocking;
 - find input and browser controls above the page;
 - project settings above the living page and restoration of that same page after close;
 - bottom-corner clipping and normal input at the page edge.
