@@ -5,21 +5,10 @@ import {
   ArrowRight01Icon as __ArrowRightHugeIcon,
   LinkSquare02Icon as __ExternalLinkHugeIcon,
   LockIcon as __LockHugeIcon,
-  MoreVerticalIcon as __MoreVerticalHugeIcon,
   Refresh01Icon as __RefreshHugeIcon,
-  Search01Icon as __SearchHugeIcon,
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext";
@@ -72,7 +61,6 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
     kind: "browser",
   });
   const state = useBrowserSurfaceStateStore((store) => store.byTabId[runtimeTabId]);
-  const findVisible = useBrowserFindUiStore((store) => store.visibleByTabId[runtimeTabId] ?? false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const committedUrl = currentSurfaceUrl(tile?.url ?? "", state);
   const [draft, setDraft] = useState(committedUrl);
@@ -265,74 +253,6 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
         ) : null}
       </div>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant={findVisible ? "secondary" : "ghost"}
-            size="icon-xs"
-            disabled={!hasWebContents}
-            onClick={toggleFind}
-            aria-label="Find in page"
-            aria-pressed={findVisible}
-            data-browser-find-button
-          >
-            <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Find in page</TooltipContent>
-      </Tooltip>
-
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="ghost" size="icon-xs" aria-label="Browser menu">
-                <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>More</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end" className="min-w-52">
-          <DropdownMenuItem
-            disabled={!hasWebContents}
-            onClick={preview ? () => callTab(preview.hardReload) : undefined}
-          >
-            Hard reload
-            <DropdownMenuShortcut>⌘⇧R</DropdownMenuShortcut>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!hasWebContents}
-            onClick={preview ? () => callTab(preview.openDevTools) : undefined}
-          >
-            Open DevTools
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Zoom {Math.round((state?.zoomFactor ?? 1) * 100)}%</DropdownMenuLabel>
-          <DropdownMenuItem
-            disabled={!hasWebContents}
-            onClick={preview ? () => callTab(preview.zoomIn) : undefined}
-          >
-            Zoom in
-            <DropdownMenuShortcut>⌘+</DropdownMenuShortcut>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!hasWebContents}
-            onClick={preview ? () => callTab(preview.zoomOut) : undefined}
-          >
-            Zoom out
-            <DropdownMenuShortcut>⌘−</DropdownMenuShortcut>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!hasWebContents}
-            onClick={preview ? () => callTab(preview.resetZoom) : undefined}
-          >
-            Actual size
-            <DropdownMenuShortcut>⌘0</DropdownMenuShortcut>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </form>
   );
 }
