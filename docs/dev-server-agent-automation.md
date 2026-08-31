@@ -25,6 +25,10 @@ When an assistant needs a preview, Cozea first reuses an unleased built-in Dev S
 
 If no reusable surface exists, Cozea adds an inactive Dev Server tab `within` the requesting assistant's Dockview group and immediately restores the previously active tab. The assistant keeps generating while the background preview mounts. The user may select the tab or drag it into another cell at any time.
 
+The automation host refreshes its workbench scope after creating that background tab, so the same
+request can discover and control the newly registered guest. A retry must never be required merely
+to make the new tile enter the thread's eligible-surface set.
+
 Automation control is an expiring lease scoped to the assistant thread. Calls renew the lease. Pointer or keyboard interaction inside the Dev Server tile interrupts the lease and starts a short user-priority cooldown. During that interval another agent request attaches another surface to the same process instead of taking the user's surface or launching a second server.
 
 ## T3 lifecycle tools
@@ -68,6 +72,8 @@ An explicit stable runtime tab ID always wins. Without one, the thread's last co
 used, then the active browser-backed tile in the same workbench. Status includes every eligible live
 surface and its kind, title, URL, active state, tab ID, and controller. Main-process navigation
 policy remains authoritative for every agent request, including Org DevApp release confinement.
+Runtime tab IDs are opaque, process-local handles bounded by T3's 128-character contract; they do
+not serialize or expose workbench, project, workspace, or tile identifiers.
 
 ## Runtime bridge
 
@@ -118,3 +124,6 @@ Verify all of the following before release:
     workbench boundary.
 15. Direct user input interrupts an active agent operation and returns the T3 control-interrupted
     diagnostic.
+16. A newly created inactive Dev Server surface is returned by the same `preview_open` or
+    `dev_server_ensure` request, and every returned runtime tab ID decodes through the pinned T3
+    result schema.
