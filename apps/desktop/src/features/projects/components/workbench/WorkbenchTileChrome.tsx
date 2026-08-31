@@ -46,7 +46,7 @@ interface WorkbenchTileChromeProps {
   headerMode?: "native" | "embedded"
   hideTitlePill?: boolean
   hideWindowActions?: boolean
-  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "llama" | "mobileSimulator" | "orgDevApp"
+  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "llama" | "mobileSimulator" | "orgDevApp" | "devAppPreview"
   devAppId?: string | null
   logoDataUrl?: string | null
   assistantProvider?: string | null
@@ -160,7 +160,7 @@ function WorkbenchTileGlyph({
   appWrapperClassName,
   fallbackClassName,
 }: WorkbenchTileGlyphProps) {
-  if (tileType === "orgDevApp") {
+  if (tileType === "orgDevApp" || tileType === "devAppPreview") {
     return (
       <span className={appWrapperClassName}>
         <PublishedDevAppIcon name={title} logoDataUrl={logoDataUrl} />
