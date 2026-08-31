@@ -9,6 +9,10 @@ import {
   getPanelRendererForTile,
   resolveTabGroupPreset,
 } from "@/features/projects/lib/workbenchDockview"
+import {
+  getWorkbenchTileDefinition,
+  isBrowserBackedWorkbenchTile,
+} from "@/features/projects/lib/workbenchTileRegistry"
 
 const root = process.cwd()
 const tileSource = fs.readFileSync(
@@ -45,17 +49,6 @@ const commandHostSource = fs.readFileSync(
 )
 const workbenchSurfaceSource = fs.readFileSync(
   path.join(root, "apps/desktop/src/features/projects/pages/ProjectWorkbenchSurface.tsx"),
-  "utf8",
-)
-const dockviewCanvasSource = fs.readFileSync(
-  path.join(
-    root,
-    "apps/desktop/src/features/projects/components/workbench/WorkbenchDockviewCanvas.tsx",
-  ),
-  "utf8",
-)
-const dockviewRuntimeSource = fs.readFileSync(
-  path.join(root, "apps/desktop/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts"),
   "utf8",
 )
 
@@ -145,8 +138,11 @@ describe("Preview tile — registration", () => {
   })
 
   it("uses the browser-backed Dockview policies", () => {
-    expect(dockviewCanvasSource).toMatch(/type === "devAppPreview"/)
-    expect(dockviewRuntimeSource).toMatch(/tile\?\.type === "devAppPreview"/)
+    expect(getWorkbenchTileDefinition("devAppPreview").dock).toMatchObject({
+      browserBacked: true,
+      headerControls: "registered",
+    })
+    expect(isBrowserBackedWorkbenchTile({ type: "devAppPreview" })).toBe(true)
   })
 
   it("is lazily loaded like every other tile", () => {

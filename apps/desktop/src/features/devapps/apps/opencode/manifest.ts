@@ -23,9 +23,15 @@ export const openCodeDevAppManifest = {
     badgeLabel: "Built in",
     featured: true,
   },
+  parts: {
+    view: { source: "native", rendererId: "assistantChat" },
+    worker: { capabilities: ["project.read", "project.write", "process.spawn"] },
+  },
   launch: {
     kind: "assistantChat",
     tileType: "assistantChat",
     provider: "opencode",
   },
 } satisfies DevAppManifest
+
+export default openCodeDevAppManifest

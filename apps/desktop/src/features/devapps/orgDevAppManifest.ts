@@ -1,5 +1,6 @@
 import { resolveProjectDevAppDisplayLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
 import { buildPublishedDevAppIconDefinition } from "@/features/devapps/publishedDevAppIcon"
+import { partsForLaunchSpec } from "@/features/devapps/registry/parts"
 import type { DevAppManifest, PublishedDevAppLaunchSpec } from "@/features/devapps/registry/types"
 import { buildOrgDevAppUrl } from "@shared/orgDevAppProtocol"
 
@@ -58,6 +59,7 @@ export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): De
   const description =
     entry.description?.trim() ||
     `Published to ${entry.organizationName} as a built artifact.`
+  const launch = buildPublishedDevAppLaunchSpec(entry)
 
   return {
     id: buildPublishedDevAppId(entry.publicationId),
@@ -84,7 +86,8 @@ export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): De
       badgeLabel: entry.organizationName,
       featured: true,
     },
-    launch: buildPublishedDevAppLaunchSpec(entry),
+    parts: partsForLaunchSpec(launch),
+    launch,
   }
 }
 

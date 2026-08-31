@@ -15,7 +15,13 @@ import {
   buildWorkspaceIdentityKey,
   normalizeWorkspaceId,
 } from "@/features/projects/workspaces/workspaceIdentity"
+import {
+  getWorkbenchTileDefinition,
+  type WorkbenchTileType,
+} from "@/features/projects/lib/workbenchTileRegistry"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
+
+export type { WorkbenchTileType } from "@/features/projects/lib/workbenchTileRegistry"
 
 const PERSIST_DEBOUNCE_MS = 500
 
@@ -90,18 +96,6 @@ const workbenchStorage =
   typeof window === "undefined"
     ? createMemoryStorage()
     : createDebouncedStorage(window.localStorage)
-
-export type WorkbenchTileType =
-  | "browser"
-  | "terminal"
-  | "devServer"
-  | "llama"
-  | "mobileSimulator"
-  | "orgDevApp"
-  | "devAppPreview"
-  | "selection"
-  | "tasks"
-  | "assistantChat"
 
 export type WorkbenchRuntimePreviewViewMode = "preview" | "code"
 
@@ -410,19 +404,6 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
 
 export const DEFAULT_WORKBENCH_LANE_ID = "collab"
 
-const TILE_TITLES: Record<WorkbenchTileType, string> = {
-  browser: "Browser",
-  terminal: "Terminal",
-  devServer: "Dev Server",
-  llama: "Llama",
-  mobileSimulator: "Mobile Simulator",
-  orgDevApp: "DevApp",
-  devAppPreview: "DevApp (development)",
-  selection: "Add DevApp",
-  tasks: "Tasks",
-  assistantChat: "AI Agent",
-}
-
 function normalizeLaneId(laneId: string | null | undefined): string {
   const normalized = laneId?.trim()
   return normalized && normalized.length > 0 ? normalized : DEFAULT_WORKBENCH_LANE_ID
@@ -642,7 +623,8 @@ function applyDevAppMetadata(
     delete tile.devAppCommand
     delete tile.devAppPort
     delete tile.autoStart
-    tile.title = normalizeOptionalString(options.title) ?? TILE_TITLES.devServer
+    tile.title =
+      normalizeOptionalString(options.title) ?? getWorkbenchTileDefinition("devServer").defaultTitle
     return
   }
 
@@ -666,7 +648,7 @@ function applyDevAppMetadata(
 function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): WorkbenchTile {
   const createdAt = Date.now()
   const id = createTileId(type)
-  const title = options.title?.trim() || TILE_TITLES[type]
+  const title = options.title?.trim() || getWorkbenchTileDefinition(type).defaultTitle
 
   switch (type) {
     case "browser":
@@ -775,7 +757,8 @@ function buildAssistantTileTitle(
     return workbench.tiles[tileId]?.type === "assistantChat" ? count + 1 : count
   }, 0)
 
-  return assistantCount <= 0 ? TILE_TITLES.assistantChat : `${TILE_TITLES.assistantChat} ${assistantCount + 1}`
+  const assistantTitle = getWorkbenchTileDefinition("assistantChat").defaultTitle
+  return assistantCount <= 0 ? assistantTitle : `${assistantTitle} ${assistantCount + 1}`
 }
 
 function createDefaultWorkbenchState(
@@ -786,7 +769,7 @@ function createDefaultWorkbenchState(
   const normalizedLaneId = normalizeLaneId(laneId)
   const selectionTile = createTile("selection", {
     selectionMode: "emptyState",
-    title: TILE_TITLES.selection,
+    title: getWorkbenchTileDefinition("selection").defaultTitle,
   })
 
   return {

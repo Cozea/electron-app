@@ -12,6 +12,7 @@ import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
 } from "@/features/devapps/registry"
+import type { DevAppWorkbenchTileTarget } from "@/features/devapps/registry/types"
 import {
   ClaudeAI,
   CursorIcon,
@@ -21,6 +22,10 @@ import {
 } from "@/features/projects/components/assistant/Icons"
 import { useRegisterWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import {
+  getWorkbenchTileDefinition,
+  type RenderableWorkbenchTileType,
+} from "@/features/projects/lib/workbenchTileRegistry"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useTranslation } from "@/lib/i18n"
@@ -46,7 +51,7 @@ interface WorkbenchTileChromeProps {
   headerMode?: "native" | "embedded"
   hideTitlePill?: boolean
   hideWindowActions?: boolean
-  tileType?: "selection" | "assistantChat" | "terminal" | "browser" | "devServer" | "llama" | "mobileSimulator" | "orgDevApp" | "devAppPreview"
+  tileType?: RenderableWorkbenchTileType
   devAppId?: string | null
   logoDataUrl?: string | null
   assistantProvider?: string | null
@@ -80,20 +85,16 @@ function resolveTileDevApp(
   tileType: WorkbenchTileChromeProps["tileType"],
   assistantProvider: string | null | undefined,
 ) {
-  if (tileType === "assistantChat") {
+  if (!tileType) return null
+  const source = getWorkbenchTileDefinition(tileType).manifestSource
+  if (source === "assistant") {
     return getDevAppForAssistantProvider(
       typeof assistantProvider === "string" ? (assistantProvider as ProviderKind) : null,
     )
   }
 
-  if (
-    tileType === "browser" ||
-    tileType === "devServer" ||
-    tileType === "llama" ||
-    tileType === "mobileSimulator" ||
-    tileType === "terminal"
-  ) {
-    return getDevAppForSurfaceTileType(tileType)
+  if (source === "surface") {
+    return getDevAppForSurfaceTileType(tileType as DevAppWorkbenchTileTarget)
   }
 
   return null
@@ -119,20 +120,21 @@ function resolveTileFallbackIcon(
   tileType: WorkbenchTileChromeProps["tileType"],
   assistantProvider: string | null | undefined,
 ) {
-  switch (tileType) {
-    case "assistantChat":
+  const fallback = tileType ? getWorkbenchTileDefinition(tileType).fallbackIcon : null
+  switch (fallback) {
+    case "messages":
       return resolveAssistantProviderIcon(assistantProvider) ?? Messages
     case "terminal":
       return ComputerTerminal
     case "browser":
       return Globe
-    case "selection":
+    case "add":
       return AddCircle
     case "devServer":
       return DevServer
     case "llama":
       return SiOllama
-    case "orgDevApp":
+    case "published":
       return Globe
     case "mobileSimulator":
       return Phone
