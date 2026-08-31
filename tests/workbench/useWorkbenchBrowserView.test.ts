@@ -28,6 +28,10 @@ const hostedWebviewSource = fs.readFileSync(
   path.join(process.cwd(), "apps/desktop/src/features/projects/browser/HostedBrowserWebview.tsx"),
   "utf8",
 );
+const browserPreviewActionsSource = fs.readFileSync(
+  path.join(process.cwd(), "apps/desktop/src/features/projects/browser/BrowserPreviewActions.tsx"),
+  "utf8",
+);
 const workbenchCssSource = fs.readFileSync(
   path.join(process.cwd(), "apps/desktop/src/features/projects/components/workbench/workbench.css"),
   "utf8",
@@ -92,13 +96,28 @@ describe("ported T3 Browser tile", () => {
 
   it("keeps the address field flexible without stretching every header control", () => {
     expect(browserControlsSource).toContain("data-browser-address-group");
-    expect(browserControlsSource).toContain("data-browser-find-button");
     expect(workbenchCssSource).toMatch(
       /\.cozea-workbench-dockview \.cozea-workbench-header-controls \{\s*width: 100%;\s*\}/,
     );
     expect(workbenchCssSource).not.toMatch(
       /\.cozea-workbench-dockview \.cozea-workbench-header-controls > \* \{[^}]*(?:^|[;\s])width\s*:/m,
     );
+  });
+
+  it("groups browser and preview utilities into one overflow menu", () => {
+    expect(browserControlsSource).not.toContain('aria-label="Browser menu"');
+    expect(browserControlsSource).not.toContain('data-browser-find-button');
+    expect(browserPreviewActionsSource).toContain('aria-label="Browser and preview menu"');
+    expect(browserPreviewActionsSource).toContain("Find in page");
+    expect(browserPreviewActionsSource).toContain("Annotate preview");
+    expect(browserPreviewActionsSource).toContain("Capture screenshot");
+    expect(browserPreviewActionsSource).toContain("Open separate preview window");
+    expect(browserPreviewActionsSource.match(/<DropdownMenu>/g)).toHaveLength(1);
+    expect(browserPreviewActionsSource).toContain("Capture and recording");
+    expect(browserPreviewActionsSource).toContain("Zoom {Math.round");
+    expect(browserPreviewActionsSource).toContain("Advanced");
+    expect(browserPreviewActionsSource.match(/<DropdownMenuSubTrigger inset/g)).toHaveLength(4);
+    expect(browserPreviewActionsSource).toContain("<DropdownMenuItem\n            inset");
   });
 
   it.each([
