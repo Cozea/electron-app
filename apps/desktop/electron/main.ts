@@ -30,9 +30,12 @@ import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandle
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
+import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
 import { OrgDevAppArtifactService } from './services/OrgDevAppArtifactService'
+import { T3BrowserSurfaceService } from './services/T3BrowserSurfaceService'
+import { WorkbenchSessionManager } from './services/WorkbenchSessionManager'
 import { ORG_DEVAPP_SCHEME } from '../../../shared/orgDevAppProtocol'
 
 protocol.registerSchemesAsPrivileged([
@@ -1065,6 +1068,8 @@ type AppBrowserWindow = InstanceType<typeof BrowserWindow>
 
 let win: AppBrowserWindow | null = null
 let canCreateMainWindow = false
+let t3BrowserSurfaceService: T3BrowserSurfaceService | null = null
+let unregisterBrowserSurfaceHandlers: (() => void) | null = null
 const orgDevAppArtifactService = new OrgDevAppArtifactService(
   () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
 )
@@ -1421,6 +1426,8 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webviewTag: true,
       // Keep development windows paintable while macOS UI automation owns
       // foreground focus. Production retains Electron's power-saving default.
       backgroundThrottling: isReleaseBuild,
@@ -1447,6 +1454,13 @@ function createWindow() {
         }
       : false,
     trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
+  })
+
+  if (!t3BrowserSurfaceService) {
+    throw new Error('The T3 browser surface service was not initialized before window creation.')
+  }
+  void t3BrowserSurfaceService.setMainWindow(win).catch((error) => {
+    console.error('[BrowserSurface] Failed to attach the main window', error)
   })
 
   attachPreviewDebugLogging(win, 'main')
@@ -1691,6 +1705,13 @@ registerOrgDevAppHandlers(ipcMain, {
 
 registerWorkbenchSessionHandlers(ipcMain, {
   getMainWindow: () => win,
+  browserSurfaces: {
+    hasSurfaceForWorkbenchSession: (sessionKey) =>
+      t3BrowserSurfaceService?.hasSurfaceForWorkbenchSession(sessionKey) ?? false,
+    releaseSurfacesForWorkbenchSession: async (sessionKey) => {
+      await t3BrowserSurfaceService?.releaseSurfacesForWorkbenchSession(sessionKey)
+    },
+  },
 })
 
 registerDevServerHandlers(ipcMain, {
@@ -1730,6 +1751,12 @@ app.on('before-quit', () => {
   void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
   void stopSubstrateShadowServer()
+  unregisterBrowserSurfaceHandlers?.()
+  unregisterBrowserSurfaceHandlers = null
+  if (t3BrowserSurfaceService) {
+    void t3BrowserSurfaceService.dispose()
+    t3BrowserSurfaceService = null
+  }
 })
 
 app.on('activate', () => {
@@ -1742,9 +1769,35 @@ registerAssistantRuntimeBridgeHandlers()
 registerSubstrateShadowBridgeHandlers()
 app.on('gpu-info-update', refreshGpuDiagnostics)
 
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-attach-webview', (event, webPreferences, params) => {
+    const mainWindow = win
+    const service = t3BrowserSurfaceService
+    const isMainWindowOwner =
+      mainWindow && !mainWindow.isDestroyed() && contents === mainWindow.webContents
+    if (!isMainWindowOwner || !service?.canAttachWebview(webPreferences, params)) {
+      event.preventDefault()
+    }
+  })
+})
+
 app.whenReady().then(() => {
   logBootTiming('app-ready')
   orgDevAppArtifactService.registerProtocol()
+  t3BrowserSurfaceService = new T3BrowserSurfaceService({
+    getMainWindow: () => win,
+    orgDevAppArtifactService,
+    artifactsDirectory: path.join(app.getPath('userData'), 'browser-artifacts'),
+    pickPreloadPath: path.join(__dirname, '../preload/preview-pick-preload.cjs'),
+    pictureInPicturePreloadPath: path.join(__dirname, '../preload/preview-pip-preload.cjs'),
+  })
+  unregisterBrowserSurfaceHandlers = registerBrowserSurfaceHandlers(ipcMain, {
+    service: t3BrowserSurfaceService,
+    getMainWindow: () => win,
+  })
+  t3BrowserSurfaceService.onInventoryChange((sessionKey) => {
+    WorkbenchSessionManager.getInstance().refreshBrowserSurfaceState(sessionKey)
+  })
   refreshGpuDiagnostics()
   loadSyncState()
   logBootTiming('sync-state-loaded')

@@ -46,6 +46,8 @@ const aiProxyTarget = resolveAiProxyTarget()
 const reactCompilerEnabled = readBooleanFlag('VITE_FF_REACT_COMPILER', true)
 const rolldownBuildEnabled = readBooleanFlag('VITE_FF_ROLLDOWN_BUILD', true)
 const repoRoot = path.resolve(__dirname, '../..')
+const t3Root = path.resolve(repoRoot, 'vendor/t3code')
+const t3DesktopSource = path.resolve(t3Root, 'apps/desktop/src')
 const sharedAliases: Alias[] = [
   { find: '@', replacement: path.resolve(__dirname, './src') },
   { find: '@shared', replacement: path.resolve(repoRoot, './shared') },
@@ -96,6 +98,14 @@ const sharedAliases: Alias[] = [
   {
     find: '@cozea/client-runtime',
     replacement: path.resolve(repoRoot, './packages/client-runtime/src/index.ts'),
+  },
+  {
+    find: '@t3tools/contracts',
+    replacement: path.resolve(t3Root, 'packages/contracts/src/index.ts'),
+  },
+  {
+    find: /^@t3tools\/shared\/(.*)$/,
+    replacement: `${path.resolve(t3Root, 'packages/shared/src')}/$1.ts`,
   },
 ]
 
@@ -175,7 +185,16 @@ export default defineConfig({
     ],
     build: {
       externalizeDeps: {
-        exclude: ['@pierre/diffs', '@cozea/effect-acp', '@opencode-ai/sdk'],
+        exclude: [
+          '@pierre/diffs',
+          '@cozea/effect-acp',
+          '@opencode-ai/sdk',
+          '@t3tools/contracts',
+          '@t3tools/shared',
+          'effect',
+          'playwright-core',
+          'react-grab',
+        ],
       },
       lib: {
         entry: {
@@ -198,14 +217,22 @@ export default defineConfig({
       alias: sharedAliases,
     },
     build: {
+      externalizeDeps: {
+        exclude: ['@t3tools/contracts', 'react-grab'],
+      },
       lib: {
-        entry: 'electron/preload.ts',
+        entry: {
+          index: 'electron/preload.ts',
+          'preview-pick-preload': path.resolve(t3DesktopSource, 'preview-pick-preload.ts'),
+          'preview-pip-preload': path.resolve(t3DesktopSource, 'preview-pip-preload.ts'),
+        },
       },
       rollupOptions: {
         external: ['electron'],
         output: {
           format: 'cjs',
-          entryFileNames: 'index.js',
+          entryFileNames: (chunk) =>
+            chunk.name === 'index' ? 'index.js' : '[name].cjs',
         },
       },
     },

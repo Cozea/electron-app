@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ a3a8cbd60539b4af4de8f96c892dbd07a2b6c041 */
+/** @generated from vendor/t3code/packages/contracts @ 3acdc3b2f9751915b7da12862681413dad363945 */
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getWorkflowScript: "orchestration.getWorkflowScript",

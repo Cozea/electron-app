@@ -1,5 +1,5 @@
 // @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ a3a8cbd60539b4af4de8f96c892dbd07a2b6c041 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 3acdc3b2f9751915b7da12862681413dad363945 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
 import type {
   VcsCreateRefInput,
   VcsCreateRefResult,

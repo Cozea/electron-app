@@ -7,6 +7,10 @@ import { NativePreviewManager } from '../services/nativePreview/NativePreviewMan
 
 interface RegisterWorkbenchSessionHandlersDeps {
   getMainWindow: () => BrowserWindow | null
+  browserSurfaces: {
+    hasSurfaceForWorkbenchSession: (sessionKey: string) => boolean
+    releaseSurfacesForWorkbenchSession: (sessionKey: string) => Promise<void>
+  }
 }
 
 const WORKBENCH_SESSION_STATE_CHANGED_CHANNEL = 'workbenchSession:stateChanged'
@@ -17,6 +21,7 @@ export function registerWorkbenchSessionHandlers(
 ): void {
   const service = WorkbenchSessionManager.getInstance({
     nativePreviewManager: NativePreviewManager.getInstance(),
+    browserSurfaces: deps.browserSurfaces,
   })
 
   const publishState = (snapshot: WorkbenchSessionSnapshot) => {

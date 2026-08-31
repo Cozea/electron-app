@@ -16,6 +16,16 @@ import type {
 import type { WorkspaceCatalogSnapshot } from '../../../shared/workspaceTypes'
 import type { MessageBoxOptions } from 'electron'
 import type { ContextMenuItem } from '../../../shared/assistant-contracts/ipc'
+import { BROWSER_SURFACE_IPC } from '../../../shared/browserSurfaceIpc'
+import type {
+  BrowserSurfaceDescriptor,
+  CozeaBrowserSurfaceState,
+  CozeaDesktopPreviewBridge,
+} from '../../../shared/browserSurfaceTypes'
+import type {
+  DesktopPreviewPointerEvent,
+  DesktopPreviewRecordingFrame,
+} from '@cozea/contracts/t3/ipc'
 
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
 const ASSISTANT_WS_URL_ARG_PREFIX = '--cozea-assistant-ws-url='
@@ -123,6 +133,117 @@ function createTerminalOutputBridge() {
 }
 
 const terminalOutputBridge = createTerminalOutputBridge()
+
+const previewBridge: CozeaDesktopPreviewBridge = {
+  prepareSurface: (descriptor: BrowserSurfaceDescriptor) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.prepareSurface, descriptor),
+  releaseSurface: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.releaseSurface, tabId),
+  getSurfaceState: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.getSurfaceState, tabId),
+  listSurfaces: () => ipcRenderer.invoke(BROWSER_SURFACE_IPC.listSurfaces),
+  setSurfaceActive: (tabId, active) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setSurfaceActive, { tabId, active }),
+  findInPage: (tabId, query, options) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.findInPage, { tabId, query, options }),
+  stopFindInPage: (tabId, action) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.stopFindInPage, { tabId, action }),
+  createTab: (tabId, defaults) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.createTab, { tabId, defaults }),
+  closeTab: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.closeTab, tabId),
+  registerWebview: (tabId, webContentsId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.registerWebview, { tabId, webContentsId }),
+  navigate: (tabId, url) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.navigate, { tabId, url }),
+  goBack: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.goBack, tabId),
+  goForward: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.goForward, tabId),
+  refresh: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.refresh, tabId),
+  zoomIn: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.zoomIn, tabId),
+  zoomOut: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.zoomOut, tabId),
+  resetZoom: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.resetZoom, tabId),
+  hardReload: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.hardReload, tabId),
+  setColorScheme: (tabId, colorScheme) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setColorScheme, { tabId, colorScheme }),
+  setAudioMuted: (tabId, audioMuted) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setAudioMuted, { tabId, audioMuted }),
+  openDevTools: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.openDevTools, tabId),
+  clearCookies: () => ipcRenderer.invoke(BROWSER_SURFACE_IPC.clearCookies),
+  clearCache: () => ipcRenderer.invoke(BROWSER_SURFACE_IPC.clearCache),
+  getPreviewConfig: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.getPreviewConfig, tabId),
+  setAnnotationTheme: (theme) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setAnnotationTheme, theme),
+  pickElement: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.pickElement, tabId),
+  cancelPickElement: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.cancelPickElement, tabId),
+  captureScreenshot: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.captureScreenshot, tabId),
+  revealArtifact: (artifactPath) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.revealArtifact, artifactPath),
+  copyArtifactToClipboard: (artifactPath) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.copyArtifactToClipboard, artifactPath),
+  pictureInPicture: {
+    open: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.pictureInPictureOpen, tabId),
+    close: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.pictureInPictureClose, tabId),
+  },
+  recording: {
+    startScreencast: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.recordingStart, tabId),
+    stopScreencast: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.recordingStop, tabId),
+    save: (tabId, mimeType, data) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.recordingSave, { tabId, mimeType, data }),
+    onFrame: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, frame: unknown) => {
+        if (typeof frame === 'object' && frame !== null) {
+          listener(frame as DesktopPreviewRecordingFrame)
+        }
+      }
+      ipcRenderer.on(BROWSER_SURFACE_IPC.recordingFrame, wrapped)
+      return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.recordingFrame, wrapped)
+    },
+  },
+  automation: {
+    status: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationStatus, tabId),
+    snapshot: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationSnapshot, tabId),
+    click: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationClick, { tabId, input }),
+    type: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationType, { tabId, input }),
+    press: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationPress, { tabId, input }),
+    scroll: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationScroll, { tabId, input }),
+    evaluate: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationEvaluate, { tabId, input }),
+    waitFor: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationWaitFor, { tabId, input }),
+  },
+  onStateChange: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, tabId: unknown, state: unknown) => {
+      if (typeof tabId === 'string' && typeof state === 'object' && state !== null) {
+        listener(tabId, state as CozeaBrowserSurfaceState)
+      }
+    }
+    ipcRenderer.on(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+    return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+  },
+  onSurfaceStateChange: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, tabId: unknown, state: unknown) => {
+      if (typeof tabId === 'string' && typeof state === 'object' && state !== null) {
+        listener(tabId, state as CozeaBrowserSurfaceState)
+      }
+    }
+    ipcRenderer.on(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+    return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+  },
+  onPointerEvent: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, pointerEvent: unknown) => {
+      if (typeof pointerEvent === 'object' && pointerEvent !== null) {
+        listener(pointerEvent as DesktopPreviewPointerEvent)
+      }
+    }
+    ipcRenderer.on(BROWSER_SURFACE_IPC.pointerEvent, wrapped)
+    return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.pointerEvent, wrapped)
+  },
+}
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -1017,6 +1138,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 } satisfies ElectronAPI)
 
 contextBridge.exposeInMainWorld('desktopBridge', {
+  preview: previewBridge,
   getWsUrl: () => assistantWsUrl,
   getAssistantRuntimeStatus: () =>
     ipcRenderer.invoke(ASSISTANT_RUNTIME_STATUS_HANDLE) as Promise<AssistantRuntimeBridgeStatus>,
