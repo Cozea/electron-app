@@ -23,9 +23,15 @@ export const llamaDevAppManifest = {
     badgeLabel: "Built in",
     featured: true,
   },
+  parts: {
+    view: { source: "native", rendererId: "llama" },
+    service: { runtimeKind: "node", location: "device", singleton: true },
+  },
   launch: {
     kind: "llama",
     tileType: "llama",
     singleton: true,
   },
 } satisfies DevAppManifest
+
+export default llamaDevAppManifest

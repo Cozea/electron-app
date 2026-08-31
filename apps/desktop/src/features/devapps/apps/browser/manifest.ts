@@ -24,8 +24,13 @@ export const browserDevAppManifest = {
     badgeLabel: "Built in",
     featured: true,
   },
+  parts: {
+    view: { source: "native", rendererId: "browser" },
+  },
   launch: {
     kind: "browser",
     tileType: "browser",
   },
 } satisfies DevAppManifest
+
+export default browserDevAppManifest

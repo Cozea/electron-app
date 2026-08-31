@@ -1,6 +1,7 @@
 # Continuity
 
 ## [PLANS]
+- 2026-09-01T02:46:49+08:00 [USER] Merge the current DevApp rebuild work through `main`, then resume the rebuild ledger in dependency order; the active gate is Phase 2 registry and surface consolidation before external authoring.
 - 2026-08-31T16:37:57Z [USER] Resume the DevApp rebuild from the ledger, close Phase 5 live-preview acceptance and agent automation, then continue the remaining phases in dependency order.
 - 2026-09-01T00:02:10+08:00 [USER] Map Cozea's current Git/workspace/VCS surfaces with Graphify and refresh the T3 migration inventory before completing the cutover from legacy Git IPC to the T3-style VcsDriver/RPC boundary.
 - 2026-08-31T15:33:36Z [USER] Restore agent access to the living Browser and Dev Server surfaces, prove exact cross-surface targeting in the real app, and leave the running development app available for user testing.
@@ -75,6 +76,7 @@
 - 2026-06-10T08:58Z [USER] Apply the best fix for the diagnosed memory-info warning.
 
 ## [DECISIONS]
+- 2026-09-01T02:46:49+08:00 [CODE] Built-in DevApps are self-contained manifest modules discovered eagerly; each owns its parts, duplicate identity/provider/surface bindings fail closed, and one typed workbench descriptor owns shell policy while the renderer implementation catalog remains separate from persisted tile identity.
 - 2026-09-01T02:14:06+08:00 [CODE] DevApp manifest and worker protocol versions are independent; packages select one exact monotonic protocol version with no downgrade, version 1 is the current/supported contract, missing pre-Phase-6 manifest/message versions alias only to v1, and future versions require an explicit parser/method table while capabilities remain the authority boundary.
 - 2026-09-01T01:21:28+08:00 [CODE] Development DevApp automation is approval-preserving: `devapp_preview_ensure` may create or reuse a project-confined tile but never grants capabilities, `devapp_preview_attach` binds an existing preview, and generic T3 operations control the returned living guest. `agentInvocable` governs autonomous worker-tool exposure, not explicit user-directed preview interaction.
 - 2026-08-31T15:33:36Z [CODE] Runtime preview IDs are process-local opaque UUID handles bounded by T3's 128-character contract; `preview_status` carries a backward-compatible, manager-authoritative inventory of at most 64 eligible surfaces, and newly created inactive Dev Server tiles are discovered by refreshing the thread workbench scope inside the same request.
@@ -142,6 +144,7 @@
 - 2026-06-10T08:38Z [TOOL] Reinstalled `node_modules` with `bun install --frozen-lockfile`; `bun.lock` and `package.json` were not changed.
 
 ## [PROGRESS]
+- 2026-09-01T02:46:49+08:00 [CODE] Phase 2 registry consolidation is implemented on `codex/devapp-registry-consolidation`: removed manual built-in/provider/surface lists, made parts the surface authority, and rewired Dockview sizing/grouping/float/popout/browser policy, restoration, chrome, icons, titles, and panel registration to the central descriptor. Documentation and architecture coverage are updated; PR publication is pending.
 - 2026-09-01T02:14:06+08:00 [CODE] Implemented the overdue DevApp worker protocol boundary across manifest normalization, utility-process bootstrap, request/response/event envelopes, host dispatch, worker restart behavior, preview/registry state, focused coverage, and operator documentation; the separate view-to-worker preload bridge remains the named Phase 4 gap.
 - 2026-09-01T01:39:46+08:00 [CODE] PR #125 CI remediation replaces CircleCI's ineffective GitHub-App `checkout: submodules: true` path with an explicit non-recursive `vendor/t3code` gitlink initialization, routes the verify job through that checkout, and prepares the pinned T3 runtime before Electron typecheck. The first remediation attempt used `--recursive`; CI proved T3's internal fixture gitlinks are intentionally outside Cozea's vendor boundary, so the command now matches `prepare-t3-runtime.mjs`'s root-only checkout.
 - 2026-08-31T16:37:57Z [TOOL] Phase 5 live acceptance now covers a real view-plus-worker package through command-palette selection, session approval, confined guest interaction, utility-process startup/teardown, invalid-manifest recovery, restart restoration, and generated-output hot reload; the remaining Phase 5 gate is the T3 `devAppPreviewEnsure`/`devAppPreviewAttach` automation contract and desktop wiring.
@@ -211,6 +214,7 @@
 - 2026-06-10T08:58Z [CODE] Patched `electron/services/WorkbenchSessionManager.ts` to cache/throttle memory pressure checks with a 2000 ms TTL and catch native `process.getSystemMemoryInfo()` failures, falling back to the last known pressure state.
 
 ## [DISCOVERIES]
+- 2026-09-01T02:46:49+08:00 [TOOL] Full verification passes 199 test files / 1538 tests plus all three typechecks, lint, IPC audits, production build, T3 pin check, and diff check. Repository-wide `oxfmt --check .` still aborts Bun while traversing unrelated nested worktrees/downloads; the two new files pass focused formatting with the repository's established no-semicolon style.
 - 2026-09-01T02:14:06+08:00 [CODE] The earlier worker protocol version constant was not a runtime contract: manifests could not target it, the port bootstrap omitted it, messages carried no version, and the host never checked one. Exact pre-spawn and pre-dispatch enforcement closes that gap without treating version selection as a capability grant.
 - 2026-09-01T02:14:00+08:00 [TOOL] After readiness and OAuth succeeded locally, the T3 spike's RPC phase showed that `pnpm exec node` can invoke pnpm's dependency-state repair and abort or reinstall instead of running the probe. The copied TypeScript probe now runs with the current Node binary from the same T3 workspace directory, retaining workspace module resolution without another package-manager pass.
 - 2026-09-01T02:08:00+08:00 [TOOL] The T3 boot spike reached a ready server whose descriptor returned HTTP 200 to independent curl and Node probes, but its first pre-readiness `fetch` could remain pending for Node's socket timeout and prevent the intended 30-second retry loop from advancing. Each readiness attempt is now abort-bounded to one second inside the existing overall deadline.

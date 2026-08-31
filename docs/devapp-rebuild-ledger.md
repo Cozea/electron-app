@@ -9,7 +9,7 @@ what was left suspended with the reason it stopped.
 | Phase 5 follow-up       | 2 parent commits + 3 T3 fork commits                      |
 | New modules             | 16                                                        |
 | Test files              | 18                                                        |
-| Full suite              | 198 files / 1533 tests passing (1 file / 4 tests skipped) |
+| Full suite              | 199 files / 1538 tests passing (1 file / 4 tests skipped) |
 | Phases complete         | 3 of 9                                                    |
 
 Originally audited at `78cb74bd` on `main`; live Phase 5 acceptance was refreshed on
@@ -71,18 +71,29 @@ already published.
 renderer-side only, and nothing dispatches on it. The launch spec is still the runtime
 path. The fate of `localProjectDevAppStore`'s compatibility rows was never decided.
 
-### Phase 2 — Registry and surface resolver — **Mostly not done**
+### Phase 2 — Registry and surface resolver — **Partial**
 
 **Shipped.** Durable refs — `cozea-devapp:org_x/pub_y@7` — that survive storage, cross
 project boundaries, and can be written by hand. Parsing fails closed, and `builtin` and
 `dev` are reserved owners so a publication can impersonate neither a first-party app nor an
 in-development one.
 
-**Left suspended.** `BUILTIN_DEV_APPS` is still a hardcoded array at
-`registry/index.ts:50`. The exit criterion was "adding a tile type touches one file" —
-adding the preview tile in this session touched **five**. Publication resolution against
-Convex is deferred, and the cross-project reference UX was never built, so the refs have no
-consumer yet.
+Built-ins are now self-contained manifest modules discovered through `import.meta.glob`, not
+members of a second hardcoded array. Each manifest owns its composable parts, and surface
+resolution dispatches on those parts. Duplicate IDs, assistant providers, and native surface
+targets fail during registry construction instead of resolving by import order.
+
+The workbench shell now has one typed descriptor for every persisted tile identity. Default
+titles, tab labels and groups, renderer lifetime, constraints, float/popout geometry,
+browser-backing, icon source, and header ownership all flow from that descriptor. Dockview,
+layout restoration, tile chrome, sidebar summaries, and component registration consume it.
+Renderer implementations remain a separate typed catalog, so an identity may reuse an existing
+renderer without adding another shell switch; only a genuinely new UI needs a new component.
+
+**Left suspended.** Publication resolution against Convex is deferred, and the cross-project
+reference UX was never built, so durable refs still have no consumer. A new built-in using an
+existing surface now adds one manifest module; a new persisted tile identity adds one shell
+descriptor plus its actual data/component implementation when that UI does not already exist.
 
 ### Phase 3 — Capability vocabulary — **Delivered**
 
@@ -197,11 +208,13 @@ arbitrary code execution and deserves review as such. The boundaries were design
 and each has tests that fail when the guard is removed — but nobody adversarial has looked
 at them, and self-review is not the same thing.
 
-### Registry consolidation — Phase 2, mostly open
+### Registry consolidation — Phase 2, completed 2026-09-01
 
-`BUILTIN_DEV_APPS` remains a hardcoded array, and the exit criterion — one file per new tile
-type — is measurably unmet: the preview tile touched five. Every later phase that adds a
-surface pays this cost again.
+`BUILTIN_DEV_APPS` is discovered from self-contained manifest modules, and the parallel
+provider/surface maps are gone. Built-in manifests own their parts. One typed workbench registry
+now supplies shell policy to Dockview, layout restoration, tile chrome, sidebar icons, and the
+component catalog. Architecture tests fail if those consumers reintroduce the preview-specific
+switches that originally made one surface touch five shell files.
 
 ### Parts on the release record — Phase 1, open
 
@@ -298,6 +311,7 @@ The worker wire lifecycle and compatibility policy are documented in
 | ----------------------------------------------------------------------- | ----------------------------- |
 | `features/devapps/registry/parts.ts`                                    | parts and surfaces            |
 | `features/devapps/registry/ref.ts`                                      | durable names                 |
+| `features/projects/lib/workbenchTileRegistry.ts`                        | workbench shell contract      |
 | `features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx` | the tile                      |
 | `features/projects/devapps/devAppPreviewRuntimeStore.ts`                | live status for automation    |
 | `features/projects/devapps/devAppPreviewSurfaceController.ts`           | package-to-Dockview placement |
@@ -322,9 +336,10 @@ In dependency order, not preference order.
    aliases, bootstrap metadata, message envelopes, host enforcement, restart behavior, and
    immutable-version policy now protect the Phase 6 authoring boundary.
 
-4. **Finish Phase 2 before Phase 6.** Phase 6 invites outside authors, and every surface they
-   add pays the five-file cost. Consolidating the registry first is cheaper than
-   consolidating it afterwards with published packages depending on it.
+4. **Registry/surface consolidation — complete 2026-09-01.** Built-ins are self-contained,
+   parts drive surface resolution, and the workbench shell consumes one typed descriptor instead
+   of parallel tile lists. Cross-project durable-reference resolution remains the independent
+   Phase 2 gap.
 
 5. **Get the capability model reviewed adversarially.** Before anyone outside the team can
    author a worker — which is Phase 6 — not after.
