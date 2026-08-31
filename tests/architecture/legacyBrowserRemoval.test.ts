@@ -24,6 +24,9 @@ const forbiddenLegacyTokens = [
   "cozea:dock-layout-change",
   "legacyBrowserFallback",
   "browserHostFallback",
+  "nativeSurfaceOcclusion",
+  "data-native-surface",
+  "cozea:split-control",
 ] as const;
 
 function listSourceFiles(directory: string): string[] {

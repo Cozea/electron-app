@@ -289,51 +289,12 @@ export function WorkbenchTileChrome({
       }
     }
 
-    const handleSplitControlEvent = (e: Event) => {
-      const command = (e as CustomEvent).detail
-      
-      // Removed the early return so the focused browser can trigger splits
-      // for WHATEVER tile is currently being hovered over, not just itself.
-
-      if (!isHovered) return
-
-      if (command.type === 'split-control-activate') {
-        if (!splitStateRef.current.active) {
-          splitStateRef.current.active = true
-          setSplitOverlayActive(true)
-        }
-      } else if (command.type === 'split-control-deactivate') {
-        if (splitStateRef.current.active) {
-          const dir = splitStateRef.current.direction
-          if (dir) {
-            runtime.onSplitTile(panelApi.id, dir)
-          }
-        }
-        splitStateRef.current = { active: false, direction: null }
-        setSplitOverlayActive(false)
-        setSplitDirection(null)
-      } else if (command.type === 'split-control-key') {
-        let dir = splitStateRef.current.direction
-        if (command.key === "ArrowUp") { dir = "top" }
-        if (command.key === "ArrowDown") { dir = "bottom" }
-        if (command.key === "ArrowLeft") { dir = "left" }
-        if (command.key === "ArrowRight") { dir = "right" }
-        
-        if (dir !== splitStateRef.current.direction) {
-          splitStateRef.current.direction = dir
-          setSplitDirection(dir)
-        }
-      }
-    }
-
     window.addEventListener("keydown", handleKeyDown, { capture: true })
     window.addEventListener("keyup", handleKeyUp, { capture: true })
-    window.addEventListener("cozea:split-control", handleSplitControlEvent)
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true })
       window.removeEventListener("keyup", handleKeyUp, { capture: true })
-      window.removeEventListener("cozea:split-control", handleSplitControlEvent)
       
       // Cleanup if component unmounts while active
       if (splitStateRef.current.active) {
@@ -506,8 +467,6 @@ export function WorkbenchTileChrome({
       {splitOverlayActive ? (
         <div
           className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none rounded-[inherit]"
-          data-native-surface-overlay="true"
-          data-native-surface-overlay-reason="Split controls"
         >
           <div className="grid grid-cols-3 grid-rows-3 gap-2 p-4 pointer-events-auto">
             <div
