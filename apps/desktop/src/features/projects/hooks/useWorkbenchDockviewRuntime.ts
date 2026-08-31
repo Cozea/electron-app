@@ -891,10 +891,6 @@ export function useWorkbenchDockviewRuntime(
 
       event.api.onDidLayoutChange(() => {
         saveLayout();
-        // Native surfaces (browser tiles) sync their window-relative bounds
-        // from DOM rects; panel moves/drags can change position without a
-        // resize, so layout changes must nudge them explicitly.
-        window.dispatchEvent(new CustomEvent("cozea:dock-layout-change"));
       });
 
       event.api.onWillDragPanel((dragEvent) => {

@@ -41,5 +41,36 @@ T3's right-panel routing and thread mini-player shell; native PiP retains the br
 behavior. Browser-backed cross-window popout is disabled and restored popouts normalize into the
 main workbench, while same-window drag, split, maximize, and float remain supported.
 
+## Security posture
+
+- The main Cozea renderer remains sandboxed, Node-disabled, and context-isolated.
+- Preview guests use the pinned T3 baseline: `sandbox=true`, `nodeIntegration=false`,
+  `contextIsolation=false`, and only the shipped picker preload.
+- Main validates the owning window, manager-issued runtime tab ID, exact prepared partition, and
+  picker preload in `will-attach-webview`; arbitrary preloads, nested webviews, mixed content, and
+  unmanaged windows/downloads are rejected.
+- Clipboard read/sanitized write, notifications, and geolocation follow T3's allowlist. Other
+  permissions remain denied.
+- Org DevApps add publication/content-hash confinement around the T3 guest. Their custom protocol
+  and authenticated loopback gateway are never external-opening targets, and automation uses the
+  same policy as direct navigation.
+
+## Operational troubleshooting
+
+- `PreviewAutomationTabNotFoundError`: confirm the tab ID appears in `status.surfaces` and belongs
+  to the assistant's current workbench. Closed, background-frozen, and release-replaced guests must
+  be reacquired instead of guessed.
+- Registration timeout: bring the tile's workbench session out of freeze and confirm the global
+  `ElectronBrowserHost` is mounted. Do not add a second host or legacy fallback.
+- DevTools/debugger ownership error: close guest DevTools before automation attaches CDP.
+- Control interrupted: direct human input deliberately won the control epoch; retry only after the
+  user action finishes or attach another Dev Server surface.
+- Viewport timeout: inspect the hosted webview's declared viewport attributes and renderer-local
+  slot size. The failed setting rolls back if no newer resize superseded it.
+- Recording startup/first-frame failure: verify the guest is visible and producing frames; stop the
+  scoped recording before retrying. Partial recordings are cleaned up rather than saved.
+- Org navigation rejection: validate the active publication/content hash or service generation.
+  Never work around it by opening the protected URL externally.
+
 See [`docs/dev-server-agent-automation.md`](./dev-server-agent-automation.md) for the retained
 process-management contract.

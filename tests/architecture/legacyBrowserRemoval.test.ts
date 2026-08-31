@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { T3_BROWSER_PORT_PARITY_LEDGER } from "@shared/browserPortParityLedger";
+
 const root = process.cwd();
 const sourceRoots = ["apps/desktop/electron", "apps/desktop/src", "shared", "scripts"];
 const sourceExtensions = new Set([".cjs", ".js", ".mjs", ".ts", ".tsx"]);
@@ -16,6 +18,12 @@ const forbiddenLegacyTokens = [
   "BrowserTileModel",
   "useWorkbenchBrowserView",
   "data-workbench-browser-overlay",
+  "BrowserUnavailableSurface",
+  "placeholderScreenshot",
+  "overlayPaused",
+  "cozea:dock-layout-change",
+  "legacyBrowserFallback",
+  "browserHostFallback",
 ] as const;
 
 function listSourceFiles(directory: string): string[] {
@@ -83,5 +91,46 @@ describe("legacy browser removal boundary", () => {
     expect(sessionManager).toContain(
       "hasBrowserSurface: this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey)",
     );
+  });
+
+  it("keeps the complete all-surface T3 automation host enabled with no pending parity", () => {
+    const host = read("apps/desktop/src/substrate/t3PreviewAutomationHost.ts");
+    for (const operation of [
+      "status",
+      "open",
+      "navigate",
+      "snapshot",
+      "click",
+      "type",
+      "press",
+      "scroll",
+      "evaluate",
+      "waitFor",
+      "recordingStart",
+      "recordingStop",
+      "resize",
+      "setColorScheme",
+      "devServerStatus",
+      "devServerEnsure",
+      "devServerAttach",
+    ]) {
+      expect(host).toContain(`"${operation}"`);
+    }
+    expect(host).toContain("lastControlledSurfaceByThread");
+    expect(host).toContain("bridge.listSurfaces()");
+    expect(host).not.toContain("PreviewAutomationUnavailableError");
+    expect(
+      T3_BROWSER_PORT_PARITY_LEDGER.filter((requirement) =>
+        String(requirement.status).includes("pending"),
+      ),
+    ).toEqual([]);
+    expect(
+      fs.existsSync(
+        path.join(
+          root,
+          "apps/desktop/src/features/projects/components/workbench/BrowserUnavailableSurface.tsx",
+        ),
+      ),
+    ).toBe(false);
   });
 });
