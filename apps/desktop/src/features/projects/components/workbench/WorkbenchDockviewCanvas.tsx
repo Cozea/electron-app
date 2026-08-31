@@ -20,6 +20,11 @@ import {
   WorkbenchDockWatermark,
 } from "@/features/projects/components/workbench/WorkbenchDockPanels"
 import { resolveTabGroupPreset } from "@/features/projects/lib/workbenchDockview"
+import {
+  getWorkbenchDockDefinition,
+  getWorkbenchTileDefinition,
+  isBrowserBackedWorkbenchTile,
+} from "@/features/projects/lib/workbenchTileRegistry"
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { cn } from "@/lib/utils"
@@ -56,23 +61,10 @@ function getFloatingBoxForComponent(component: string): {
   x: number
   y: number
 } {
-  switch (component) {
-    case "assistantChat":
-      return { width: 560, height: 720, x: 56, y: 48 }
-    case "terminal":
-      return { width: 760, height: 420, x: 72, y: 72 }
-    case "browser":
-    case "devServer":
-    case "orgDevApp":
-    case "devAppPreview":
-    case "llama":
-    case "mobileSimulator":
-      return { width: 900, height: 640, x: 72, y: 56 }
-    case "changes":
-      return { width: 760, height: 720, x: 64, y: 48 }
-    default:
-      return { width: 560, height: 420, x: 48, y: 48 }
-  }
+  return (
+    getWorkbenchDockDefinition(component)?.floatingBox ??
+    getWorkbenchTileDefinition("selection").dock!.floatingBox
+  )
 }
 
 function getPopoutBoxForComponent(component: string): {
@@ -83,22 +75,14 @@ function getPopoutBoxForComponent(component: string): {
 } {
   const screenLeft = window.screenX || 0
   const screenTop = window.screenY || 0
-  switch (component) {
-    case "assistantChat":
-      return { left: screenLeft + 80, top: screenTop + 80, width: 620, height: 820 }
-    case "terminal":
-      return { left: screenLeft + 90, top: screenTop + 100, width: 900, height: 520 }
-    case "browser":
-    case "devServer":
-    case "orgDevApp":
-    case "devAppPreview":
-    case "llama":
-    case "mobileSimulator":
-      return { left: screenLeft + 80, top: screenTop + 70, width: 1100, height: 780 }
-    case "changes":
-      return { left: screenLeft + 90, top: screenTop + 70, width: 900, height: 820 }
-    default:
-      return { left: screenLeft + 80, top: screenTop + 80, width: 720, height: 560 }
+  const box =
+    getWorkbenchDockDefinition(component)?.popoutBox ??
+    getWorkbenchTileDefinition("selection").dock!.popoutBox
+  return {
+    left: screenLeft + box.leftOffset,
+    top: screenTop + box.topOffset,
+    width: box.width,
+    height: box.height,
   }
 }
 
@@ -107,14 +91,6 @@ interface WorkbenchDockviewCanvasProps {
   className?: string
   themeScheme: "dark" | "light"
   onReady: ComponentProps<typeof DockviewReact>["onReady"]
-}
-
-function isBrowserBackedTile(tile: unknown): boolean {
-  if (!tile || typeof tile !== "object" || !("type" in tile)) return false
-  const type = (tile as { type?: string }).type
-  return (
-    type === "browser" || type === "devServer" || type === "orgDevApp" || type === "devAppPreview"
-  )
 }
 
 // Memo boundary: dockview re-pushes props into every tab/panel portal root
@@ -157,9 +133,9 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
       const isDetached = groupLocation === "floating" || groupLocation === "popout"
       const tabCount = params.group.panels.length
       const hasSiblingTabs = tabCount > 1
-      const browserBackedPanel = isBrowserBackedTile(tile)
+      const browserBackedPanel = isBrowserBackedWorkbenchTile(tile)
       const groupContainsBrowserBackedPanel = params.group.panels.some((candidate) =>
-        isBrowserBackedTile(workbench?.tiles[candidate.id] ?? null),
+        isBrowserBackedWorkbenchTile(workbench?.tiles[candidate.id] ?? null),
       )
 
       const popOut = (item: IDockviewPanel | DockviewGroupPanel) => {

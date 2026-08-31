@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type FunctionComponent,
   type KeyboardEvent,
   type ReactNode,
 } from "react"
@@ -49,6 +50,7 @@ import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
 } from "@/features/devapps/registry"
+import type { DevAppWorkbenchTileTarget } from "@/features/devapps/registry/types"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
 import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
@@ -70,6 +72,14 @@ import {
   useWorkbenchDockRuntime,
 } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime"
+import {
+  getWorkbenchDockDefinition,
+  getWorkbenchTileDefinition,
+  RENDERABLE_WORKBENCH_TILE_TYPES,
+  WORKBENCH_TILE_REGISTRY,
+  type WorkbenchDockComponentName,
+  type WorkbenchPanelRendererKey,
+} from "@/features/projects/lib/workbenchTileRegistry"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { useTranslation } from "@/lib/i18n"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -165,32 +175,13 @@ function MissingTilePlaceholder() {
 }
 
 function resolveTabTileTypeLabel(tile: WorkbenchTile | null): string {
-  switch (tile?.type) {
-    case "assistantChat":
-      return "Agent"
-    case "browser":
-      return "Browser"
-    case "terminal":
-      return "Terminal"
-    case "devServer":
-      return "Dev Server"
-    case "llama":
-      return "Llama"
-    case "mobileSimulator":
-      return "Simulator"
-    case "orgDevApp":
-      return "DevApp"
-    case "devAppPreview":
-      return "DevApp preview"
-    case "selection":
-      return "Add"
-    default:
-      return "Panel"
-  }
+  return tile ? getWorkbenchTileDefinition(tile.type).tabLabel : "Panel"
 }
 
 function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
-  if (tile?.type === "devServer" && tile.devAppId) {
+  const definition = tile ? getWorkbenchTileDefinition(tile.type) : null
+
+  if (tile?.type === "devServer" && definition?.fallbackIcon === "devServer" && tile.devAppId) {
     return (
       <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
         <ProjectDevAppIcon publicationId={tile.devAppId} name={tile.title} />
@@ -198,30 +189,23 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
     )
   }
 
-  if (tile?.type === "orgDevApp") {
+  if (tile && definition?.manifestSource === "published") {
     return (
       <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
-        <PublishedDevAppIcon name={tile.title} logoDataUrl={tile.logoDataUrl} />
+        <PublishedDevAppIcon
+          name={tile.title}
+          logoDataUrl={tile.type === "orgDevApp" ? tile.logoDataUrl : undefined}
+        />
       </span>
     )
   }
 
-  if (tile?.type === "devAppPreview") {
-    return (
-      <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
-        <PublishedDevAppIcon name={tile.title} />
-      </span>
-    )
-  }
-
+  const manifestSource = definition?.manifestSource ?? "none"
   const devApp =
-    tile?.type === "assistantChat"
+    tile?.type === "assistantChat" && manifestSource === "assistant"
       ? getDevAppForAssistantProvider(tile.provider ?? null)
-      : tile?.type === "browser" ||
-          tile?.type === "terminal" ||
-          tile?.type === "devServer" ||
-          tile?.type === "mobileSimulator"
-        ? getDevAppForSurfaceTileType(tile.type)
+      : tile && manifestSource === "surface"
+        ? getDevAppForSurfaceTileType(tile.type as DevAppWorkbenchTileTarget)
         : null
 
   if (!devApp) {
@@ -242,7 +226,8 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
 
 function isChromeOwnedSurface(component: string | undefined, tile: WorkbenchTile | null): boolean {
   const surface = tile?.type ?? component
-  return surface === "browser" || surface === "devServer" || surface === "mobileSimulator"
+  const headerControls = getWorkbenchDockDefinition(surface)?.headerControls
+  return headerControls === "browser" || headerControls === "runtimePreview"
 }
 
 function useWorkbenchTile(
@@ -621,15 +606,13 @@ export const WorkbenchDockHeaderControls = memo(function WorkbenchDockHeaderCont
 ) {
   const activePanel = props.activePanel
   const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
+  const headerControls = getWorkbenchDockDefinition(activePanel?.api.component)?.headerControls
 
-  if (activePanel?.api.component === "browser") {
+  if (activePanel && headerControls === "browser") {
     return <BrowserPanelHeaderControls tileId={activePanel.id} />
   }
 
-  if (
-    activePanel?.api.component === "devServer" ||
-    activePanel?.api.component === "mobileSimulator"
-  ) {
+  if (activePanel && headerControls === "runtimePreview") {
     return (
       <DevServerPanelHeaderControls
         tileId={activePanel.id}
@@ -675,6 +658,7 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   }, [props.containerApi, activePanel])
 
   const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
+  const dockDefinition = getWorkbenchDockDefinition(activePanel?.api.component)
   const isSoleSelectionTile = useProjectWorkbenchStore((state) => {
     const wb = selectProjectWorkbench(runtime.projectId, runtime.laneId, runtime.workspaceId)(state)
     if (!wb || wb.order.length !== 1) return false
@@ -691,7 +675,7 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   }
 
   const panelActions =
-    activePanel.api.component === "devServer" || activePanel.api.component === "mobileSimulator" ? (
+    dockDefinition?.headerControls === "runtimePreview" ? (
       <DevServerPanelHeaderActions
         tileId={activePanel.id}
         surface={activePanel.api.component === "devServer" ? "devServer" : "mobileSimulator"}
@@ -699,11 +683,7 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
     ) : (
       (registeredHeader?.actions ?? null)
     )
-  const browserPreviewActions =
-    activePanel.api.component === "browser" ||
-    activePanel.api.component === "devServer" ||
-    activePanel.api.component === "orgDevApp" ||
-    activePanel.api.component === "devAppPreview" ? (
+  const browserPreviewActions = dockDefinition?.browserBacked ? (
       <BrowserPreviewActionsForTile tileId={activePanel.id} />
     ) : null
 
@@ -1292,7 +1272,9 @@ const ChangesPanel = memo(function ChangesPanel(
   )
 })
 
-export const WORKBENCH_DOCK_COMPONENTS = {
+type WorkbenchDockPanelComponent = FunctionComponent<IDockviewPanelProps>
+
+const WORKBENCH_PANEL_RENDERERS = {
   selection: SelectionPanel,
   browser: BrowserPanel,
   terminal: TerminalPanel,
@@ -1302,5 +1284,25 @@ export const WORKBENCH_DOCK_COMPONENTS = {
   orgDevApp: OrgDevAppPanel,
   devAppPreview: DevAppPreviewPanel,
   assistantChat: AssistantChatPanel,
-  changes: ChangesPanel,
+} satisfies Record<WorkbenchPanelRendererKey, WorkbenchDockPanelComponent>
+
+function buildWorkbenchDockComponents(): Record<
+  WorkbenchDockComponentName,
+  WorkbenchDockPanelComponent
+> {
+  const components: Partial<
+    Record<WorkbenchDockComponentName, WorkbenchDockPanelComponent>
+  > = { changes: ChangesPanel }
+
+  for (const tileType of RENDERABLE_WORKBENCH_TILE_TYPES) {
+    const renderer = WORKBENCH_TILE_REGISTRY[tileType].panelRenderer
+    if (!renderer) {
+      throw new Error(`Workbench tile ${tileType} has no panel renderer.`)
+    }
+    components[tileType] = WORKBENCH_PANEL_RENDERERS[renderer]
+  }
+
+  return components as Record<WorkbenchDockComponentName, WorkbenchDockPanelComponent>
 }
+
+export const WORKBENCH_DOCK_COMPONENTS = buildWorkbenchDockComponents()

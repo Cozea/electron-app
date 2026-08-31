@@ -24,9 +24,16 @@ export const devServerDevAppManifest = {
     badgeLabel: "Built in",
     featured: true,
   },
+  parts: {
+    view: { source: "native", rendererId: "devServer" },
+    worker: { capabilities: ["process.spawn", "project.read"] },
+    service: { runtimeKind: "node", location: "device", singleton: true },
+  },
   launch: {
     kind: "devServer",
     tileType: "devServer",
     singleton: true,
   },
 } satisfies DevAppManifest
+
+export default devServerDevAppManifest

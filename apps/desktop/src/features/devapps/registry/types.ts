@@ -1,5 +1,8 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
 
+import type { DevAppParts } from "@/features/devapps/registry/parts"
+import type { RenderableWorkbenchTileType } from "@/features/projects/lib/workbenchTileRegistry"
+
 export type DevAppCategoryId =
   | "discover"
   | "agent-kits"
@@ -11,14 +14,10 @@ export type DevAppCategoryId =
 
 export type DevAppLauncherGroup = "Development" | "Assistant"
 
-export type DevAppWorkbenchTileTarget =
-  | "assistantChat"
-  | "browser"
-  | "devServer"
-  | "llama"
-  | "mobileSimulator"
-  | "orgDevApp"
-  | "terminal"
+export type DevAppWorkbenchTileTarget = Exclude<
+  RenderableWorkbenchTileType,
+  "selection" | "devAppPreview"
+>
 
 export interface DevAppIconDefinition {
   src: string
@@ -131,6 +130,8 @@ export interface DevAppManifest {
   icon: DevAppIconDefinition
   launcher: DevAppLauncherMetadata
   store: DevAppStoreMetadata
+  /** Composable runtime model; surfaces are derived from this, never from the launch union. */
+  parts: DevAppParts
   launch: DevAppLaunchSpec
 }
 

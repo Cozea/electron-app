@@ -35,31 +35,34 @@ describe("DevApp parts — expressing what ships today", () => {
   // model is wrong, and this is where that must surface.
   it("expresses every built-in as a composition of parts", () => {
     for (const manifest of BUILTIN_DEV_APPS) {
-      const parts = partsForLaunchSpec(manifest.launch)
+      const parts = manifest.parts
       expect(parts, `${manifest.id} produced no parts`).toBeTruthy()
       expect(
         Boolean(parts.view || parts.worker || parts.service),
         `${manifest.id} produced an empty composition`,
       ).toBe(true)
+      expect(parts, `${manifest.id} drifted from its compatibility launch spec`).toEqual(
+        partsForLaunchSpec(manifest.launch),
+      )
     }
   })
 
   it("gives every built-in a tile surface, since each one renders", () => {
     for (const manifest of BUILTIN_DEV_APPS) {
-      const surfaces = derivableSurfaces(partsForLaunchSpec(manifest.launch))
+      const surfaces = derivableSurfaces(manifest.parts)
       expect(surfaces, `${manifest.id} lost its tile surface`).toContain("tile")
     }
   })
 
   it("marks native views as native and package views as package", () => {
     const browser = BUILTIN_DEV_APPS.find((app) => app.id === "browser")!
-    expect(partsForLaunchSpec(browser.launch).view).toEqual({ source: "native", rendererId: "browser" })
+    expect(browser.parts.view).toEqual({ source: "native", rendererId: "browser" })
     expect(partsForLaunchSpec(PUBLISHED_STATIC).view).toEqual({ source: "package" })
   })
 
   it("splits a terminal into unprivileged chrome over a privileged worker", () => {
     const terminal = BUILTIN_DEV_APPS.find((app) => app.id === "terminal")!
-    const parts = partsForLaunchSpec(terminal.launch)
+    const parts = terminal.parts
     expect(parts.view?.source).toBe("native")
     expect(parts.worker?.capabilities).toContain("terminal.spawn")
     // The view itself must never hold capability — that is the whole boundary.
@@ -84,7 +87,7 @@ describe("DevApp parts — published releases", () => {
 
   it("preserves the singleton constraint the Dev Server depends on", () => {
     const devServer = BUILTIN_DEV_APPS.find((app) => app.id === "dev-server")!
-    expect(partsForLaunchSpec(devServer.launch).service?.singleton).toBe(true)
+    expect(devServer.parts.service?.singleton).toBe(true)
   })
 })
 

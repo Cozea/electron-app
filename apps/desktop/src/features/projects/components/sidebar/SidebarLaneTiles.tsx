@@ -8,6 +8,7 @@ import {
   getDevAppForAssistantProvider,
   getDevAppForSurfaceTileType,
 } from "@/features/devapps/registry"
+import type { DevAppWorkbenchTileTarget } from "@/features/devapps/registry/types"
 import {
   ClaudeAI,
   CursorIcon,
@@ -36,6 +37,7 @@ import type {
   WorkbenchLaneSidebarSummary,
   WorkbenchSidebarSurfaceTileSummary,
 } from "@/stores/useProjectWorkbenchStore"
+import { getWorkbenchTileDefinition } from "@/features/projects/lib/workbenchTileRegistry"
 
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 
@@ -54,13 +56,15 @@ function SurfaceTileGlyph(props: {
   className?: string
 }) {
   const className = props.className ?? "size-[18px] shrink-0 text-muted-foreground/75"
+  const definition = getWorkbenchTileDefinition(props.type)
   // Neither a published DevApp nor one under development is a built-in, so neither
   // resolves to a built-in glyph.
-  const devApp = props.type === "orgDevApp" || props.type === "devAppPreview"
-    ? null
-    : getDevAppForSurfaceTileType(props.type)
+  const devApp =
+    definition.manifestSource === "surface"
+      ? getDevAppForSurfaceTileType(props.type as DevAppWorkbenchTileTarget)
+      : null
 
-  if (props.type === "orgDevApp" || props.type === "devAppPreview") {
+  if (definition.manifestSource === "published") {
     return (
       <span className={SIDEBAR_APP_ICON_CLASS}>
         <PublishedDevAppIcon name={props.title} logoDataUrl={props.logoDataUrl} />
@@ -68,7 +72,7 @@ function SurfaceTileGlyph(props: {
     )
   }
 
-  if (props.type === "devServer" && props.devAppId) {
+  if (definition.fallbackIcon === "devServer" && props.devAppId) {
     return (
       <span className={SIDEBAR_APP_ICON_CLASS}>
         <ProjectDevAppIcon publicationId={props.devAppId} name={props.title} />
@@ -76,7 +80,7 @@ function SurfaceTileGlyph(props: {
     )
   }
 
-  switch (props.type) {
+  switch (definition.fallbackIcon) {
     case "browser":
       if (props.favicon) {
         return (

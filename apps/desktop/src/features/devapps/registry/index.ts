@@ -1,22 +1,13 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
 
-import { browserDevAppManifest } from "@/features/devapps/apps/browser/manifest"
-import { claudeDevAppManifest } from "@/features/devapps/apps/claude/manifest"
-import { codexDevAppManifest } from "@/features/devapps/apps/codex/manifest"
-import { cursorDevAppManifest } from "@/features/devapps/apps/cursor/manifest"
-import { devServerDevAppManifest } from "@/features/devapps/apps/dev-server/manifest"
-import { llamaDevAppManifest } from "@/features/devapps/apps/llama/manifest"
-import { mobileSimulatorDevAppManifest } from "@/features/devapps/apps/mobile-simulator/manifest"
-import { openCodeDevAppManifest } from "@/features/devapps/apps/opencode/manifest"
-import { terminalDevAppManifest } from "@/features/devapps/apps/terminal/manifest"
 import type {
   DevAppCategoryId,
   DevAppLauncherGroup,
   DevAppManifest,
+  DevAppWorkbenchTileTarget,
 } from "@/features/devapps/registry/types"
 import {
   derivableSurfaces,
-  partsForLaunchSpec,
   type DevAppSurface,
 } from "@/features/devapps/registry/parts"
 
@@ -32,39 +23,61 @@ export interface ListStoreAppsOptions {
   query?: string
 }
 
-const DEV_APP_ID_BY_ASSISTANT_PROVIDER: Partial<Record<ProviderKind, string>> = {
-  codex: "codex",
-  claudeAgent: "claude",
-  cursor: "cursor",
-  opencode: "opencode",
-}
-
-const DEV_APP_ID_BY_SURFACE_TILE_TYPE = {
-  browser: "browser",
-  devServer: "dev-server",
-  llama: "llama",
-  mobileSimulator: "mobile-simulator",
-  terminal: "terminal",
-} as const
-
-export const BUILTIN_DEV_APPS: ReadonlyArray<DevAppManifest> = [
-  browserDevAppManifest,
-  devServerDevAppManifest,
-  terminalDevAppManifest,
-  mobileSimulatorDevAppManifest,
-  llamaDevAppManifest,
-  codexDevAppManifest,
-  claudeDevAppManifest,
-  cursorDevAppManifest,
-  openCodeDevAppManifest,
-]
-
 function sortDevApps(a: DevAppManifest, b: DevAppManifest): number {
   if (a.launcher.order !== b.launcher.order) {
     return a.launcher.order - b.launcher.order
   }
   return a.id.localeCompare(b.id)
 }
+
+const BUILTIN_DEV_APP_MODULES = import.meta.glob<{ default: DevAppManifest }>(
+  "../apps/*/manifest.ts",
+  { eager: true },
+)
+
+/**
+ * Every built-in is a self-contained manifest module. Adding one means adding that one
+ * module; the registry, launcher, Store, provider lookup, and surface lookup discover it.
+ */
+function loadBuiltinDevApps(
+  modules: Record<string, { default: DevAppManifest }>,
+): ReadonlyArray<DevAppManifest> {
+  const manifests = Object.entries(modules).map(([modulePath, module]) => {
+    if (!module.default) {
+      throw new Error(`Built-in DevApp module ${modulePath} has no default manifest export.`)
+    }
+    return module.default
+  })
+  const ids = new Set<string>()
+  const assistantProviders = new Set<ProviderKind>()
+  const surfaceTileTypes = new Set<DevAppWorkbenchTileTarget>()
+  for (const manifest of manifests) {
+    if (ids.has(manifest.id)) {
+      throw new Error(`Built-in DevApp id ${manifest.id} is registered more than once.`)
+    }
+    ids.add(manifest.id)
+
+    if (manifest.launch.kind === "assistantChat") {
+      if (assistantProviders.has(manifest.launch.provider)) {
+        throw new Error(
+          `Assistant provider ${manifest.launch.provider} is registered by more than one built-in DevApp.`,
+        )
+      }
+      assistantProviders.add(manifest.launch.provider)
+      continue
+    }
+
+    if (surfaceTileTypes.has(manifest.launch.tileType)) {
+      throw new Error(
+        `Surface tile type ${manifest.launch.tileType} is registered by more than one built-in DevApp.`,
+      )
+    }
+    surfaceTileTypes.add(manifest.launch.tileType)
+  }
+  return manifests.sort(sortDevApps)
+}
+
+export const BUILTIN_DEV_APPS = loadBuiltinDevApps(BUILTIN_DEV_APP_MODULES)
 
 function matchesQuery(manifest: DevAppManifest, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase()
@@ -93,15 +106,24 @@ export function getDevAppForAssistantProvider(
   provider: ProviderKind | null | undefined,
 ): DevAppManifest | null {
   if (!provider) return null
-  const appId = DEV_APP_ID_BY_ASSISTANT_PROVIDER[provider]
-  return appId ? (getDevAppById(appId) ?? null) : null
+  return (
+    BUILTIN_DEV_APPS.find(
+      (manifest) =>
+        manifest.launch.kind === "assistantChat" && manifest.launch.provider === provider,
+    ) ?? null
+  )
 }
 
 export function getDevAppForSurfaceTileType(
-  tileType: keyof typeof DEV_APP_ID_BY_SURFACE_TILE_TYPE | null | undefined,
+  tileType: DevAppWorkbenchTileTarget | null | undefined,
 ): DevAppManifest | null {
   if (!tileType) return null
-  return getDevAppById(DEV_APP_ID_BY_SURFACE_TILE_TYPE[tileType]) ?? null
+  return (
+    BUILTIN_DEV_APPS.find(
+      (manifest) =>
+        manifest.launch.tileType === tileType && manifest.launch.kind !== "assistantChat",
+    ) ?? null
+  )
 }
 
 export function listLauncherApps(options: ListLauncherAppsOptions = {}): DevAppManifest[] {
@@ -126,7 +148,12 @@ export function listLauncherApps(options: ListLauncherAppsOptions = {}): DevAppM
 
 export function listStoreApps(options: ListStoreAppsOptions = {}): DevAppManifest[] {
   return BUILTIN_DEV_APPS
-    .filter((manifest) => !options.category || options.category === "discover" || manifest.categories.includes(options.category))
+    .filter(
+      (manifest) =>
+        !options.category ||
+        options.category === "discover" ||
+        manifest.categories.includes(options.category),
+    )
     .filter((manifest) => matchesQuery(manifest, options.query ?? ""))
     .slice()
     .sort(sortDevApps)
@@ -140,7 +167,7 @@ export function listStoreApps(options: ListStoreAppsOptions = {}): DevAppManifes
  * alone, not an edit to every manifest and every release already published.
  */
 export function surfacesForDevApp(manifest: DevAppManifest): DevAppSurface[] {
-  return derivableSurfaces(partsForLaunchSpec(manifest.launch))
+  return derivableSurfaces(manifest.parts)
 }
 
 export function devAppOccupiesSurface(manifest: DevAppManifest, surface: DevAppSurface): boolean {

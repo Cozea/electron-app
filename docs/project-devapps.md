@@ -12,6 +12,19 @@ project, a local path, a development command, or a dependency-install recipe.
 
 `VITE_FF_PROJECT_DEVAPPS` defaults to `true` and hides publish / Store / launcher / settings DevApp UI when set to `false`.
 
+## Registry and surface composition
+
+Built-in DevApps are self-contained manifest modules under
+`apps/desktop/src/features/devapps/apps/*/manifest.ts`. The registry discovers them eagerly,
+rejects duplicate identities/provider bindings/surface targets, and derives their available
+surfaces from each manifest's `parts`. There is no parallel built-in list or provider-to-app map.
+
+Persisted workbench tile identities use the single typed shell contract in
+`features/projects/lib/workbenchTileRegistry.ts`. Dockview sizing and grouping, float/popout
+geometry, browser-backing, header ownership, default labels, icon source, restoration, and panel
+registration consume that contract. Tile-specific process and data lifecycles remain in their
+typed implementations; they must not be inferred from layout policy.
+
 ## Product rules
 
 - Identity is a Cozea device group. Admins add initialized device principals by their public

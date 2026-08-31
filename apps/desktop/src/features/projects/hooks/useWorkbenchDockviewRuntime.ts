@@ -23,6 +23,7 @@ import {
   reconcilePanels,
   syncPanelTitles,
 } from "@/features/projects/lib/workbenchDockview";
+import { isBrowserBackedWorkbenchTile } from "@/features/projects/lib/workbenchTileRegistry";
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import {
   clearPersistedWorkbenchLayout,
@@ -48,12 +49,7 @@ const CHANGES_PANEL_ID = "cozea-changes-panel";
 function normalizeBrowserBackedPopouts(api: DockviewApi, workbench: WorkbenchProjectState): void {
   for (const panel of api.panels) {
     const tile = workbench.tiles[panel.id];
-    const browserBacked =
-      tile?.type === "browser" ||
-      tile?.type === "devServer" ||
-      tile?.type === "orgDevApp" ||
-      tile?.type === "devAppPreview";
-    if (browserBacked && panel.api.location.type === "popout") {
+    if (isBrowserBackedWorkbenchTile(tile) && panel.api.location.type === "popout") {
       panel.api.moveTo({ position: "right" });
     }
   }

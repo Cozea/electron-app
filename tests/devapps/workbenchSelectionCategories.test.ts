@@ -16,6 +16,11 @@ const builtIn: DevAppManifest = {
   icon: { src: "builtin.png", alt: "Dev Server" },
   launcher: { enabled: true, order: 1, group: "Development", searchTerms: [] },
   store: { categoryLabel: "Development", accentClassName: "", badgeLabel: "Built in" },
+  parts: {
+    view: { source: "native", rendererId: "devServer" },
+    worker: { capabilities: ["process.spawn", "project.read"] },
+    service: { runtimeKind: "node", location: "device", singleton: true },
+  },
   launch: { kind: "devServer", tileType: "devServer", singleton: true },
 };
 
@@ -23,6 +28,7 @@ const orgApp: DevAppManifest = {
   ...builtIn,
   id: "org-devapp:pub-1",
   name: "Sammy",
+  parts: { view: { source: "package" } },
   launch: {
     kind: "publishedDevApp",
     tileType: "orgDevApp",

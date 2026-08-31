@@ -11,9 +11,9 @@ import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
  * combination costs a variant, a renderer switch case, and store fields. Parts separate
  * those concerns so combinations compose instead.
  *
- * This module is descriptive only. Nothing dispatches on it yet: the launch spec remains
- * the runtime path, and `partsForLaunchSpec` proves the model expresses everything that
- * ships today before any consumer depends on it.
+ * Surface discovery dispatches on this model. The launch spec remains the compatibility
+ * runtime path until persisted releases carry parts; `partsForLaunchSpec` is the adapter
+ * that keeps those older and dynamic records on the same surface model.
  */
 
 /** How a tile's content is produced. Views are never privileged. */

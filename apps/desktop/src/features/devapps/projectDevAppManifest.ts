@@ -1,6 +1,7 @@
 import iconSrc from "@/features/devapps/apps/dev-server/icon.png";
 import type { AccessibleProjectDevApp } from "@/features/devapps/projectDevAppApi";
 import { isProjectDevAppLogoDataUrl } from "@/features/devapps/projectDevAppLogo";
+import { partsForLaunchSpec } from "@/features/devapps/registry/parts";
 import type { DevAppManifest, ProjectDevAppLaunchSpec } from "@/features/devapps/registry/types";
 
 export interface ProjectDevAppRuntimeLocation {
@@ -47,6 +48,7 @@ export function buildProjectDevAppManifest(
     entry.publication.description?.trim() ||
     entry.sourceProject.description?.trim() ||
     `Local DevApp launched from ${projectName}.`;
+  const launch = buildProjectDevAppLaunchSpec(entry, runtimeLocation);
 
   return {
     id: buildProjectDevAppId(entry.publication._id),
@@ -77,6 +79,7 @@ export function buildProjectDevAppManifest(
       badgeLabel: "This Mac",
       featured: true,
     },
-    launch: buildProjectDevAppLaunchSpec(entry, runtimeLocation),
+    parts: partsForLaunchSpec(launch),
+    launch,
   };
 }

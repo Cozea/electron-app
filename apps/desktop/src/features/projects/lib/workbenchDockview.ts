@@ -10,75 +10,29 @@ import type {
   WorkbenchTile,
   WorkbenchTileType,
 } from "@/stores/useProjectWorkbenchStore"
+import {
+  CHANGES_DOCK_DEFINITION,
+  getWorkbenchDockDefinition,
+  getWorkbenchTileDefinition,
+  type RenderableWorkbenchTileType,
+  type WorkbenchTabGroupPreset,
+} from "@/features/projects/lib/workbenchTileRegistry"
 import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
-const RUNTIME_PANEL_CONSTRAINTS = {
-  minimumWidth: 320,
-  minimumHeight: 220,
-} as const
-
-const ASSISTANT_PANEL_CONSTRAINTS = {
-  minimumWidth: 320,
-  minimumHeight: 240,
-} as const
-
-const SELECTION_PANEL_CONSTRAINTS = {
-  minimumWidth: 260,
-  minimumHeight: 180,
-} as const
-
-const CHANGES_PANEL_CONSTRAINTS = {
-  minimumWidth: 280,
-  minimumHeight: 260,
-} as const
-
 const RESERVED_DOCKVIEW_PANEL_IDS = new Set(["cozea-changes-panel"])
 
-export interface WorkbenchTabGroupPreset {
-  label: string
-  color: string
-}
-
 export function resolveTabGroupPreset(component: string): WorkbenchTabGroupPreset {
-  switch (component) {
-    case "assistantChat":
-    case "llama":
-      return { label: "Agent", color: "agent" }
-    case "browser":
-    case "devServer":
-    case "mobileSimulator":
-    case "orgDevApp":
-    case "devAppPreview":
-      return { label: "Preview", color: "preview" }
-    case "terminal":
-      return { label: "Runtime", color: "runtime" }
-    case "changes":
-      return { label: "Utility", color: "utility" }
-    default:
-      return { label: "Utility", color: "utility" }
-  }
+  return getWorkbenchDockDefinition(component)?.tabGroup ?? CHANGES_DOCK_DEFINITION.tabGroup
 }
 
 function getPanelConstraintsForComponent(
   component: string,
 ): Pick<AddPanelOptions<WorkbenchDockPanelParams>, "minimumWidth" | "minimumHeight"> {
-  switch (component) {
-    case "browser":
-    case "terminal":
-    case "devServer":
-    case "mobileSimulator":
-    case "orgDevApp":
-    case "devAppPreview":
-      return RUNTIME_PANEL_CONSTRAINTS
-    case "assistantChat":
-    case "llama":
-      return ASSISTANT_PANEL_CONSTRAINTS
-    case "changes":
-      return CHANGES_PANEL_CONSTRAINTS
-    default:
-      return SELECTION_PANEL_CONSTRAINTS
-  }
+  return (
+    getWorkbenchDockDefinition(component)?.constraints ??
+    getWorkbenchTileDefinition("selection").dock!.constraints
+  )
 }
 
 function getPanelPlacementReference(api: DockviewApi): IDockviewPanel | undefined {
@@ -107,30 +61,8 @@ function placePanelLeftOfChanges(
 
 export function getDockComponentName(
   type: WorkbenchTileType,
-):
-  | "selection"
-  | "browser"
-  | "terminal"
-  | "devServer"
-  | "llama"
-  | "mobileSimulator"
-  | "assistantChat"
-  | "orgDevApp"
-  | "devAppPreview" {
-  switch (type) {
-    case "browser":
-    case "selection":
-    case "terminal":
-    case "devServer":
-    case "llama":
-    case "mobileSimulator":
-    case "assistantChat":
-    case "orgDevApp":
-    case "devAppPreview":
-      return type
-    default:
-      return "assistantChat"
-  }
+): RenderableWorkbenchTileType {
+  return getWorkbenchTileDefinition(type).dock ? (type as RenderableWorkbenchTileType) : "assistantChat"
 }
 
 export function getPanelParams(
@@ -142,21 +74,7 @@ export function getPanelParams(
 }
 
 export function getPanelRendererForTile(type: WorkbenchTileType): "always" | "onlyWhenVisible" {
-  switch (type) {
-    case "browser":
-    case "devServer":
-    case "llama":
-    case "mobileSimulator":
-    case "orgDevApp":
-    case "devAppPreview":
-    case "terminal":
-    case "assistantChat":
-      return "always"
-    case "selection":
-    case "tasks":
-    default:
-      return "onlyWhenVisible"
-  }
+  return getWorkbenchTileDefinition(type).dock?.renderer ?? "onlyWhenVisible"
 }
 
 export function getPanelConstraintsForTile(
@@ -255,40 +173,6 @@ export function buildAddPanelOptions(
 
   const referencePanel = getPanelPlacementReference(api)
   const changesPanel = api.getPanel("cozea-changes-panel")
-
-  switch (tile.type) {
-    case "browser":
-    case "devServer":
-    case "mobileSimulator":
-    case "orgDevApp":
-    case "devAppPreview":
-    case "terminal":
-      if (referencePanel) {
-        return {
-          ...base,
-          floating: false,
-          position: {
-            referencePanel: referencePanel.id,
-            direction: "right",
-          },
-        }
-      }
-      return placePanelLeftOfChanges(base, changesPanel)
-    case "assistantChat":
-      if (referencePanel) {
-        return {
-          ...base,
-          floating: false,
-          position: {
-            referencePanel: referencePanel.id,
-            direction: "right",
-          },
-        }
-      }
-      break
-    default:
-      break
-  }
 
   if (referencePanel) {
     return {
