@@ -41,8 +41,8 @@ commands:
           name: Sync vendor/t3code pin
           command: |
             set -euo pipefail
-            git submodule sync --recursive
-            git submodule update --init --recursive --depth 1 vendor/t3code
+            git submodule sync -- vendor/t3code
+            git submodule update --init --depth 1 vendor/t3code
             node scripts/vendor/sync-t3code-pin.mjs
 
   install_pnpm_unix:
