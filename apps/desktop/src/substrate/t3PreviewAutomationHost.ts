@@ -1,14 +1,41 @@
 import { WS_METHODS } from "@cozea/contracts";
 import type {
-  PreviewAutomationActionEvent,
+  PreviewAutomationClickInput,
+  PreviewAutomationEvaluateInput,
+  PreviewAutomationNavigateInput,
   PreviewAutomationOperation,
+  PreviewAutomationOpenInput,
+  PreviewAutomationPressInput,
   PreviewAutomationRequest,
+  PreviewAutomationResizeInput,
+  PreviewAutomationResizeResult,
   PreviewAutomationResponse,
+  PreviewAutomationScrollInput,
+  PreviewAutomationSetColorSchemeInput,
+  PreviewAutomationSetColorSchemeResult,
   PreviewAutomationStatus,
   PreviewAutomationStreamEvent,
+  PreviewAutomationTypeInput,
+  PreviewAutomationWaitForInput,
+  PreviewRenderedViewportSize,
+  PreviewViewportSetting,
+  ScopedThreadRef,
 } from "@cozea/contracts/t3";
 import type { T3RpcSessionHandle } from "@cozea/client-runtime";
+import type { BrowserSurfaceInventoryEntry } from "@shared/browserSurfaceTypes";
 
+import {
+  readActiveBrowserRecordingTargets,
+  startBrowserRecording,
+  stopBrowserRecording,
+} from "@/features/projects/browser/browserRecording";
+import { useBrowserSurfaceStore } from "@/features/projects/browser/browserSurfaceStore";
+import { normalizeUrlInput } from "@/features/projects/browser/urlInput";
+import { commitBrowserViewportChange } from "@/features/projects/browser/browserViewportActions";
+import { readBrowserViewport } from "@/features/projects/browser/browserViewportStore";
+import { resolvePreviewViewport } from "@/features/projects/browser/previewViewport";
+import { isPreviewViewportReady } from "@/features/projects/browser/previewViewportReadiness";
+import { shouldRollbackPreviewViewport } from "@/features/projects/browser/previewViewportRollback";
 import {
   buildDevServerRunKey,
   ensureDevServerRun,
@@ -24,9 +51,6 @@ import {
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore";
 
 const SUPPORTED_OPERATIONS = [
-  "devServerStatus",
-  "devServerEnsure",
-  "devServerAttach",
   "status",
   "open",
   "navigate",
@@ -35,7 +59,15 @@ const SUPPORTED_OPERATIONS = [
   "type",
   "press",
   "scroll",
+  "evaluate",
   "waitFor",
+  "recordingStart",
+  "recordingStop",
+  "resize",
+  "setColorScheme",
+  "devServerStatus",
+  "devServerEnsure",
+  "devServerAttach",
 ] as const satisfies readonly PreviewAutomationOperation[];
 
 const HOST_CLIENT_ID = "cozea-desktop-dev-server";
@@ -56,6 +88,8 @@ interface ThreadWorkbenchContext {
   laneId: string;
   workspaceId: string;
   assistantTileId: string;
+  activeTileId: string | null;
+  tileIds: ReadonlySet<string>;
 }
 
 interface ThreadSurfaceState {
@@ -66,6 +100,7 @@ interface ThreadSurfaceState {
 interface ActiveHostConnection {
   owner: symbol;
   candidate: T3PreviewAutomationCandidate;
+  environmentId: string;
   stop: () => Promise<void>;
   removeFocusListeners: () => void;
 }
@@ -76,7 +111,7 @@ interface T3PreviewAutomationRuntime {
   transition: Promise<void>;
   generation: number;
   surfacesByThread: Map<string, ThreadSurfaceState>;
-  actionTimelineByTile: Map<string, PreviewAutomationActionEvent[]>;
+  lastControlledSurfaceByThread: Map<string, string>;
   requestQueues: Map<string, Promise<void>>;
 }
 
@@ -88,11 +123,12 @@ const runtime: T3PreviewAutomationRuntime = (runtimeHost[RUNTIME_KEY] ??= {
   transition: Promise.resolve(),
   generation: 0,
   surfacesByThread: new Map(),
-  actionTimelineByTile: new Map(),
+  lastControlledSurfaceByThread: new Map(),
   requestQueues: new Map(),
 });
 // Preserve HMR-stable runtimes created before request serialization was added.
 runtime.requestQueues ||= new Map();
+runtime.lastControlledSurfaceByThread ||= new Map();
 // Promises created by the previous module instance cannot be resumed after a
 // Vite replacement. Keeping those tails would permanently block every later
 // request for that thread even though the replacement host stream is healthy.
@@ -127,6 +163,8 @@ function findThreadWorkbenchContext(threadId: string): ThreadWorkbenchContext | 
         laneId: workbench.laneId,
         workspaceId: workbench.workspaceId,
         assistantTileId: tile.id,
+        activeTileId: workbench.activeTileId,
+        tileIds: new Set(Object.keys(workbench.tiles)),
         createdAt: tile.createdAt,
       });
     }
@@ -149,6 +187,146 @@ function isDevServerTilePresent(tileId: string): boolean {
     const tile = workbench.tiles[tileId];
     return tile?.type === "devServer" && !tile.devAppId;
   });
+}
+
+interface CozeaPreviewAutomationSurfaceStatus extends PreviewAutomationStatus {
+  readonly surfaces: ReadonlyArray<{
+    readonly tabId: string;
+    readonly kind: BrowserSurfaceInventoryEntry["kind"];
+    readonly title: string;
+    readonly url: string | null;
+    readonly active: boolean;
+    readonly controller: BrowserSurfaceInventoryEntry["controller"];
+  }>;
+}
+
+interface ExecutablePreviewWebview extends Element {
+  executeJavaScript: (code: string, userGesture?: boolean) => Promise<unknown>;
+}
+
+const waitForDelay = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+function previewBridge() {
+  return window.desktopBridge?.preview ?? null;
+}
+
+function eligibleSurfaces(
+  context: ThreadWorkbenchContext,
+  surfaces: ReadonlyArray<BrowserSurfaceInventoryEntry>,
+): BrowserSurfaceInventoryEntry[] {
+  return surfaces.filter((surface) => context.tileIds.has(surface.tileId));
+}
+
+function resolveSurfaceTarget(
+  context: ThreadWorkbenchContext,
+  surfaces: ReadonlyArray<BrowserSurfaceInventoryEntry>,
+  requestedTabId: string | null,
+  lastControlledTabId: string | null,
+): BrowserSurfaceInventoryEntry | null {
+  const eligible = eligibleSurfaces(context, surfaces);
+  if (requestedTabId) {
+    return (
+      eligible.find(
+        (surface) => surface.runtimeTabId === requestedTabId || surface.tileId === requestedTabId,
+      ) ?? null
+    );
+  }
+  if (lastControlledTabId) {
+    const controlled = eligible.find((surface) => surface.runtimeTabId === lastControlledTabId);
+    if (controlled) return controlled;
+  }
+  if (context.activeTileId) {
+    return eligible.find((surface) => surface.tileId === context.activeTileId) ?? null;
+  }
+  return null;
+}
+
+function surfaceInventoryStatus(
+  surfaces: ReadonlyArray<BrowserSurfaceInventoryEntry>,
+): CozeaPreviewAutomationSurfaceStatus["surfaces"] {
+  return surfaces.map((surface) => ({
+    tabId: surface.runtimeTabId,
+    kind: surface.kind,
+    title: surface.title,
+    url: surface.url,
+    active: surface.active,
+    controller: surface.controller,
+  }));
+}
+
+const findPreviewWebview = (runtimeTabId: string): ExecutablePreviewWebview | null =>
+  Array.from(document.querySelectorAll<ExecutablePreviewWebview>("webview[data-preview-tab]")).find(
+    (candidate) => candidate.getAttribute("data-preview-tab") === runtimeTabId,
+  ) ?? null;
+
+async function readWebviewViewport(
+  webview: ExecutablePreviewWebview,
+): Promise<PreviewRenderedViewportSize | null> {
+  const value = await webview.executeJavaScript(
+    "({ width: window.innerWidth, height: window.innerHeight })",
+  );
+  if (typeof value !== "object" || value === null) return null;
+  const { width, height } = value as { readonly width?: unknown; readonly height?: unknown };
+  return typeof width === "number" &&
+    Number.isInteger(width) &&
+    width > 0 &&
+    typeof height === "number" &&
+    Number.isInteger(height) &&
+    height > 0
+    ? { width, height }
+    : null;
+}
+
+async function readRenderedViewport(
+  runtimeTabId: string,
+): Promise<PreviewRenderedViewportSize | null> {
+  const webview = findPreviewWebview(runtimeTabId);
+  return webview ? await readWebviewViewport(webview) : null;
+}
+
+function readDeclaredViewport(
+  webview: ExecutablePreviewWebview | null,
+): PreviewRenderedViewportSize | null {
+  const width = Number(webview?.getAttribute("data-preview-css-width"));
+  const height = Number(webview?.getAttribute("data-preview-css-height"));
+  return Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0
+    ? { width, height }
+    : null;
+}
+
+async function waitForRenderedViewport(
+  runtimeTabId: string,
+  setting: PreviewViewportSetting,
+  timeoutMs: number,
+): Promise<PreviewRenderedViewportSize> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    try {
+      const webview = findPreviewWebview(runtimeTabId);
+      const appliedSettingKey = webview?.getAttribute("data-preview-viewport-key") ?? null;
+      const declaredViewport = readDeclaredViewport(webview);
+      const renderedViewport = webview ? await readWebviewViewport(webview) : null;
+      if (
+        renderedViewport &&
+        isPreviewViewportReady({
+          setting,
+          appliedSettingKey,
+          declaredViewport,
+          renderedViewport,
+        })
+      ) {
+        return renderedViewport;
+      }
+    } catch {
+      // Registration and crash recovery may transiently replace the guest.
+    }
+    await waitForDelay(50);
+  }
+  throw new PreviewHostError(
+    "PreviewAutomationTimeoutError",
+    `Preview viewport for tab ${runtimeTabId} was not rendered within ${timeoutMs}ms.`,
+  );
 }
 
 async function ensureThreadSurface(
@@ -177,7 +355,7 @@ async function ensureThreadSurface(
   const context = findThreadWorkbenchContext(threadId);
   if (!context) {
     throw new PreviewHostError(
-      "PreviewAutomationUnavailableError",
+      "PreviewAutomationTabNotFoundError",
       "No open agent tile is bound to this thread in the project workbench.",
     );
   }
@@ -194,15 +372,63 @@ async function ensureThreadSurface(
   return state;
 }
 
-async function readStatus(tileId: string | null): Promise<PreviewAutomationStatus> {
+async function readStatus(
+  context: ThreadWorkbenchContext,
+  requestedTabId: string | null,
+  lastControlledTabId: string | null,
+): Promise<CozeaPreviewAutomationSurfaceStatus> {
+  const bridge = previewBridge();
+  const surfaces = bridge ? eligibleSurfaces(context, await bridge.listSurfaces()) : [];
+  const target = resolveSurfaceTarget(context, surfaces, requestedTabId, lastControlledTabId);
+  const inventory = surfaceInventoryStatus(surfaces);
+  if (!bridge || !target) {
+    return {
+      available: false,
+      visible: false,
+      tabId: requestedTabId,
+      url: null,
+      title: requestedTabId && isDevServerTilePresent(requestedTabId) ? "Dev Server" : null,
+      loading: false,
+      surfaces: inventory,
+    };
+  }
+  const status = await bridge.automation.status(target.runtimeTabId);
+  const presentation = useBrowserSurfaceStore.getState().byTabId[target.runtimeTabId];
+  const viewportSetting = readBrowserViewport(target.runtimeTabId);
+  const viewport = await readRenderedViewport(target.runtimeTabId).catch(() => null);
   return {
-    available: false,
-    visible: false,
-    tabId: tileId,
-    url: null,
-    title: tileId && isDevServerTilePresent(tileId) ? "Dev Server" : null,
-    loading: false,
+    ...status,
+    tabId: target.runtimeTabId,
+    visible: presentation?.visible ?? false,
+    viewportSetting,
+    ...(viewport ? { viewport } : {}),
+    surfaces: inventory,
   };
+}
+
+async function readStatusForTile(
+  context: ThreadWorkbenchContext,
+  tileId: string | null,
+): Promise<CozeaPreviewAutomationSurfaceStatus> {
+  const bridge = previewBridge();
+  if (!tileId) {
+    const surfaces = bridge ? eligibleSurfaces(context, await bridge.listSurfaces()) : [];
+    return {
+      available: false,
+      visible: false,
+      tabId: null,
+      url: null,
+      title: null,
+      loading: false,
+      surfaces: surfaceInventoryStatus(surfaces),
+    };
+  }
+  const surface = bridge
+    ? (eligibleSurfaces(context, await bridge.listSurfaces()).find(
+        (candidate) => candidate.tileId === tileId,
+      ) ?? null)
+    : null;
+  return await readStatus(context, surface?.runtimeTabId ?? tileId, null);
 }
 
 async function readDevServerStatus(
@@ -223,14 +449,15 @@ async function readDevServerStatus(
     workspaceId: context.workspaceId,
     laneId: context.laneId,
   });
-  const surfaceStatus = await readStatus(surface?.handle.tileId ?? null);
+  const surfaceStatus = await readStatusForTile(context, surface?.handle.tileId ?? null);
+  const hasWorkbenchSurface = Array.from(context.tileIds).some(isDevServerTilePresent);
   return {
     running: process.running,
     ready: process.ready,
     port: process.port,
     runId: process.runId,
     phase: process.phase,
-    headless: process.running,
+    headless: process.running && !hasWorkbenchSurface,
     reusedProcess,
     surface: surfaceStatus,
   };
@@ -283,24 +510,169 @@ async function waitForDevServerReady(
   );
 }
 
-async function runRequest(request: PreviewAutomationRequest): Promise<unknown> {
+function requireThreadWorkbenchContext(threadId: string): ThreadWorkbenchContext {
+  const context = findThreadWorkbenchContext(threadId);
+  if (context) return context;
+  throw new PreviewHostError(
+    "PreviewAutomationTabNotFoundError",
+    "No open agent tile is bound to this thread in the project workbench.",
+  );
+}
+
+async function waitForReadySurface(
+  context: ThreadWorkbenchContext,
+  requestedTabId: string,
+  timeoutMs: number,
+  allowPendingRegistration: boolean,
+): Promise<BrowserSurfaceInventoryEntry> {
+  const bridge = previewBridge();
+  if (!bridge) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
+  }
+  const deadline = Date.now() + timeoutMs;
+  let found = false;
+  while (Date.now() <= deadline) {
+    const surfaces = eligibleSurfaces(context, await bridge.listSurfaces());
+    const target = resolveSurfaceTarget(context, surfaces, requestedTabId, null);
+    if (target) {
+      found = true;
+      const status = await bridge.automation.status(target.runtimeTabId);
+      if (status.available) return target;
+    } else if (!allowPendingRegistration) {
+      break;
+    }
+    await waitForDelay(50);
+  }
+  throw new PreviewHostError(
+    found ? "PreviewAutomationTimeoutError" : "PreviewAutomationTabNotFoundError",
+    found
+      ? `Browser surface ${requestedTabId} did not register within ${timeoutMs}ms.`
+      : `Browser surface ${requestedTabId} is not available in this workbench.`,
+  );
+}
+
+async function requireReadySurface(
+  request: PreviewAutomationRequest,
+  context: ThreadWorkbenchContext,
+): Promise<BrowserSurfaceInventoryEntry> {
+  const bridge = previewBridge();
+  if (!bridge) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
+  }
+  const surfaces = eligibleSurfaces(context, await bridge.listSurfaces());
+  const target = resolveSurfaceTarget(
+    context,
+    surfaces,
+    request.tabId ?? null,
+    runtime.lastControlledSurfaceByThread.get(request.threadId) ?? null,
+  );
+  if (!target) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      request.tabId
+        ? `Browser surface ${request.tabId} is not available in this workbench.`
+        : "No previously controlled or active browser-backed tile is available in this workbench.",
+    );
+  }
+  const ready = await waitForReadySurface(context, target.runtimeTabId, request.timeoutMs, false);
+  runtime.lastControlledSurfaceByThread.set(request.threadId, ready.runtimeTabId);
+  return ready;
+}
+
+function resolveNavigationUrl(input: PreviewAutomationNavigateInput): string {
+  if (input.target?.kind === "environment-port") {
+    const protocol = input.target.protocol ?? "http";
+    const path = input.target.path?.trim() || "/";
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return `${protocol}://127.0.0.1:${input.target.port}${normalizedPath}`;
+  }
+  const raw = input.url?.trim() ?? "";
+  const normalized = normalizeUrlInput(raw);
+  if (!normalized) {
+    throw new PreviewHostError(
+      "PreviewAutomationExecutionError",
+      "Preview navigation requires a non-empty URL.",
+    );
+  }
+  return normalized;
+}
+
+async function waitForNavigationReadiness(
+  runtimeTabId: string,
+  readiness: "load" | "domContentLoaded" | "none",
+  timeoutMs: number,
+): Promise<void> {
+  if (readiness === "none") return;
+  const bridge = previewBridge();
+  if (!bridge) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    const status = await bridge.automation.status(runtimeTabId);
+    if (status.available && !status.loading) {
+      if (readiness === "load") return;
+      const readyState = await bridge.automation
+        .evaluate(runtimeTabId, {
+          expression: "document.readyState",
+          awaitPromise: true,
+          returnByValue: true,
+        })
+        .catch(() => null);
+      if (readyState === "interactive" || readyState === "complete") return;
+    }
+    await waitForDelay(50);
+  }
+  throw new PreviewHostError(
+    "PreviewAutomationTimeoutError",
+    `Preview navigation in tab ${runtimeTabId} did not reach ${readiness} readiness within ${timeoutMs}ms.`,
+  );
+}
+
+function resolveBrowserRecordingStopTarget(
+  activeTabIds: ReadonlySet<string>,
+  implicitTabId: string | null,
+  explicitTabId?: string,
+): string | null {
+  if (explicitTabId !== undefined) {
+    return activeTabIds.has(explicitTabId) ? explicitTabId : null;
+  }
+  if (implicitTabId !== null && activeTabIds.has(implicitTabId)) return implicitTabId;
+  if (activeTabIds.size !== 1) return null;
+  return activeTabIds.values().next().value ?? null;
+}
+
+async function runRequestInternal(
+  request: PreviewAutomationRequest,
+  environmentId: string,
+): Promise<unknown> {
   const input = asRecord(request.input);
   const current = runtime.surfacesByThread.get(request.threadId);
 
   if (request.operation === "devServerStatus") {
-    const context = findThreadWorkbenchContext(request.threadId);
-    if (!context) {
-      throw new PreviewHostError(
-        "PreviewAutomationUnavailableError",
-        "No open agent tile is bound to this thread in the project workbench.",
-      );
-    }
+    const context = requireThreadWorkbenchContext(request.threadId);
     return await readDevServerStatus(context, current ?? null, false);
   }
 
   if (request.operation === "devServerAttach" || request.operation === "devServerEnsure") {
+    const threadContext = requireThreadWorkbenchContext(request.threadId);
+    const surfaces = previewBridge()
+      ? eligibleSurfaces(threadContext, await previewBridge()!.listSurfaces())
+      : [];
+    const preferredSurface = request.tabId
+      ? resolveSurfaceTarget(threadContext, surfaces, request.tabId, null)
+      : null;
     const surface = await ensureThreadSurface(request.threadId, {
-      preferredTileId: request.tabId ? String(request.tabId) : undefined,
+      preferredTileId: preferredSurface?.tileId ?? request.tabId,
       // Ensure is process-idempotent and must never multiply surfaces as a
       // recovery strategy. The controller will still create a new surface
       // when every existing one has an active lease from another thread.
@@ -335,19 +707,216 @@ async function runRequest(request: PreviewAutomationRequest): Promise<unknown> {
   }
 
   if (request.operation === "status") {
-    return await readStatus(current?.handle.tileId ?? null);
+    const context = requireThreadWorkbenchContext(request.threadId);
+    return await readStatus(
+      context,
+      request.tabId ?? null,
+      runtime.lastControlledSurfaceByThread.get(request.threadId) ?? null,
+    );
   }
 
-  throw new PreviewHostError(
-    "PreviewAutomationUnavailableError",
-    "The embedded browser is unavailable while the T3 browser is being ported.",
-  );
+  const context = requireThreadWorkbenchContext(request.threadId);
+  const bridge = previewBridge();
+  if (!bridge) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
+  }
+
+  if (request.operation === "open") {
+    const openInput = request.input as PreviewAutomationOpenInput;
+    let target: BrowserSurfaceInventoryEntry;
+    if (request.tabId) {
+      target = await requireReadySurface(request, context);
+    } else {
+      const surface = await ensureThreadSurface(request.threadId, {
+        forceNew: openInput.reuseExistingTab === false,
+      });
+      const shouldPresent = openInput.open ?? openInput.show ?? true;
+      if (shouldPresent) focusDevServerSurface(surface.handle.scopeKey, surface.handle.tileId);
+      target = await waitForReadySurface(context, surface.handle.tileId, request.timeoutMs, true);
+      runtime.lastControlledSurfaceByThread.set(request.threadId, target.runtimeTabId);
+    }
+    if (openInput.url) {
+      const url = resolveNavigationUrl({ url: openInput.url } as PreviewAutomationNavigateInput);
+      await bridge.navigate(target.runtimeTabId, url);
+      await waitForNavigationReadiness(target.runtimeTabId, "load", request.timeoutMs);
+    }
+    return await readStatus(context, target.runtimeTabId, target.runtimeTabId);
+  }
+
+  if (request.operation === "recordingStop") {
+    const threadRef = { environmentId, threadId: request.threadId } as ScopedThreadRef;
+    const activeRecordings = readActiveBrowserRecordingTargets(threadRef);
+    const activeTabIds = new Set(activeRecordings.map((recording) => recording.serverTabId));
+    const surfaces = eligibleSurfaces(context, await bridge.listSurfaces());
+    const implicitTarget = resolveSurfaceTarget(
+      context,
+      surfaces,
+      request.tabId ?? null,
+      runtime.lastControlledSurfaceByThread.get(request.threadId) ?? null,
+    );
+    const explicitRuntimeTabId = request.tabId
+      ? resolveSurfaceTarget(context, surfaces, request.tabId, null)?.runtimeTabId
+      : undefined;
+    const stopTabId = resolveBrowserRecordingStopTarget(
+      activeTabIds,
+      implicitTarget?.runtimeTabId ?? null,
+      request.tabIdExplicit ? (explicitRuntimeTabId ?? request.tabId) : undefined,
+    );
+    const artifact = stopTabId ? await stopBrowserRecording(stopTabId) : null;
+    if (!artifact || !stopTabId) {
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        `No active recording is available for tab ${request.tabId ?? "unassigned"}.`,
+      );
+    }
+    return { ...artifact, tabId: stopTabId };
+  }
+
+  const target = await requireReadySurface(request, context);
+  switch (request.operation) {
+    case "navigate": {
+      const navigateInput = request.input as PreviewAutomationNavigateInput;
+      const url = resolveNavigationUrl(navigateInput);
+      await bridge.navigate(target.runtimeTabId, url);
+      await waitForNavigationReadiness(
+        target.runtimeTabId,
+        navigateInput.readiness ?? "load",
+        navigateInput.timeoutMs ?? request.timeoutMs,
+      );
+      return await readStatus(context, target.runtimeTabId, target.runtimeTabId);
+    }
+    case "resize": {
+      const resizeInput = request.input as PreviewAutomationResizeInput;
+      const setting = resolvePreviewViewport(resizeInput);
+      const previousSetting = readBrowserViewport(target.runtimeTabId);
+      await commitBrowserViewportChange(target.runtimeTabId, setting);
+      let viewport: PreviewRenderedViewportSize;
+      try {
+        viewport = await waitForRenderedViewport(
+          target.runtimeTabId,
+          setting,
+          resizeInput.timeoutMs ?? request.timeoutMs,
+        );
+      } catch (cause) {
+        const latestSetting = readBrowserViewport(target.runtimeTabId);
+        if (shouldRollbackPreviewViewport(previousSetting, setting, latestSetting, null, null)) {
+          await commitBrowserViewportChange(target.runtimeTabId, previousSetting).catch(
+            () => undefined,
+          );
+        }
+        throw cause;
+      }
+      return {
+        tabId: target.runtimeTabId,
+        setting,
+        viewport,
+      } satisfies PreviewAutomationResizeResult;
+    }
+    case "setColorScheme": {
+      const colorInput = request.input as PreviewAutomationSetColorSchemeInput;
+      await bridge.setColorScheme(target.runtimeTabId, colorInput.colorScheme);
+      return {
+        tabId: target.runtimeTabId,
+        colorScheme: colorInput.colorScheme,
+      } satisfies PreviewAutomationSetColorSchemeResult;
+    }
+    case "snapshot":
+      return await bridge.automation.snapshot(target.runtimeTabId);
+    case "click":
+      return await bridge.automation.click(
+        target.runtimeTabId,
+        request.input as PreviewAutomationClickInput,
+      );
+    case "type":
+      return await bridge.automation.type(
+        target.runtimeTabId,
+        request.input as PreviewAutomationTypeInput,
+      );
+    case "press":
+      return await bridge.automation.press(
+        target.runtimeTabId,
+        request.input as PreviewAutomationPressInput,
+      );
+    case "scroll":
+      return await bridge.automation.scroll(
+        target.runtimeTabId,
+        request.input as PreviewAutomationScrollInput,
+      );
+    case "evaluate":
+      return await bridge.automation.evaluate(
+        target.runtimeTabId,
+        request.input as PreviewAutomationEvaluateInput,
+      );
+    case "waitFor":
+      return await bridge.automation.waitFor(
+        target.runtimeTabId,
+        request.input as PreviewAutomationWaitForInput,
+      );
+    case "recordingStart": {
+      const threadRef = { environmentId, threadId: request.threadId } as ScopedThreadRef;
+      const startedAt = await startBrowserRecording(
+        target.runtimeTabId,
+        threadRef,
+        target.runtimeTabId,
+      );
+      return { tabId: target.runtimeTabId, recording: true, startedAt };
+    }
+    default:
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        `Unsupported preview automation operation ${request.operation}.`,
+      );
+  }
+}
+
+async function withRequestTimeout<T>(
+  request: PreviewAutomationRequest,
+  operation: Promise<T>,
+): Promise<T> {
+  let timeoutId: number | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = window.setTimeout(
+      () =>
+        reject(
+          new PreviewHostError(
+            "PreviewAutomationTimeoutError",
+            `Preview automation ${request.operation} did not complete within ${request.timeoutMs}ms.`,
+          ),
+        ),
+      request.timeoutMs,
+    );
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  }
+}
+
+async function runRequest(
+  request: PreviewAutomationRequest,
+  environmentId = "cozea-desktop",
+): Promise<unknown> {
+  return await withRequestTimeout(request, runRequestInternal(request, environmentId));
 }
 
 export const __t3PreviewAutomationHostTestUtils = {
+  eligibleSurfaces,
   readDevServerStatus,
   readStatus,
+  resolveBrowserRecordingStopTarget,
+  resolveSurfaceTarget,
+  resetRuntime: () => {
+    runtime.surfacesByThread.clear();
+    runtime.lastControlledSurfaceByThread.clear();
+    runtime.requestQueues.clear();
+  },
   runRequest,
+  supportedOperations: SUPPORTED_OPERATIONS,
+  toResponseError: (error: unknown) => toResponseError(error),
 };
 
 async function serializeThreadRequest<T>(threadId: string, task: () => Promise<T>): Promise<T> {
@@ -377,9 +946,47 @@ function toResponseError(error: unknown): NonNullable<PreviewAutomationResponse[
       ...(error.detail === undefined ? {} : { detail: error.detail }),
     };
   }
+  const record = asRecord(error);
+  const cause = asRecord(record.cause);
+  const remoteTag =
+    typeof record._tag === "string"
+      ? record._tag
+      : typeof cause._tag === "string"
+        ? cause._tag
+        : null;
+  const message = error instanceof Error ? error.message : String(error);
+  const inferredTag = (() => {
+    if (remoteTag) {
+      if (
+        remoteTag === "PreviewTabNotFoundError" ||
+        remoteTag === "PreviewWebContentsNotFoundError" ||
+        remoteTag === "PreviewWebviewNotInitializedError"
+      ) {
+        return "PreviewAutomationTabNotFoundError";
+      }
+      return remoteTag;
+    }
+    if (/not attached|unknown browser surface|not available in this workbench/i.test(message)) {
+      return "PreviewAutomationTabNotFoundError";
+    }
+    if (/interrupted by human input/i.test(message)) {
+      return "PreviewAutomationControlInterruptedError";
+    }
+    if (/rejected .*selector|invalid selector/i.test(message)) {
+      return "PreviewAutomationInvalidSelectorError";
+    }
+    if (/maximum is \d+ bytes|result.*too large/i.test(message)) {
+      return "PreviewAutomationResultTooLargeError";
+    }
+    if (/did not .* within \d+ms|timed out|timeout/i.test(message)) {
+      return "PreviewAutomationTimeoutError";
+    }
+    return "PreviewAutomationExecutionError";
+  })();
   return {
-    _tag: "PreviewAutomationExecutionError",
-    message: error instanceof Error ? error.message : String(error),
+    _tag: inferredTag,
+    message,
+    ...(record.detail === undefined ? {} : { detail: record.detail }),
   };
 }
 
@@ -387,10 +994,13 @@ async function respondToRequest(
   session: T3RpcSessionHandle,
   connectionId: string,
   request: PreviewAutomationRequest,
+  environmentId: string,
 ): Promise<void> {
   let response: PreviewAutomationResponse;
   try {
-    const result = await serializeThreadRequest(request.threadId, () => runRequest(request));
+    const result = await serializeThreadRequest(request.threadId, () =>
+      runRequest(request, environmentId),
+    );
     response = {
       clientId: HOST_CLIENT_ID,
       connectionId,
@@ -458,11 +1068,14 @@ async function startCandidate(
         return;
       }
       if (event.type === "request") {
-        void respondToRequest(candidate.session, event.connectionId, event.request).catch(
-          (error) => {
-            console.warn("[T3PreviewAutomation] Failed to respond to preview request", error);
-          },
-        );
+        void respondToRequest(
+          candidate.session,
+          event.connectionId,
+          event.request,
+          descriptor.environmentId!,
+        ).catch((error) => {
+          console.warn("[T3PreviewAutomation] Failed to respond to preview request", error);
+        });
       }
     },
     () => {
@@ -493,6 +1106,7 @@ async function startCandidate(
   return {
     owner,
     candidate,
+    environmentId: descriptor.environmentId,
     stop: async () => {
       stopping = true;
       await stopStream();

@@ -3,8 +3,8 @@
 > **T3 surface cutover (2026-08-31):** Dev Server and compatibility Project DevApp previews now
 > render through the shared T3 `<webview>` host while their process, terminal, readiness, and
 > headless reattachment lifecycles remain independent. T3 responsive sizing, capture, recording,
-> picker, PiP, appearance, audio, zoom, and pointer presentation are active; agent page interaction
-> remains temporarily unavailable until the all-surface automation gate.
+> picker, PiP, appearance, audio, zoom, pointer presentation, and the complete pinned automation
+> operation set are active against the same living guests.
 
 Cozea exposes project previews to the vendored T3 agent runtime through the workbench's built-in Dev Server runtime and surface. It never treats an ordinary Browser tile as spare agent infrastructure.
 
@@ -15,7 +15,9 @@ Cozea exposes project previews to the vendored T3 agent runtime through the work
 - `ensure` reuses a ready process, waits for a process already launching, and coalesces concurrent ensure requests. Manual Restart remains the explicit replace-process action.
 - Closing a built-in Dev Server surface detaches its terminal presentation but does not stop the owning process. The process terminal is reaped when the runtime is explicitly stopped or disposed.
 - A running process with no built-in surface appears as `Dev Server — Running` in the project's existing sidebar surface list. Selecting it reattaches the singleton surface.
-- Browser, Org DevApp, Project DevApp, and Mobile Simulator tiles are outside this automation path.
+- Browser, Org DevApp, and Project DevApp tiles are outside the Dev Server _process-management_
+  path, but their living guests are eligible for the same page-automation operations. Mobile
+  Simulator tiles remain outside browser automation.
 
 ## Surface placement and ownership
 
@@ -37,9 +39,9 @@ The vendored T3 preview toolkit adds three Dev Server-specific operations:
 
 `open: true` may reveal a reused surface. A newly created agent surface always remains an inactive background tab until the user selects it. `dev_server_ensure` always reuses an unleased surface when safe; only `dev_server_attach` honors `reuseExistingSurface: false` to request another view, never another process.
 
-Until the all-surface automation gate, `preview_open` remains unavailable. Callers use
-`dev_server_ensure` for process management and may use `dev_server_attach` to retain or create the
-corresponding live tile.
+`preview_open` without an explicit runtime tab ID follows this same Dev Server workflow. Callers use
+`dev_server_ensure` for idempotent process management and `dev_server_attach` to retain or create a
+view without starting another process.
 
 When these tools are present, every supported provider routes ordinary requests such as “start the dev server” through `dev_server_ensure` before any shell inspection or terminal launch. This keeps natural-language starts inside the same singleton and discovery path as the Play button. Codex receives the policy as developer instructions, Claude as an append to its system preset, and OpenCode as its per-turn system prompt. The pinned Cursor ACP v0.11.3 schema has no system/developer field, so Cursor receives the same policy in a delimited first prompt block. The policy is omitted when the T3 MCP session is absent; terminal startup remains a fallback only when the Dev Server tools are absent or explicitly report that the operation is unsupported.
 
@@ -49,17 +51,16 @@ The agent may pass a custom `command` only when the user explicitly supplied or 
 
 The native Swift helper and generated Core ML model live under `native/local-automation-helper`. Development startup builds a debug helper without interrupting an existing app session. Distribution preparation builds an arm64 release helper and copies it with the model into Electron resources. The helper is a long-lived JSON-lines subprocess; a timeout, crash, unsupported platform, or absent model degrades to deterministic ranking rather than blocking Play.
 
-## Temporarily available operations
+## Available operations
 
-The host keeps the protocol shape stable but only these operations are functional:
+The host advertises status, open, navigate, snapshot, click, type, press, scroll, evaluate, wait,
+recording start/stop, responsive resize, color-scheme emulation, `devServerStatus`,
+`devServerEnsure`, and `devServerAttach`. There is no separate Browser automation adapter.
 
-- `devServerStatus`, `devServerEnsure`, `devServerAttach`
-
-`status` reports the live surface as automation-unavailable. `open`, `navigate`, `snapshot`, `click`,
-`type`, `press`, `scroll`, and `waitFor` return `PreviewAutomationUnavailableError` without issuing
-guest commands or polling.
-Resize, color-scheme emulation, arbitrary evaluate, and recording remain unadvertised. There is no
-separate flag-gated Browser automation adapter.
+An explicit stable runtime tab ID always wins. Without one, the thread's last controlled surface is
+used, then the active browser-backed tile in the same workbench. Status includes every eligible live
+surface and its kind, title, URL, active state, tab ID, and controller. Main-process navigation
+policy remains authoritative for every agent request, including Org DevApp release confinement.
 
 ## Runtime bridge
 
@@ -97,10 +98,15 @@ Verify all of the following before release:
 6. Closing the owning surface leaves the process running and exposes the sidebar `Running` row.
 7. Selecting the row reattaches a surface without a second process.
 8. Browser, Dev Server, Project DevApp, and Org DevApp tiles render through the shared T3 host.
-9. Every preview interaction fails immediately with `PreviewAutomationUnavailableError`.
+9. Every advertised operation targets the visible living guest; evaluate, recording, resize, and
+   color scheme work on all four browser-backed surface families.
 10. No legacy browser IPC, native overlay guest, bounds synchronization, or screenshot substitution occurs.
 11. Reloading the renderer around a ready process preserves the run ID, terminal, Stop control, and
     persisted preview URL override.
 12. Codex, Claude, OpenCode, and Cursor all receive the managed Dev Server routing policy when—and
     only when—the T3 MCP session is attached.
 13. Electron validation uses Computer Use against the real app; do not use Playwright for this flow.
+14. Explicit, last-controlled, and active-tile targeting are deterministic and never cross a
+    workbench boundary.
+15. Direct user input interrupts an active agent operation and returns the T3 control-interrupted
+    diagnostic.

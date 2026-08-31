@@ -4,12 +4,12 @@ import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger
 
 describe("Dev Server preview script parity", () => {
   it.each(["automation.serialized-input", "automation.scroll-wait-bounds"])(
-    "preserves %s as a mandatory T3 port requirement",
+    "records %s as completed T3 parity",
     (id) => {
       expect(getBrowserPortParityRequirement(id)).toMatchObject({
         id,
         area: "automation",
-        status: "pending-t3-port",
+        status: "ported",
       });
     },
   );

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput";
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
-describe("browser URL policy during blackout", () => {
+describe("browser URL policy", () => {
   it("allows public and loopback HTTP(S) external opening", () => {
     expect(isExternallyOpenableBrowserUrl("http://localhost:5173/")).toBe(true);
     expect(isExternallyOpenableBrowserUrl("https://127.0.0.1:3000/app")).toBe(true);
@@ -18,10 +18,10 @@ describe("browser URL policy during blackout", () => {
     expect(isExternallyOpenableBrowserUrl("")).toBe(false);
   });
 
-  it("preserves loopback-only agent navigation as a T3 port requirement", () => {
+  it("records loopback agent navigation as a completed Cozea adaptation", () => {
     expect(getBrowserPortParityRequirement("automation.loopback-navigation")).toMatchObject({
       area: "automation",
-      status: "pending-t3-port",
+      status: "cozea-adapted",
     });
   });
 });

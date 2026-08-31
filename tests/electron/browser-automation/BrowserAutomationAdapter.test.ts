@@ -8,7 +8,7 @@ import {
   getBrowserPortParityRequirement,
 } from "@shared/browserPortParityLedger";
 
-describe("removed browser automation adapter", () => {
+describe("T3 browser automation cutover", () => {
   it("has no preload or startup registration path", () => {
     const preload = fs.readFileSync(
       path.join(process.cwd(), "apps/desktop/electron/preload.ts"),
@@ -20,16 +20,17 @@ describe("removed browser automation adapter", () => {
     expect(main).not.toContain("registerBrowserAutomationHandlers");
   });
 
-  it.each(["automation.loopback-navigation", "automation.snapshot", "automation.click-type"])(
-    "preserves %s as a mandatory T3 port requirement",
-    (id) => {
-      expect(getBrowserPortParityRequirement(id)).toMatchObject({
-        id,
-        area: "automation",
-        status: "pending-t3-port",
-      });
-    },
-  );
+  it.each([
+    ["automation.loopback-navigation", "cozea-adapted"],
+    ["automation.snapshot", "ported"],
+    ["automation.click-type", "ported"],
+  ] as const)("records %s as completed parity", (id, status) => {
+    expect(getBrowserPortParityRequirement(id)).toMatchObject({
+      id,
+      area: "automation",
+      status,
+    });
+  });
 
   it("keeps every parity id unique", () => {
     const ids = T3_BROWSER_PORT_PARITY_LEDGER.map((requirement) => requirement.id);
