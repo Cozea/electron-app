@@ -73,7 +73,7 @@ export const T3_BROWSER_PORT_PARITY_LEDGER = [
     area: "session-isolation",
     expectation:
       "Closing the final tile releases ephemeral guest state without process-lifetime growth.",
-    status: "pending-t3-port",
+    status: "cozea-adapted",
   },
   {
     id: "session-isolation.org-devapp",

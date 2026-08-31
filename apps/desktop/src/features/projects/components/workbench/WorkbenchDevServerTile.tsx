@@ -5,13 +5,23 @@ import type {
   AvailableExternalBrowserResult,
   ExternalBrowserId,
 } from "@shared/electronApiTypes"
+import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
 import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/i18n"
+import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
+import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError"
+import { resolveBrowserWorkbenchSessionKey } from "@/features/projects/browser/browserSurfaceIdentity"
+import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
+import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry"
+import {
+  runtimePreviewBrowserSurfaceGeneration,
+  runtimePreviewBrowserSurfaceKind,
+  runtimePreviewBrowserSurfaceTabId,
+} from "@/features/projects/browser/runtimePreviewBrowserSurface"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
-import { BrowserUnavailableSurface } from "@/features/projects/components/workbench/BrowserUnavailableSurface"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
 import {
@@ -92,6 +102,58 @@ const NATIVE_PREVIEW_ROUTE: PageRoute = {
 // real key is required for any native-preview activity — fabricated
 // `projectId::laneId::unbound` scopes collided across workspaces.
 const NATIVE_PREVIEW_PENDING_SCOPE = "cozea::native-preview::pending"
+
+function RuntimePreviewStartState({
+  status,
+  error,
+}: {
+  status: DevServerStatus
+  error: string | null
+}) {
+  const title =
+    status === "starting"
+      ? "Starting Dev Server…"
+      : status === "error"
+        ? "Dev Server failed to start"
+        : "Start the Dev Server to open its preview"
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-content-surface p-6 text-center">
+      <div className="max-w-md space-y-1.5">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        {error ? <div className="text-xs leading-5 text-muted-foreground">{error}</div> : null}
+      </div>
+    </div>
+  )
+}
+
+function RuntimePreviewPageError({
+  title,
+  description,
+  url,
+  onReload,
+}: {
+  title: string
+  description: string
+  url: string
+  onReload: () => void
+}) {
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-content-surface p-6 text-center">
+      <div className="flex max-w-lg flex-col items-center gap-3">
+        <div className="space-y-1.5">
+          <div className="text-sm font-medium text-foreground">{title}</div>
+          <div className="text-xs leading-5 text-muted-foreground">{description}</div>
+        </div>
+        <div className="w-full max-w-md truncate rounded-md border border-border/60 bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+          {url}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onReload}>
+          Reload preview
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 interface WorkbenchDevServerTileProps {
   projectId: string
@@ -355,6 +417,73 @@ function WorkbenchRuntimePreviewTile({
     : previewOverrideUrl
   const displayUrl = effectivePreviewOverrideUrl ?? previewUrl
   const activeDisplayUrl = previewServerActive ? displayUrl : ""
+  const runtimeTabId =
+    tile.type === "devServer"
+      ? runtimePreviewBrowserSurfaceTabId({
+          projectId,
+          laneId,
+          workspaceId,
+          workbenchSessionKey,
+          tile,
+        })
+      : null
+  const browserSurfaceDescriptor = useMemo<BrowserSurfaceDescriptor | null>(() => {
+    if (surfaceType !== "web" || tile.type !== "devServer" || !runtimeWorkspaceId || !runtimeTabId) {
+      return null
+    }
+    return {
+      runtimeTabId,
+      tileId: tile.id,
+      workbenchSessionKey: resolveBrowserWorkbenchSessionKey({
+        projectId,
+        laneId,
+        workspaceId,
+        workbenchSessionKey,
+      }),
+      kind: runtimePreviewBrowserSurfaceKind(tile),
+      title: tile.title || (tile.devAppId ? "Project DevApp" : "Dev Server"),
+      initialUrl: activeDisplayUrl || null,
+      storageScope: "ephemeral",
+      workspaceId,
+      laneId,
+      runtimeGeneration: runtimePreviewBrowserSurfaceGeneration(tile),
+    }
+  }, [
+    activeDisplayUrl,
+    laneId,
+    projectId,
+    runtimeTabId,
+    runtimeWorkspaceId,
+    surfaceType,
+    tile,
+    workbenchSessionKey,
+    workspaceId,
+  ])
+  useHostedBrowserSurface(browserSurfaceDescriptor)
+  const browserSurfaceState = useBrowserSurfaceStateStore((state) =>
+    runtimeTabId ? state.byTabId[runtimeTabId] : undefined,
+  )
+  const browserPageError = resolveBrowserPageError(browserSurfaceState)
+  const previewBridge = window.desktopBridge?.preview
+  const lastAutomaticNavigationRef = useRef({
+    runtimeTabId,
+    url: activeDisplayUrl || null,
+  })
+
+  useEffect(() => {
+    if (!runtimeTabId || !previewBridge) return
+    const previous = lastAutomaticNavigationRef.current
+    if (previous.runtimeTabId !== runtimeTabId) {
+      lastAutomaticNavigationRef.current = { runtimeTabId, url: activeDisplayUrl || null }
+      return
+    }
+    const nextUrl = activeDisplayUrl || null
+    if (previous.url === nextUrl) return
+    lastAutomaticNavigationRef.current = { runtimeTabId, url: nextUrl }
+    if (nextUrl) {
+      void previewBridge.navigate(runtimeTabId, nextUrl).catch(() => undefined)
+    }
+  }, [activeDisplayUrl, previewBridge, runtimeTabId])
 
   const terminalShell = (
     <div
@@ -647,14 +776,45 @@ function WorkbenchRuntimePreviewTile({
     </div>
   )
 
+  const reloadEmbeddedPreview = () => {
+    if (!runtimeTabId || !previewBridge || !activeDisplayUrl) return
+    void previewBridge.navigate(runtimeTabId, activeDisplayUrl).catch(() => undefined)
+  }
+  const webSurfaceVisible =
+    Boolean(activeDisplayUrl) &&
+    panelActivity.visible &&
+    viewMode === "preview" &&
+    previewDestination === "cozea" &&
+    !browserPageError
   const webEmbeddedPreviewBody = (
-    <BrowserUnavailableSurface
-      url={activeDisplayUrl || null}
-      description={devServer.status === "error"
-        ? devServer.error ?? "The Dev Server failed to start. Open the server logs for details."
-        : "The Dev Server remains available, but its embedded preview is offline until the T3 browser port lands."}
-      onOpenExternal={activeDisplayUrl ? () => openPreviewExternally(true) : undefined}
-    />
+    <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
+      {runtimeTabId ? (
+        <BrowserSurfaceSlot
+          tabId={runtimeTabId}
+          visible={webSurfaceVisible}
+          className="absolute inset-0 size-full"
+        />
+      ) : null}
+      {!activeDisplayUrl ? (
+        <RuntimePreviewStartState status={devServer.status} error={devServer.error} />
+      ) : null}
+      {browserPageError?.kind === "transport" ? (
+        <RuntimePreviewPageError
+          title="The preview could not be reached"
+          description={`${browserPageError.description} (${browserPageError.code}). The Dev Server process is still managed independently.`}
+          url={browserPageError.url}
+          onReload={reloadEmbeddedPreview}
+        />
+      ) : null}
+      {browserPageError?.kind === "http" ? (
+        <RuntimePreviewPageError
+          title={`${browserPageError.diagnostic.statusCode} ${browserPageError.diagnostic.statusText || "HTTP error"}`}
+          description="The server returned an empty error response. Its process status is unchanged."
+          url={browserPageError.diagnostic.url}
+          onReload={reloadEmbeddedPreview}
+        />
+      ) : null}
+    </div>
   )
 
   const nativeIosPreviewBody = (
