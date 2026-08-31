@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
+import { partitionForDescriptor } from "@shared/browserSurfaceSessions";
 
 const root = process.cwd();
 const devApps = fs.readFileSync(path.join(root, "convex/devApps.ts"), "utf8");
@@ -57,10 +58,22 @@ describe("org DevApp security lifecycle", () => {
     expect(browserSurfaceService).toContain(
       "this.options.orgDevAppArtifactService.registerProtocolForSession(",
     );
-    expect(browserSurfaceService).toContain("descriptor.publicationId");
-    expect(browserSurfaceService).toContain(
-      "`persist:cozea-devapp-${normalizeSessionSegment(descriptor.publicationId)}`",
-    );
+    expect(browserSurfaceService).toContain("partitionForDescriptor(descriptor)");
+    // The partition rule itself now lives in shared/browserSurfaceSessions and is
+    // exercised directly, rather than asserted here as a template literal that any
+    // refactor breaks without telling anyone whether the property still holds.
+    expect(
+      partitionForDescriptor({
+        runtimeTabId: "tab_1",
+        tileId: "tile_1",
+        workbenchSessionKey: "session_1",
+        kind: "orgDevApp",
+        title: "T",
+        initialUrl: null,
+        storageScope: "orgDevApp",
+        publicationId: "pub_1",
+      }),
+    ).toBe("persist:cozea-devapp-pub_1");
   });
 
   it("confines navigation and never externalizes custom or authenticated loopback URLs", () => {

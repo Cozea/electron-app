@@ -10,7 +10,13 @@ import type {
 } from "@cozea/contracts/t3/ipc";
 import type { BrowserStorageScope } from "./browserTileTypes";
 
-export type BrowserSurfaceKind = "browser" | "devServer" | "projectDevApp" | "orgDevApp";
+export type BrowserSurfaceKind =
+  | "browser"
+  | "devServer"
+  | "projectDevApp"
+  | "orgDevApp"
+  /** An unpublished package being developed on this machine. Never shares a published app's session. */
+  | "devAppPreview";
 
 export interface BrowserSurfaceDescriptor {
   runtimeTabId: string;
@@ -27,6 +33,8 @@ export interface BrowserSurfaceDescriptor {
   contentHash?: string | null;
   runtimeKind?: "static" | "service" | null;
   runtimeGeneration?: string | number | null;
+  /** Opaque id of the development source, for a preview surface. */
+  devSourceId?: string | null;
 }
 
 export interface BrowserFindState {
