@@ -17,6 +17,37 @@ function fail(message) {
   throw new Error(`[prepare-t3-runtime] ${message}`);
 }
 
+const removableDeploySelfLink = path.join("node_modules", "pnpm-store", "node_modules", "t3");
+
+export function sanitizePortableRuntimeSymlinks(runtimeRoot) {
+  const resolvedRoot = path.resolve(runtimeRoot);
+  const removed = [];
+
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) {
+        const target = path.resolve(path.dirname(entryPath), fs.readlinkSync(entryPath));
+        const targetIsInternal =
+          target === resolvedRoot || target.startsWith(`${resolvedRoot}${path.sep}`);
+        if (targetIsInternal) continue;
+
+        const relativePath = path.relative(resolvedRoot, entryPath);
+        if (relativePath === removableDeploySelfLink) {
+          fs.unlinkSync(entryPath);
+          removed.push(relativePath);
+          continue;
+        }
+        fail(`Portable T3 deployment contains an external symlink: ${relativePath} -> ${target}`);
+      }
+      if (entry.isDirectory()) visit(entryPath);
+    }
+  };
+
+  visit(resolvedRoot);
+  return removed;
+}
+
 export function parseGitlink(output) {
   const match = /^160000 commit ([0-9a-f]{40})\tvendor\/t3code\s*$/m.exec(output);
   if (!match) fail("Unable to resolve the vendor/t3code gitlink from HEAD.");
@@ -172,6 +203,7 @@ function preparePackagedRuntime(expectedPin, pnpmVersion) {
     }
   };
   rewriteStoreLinks(nodeModulesRoot);
+  sanitizePortableRuntimeSymlinks(packagedRuntimeRoot);
 
   const packagedBin = path.join(packagedRuntimeRoot, "dist", "bin.mjs");
   const result = spawnSync(process.execPath, [packagedBin, "--version"], {
