@@ -70,9 +70,7 @@ describe("application layer contract", () => {
   it("mirrors Dockview floating order into hosted browser layers", () => {
     expect(resolveDockviewBrowserSurfaceLayer("grid", null)).toBe(APP_LAYERS.browserDocked);
     expect(resolveDockviewBrowserSurfaceLayer("edge", "4")).toBe(APP_LAYERS.browserDocked);
-    expect(resolveDockviewBrowserSurfaceLayer("floating", null)).toBe(
-      APP_LAYERS.dockviewFloatBase,
-    );
+    expect(resolveDockviewBrowserSurfaceLayer("floating", null)).toBe(APP_LAYERS.dockviewFloatBase);
     expect(resolveDockviewBrowserSurfaceLayer("floating", "3")).toBe(
       APP_LAYERS.dockviewFloatBase + 6,
     );
@@ -129,9 +127,7 @@ describe("application layer contract", () => {
     const tileChrome = read(
       "apps/desktop/src/features/projects/components/workbench/WorkbenchTileChrome.tsx",
     );
-    const workbench = read(
-      "apps/desktop/src/features/projects/pages/ProjectWorkbenchSurface.tsx",
-    );
+    const workbench = read("apps/desktop/src/features/projects/pages/ProjectWorkbenchSurface.tsx");
     const orgDevApp = read(
       "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
     );
@@ -142,7 +138,7 @@ describe("application layer contract", () => {
 
     expect(portal).toContain("createPortal(children, document.body)");
     expect(tileChrome).toContain("<AnchoredAppOverlayPortal");
-    expect(tileChrome).not.toContain('z-[100]');
+    expect(tileChrome).not.toContain("z-[100]");
     expect(workbench).toContain("<Dialog");
     expect(workbench).not.toContain("absolute inset-0 z-30");
     expect(orgDevApp).toContain("<DialogContent");

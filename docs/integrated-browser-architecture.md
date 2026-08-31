@@ -17,6 +17,11 @@
 > Mandatory parity requirements live in
 > `shared/browserPortParityLedger.ts`.
 
+The active overlay, clipping, and Dockview stacking contract is documented in
+[`docs/workbench-overlay-architecture.md`](./workbench-overlay-architecture.md). Browser-owned
+presentation renders in the global host; application overlays use one semantic body-portal layer
+contract. The deleted native occlusion/screenshot system must not be restored.
+
 This document records the earlier VS Code-oriented architecture investigation. It is not a
 description of the current Cozea runtime and must not be used to restore the deleted host.
 
