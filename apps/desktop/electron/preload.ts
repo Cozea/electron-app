@@ -1019,6 +1019,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       terminalId: string
     }) => ipcRenderer.invoke('devServer:detachSurface', options),
+    attachSurface: (options: {
+      workspaceId: string
+      laneId?: string | null
+      terminalId: string
+    }) => ipcRenderer.invoke('devServer:attachSurface', options),
     stop: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:stop', options),
     resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) =>

@@ -1827,6 +1827,7 @@ app.whenReady().then(() => {
   t3BrowserSurfaceService = new T3BrowserSurfaceService({
     getMainWindow: () => win,
     orgDevAppArtifactService,
+    devAppPreviewService,
     artifactsDirectory: path.join(app.getPath('userData'), 'browser-artifacts'),
     pickPreloadPath: path.join(__dirname, '../preload/preview-pick-preload.cjs'),
     pictureInPicturePreloadPath: path.join(__dirname, '../preload/preview-pip-preload.cjs'),

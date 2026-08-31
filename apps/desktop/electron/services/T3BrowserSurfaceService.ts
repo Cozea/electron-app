@@ -49,7 +49,9 @@ import {
   isContentHash,
   normalizeContentHash,
 } from "../../../../shared/orgDevAppProtocol";
+import { parseDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol";
 import type { OrgDevAppArtifactService } from "./OrgDevAppArtifactService";
+import type { DevAppPreviewService } from "./DevAppPreviewService";
 
 import * as T3Effect from "../../../../vendor/t3code/apps/desktop/node_modules/effect/dist/Effect.js";
 import * as T3Fiber from "../../../../vendor/t3code/apps/desktop/node_modules/effect/dist/Fiber.js";
@@ -89,6 +91,7 @@ interface AttachedSurfaceListeners {
 interface BrowserSurfaceServiceOptions {
   getMainWindow: () => BrowserWindow | null;
   orgDevAppArtifactService: OrgDevAppArtifactService;
+  devAppPreviewService: DevAppPreviewService;
   artifactsDirectory: string;
   pickPreloadPath: string;
   pictureInPicturePreloadPath: string;
@@ -122,6 +125,31 @@ function shouldOpenOrgSurfaceExternally(
   return !decision.allowed && decision.reason === "external-https";
 }
 
+function isDirectNavigationSurface(descriptor: BrowserSurfaceDescriptor): boolean {
+  return descriptor.kind === "orgDevApp" || Boolean(
+    descriptor.kind === "devAppPreview" &&
+      descriptor.initialUrl &&
+      parseDevAppPreviewUrl(descriptor.initialUrl),
+  );
+}
+
+function shouldOpenRestrictedSurfaceExternally(
+  descriptor: BrowserSurfaceDescriptor,
+  rawUrl: string,
+): boolean {
+  if (descriptor.kind === "orgDevApp") {
+    return shouldOpenOrgSurfaceExternally(descriptor, rawUrl);
+  }
+  if (descriptor.kind !== "devAppPreview" || !parseDevAppPreviewUrl(descriptor.initialUrl ?? "")) {
+    return false;
+  }
+  try {
+    return new URL(rawUrl).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): void {
   if (descriptor.kind === "devAppPreview") {
     // A preview is unreviewed code. It gets its own session and nothing else's.
@@ -130,6 +158,12 @@ function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): voi
     }
     if (!/^[0-9a-f]{32}$/.test(descriptor.devSourceId)) {
       throw new Error("The DevApp preview surface descriptor is incomplete.");
+    }
+    const previewUrl = descriptor.initialUrl
+      ? parseDevAppPreviewUrl(descriptor.initialUrl)
+      : null;
+    if (previewUrl && previewUrl.sourceId !== descriptor.devSourceId) {
+      throw new Error("The DevApp preview URL does not match its prepared source.");
     }
     return;
   }
@@ -177,7 +211,7 @@ export class T3BrowserSurfaceService {
   private readonly partitionOperations = new Map<string, Promise<void>>();
   private readonly stateByTabId = new Map<string, CozeaBrowserSurfaceState>();
   private readonly activeByTabId = new Map<string, boolean>();
-  private readonly pendingOrgNavigationByTabId = new Map<string, string>();
+  private readonly pendingDirectNavigationByTabId = new Map<string, string>();
   private readonly listenersByTabId = new Map<string, AttachedSurfaceListeners>();
   private readonly stateListeners = new Set<
     (tabId: string, state: CozeaBrowserSurfaceState) => void
@@ -291,6 +325,11 @@ export class T3BrowserSurfaceService {
       this.options.orgDevAppArtifactService.registerProtocolForSession(
         browserSession,
         descriptor.publicationId,
+      );
+    } else if (descriptor?.kind === "devAppPreview" && descriptor.devSourceId) {
+      this.options.devAppPreviewService.registerProtocolForSession(
+        browserSession,
+        descriptor.devSourceId,
       );
     }
     this.sessionsByPartition.set(partition, browserSession);
@@ -460,8 +499,10 @@ export class T3BrowserSurfaceService {
           requestedUrl: initialUrl,
           httpDiagnostic: null,
         });
-        if (descriptor.kind !== "orgDevApp") {
+        if (!isDirectNavigationSurface(descriptor)) {
           await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+        } else {
+          this.pendingDirectNavigationByTabId.set(descriptor.runtimeTabId, initialUrl);
         }
       }
 
@@ -489,7 +530,7 @@ export class T3BrowserSurfaceService {
       this.partitionsByScope.delete(tabId);
       this.stateByTabId.delete(tabId);
       this.activeByTabId.delete(tabId);
-      this.pendingOrgNavigationByTabId.delete(tabId);
+      this.pendingDirectNavigationByTabId.delete(tabId);
       if (partition && !partition.startsWith("persist:")) {
         const stillUsed = Array.from(this.descriptors.values()).some(
           (candidate) => partitionForDescriptor(candidate) === partition,
@@ -560,11 +601,11 @@ export class T3BrowserSurfaceService {
 
     await this.run((manager) => manager.registerWebview(tabId, webContentsId));
     this.attachCozeaListeners(tabId, guest, descriptor);
-    const pendingOrgNavigation = this.pendingOrgNavigationByTabId.get(tabId);
-    if (pendingOrgNavigation) {
-      this.pendingOrgNavigationByTabId.delete(tabId);
-      if (guest.getURL() !== pendingOrgNavigation) {
-        await guest.loadURL(pendingOrgNavigation);
+    const pendingDirectNavigation = this.pendingDirectNavigationByTabId.get(tabId);
+    if (pendingDirectNavigation) {
+      this.pendingDirectNavigationByTabId.delete(tabId);
+      if (guest.getURL() !== pendingDirectNavigation) {
+        await guest.loadURL(pendingDirectNavigation);
       }
     }
   }
@@ -650,7 +691,7 @@ export class T3BrowserSurfaceService {
     const willNavigate = (event: Event, url: string) => {
       if (this.isAllowedNavigation(descriptor, url)) return;
       event.preventDefault();
-      if (descriptor.kind === "orgDevApp" && shouldOpenOrgSurfaceExternally(descriptor, url)) {
+      if (shouldOpenRestrictedSurfaceExternally(descriptor, url)) {
         void shell.openExternal(url);
       }
     };
@@ -665,10 +706,7 @@ export class T3BrowserSurfaceService {
     guest.setWindowOpenHandler(({ url }) => {
       if (this.isAllowedNavigation(descriptor, url)) {
         void guest.loadURL(url).catch(() => undefined);
-      } else if (
-        descriptor.kind === "orgDevApp" &&
-        shouldOpenOrgSurfaceExternally(descriptor, url)
-      ) {
+      } else if (shouldOpenRestrictedSurfaceExternally(descriptor, url)) {
         void shell.openExternal(url);
       }
       return { action: "deny" };
@@ -722,8 +760,16 @@ export class T3BrowserSurfaceService {
   }
 
   private isAllowedNavigation(descriptor: BrowserSurfaceDescriptor, rawUrl: string): boolean {
-    if (descriptor.kind !== "orgDevApp") return isHttpUrl(rawUrl);
-    return evaluateOrgSurfaceNavigation(descriptor, rawUrl).allowed;
+    if (descriptor.kind === "orgDevApp") {
+      return evaluateOrgSurfaceNavigation(descriptor, rawUrl).allowed;
+    }
+    if (descriptor.kind === "devAppPreview") {
+      const expectedPreview = parseDevAppPreviewUrl(descriptor.initialUrl ?? "");
+      if (expectedPreview) {
+        return parseDevAppPreviewUrl(rawUrl)?.sourceId === expectedPreview.sourceId;
+      }
+    }
+    return isHttpUrl(rawUrl);
   }
 
   async navigate(tabId: string, url: string): Promise<void> {
@@ -735,11 +781,11 @@ export class T3BrowserSurfaceService {
       requestedUrl: url,
       httpDiagnostic: null,
     });
-    if (descriptor.kind === "orgDevApp") {
+    if (isDirectNavigationSurface(descriptor)) {
       const webContentsId = this.stateByTabId.get(tabId)?.webContentsId;
       const guest = webContentsId == null ? null : webContents.fromId(webContentsId);
       if (!guest || guest.isDestroyed()) {
-        this.pendingOrgNavigationByTabId.set(tabId, url);
+        this.pendingDirectNavigationByTabId.set(tabId, url);
         return;
       }
       if (guest.getURL() === url) {

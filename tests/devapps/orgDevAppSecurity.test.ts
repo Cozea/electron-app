@@ -81,7 +81,7 @@ describe("org DevApp security lifecycle", () => {
     expect(browserSurfaceService).toContain("getOrgDevAppNavigationScope");
     expect(browserSurfaceService).toContain('.reason === "external-https"');
     expect(browserSurfaceService).toContain('if (descriptor.kind !== "orgDevApp")');
-    expect(browserSurfaceService).toContain("this.pendingOrgNavigationByTabId.set(tabId, url)");
+    expect(browserSurfaceService).toContain("this.pendingDirectNavigationByTabId.set(tabId, url)");
     expect(browserSurfaceService).toContain("await guest.loadURL(url)");
     expect(browserSurfaceService).not.toContain("isSafeExternalUrl");
     expect(browserSurfaceService).toContain('browserSession.on("will-download"');

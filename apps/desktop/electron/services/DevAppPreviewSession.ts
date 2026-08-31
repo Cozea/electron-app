@@ -15,6 +15,7 @@ import type {
   DevAppPreviewView,
 } from "../../../../shared/devAppPreviewTypes"
 import type { DevAppWorkerBinding, DevAppWorkerState } from "./DevAppWorkerHost"
+import { buildDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol"
 
 /**
  * Runs an unpublished DevApp from a local directory.
@@ -256,8 +257,7 @@ export class DevAppPreviewSession {
     // the loop, and preflight covers the correctness the built output would have proved.
     if (view.dev?.url) return { kind: "devServer", url: view.dev.url }
 
-    const entry = this.confine(session, view.entry)
-    if (!entry) {
+    if (!this.confine(session, view.entry)) {
       return {
         kind: "unavailable",
         reason: `${view.entry} is not in the package.`,
@@ -266,7 +266,11 @@ export class DevAppPreviewSession {
           : `Build the app so ${view.entry} exists, or declare view.dev.url.`,
       }
     }
-    return { kind: "builtOutput", entryPath: entry }
+    return {
+      kind: "builtOutput",
+      entryPath: view.entry,
+      url: buildDevAppPreviewUrl(session.sourceId, view.entry),
+    }
   }
 
   private ensureWorker(session: OpenSession, grant: DevAppGrant): DevAppWorkerState | null {

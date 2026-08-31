@@ -11,6 +11,7 @@ import type { DevAppWorkerState } from "../../apps/desktop/electron/services/Dev
 
 const WORKSPACE = "/Users/admin/proj"
 const SOURCE = "/Users/admin/proj/apps/inventory"
+const SOURCE_ID = "b".repeat(32)
 
 const CLEAN_PREFLIGHT: OrgDevAppPreflightReport = {
   ok: true,
@@ -64,7 +65,7 @@ function makeSession(options: {
     fs: makeFs(files, options.links),
     join: (...parts) => parts.join("/"),
     resolve: (value) => value,
-    hashPath: () => "src_abc123",
+    hashPath: () => SOURCE_ID,
     preflight,
     trust,
     worker,
@@ -145,7 +146,7 @@ describe("Preview session — approval comes first", () => {
       files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
     })
     open()
-    const status = session.approve("src_abc123")
+    const status = session.approve(SOURCE_ID)
     expect(status?.status).toBe("running")
     expect(worker.start).toHaveBeenCalledWith(expect.objectContaining({
       entrypoint: `${SOURCE}/worker.js`,
@@ -160,9 +161,9 @@ describe("Preview session — approval comes first", () => {
       files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
     })
     open()
-    session.approve("src_abc123")
-    expect(worker.start.mock.calls[0]![0].publicationId).toBe("dev:src_abc123")
-    expect(developmentWorkerKey("src_abc123")).toBe("dev:src_abc123")
+    session.approve(SOURCE_ID)
+    expect(worker.start.mock.calls[0]![0].publicationId).toBe(`dev:${SOURCE_ID}`)
+    expect(developmentWorkerKey(SOURCE_ID)).toBe(`dev:${SOURCE_ID}`)
   })
 
   it("runs a view-only package with no worker at all", () => {
@@ -170,7 +171,7 @@ describe("Preview session — approval comes first", () => {
       files: { [`${SOURCE}/dist/index.html`]: "<html>" },
     })
     open()
-    const status = session.approve("src_abc123")
+    const status = session.approve(SOURCE_ID)
     expect(status?.status).toBe("running")
     expect(status?.status === "running" && status.worker).toBeNull()
     expect(worker.start).not.toHaveBeenCalled()
@@ -206,13 +207,13 @@ describe("Preview session — hot reload cannot widen a grant", () => {
       },
       join: (...parts) => parts.join("/"),
       resolve: (value) => value,
-      hashPath: () => "src_abc123",
+      hashPath: () => SOURCE_ID,
       preflight: () => CLEAN_PREFLIGHT,
       trust: new DevAppDevelopmentTrustStore(() => 1_000_000),
       worker,
     })
     session.open({ sourcePath: SOURCE, workspaceId: "ws_1", workspaceRoot: WORKSPACE, leaseId: "tile_1" })
-    session.approve("src_abc123")
+    session.approve(SOURCE_ID)
     return { session, worker, files }
   }
 
@@ -224,10 +225,10 @@ describe("Preview session — hot reload cannot widen a grant", () => {
       ...narrow,
       worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"] },
     })
-    const status = session.reload("src_abc123")
+    const status = session.reload(SOURCE_ID)
     expect(status?.status).toBe("needsApproval")
     expect(status?.status === "needsApproval" && status.missing).toEqual(["process.spawn"])
-    expect(worker.stop).toHaveBeenCalledWith("dev:src_abc123")
+    expect(worker.stop).toHaveBeenCalledWith(`dev:${SOURCE_ID}`)
   })
 
   it("keeps running when the manifest narrows, with the narrowed grant", () => {
@@ -236,7 +237,7 @@ describe("Preview session — hot reload cannot widen a grant", () => {
       ...narrow,
       worker: { entry: "worker.js", capabilities: [] },
     })
-    const status = session.reload("src_abc123")
+    const status = session.reload(SOURCE_ID)
     expect(status?.status).toBe("running")
     expect(status?.status === "running" && status.grant.capabilities).toEqual([])
   })
@@ -245,14 +246,14 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     // The host joins an already-running worker, so a view reload must not kill in-flight
     // worker work.
     const { session, worker } = running()
-    session.reload("src_abc123")
+    session.reload(SOURCE_ID)
     expect(worker.stop).not.toHaveBeenCalled()
   })
 
   it("advances a reload token the view can key off", () => {
     const { session } = running()
-    const before = session.status("src_abc123")
-    const after = session.reload("src_abc123")
+    const before = session.status(SOURCE_ID)
+    const after = session.reload(SOURCE_ID)
     expect(before?.status === "running" && before.reloadToken).toBe(0)
     expect(after?.status === "running" && after.reloadToken).toBe(1)
   })
@@ -260,14 +261,14 @@ describe("Preview session — hot reload cannot widen a grant", () => {
   it("stops the worker when the manifest is deleted mid-session", () => {
     const { session, worker, files } = running()
     delete files[manifestPath]
-    expect(session.reload("src_abc123")?.status).toBe("invalid")
-    expect(worker.stop).toHaveBeenCalledWith("dev:src_abc123")
+    expect(session.reload(SOURCE_ID)?.status).toBe("invalid")
+    expect(worker.stop).toHaveBeenCalledWith(`dev:${SOURCE_ID}`)
   })
 
   it("stops the worker when the manifest becomes unparsable", () => {
     const { session, worker, files } = running()
     files[manifestPath] = "{ broken"
-    expect(session.reload("src_abc123")?.status).toBe("invalid")
+    expect(session.reload(SOURCE_ID)?.status).toBe("invalid")
     expect(worker.stop).toHaveBeenCalled()
   })
 
@@ -282,7 +283,7 @@ describe("Preview session — where the view comes from", () => {
   const approved = (manifest: unknown, files: Record<string, string> = {}, links = {}) => {
     const made = makeSession({ manifest, files, links })
     made.open()
-    return made.session.approve("src_abc123")
+    return made.session.approve(SOURCE_ID)
   }
 
   it("prefers a declared dev server, so hot reload is available", () => {
@@ -302,7 +303,11 @@ describe("Preview session — where the view comes from", () => {
       view: { entry: "dist/index.html" },
     }, { [`${SOURCE}/dist/index.html`]: "<html>" })
     expect(status?.status === "running" && status.view)
-      .toEqual({ kind: "builtOutput", entryPath: `${SOURCE}/dist/index.html` })
+      .toEqual({
+        kind: "builtOutput",
+        entryPath: "dist/index.html",
+        url: `cozea-devapp://${SOURCE_ID}.dev/dist/index.html`,
+      })
   })
 
   it("says what to do when there is neither", () => {
@@ -340,7 +345,7 @@ describe("Preview session — where the view comes from", () => {
       links: { [`${SOURCE}/worker.js`]: "/usr/local/bin/anything" },
     })
     made.open()
-    const status = made.session.approve("src_abc123")
+    const status = made.session.approve(SOURCE_ID)
     expect(status?.status === "running" && status.worker).toBeNull()
     expect(made.worker.start).not.toHaveBeenCalled()
   })
@@ -378,9 +383,9 @@ describe("Preview session — preflight runs the whole time", () => {
       files: { [`${SOURCE}/dist/index.html`]: "<html>" },
     })
     open()
-    session.approve("src_abc123")
+    session.approve(SOURCE_ID)
     const before = preflight.mock.calls.length
-    session.reload("src_abc123")
+    session.reload(SOURCE_ID)
     expect(preflight.mock.calls.length).toBeGreaterThan(before)
   })
 })
@@ -397,10 +402,10 @@ describe("Preview session — closing", () => {
       files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
     })
     open()
-    session.approve("src_abc123")
-    session.close("src_abc123")
-    expect(worker.release).toHaveBeenCalledWith("dev:src_abc123", "tile_1")
-    expect(session.status("src_abc123")).toBeNull()
+    session.approve(SOURCE_ID)
+    session.close(SOURCE_ID)
+    expect(worker.release).toHaveBeenCalledWith(`dev:${SOURCE_ID}`, "tile_1")
+    expect(session.status(SOURCE_ID)).toBeNull()
   })
 
   it("is a no-op for a source that was never opened", () => {

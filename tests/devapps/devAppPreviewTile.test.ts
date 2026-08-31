@@ -68,10 +68,9 @@ describe("Preview tile — surface isolation reaches the descriptor", () => {
     expect(tileSource).toContain("devSourceId: sourceId")
   })
 
-  it("only ever loads a dev server as a URL", () => {
-    // Built output is served by the package protocol — the same path a published release
-    // takes — so nothing here turns a file path into a navigable URL.
-    expect(tileSource).toContain('view?.kind === "devServer" ? view.url : null')
+  it("loads both framework URLs and confined built output through the shared surface", () => {
+    expect(tileSource).toContain('view?.kind === "devServer" || view?.kind === "builtOutput"')
+    expect(tileSource).toContain("? view.url : null")
   })
 
   it("remounts the surface on reload instead of reusing the old build's tab", () => {
