@@ -41,6 +41,7 @@ import type {
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
 } from "../../../../shared/browserSurfaceTypes";
+import { partitionForDescriptor } from "../../../../shared/browserSurfaceSessions";
 import { browserHttpDiagnosticForResponse } from "../../../../shared/browserHttpDiagnostics";
 import {
   evaluateOrgDevAppNavigation,
@@ -93,24 +94,6 @@ interface BrowserSurfaceServiceOptions {
   pictureInPicturePreloadPath: string;
 }
 
-function normalizeSessionSegment(value: string): string {
-  const normalized = value.trim().replace(/[^a-z0-9_-]+/gi, "-");
-  return normalized.length > 0 ? normalized.slice(0, 120) : "default";
-}
-
-function partitionForDescriptor(descriptor: BrowserSurfaceDescriptor): string {
-  if (descriptor.storageScope === "global") {
-    return "persist:cozea-browser-global";
-  }
-  if (descriptor.storageScope === "orgDevApp" && descriptor.publicationId) {
-    return `persist:cozea-devapp-${normalizeSessionSegment(descriptor.publicationId)}`;
-  }
-  if (descriptor.storageScope === "workspace" && descriptor.workspaceId) {
-    return `persist:cozea-browser-workspace-${normalizeSessionSegment(descriptor.workspaceId)}`;
-  }
-  return `cozea-browser-ephemeral-${normalizeSessionSegment(descriptor.tileId)}`;
-}
-
 function navUrl(state: T3PreviewManager.PreviewTabState): string | null {
   return state.navStatus.kind === "Idle" ? null : state.navStatus.url;
 }
@@ -140,6 +123,19 @@ function shouldOpenOrgSurfaceExternally(
 }
 
 function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): void {
+  if (descriptor.kind === "devAppPreview") {
+    // A preview is unreviewed code. It gets its own session and nothing else's.
+    if (descriptor.storageScope !== "devAppPreview" || !descriptor.devSourceId) {
+      throw new Error("A DevApp preview surface needs its own preview session.");
+    }
+    if (!/^[0-9a-f]{32}$/.test(descriptor.devSourceId)) {
+      throw new Error("The DevApp preview surface descriptor is incomplete.");
+    }
+    return;
+  }
+  if (descriptor.storageScope === "devAppPreview") {
+    throw new Error("Only a DevApp preview may use a DevApp preview session.");
+  }
   if (descriptor.kind !== "orgDevApp") {
     if (descriptor.storageScope === "orgDevApp") {
       throw new Error("Only an Organization DevApp may use an Organization DevApp session.");
