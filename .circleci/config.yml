@@ -53,6 +53,7 @@ commands:
             set -euo pipefail
             corepack enable
             corepack prepare pnpm@11.10.0 --activate
+            cd vendor/t3code
             pnpm --version
 
 jobs:
