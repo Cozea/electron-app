@@ -1,6 +1,44 @@
 import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
+const devAppCapabilityValidator = v.union(
+  v.literal("project.read"),
+  v.literal("project.write"),
+  v.literal("project.metadata"),
+  v.literal("git.read"),
+  v.literal("git.write"),
+  v.literal("fs.read"),
+  v.literal("fs.write"),
+  v.literal("terminal.spawn"),
+  v.literal("process.spawn"),
+  v.literal("net.outbound"),
+  v.literal("shell.open"),
+  v.literal("shell.reveal"),
+)
+
+const devAppPartsValidator = v.object({
+  view: v.optional(
+    v.object({
+      source: v.union(v.literal("native"), v.literal("package")),
+      rendererId: v.optional(v.string()),
+    }),
+  ),
+  worker: v.optional(
+    v.object({
+      capabilities: v.array(devAppCapabilityValidator),
+      protocolVersion: v.optional(v.number()),
+      exposesTools: v.optional(v.boolean()),
+    }),
+  ),
+  service: v.optional(
+    v.object({
+      runtimeKind: v.union(v.literal("static"), v.literal("node"), v.literal("container")),
+      location: v.union(v.literal("device"), v.literal("hosted")),
+      singleton: v.optional(v.boolean()),
+    }),
+  ),
+})
+
 export default defineSchema({
   // Device principals. In the product model one physical device is one user.
   users: defineTable({
@@ -511,27 +549,24 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_status_and_updated_at", ["status", "updatedAt"]),
 
-  // Append-only DevApp artifact releases. Consumer open path uses storage +
-  // content hash, never a localhost command.
+  // Append-only DevApp artifact releases. Parts are immutable release data and
+  // drive surface discovery; consumer open paths never receive localhost recipes.
   devAppReleases: defineTable({
     publicationId: v.id("devAppPublications"),
     projectId: v.id("projects"),
     version: v.number(),
     framework: v.string(),
-    artifactStorageId: v.optional(v.id("_storage")),
-    entryPath: v.optional(v.string()),
-    contentHash: v.optional(v.string()),
-    devCommand: v.optional(v.string()),
-    devPort: v.optional(v.number()),
-    sourceRevision: v.optional(v.string()),
-    sourceFingerprint: v.optional(v.string()),
-    runtimeKind: v.optional(v.union(v.literal("static"), v.literal("service"))),
+    artifactStorageId: v.id("_storage"),
+    entryPath: v.string(),
+    contentHash: v.string(),
+    runtimeKind: v.union(v.literal("static"), v.literal("service")),
     manifestVersion: v.optional(v.number()),
     platform: v.optional(v.string()),
     arch: v.optional(v.string()),
     permissionSetHash: v.optional(v.string()),
     publisherIdentityKey: v.optional(v.string()),
     publisherDeviceLabel: v.optional(v.string()),
+    parts: devAppPartsValidator,
     createdBy: v.id("users"),
     createdAt: v.number(),
   })

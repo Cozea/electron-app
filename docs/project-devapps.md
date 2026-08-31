@@ -134,8 +134,10 @@ Every org member sees the same DevApp list. Opening from Settings uses the same 
 ## Data model
 
 - `devAppPublications`: org-scoped, `visibility: "organization"`, editable name/logo, active release pointer, `projectId` is publisher-only
-- `devAppReleases`: append-only version, artifact identity, runtime kind, manifest/platform/arch,
-  permission hash, publisher device identity, and framework. Legacy recipe fields remain unused.
+- `devAppReleases`: append-only version, required artifact identity, runtime kind, composable
+  parts, manifest/platform/arch, permission hash, publisher device identity, and framework.
+  Published surfaces consume the stored parts directly; no localhost recipe fields or runtime
+  defaults remain on organization releases.
 
 The machine-local `localProjectDevAppStore` is compatibility-only for already-persisted development
 tiles. It is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must

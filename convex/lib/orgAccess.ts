@@ -1,5 +1,7 @@
 import { ConvexError } from "convex/values"
 
+import type { DevAppParts } from "../../shared/devAppParts"
+
 import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 import { isGroupIdentityKey } from "../../shared/deviceIdentity"
@@ -110,6 +112,7 @@ export function toConsumerDevApp(input: {
     permissionSetHash: string | null
     publisherIdentityKey: string | null
     publisherDeviceLabel: string | null
+    parts: DevAppParts
   }
 } {
   const organizationId = input.publication.organizationId
@@ -132,15 +135,16 @@ export function toConsumerDevApp(input: {
       id: input.release._id,
       version: input.release.version,
       framework: input.release.framework,
-      entryPath: input.release.entryPath ?? "index.html",
+      entryPath: input.release.entryPath,
       contentHash: input.release.contentHash,
-      runtimeKind: input.release.runtimeKind ?? "static",
+      runtimeKind: input.release.runtimeKind,
       manifestVersion: input.release.manifestVersion ?? null,
       platform: input.release.platform ?? null,
       arch: input.release.arch ?? null,
       permissionSetHash: input.release.permissionSetHash ?? null,
       publisherIdentityKey: input.release.publisherIdentityKey ?? null,
       publisherDeviceLabel: input.release.publisherDeviceLabel ?? null,
+      parts: input.release.parts,
     },
   }
 }

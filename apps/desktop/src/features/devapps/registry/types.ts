@@ -1,6 +1,6 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
+import type { DevAppParts } from "@shared/devAppParts"
 
-import type { DevAppParts } from "@/features/devapps/registry/parts"
 import type { RenderableWorkbenchTileType } from "@/features/projects/lib/workbenchTileRegistry"
 
 export type DevAppCategoryId =
