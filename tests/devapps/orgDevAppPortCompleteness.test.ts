@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
-import type { WorkbenchBrowserViewState } from "@shared/electronApiTypes";
-import type { BrowserCreateOptions } from "@shared/browserHostTypes";
-import { BrowserTileModel } from "@/features/projects/browser/browserTileModel";
+import { describe, expect, it } from "vitest";
+
 import {
   getDockComponentName,
   getPanelConstraintsForTile,
@@ -10,43 +10,16 @@ import {
   resolveTabGroupPreset,
 } from "@/features/projects/lib/workbenchDockview";
 
-const DEVAPP_URL = `cozea-devapp://${"a".repeat(64)}.release/index.html`;
+const tileSource = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+  ),
+  "utf8",
+);
 
-function createBrowserState(tileId: string): WorkbenchBrowserViewState {
-  return {
-    tileId,
-    url: DEVAPP_URL,
-    title: "Org DevApp",
-    isLoading: false,
-    canGoBack: false,
-    canGoForward: false,
-    favicon: null,
-    focused: false,
-    visible: false,
-    isDevToolsOpen: false,
-    storageScope: "orgDevApp",
-    zoomFactor: 1,
-    canZoomIn: true,
-    canZoomOut: true,
-    find: {
-      query: "",
-      visible: false,
-      matchCase: false,
-      activeMatchOrdinal: 0,
-      matches: 0,
-      finalUpdate: false,
-    },
-    loadError: null,
-  };
-}
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
-
-describe("Org DevApp #114 port completeness", () => {
-  it("maps Org DevApps to their dedicated always-mounted dock component", () => {
+describe("Org DevApp T3 surface completeness", () => {
+  it("keeps the dedicated always-mounted dock component", () => {
     expect(getDockComponentName("orgDevApp")).toBe("orgDevApp");
     expect(getPanelRendererForTile("orgDevApp")).toBe("always");
     expect(getPanelConstraintsForTile("orgDevApp")).toEqual({
@@ -63,52 +36,30 @@ describe("Org DevApp #114 port completeness", () => {
     expect(getPanelRendererForTile("assistantChat")).toBe("always");
   });
 
-  it("forwards the isolated partition and navigation policy to Electron", async () => {
-    const ensureTile = vi.fn(async () => createBrowserState("org-devapp-tile"));
-    const destroyTile = vi.fn(async () => undefined);
-    const setBounds = vi.fn(async () => true);
-    const onStateChange = vi.fn(() => () => undefined);
-
-    vi.stubGlobal("window", {
-      electronAPI: {
-        workbenchBrowser: {
-          ensureTile,
-          destroyTile,
-          setBounds,
-          onStateChange,
-        },
-      },
-    });
-
-    const model = new BrowserTileModel("org-devapp-tile");
-    const options: BrowserCreateOptions = {
-      initialUrl: DEVAPP_URL,
-      storageScope: "orgDevApp",
-      workspaceId: "publication-1",
-      partitionKey: "publication-1",
-      navigationPolicy: "orgDevApp",
-    };
-
-    await model.initialize(options);
-
-    expect(ensureTile).toHaveBeenCalledWith({
-      tileId: "org-devapp-tile",
-      ...options,
-    });
-
-    const hiddenModel = new BrowserTileModel("hidden-org-devapp-tile");
-    await hiddenModel.setVisible(false, options);
-    expect(ensureTile).toHaveBeenCalledWith({
-      tileId: "hidden-org-devapp-tile",
-      ...options,
-    });
-    expect(setBounds).toHaveBeenCalledWith({
-      tileId: "hidden-org-devapp-tile",
-      visible: false,
-    });
-
-    await model.dispose();
-    await hiddenModel.dispose();
-    expect(destroyTile).toHaveBeenCalledWith({ tileId: "org-devapp-tile" });
+  it("keeps artifact, trust, environment, lease, logs, and restart flows independent of rendering", () => {
+    for (const operation of [
+      "prepareArtifact",
+      "getRuntimeEnvironment",
+      "setRuntimeEnvironment",
+      "getRuntimeTrust",
+      "approveRuntime",
+      "startRuntime",
+      "releaseRuntime",
+      "getRuntimeState",
+      "stopRuntime",
+    ]) {
+      expect(tileSource).toMatch(new RegExp(`orgDevApp\\s*\\.\\s*${operation}`));
+    }
+    expect(tileSource).toContain("<BrowserSurfaceSlot");
+    expect(tileSource).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
+    expect(tileSource).toContain('storageScope: "orgDevApp"');
+    expect(tileSource).toContain('kind: "orgDevApp"');
+    expect(tileSource).toContain("contentHash: artifact.contentHash");
+    expect(tileSource).toContain("runtimeGeneration");
+    expect(tileSource).toContain("setPreparedOrigin(null)");
+    expect(tileSource).not.toContain("<BrowserUnavailableSurface");
+    expect(tileSource).toContain("runtimeState?.logs");
+    expect(tileSource).not.toContain("shell.openExternal");
+    expect(tileSource).not.toContain("electronAPI.shell.openExternal");
   });
 });

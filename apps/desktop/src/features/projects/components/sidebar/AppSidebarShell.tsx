@@ -71,8 +71,7 @@ function SidebarResizeRail() {
       } else {
         drag.root.style.setProperty("--sidebar-width", `${drag.startWidth}px`)
       }
-      // Final sync point for layouts that don't observe the container
-      // (dockview panes, native browser view bounds).
+      // Final sync point for layouts that don't observe the container.
       window.dispatchEvent(new Event("resize"))
     } else {
       toggleSidebar()

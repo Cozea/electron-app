@@ -45,7 +45,7 @@ export function WorkbenchActivity({ mode, name, children }: WorkbenchActivityPro
             ? "pointer-events-none absolute inset-0 overflow-hidden"
             : "relative h-full w-full bg-background",
         )}
-        style={hidden ? { opacity: 0, zIndex: 0 } : { zIndex: 1 }}
+        style={hidden ? { opacity: 0, zIndex: 0 } : undefined}
       >
         {children}
       </div>

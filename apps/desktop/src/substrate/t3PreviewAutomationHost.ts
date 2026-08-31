@@ -1,32 +1,56 @@
-import { WS_METHODS } from "@cozea/contracts"
+import { WS_METHODS } from "@cozea/contracts";
 import type {
-  PreviewAutomationActionEvent,
+  PreviewAutomationClickInput,
+  PreviewAutomationEvaluateInput,
+  PreviewAutomationNavigateInput,
   PreviewAutomationOperation,
+  PreviewAutomationOpenInput,
+  PreviewAutomationPressInput,
   PreviewAutomationRequest,
+  PreviewAutomationResizeInput,
+  PreviewAutomationResizeResult,
   PreviewAutomationResponse,
+  PreviewAutomationScrollInput,
+  PreviewAutomationSetColorSchemeInput,
+  PreviewAutomationSetColorSchemeResult,
   PreviewAutomationStatus,
   PreviewAutomationStreamEvent,
-} from "@cozea/contracts/t3"
-import type { T3RpcSessionHandle } from "@cozea/client-runtime"
+  PreviewAutomationTypeInput,
+  PreviewAutomationWaitForInput,
+  PreviewRenderedViewportSize,
+  PreviewViewportSetting,
+  ScopedThreadRef,
+} from "@cozea/contracts/t3";
+import type { T3RpcSessionHandle } from "@cozea/client-runtime";
+import type { BrowserSurfaceInventoryEntry } from "@shared/browserSurfaceTypes";
 
+import {
+  readActiveBrowserRecordingTargets,
+  startBrowserRecording,
+  stopBrowserRecording,
+} from "@/features/projects/browser/browserRecording";
+import { useBrowserSurfaceStore } from "@/features/projects/browser/browserSurfaceStore";
+import { normalizeUrlInput } from "@/features/projects/browser/urlInput";
+import { commitBrowserViewportChange } from "@/features/projects/browser/browserViewportActions";
+import { readBrowserViewport } from "@/features/projects/browser/browserViewportStore";
+import { resolvePreviewViewport } from "@/features/projects/browser/previewViewport";
+import { isPreviewViewportReady } from "@/features/projects/browser/previewViewportReadiness";
+import { shouldRollbackPreviewViewport } from "@/features/projects/browser/previewViewportRollback";
 import {
   buildDevServerRunKey,
   ensureDevServerRun,
   useDevServerRunStore,
-} from "@/features/projects/devserver/devServerRunStore"
+} from "@/features/projects/devserver/devServerRunStore";
 import {
   ensureDevServerSurface,
   focusDevServerSurface,
   releaseDevServerSurfaceLease,
   renewDevServerSurfaceLease,
   type DevServerSurfaceHandle,
-} from "@/features/projects/devserver/devServerSurfaceController"
-import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+} from "@/features/projects/devserver/devServerSurfaceController";
+import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore";
 
 const SUPPORTED_OPERATIONS = [
-  "devServerStatus",
-  "devServerEnsure",
-  "devServerAttach",
   "status",
   "open",
   "navigate",
@@ -35,145 +59,284 @@ const SUPPORTED_OPERATIONS = [
   "type",
   "press",
   "scroll",
+  "evaluate",
   "waitFor",
-] as const satisfies readonly PreviewAutomationOperation[]
+  "recordingStart",
+  "recordingStop",
+  "resize",
+  "setColorScheme",
+  "devServerStatus",
+  "devServerEnsure",
+  "devServerAttach",
+] as const satisfies readonly PreviewAutomationOperation[];
 
-const HOST_CLIENT_ID = "cozea-desktop-dev-server"
+const HOST_CLIENT_ID = "cozea-desktop-dev-server";
 
 // A fresh module instance must re-register the long-lived stream during Vite
 // HMR. React preserves the cutover hook across compatible refreshes, so a
 // stable dependency list would otherwise leave the old module's listener
 // attached while the broker continues routing requests to it.
-export const T3_PREVIEW_AUTOMATION_HOST_REVISION = Date.now()
+export const T3_PREVIEW_AUTOMATION_HOST_REVISION = Date.now();
 
 interface T3PreviewAutomationCandidate {
-  session: T3RpcSessionHandle
-  baseUrl: string
+  session: T3RpcSessionHandle;
+  baseUrl: string;
 }
 
 interface ThreadWorkbenchContext {
-  projectId: string
-  laneId: string
-  workspaceId: string
-  assistantTileId: string
+  projectId: string;
+  laneId: string;
+  workspaceId: string;
+  assistantTileId: string;
+  activeTileId: string | null;
+  tileIds: ReadonlySet<string>;
 }
 
 interface ThreadSurfaceState {
-  context: ThreadWorkbenchContext
-  handle: DevServerSurfaceHandle
+  context: ThreadWorkbenchContext;
+  handle: DevServerSurfaceHandle;
 }
 
 interface ActiveHostConnection {
-  owner: symbol
-  candidate: T3PreviewAutomationCandidate
-  stop: () => Promise<void>
-  removeFocusListeners: () => void
+  owner: symbol;
+  candidate: T3PreviewAutomationCandidate;
+  environmentId: string;
+  stop: () => Promise<void>;
+  removeFocusListeners: () => void;
 }
 
 interface T3PreviewAutomationRuntime {
-  candidates: Map<symbol, T3PreviewAutomationCandidate>
-  active: ActiveHostConnection | null
-  transition: Promise<void>
-  generation: number
-  surfacesByThread: Map<string, ThreadSurfaceState>
-  actionTimelineByTile: Map<string, PreviewAutomationActionEvent[]>
-  requestQueues: Map<string, Promise<void>>
+  candidates: Map<symbol, T3PreviewAutomationCandidate>;
+  active: ActiveHostConnection | null;
+  transition: Promise<void>;
+  generation: number;
+  surfacesByThread: Map<string, ThreadSurfaceState>;
+  lastControlledSurfaceByThread: Map<string, string>;
+  requestQueues: Map<string, Promise<void>>;
 }
 
-const RUNTIME_KEY = Symbol.for("cozea.t3PreviewAutomationHost")
-const runtimeHost = globalThis as { [RUNTIME_KEY]?: T3PreviewAutomationRuntime }
+const RUNTIME_KEY = Symbol.for("cozea.t3PreviewAutomationHost");
+const runtimeHost = globalThis as { [RUNTIME_KEY]?: T3PreviewAutomationRuntime };
 const runtime: T3PreviewAutomationRuntime = (runtimeHost[RUNTIME_KEY] ??= {
   candidates: new Map(),
   active: null,
   transition: Promise.resolve(),
   generation: 0,
   surfacesByThread: new Map(),
-  actionTimelineByTile: new Map(),
+  lastControlledSurfaceByThread: new Map(),
   requestQueues: new Map(),
-})
+});
 // Preserve HMR-stable runtimes created before request serialization was added.
-runtime.requestQueues ||= new Map()
+runtime.requestQueues ||= new Map();
+runtime.lastControlledSurfaceByThread ||= new Map();
 // Promises created by the previous module instance cannot be resumed after a
 // Vite replacement. Keeping those tails would permanently block every later
 // request for that thread even though the replacement host stream is healthy.
-runtime.requestQueues.clear()
+runtime.requestQueues.clear();
 
 class PreviewHostError extends Error {
-  readonly tag: string
-  readonly detail?: unknown
+  readonly tag: string;
+  readonly detail?: unknown;
 
-  constructor(
-    tag: string,
-    message: string,
-    detail?: unknown,
-  ) {
-    super(message)
-    this.tag = tag
-    this.detail = detail
+  constructor(tag: string, message: string, detail?: unknown) {
+    super(message);
+    this.tag = tag;
+    this.detail = detail;
   }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function findThreadWorkbenchContext(threadId: string): ThreadWorkbenchContext | null {
-  const matches: Array<ThreadWorkbenchContext & { createdAt: number }> = []
+  const matches: Array<ThreadWorkbenchContext & { createdAt: number }> = [];
   for (const workbench of Object.values(useProjectWorkbenchStore.getState().workbenches)) {
-    if (!workbench.workspaceId) continue
+    if (!workbench.workspaceId) continue;
     for (const tileId of workbench.order) {
-      const tile = workbench.tiles[tileId]
-      if (tile?.type !== "assistantChat" || tile.threadId !== threadId) continue
+      const tile = workbench.tiles[tileId];
+      if (tile?.type !== "assistantChat" || tile.threadId !== threadId) continue;
       matches.push({
         projectId: workbench.projectId,
         laneId: workbench.laneId,
         workspaceId: workbench.workspaceId,
         assistantTileId: tile.id,
+        activeTileId: workbench.activeTileId,
+        tileIds: new Set(Object.keys(workbench.tiles)),
         createdAt: tile.createdAt,
-      })
+      });
     }
   }
-  const match = matches.sort((left, right) => right.createdAt - left.createdAt)[0]
-  if (!match) return null
-  const { createdAt: _createdAt, ...context } = match
-  return context
+  const match = matches.sort((left, right) => right.createdAt - left.createdAt)[0];
+  if (!match) return null;
+  const { createdAt: _createdAt, ...context } = match;
+  return context;
 }
 
 function isSurfaceStillPresent(state: ThreadSurfaceState): boolean {
   return Object.values(useProjectWorkbenchStore.getState().workbenches).some((workbench) => {
-    const tile = workbench.tiles[state.handle.tileId]
-    return tile?.type === "devServer" && !tile.devAppId
-  })
+    const tile = workbench.tiles[state.handle.tileId];
+    return tile?.type === "devServer" && !tile.devAppId;
+  });
 }
 
 function isDevServerTilePresent(tileId: string): boolean {
   return Object.values(useProjectWorkbenchStore.getState().workbenches).some((workbench) => {
-    const tile = workbench.tiles[tileId]
-    return tile?.type === "devServer" && !tile.devAppId
-  })
+    const tile = workbench.tiles[tileId];
+    return tile?.type === "devServer" && !tile.devAppId;
+  });
 }
 
-function hasDevServerSurface(context: ThreadWorkbenchContext): boolean {
-  return Object.values(useProjectWorkbenchStore.getState().workbenches).some((workbench) =>
-    workbench.workspaceId === context.workspaceId &&
-    workbench.laneId === context.laneId &&
-    workbench.order.some((tileId) => {
-      const tile = workbench.tiles[tileId]
-      return tile?.type === "devServer" && !tile.devAppId
-    }),
-  )
+interface CozeaPreviewAutomationSurfaceStatus extends PreviewAutomationStatus {
+  readonly surfaces: ReadonlyArray<{
+    readonly tabId: string;
+    readonly kind: BrowserSurfaceInventoryEntry["kind"];
+    readonly title: string;
+    readonly url: string | null;
+    readonly active: boolean;
+    readonly controller: BrowserSurfaceInventoryEntry["controller"];
+  }>;
+}
+
+interface ExecutablePreviewWebview extends Element {
+  executeJavaScript: (code: string, userGesture?: boolean) => Promise<unknown>;
+}
+
+const waitForDelay = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+function previewBridge() {
+  return window.desktopBridge?.preview ?? null;
+}
+
+function eligibleSurfaces(
+  context: ThreadWorkbenchContext,
+  surfaces: ReadonlyArray<BrowserSurfaceInventoryEntry>,
+): BrowserSurfaceInventoryEntry[] {
+  return surfaces.filter((surface) => context.tileIds.has(surface.tileId));
+}
+
+function resolveSurfaceTarget(
+  context: ThreadWorkbenchContext,
+  surfaces: ReadonlyArray<BrowserSurfaceInventoryEntry>,
+  requestedTabId: string | null,
+  lastControlledTabId: string | null,
+): BrowserSurfaceInventoryEntry | null {
+  const eligible = eligibleSurfaces(context, surfaces);
+  if (requestedTabId) {
+    return (
+      eligible.find(
+        (surface) => surface.runtimeTabId === requestedTabId || surface.tileId === requestedTabId,
+      ) ?? null
+    );
+  }
+  if (lastControlledTabId) {
+    const controlled = eligible.find((surface) => surface.runtimeTabId === lastControlledTabId);
+    if (controlled) return controlled;
+  }
+  if (context.activeTileId) {
+    return eligible.find((surface) => surface.tileId === context.activeTileId) ?? null;
+  }
+  return null;
+}
+
+function surfaceInventoryStatus(
+  surfaces: ReadonlyArray<BrowserSurfaceInventoryEntry>,
+): CozeaPreviewAutomationSurfaceStatus["surfaces"] {
+  return surfaces.map((surface) => ({
+    tabId: surface.runtimeTabId,
+    kind: surface.kind,
+    title: surface.title,
+    url: surface.url,
+    active: surface.active,
+    controller: surface.controller,
+  }));
+}
+
+const findPreviewWebview = (runtimeTabId: string): ExecutablePreviewWebview | null =>
+  Array.from(document.querySelectorAll<ExecutablePreviewWebview>("webview[data-preview-tab]")).find(
+    (candidate) => candidate.getAttribute("data-preview-tab") === runtimeTabId,
+  ) ?? null;
+
+async function readWebviewViewport(
+  webview: ExecutablePreviewWebview,
+): Promise<PreviewRenderedViewportSize | null> {
+  const value = await webview.executeJavaScript(
+    "({ width: window.innerWidth, height: window.innerHeight })",
+  );
+  if (typeof value !== "object" || value === null) return null;
+  const { width, height } = value as { readonly width?: unknown; readonly height?: unknown };
+  return typeof width === "number" &&
+    Number.isInteger(width) &&
+    width > 0 &&
+    typeof height === "number" &&
+    Number.isInteger(height) &&
+    height > 0
+    ? { width, height }
+    : null;
+}
+
+async function readRenderedViewport(
+  runtimeTabId: string,
+): Promise<PreviewRenderedViewportSize | null> {
+  const webview = findPreviewWebview(runtimeTabId);
+  return webview ? await readWebviewViewport(webview) : null;
+}
+
+function readDeclaredViewport(
+  webview: ExecutablePreviewWebview | null,
+): PreviewRenderedViewportSize | null {
+  const width = Number(webview?.getAttribute("data-preview-css-width"));
+  const height = Number(webview?.getAttribute("data-preview-css-height"));
+  return Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0
+    ? { width, height }
+    : null;
+}
+
+async function waitForRenderedViewport(
+  runtimeTabId: string,
+  setting: PreviewViewportSetting,
+  timeoutMs: number,
+): Promise<PreviewRenderedViewportSize> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    try {
+      const webview = findPreviewWebview(runtimeTabId);
+      const appliedSettingKey = webview?.getAttribute("data-preview-viewport-key") ?? null;
+      const declaredViewport = readDeclaredViewport(webview);
+      const renderedViewport = webview ? await readWebviewViewport(webview) : null;
+      if (
+        renderedViewport &&
+        isPreviewViewportReady({
+          setting,
+          appliedSettingKey,
+          declaredViewport,
+          renderedViewport,
+        })
+      ) {
+        return renderedViewport;
+      }
+    } catch {
+      // Registration and crash recovery may transiently replace the guest.
+    }
+    await waitForDelay(50);
+  }
+  throw new PreviewHostError(
+    "PreviewAutomationTimeoutError",
+    `Preview viewport for tab ${runtimeTabId} was not rendered within ${timeoutMs}ms.`,
+  );
 }
 
 async function ensureThreadSurface(
   threadId: string,
   options: {
-    preferredTileId?: string
-    forceNew?: boolean
+    preferredTileId?: string;
+    forceNew?: boolean;
   } = {},
 ): Promise<ThreadSurfaceState> {
-  const existing = runtime.surfacesByThread.get(threadId)
+  const existing = runtime.surfacesByThread.get(threadId);
   if (
     existing &&
     isSurfaceStillPresent(existing) &&
@@ -181,20 +344,20 @@ async function ensureThreadSurface(
     !options.forceNew &&
     renewDevServerSurfaceLease(existing.handle.tileId, existing.handle.leaseToken)
   ) {
-    return existing
+    return existing;
   }
 
   if (existing) {
-    releaseDevServerSurfaceLease(existing.handle.tileId, existing.handle.leaseToken)
-    runtime.surfacesByThread.delete(threadId)
+    releaseDevServerSurfaceLease(existing.handle.tileId, existing.handle.leaseToken);
+    runtime.surfacesByThread.delete(threadId);
   }
 
-  const context = findThreadWorkbenchContext(threadId)
+  const context = findThreadWorkbenchContext(threadId);
   if (!context) {
     throw new PreviewHostError(
-      "PreviewAutomationUnavailableError",
+      "PreviewAutomationTabNotFoundError",
       "No open agent tile is bound to this thread in the project workbench.",
-    )
+    );
   }
 
   const handle = await ensureDevServerSurface({
@@ -203,54 +366,69 @@ async function ensureThreadSurface(
     preferredTileId: options.preferredTileId,
     forceNew: options.forceNew,
     focus: false,
-  })
-  const state = { context, handle }
-  runtime.surfacesByThread.set(threadId, state)
-  return state
+  });
+  const state = { context, handle };
+  runtime.surfacesByThread.set(threadId, state);
+  return state;
 }
 
-async function waitForBrowserTile(tileId: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() <= deadline) {
-    if (await window.electronAPI.workbenchBrowser.getState({ tileId })) return
-    await new Promise((resolve) => window.setTimeout(resolve, 25))
-  }
-  throw new PreviewHostError(
-    "PreviewAutomationTimeoutError",
-    "The Dev Server preview surface did not initialize before the request timed out.",
-  )
-}
-
-async function readStatus(tileId: string | null): Promise<PreviewAutomationStatus> {
-  if (!tileId) {
+async function readStatus(
+  context: ThreadWorkbenchContext,
+  requestedTabId: string | null,
+  lastControlledTabId: string | null,
+): Promise<CozeaPreviewAutomationSurfaceStatus> {
+  const bridge = previewBridge();
+  const surfaces = bridge ? eligibleSurfaces(context, await bridge.listSurfaces()) : [];
+  const target = resolveSurfaceTarget(context, surfaces, requestedTabId, lastControlledTabId);
+  const inventory = surfaceInventoryStatus(surfaces);
+  if (!bridge || !target) {
     return {
-      available: true,
+      available: false,
+      visible: false,
+      tabId: requestedTabId,
+      url: null,
+      title: requestedTabId && isDevServerTilePresent(requestedTabId) ? "Dev Server" : null,
+      loading: false,
+      surfaces: inventory,
+    };
+  }
+  const status = await bridge.automation.status(target.runtimeTabId);
+  const presentation = useBrowserSurfaceStore.getState().byTabId[target.runtimeTabId];
+  const viewportSetting = readBrowserViewport(target.runtimeTabId);
+  const viewport = await readRenderedViewport(target.runtimeTabId).catch(() => null);
+  return {
+    ...status,
+    tabId: target.runtimeTabId,
+    visible: presentation?.visible ?? false,
+    viewportSetting,
+    ...(viewport ? { viewport } : {}),
+    surfaces: inventory,
+  };
+}
+
+async function readStatusForTile(
+  context: ThreadWorkbenchContext,
+  tileId: string | null,
+): Promise<CozeaPreviewAutomationSurfaceStatus> {
+  const bridge = previewBridge();
+  if (!tileId) {
+    const surfaces = bridge ? eligibleSurfaces(context, await bridge.listSurfaces()) : [];
+    return {
+      available: false,
       visible: false,
       tabId: null,
       url: null,
       title: null,
       loading: false,
-    }
+      surfaces: surfaceInventoryStatus(surfaces),
+    };
   }
-  const state = await window.electronAPI.workbenchBrowser.getState({ tileId })
-  if (!state && isDevServerTilePresent(tileId)) {
-    return {
-      available: true,
-      visible: false,
-      tabId: tileId,
-      url: null,
-      title: "Dev Server",
-      loading: false,
-    }
-  }
-  return {
-    available: Boolean(state),
-    visible: Boolean(state?.visible),
-    tabId: state ? tileId : null,
-    url: state?.url || null,
-    title: state?.title || null,
-    loading: Boolean(state?.isLoading),
-  }
+  const surface = bridge
+    ? (eligibleSurfaces(context, await bridge.listSurfaces()).find(
+        (candidate) => candidate.tileId === tileId,
+      ) ?? null)
+    : null;
+  return await readStatus(context, surface?.runtimeTabId ?? tileId, null);
 }
 
 async function readDevServerStatus(
@@ -258,409 +436,504 @@ async function readDevServerStatus(
   surface: ThreadSurfaceState | null,
   reusedProcess: boolean,
 ): Promise<{
-  running: boolean
-  ready: boolean
-  port: number | null
-  runId: string | null
-  phase: 'bootstrapping' | 'launching' | 'running' | null
-  headless: boolean
-  reusedProcess: boolean
-  surface: PreviewAutomationStatus
+  running: boolean;
+  ready: boolean;
+  port: number | null;
+  runId: string | null;
+  phase: "bootstrapping" | "launching" | "running" | null;
+  headless: boolean;
+  reusedProcess: boolean;
+  surface: PreviewAutomationStatus;
 }> {
   const process = await window.electronAPI.devServer.getState({
     workspaceId: context.workspaceId,
     laneId: context.laneId,
-  })
-  const surfaceStatus = await readStatus(surface?.handle.tileId ?? null)
+  });
+  const surfaceStatus = await readStatusForTile(context, surface?.handle.tileId ?? null);
+  const hasWorkbenchSurface = Array.from(context.tileIds).some(isDevServerTilePresent);
   return {
     running: process.running,
     ready: process.ready,
     port: process.port,
     runId: process.runId,
     phase: process.phase,
-    headless: process.running && !hasDevServerSurface(context),
+    headless: process.running && !hasWorkbenchSurface,
     reusedProcess,
     surface: surfaceStatus,
-  }
+  };
 }
 
 async function waitForDevServerLaunchContext(
   context: ThreadWorkbenchContext,
   timeoutMs: number,
 ): Promise<string> {
-  const runKey = buildDevServerRunKey(context.workspaceId, context.laneId)
-  const deadline = Date.now() + Math.min(timeoutMs, 5_000)
+  const runKey = buildDevServerRunKey(context.workspaceId, context.laneId);
+  const deadline = Date.now() + Math.min(timeoutMs, 5_000);
   while (Date.now() <= deadline) {
-    const terminalId = useDevServerRunStore.getState().contexts[runKey]?.terminalId
+    const terminalId = useDevServerRunStore.getState().contexts[runKey]?.terminalId;
     if (terminalId) {
-      const terminalIds = await window.electronAPI.terminal.list({ workspaceId: context.workspaceId })
-      if (terminalIds.includes(terminalId)) return runKey
+      const terminalIds = await window.electronAPI.terminal.list({
+        workspaceId: context.workspaceId,
+      });
+      if (terminalIds.includes(terminalId)) return runKey;
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 25))
+    await new Promise((resolve) => window.setTimeout(resolve, 25));
   }
   throw new PreviewHostError(
     "PreviewAutomationTimeoutError",
     "The Dev Server launch terminal did not initialize before the request timed out.",
-  )
+  );
 }
 
 async function waitForDevServerReady(
   context: ThreadWorkbenchContext,
   timeoutMs: number,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() <= deadline) {
     const state = await window.electronAPI.devServer.getState({
       workspaceId: context.workspaceId,
       laneId: context.laneId,
-    })
-    if (state.running && state.ready && state.port) return
+    });
+    if (state.running && state.ready && state.port) return;
     if (!state.running) {
       throw new PreviewHostError(
         "PreviewAutomationExecutionError",
         "Dev Server stopped before it became ready.",
-      )
+      );
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 50))
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
   throw new PreviewHostError(
     "PreviewAutomationTimeoutError",
     "Dev Server did not become ready before the request timed out.",
-  )
+  );
 }
 
-function normalizeNavigationUrl(input: Record<string, unknown>): string {
-  const target = asRecord(input.target)
-  let value = typeof input.url === "string" ? input.url.trim() : ""
-  if (target.kind === "environment-port" && typeof target.port === "number") {
-    const protocol = target.protocol === "https" ? "https" : "http"
-    const path = typeof target.path === "string"
-      ? target.path.startsWith("/") ? target.path : `/${target.path}`
-      : ""
-    value = `${protocol}://127.0.0.1:${target.port}${path}`
+function requireThreadWorkbenchContext(threadId: string): ThreadWorkbenchContext {
+  const context = findThreadWorkbenchContext(threadId);
+  if (context) return context;
+  throw new PreviewHostError(
+    "PreviewAutomationTabNotFoundError",
+    "No open agent tile is bound to this thread in the project workbench.",
+  );
+}
+
+async function waitForReadySurface(
+  context: ThreadWorkbenchContext,
+  requestedTabId: string,
+  timeoutMs: number,
+  allowPendingRegistration: boolean,
+): Promise<BrowserSurfaceInventoryEntry> {
+  const bridge = previewBridge();
+  if (!bridge) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
   }
-  if (!value) {
-    throw new PreviewHostError("PreviewAutomationExecutionError", "A preview URL is required.")
+  const deadline = Date.now() + timeoutMs;
+  let found = false;
+  while (Date.now() <= deadline) {
+    const surfaces = eligibleSurfaces(context, await bridge.listSurfaces());
+    const target = resolveSurfaceTarget(context, surfaces, requestedTabId, null);
+    if (target) {
+      found = true;
+      const status = await bridge.automation.status(target.runtimeTabId);
+      if (status.available) return target;
+    } else if (!allowPendingRegistration) {
+      break;
+    }
+    await waitForDelay(50);
   }
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
-    value = /^(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(value)
-      ? `http://${value}`
-      : `https://${value}`
+  throw new PreviewHostError(
+    found ? "PreviewAutomationTimeoutError" : "PreviewAutomationTabNotFoundError",
+    found
+      ? `Browser surface ${requestedTabId} did not register within ${timeoutMs}ms.`
+      : `Browser surface ${requestedTabId} is not available in this workbench.`,
+  );
+}
+
+async function requireReadySurface(
+  request: PreviewAutomationRequest,
+  context: ThreadWorkbenchContext,
+): Promise<BrowserSurfaceInventoryEntry> {
+  const bridge = previewBridge();
+  if (!bridge) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
   }
-  const parsed = new URL(value)
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  const surfaces = eligibleSurfaces(context, await bridge.listSurfaces());
+  const target = resolveSurfaceTarget(
+    context,
+    surfaces,
+    request.tabId ?? null,
+    runtime.lastControlledSurfaceByThread.get(request.threadId) ?? null,
+  );
+  if (!target) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      request.tabId
+        ? `Browser surface ${request.tabId} is not available in this workbench.`
+        : "No previously controlled or active browser-backed tile is available in this workbench.",
+    );
+  }
+  const ready = await waitForReadySurface(context, target.runtimeTabId, request.timeoutMs, false);
+  runtime.lastControlledSurfaceByThread.set(request.threadId, ready.runtimeTabId);
+  return ready;
+}
+
+function resolveNavigationUrl(input: PreviewAutomationNavigateInput): string {
+  if (input.target?.kind === "environment-port") {
+    const protocol = input.target.protocol ?? "http";
+    const path = input.target.path?.trim() || "/";
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return `${protocol}://127.0.0.1:${input.target.port}${normalizedPath}`;
+  }
+  const raw = input.url?.trim() ?? "";
+  const normalized = normalizeUrlInput(raw);
+  if (!normalized) {
     throw new PreviewHostError(
       "PreviewAutomationExecutionError",
-      "Only HTTP and HTTPS preview URLs are supported.",
-    )
+      "Preview navigation requires a non-empty URL.",
+    );
   }
-  return parsed.toString()
+  return normalized;
 }
 
-async function ensureBrowserTileForUrl(
-  surface: ThreadSurfaceState,
-  url: string,
+async function waitForNavigationReadiness(
+  runtimeTabId: string,
+  readiness: "load" | "domContentLoaded" | "none",
   timeoutMs: number,
 ): Promise<void> {
-  const { context, handle } = surface
-  useProjectWorkbenchStore.getState().actions.updateRuntimePreviewTile(
-    context.projectId,
-    context.laneId,
-    handle.tileId,
-    { previewOverrideUrl: url },
-    context.workspaceId,
-  )
-  await waitForBrowserTile(handle.tileId, Math.min(timeoutMs, 5_000))
-}
-
-async function waitForNavigation(tileId: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  if (readiness === "none") return;
+  const bridge = previewBridge();
+  if (!bridge) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
+  }
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() <= deadline) {
-    const state = await window.electronAPI.workbenchBrowser.getState({ tileId })
-    if (state && !state.isLoading) return
-    await new Promise((resolve) => window.setTimeout(resolve, 40))
+    const status = await bridge.automation.status(runtimeTabId);
+    if (status.available && !status.loading) {
+      if (readiness === "load") return;
+      const readyState = await bridge.automation
+        .evaluate(runtimeTabId, {
+          expression: "document.readyState",
+          awaitPromise: true,
+          returnByValue: true,
+        })
+        .catch(() => null);
+      if (readyState === "interactive" || readyState === "complete") return;
+    }
+    await waitForDelay(50);
   }
   throw new PreviewHostError(
     "PreviewAutomationTimeoutError",
-    "Preview navigation did not finish before the request timed out.",
-  )
+    `Preview navigation in tab ${runtimeTabId} did not reach ${readiness} readiness within ${timeoutMs}ms.`,
+  );
 }
 
-function appendAction(
-  tileId: string,
+function resolveBrowserRecordingStopTarget(
+  activeTabIds: ReadonlySet<string>,
+  implicitTabId: string | null,
+  explicitTabId?: string,
+): string | null {
+  if (explicitTabId !== undefined) {
+    return activeTabIds.has(explicitTabId) ? explicitTabId : null;
+  }
+  if (implicitTabId !== null && activeTabIds.has(implicitTabId)) return implicitTabId;
+  if (activeTabIds.size !== 1) return null;
+  return activeTabIds.values().next().value ?? null;
+}
+
+async function runRequestInternal(
   request: PreviewAutomationRequest,
-  status: PreviewAutomationActionEvent["status"],
-  startedAt: string,
-  error?: string,
-): void {
-  const current = runtime.actionTimelineByTile.get(tileId) ?? []
-  const event: PreviewAutomationActionEvent = {
-    id: request.requestId,
-    action: request.operation,
-    status,
-    startedAt,
-    ...(status === "running" ? {} : { completedAt: new Date().toISOString() }),
-    ...(error ? { error } : {}),
-  }
-  const withoutPrevious = current.filter((item) => item.id !== request.requestId)
-  runtime.actionTimelineByTile.set(tileId, [...withoutPrevious, event].slice(-24))
-}
-
-function throwForActionResult(result: {
-  ok: boolean
-  error?: string
-  message?: string
-}): void {
-  if (result.ok) return
-  const message = result.message ?? "Preview action failed."
-  switch (result.error) {
-    case "invalid_selector":
-      throw new PreviewHostError("PreviewAutomationInvalidSelectorError", message)
-    case "not_editable":
-      throw new PreviewHostError("PreviewAutomationTargetNotEditableError", message)
-    case "timeout":
-      throw new PreviewHostError("PreviewAutomationTimeoutError", message)
-    default:
-      throw new PreviewHostError("PreviewAutomationExecutionError", message)
-  }
-}
-
-async function runRequest(request: PreviewAutomationRequest): Promise<unknown> {
-  const input = asRecord(request.input)
-  const current = runtime.surfacesByThread.get(request.threadId)
+  environmentId: string,
+): Promise<unknown> {
+  const input = asRecord(request.input);
+  const current = runtime.surfacesByThread.get(request.threadId);
 
   if (request.operation === "devServerStatus") {
-    const context = findThreadWorkbenchContext(request.threadId)
-    if (!context) {
-      throw new PreviewHostError(
-        "PreviewAutomationUnavailableError",
-        "No open agent tile is bound to this thread in the project workbench.",
-      )
-    }
-    return await readDevServerStatus(context, current ?? null, false)
+    const context = requireThreadWorkbenchContext(request.threadId);
+    return await readDevServerStatus(context, current ?? null, false);
   }
 
   if (request.operation === "devServerAttach" || request.operation === "devServerEnsure") {
+    const threadContext = requireThreadWorkbenchContext(request.threadId);
+    const surfaces = previewBridge()
+      ? eligibleSurfaces(threadContext, await previewBridge()!.listSurfaces())
+      : [];
+    const preferredSurface = request.tabId
+      ? resolveSurfaceTarget(threadContext, surfaces, request.tabId, null)
+      : null;
     const surface = await ensureThreadSurface(request.threadId, {
-      preferredTileId: request.tabId ? String(request.tabId) : undefined,
+      preferredTileId: preferredSurface?.tileId ?? request.tabId,
       // Ensure is process-idempotent and must never multiply surfaces as a
       // recovery strategy. The controller will still create a new surface
       // when every existing one has an active lease from another thread.
       forceNew: request.operation === "devServerAttach" && input.reuseExistingSurface === false,
-    })
-    const { context, handle } = surface
+    });
+    const { context, handle } = surface;
 
     if (!handle.created && input.open === true) {
-      focusDevServerSurface(handle.scopeKey, handle.tileId)
+      focusDevServerSurface(handle.scopeKey, handle.tileId);
     }
 
     const before = await window.electronAPI.devServer.getState({
       workspaceId: context.workspaceId,
       laneId: context.laneId,
-    })
+    });
     if (request.operation === "devServerEnsure") {
-      const runKey = await waitForDevServerLaunchContext(context, request.timeoutMs)
+      const runKey = await waitForDevServerLaunchContext(context, request.timeoutMs);
       await ensureDevServerRun(runKey, {
         ...(typeof input.command === "string" ? { command: input.command } : {}),
         ...(typeof input.port === "number" ? { port: input.port } : {}),
-      })
-      const rendererRun = useDevServerRunStore.getState().runs[runKey]
+      });
+      const rendererRun = useDevServerRunStore.getState().runs[runKey];
       if (rendererRun?.status === "error") {
         throw new PreviewHostError(
           "PreviewAutomationExecutionError",
           rendererRun.error ?? "Dev Server failed to start.",
-        )
+        );
       }
-      await waitForDevServerReady(context, request.timeoutMs)
-      await waitForBrowserTile(handle.tileId, Math.min(request.timeoutMs, 5_000))
-    } else if (before.running && before.ready) {
-      await waitForBrowserTile(handle.tileId, Math.min(request.timeoutMs, 5_000))
+      await waitForDevServerReady(context, request.timeoutMs);
     }
-    return await readDevServerStatus(context, surface, before.running)
+    return await readDevServerStatus(context, surface, before.running);
   }
 
   if (request.operation === "status") {
-    return await readStatus(current?.handle.tileId ?? null)
+    const context = requireThreadWorkbenchContext(request.threadId);
+    return await readStatus(
+      context,
+      request.tabId ?? null,
+      runtime.lastControlledSurfaceByThread.get(request.threadId) ?? null,
+    );
   }
 
-  const preferredTileId = request.tabId ? String(request.tabId) : undefined
-  const surface = await ensureThreadSurface(request.threadId, {
-    preferredTileId,
-    forceNew: request.operation === "open" && input.reuseExistingTab === false,
-  })
-  const { tileId, leaseToken, scopeKey, created } = surface.handle
-
-  if (!renewDevServerSurfaceLease(tileId, leaseToken)) {
+  const context = requireThreadWorkbenchContext(request.threadId);
+  const bridge = previewBridge();
+  if (!bridge) {
     throw new PreviewHostError(
-      "PreviewAutomationControlInterruptedError",
-      "The user took control of this Dev Server surface.",
-    )
+      "PreviewAutomationTabNotFoundError",
+      "The desktop preview bridge is unavailable.",
+    );
   }
 
-  const startedAt = new Date().toISOString()
-  appendAction(tileId, request, "running", startedAt)
-  try {
-    let result: unknown
-    switch (request.operation) {
-      case "open": {
-        if (typeof input.url === "string" && input.url.trim()) {
-          const url = normalizeNavigationUrl(input)
-          await ensureBrowserTileForUrl(surface, url, request.timeoutMs)
-          await window.electronAPI.workbenchBrowser.navigate({ tileId, url })
-          await waitForNavigation(tileId, request.timeoutMs)
-        }
-        // New agent surfaces deliberately remain inactive. An explicit open
-        // may reveal an existing surface without rearranging it.
-        if (!created && (input.open === true || input.show === true)) {
-          focusDevServerSurface(scopeKey, tileId)
-        }
-        result = await readStatus(tileId)
-        break
-      }
-      case "navigate": {
-        const url = normalizeNavigationUrl(input)
-        if (!await window.electronAPI.workbenchBrowser.getState({ tileId })) {
-          await ensureBrowserTileForUrl(surface, url, request.timeoutMs)
-        }
-        const state = await window.electronAPI.workbenchBrowser.navigate({ tileId, url })
-        if (!state) {
-          throw new PreviewHostError("PreviewAutomationTabNotFoundError", "Dev Server preview is not open.")
-        }
-        if (input.readiness !== "none") {
-          await waitForNavigation(tileId, request.timeoutMs)
-        }
-        result = await readStatus(tileId)
-        break
-      }
-      case "snapshot": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const snapshot = await window.electronAPI.workbenchBrowser.devServerPreviewSnapshot({ tileId })
-        if (!snapshot) {
-          throw new PreviewHostError("PreviewAutomationTabNotFoundError", "Dev Server preview is not open.")
-        }
-        result = {
-          ...snapshot,
-          consoleEntries: [],
-          networkEntries: [],
-          actionTimeline: runtime.actionTimelineByTile.get(tileId) ?? [],
-        }
-        break
-      }
-      case "click": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewClick({
-          tileId,
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-          ...(typeof input.x === "number" ? { x: input.x } : {}),
-          ...(typeof input.y === "number" ? { y: input.y } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "type": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewType({
-          tileId,
-          text: typeof input.text === "string" ? input.text : "",
-          clear: input.clear === true,
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "press": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const modifiers = Array.isArray(input.modifiers)
-          ? input.modifiers.filter((modifier): modifier is "Alt" | "Control" | "Meta" | "Shift" =>
-              modifier === "Alt" || modifier === "Control" || modifier === "Meta" || modifier === "Shift")
-          : undefined
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewPress({
-          tileId,
-          key: typeof input.key === "string" ? input.key : "",
-          modifiers,
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "scroll": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewScroll({
-          tileId,
-          ...(typeof input.deltaX === "number" ? { deltaX: input.deltaX } : {}),
-          ...(typeof input.deltaY === "number" ? { deltaY: input.deltaY } : {}),
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      case "waitFor": {
-        await waitForBrowserTile(tileId, Math.min(request.timeoutMs, 5_000))
-        const action = await window.electronAPI.workbenchBrowser.devServerPreviewWaitFor({
-          tileId,
-          timeoutMs: request.timeoutMs,
-          ...(typeof input.selector === "string" ? { selector: input.selector } : {}),
-          ...(typeof input.locator === "string" ? { locator: input.locator } : {}),
-          ...(typeof input.text === "string" ? { text: input.text } : {}),
-          ...(typeof input.urlIncludes === "string" ? { urlIncludes: input.urlIncludes } : {}),
-        })
-        throwForActionResult(action)
-        result = {}
-        break
-      }
-      default:
-        throw new PreviewHostError(
-          "PreviewAutomationUnsupportedClientError",
-          `This Cozea Dev Server host does not support ${request.operation}.`,
-        )
+  if (request.operation === "open") {
+    const openInput = request.input as PreviewAutomationOpenInput;
+    let target: BrowserSurfaceInventoryEntry;
+    if (request.tabId) {
+      target = await requireReadySurface(request, context);
+    } else {
+      const surface = await ensureThreadSurface(request.threadId, {
+        forceNew: openInput.reuseExistingTab === false,
+      });
+      const shouldPresent = openInput.open ?? openInput.show ?? true;
+      if (shouldPresent) focusDevServerSurface(surface.handle.scopeKey, surface.handle.tileId);
+      target = await waitForReadySurface(context, surface.handle.tileId, request.timeoutMs, true);
+      runtime.lastControlledSurfaceByThread.set(request.threadId, target.runtimeTabId);
     }
+    if (openInput.url) {
+      const url = resolveNavigationUrl({ url: openInput.url } as PreviewAutomationNavigateInput);
+      await bridge.navigate(target.runtimeTabId, url);
+      await waitForNavigationReadiness(target.runtimeTabId, "load", request.timeoutMs);
+    }
+    return await readStatus(context, target.runtimeTabId, target.runtimeTabId);
+  }
 
-    if (!renewDevServerSurfaceLease(tileId, leaseToken)) {
+  if (request.operation === "recordingStop") {
+    const threadRef = { environmentId, threadId: request.threadId } as ScopedThreadRef;
+    const activeRecordings = readActiveBrowserRecordingTargets(threadRef);
+    const activeTabIds = new Set(activeRecordings.map((recording) => recording.serverTabId));
+    const surfaces = eligibleSurfaces(context, await bridge.listSurfaces());
+    const implicitTarget = resolveSurfaceTarget(
+      context,
+      surfaces,
+      request.tabId ?? null,
+      runtime.lastControlledSurfaceByThread.get(request.threadId) ?? null,
+    );
+    const explicitRuntimeTabId = request.tabId
+      ? resolveSurfaceTarget(context, surfaces, request.tabId, null)?.runtimeTabId
+      : undefined;
+    const stopTabId = resolveBrowserRecordingStopTarget(
+      activeTabIds,
+      implicitTarget?.runtimeTabId ?? null,
+      request.tabIdExplicit ? (explicitRuntimeTabId ?? request.tabId) : undefined,
+    );
+    const artifact = stopTabId ? await stopBrowserRecording(stopTabId) : null;
+    if (!artifact || !stopTabId) {
       throw new PreviewHostError(
-        "PreviewAutomationControlInterruptedError",
-        "The user took control of this Dev Server surface.",
-      )
+        "PreviewAutomationExecutionError",
+        `No active recording is available for tab ${request.tabId ?? "unassigned"}.`,
+      );
     }
-    appendAction(tileId, request, "succeeded", startedAt)
-    return result
-  } catch (error) {
-    appendAction(
-      tileId,
-      request,
-      error instanceof PreviewHostError && error.tag === "PreviewAutomationControlInterruptedError"
-        ? "interrupted"
-        : "failed",
-      startedAt,
-      error instanceof Error ? error.message : String(error),
-    )
-    throw error
+    return { ...artifact, tabId: stopTabId };
+  }
+
+  const target = await requireReadySurface(request, context);
+  switch (request.operation) {
+    case "navigate": {
+      const navigateInput = request.input as PreviewAutomationNavigateInput;
+      const url = resolveNavigationUrl(navigateInput);
+      await bridge.navigate(target.runtimeTabId, url);
+      await waitForNavigationReadiness(
+        target.runtimeTabId,
+        navigateInput.readiness ?? "load",
+        navigateInput.timeoutMs ?? request.timeoutMs,
+      );
+      return await readStatus(context, target.runtimeTabId, target.runtimeTabId);
+    }
+    case "resize": {
+      const resizeInput = request.input as PreviewAutomationResizeInput;
+      const setting = resolvePreviewViewport(resizeInput);
+      const previousSetting = readBrowserViewport(target.runtimeTabId);
+      await commitBrowserViewportChange(target.runtimeTabId, setting);
+      let viewport: PreviewRenderedViewportSize;
+      try {
+        viewport = await waitForRenderedViewport(
+          target.runtimeTabId,
+          setting,
+          resizeInput.timeoutMs ?? request.timeoutMs,
+        );
+      } catch (cause) {
+        const latestSetting = readBrowserViewport(target.runtimeTabId);
+        if (shouldRollbackPreviewViewport(previousSetting, setting, latestSetting, null, null)) {
+          await commitBrowserViewportChange(target.runtimeTabId, previousSetting).catch(
+            () => undefined,
+          );
+        }
+        throw cause;
+      }
+      return {
+        tabId: target.runtimeTabId,
+        setting,
+        viewport,
+      } satisfies PreviewAutomationResizeResult;
+    }
+    case "setColorScheme": {
+      const colorInput = request.input as PreviewAutomationSetColorSchemeInput;
+      await bridge.setColorScheme(target.runtimeTabId, colorInput.colorScheme);
+      return {
+        tabId: target.runtimeTabId,
+        colorScheme: colorInput.colorScheme,
+      } satisfies PreviewAutomationSetColorSchemeResult;
+    }
+    case "snapshot":
+      return await bridge.automation.snapshot(target.runtimeTabId);
+    case "click":
+      return await bridge.automation.click(
+        target.runtimeTabId,
+        request.input as PreviewAutomationClickInput,
+      );
+    case "type":
+      return await bridge.automation.type(
+        target.runtimeTabId,
+        request.input as PreviewAutomationTypeInput,
+      );
+    case "press":
+      return await bridge.automation.press(
+        target.runtimeTabId,
+        request.input as PreviewAutomationPressInput,
+      );
+    case "scroll":
+      return await bridge.automation.scroll(
+        target.runtimeTabId,
+        request.input as PreviewAutomationScrollInput,
+      );
+    case "evaluate":
+      return await bridge.automation.evaluate(
+        target.runtimeTabId,
+        request.input as PreviewAutomationEvaluateInput,
+      );
+    case "waitFor":
+      return await bridge.automation.waitFor(
+        target.runtimeTabId,
+        request.input as PreviewAutomationWaitForInput,
+      );
+    case "recordingStart": {
+      const threadRef = { environmentId, threadId: request.threadId } as ScopedThreadRef;
+      const startedAt = await startBrowserRecording(
+        target.runtimeTabId,
+        threadRef,
+        target.runtimeTabId,
+      );
+      return { tabId: target.runtimeTabId, recording: true, startedAt };
+    }
+    default:
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        `Unsupported preview automation operation ${request.operation}.`,
+      );
   }
 }
 
-async function serializeThreadRequest<T>(
-  threadId: string,
-  task: () => Promise<T>,
+async function withRequestTimeout<T>(
+  request: PreviewAutomationRequest,
+  operation: Promise<T>,
 ): Promise<T> {
-  const previous = runtime.requestQueues.get(threadId) ?? Promise.resolve()
-  let release!: () => void
-  const gate = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const tail = previous.catch(() => {}).then(() => gate)
-  runtime.requestQueues.set(threadId, tail)
-  await previous.catch(() => {})
+  let timeoutId: number | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = window.setTimeout(
+      () =>
+        reject(
+          new PreviewHostError(
+            "PreviewAutomationTimeoutError",
+            `Preview automation ${request.operation} did not complete within ${request.timeoutMs}ms.`,
+          ),
+        ),
+      request.timeoutMs,
+    );
+  });
   try {
-    return await task()
+    return await Promise.race([operation, timeout]);
   } finally {
-    release()
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  }
+}
+
+async function runRequest(
+  request: PreviewAutomationRequest,
+  environmentId = "cozea-desktop",
+): Promise<unknown> {
+  return await withRequestTimeout(request, runRequestInternal(request, environmentId));
+}
+
+export const __t3PreviewAutomationHostTestUtils = {
+  eligibleSurfaces,
+  readDevServerStatus,
+  readStatus,
+  resolveBrowserRecordingStopTarget,
+  resolveSurfaceTarget,
+  resetRuntime: () => {
+    runtime.surfacesByThread.clear();
+    runtime.lastControlledSurfaceByThread.clear();
+    runtime.requestQueues.clear();
+  },
+  runRequest,
+  supportedOperations: SUPPORTED_OPERATIONS,
+  toResponseError: (error: unknown) => toResponseError(error),
+};
+
+async function serializeThreadRequest<T>(threadId: string, task: () => Promise<T>): Promise<T> {
+  const previous = runtime.requestQueues.get(threadId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.catch(() => {}).then(() => gate);
+  runtime.requestQueues.set(threadId, tail);
+  await previous.catch(() => {});
+  try {
+    return await task();
+  } finally {
+    release();
     if (runtime.requestQueues.get(threadId) === tail) {
-      runtime.requestQueues.delete(threadId)
+      runtime.requestQueues.delete(threadId);
     }
   }
 }
@@ -671,29 +944,70 @@ function toResponseError(error: unknown): NonNullable<PreviewAutomationResponse[
       _tag: error.tag,
       message: error.message,
       ...(error.detail === undefined ? {} : { detail: error.detail }),
+    };
+  }
+  const record = asRecord(error);
+  const cause = asRecord(record.cause);
+  const remoteTag =
+    typeof record._tag === "string"
+      ? record._tag
+      : typeof cause._tag === "string"
+        ? cause._tag
+        : null;
+  const message = error instanceof Error ? error.message : String(error);
+  const inferredTag = (() => {
+    if (remoteTag) {
+      if (
+        remoteTag === "PreviewTabNotFoundError" ||
+        remoteTag === "PreviewWebContentsNotFoundError" ||
+        remoteTag === "PreviewWebviewNotInitializedError"
+      ) {
+        return "PreviewAutomationTabNotFoundError";
+      }
+      return remoteTag;
     }
-  }
+    if (/not attached|unknown browser surface|not available in this workbench/i.test(message)) {
+      return "PreviewAutomationTabNotFoundError";
+    }
+    if (/interrupted by human input/i.test(message)) {
+      return "PreviewAutomationControlInterruptedError";
+    }
+    if (/rejected .*selector|invalid selector/i.test(message)) {
+      return "PreviewAutomationInvalidSelectorError";
+    }
+    if (/maximum is \d+ bytes|result.*too large/i.test(message)) {
+      return "PreviewAutomationResultTooLargeError";
+    }
+    if (/did not .* within \d+ms|timed out|timeout/i.test(message)) {
+      return "PreviewAutomationTimeoutError";
+    }
+    return "PreviewAutomationExecutionError";
+  })();
   return {
-    _tag: "PreviewAutomationExecutionError",
-    message: error instanceof Error ? error.message : String(error),
-  }
+    _tag: inferredTag,
+    message,
+    ...(record.detail === undefined ? {} : { detail: record.detail }),
+  };
 }
 
 async function respondToRequest(
   session: T3RpcSessionHandle,
   connectionId: string,
   request: PreviewAutomationRequest,
+  environmentId: string,
 ): Promise<void> {
-  let response: PreviewAutomationResponse
+  let response: PreviewAutomationResponse;
   try {
-    const result = await serializeThreadRequest(request.threadId, () => runRequest(request))
+    const result = await serializeThreadRequest(request.threadId, () =>
+      runRequest(request, environmentId),
+    );
     response = {
       clientId: HOST_CLIENT_ID,
       connectionId,
       requestId: request.requestId,
       ok: true,
       result,
-    }
+    };
   } catch (error) {
     response = {
       clientId: HOST_CLIENT_ID,
@@ -701,9 +1015,9 @@ async function respondToRequest(
       requestId: request.requestId,
       ok: false,
       error: toResponseError(error),
-    }
+    };
   }
-  await session.client.callUnary(WS_METHODS.previewAutomationRespond, response)
+  await session.client.callUnary(WS_METHODS.previewAutomationRespond, response);
 }
 
 async function startCandidate(
@@ -711,32 +1025,34 @@ async function startCandidate(
   candidate: T3PreviewAutomationCandidate,
   generation: number,
 ): Promise<ActiveHostConnection | null> {
-  const response = await fetch(new URL("/.well-known/t3/environment", candidate.baseUrl))
+  const response = await fetch(new URL("/.well-known/t3/environment", candidate.baseUrl));
   if (!response.ok) {
-    throw new Error(`T3 environment descriptor unavailable (${response.status}).`)
+    throw new Error(`T3 environment descriptor unavailable (${response.status}).`);
   }
-  const descriptor = await response.json() as { environmentId?: string }
+  const descriptor = (await response.json()) as { environmentId?: string };
   if (!descriptor.environmentId) {
-    throw new Error("T3 environment descriptor did not include environmentId.")
+    throw new Error("T3 environment descriptor did not include environmentId.");
   }
-  if (generation !== runtime.generation || !runtime.candidates.has(owner)) return null
+  if (generation !== runtime.generation || !runtime.candidates.has(owner)) return null;
 
-  let connectionId: string | null = null
+  let connectionId: string | null = null;
   const updateFocus = () => {
-    if (!connectionId) return
-    void candidate.session.client.callUnary(WS_METHODS.previewAutomationFocusHost, {
-      clientId: HOST_CLIENT_ID,
-      environmentId: descriptor.environmentId,
-      connectionId,
-      focused: document.hasFocus(),
-    }).catch(() => {})
-  }
-  const onFocus = () => updateFocus()
-  const onBlur = () => updateFocus()
-  window.addEventListener("focus", onFocus)
-  window.addEventListener("blur", onBlur)
+    if (!connectionId) return;
+    void candidate.session.client
+      .callUnary(WS_METHODS.previewAutomationFocusHost, {
+        clientId: HOST_CLIENT_ID,
+        environmentId: descriptor.environmentId,
+        connectionId,
+        focused: document.hasFocus(),
+      })
+      .catch(() => {});
+  };
+  const onFocus = () => updateFocus();
+  const onBlur = () => updateFocus();
+  window.addEventListener("focus", onFocus);
+  window.addEventListener("blur", onBlur);
 
-  let stopping = false
+  let stopping = false;
   const stopStream = await candidate.session.client.openStream(
     WS_METHODS.previewAutomationConnect,
     {
@@ -745,16 +1061,21 @@ async function startCandidate(
       supportedOperations: [...SUPPORTED_OPERATIONS],
     },
     (value) => {
-      const event = value as PreviewAutomationStreamEvent
+      const event = value as PreviewAutomationStreamEvent;
       if (event.type === "connected") {
-        connectionId = event.connectionId
-        updateFocus()
-        return
+        connectionId = event.connectionId;
+        updateFocus();
+        return;
       }
       if (event.type === "request") {
-        void respondToRequest(candidate.session, event.connectionId, event.request).catch((error) => {
-          console.warn("[T3PreviewAutomation] Failed to respond to preview request", error)
-        })
+        void respondToRequest(
+          candidate.session,
+          event.connectionId,
+          event.request,
+          descriptor.environmentId!,
+        ).catch((error) => {
+          console.warn("[T3PreviewAutomation] Failed to respond to preview request", error);
+        });
       }
     },
     () => {
@@ -763,7 +1084,7 @@ async function startCandidate(
         generation !== runtime.generation ||
         runtime.candidates.get(owner) !== candidate
       ) {
-        return
+        return;
       }
       window.setTimeout(() => {
         if (
@@ -773,72 +1094,70 @@ async function startCandidate(
           runtime.active?.owner !== owner ||
           runtime.active.candidate !== candidate
         ) {
-          return
+          return;
         }
-        runtime.active.removeFocusListeners()
-        runtime.active = null
-        scheduleReconcile()
-      }, 0)
+        runtime.active.removeFocusListeners();
+        runtime.active = null;
+        scheduleReconcile();
+      }, 0);
     },
-  )
+  );
 
   return {
     owner,
     candidate,
+    environmentId: descriptor.environmentId,
     stop: async () => {
-      stopping = true
-      await stopStream()
+      stopping = true;
+      await stopStream();
     },
     removeFocusListeners: () => {
-      window.removeEventListener("focus", onFocus)
-      window.removeEventListener("blur", onBlur)
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
     },
-  }
+  };
 }
 
 function scheduleReconcile(): void {
   runtime.transition = runtime.transition.then(async () => {
-    const activeOwner = runtime.active?.owner
-    if (
-      activeOwner &&
-      runtime.candidates.get(activeOwner) === runtime.active?.candidate
-    ) {
-      return
+    const activeOwner = runtime.active?.owner;
+    if (activeOwner && runtime.candidates.get(activeOwner) === runtime.active?.candidate) {
+      return;
     }
 
     if (runtime.active) {
-      runtime.active.removeFocusListeners()
-      await runtime.active.stop().catch(() => {})
-      runtime.active = null
+      runtime.active.removeFocusListeners();
+      await runtime.active.stop().catch(() => {});
+      runtime.active = null;
     }
 
     const next = runtime.candidates.entries().next().value as
       | [symbol, T3PreviewAutomationCandidate]
-      | undefined
-    if (!next) return
-    const [owner, candidate] = next
-    const generation = ++runtime.generation
+      | undefined;
+    if (!next) return;
+    const [owner, candidate] = next;
+    const generation = ++runtime.generation;
     try {
-      runtime.active = await startCandidate(owner, candidate, generation)
+      runtime.active = await startCandidate(owner, candidate, generation);
     } catch (error) {
-      console.warn("[T3PreviewAutomation] Failed to connect preview host", error)
+      console.warn("[T3PreviewAutomation] Failed to connect preview host", error);
     }
-  })
+  });
 }
 
 export function registerT3PreviewAutomationHost(
   owner: symbol,
   candidate: T3PreviewAutomationCandidate,
 ): () => void {
-  runtime.candidates.set(owner, candidate)
-  scheduleReconcile()
+  runtime.candidates.set(owner, candidate);
+  scheduleReconcile();
   return () => {
     if (runtime.candidates.get(owner) === candidate) {
-      runtime.candidates.delete(owner)
+      runtime.candidates.delete(owner);
     }
     if (runtime.active?.owner === owner) {
-      runtime.generation += 1
+      runtime.generation += 1;
     }
-    scheduleReconcile()
-  }
+    scheduleReconcile();
+  };
 }

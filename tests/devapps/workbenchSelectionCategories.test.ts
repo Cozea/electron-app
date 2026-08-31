@@ -35,6 +35,7 @@ const orgApp: DevAppManifest = {
     framework: "vite-react",
     contentHash: "d".repeat(64),
     entryPath: "index.html",
+    runtimeKind: "static",
   },
 };
 

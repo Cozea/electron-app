@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { ProviderInstanceId } from "@cozea/assistant-contracts"
 
 const storageValues = new Map<string, string>()
 
@@ -24,7 +25,7 @@ describe("assistant composer model preference", () => {
   it("records the selected model by provider instance and persists it", () => {
     const modelSelection = {
       provider: "opencode" as const,
-      instanceId: "opencode:default",
+      instanceId: ProviderInstanceId.make("opencode"),
       model: "opencode/last-used",
     }
 
@@ -32,7 +33,7 @@ describe("assistant composer model preference", () => {
 
     expect(
       useAssistantComposerDraftStore.getState().lastModelSelectionByInstanceId[
-        "opencode:default"
+        "opencode"
       ],
     ).toEqual(modelSelection)
     expect(storageValues.get("cozea:assistant-composer-drafts:v1")).toContain(
@@ -43,7 +44,7 @@ describe("assistant composer model preference", () => {
   it("keeps the remembered model after its source tile draft is cleared", () => {
     const modelSelection = {
       provider: "codex" as const,
-      instanceId: "codex:default",
+      instanceId: ProviderInstanceId.make("codex"),
       model: "gpt-last-used",
     }
     const store = useAssistantComposerDraftStore.getState()
@@ -53,7 +54,7 @@ describe("assistant composer model preference", () => {
 
     expect(useAssistantComposerDraftStore.getState().draftsByTargetKey["tile-1"]).toBeUndefined()
     expect(
-      useAssistantComposerDraftStore.getState().lastModelSelectionByInstanceId["codex:default"],
+      useAssistantComposerDraftStore.getState().lastModelSelectionByInstanceId["codex"],
     ).toEqual(modelSelection)
   })
 
@@ -62,14 +63,14 @@ describe("assistant composer model preference", () => {
     store.upsertDraft("codex-tile", {
       modelSelection: {
         provider: "codex",
-        instanceId: "codex:default",
+        instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-last-used",
       },
     })
     useAssistantComposerDraftStore.getState().upsertDraft("claude-tile", {
       modelSelection: {
         provider: "claudeAgent",
-        instanceId: "claudeAgent:default",
+        instanceId: ProviderInstanceId.make("claudeAgent"),
         model: "claude-last-used",
       },
     })
@@ -81,8 +82,8 @@ describe("assistant composer model preference", () => {
         ).map(([instanceId, selection]) => [instanceId, selection.model]),
       ),
     ).toEqual({
-      "codex:default": "gpt-last-used",
-      "claudeAgent:default": "claude-last-used",
+      "codex": "gpt-last-used",
+      "claudeAgent": "claude-last-used",
     })
   })
 })

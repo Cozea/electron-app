@@ -7,10 +7,6 @@ import { CheckmarkCircle02Icon as __CheckIconHugeIcon, ChevronDoubleCloseIcon as
 import * as React from 'react'
 import { Menu as BaseMenu } from '@base-ui/react'
 
-import {
-  preflightNativeSurfaceOcclusion,
-  useNativeSurfaceOverlayLifecycle,
-} from '@/lib/nativeSurfaceOcclusion'
 import { cn } from '@/lib/utils'
 
 const dropdownMenuPopupClassName =
@@ -30,39 +26,20 @@ function DropdownMenuPortal({ ...props }: React.ComponentProps<typeof BaseMenu.P
 function DropdownMenuTrigger({
   asChild,
   children,
-  onKeyDownCapture,
-  onPointerDownCapture,
   ...props
 }: React.ComponentProps<typeof BaseMenu.Trigger> & { asChild?: boolean }) {
-  const triggerProps: Pick<
-    React.ComponentProps<typeof BaseMenu.Trigger>,
-    'onKeyDownCapture' | 'onPointerDownCapture'
-  > = {
-    onKeyDownCapture: (event) => {
-      if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
-        preflightNativeSurfaceOcclusion('Dropdown menu opening')
-      }
-      onKeyDownCapture?.(event)
-    },
-    onPointerDownCapture: (event) => {
-      preflightNativeSurfaceOcclusion('Dropdown menu opening')
-      onPointerDownCapture?.(event)
-    },
-  }
-
   if (asChild) {
     return (
       <BaseMenu.Trigger
         data-slot="dropdown-menu-trigger"
         render={children as any}
-        {...triggerProps}
         {...props}
       />
     )
   }
 
   return (
-    <BaseMenu.Trigger data-slot="dropdown-menu-trigger" {...triggerProps} {...props}>
+    <BaseMenu.Trigger data-slot="dropdown-menu-trigger" {...props}>
       {children}
     </BaseMenu.Trigger>
   )
@@ -81,19 +58,15 @@ function DropdownMenuContent({
   align?: string
   side?: string
 }) {
-  useNativeSurfaceOverlayLifecycle()
-
   return (
     <BaseMenu.Portal>
       <BaseMenu.Positioner
         side={side as any}
         align={align as any}
         sideOffset={sideOffset}
-        className="z-50"
+        className="z-[var(--cozea-layer-menu)]"
       >
         <BaseMenu.Popup
-          data-native-surface-overlay="true"
-          data-native-surface-overlay-reason="Dropdown menu"
           data-slot="dropdown-menu-content"
           className={cn(dropdownMenuPopupClassName, className)}
           style={style}
@@ -303,14 +276,10 @@ function DropdownMenuSubContent({
   children,
   ...props
 }: React.ComponentProps<typeof BaseMenu.Popup> & { sideOffset?: number }) {
-  useNativeSurfaceOverlayLifecycle()
-
   return (
     <BaseMenu.Portal>
-      <BaseMenu.Positioner side="right" sideOffset={sideOffset} className="z-50">
+      <BaseMenu.Positioner side="right" sideOffset={sideOffset} className="z-[var(--cozea-layer-menu)]">
         <BaseMenu.Popup
-          data-native-surface-overlay="true"
-          data-native-surface-overlay-reason="Dropdown menu"
           data-slot="dropdown-menu-sub-content"
           className={cn(dropdownMenuPopupClassName, className)}
           {...props}

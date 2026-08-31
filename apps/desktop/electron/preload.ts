@@ -16,6 +16,16 @@ import type {
 import type { WorkspaceCatalogSnapshot } from '../../../shared/workspaceTypes'
 import type { MessageBoxOptions } from 'electron'
 import type { ContextMenuItem } from '../../../shared/assistant-contracts/ipc'
+import { BROWSER_SURFACE_IPC } from '../../../shared/browserSurfaceIpc'
+import type {
+  BrowserSurfaceDescriptor,
+  CozeaBrowserSurfaceState,
+  CozeaDesktopPreviewBridge,
+} from '../../../shared/browserSurfaceTypes'
+import type {
+  DesktopPreviewPointerEvent,
+  DesktopPreviewRecordingFrame,
+} from '@cozea/contracts/t3/ipc'
 
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
 const ASSISTANT_WS_URL_ARG_PREFIX = '--cozea-assistant-ws-url='
@@ -123,6 +133,117 @@ function createTerminalOutputBridge() {
 }
 
 const terminalOutputBridge = createTerminalOutputBridge()
+
+const previewBridge: CozeaDesktopPreviewBridge = {
+  prepareSurface: (descriptor: BrowserSurfaceDescriptor) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.prepareSurface, descriptor),
+  releaseSurface: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.releaseSurface, tabId),
+  getSurfaceState: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.getSurfaceState, tabId),
+  listSurfaces: () => ipcRenderer.invoke(BROWSER_SURFACE_IPC.listSurfaces),
+  setSurfaceActive: (tabId, active) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setSurfaceActive, { tabId, active }),
+  findInPage: (tabId, query, options) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.findInPage, { tabId, query, options }),
+  stopFindInPage: (tabId, action) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.stopFindInPage, { tabId, action }),
+  createTab: (tabId, defaults) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.createTab, { tabId, defaults }),
+  closeTab: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.closeTab, tabId),
+  registerWebview: (tabId, webContentsId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.registerWebview, { tabId, webContentsId }),
+  navigate: (tabId, url) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.navigate, { tabId, url }),
+  goBack: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.goBack, tabId),
+  goForward: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.goForward, tabId),
+  refresh: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.refresh, tabId),
+  zoomIn: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.zoomIn, tabId),
+  zoomOut: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.zoomOut, tabId),
+  resetZoom: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.resetZoom, tabId),
+  hardReload: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.hardReload, tabId),
+  setColorScheme: (tabId, colorScheme) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setColorScheme, { tabId, colorScheme }),
+  setAudioMuted: (tabId, audioMuted) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setAudioMuted, { tabId, audioMuted }),
+  openDevTools: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.openDevTools, tabId),
+  clearCookies: () => ipcRenderer.invoke(BROWSER_SURFACE_IPC.clearCookies),
+  clearCache: () => ipcRenderer.invoke(BROWSER_SURFACE_IPC.clearCache),
+  getPreviewConfig: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.getPreviewConfig, tabId),
+  setAnnotationTheme: (theme) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setAnnotationTheme, theme),
+  pickElement: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.pickElement, tabId),
+  cancelPickElement: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.cancelPickElement, tabId),
+  captureScreenshot: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.captureScreenshot, tabId),
+  revealArtifact: (artifactPath) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.revealArtifact, artifactPath),
+  copyArtifactToClipboard: (artifactPath) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.copyArtifactToClipboard, artifactPath),
+  pictureInPicture: {
+    open: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.pictureInPictureOpen, tabId),
+    close: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.pictureInPictureClose, tabId),
+  },
+  recording: {
+    startScreencast: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.recordingStart, tabId),
+    stopScreencast: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.recordingStop, tabId),
+    save: (tabId, mimeType, data) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.recordingSave, { tabId, mimeType, data }),
+    onFrame: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, frame: unknown) => {
+        if (typeof frame === 'object' && frame !== null) {
+          listener(frame as DesktopPreviewRecordingFrame)
+        }
+      }
+      ipcRenderer.on(BROWSER_SURFACE_IPC.recordingFrame, wrapped)
+      return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.recordingFrame, wrapped)
+    },
+  },
+  automation: {
+    status: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationStatus, tabId),
+    snapshot: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationSnapshot, tabId),
+    click: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationClick, { tabId, input }),
+    type: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationType, { tabId, input }),
+    press: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationPress, { tabId, input }),
+    scroll: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationScroll, { tabId, input }),
+    evaluate: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationEvaluate, { tabId, input }),
+    waitFor: (tabId, input) =>
+      ipcRenderer.invoke(BROWSER_SURFACE_IPC.automationWaitFor, { tabId, input }),
+  },
+  onStateChange: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, tabId: unknown, state: unknown) => {
+      if (typeof tabId === 'string' && typeof state === 'object' && state !== null) {
+        listener(tabId, state as CozeaBrowserSurfaceState)
+      }
+    }
+    ipcRenderer.on(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+    return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+  },
+  onSurfaceStateChange: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, tabId: unknown, state: unknown) => {
+      if (typeof tabId === 'string' && typeof state === 'object' && state !== null) {
+        listener(tabId, state as CozeaBrowserSurfaceState)
+      }
+    }
+    ipcRenderer.on(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+    return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.stateChanged, wrapped)
+  },
+  onPointerEvent: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, pointerEvent: unknown) => {
+      if (typeof pointerEvent === 'object' && pointerEvent !== null) {
+        listener(pointerEvent as DesktopPreviewPointerEvent)
+      }
+    }
+    ipcRenderer.on(BROWSER_SURFACE_IPC.pointerEvent, wrapped)
+    return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.pointerEvent, wrapped)
+  },
+}
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -271,97 +392,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     openSettings: (route = '/settings/account') => ipcRenderer.invoke('window:openSettings', { route }),
   },
-  workbenchBrowser: {
-    ensureTile: (options: {
-      tileId: string
-      initialUrl?: string
-      storageScope?: import("../../../shared/browserHostTypes").BrowserStorageScope
-      workspaceId?: string
-      partitionKey?: string
-      navigationPolicy?: import("../../../shared/browserHostTypes").BrowserNavigationPolicy
-    }) =>
-      ipcRenderer.invoke('workbenchBrowser:ensureTile', options),
-    destroyTile: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:destroyTile', options),
-    setBounds: (options: {
-      tileId: string
-      bounds?: { x: number; y: number; width: number; height: number }
-      visible?: boolean
-    }) => ipcRenderer.invoke('workbenchBrowser:setBounds', options),
-    navigate: (options: { tileId: string; url: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:navigate', options),
-    getState: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:getState', options),
-    getViewBounds: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:getViewBounds', options),
-    goBack: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:goBack', options),
-    goForward: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:goForward', options),
-    reload: (options: { tileId: string; hard?: boolean }) =>
-      ipcRenderer.invoke('workbenchBrowser:reload', options),
-    focus: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:focus', options),
-    toggleDevTools: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:toggleDevTools', options),
-    openExternal: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:openExternal', options),
-    zoomIn: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:zoomIn', options),
-    zoomOut: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:zoomOut', options),
-    resetZoom: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:resetZoom', options),
-    findInPage: (options: {
-      tileId: string
-      text: string
-      forward?: boolean
-      recompute?: boolean
-      matchCase?: boolean
-    }) => ipcRenderer.invoke('workbenchBrowser:findInPage', options),
-    stopFindInPage: (options: { tileId: string; keepSelection?: boolean }) =>
-      ipcRenderer.invoke('workbenchBrowser:stopFindInPage', options),
-    getSelectedText: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:getSelectedText', options),
-    captureScreenshot: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:captureScreenshot', options),
-    devServerPreviewSnapshot: (options: { tileId: string }) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewSnapshot', options),
-    devServerPreviewClick: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewClickInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewClick', options),
-    devServerPreviewType: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewTypeInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewType', options),
-    devServerPreviewPress: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewPressInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewPress', options),
-    devServerPreviewScroll: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewScrollInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewScroll', options),
-    devServerPreviewWaitFor: (options: import('../../../shared/devServerPreviewAutomationTypes').DevServerPreviewWaitForInput) =>
-      ipcRenderer.invoke('workbenchBrowser:devServerPreviewWaitFor', options),
-    onStateChange: (callback: (state: import('../../../shared/electronApiTypes').WorkbenchBrowserViewState) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        state: import('../../../shared/electronApiTypes').WorkbenchBrowserViewState,
-      ) => callback(state)
-      ipcRenderer.on('workbenchBrowser:state', handler)
-      return () => ipcRenderer.removeListener('workbenchBrowser:state', handler)
-    },
-    onNewPageRequest: (callback: (request: import('../../../shared/browserHostTypes').BrowserNewPageRequest) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        request: import('../../../shared/browserHostTypes').BrowserNewPageRequest,
-      ) => callback(request)
-      ipcRenderer.on('workbenchBrowser:new-page-request', handler)
-      return () => ipcRenderer.removeListener('workbenchBrowser:new-page-request', handler)
-    },
-    onCommand: (callback: (command: import('../../../shared/browserHostTypes').BrowserUiCommand) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        command: import('../../../shared/browserHostTypes').BrowserUiCommand,
-      ) => callback(command)
-      ipcRenderer.on('workbenchBrowser:command', handler)
-      return () => ipcRenderer.removeListener('workbenchBrowser:command', handler)
-    },
-  },
   orgDevApp: {
     buildAndUpload: (options: {
       workspaceId: string
@@ -386,17 +416,38 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopRuntime: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:stopRuntime', options),
     getRuntimeState: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeState', options),
   },
-  /** Agent browser automation MVP (flag `cozea.browser.agentAutomation`, default off). */
-  browserAutomation: {
-    status: () => ipcRenderer.invoke('browserAutomation:status'),
-    navigate: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationNavigateInput) =>
-      ipcRenderer.invoke('browserAutomation:navigate', options),
-    snapshot: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationTileInput) =>
-      ipcRenderer.invoke('browserAutomation:snapshot', options),
-    click: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationClickInput) =>
-      ipcRenderer.invoke('browserAutomation:click', options),
-    type: (options: import('../../../shared/browserAutomationTypes').BrowserAutomationTypeInput) =>
-      ipcRenderer.invoke('browserAutomation:type', options),
+  devAppPreview: {
+    // The renderer names a workspace and a path inside it, never a directory: main joins
+    // the two against the root that authorization returns.
+    open: (options: {
+      workspaceId: string
+      laneId?: string | null
+      relativePath: string
+      leaseId: string
+    }) => ipcRenderer.invoke('devAppPreview:open', options),
+    approve: (options: { sourceId: string }) =>
+      ipcRenderer.invoke('devAppPreview:approve', options),
+    status: (options: { sourceId: string }) =>
+      ipcRenderer.invoke('devAppPreview:status', options),
+    close: (options: { sourceId: string }) => ipcRenderer.invoke('devAppPreview:close', options),
+    onStatus: (
+      listener: (payload: {
+        sourceId: string
+        status: import('@shared/devAppPreviewTypes').DevAppPreviewStatus
+      }) => void,
+    ) => {
+      const wrapped = (
+        _event: unknown,
+        payload: {
+          sourceId: string
+          status: import('@shared/devAppPreviewTypes').DevAppPreviewStatus
+        },
+      ) => listener(payload)
+      ipcRenderer.on('devAppPreview:status', wrapped)
+      return () => {
+        ipcRenderer.removeListener('devAppPreview:status', wrapped)
+      }
+    },
   },
   workbenchSession: {
     ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
@@ -433,23 +484,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       tileId: string
       close?: boolean
     }) => ipcRenderer.invoke('workbenchSession:releaseTerminal', options),
-    getBrowserBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) =>
-      ipcRenderer.invoke('workbenchSession:getBrowserBinding', options),
-    bindBrowser: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      tileId: string
-      browserTileId: string
-      workspaceId?: string | null
-    }) => ipcRenderer.invoke('workbenchSession:bindBrowser', options),
-    releaseBrowser: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      tileId: string
-      destroy?: boolean
-    }) => ipcRenderer.invoke('workbenchSession:releaseBrowser', options),
     setNativePreviewSession: (options: {
       sessionKey?: string | null
       projectId: string
@@ -985,6 +1019,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       terminalId: string
     }) => ipcRenderer.invoke('devServer:detachSurface', options),
+    attachSurface: (options: {
+      workspaceId: string
+      laneId?: string | null
+      terminalId: string
+    }) => ipcRenderer.invoke('devServer:attachSurface', options),
     stop: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:stop', options),
     resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) =>
@@ -1137,6 +1176,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 } satisfies ElectronAPI)
 
 contextBridge.exposeInMainWorld('desktopBridge', {
+  preview: previewBridge,
   getWsUrl: () => assistantWsUrl,
   getAssistantRuntimeStatus: () =>
     ipcRenderer.invoke(ASSISTANT_RUNTIME_STATUS_HANDLE) as Promise<AssistantRuntimeBridgeStatus>,

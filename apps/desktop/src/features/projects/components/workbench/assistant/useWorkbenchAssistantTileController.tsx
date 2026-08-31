@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEventHandler, type ComponentProps } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEventHandler,
+  type ComponentProps,
+} from "react"
 
 import {
-
   ApprovalRequestId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
@@ -21,6 +28,7 @@ import {
   resolveSelectableModel,
   setProviderOptionSelectionValue,
 } from "@cozea/assistant-shared/model"
+import type { PreviewAnnotationPayload, PreviewAnnotationSubmission } from "@cozea/contracts/t3/ipc"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -69,6 +77,10 @@ import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantTh
 import { useTileThreadStream } from "@/substrate/useTileThreadStream"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
+import {
+  appendPreviewAnnotationPrompt,
+  previewAnnotationScreenshotFile,
+} from "@/features/projects/browser/previewAnnotation"
 import { getProviderModelCapabilities } from "@/stores/providerModels"
 import {
   createAssistantProjectSelectorForTile,
@@ -88,9 +100,7 @@ import {
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
 import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"
-import {
-  resolvePlanFollowUpSubmission,
-} from "@/features/projects/components/assistant/proposedPlan"
+import { resolvePlanFollowUpSubmission } from "@/features/projects/components/assistant/proposedPlan"
 import {
   findLatestProposedPlan,
   hasActionableProposedPlan,
@@ -115,8 +125,8 @@ import {
   withModelSelectionModel,
 } from "./workbenchAssistantShared"
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon as __AlertCircleHugeIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from "@hugeicons/react"
+import { AlertCircleIcon as __AlertCircleHugeIcon } from "@hugeicons/core-free-icons"
 
 interface UseWorkbenchAssistantTileControllerInput {
   projectId: string
@@ -134,6 +144,10 @@ interface WorkbenchAssistantTileControllerResult {
   handleDeleteThread: () => Promise<boolean>
   artifacts: ReadonlyArray<ThreadImageArtifact>
   artifactMedia: ThreadArtifactMediaState
+  attachPreviewAnnotation: (
+    annotation: PreviewAnnotationPayload,
+    submission: PreviewAnnotationSubmission,
+  ) => Promise<void>
   surfaceProps: ComponentProps<typeof CozeaChatSurface>
 }
 
@@ -194,7 +208,8 @@ export function useWorkbenchAssistantTileController(
   if (substrateRpcChat.enabled && substrateRpcChat.lastError) {
     console.warn("[substrate.rpcChat]", substrateRpcChat.lastError)
   }
-  const isRuntimeReady = assistantRuntime.phase === "ready" || (substrateTransport.active && t3CutoverActive)
+  const isRuntimeReady =
+    assistantRuntime.phase === "ready" || (substrateTransport.active && t3CutoverActive)
   const isChatReady = isRuntimeReady || substrateTransport.active
   const runtimeErrorMessage =
     assistantRuntime.phase === "error"
@@ -212,6 +227,10 @@ export function useWorkbenchAssistantTileController(
   const [composerCursor, setComposerCursor] = useState(0)
   const [sendError, setSendError] = useState<string | null>(null)
   const [composerImages, setComposerImages] = useState<ComposerImageDraft[]>([])
+  const [composerPreviewAnnotations, setComposerPreviewAnnotations] = useState<
+    PreviewAnnotationPayload[]
+  >([])
+  const [autoSendAnnotationId, setAutoSendAnnotationId] = useState<string | null>(null)
   const [bindingError, setBindingError] = useState<string | null>(null)
   const [isBinding, setIsBinding] = useState(false)
   const [bindingRevision, setBindingRevision] = useState(0)
@@ -232,6 +251,7 @@ export function useWorkbenchAssistantTileController(
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const bindingInFlightRef = useRef(false)
   const sendInFlightRef = useRef(false)
+  const handleSendRef = useRef<() => Promise<void>>(async () => undefined)
 
   const assistantProjectSelector = useMemo(
     () =>
@@ -250,10 +270,7 @@ export function useWorkbenchAssistantTileController(
   const threadStream = useTileThreadStream(input.tile.threadId)
   const draftTargetKey = thread?.id ?? input.tile.id
   const composerDraft = useAssistantComposerDraftStore(
-    useCallback(
-      (state) => state.draftsByTargetKey[draftTargetKey] ?? null,
-      [draftTargetKey],
-    ),
+    useCallback((state) => state.draftsByTargetKey[draftTargetKey] ?? null, [draftTargetKey]),
   )
 
   // Absolute filesystem root of the bound workspace, used to trim absolute
@@ -400,9 +417,14 @@ export function useWorkbenchAssistantTileController(
     }
 
     const streamMessages = threadStream.messages.length > 0 ? threadStream.messages : base.messages
-    const streamActivities = threadStream.activities.length > 0 ? threadStream.activities : base.activities
-    const streamPlans = threadStream.proposedPlans.length > 0 ? threadStream.proposedPlans : base.proposedPlans
-    const streamDiffs = threadStream.turnDiffSummaries.length > 0 ? threadStream.turnDiffSummaries : base.turnDiffSummaries
+    const streamActivities =
+      threadStream.activities.length > 0 ? threadStream.activities : base.activities
+    const streamPlans =
+      threadStream.proposedPlans.length > 0 ? threadStream.proposedPlans : base.proposedPlans
+    const streamDiffs =
+      threadStream.turnDiffSummaries.length > 0
+        ? threadStream.turnDiffSummaries
+        : base.turnDiffSummaries
 
     return {
       ...base,
@@ -638,9 +660,15 @@ export function useWorkbenchAssistantTileController(
 
           if (existingProject) {
             if (input.tile.assistantProjectId !== existingProject.id) {
-              updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-                assistantProjectId: existingProject.id,
-              }, input.workspaceId)
+              updateAssistantTile(
+                input.projectId,
+                input.laneId,
+                input.tile.id,
+                {
+                  assistantProjectId: existingProject.id,
+                },
+                input.workspaceId,
+              )
             }
             setBindingError(null)
             setIsBinding(false)
@@ -651,7 +679,8 @@ export function useWorkbenchAssistantTileController(
         await withWorkspaceBindingLock(workspaceRoot, async () => {
           const api = ensureNativeApi()
           const liveTile = () =>
-            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.workspaceId) ?? input.tile
+            getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.workspaceId) ??
+            input.tile
           const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
 
           // The runtime can report ready before the renderer has applied its
@@ -692,11 +721,16 @@ export function useWorkbenchAssistantTileController(
                 createdAt: new Date().toISOString(),
               })
             } catch (createError: unknown) {
-              const errMsg = createError instanceof Error ? `${createError.message} ${createError.stack ?? ""}` : JSON.stringify(createError);
-              const match = errMsg.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/);
+              const errMsg =
+                createError instanceof Error
+                  ? `${createError.message} ${createError.stack ?? ""}`
+                  : JSON.stringify(createError)
+              const match = errMsg.match(
+                /Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/,
+              )
               if (match && match[1]) {
-                const existingId = match[1];
-                const currentReadModel = useStore.getState().orchestrationReadModel;
+                const existingId = match[1]
+                const currentReadModel = useStore.getState().orchestrationReadModel
                 useStore.getState().syncServerReadModel({
                   snapshotSequence: currentReadModel?.snapshotSequence ?? 0,
                   projects: [
@@ -713,10 +747,10 @@ export function useWorkbenchAssistantTileController(
                   ],
                   threads: currentReadModel?.threads ?? [],
                   updatedAt: new Date().toISOString(),
-                });
-                nextProject = useStore.getState().projectById[existingId as any] ?? null;
+                })
+                nextProject = useStore.getState().projectById[existingId as any] ?? null
               } else {
-                throw createError;
+                throw createError
               }
             }
             const nextAssistantState = useStore.getState()
@@ -764,8 +798,7 @@ export function useWorkbenchAssistantTileController(
                 worktreePath: null,
                 createdAt: new Date().toISOString(),
               })
-              nextThread =
-                selectAssistantThreadById(useStore.getState(), threadId) ?? null
+              nextThread = selectAssistantThreadById(useStore.getState(), threadId) ?? null
             }
 
             const latestTile = liveTile()
@@ -791,15 +824,27 @@ export function useWorkbenchAssistantTileController(
             }
 
             if (!cancelled && Object.keys(patch).length > 0) {
-              updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId)
+              updateAssistantTile(
+                input.projectId,
+                input.laneId,
+                input.tile.id,
+                patch,
+                input.workspaceId,
+              )
             }
           } else {
             // --- Fix 6: Fresh tile --- just bind the project, no thread yet
             const latestTile = liveTile()
             if (!cancelled && latestTile.assistantProjectId !== nextProject.id) {
-              updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-                assistantProjectId: nextProject.id,
-              }, input.workspaceId)
+              updateAssistantTile(
+                input.projectId,
+                input.laneId,
+                input.tile.id,
+                {
+                  assistantProjectId: nextProject.id,
+                },
+                input.workspaceId,
+              )
             }
           }
 
@@ -837,10 +882,7 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile,
   ])
 
-  const runMetaSync = async (
-    mutate: () => Promise<void>,
-    options?: { requestKey?: string },
-  ) => {
+  const runMetaSync = async (mutate: () => Promise<void>, options?: { requestKey?: string }) => {
     if (options?.requestKey) {
       setActiveRequestKey(options.requestKey)
     }
@@ -896,14 +938,14 @@ export function useWorkbenchAssistantTileController(
     })
     const nextModelSelection = normalizeDraftModelSelection(
       withModelSelectionModel(
-      preferredModelSelection,
-      (nextModelValue
-        ? resolveSelectableModel(
-            nextProvider,
-            nextModelValue,
-            getProviderModelOptions(config, nextProvider, nextInstanceId),
-          ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue)
-        : null) ?? preferredModelSelection.model,
+        preferredModelSelection,
+        (nextModelValue
+          ? (resolveSelectableModel(
+              nextProvider,
+              nextModelValue,
+              getProviderModelOptions(config, nextProvider, nextInstanceId),
+            ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue))
+          : null) ?? preferredModelSelection.model,
       ),
     )
     upsertComposerDraft(draftTargetKey, {
@@ -911,12 +953,18 @@ export function useWorkbenchAssistantTileController(
     })
 
     const isDifferentProvider = Boolean(thread && thread.modelSelection.provider !== nextProvider)
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-      provider: nextModelSelection.provider,
-      providerInstanceId: nextModelSelection.instanceId,
-      model: nextModelSelection.model,
-      ...(isDifferentProvider ? { threadId: null } : {}),
-    }, input.workspaceId)
+    updateAssistantTile(
+      input.projectId,
+      input.laneId,
+      input.tile.id,
+      {
+        provider: nextModelSelection.provider,
+        providerInstanceId: nextModelSelection.instanceId,
+        model: nextModelSelection.model,
+        ...(isDifferentProvider ? { threadId: null } : {}),
+      },
+      input.workspaceId,
+    )
     flushWorkbenchStorage()
 
     if (!thread || isDifferentProvider) {
@@ -946,11 +994,17 @@ export function useWorkbenchAssistantTileController(
       modelSelection: nextModelSelection,
     })
 
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-      provider: nextModelSelection.provider,
-      providerInstanceId: nextModelSelection.instanceId,
-      model: nextModelSelection.model,
-    }, input.workspaceId)
+    updateAssistantTile(
+      input.projectId,
+      input.laneId,
+      input.tile.id,
+      {
+        provider: nextModelSelection.provider,
+        providerInstanceId: nextModelSelection.instanceId,
+        model: nextModelSelection.model,
+      },
+      input.workspaceId,
+    )
 
     if (!thread) {
       return
@@ -1000,9 +1054,15 @@ export function useWorkbenchAssistantTileController(
     upsertComposerDraft(draftTargetKey, {
       runtimeMode: nextRuntimeMode,
     })
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-      runtimeMode: nextRuntimeMode,
-    }, input.workspaceId)
+    updateAssistantTile(
+      input.projectId,
+      input.laneId,
+      input.tile.id,
+      {
+        runtimeMode: nextRuntimeMode,
+      },
+      input.workspaceId,
+    )
 
     if (!thread) {
       return
@@ -1025,9 +1085,15 @@ export function useWorkbenchAssistantTileController(
     upsertComposerDraft(draftTargetKey, {
       interactionMode: nextInteractionMode,
     })
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-      interactionMode: nextInteractionMode,
-    }, input.workspaceId)
+    updateAssistantTile(
+      input.projectId,
+      input.laneId,
+      input.tile.id,
+      {
+        interactionMode: nextInteractionMode,
+      },
+      input.workspaceId,
+    )
 
     if (!thread) {
       return
@@ -1130,9 +1196,15 @@ export function useWorkbenchAssistantTileController(
         upsertComposerDraft(draftTargetKey, {
           interactionMode: followUp.interactionMode,
         })
-        updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-          interactionMode: followUp.interactionMode,
-        }, input.workspaceId)
+        updateAssistantTile(
+          input.projectId,
+          input.laneId,
+          input.tile.id,
+          {
+            interactionMode: followUp.interactionMode,
+          },
+          input.workspaceId,
+        )
 
         await getOrchestration().dispatchCommand({
           type: "thread.interaction-mode.set",
@@ -1169,9 +1241,7 @@ export function useWorkbenchAssistantTileController(
       })
     } catch (error) {
       clearPendingTurnStart()
-      setOptimisticUserMessages((current) =>
-        current.filter((message) => message.id !== messageId),
-      )
+      setOptimisticUserMessages((current) => current.filter((message) => message.id !== messageId))
       setComposer(draftText)
       setComposerCursor(draftText.length)
       setSendError(toErrorMessage(error))
@@ -1190,7 +1260,7 @@ export function useWorkbenchAssistantTileController(
       setSendError(
         substrateTransport.loading
           ? "Substrate chat is still starting."
-          : runtimeErrorMessage ?? "Local chat runtime is still starting.",
+          : (runtimeErrorMessage ?? "Local chat runtime is still starting."),
       )
       return
     }
@@ -1254,10 +1324,15 @@ export function useWorkbenchAssistantTileController(
               updatedAt: new Date().toISOString(),
             } satisfies Project as any
           } catch (createErr: unknown) {
-            const errMsg = createErr instanceof Error ? `${createErr.message} ${createErr.stack ?? ""}` : JSON.stringify(createErr);
-            const match = errMsg.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/);
+            const errMsg =
+              createErr instanceof Error
+                ? `${createErr.message} ${createErr.stack ?? ""}`
+                : JSON.stringify(createErr)
+            const match = errMsg.match(
+              /Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/,
+            )
             if (match && match[1]) {
-              const existingId = match[1];
+              const existingId = match[1]
               currentProject = {
                 id: existingId as any,
                 name: basenameFromPath(workspaceRoot),
@@ -1296,10 +1371,16 @@ export function useWorkbenchAssistantTileController(
           createdAt,
         })
 
-        updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-          threadId,
-          assistantProjectId: currentProject.id,
-        }, input.workspaceId)
+        updateAssistantTile(
+          input.projectId,
+          input.laneId,
+          input.tile.id,
+          {
+            threadId,
+            assistantProjectId: currentProject.id,
+          },
+          input.workspaceId,
+        )
 
         // Build a minimal thread-like object from the data we just sent.
         // We can't read from the store yet because the domain event hasn't
@@ -1342,9 +1423,13 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    const nextPrompt = composer.trim()
+    const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations]
+    let nextPrompt = composer.trim()
+    for (const annotation of composerPreviewAnnotationsSnapshot) {
+      nextPrompt = appendPreviewAnnotationPrompt(nextPrompt, annotation)
+    }
     const hasImages = composerImages.length > 0
-    if (!nextPrompt && !hasImages) {
+    if (!nextPrompt && !hasImages && composerPreviewAnnotationsSnapshot.length === 0) {
       return
     }
 
@@ -1384,6 +1469,7 @@ export function useWorkbenchAssistantTileController(
     setComposer("")
     setComposerCursor(0)
     setComposerImages([])
+    setComposerPreviewAnnotations([])
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
     notePendingTurnStart(messageId, resolvedThread.id, messageCreatedAt)
 
@@ -1419,9 +1505,15 @@ export function useWorkbenchAssistantTileController(
 
       ensureNativeApi()
       if (isFirstUserMessage && nextThreadTitle) {
-        updateAssistantTile(input.projectId, input.laneId, input.tile.id, {
-          title: nextThreadTitle,
-        }, input.workspaceId)
+        updateAssistantTile(
+          input.projectId,
+          input.laneId,
+          input.tile.id,
+          {
+            title: nextThreadTitle,
+          },
+          input.workspaceId,
+        )
 
         await getOrchestration().dispatchCommand({
           type: "thread.meta.update",
@@ -1435,8 +1527,11 @@ export function useWorkbenchAssistantTileController(
       await persistThreadSettingsForNextTurn(resolvedThread)
 
       const SKILL_TOKEN_REGEX = /(^|\\s)\\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\\s|$)/g
-      const extractedSkillNames = Array.from(nextPrompt.matchAll(SKILL_TOKEN_REGEX)).map((m) => m[2])
-      const skills = providerSnapshot?.skills?.filter((s) => extractedSkillNames.includes(s.name)) ?? []
+      const extractedSkillNames = Array.from(nextPrompt.matchAll(SKILL_TOKEN_REGEX)).map(
+        (m) => m[2],
+      )
+      const skills =
+        providerSnapshot?.skills?.filter((s) => extractedSkillNames.includes(s.name)) ?? []
       const uploadAttachments = await Promise.all(
         composerImagesSnapshot.map(async (image) => {
           if (!image.file) {
@@ -1483,6 +1578,7 @@ export function useWorkbenchAssistantTileController(
       setComposerCursor(nextPrompt.length)
       // Deep-clone images with fresh blob URLs so the originals are safely revoked
       setComposerImages(composerImagesSnapshot.map(cloneComposerImageForRetry))
+      setComposerPreviewAnnotations(composerPreviewAnnotationsSnapshot)
       setSendError(toErrorMessage(error))
     } finally {
       sendInFlightRef.current = false
@@ -1490,10 +1586,66 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
-  const handleApprovalDecision = async (
-    requestId: string,
-    decision: ProviderApprovalDecision,
-  ) => {
+  handleSendRef.current = handleSend
+
+  useEffect(() => {
+    if (!autoSendAnnotationId || isSending || sendInFlightRef.current) return
+    const annotation = composerPreviewAnnotations.find(
+      (candidate) => candidate.id === autoSendAnnotationId,
+    )
+    if (!annotation) return
+    setAutoSendAnnotationId(null)
+    void handleSendRef.current()
+  }, [autoSendAnnotationId, composerImages, composerPreviewAnnotations, isSending])
+
+  const attachPreviewAnnotation = useCallback(
+    async (
+      annotation: PreviewAnnotationPayload,
+      submission: PreviewAnnotationSubmission,
+    ): Promise<void> => {
+      setComposerPreviewAnnotations((current) => [
+        ...current.filter((candidate) => candidate.id !== annotation.id),
+        annotation,
+      ])
+      try {
+        const file = await previewAnnotationScreenshotFile(annotation)
+        const screenshot = annotation.screenshot
+        if (file && screenshot) {
+          setComposerImages((current) => [
+            ...current.filter((image) => image.id !== annotation.id),
+            {
+              id: annotation.id,
+              name: file.name,
+              mimeType: file.type,
+              sizeBytes: file.size,
+              previewUrl: screenshot.dataUrl,
+              file,
+            },
+          ])
+        }
+      } catch {
+        // The exact structured T3 payload remains sendable if screenshot conversion fails.
+      }
+      if (submission === "send") setAutoSendAnnotationId(annotation.id)
+    },
+    [],
+  )
+
+  const removePreviewAnnotation = useCallback((annotationId: string) => {
+    setComposerPreviewAnnotations((current) =>
+      current.filter((annotation) => annotation.id !== annotationId),
+    )
+    setComposerImages((current) =>
+      current.filter((image) => {
+        if (image.id !== annotationId) return true
+        revokeBlobPreviewUrl(image.previewUrl)
+        return false
+      }),
+    )
+    setAutoSendAnnotationId((current) => (current === annotationId ? null : current))
+  }, [])
+
+  const handleApprovalDecision = async (requestId: string, decision: ProviderApprovalDecision) => {
     if (!thread) {
       return
     }
@@ -1602,10 +1754,7 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
-  const handleComposerChange = (
-    nextValue: string,
-    nextCursor: number,
-  ) => {
+  const handleComposerChange = (nextValue: string, nextCursor: number) => {
     setComposer(nextValue)
     setComposerCursor(nextCursor)
   }
@@ -1622,50 +1771,53 @@ export function useWorkbenchAssistantTileController(
     return false
   }
 
-  const addComposerImages = useCallback((files: File[]) => {
-    if (files.length === 0) return
-    if (!thread) return
-    if (pendingUserInputs.length > 0) {
-      setSendError("Attach images after answering pending questions.")
-      return
-    }
-    const currentImageCount = composerImages.length
-    const nextImages: ComposerImageDraft[] = []
-    let nextImageCount = currentImageCount
-    let error: string | null = null
+  const addComposerImages = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return
+      if (!thread) return
+      if (pendingUserInputs.length > 0) {
+        setSendError("Attach images after answering pending questions.")
+        return
+      }
+      const currentImageCount = composerImages.length
+      const nextImages: ComposerImageDraft[] = []
+      let nextImageCount = currentImageCount
+      let error: string | null = null
 
-    for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        error = `Unsupported file type for '${file.name}'. Attach image files only.`
-        continue
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) {
+          error = `Unsupported file type for '${file.name}'. Attach image files only.`
+          continue
+        }
+        if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+          const maxMb = Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))
+          error = `'${file.name}' exceeds the ${maxMb}MB attachment limit.`
+          continue
+        }
+        if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+          error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`
+          break
+        }
+        nextImages.push({
+          id: newMessageId(),
+          name: file.name || "image",
+          mimeType: file.type,
+          sizeBytes: file.size,
+          previewUrl: URL.createObjectURL(file),
+          file,
+        })
+        nextImageCount += 1
       }
-      if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-        const maxMb = Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))
-        error = `'${file.name}' exceeds the ${maxMb}MB attachment limit.`
-        continue
-      }
-      if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-        error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`
-        break
-      }
-      nextImages.push({
-        id: newMessageId(),
-        name: file.name || "image",
-        mimeType: file.type,
-        sizeBytes: file.size,
-        previewUrl: URL.createObjectURL(file),
-        file,
-      })
-      nextImageCount += 1
-    }
 
-    if (nextImages.length > 0) {
-      setComposerImages((current) => [...current, ...nextImages])
-    }
-    if (error) {
-      setSendError(error)
-    }
-  }, [composerImages.length, pendingUserInputs.length, thread])
+      if (nextImages.length > 0) {
+        setComposerImages((current) => [...current, ...nextImages])
+      }
+      if (error) {
+        setSendError(error)
+      }
+    },
+    [composerImages.length, pendingUserInputs.length, thread],
+  )
 
   const removeComposerImage = useCallback((imageId: string) => {
     setComposerImages((current) => {
@@ -1691,8 +1843,7 @@ export function useWorkbenchAssistantTileController(
   }
 
   const toggleInteractionMode = async () => {
-    const nextInteractionMode =
-      selectedInteractionMode === "plan" ? "default" : "plan"
+    const nextInteractionMode = selectedInteractionMode === "plan" ? "default" : "plan"
     await handleInteractionModeChange(nextInteractionMode)
   }
 
@@ -1708,8 +1859,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     const summary = thread.turnDiffSummaries.find((entry) => entry.turnId === turnId)
-    const checkpointTurnCount =
-      summary?.checkpointTurnCount ?? turnCountByTurnId[turnId]
+    const checkpointTurnCount = summary?.checkpointTurnCount ?? turnCountByTurnId[turnId]
 
     if (checkpointTurnCount === undefined) {
       return
@@ -1718,7 +1868,9 @@ export function useWorkbenchAssistantTileController(
     const turnNumber = checkpointTurnCount + 1
 
     await openDiffDialog({
-      title: filePath ? `${chatTitle} turn ${turnNumber} · ${filePath}` : `${chatTitle} turn ${turnNumber}`,
+      title: filePath
+        ? `${chatTitle} turn ${turnNumber} · ${filePath}`
+        : `${chatTitle} turn ${turnNumber}`,
       request: async () => {
         ensureNativeApi()
         return getOrchestration().getTurnDiff({
@@ -1775,8 +1927,7 @@ export function useWorkbenchAssistantTileController(
             }),
           removeWorktree: (worktreeInput) => api.git.removeWorktree(worktreeInput),
           newCommandId,
-          closeTerminals: (threadId) =>
-            api.terminal.close({ threadId, deleteHistory: true }),
+          closeTerminals: (threadId) => api.terminal.close({ threadId, deleteHistory: true }),
         },
       })
 
@@ -1882,6 +2033,7 @@ export function useWorkbenchAssistantTileController(
     handleDeleteThread,
     artifacts,
     artifactMedia,
+    attachPreviewAnnotation,
     surfaceProps: {
       dockComposerOnHover: true,
       isRuntimeReady,
@@ -1905,6 +2057,7 @@ export function useWorkbenchAssistantTileController(
       composer,
       composerCursor,
       composerImages,
+      previewAnnotations: composerPreviewAnnotations,
       terminalContexts: [],
       onRemoveTerminalContext: () => {},
       isSending: isSending || isTurnStartPending,
@@ -1920,7 +2073,10 @@ export function useWorkbenchAssistantTileController(
       modelOptionsByProvider,
       modelOptionDescriptors: selectedModelOptionDescriptors,
       onProviderModelChange: (provider, model, instanceId) => {
-        if (provider !== selectedProvider || (instanceId && instanceId !== selectedProviderInstanceId)) {
+        if (
+          provider !== selectedProvider ||
+          (instanceId && instanceId !== selectedProviderInstanceId)
+        ) {
           void handleProviderChange(provider, model, instanceId)
           return
         }
@@ -1940,6 +2096,7 @@ export function useWorkbenchAssistantTileController(
       onComposerPaste: handleComposerPaste,
       onAttachFiles: addComposerImages,
       onRemoveComposerImage: removeComposerImage,
+      onRemovePreviewAnnotation: removePreviewAnnotation,
       onSend: () => {
         void handleSend()
       },

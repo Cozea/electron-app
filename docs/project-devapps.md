@@ -1,5 +1,11 @@
 # Org DevApps
 
+> **T3 surface cutover (2026-08-31):** Ready static and service releases render through the shared
+> renderer-wide T3 `<webview>` host. Artifact verification, trust approval, encrypted environment
+> configuration, runtime leases, logs, and stop/restart remain independent. Protected
+> custom-scheme and authenticated loopback origins stay inside the publication session and are
+> never offered to the external-browser action.
+
 Org DevApps publish an immutable **static** or **service** artifact to a Cozea-owned organization.
 Every org member can open every published DevApp in that org. Consumers never receive the source
 project, a local path, a development command, or a dependency-install recipe.
@@ -62,18 +68,19 @@ If the project has no linked local folder, no `build` script, or no static `inde
 1. Store **Your org** and the workbench launcher load `devApps.listMine` / `listForOrganization`.
 2. Choosing an org DevApp resolves to `addTile` + `tileType: "orgDevApp"` (`publishedDevApp` launch kind).
 3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), verifies the ZIP/hash,
-   and caches the immutable release under app data. Static releases navigate to
-   `cozea-devapp://<hash>.release/index.html`.
+   caches the immutable release under app data, prepares its publication-scoped browser session,
+   and renders the static custom-scheme origin through the shared T3 host.
 4. A service release validates platform, manifest, entrypoint, symlinks, and native-code exclusions;
    blocks on missing environment values; shows trusted-code approval bound to its content and
    permission hashes; then starts with Cozea's Electron executable in Node mode, a minimal
    environment, a publication-scoped data directory, and a 1 GiB V8 heap ceiling.
-5. The main-process gateway routes only a publication session's secret header plus exact content
-   host to that publication's leased runtime. It proxies HTTP and WebSocket upgrades. The tile sees
-   `http://<hash>.service.localhost:<gateway-port>/`, never the service's random raw port.
-6. `WorkbenchBrowserService` uses a per-publication session partition and exact-release navigation
-   scope. Cross-release, other localhost, `file:`, and arbitrary `http:` navigation is rejected.
-   Top-level HTTPS links open in the system browser; HTTPS API requests remain available to the app.
+5. The main-process gateway continues to bind a secret header and exact content host to the leased
+   runtime. Its authenticated loopback origin is rendered only inside the prepared publication
+   session and is never exposed to the external-browser action.
+6. `OrgDevAppArtifactService` registers the hardened custom protocol and authenticated gateway
+   header once per persistent publication session. A release/content-hash change replaces the
+   living guest generation, and main-process navigation policy confines it to that exact static or
+   service release.
 7. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
 
 Service releases run separately on each authorized Mac. Local files/databases are device-local;
@@ -81,9 +88,10 @@ shared data still requires an external HTTPS backend. Service code is trusted or
 the beta, not an OS-enforced sandbox.
 
 Access is re-evaluated reactively while a tile is open. Archiving the publication or removing the
-device from the organization hides the native surface and prevents cached reopening. Download,
-camera, microphone, location, display-capture, USB, serial, HID, notification, and other browser
-permission requests are denied.
+device from the organization stops access and prevents cached reopening. Guests use T3's approved
+clipboard, notification, and geolocation permission allowlist; all other permissions and unmanaged
+downloads are denied. Public HTTPS top-level links open externally, while custom-scheme,
+authenticated loopback, cross-release, public HTTP, file, and other schemes never do.
 
 ## Artifact and cache limits
 
@@ -119,6 +127,22 @@ Every org member sees the same DevApp list. Opening from Settings uses the same 
 The machine-local `localProjectDevAppStore` is compatibility-only for already-persisted development
 tiles. It is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must
 not read it.
+
+### Compatibility development preview
+
+Already-persisted `devAppPreview` tiles remain supported without re-entering the old browser host.
+Framework manifests with `view.dev.url` render that loopback URL through the renderer-wide T3
+surface. Built output receives an ephemeral, source-scoped
+`cozea-devapp://<source-id>.dev/<entry>` origin in the tile's isolated preview partition. Main
+registers that protocol only after the workspace-relative package is authorized and confines every
+asset lookup to the built entry directory after resolving symlinks. A reload generation replaces
+the guest, while the Development badge, trust approval, worker status, preflight diagnostics, and
+hot-reload watcher remain visible in the normal Dockview chrome.
+
+Development origins are not publication origins: they are never exposed externally, do not share
+the publication cookie partition, and disappear when the preview closes. Public HTTPS navigation
+opens externally; cross-source custom origins and unsupported schemes are rejected by the shared
+surface manager.
 
 Project deletion owns both lifecycles: it removes the source project's machine-local publication
 and releases immediately, then the bounded Convex project cascade removes any org publication,

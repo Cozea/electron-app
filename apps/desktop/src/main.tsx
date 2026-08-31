@@ -17,6 +17,7 @@ import { applyStoredLanguage } from './lib/i18n'
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
+import { ElectronBrowserHost } from './features/projects/browser/ElectronBrowserHost'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -63,6 +64,7 @@ createRoot(document.getElementById('root')!).render(
     <ConvexProvider>
       <ToastProvider>
         <RouterProvider router={appRouter} />
+        <ElectronBrowserHost />
       </ToastProvider>
     </ConvexProvider>
   </React.StrictMode>,

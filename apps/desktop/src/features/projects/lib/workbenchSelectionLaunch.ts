@@ -9,7 +9,7 @@ export interface WorkbenchSelectionCreateOptions {
   title?: string
   provider?: ProviderKind
   url?: string
-  storageScope?: import("@shared/browserHostTypes").BrowserStorageScope
+  storageScope?: import("@shared/browserTileTypes").BrowserStorageScope
   devAppId?: string | null
   devAppReleaseId?: string | null
   devAppReleaseVersion?: number | null

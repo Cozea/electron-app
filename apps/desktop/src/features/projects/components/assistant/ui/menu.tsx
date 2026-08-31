@@ -7,10 +7,6 @@ import { ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon } from '@hugeicons
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import type * as React from "react";
 
-import {
-  preflightNativeSurfaceOcclusion,
-  useNativeSurfaceOverlayLifecycle,
-} from "@/lib/nativeSurfaceOcclusion";
 import { cn } from "@/lib/utils";
 
 const MenuCreateHandle = MenuPrimitive.createHandle;
@@ -22,24 +18,12 @@ const MenuPortal = MenuPrimitive.Portal;
 function MenuTrigger({
   className,
   children,
-  onKeyDownCapture,
-  onPointerDownCapture,
   ...props
 }: MenuPrimitive.Trigger.Props) {
   return (
     <MenuPrimitive.Trigger
       className={className}
       data-slot="menu-trigger"
-      onKeyDownCapture={(event) => {
-        if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
-          preflightNativeSurfaceOcclusion("Menu opening");
-        }
-        onKeyDownCapture?.(event);
-      }}
-      onPointerDownCapture={(event) => {
-        preflightNativeSurfaceOcclusion("Menu opening");
-        onPointerDownCapture?.(event);
-      }}
       {...props}
     >
       {children}
@@ -63,15 +47,13 @@ function MenuPopup({
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
 }) {
-  useNativeSurfaceOverlayLifecycle();
-
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
-        className="z-50"
+        className="z-[var(--cozea-layer-menu)]"
         data-slot="menu-positioner"
         side={side}
         sideOffset={sideOffset}
@@ -81,8 +63,6 @@ function MenuPopup({
             "relative flex not-[class*='w-']:min-w-32 origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] focus:outline-none dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             className,
           )}
-          data-native-surface-overlay="true"
-          data-native-surface-overlay-reason="Menu"
           data-slot="menu-popup"
           {...props}
         >

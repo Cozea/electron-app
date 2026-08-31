@@ -1,5 +1,12 @@
 # Integrated Browser Implementation Checklist
 
+> **Superseded (2026-08-31).** The native host described below has been removed, not refactored.
+> Browser, Dev Server, compatibility Project DevApp, and Org DevApp tiles now use the direct T3
+> `<webview>` port. Org releases retain their existing artifact/runtime lifecycle and add
+> publication-scoped session preparation and navigation confinement. Progress is gated by
+> `shared/browserPortParityLedger.ts`.
+> The checklist below remains historical context and must not be used to restore the old native host.
+
 This checklist is the execution companion to `docs/integrated-browser-architecture.md`.
 
 It is intentionally Cozea-specific and maps directly onto the current `codex/preview-assistant-cleanup` workbench.
@@ -95,51 +102,51 @@ Goal: define the clean boundary before moving code.
 Suggested contents:
 
 ```ts
-export type BrowserStorageScope = 'global' | 'workspace' | 'ephemeral'
+export type BrowserStorageScope = "global" | "workspace" | "ephemeral";
 
 export interface BrowserHostBounds {
-  windowId: number
-  x: number
-  y: number
-  width: number
-  height: number
-  zoomFactor: number
-  cornerRadius?: number
+  windowId: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zoomFactor: number;
+  cornerRadius?: number;
 }
 
 export interface BrowserLoadError {
-  url: string
-  code: number
-  message: string
+  url: string;
+  code: number;
+  message: string;
 }
 
 export interface BrowserState {
-  tileId: string
-  url: string
-  title: string
-  favicon?: string | null
-  loading: boolean
-  visible: boolean
-  focused: boolean
-  canGoBack: boolean
-  canGoForward: boolean
-  devToolsOpen: boolean
-  storageScope: BrowserStorageScope
-  error?: BrowserLoadError | null
+  tileId: string;
+  url: string;
+  title: string;
+  favicon?: string | null;
+  loading: boolean;
+  visible: boolean;
+  focused: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  devToolsOpen: boolean;
+  storageScope: BrowserStorageScope;
+  error?: BrowserLoadError | null;
 }
 
 export interface BrowserCreateOptions {
-  initialUrl?: string
-  storageScope: BrowserStorageScope
-  workspaceId?: string | null
+  initialUrl?: string;
+  storageScope: BrowserStorageScope;
+  workspaceId?: string | null;
 }
 
 export interface BrowserElementData {
-  tagName: string
-  role?: string
-  text?: string
-  selector?: string
-  url?: string
+  tagName: string;
+  role?: string;
+  text?: string;
+  selector?: string;
+  url?: string;
 }
 ```
 
@@ -164,23 +171,23 @@ Goal: stop letting the tile component directly own browser host logic.
 Suggested shape:
 
 ```ts
-import { Emitter } from '@/lib/events'
+import { Emitter } from "@/lib/events";
 import type {
   BrowserCreateOptions,
   BrowserElementData,
   BrowserHostBounds,
   BrowserState,
-} from '@/shared/browserHostTypes'
+} from "@/shared/browserHostTypes";
 
 export class BrowserTileModel {
   constructor(readonly id: string) {}
 
-  private _state: BrowserState | null = null
-  private _onDidChange = new Emitter<BrowserState>()
-  readonly onDidChange = this._onDidChange.event
+  private _state: BrowserState | null = null;
+  private _onDidChange = new Emitter<BrowserState>();
+  readonly onDidChange = this._onDidChange.event;
 
   get state(): BrowserState | null {
-    return this._state
+    return this._state;
   }
 
   async initialize(options: BrowserCreateOptions): Promise<void> {}
@@ -202,6 +209,7 @@ export class BrowserTileModel {
 ## Add `src/features/projects/browser/browserTileService.ts`
 
 Responsibilities:
+
 - create one model per tile id
 - cache/reuse models while tiles exist
 - dispose models when tiles are removed
@@ -226,6 +234,7 @@ Goal: centralize ownership of browser instances in one place.
 ## Add `src/electron/services/BrowserHostService.ts`
 
 Responsibilities:
+
 - own a `Map<string, BrowserInstance>` keyed by tile id
 - create browser instances lazily
 - apply visibility and bounds
@@ -274,6 +283,7 @@ Goal: remove continuous browser ownership from the tile hook.
 ## Replace with something like `useBrowserTileModel.ts`
 
 Responsibilities:
+
 - resolve the model by tile id
 - subscribe to model state
 - expose a measured host element ref
@@ -299,6 +309,7 @@ Goal: make layout updates event-driven first.
 ## Rules
 
 Preferred triggers:
+
 - Dockview panel ready
 - Dockview panel resize
 - Dockview active/inactive changes
@@ -306,6 +317,7 @@ Preferred triggers:
 - explicit host visibility changes
 
 Avoid:
+
 - unconditional permanent `requestAnimationFrame` loops for every browser tile
 
 ## Checklist
@@ -361,6 +373,7 @@ Goal: one browser system in the app.
 Right now `WorkbenchDevServerTile.tsx` has its own preview behavior and also uses the browser hook path.
 
 That should evolve into:
+
 - dev-server tile manages the server process and preview destination
 - browser tile manages embedded browsing
 - dev-server can open/reuse a linked browser tile for the current preview URL
@@ -383,6 +396,7 @@ One browser implementation path for both direct browser tabs and embedded previe
 Goal: support durable or isolated browsing modes cleanly.
 
 Suggested modes:
+
 - `global`
 - `workspace`
 - `ephemeral`
@@ -390,6 +404,7 @@ Suggested modes:
 ## Add `src/features/projects/browser/browserStoragePolicy.ts`
 
 Responsibilities:
+
 - resolve desired storage scope
 - decide session partition key strategy
 - map workspace/project identity to partition naming
@@ -414,12 +429,14 @@ Goal: stop browser-page shortcuts and workbench shortcuts from fighting.
 ## Add `src/electron/preload/preload-browser-tile.ts`
 
 Rules to follow:
+
 - page/browser gets first chance
 - native editing shortcuts remain native
 - only unhandled command-like shortcuts return to host workbench
 - expose only tiny safe helpers through isolated context
 
 Potential helpers:
+
 - `getSelectedText()`
 - maybe future DOM/inspection utilities
 
@@ -443,6 +460,7 @@ Goal: attach AI/browser tools to the live tile.
 ## Add `src/electron/services/BrowserAutomationService.ts`
 
 Responsibilities:
+
 - selected text
 - screenshots
 - console logs
@@ -452,6 +470,7 @@ Responsibilities:
 ## Add `src/features/projects/browser/browserAgentBridge.ts`
 
 Responsibilities:
+
 - bridge browser tile to assistant workflows
 - “share with agent” state
 - attach current tile context to agent tools
@@ -482,6 +501,7 @@ Goal: keep the workbench store metadata-only.
 - [ ] Only persist what is needed to restore identity and tab intent
 
 Suggested persisted fields:
+
 - `id`
 - `title`
 - `url`
@@ -504,6 +524,7 @@ It is:
 ## PR 1 — Introduce model boundary and stop renderer-owned browser control
 
 Scope:
+
 - add shared host types
 - add `BrowserTileModel`
 - add `browserTileService`
@@ -512,6 +533,7 @@ Scope:
 - reduce the current hook’s responsibility dramatically
 
 Success criteria:
+
 - browser tile still works
 - renderer component becomes thinner
 - browser lifecycle is no longer owned directly by `useWorkbenchBrowserView`
@@ -519,6 +541,7 @@ Success criteria:
 ## PR 2 — Introduce `BrowserHostService`
 
 Scope:
+
 - centralize browser instance ownership in Electron
 - move browser create/destroy/navigation/layout logic into host service
 - add typed event channel
@@ -526,6 +549,7 @@ Scope:
 ## PR 3 — Event-driven layout/visibility
 
 Scope:
+
 - remove permanent RAF loop as default behavior
 - hook into Dockview visibility/resize
 - improve idle performance with multiple browser tiles open

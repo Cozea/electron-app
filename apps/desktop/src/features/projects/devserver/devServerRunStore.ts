@@ -20,6 +20,7 @@ import {
   type DevServerRestartScheduler,
 } from '@/hooks/devServerRestartScheduler'
 import type {
+  DevCommandSuggestion,
   DevServerProcessState,
   DevServerProcessStateEvent,
   PreviewFailureReason,
@@ -54,6 +55,8 @@ export interface DevServerRunState {
   failureReason: PreviewFailureReason | null
   lastOutputAt: number | null
   error: string | null
+  requiresCommandSelection: boolean
+  commandSuggestions: DevCommandSuggestion[]
   timeline: DevServerTimelineEvent[]
 }
 
@@ -96,6 +99,8 @@ export const DEFAULT_DEV_SERVER_RUN: DevServerRunState = Object.freeze({
   failureReason: null,
   lastOutputAt: null,
   error: null,
+  requiresCommandSelection: false,
+  commandSuggestions: [],
   timeline: [],
 }) as DevServerRunState
 
@@ -309,6 +314,8 @@ function applyAuthoritativeProcessState(
         reachable: true,
         failureReason: null,
         error: null,
+        requiresCommandSelection: false,
+        commandSuggestions: [],
       }
     })
     return
@@ -327,6 +334,8 @@ function applyAuthoritativeProcessState(
             reachable: false,
             failureReason: null,
             error: null,
+            requiresCommandSelection: false,
+            commandSuggestions: [],
           },
     )
     return
@@ -506,6 +515,8 @@ async function launchDevServerRun(
     reachable: false,
     failureReason: null,
     error: null,
+    requiresCommandSelection: false,
+    commandSuggestions: [],
     lastOutputAt: null,
   }))
 
@@ -539,8 +550,17 @@ async function launchDevServerRun(
           },
         )
     if (config.requiresUserSelection) {
+      const message =
+        config.suggestions.length > 0
+          ? 'Choose which command Cozea should use for this Dev Server.'
+          : 'No supported Dev Server command was found. Add a dev, web, start, develop, or serve script, or build a static site into dist, build, out, or public.'
+      setRun(key, (prev) => ({
+        ...prev,
+        requiresCommandSelection: true,
+        commandSuggestions: config.suggestions,
+      }))
       throw new Error(
-        'Dev server command selection is required. Open the Workbench dev-server tile and choose a command first.',
+        message,
       )
     }
 
@@ -609,6 +629,8 @@ async function launchDevServerRun(
         reachable: true,
         failureReason: null,
         error: null,
+        requiresCommandSelection: false,
+        commandSuggestions: [],
       }))
     } else {
       // A success without a reachable port can't surface a preview, and there
@@ -635,8 +657,11 @@ async function launchDevServerRun(
   }
 }
 
-export async function startDevServerRun(key: string): Promise<void> {
-  await launchDevServerRun(key, 'start')
+export async function startDevServerRun(
+  key: string,
+  options?: DevServerEnsureOptions,
+): Promise<void> {
+  await launchDevServerRun(key, 'start', options)
 }
 
 /** Agent/headless-safe launch: reuse the workspace/lane singleton if present. */

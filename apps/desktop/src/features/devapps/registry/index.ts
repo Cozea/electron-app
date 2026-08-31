@@ -14,6 +14,11 @@ import type {
   DevAppLauncherGroup,
   DevAppManifest,
 } from "@/features/devapps/registry/types"
+import {
+  derivableSurfaces,
+  partsForLaunchSpec,
+  type DevAppSurface,
+} from "@/features/devapps/registry/parts"
 
 export interface ListLauncherAppsOptions {
   additionalApps?: ReadonlyArray<DevAppManifest>
@@ -123,6 +128,32 @@ export function listStoreApps(options: ListStoreAppsOptions = {}): DevAppManifes
   return BUILTIN_DEV_APPS
     .filter((manifest) => !options.category || options.category === "discover" || manifest.categories.includes(options.category))
     .filter((manifest) => matchesQuery(manifest, options.query ?? ""))
+    .slice()
+    .sort(sortDevApps)
+}
+
+/**
+ * Which surfaces a DevApp may occupy, derived from its parts rather than declared.
+ *
+ * Nothing writes "I am a tile app" — an app describes what it is made of, and where it
+ * can appear follows. Adding a fourth surface later is a change to `derivableSurfaces`
+ * alone, not an edit to every manifest and every release already published.
+ */
+export function surfacesForDevApp(manifest: DevAppManifest): DevAppSurface[] {
+  return derivableSurfaces(partsForLaunchSpec(manifest.launch))
+}
+
+export function devAppOccupiesSurface(manifest: DevAppManifest, surface: DevAppSurface): boolean {
+  return surfacesForDevApp(manifest).includes(surface)
+}
+
+/** Lists the apps that can appear on a given surface. */
+export function listAppsForSurface(
+  surface: DevAppSurface,
+  options: { additionalApps?: ReadonlyArray<DevAppManifest> } = {},
+): DevAppManifest[] {
+  return [...(options.additionalApps ?? []), ...BUILTIN_DEV_APPS]
+    .filter((manifest) => devAppOccupiesSurface(manifest, surface))
     .slice()
     .sort(sortDevApps)
 }
