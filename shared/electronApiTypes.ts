@@ -1151,6 +1151,8 @@ export interface DevServerProcessState {
   runId: string | null
   phase: 'bootstrapping' | 'launching' | 'running' | null
   headless: boolean
+  /** Owning PTY for restoring logs when a headless surface is reopened. */
+  terminalId: string | null
 }
 
 /** Authoritative main-process state pushed after a run lifecycle change. */
@@ -1977,6 +1979,11 @@ export interface ElectronAPI {
     start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
     ensure: (options: DevServerStartOptions) => Promise<DevServerStartResult>
     detachSurface: (options: {
+      workspaceId: string
+      laneId?: string | null
+      terminalId: string
+    }) => Promise<{ success: boolean; ownsRuntime: boolean; error?: string }>
+    attachSurface: (options: {
       workspaceId: string
       laneId?: string | null
       terminalId: string

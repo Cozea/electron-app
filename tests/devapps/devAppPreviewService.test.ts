@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import type { Session } from "electron"
 
 import { DevAppPreviewService } from "../../apps/desktop/electron/services/DevAppPreviewService"
 import type { DevAppWatch } from "../../apps/desktop/electron/services/DevAppPreviewWatcher"
@@ -80,7 +81,8 @@ describe("Preview service — reads a real package off disk", () => {
     const status = open(service)
     expect(status.status === "running" && status.view).toEqual({
       kind: "builtOutput",
-      entryPath: fs.realpathSync(path.join(sourcePath, "dist", "index.html")),
+      entryPath: "dist/index.html",
+      url: expect.stringMatching(/^cozea-devapp:\/\/[0-9a-f]{32}\.dev\/dist\/index\.html$/),
     })
     service.dispose()
   })
@@ -95,6 +97,40 @@ describe("Preview service — reads a real package off disk", () => {
   it("starts watching, and says so", () => {
     const { service } = makeService()
     expect(open(service).hotReload).toBe(true)
+    service.dispose()
+  })
+
+  it("registers one source-bound protocol per isolated preview session", async () => {
+    const { service } = makeService()
+    const status = open(service)
+    expect(status.status).toBe("running")
+    if (status.status !== "running") throw new Error("Expected a running preview")
+
+    const captured: { handler?: (request: Request) => Promise<Response> } = {}
+    const handle = vi.fn((_scheme: string, next: (request: Request) => Promise<Response>) => {
+      captured.handler = next
+    })
+    const targetSession = { protocol: { handle } } as unknown as Session
+    service.registerProtocolForSession(targetSession, status.sourceId)
+    service.registerProtocolForSession(targetSession, status.sourceId)
+
+    expect(handle).toHaveBeenCalledOnce()
+    expect(handle).toHaveBeenCalledWith("cozea-devapp", expect.any(Function))
+    const protocolHandler = captured.handler
+    expect(protocolHandler).toBeTypeOf("function")
+    if (!protocolHandler) throw new Error("Expected the custom protocol handler")
+
+    const otherSourceId = status.sourceId === "f".repeat(32) ? "e".repeat(32) : "f".repeat(32)
+    const crossSource = await protocolHandler(
+      new Request(`cozea-devapp://${otherSourceId}.dev/dist/index.html`),
+    )
+    expect(crossSource.status).toBe(400)
+
+    service.close(status.sourceId)
+    const released = await protocolHandler(
+      new Request(status.view.kind === "builtOutput" ? status.view.url : ""),
+    )
+    expect(released.status).toBe(410)
     service.dispose()
   })
 })

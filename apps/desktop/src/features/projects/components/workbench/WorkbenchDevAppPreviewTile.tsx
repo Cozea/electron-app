@@ -119,9 +119,10 @@ export function WorkbenchDevAppPreviewTile({
   const running = status?.status === "running" ? status : null;
   const view = running?.view ?? null;
 
-  // Only a dev server is loaded as a URL. Built output is served by the package protocol,
-  // which is the same path a published release takes.
-  const surfaceUrl = view?.kind === "devServer" ? view.url : null;
+  // Both paths enter the shared T3 host. Built output uses the confined
+  // development package protocol; framework previews use their declared URL.
+  const surfaceUrl =
+    view?.kind === "devServer" || view?.kind === "builtOutput" ? view.url : null;
   const sessionKey = resolveBrowserWorkbenchSessionKey({
     projectId,
     laneId,
@@ -193,7 +194,7 @@ export function WorkbenchDevAppPreviewTile({
       tileType="devAppPreview"
       panelApi={panelApi}
       containerApi={containerApi}
-      titleContent={<DevelopmentBadge status={status} hotReload={hotReload} />}
+      controls={<DevelopmentBadge status={status} hotReload={hotReload} />}
     >
       <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">
         {openError ? (
@@ -215,12 +216,7 @@ export function WorkbenchDevAppPreviewTile({
                 subscribePositionChanges={surfacePresentation.subscribePositionChanges}
                 className="absolute inset-0 size-full"
               />
-            ) : (
-              <PreviewMessage
-                title="Serving the built output"
-                detail={view?.kind === "builtOutput" ? view.entryPath : null}
-              />
-            )}
+            ) : <PreviewMessage title="Preparing the preview surface…" detail={null} />}
             <PreviewFooter status={running} />
           </>
         ) : (

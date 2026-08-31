@@ -128,6 +128,22 @@ The machine-local `localProjectDevAppStore` is compatibility-only for already-pe
 tiles. It is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must
 not read it.
 
+### Compatibility development preview
+
+Already-persisted `devAppPreview` tiles remain supported without re-entering the old browser host.
+Framework manifests with `view.dev.url` render that loopback URL through the renderer-wide T3
+surface. Built output receives an ephemeral, source-scoped
+`cozea-devapp://<source-id>.dev/<entry>` origin in the tile's isolated preview partition. Main
+registers that protocol only after the workspace-relative package is authorized and confines every
+asset lookup to the built entry directory after resolving symlinks. A reload generation replaces
+the guest, while the Development badge, trust approval, worker status, preflight diagnostics, and
+hot-reload watcher remain visible in the normal Dockview chrome.
+
+Development origins are not publication origins: they are never exposed externally, do not share
+the publication cookie partition, and disappear when the preview closes. Public HTTPS navigation
+opens externally; cross-source custom origins and unsupported schemes are rejected by the shared
+surface manager.
+
 Project deletion owns both lifecycles: it removes the source project's machine-local publication
 and releases immediately, then the bounded Convex project cascade removes any org publication,
 release rows, and artifact blobs. Archiving a project does not delete either catalog.

@@ -15,7 +15,7 @@ export type DevAppPreviewView =
   /** A framework dev server the author is already running. Hot reload comes free. */
   | { kind: "devServer"; url: string }
   /** The same built output publishing would pack. No hot reload, but no surprises either. */
-  | { kind: "builtOutput"; entryPath: string }
+  | { kind: "builtOutput"; entryPath: string; url: string }
   | { kind: "unavailable"; reason: string; fix?: string }
 
 /** Mirrors the worker host's state, which the tile shows so a crash loop is diagnosable. */

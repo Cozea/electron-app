@@ -180,6 +180,8 @@ function resolveTabTileTypeLabel(tile: WorkbenchTile | null): string {
       return "Simulator"
     case "orgDevApp":
       return "DevApp"
+    case "devAppPreview":
+      return "DevApp preview"
     case "selection":
       return "Add"
     default:
@@ -200,6 +202,14 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
     return (
       <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
         <PublishedDevAppIcon name={tile.title} logoDataUrl={tile.logoDataUrl} />
+      </span>
+    )
+  }
+
+  if (tile?.type === "devAppPreview") {
+    return (
+      <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
+        <PublishedDevAppIcon name={tile.title} />
       </span>
     )
   }
@@ -692,7 +702,8 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
   const browserPreviewActions =
     activePanel.api.component === "browser" ||
     activePanel.api.component === "devServer" ||
-    activePanel.api.component === "orgDevApp" ? (
+    activePanel.api.component === "orgDevApp" ||
+    activePanel.api.component === "devAppPreview" ? (
       <BrowserPreviewActionsForTile tileId={activePanel.id} />
     ) : null
 

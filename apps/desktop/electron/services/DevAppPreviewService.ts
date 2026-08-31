@@ -1,5 +1,7 @@
 import path from "node:path"
 import fs from "node:fs"
+import { net, type Session } from "electron"
+import { pathToFileURL } from "node:url"
 
 import { DevAppDevelopmentTrustStore } from "../../../../shared/devAppDevelopmentTrust"
 import { preflightProject } from "./orgDevAppPreflight"
@@ -10,6 +12,8 @@ import {
 } from "./DevAppPreviewSession"
 import { DevAppPreviewWatcher, type DevAppWatch } from "./DevAppPreviewWatcher"
 import { hashSourcePath, nodePreviewFs } from "./devAppPreviewAdapters"
+import { ORG_DEVAPP_SCHEME } from "../../../../shared/orgDevAppProtocol"
+import { parseDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol"
 
 /**
  * Owns the development preview: the session, the watcher, and telling the renderer.
@@ -47,6 +51,8 @@ export class DevAppPreviewService {
   private readonly watcher: DevAppPreviewWatcher
   private readonly broadcast: (sourceId: string, status: DevAppPreviewStatus) => void
   private readonly roots = new Map<string, string>()
+  private readonly entryPaths = new Map<string, string>()
+  private readonly registeredSessionProtocols = new WeakSet<Session>()
 
   constructor(deps: DevAppPreviewServiceDeps) {
     this.broadcast = deps.broadcast
@@ -89,6 +95,7 @@ export class DevAppPreviewService {
     if (status.status === "invalid") return { ...status, hotReload: false }
 
     this.roots.set(status.sourceId, sourcePath)
+    this.trackEntryPath(status.sourceId, status)
     const hotReload = this.watcher.start(status.sourceId, sourcePath, () => {
       this.onChanged(status.sourceId)
     })
@@ -98,12 +105,18 @@ export class DevAppPreviewService {
   private onChanged(sourceId: string): void {
     const status = this.session.reload(sourceId)
     // A reload for a source that was closed mid-burst has nothing to report.
-    if (status) this.broadcast(sourceId, status)
+    if (status) {
+      this.trackEntryPath(sourceId, status)
+      this.broadcast(sourceId, status)
+    }
   }
 
   approve(sourceId: string): DevAppPreviewStatus | null {
     const status = this.session.approve(sourceId)
-    if (status) this.broadcast(sourceId, status)
+    if (status) {
+      this.trackEntryPath(sourceId, status)
+      this.broadcast(sourceId, status)
+    }
     return status
   }
 
@@ -114,12 +127,112 @@ export class DevAppPreviewService {
   close(sourceId: string): void {
     this.watcher.stop(sourceId)
     this.roots.delete(sourceId)
+    this.entryPaths.delete(sourceId)
     this.session.close(sourceId)
+  }
+
+  registerProtocolForSession(targetSession: Session, sourceId: string): void {
+    if (this.registeredSessionProtocols.has(targetSession)) return
+    if (!/^[0-9a-f]{32}$/.test(sourceId)) {
+      throw new Error("The DevApp preview session key is invalid.")
+    }
+    targetSession.protocol.handle(ORG_DEVAPP_SCHEME, (request) =>
+      this.handleProtocolRequest(sourceId, request),
+    )
+    this.registeredSessionProtocols.add(targetSession)
+  }
+
+  private trackEntryPath(sourceId: string, status: DevAppPreviewStatus): void {
+    if (status.status === "running" && status.view.kind === "builtOutput") {
+      this.entryPaths.set(sourceId, status.view.entryPath)
+    } else {
+      this.entryPaths.delete(sourceId)
+    }
+  }
+
+  private async handleProtocolRequest(boundSourceId: string, request: Request): Promise<Response> {
+    const parsed = parseDevAppPreviewUrl(request.url)
+    if (!parsed || parsed.sourceId !== boundSourceId) {
+      return new Response("Invalid DevApp preview URL", {
+        status: 400,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      })
+    }
+    const sourceRoot = this.roots.get(boundSourceId)
+    const entryPath = this.entryPaths.get(boundSourceId)
+    if (!sourceRoot || !entryPath) {
+      return new Response("DevApp preview is no longer open", {
+        status: 410,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      })
+    }
+
+    const contentRoot = path.resolve(sourceRoot, path.dirname(entryPath))
+    const entryDirectory = path.dirname(entryPath).replace(/\\/g, "/")
+    const requestedAsset = parsed.assetPath.replace(/\\/g, "/")
+    const relativeAsset =
+      entryDirectory !== "." && requestedAsset.startsWith(`${entryDirectory}/`)
+        ? requestedAsset.slice(entryDirectory.length + 1)
+        : requestedAsset
+    const candidate = resolvePreviewFile(contentRoot, relativeAsset)
+    const fallback = resolvePreviewFile(contentRoot, path.basename(entryPath))
+    const filePath = candidate ?? fallback
+    if (!filePath) {
+      return new Response("DevApp preview file not found", {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      })
+    }
+
+    const fileResponse = await net.fetch(pathToFileURL(filePath).toString())
+    const headers = new Headers(fileResponse.headers)
+    headers.set("content-type", mimeForPreviewPath(filePath))
+    headers.set("cache-control", "no-store")
+    headers.set(
+      "content-security-policy",
+      "default-src 'self' https: data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; connect-src 'self' https: wss:; script-src 'self'; style-src 'self' 'unsafe-inline'",
+    )
+    headers.set("x-content-type-options", "nosniff")
+    return new Response(fileResponse.body, { status: fileResponse.status, headers })
   }
 
   dispose(): void {
     this.watcher.stopAll()
     for (const sourceId of Array.from(this.roots.keys())) this.session.close(sourceId)
     this.roots.clear()
+    this.entryPaths.clear()
+  }
+}
+
+const PREVIEW_MIME_TYPES: Readonly<Record<string, string>> = {
+  ".css": "text/css; charset=utf-8",
+  ".gif": "image/gif",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".wasm": "application/wasm",
+  ".webp": "image/webp",
+}
+
+function mimeForPreviewPath(filePath: string): string {
+  return PREVIEW_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream"
+}
+
+function resolvePreviewFile(contentRoot: string, relativePath: string): string | null {
+  try {
+    const root = fs.realpathSync.native(contentRoot)
+    const candidate = path.resolve(root, relativePath)
+    if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) return null
+    const real = fs.realpathSync.native(candidate)
+    if (real !== root && !real.startsWith(`${root}${path.sep}`)) return null
+    return fs.statSync(real).isFile() ? real : null
+  } catch {
+    return null
   }
 }
