@@ -425,11 +425,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       relativePath: string
       leaseId: string
     }) => ipcRenderer.invoke('devAppPreview:open', options),
-    approve: (options: { sourceId: string }) =>
+    approve: (options: { sourceId: string; approvalFingerprint: string }) =>
       ipcRenderer.invoke('devAppPreview:approve', options),
     status: (options: { sourceId: string }) =>
       ipcRenderer.invoke('devAppPreview:status', options),
-    close: (options: { sourceId: string }) => ipcRenderer.invoke('devAppPreview:close', options),
+    close: (options: { sourceId: string; leaseId: string }) =>
+      ipcRenderer.invoke('devAppPreview:close', options),
     onStatus: (
       listener: (payload: {
         sourceId: string

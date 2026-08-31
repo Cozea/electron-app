@@ -70,7 +70,11 @@ describe("Preview tile — renders the host's decisions", () => {
   it("takes its status from the host rather than deriving one", () => {
     // The tile must not be able to grant, approve, or mask anything by being wrong.
     expect(tileSource).toContain("DevAppPreviewStatus")
-    expect(tileSource).toContain(".approve({ sourceId })")
+    expect(tileSource).toContain(
+      ".approve({ sourceId, approvalFingerprint: status.approvalFingerprint })",
+    )
+    expect(tileSource).toContain("setApprovalError(result.error)")
+    expect(tileSource).toContain("Could not approve the preview.")
     expect(tileSource).not.toContain("normalizeGrant")
     expect(tileSource).not.toContain("DevAppDevelopmentTrustStore")
   })
@@ -150,6 +154,8 @@ describe("Preview tile — registration", () => {
   })
 
   it("closes the preview when the tile unmounts", () => {
-    expect(tileSource).toContain("preview.close({ sourceId: opened })")
+    expect(tileSource).toContain("const leaseId = `${tile.id}_${crypto.randomUUID()}`")
+    expect(tileSource).toContain("preview.close({ sourceId: openedSourceId, leaseId })")
+    expect(tileSource).not.toContain("leaseId: tile.id")
   })
 })

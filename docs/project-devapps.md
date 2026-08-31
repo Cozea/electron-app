@@ -163,6 +163,14 @@ and rejects mismatched message envelopes before capability authorization. Pre-Ph
 that omit the field are interpreted as protocol 1 only; new authoring tools must write it
 explicitly. See [DevApp Worker Protocol](./devapp-worker-protocol.md).
 
+Every development package that declares a worker requires an explicit, expiring session approval,
+even when it requests no host capabilities. Its Electron utility process receives a minimal
+environment plus package/data filesystem allowances under Node's permission model, but that is
+defense in depth rather than an OS sandbox and does not restrict network access in Electron 40.
+Published worker execution remains disconnected until the container/VM runtime exists. The
+threat model, closed findings, and required phase ordering are recorded in
+[DevApp Worker Security Review](./devapp-worker-security-review.md).
+
 Project deletion owns both lifecycles: it removes the source project's machine-local publication
 and releases immediately, then the bounded Convex project cascade removes any org publication,
 release rows, and artifact blobs. Archiving a project does not delete either catalog.
