@@ -24,8 +24,29 @@ describe("workbenchSelectionLauncherLayout", () => {
       fittingColumns: 4,
       fittingRows: 3,
       columns: 4,
-      rows: 2,
-      itemsPerPage: 8,
+      rows: 3,
+      itemsPerPage: 12,
+      pageCount: 1,
+    })
+  })
+
+  it("fills additional rows in a tall tile before paginating", () => {
+    const layout = computeWorkbenchSelectionLauncherLayout({
+      width:
+        WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH * 3 +
+        WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP * 2,
+      height:
+        WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT * 4 +
+        WORKBENCH_SELECTION_LAUNCHER_ROW_GAP * 3,
+      itemCount: 14,
+    })
+
+    expect(layout).toEqual({
+      fittingColumns: 3,
+      fittingRows: 4,
+      columns: 3,
+      rows: 4,
+      itemsPerPage: 12,
       pageCount: 2,
     })
   })
@@ -59,6 +80,7 @@ describe("workbenchSelectionLauncherLayout", () => {
     })
 
     expect(layout.columns).toBe(4)
+    expect(layout.rows).toBe(1)
   })
 
   it("keeps at least one row and one column in very small spaces", () => {

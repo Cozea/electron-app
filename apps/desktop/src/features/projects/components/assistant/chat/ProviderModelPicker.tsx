@@ -7,7 +7,7 @@ import {
   type ProviderOptionDescriptor,
 } from "@cozea/assistant-contracts";
 import { getProviderOptionCurrentValue } from "@cozea/assistant-shared/model";
-import { memo, useMemo } from "react";
+import { memo, useMemo, type Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowDown01Icon as __ChevronDownIconHugeIcon, ZapIcon as __ZapIconHugeIcon } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -39,6 +39,7 @@ interface ProviderModelPickerProps {
   terminalOpen?: boolean;
   open?: boolean;
   triggerClassName?: string;
+  triggerRef?: Ref<HTMLButtonElement>;
   onOpenChange?: (open: boolean) => void;
   onProviderModelChange: (provider: ProviderKind, model: string) => void;
 }
@@ -129,6 +130,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
 
   return (
     <button
+      ref={props.triggerRef}
       type="button"
       data-chat-provider-model-picker="true"
       className={cn(

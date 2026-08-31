@@ -239,7 +239,6 @@ function useLauncherGridLayout(
       columnGap: LAUNCHER_CONFIG.columnGap,
       rowGap: LAUNCHER_CONFIG.rowGap,
       maxColumns: 6,
-      maxRows: 2,
     }),
   )
 
@@ -262,7 +261,6 @@ function useLauncherGridLayout(
         columnGap: LAUNCHER_CONFIG.columnGap,
         rowGap: LAUNCHER_CONFIG.rowGap,
         maxColumns: 6,
-        maxRows: 2,
       }),
     )
   }, [containerRef, itemCount])

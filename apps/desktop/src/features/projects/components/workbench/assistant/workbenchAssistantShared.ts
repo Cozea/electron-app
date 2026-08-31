@@ -284,6 +284,38 @@ export function resolvePreferredModelSelection(input: {
   }
 }
 
+export function resolveRememberedModelSelection(input: {
+  fallbackSelection: StrictModelSelection
+  explicitTileModel: string | null | undefined
+  rememberedSelection: ModelSelection | null | undefined
+  selectableModels: ReadonlyArray<{ slug: string; name: string }>
+}): StrictModelSelection {
+  if (input.explicitTileModel?.trim()) {
+    return input.fallbackSelection
+  }
+
+  const rememberedSelection = input.rememberedSelection
+  if (
+    !rememberedSelection ||
+    rememberedSelection.provider !== input.fallbackSelection.provider ||
+    rememberedSelection.instanceId !== input.fallbackSelection.instanceId
+  ) {
+    return input.fallbackSelection
+  }
+
+  const rememberedModel = input.selectableModels.length
+    ? resolveSelectableModel(
+        rememberedSelection.provider,
+        rememberedSelection.model,
+        input.selectableModels,
+      )
+    : resolveModelSlugForProvider(rememberedSelection.provider, rememberedSelection.model)
+
+  return rememberedModel
+    ? withModelSelectionModel(input.fallbackSelection, rememberedModel)
+    : input.fallbackSelection
+}
+
 export function normalizeModelSelection(input: {
   provider: ProviderKind
   instanceId?: ProviderInstanceId

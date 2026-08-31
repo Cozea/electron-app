@@ -107,6 +107,7 @@ import {
   normalizeModelSelection,
   resolveInteractionMode,
   resolvePreferredModelSelection,
+  resolveRememberedModelSelection,
   resolveRuntimeMode,
   revokeUserMessagePreviewUrls,
   toErrorMessage,
@@ -224,6 +225,9 @@ export function useWorkbenchAssistantTileController(
   const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
   const upsertComposerDraft = useAssistantComposerDraftStore((state) => state.upsertDraft)
   const adoptComposerDraft = useAssistantComposerDraftStore((state) => state.adoptDraft)
+  const lastModelSelectionByInstanceId = useAssistantComposerDraftStore(
+    (state) => state.lastModelSelectionByInstanceId,
+  )
   const setThreadError = useStore((state) => state.setError)
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const bindingInFlightRef = useRef(false)
@@ -324,15 +328,29 @@ export function useWorkbenchAssistantTileController(
     })
   }, [optimisticUserMessages, thread])
 
-  const fallbackModelSelection = useMemo(
-    () =>
-      resolvePreferredModelSelection({
+  const fallbackModelSelection = useMemo(() => {
+    const fallbackSelection = resolvePreferredModelSelection({
+      config,
+      tile: input.tile,
+      projectModelSelection: assistantProject?.defaultModelSelection,
+    })
+    return resolveRememberedModelSelection({
+      fallbackSelection,
+      explicitTileModel: input.tile.model,
+      rememberedSelection:
+        lastModelSelectionByInstanceId[fallbackSelection.instanceId] ?? null,
+      selectableModels: getProviderModelOptions(
         config,
-        tile: input.tile,
-        projectModelSelection: assistantProject?.defaultModelSelection,
-      }),
-    [assistantProject?.defaultModelSelection, config, input.tile],
-  )
+        fallbackSelection.provider,
+        fallbackSelection.instanceId,
+      ),
+    })
+  }, [
+    assistantProject?.defaultModelSelection,
+    config,
+    input.tile,
+    lastModelSelectionByInstanceId,
+  ])
   const selectedModelSelection =
     composerDraft?.modelSelection ?? thread?.modelSelection ?? fallbackModelSelection
   const selectedDispatchModelSelection = useMemo(
