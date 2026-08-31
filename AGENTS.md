@@ -239,6 +239,8 @@ The AI chat runs **after** project creation, inside the workbench.
 - The chat surface (`CozeaChatSurface`) shows a message timeline, composer, and — when the AI proposes file changes — a diff approval panel
 - Generated images are thread-scoped artifacts. Each assistant tile has persistent `Chat` / `Artifacts` views; hiding chat must not unmount its controller or stream. See `docs/assistant-artifacts.md`.
 - Users approve proposed changes before they are written to disk via `sync:writeFiles` IPC
+- Browser, Dev Server, compatibility Project DevApp, and Org DevApp tiles use one renderer-wide T3 `<webview>` host. Never add `WebContentsView`, browser bounds IPC, screenshot substitution, native-surface occlusion, or a fallback browser host.
+- Application overlays share the semantic body-portal/layer contract in `docs/workbench-overlay-architecture.md`. Browser-owned presentation belongs in `HostedBrowserWebview`; custom application overlays use `AppOverlayPortal` or its bounded anchored variant instead of raw global z-index values.
 
 ## How Device Identity Works
 
