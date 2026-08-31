@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isExternallyOpenableBrowserUrl } from "@/features/projects/components/workbench/BrowserUnavailableSurface";
+import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput";
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
 describe("browser URL policy during blackout", () => {

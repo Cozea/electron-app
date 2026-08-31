@@ -3,7 +3,11 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isExternallyOpenableBrowserUrl } from "@/features/projects/components/workbench/BrowserUnavailableSurface";
+import {
+  browserAddressDisplayValue,
+  resolveBrowserAddressSubmission,
+} from "@/features/projects/browser/browserAddressState";
+import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput";
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
 const browserTileSource = fs.readFileSync(
@@ -13,8 +17,19 @@ const browserTileSource = fs.readFileSync(
   ),
   "utf8",
 );
+const browserControlsSource = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "apps/desktop/src/features/projects/browser/BrowserNavigationControls.tsx",
+  ),
+  "utf8",
+);
+const hostedWebviewSource = fs.readFileSync(
+  path.join(process.cwd(), "apps/desktop/src/features/projects/browser/HostedBrowserWebview.tsx"),
+  "utf8",
+);
 
-describe("browser blackout surface", () => {
+describe("ported T3 Browser tile", () => {
   it("allows external opening only for HTTP(S) URLs", () => {
     expect(isExternallyOpenableBrowserUrl("https://example.com/docs")).toBe(true);
     expect(isExternallyOpenableBrowserUrl("http://127.0.0.1:4173")).toBe(true);
@@ -24,22 +39,62 @@ describe("browser blackout surface", () => {
     expect(isExternallyOpenableBrowserUrl("not a url")).toBe(false);
   });
 
-  it("uses the generic shell API only after the URL policy accepts the URL", () => {
-    expect(browserTileSource).toContain("window.electronAPI.shell.openExternal(externalUrl)");
-    expect(browserTileSource).toContain("isExternallyOpenableBrowserUrl(tile.url)");
-    expect(browserTileSource).not.toContain("electronAPI.workbenchBrowser");
+  it("preserves a focused draft while browser navigation changes the committed URL", () => {
+    expect(
+      browserAddressDisplayValue({
+        committedUrl: "https://redirected.example/",
+        draft: "second destination",
+        focused: true,
+      }),
+    ).toBe("second destination");
+    expect(
+      browserAddressDisplayValue({
+        committedUrl: "https://redirected.example/",
+        draft: "second destination",
+        focused: false,
+      }),
+    ).toBe("https://redirected.example/");
+  });
+
+  it("normalizes every submission without suppressing a repeated URL", () => {
+    expect(resolveBrowserAddressSubmission("localhost:4173")).toBe("http://localhost:4173");
+    expect(resolveBrowserAddressSubmission("cozea browser port")).toBe(
+      "https://www.google.com/search?q=cozea%20browser%20port",
+    );
+    expect(resolveBrowserAddressSubmission("https://example.com/")).toBe("https://example.com/");
+    expect(resolveBrowserAddressSubmission("https://example.com/")).toBe("https://example.com/");
+    expect(resolveBrowserAddressSubmission("file:///tmp/private")).toBeNull();
+    expect(resolveBrowserAddressSubmission("cozea-devapp://release/index.html")).toBeNull();
+  });
+
+  it("mounts one hosted slot and keeps descriptor updates outside the guest lifetime effect", () => {
+    expect(browserTileSource).toContain("<BrowserSurfaceSlot");
+    expect(browserTileSource).toContain("useHostedBrowserSurface(descriptor)");
+    expect(browserTileSource).not.toContain("<BrowserUnavailableSurface");
+    expect(hostedWebviewSource).toContain("}, [preview, runtimeTabId]);");
+    expect(hostedWebviewSource).not.toContain("[descriptor, preview, runtimeTabId]");
+    expect(hostedWebviewSource).toContain('useState(() => descriptor.initialUrl ?? "about:blank")');
+    expect(hostedWebviewSource).toContain(
+      "src={webviewGeneration === 0 ? initialSrc : recoverySrc}",
+    );
+  });
+
+  it("uses the generic shell API only after the URL policy accepts the committed URL", () => {
+    expect(browserControlsSource).toContain("isExternallyOpenableBrowserUrl(committedUrl)");
+    expect(browserControlsSource).toContain("window.electronAPI.shell.openExternal(externalUrl)");
+    expect(browserControlsSource).not.toContain("electronAPI.workbenchBrowser");
   });
 
   it.each([
-    "navigation.initial-blank",
-    "navigation.sequential-urls",
-    "navigation.history-reload-find-zoom-devtools",
-    "navigation.popup-policy",
-  ])("preserves %s as a mandatory T3 port requirement", (id) => {
+    ["navigation.initial-blank", "cozea-adapted"],
+    ["navigation.sequential-urls", "ported"],
+    ["navigation.history-reload-find-zoom-devtools", "cozea-adapted"],
+    ["navigation.popup-policy", "ported"],
+  ])("records executable parity for %s", (id, status) => {
     expect(getBrowserPortParityRequirement(id)).toMatchObject({
       id,
       area: "navigation",
-      status: "pending-t3-port",
+      status,
     });
   });
 });

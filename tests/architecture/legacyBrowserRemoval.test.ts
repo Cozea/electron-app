@@ -46,7 +46,7 @@ describe("legacy browser removal boundary", () => {
     expect(violations).toEqual([]);
   });
 
-  it("renders the shared blackout surface from every browser-backed tile implementation", () => {
+  it("restores only Browser while later surface families remain deliberately blacked out", () => {
     const browserTile = read(
       "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
     );
@@ -57,7 +57,9 @@ describe("legacy browser removal boundary", () => {
       "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
     );
 
-    expect(browserTile).toContain("<BrowserUnavailableSurface");
+    expect(browserTile).toContain("<BrowserSurfaceSlot");
+    expect(browserTile).toContain("useHostedBrowserSurface(descriptor)");
+    expect(browserTile).not.toContain("<BrowserUnavailableSurface");
     expect(runtimeTile).toContain("<BrowserUnavailableSurface");
     expect(runtimeTile).toContain("tile.devAppId");
     expect(orgDevAppTile).toContain("<BrowserUnavailableSurface");

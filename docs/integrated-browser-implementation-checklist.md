@@ -1,9 +1,10 @@
 # Integrated Browser Implementation Checklist
 
 > **Superseded (2026-08-31).** The native host described below has been removed, not refactored.
-> Current browser-backed tiles render a shared unavailable surface while preserving tile metadata
-> and Dev Server/DevApp runtimes. The only approved next browser implementation is the direct T3
-> port, gated by `shared/browserPortParityLedger.ts`. The checklist below remains historical context.
+> The ordinary Browser tile now uses the direct T3 `<webview>` port; Dev Server and DevApp surfaces
+> remain unavailable until their integration gates while their metadata and runtimes are preserved.
+> Progress is gated by `shared/browserPortParityLedger.ts`. The checklist below remains historical
+> context and must not be used to restore the old native host.
 
 This checklist is the execution companion to `docs/integrated-browser-architecture.md`.
 

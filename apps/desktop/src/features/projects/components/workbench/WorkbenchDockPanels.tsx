@@ -20,6 +20,7 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Toggle } from "@/components/ui/toggle"
+import { BrowserNavigationControls } from "@/features/projects/browser/BrowserNavigationControls"
 import { normalizeUrlInput } from "@/features/projects/browser/urlInput"
 import {
   DEFAULT_DEV_SERVER_RUN,
@@ -68,8 +69,6 @@ import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  ArrowLeft01Icon as __ArrowLeftHugeIcon,
-  ArrowRight01Icon as __ArrowRightHugeIcon,
   CommandLineIcon as __SquareTerminalHugeIcon,
   ComputerVideoIcon as __ComputerVideoHugeIcon,
   LockIcon as __LockHugeIcon,
@@ -298,67 +297,12 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   )
 })
 
-/** Read-only browser metadata retained while the legacy host is absent. */
 const BrowserPanelHeaderControls = memo(function BrowserPanelHeaderControls({
   tileId,
 }: {
   tileId: string
 }) {
-  const runtime = useWorkbenchDockRuntime()
-  const tile = useProjectWorkbenchStore((state) => {
-    const workbench = selectProjectWorkbench(runtime.projectId, runtime.laneId, runtime.workspaceId)(state)
-    const candidate = workbench?.tiles[tileId]
-    return candidate && candidate.type === "browser" ? candidate : null
-  })
-
-  const navChipClass =
-    "h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground"
-
-  return (
-    <div className="cozea-workbench-header-controls flex h-full min-w-0 items-center px-1">
-      <div className="flex min-w-0 items-center gap-1.5">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={navChipClass}
-          disabled
-          title="Embedded browser unavailable"
-          aria-label="Back"
-        >
-          <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={navChipClass}
-          disabled
-          title="Embedded browser unavailable"
-          aria-label="Forward"
-        >
-          <HugeiconsIcon icon={__ArrowRightHugeIcon} className="h-3.5 w-3.5" />
-        </Button>
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 bg-transparent px-1">
-          {tile?.favicon ? (
-            <img src={tile.favicon} alt="" className="size-[16px] shrink-0 rounded-sm object-contain" />
-          ) : tile?.url.startsWith("https://") ? (
-            <HugeiconsIcon icon={__LockHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/70" />
-          ) : null}
-          <Input
-            value={tile?.url ?? ""}
-            readOnly
-            disabled
-            placeholder="Search or enter address"
-            title="Address editing is unavailable until the T3 browser is ported"
-            className={cn(
-              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-muted-foreground shadow-none placeholder:text-muted-foreground/60 disabled:cursor-not-allowed disabled:opacity-100 dark:border-none dark:bg-transparent",
-            )}
-          />
-        </div>
-      </div>
-    </div>
-  )
+  return <BrowserNavigationControls tileId={tileId} />
 })
 
 /**
@@ -922,6 +866,7 @@ const BrowserPanel = memo(function BrowserPanel(props: IDockviewPanelProps<Workb
         tile={tile as WorkbenchBrowserTileRecord}
         workspaceId={runtime.workspaceId}
         workbenchSessionKey={runtime.workbenchSessionKey}
+        surfaceVisible={runtime.surfaceVisible}
         panelApi={props.api}
         containerApi={props.containerApi}
       />

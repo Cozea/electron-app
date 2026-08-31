@@ -41,6 +41,7 @@ import type {
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
 } from "../../../../shared/browserSurfaceTypes";
+import { browserHttpDiagnosticForResponse } from "../../../../shared/browserHttpDiagnostics";
 import { parseOrgDevAppUrl } from "../../../../shared/orgDevAppProtocol";
 import type { OrgDevAppArtifactService } from "./OrgDevAppArtifactService";
 
@@ -491,6 +492,13 @@ export class T3BrowserSurfaceService {
     descriptor: BrowserSurfaceDescriptor,
   ): void {
     this.detachCozeaListeners(tabId);
+    let navigationGeneration = 0;
+    let pendingHttpResponse: {
+      readonly generation: number;
+      readonly url: string;
+      readonly statusCode: number;
+      readonly statusText: string;
+    } | null = null;
 
     const didStartNavigation = (
       _event: Event,
@@ -499,14 +507,45 @@ export class T3BrowserSurfaceService {
       isMainFrame: boolean,
     ) => {
       if (!isMainFrame) return;
+      navigationGeneration += 1;
+      pendingHttpResponse = null;
       this.updateExtendedState(tabId, { requestedUrl: url, httpDiagnostic: null });
     };
     const didNavigate = (_event: Event, url: string, statusCode: number, statusText: string) => {
       if (statusCode < 400) {
+        pendingHttpResponse = null;
         this.updateExtendedState(tabId, { requestedUrl: url, httpDiagnostic: null });
         return;
       }
-      void this.classifyHttpError(tabId, guest, url, statusCode, statusText);
+      pendingHttpResponse = {
+        generation: navigationGeneration,
+        url,
+        statusCode,
+        statusText,
+      };
+    };
+    const didFinishLoad = () => {
+      const response = pendingHttpResponse;
+      if (!response) return;
+      void this.classifyHttpError(
+        guest,
+        response.url,
+        response.statusCode,
+        response.statusText,
+      ).then((diagnostic) => {
+        if (
+          pendingHttpResponse !== response ||
+          navigationGeneration !== response.generation ||
+          guest.isDestroyed() ||
+          guest.getURL() !== response.url
+        ) {
+          return;
+        }
+        this.updateExtendedState(tabId, {
+          requestedUrl: response.url,
+          httpDiagnostic: diagnostic,
+        });
+      });
     };
     const foundInPage = (_event: Event, result: Electron.FoundInPageResult) => {
       const current = this.stateByTabId.get(tabId)?.find ?? EMPTY_FIND_STATE;
@@ -530,6 +569,7 @@ export class T3BrowserSurfaceService {
 
     guest.on("did-start-navigation", didStartNavigation);
     guest.on("did-navigate", didNavigate);
+    guest.on("did-finish-load", didFinishLoad);
     guest.on("found-in-page", foundInPage);
     guest.on("will-navigate", willNavigate);
     guest.on("destroyed", destroyed);
@@ -548,6 +588,7 @@ export class T3BrowserSurfaceService {
         if (guest.isDestroyed()) return;
         guest.off("did-start-navigation", didStartNavigation);
         guest.off("did-navigate", didNavigate);
+        guest.off("did-finish-load", didFinishLoad);
         guest.off("found-in-page", foundInPage);
         guest.off("will-navigate", willNavigate);
         guest.off("destroyed", destroyed);
@@ -563,12 +604,11 @@ export class T3BrowserSurfaceService {
   }
 
   private async classifyHttpError(
-    tabId: string,
     guest: WebContents,
     url: string,
     statusCode: number,
     statusText: string,
-  ): Promise<void> {
+  ): Promise<BrowserHttpDiagnostic | null> {
     let blank = false;
     try {
       blank = Boolean(
@@ -578,12 +618,15 @@ export class T3BrowserSurfaceService {
         ),
       );
     } catch {
-      return;
+      return null;
     }
-    const diagnostic: BrowserHttpDiagnostic | null = blank
-      ? { url, statusCode, statusText, blank }
-      : null;
-    this.updateExtendedState(tabId, { requestedUrl: url, httpDiagnostic: diagnostic });
+    const diagnostic: BrowserHttpDiagnostic | null = browserHttpDiagnosticForResponse({
+      url,
+      statusCode,
+      statusText,
+      blank,
+    });
+    return diagnostic;
   }
 
   private isAllowedNavigation(descriptor: BrowserSurfaceDescriptor, rawUrl: string): boolean {
