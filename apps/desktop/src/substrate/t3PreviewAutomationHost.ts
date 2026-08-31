@@ -1,5 +1,7 @@
 import { WS_METHODS } from "@cozea/contracts";
 import type {
+  DevAppPreviewAutomationDiagnostic,
+  DevAppPreviewAutomationStatus,
   PreviewAutomationClickInput,
   PreviewAutomationEvaluateInput,
   PreviewAutomationNavigateInput,
@@ -48,7 +50,19 @@ import {
   renewDevServerSurfaceLease,
   type DevServerSurfaceHandle,
 } from "@/features/projects/devserver/devServerSurfaceController";
-import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore";
+import {
+  ensureDevAppPreviewSurface,
+  focusDevAppPreviewSurface,
+  normalizeDevAppPreviewRelativePath,
+} from "@/features/projects/devapps/devAppPreviewSurfaceController";
+import {
+  readDevAppPreviewRuntime,
+  type DevAppPreviewRuntimeSnapshot,
+} from "@/features/projects/devapps/devAppPreviewRuntimeStore";
+import {
+  useProjectWorkbenchStore,
+  type WorkbenchDevAppPreviewTile,
+} from "@/stores/useProjectWorkbenchStore";
 
 const SUPPORTED_OPERATIONS = [
   "status",
@@ -68,6 +82,8 @@ const SUPPORTED_OPERATIONS = [
   "devServerStatus",
   "devServerEnsure",
   "devServerAttach",
+  "devAppPreviewEnsure",
+  "devAppPreviewAttach",
 ] as const satisfies readonly PreviewAutomationOperation[];
 
 const HOST_CLIENT_ID = "cozea-desktop-dev-server";
@@ -187,6 +203,36 @@ function isDevServerTilePresent(tileId: string): boolean {
     const tile = workbench.tiles[tileId];
     return tile?.type === "devServer" && !tile.devAppId;
   });
+}
+
+function readDevAppPreviewTile(
+  context: ThreadWorkbenchContext,
+  tileId: string,
+): WorkbenchDevAppPreviewTile | null {
+  for (const workbench of Object.values(useProjectWorkbenchStore.getState().workbenches)) {
+    if (
+      workbench.projectId !== context.projectId ||
+      workbench.laneId !== context.laneId ||
+      workbench.workspaceId !== context.workspaceId
+    ) {
+      continue;
+    }
+    const tile = workbench.tiles[tileId];
+    return tile?.type === "devAppPreview" ? tile : null;
+  }
+  return null;
+}
+
+function findDevAppPreviewTile(
+  context: ThreadWorkbenchContext,
+  relativePath: string,
+): WorkbenchDevAppPreviewTile | null {
+  const expected = normalizeDevAppPreviewRelativePath(relativePath);
+  for (const tileId of context.tileIds) {
+    const tile = readDevAppPreviewTile(context, tileId);
+    if (tile && normalizeDevAppPreviewRelativePath(tile.relativePath) === expected) return tile;
+  }
+  return null;
 }
 
 interface CozeaPreviewAutomationSurfaceStatus extends PreviewAutomationStatus {
@@ -471,6 +517,125 @@ async function readDevServerStatus(
   };
 }
 
+function boundedText(value: string | undefined, maximum = 2_048): string | undefined {
+  return value === undefined ? undefined : value.slice(0, maximum);
+}
+
+function readDevAppPreviewDiagnostics(
+  snapshot: DevAppPreviewRuntimeSnapshot,
+): DevAppPreviewAutomationDiagnostic[] {
+  const status = snapshot.status;
+  if (snapshot.openError) {
+    return [
+      {
+        code: "preview-open-error",
+        severity: "blocker",
+        message: snapshot.openError.slice(0, 2_048),
+      },
+    ];
+  }
+  if (!status) return [];
+  const diagnostics =
+    status.status === "invalid" ? status.diagnostics : status.preflight.diagnostics;
+  return diagnostics.slice(0, 64).map((diagnostic) => {
+    const detail =
+      "field" in diagnostic
+        ? diagnostic.field
+        : "detail" in diagnostic
+          ? diagnostic.detail
+          : undefined;
+    return {
+      code: diagnostic.code.slice(0, 128),
+      severity: diagnostic.severity,
+      message: diagnostic.message.slice(0, 2_048),
+      ...(boundedText(detail) ? { detail: boundedText(detail) } : {}),
+      ...(boundedText(diagnostic.fix) ? { fix: boundedText(diagnostic.fix) } : {}),
+    };
+  });
+}
+
+async function readDevAppPreviewAutomationStatus(
+  context: ThreadWorkbenchContext,
+  tile: WorkbenchDevAppPreviewTile,
+  snapshot: DevAppPreviewRuntimeSnapshot,
+): Promise<DevAppPreviewAutomationStatus> {
+  const status = snapshot.status;
+  const rawSurface = await readStatusForTile(context, tile.id);
+  const name = status && status.status !== "invalid" ? status.name.slice(0, 512) : null;
+  const surface = rawSurface.available
+    ? rawSurface
+    : {
+        ...rawSurface,
+        tabId: null,
+        title: name ?? tile.title.slice(0, 512),
+      };
+  const requestedCapabilities =
+    !status || status.status === "invalid"
+      ? []
+      : status.status === "needsApproval"
+        ? status.requested.capabilities
+        : status.grant.capabilities;
+  const agentInvocable =
+    status?.status === "needsApproval"
+      ? status.requested.agentInvocable
+      : status?.status === "running"
+        ? status.grant.agentInvocable
+        : false;
+  const phase = snapshot.openError ? "invalid" : (status?.status ?? "opening");
+  const worker =
+    status?.status === "running" && status.worker
+      ? {
+          status: status.worker.status,
+          restarts: Math.max(0, status.worker.restarts),
+          lastError: status.worker.lastError?.slice(0, 2_048) ?? null,
+        }
+      : null;
+
+  return {
+    phase,
+    relativePath: normalizeDevAppPreviewRelativePath(tile.relativePath).slice(0, 1_024),
+    sourceId: status && status.status !== "invalid" ? status.sourceId.slice(0, 128) : null,
+    name,
+    hotReload: snapshot.hotReload,
+    ready: status?.status === "running" && status.view.kind !== "unavailable" && surface.available,
+    requestedCapabilities: requestedCapabilities.slice(0, 64).map((value) => value.slice(0, 128)),
+    agentInvocable,
+    diagnostics: readDevAppPreviewDiagnostics(snapshot),
+    worker,
+    surface,
+  };
+}
+
+async function waitForDevAppPreviewRuntime(
+  tileId: string,
+  timeoutMs: number,
+): Promise<DevAppPreviewRuntimeSnapshot> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    const snapshot = readDevAppPreviewRuntime(tileId);
+    if (snapshot && (snapshot.status !== null || snapshot.openError !== null)) return snapshot;
+    await waitForDelay(25);
+  }
+  throw new PreviewHostError(
+    "PreviewAutomationTimeoutError",
+    `DevApp preview ${tileId} did not finish opening within ${timeoutMs}ms.`,
+  );
+}
+
+async function resolveDevAppPreviewAutomationStatus(
+  threadId: string,
+  context: ThreadWorkbenchContext,
+  tile: WorkbenchDevAppPreviewTile,
+  timeoutMs: number,
+): Promise<DevAppPreviewAutomationStatus> {
+  const snapshot = await waitForDevAppPreviewRuntime(tile.id, timeoutMs);
+  if (snapshot.status?.status === "running" && snapshot.status.view.kind !== "unavailable") {
+    const surface = await waitForReadySurface(context, tile.id, timeoutMs, true);
+    runtime.lastControlledSurfaceByThread.set(threadId, surface.runtimeTabId);
+  }
+  return await readDevAppPreviewAutomationStatus(context, tile, snapshot);
+}
+
 async function waitForDevServerLaunchContext(
   context: ThreadWorkbenchContext,
   timeoutMs: number,
@@ -665,6 +830,80 @@ async function runRequestInternal(
 ): Promise<unknown> {
   const input = asRecord(request.input);
   const current = runtime.surfacesByThread.get(request.threadId);
+
+  if (request.operation === "devAppPreviewEnsure" || request.operation === "devAppPreviewAttach") {
+    const initialContext = requireThreadWorkbenchContext(request.threadId);
+    const bridge = previewBridge();
+    const surfaces = bridge ? eligibleSurfaces(initialContext, await bridge.listSurfaces()) : [];
+    const requestedSurface = request.tabId
+      ? resolveSurfaceTarget(initialContext, surfaces, request.tabId, null)
+      : null;
+    if (requestedSurface && requestedSurface.kind !== "devAppPreview") {
+      throw new PreviewHostError(
+        "PreviewAutomationTabNotFoundError",
+        `Preview tab ${request.tabId} is not a development DevApp preview.`,
+      );
+    }
+    const requestedTile = request.tabId
+      ? readDevAppPreviewTile(initialContext, requestedSurface?.tileId ?? request.tabId)
+      : null;
+    if (request.tabId && !requestedTile) {
+      throw new PreviewHostError(
+        "PreviewAutomationTabNotFoundError",
+        `Development preview ${request.tabId} is not available in this workbench.`,
+      );
+    }
+
+    const inputRelativePath =
+      typeof input.relativePath === "string"
+        ? normalizeDevAppPreviewRelativePath(input.relativePath)
+        : null;
+    const relativePath = requestedTile?.relativePath
+      ? normalizeDevAppPreviewRelativePath(requestedTile.relativePath)
+      : inputRelativePath;
+    if (!relativePath) {
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        "A project-relative DevApp package path is required.",
+      );
+    }
+    if (
+      requestedTile &&
+      inputRelativePath &&
+      normalizeDevAppPreviewRelativePath(requestedTile.relativePath) !== inputRelativePath
+    ) {
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        "The requested preview tab belongs to a different DevApp package.",
+      );
+    }
+
+    const existingTile = requestedTile ?? findDevAppPreviewTile(initialContext, relativePath);
+    const handle = await ensureDevAppPreviewSurface({
+      ...initialContext,
+      relativePath,
+      ...(existingTile ? { preferredTileId: existingTile.id } : {}),
+      create: request.operation === "devAppPreviewEnsure",
+      focus: input.open === true,
+    });
+    const context = requireThreadWorkbenchContext(request.threadId);
+    const tile = readDevAppPreviewTile(context, handle.tileId);
+    if (!tile) {
+      throw new PreviewHostError(
+        "PreviewAutomationTabNotFoundError",
+        "The development preview closed before it could be attached.",
+      );
+    }
+    if (!handle.focused && input.open === true) {
+      focusDevAppPreviewSurface(handle.scopeKey, handle.tileId);
+    }
+    return await resolveDevAppPreviewAutomationStatus(
+      request.threadId,
+      context,
+      tile,
+      request.timeoutMs,
+    );
+  }
 
   if (request.operation === "devServerStatus") {
     const context = requireThreadWorkbenchContext(request.threadId);

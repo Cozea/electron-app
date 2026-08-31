@@ -1,5 +1,5 @@
 {
-  "pin": "04d8f7918b2c44666ecaaef3eebb723fabc9d7f5",
+  "pin": "5725b2eb0dab80aa00fc17a220955359b14d75fe",
   "copied": [
     "assets.ts",
     "auth.ts",
@@ -36,5 +36,5 @@
     "usage.ts",
     "vcs.ts"
   ],
-  "syncedAt": "2026-08-31T15:17:29.675Z"
+  "syncedAt": "2026-08-31T17:15:58.963Z"
 }

@@ -55,7 +55,18 @@ vi.mock("@/features/projects/devserver/devServerRunStore", () => ({
 
 import { browserViewportSettingKey } from "../../apps/desktop/src/features/projects/browser/browserViewportLayout";
 import { useBrowserViewportStore } from "../../apps/desktop/src/features/projects/browser/browserViewportStore";
-import { useProjectWorkbenchStore } from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
+import {
+  clearDevAppPreviewRuntimeForTests,
+  publishDevAppPreviewRuntime,
+} from "../../apps/desktop/src/features/projects/devapps/devAppPreviewRuntimeStore";
+import {
+  clearDevAppPreviewSurfaceControllersForTests,
+  registerDevAppPreviewSurfaceController,
+} from "../../apps/desktop/src/features/projects/devapps/devAppPreviewSurfaceController";
+import {
+  buildWorkbenchScopeKey,
+  useProjectWorkbenchStore,
+} from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
 import { __t3PreviewAutomationHostTestUtils } from "../../apps/desktop/src/substrate/t3PreviewAutomationHost";
 
 const THREAD_ID = "thread-automation" as PreviewAutomationRequest["threadId"];
@@ -121,13 +132,21 @@ function createWorkbenchSurface(kind: BrowserSurfaceKind): BrowserSurfaceInvento
             },
             "workspace-1",
           )
-        : actions.addTile(
-            "project-1",
-            "collab",
-            "devServer",
-            kind === "projectDevApp" ? { devAppId: "project-devapp-1" } : {},
-            "workspace-1",
-          );
+        : kind === "devAppPreview"
+          ? actions.addTile(
+              "project-1",
+              "collab",
+              "devAppPreview",
+              { devAppPreviewRelativePath: "apps/inventory" },
+              "workspace-1",
+            )
+          : actions.addTile(
+              "project-1",
+              "collab",
+              "devServer",
+              kind === "projectDevApp" ? { devAppId: "project-devapp-1" } : {},
+              "workspace-1",
+            );
   actions.setActiveTile("project-1", "collab", tileId, "workspace-1");
   return makeInventory(kind, tileId);
 }
@@ -218,6 +237,8 @@ afterEach(() => {
   devServerRunMocks.ensure.mockReset();
   devServerRunMocks.state.contexts = {};
   devServerRunMocks.state.runs = {};
+  clearDevAppPreviewRuntimeForTests();
+  clearDevAppPreviewSurfaceControllersForTests();
   vi.unstubAllGlobals();
 });
 
@@ -241,6 +262,8 @@ describe("T3 preview automation host", () => {
       "devServerStatus",
       "devServerEnsure",
       "devServerAttach",
+      "devAppPreviewEnsure",
+      "devAppPreviewAttach",
     ]);
   });
 
@@ -307,9 +330,9 @@ describe("T3 preview automation host", () => {
     { operation: "resize", input: { mode: "freeform", width: 800, height: 600 } },
     { operation: "setColorScheme", input: { colorScheme: "dark" } },
   ];
-  const cases = (["browser", "devServer", "projectDevApp", "orgDevApp"] as const).flatMap((kind) =>
-    directOperations.map((entry) => ({ kind, ...entry })),
-  );
+  const cases = (
+    ["browser", "devServer", "projectDevApp", "orgDevApp", "devAppPreview"] as const
+  ).flatMap((kind) => directOperations.map((entry) => ({ kind, ...entry })));
 
   it.each(cases)(
     "routes $operation through the living $kind guest",
@@ -456,6 +479,130 @@ describe("T3 preview automation host", () => {
       }
     },
   );
+
+  it("creates a confined DevApp preview without bypassing capability approval", async () => {
+    const actions = useProjectWorkbenchStore.getState().actions;
+    actions.ensureWorkbench("project-1", "collab", "workspace-1");
+    actions.addTile("project-1", "collab", "assistantChat", { threadId: THREAD_ID }, "workspace-1");
+    const bridge = installBridge(makeInventory("devAppPreview", "pending-devapp"));
+    bridge.listSurfaces.mockResolvedValue([]);
+    const owner = Symbol("preview-runtime");
+    const ensureSurface = vi.fn(async (input: { relativePath: string; create: boolean }) => {
+      const tileId = actions.addTile(
+        "project-1",
+        "collab",
+        "devAppPreview",
+        { activate: false, devAppPreviewRelativePath: input.relativePath },
+        "workspace-1",
+      );
+      publishDevAppPreviewRuntime(owner, {
+        tileId,
+        relativePath: input.relativePath,
+        hotReload: true,
+        openError: null,
+        status: {
+          status: "needsApproval",
+          sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
+          name: "Inventory",
+          requested: { capabilities: ["project.metadata"], agentInvocable: false },
+          missing: ["project.metadata"],
+          badge: { tone: "development", label: "Development", detail: "Approval required." },
+          preflight: {
+            ok: true,
+            framework: "static",
+            expectedRuntimeKind: "static",
+            diagnostics: [],
+          },
+        },
+      });
+      return {
+        scopeKey: buildWorkbenchScopeKey("project-1", "collab", "workspace-1"),
+        tileId,
+        created: true,
+        focused: false,
+      };
+    });
+    registerDevAppPreviewSurfaceController(
+      buildWorkbenchScopeKey("project-1", "collab", "workspace-1"),
+      { ensureSurface, focusSurface: vi.fn(() => true) },
+    );
+
+    const result = await __t3PreviewAutomationHostTestUtils.runRequest(
+      request("devAppPreviewEnsure", { relativePath: "apps/inventory" }),
+    );
+
+    expect(ensureSurface).toHaveBeenCalledWith(
+      expect.objectContaining({ relativePath: "apps/inventory", create: true, focus: false }),
+    );
+    expect(result).toMatchObject({
+      phase: "needsApproval",
+      relativePath: "apps/inventory",
+      sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
+      ready: false,
+      requestedCapabilities: ["project.metadata"],
+      surface: { available: false, tabId: null },
+    });
+  });
+
+  it("attaches an existing approved DevApp preview to its living guest", async () => {
+    const surface = createWorkbenchSurface("devAppPreview");
+    const bridge = installBridge(surface);
+    const owner = Symbol("preview-runtime");
+    publishDevAppPreviewRuntime(owner, {
+      tileId: surface.tileId,
+      relativePath: "apps/inventory",
+      hotReload: true,
+      openError: null,
+      status: {
+        status: "running",
+        sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
+        name: "Inventory",
+        view: {
+          kind: "builtOutput",
+          entryPath: "dist/index.html",
+          url: "cozea-devapp://8a9f6d2f624cb5e73e4b6f5a67d21dc9.dev/dist/index.html",
+        },
+        grant: { capabilities: [], agentInvocable: false },
+        badge: { tone: "development", label: "Development", detail: "Approved." },
+        preflight: {
+          ok: true,
+          framework: "static",
+          expectedRuntimeKind: "static",
+          diagnostics: [],
+        },
+        worker: null,
+        reloadToken: 0,
+      },
+    });
+    const ensureSurface = vi.fn(async () => ({
+      scopeKey: buildWorkbenchScopeKey("project-1", "collab", "workspace-1"),
+      tileId: surface.tileId,
+      created: false,
+      focused: false,
+    }));
+    registerDevAppPreviewSurfaceController(
+      buildWorkbenchScopeKey("project-1", "collab", "workspace-1"),
+      { ensureSurface, focusSurface: vi.fn(() => true) },
+    );
+
+    const result = await __t3PreviewAutomationHostTestUtils.runRequest(
+      request("devAppPreviewAttach", {}, surface.runtimeTabId),
+    );
+
+    expect(ensureSurface).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferredTileId: surface.tileId,
+        relativePath: "apps/inventory",
+        create: false,
+      }),
+    );
+    expect(result).toMatchObject({
+      phase: "running",
+      ready: true,
+      surface: { available: true, tabId: surface.runtimeTabId },
+    });
+    expect(bridge.automation.status).toHaveBeenCalledWith(surface.runtimeTabId);
+  });
 
   it("discovers a newly created inactive Dev Server surface in the same request", async () => {
     const actions = useProjectWorkbenchStore.getState().actions;

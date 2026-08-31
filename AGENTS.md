@@ -295,6 +295,7 @@ See `docs/project-devapps.md` for the full lifecycle and operational notes.
 - Preview control is leased per assistant thread. Direct user interaction interrupts the T3 control epoch; a competing agent gets another Dev Server surface attached to the same process rather than taking control or starting a duplicate process.
 - Explicit opaque runtime tab IDs win. They are process-local, stay within T3's 128-character contract, and never expose serialized workbench identity. Without one, automation uses the thread's last controlled surface, then the active browser-backed tile in the same workbench. `preview_status` returns every eligible surface and its exact target ID; `open` and `dev_server_ensure` still default to the thread's Dev Server workflow.
 - The Cozea host advertises the complete pinned T3 set: status, open, navigate, snapshot, click, type, press, scroll, evaluate, wait, recording start/stop, resize, color scheme, and the three Dev Server lifecycle operations.
+- Development packages use `devapp_preview_ensure` and `devapp_preview_attach`. Ensure creates or reuses a project-confined preview but never grants requested capabilities; attach targets an existing approved preview. Once a living guest exists, ordinary preview operations can inspect and interact with it by exact runtime tab ID. `agentInvocable` governs worker exposure, not explicit user-directed control of the preview guest.
 
 See `docs/dev-server-agent-automation.md` for the lifecycle, tool semantics, and QA matrix.
 
