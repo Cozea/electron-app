@@ -4,6 +4,11 @@ import {
   type DevAppCapability,
   type DevAppGrant,
 } from "./devAppCapabilities"
+import {
+  DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION,
+  DEV_APP_WORKER_PROTOCOL_VERSION,
+  supportsDevAppWorkerProtocolVersion,
+} from "./devAppWorkerProtocol"
 
 /**
  * The authoring contract: `cozea-devapp.json`, the file that makes a directory a DevApp.
@@ -28,6 +33,7 @@ export type DevAppPackageDiagnosticCode =
   | "manifest-unparsable"
   | "manifest-not-object"
   | "manifest-version-unsupported"
+  | "worker-protocol-version-unsupported"
   | "manifest-field-invalid"
   | "manifest-no-parts"
   | "manifest-unknown-capability"
@@ -63,6 +69,8 @@ export interface DevAppPackageViewSpec {
 
 export interface DevAppPackageWorkerSpec {
   entry: string
+  /** Exact host API/wire contract this worker targets. */
+  protocolVersion: number
   /** What the app asks for. The grant it holds is decided by the user, not by this. */
   capabilities: DevAppCapability[]
   /** Whether the worker offers operations agents may call. */
@@ -263,6 +271,35 @@ function parseWorker(
 
   const entry = readPath(raw.entry, "worker.entry", diagnostics)
 
+  let protocolVersion = DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION
+  const declaredProtocolVersion =
+    raw.protocolVersion === undefined ? DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION : raw.protocolVersion
+  if (
+    typeof declaredProtocolVersion !== "number" ||
+    !Number.isInteger(declaredProtocolVersion) ||
+    declaredProtocolVersion < 1
+  ) {
+    diagnostics.push(
+      blocker("manifest-field-invalid", "worker.protocolVersion must be a positive integer.", {
+        field: "worker.protocolVersion",
+        fix: `Use ${DEV_APP_WORKER_PROTOCOL_VERSION}.`,
+      }),
+    )
+  } else if (!supportsDevAppWorkerProtocolVersion(declaredProtocolVersion)) {
+    diagnostics.push(
+      blocker(
+        "worker-protocol-version-unsupported",
+        `This DevApp worker needs protocol version ${declaredProtocolVersion}, but this Cozea supports version ${DEV_APP_WORKER_PROTOCOL_VERSION}.`,
+        {
+          field: "worker.protocolVersion",
+          fix: "Update Cozea or target a supported worker protocol.",
+        },
+      ),
+    )
+  } else {
+    protocolVersion = declaredProtocolVersion
+  }
+
   const capabilities: DevAppCapability[] = []
   if (raw.capabilities !== undefined) {
     if (!Array.isArray(raw.capabilities)) {
@@ -305,7 +342,7 @@ function parseWorker(
   }
 
   if (entry === null) return undefined
-  return { entry, capabilities, exposesTools }
+  return { entry, protocolVersion, capabilities, exposesTools }
 }
 
 function parseService(

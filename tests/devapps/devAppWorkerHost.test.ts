@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
 import { normalizeGrant, type DevAppCapability } from "../../shared/devAppCapabilities"
-import type { DevAppWorkerResponse } from "../../shared/devAppWorkerProtocol"
+import {
+  DEV_APP_WORKER_PROTOCOL_VERSION,
+  type DevAppWorkerResponse,
+} from "../../shared/devAppWorkerProtocol"
 import {
   DevAppWorkerHost,
   type DevAppWorkerBinding,
@@ -53,14 +56,18 @@ class FakeWorker implements DevAppWorkerProcess {
   }
 }
 
-function makeHost(options: {
-  capabilities?: DevAppCapability[]
-  handler?: (method: string) => Promise<unknown>
-} = {}) {
+function makeHost(
+  options: {
+    capabilities?: DevAppCapability[]
+    handler?: (method: string) => Promise<unknown>
+  } = {},
+) {
   const spawned: FakeWorker[] = []
   const handlers = {
-    "project.readFile": async () => (options.handler ? options.handler("project.readFile") : "contents"),
-    "project.writeFile": async () => (options.handler ? options.handler("project.writeFile") : true),
+    "project.readFile": async () =>
+      options.handler ? options.handler("project.readFile") : "contents",
+    "project.writeFile": async () =>
+      options.handler ? options.handler("project.writeFile") : true,
     "fs.readFile": async () => "machine-wide",
   }
   const host = new DevAppWorkerHost(() => {
@@ -72,6 +79,7 @@ function makeHost(options: {
   const state = host.start({
     publicationId: "pub_1",
     entrypoint: "worker.js",
+    protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
     grant: normalizeGrant({ capabilities: options.capabilities ?? ["project.read"] }),
     binding: BINDING,
     leaseId: "tile_1",
@@ -86,7 +94,12 @@ describe("Worker host — the gate runs on every request", () => {
     const { current } = makeHost({ capabilities: ["project.read"] })
     current().send({ kind: "request", id: "1", method: "project.readFile" })
     await flush()
-    expect(current().responses[0]).toEqual({ kind: "response", id: "1", result: "contents" })
+    expect(current().responses[0]).toEqual({
+      kind: "response",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      id: "1",
+      result: "contents",
+    })
   })
 
   it("denies a request the grant does not permit, without killing the worker", async () => {
@@ -124,6 +137,19 @@ describe("Worker host — the gate runs on every request", () => {
     expect(host.getState("pub_1")?.logs.join(" ")).toContain("malformed")
   })
 
+  it("drops a message that targets a different protocol version", async () => {
+    const { host, current } = makeHost()
+    current().send({
+      kind: "request",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION + 1,
+      id: "1",
+      method: "project.readFile",
+    })
+    await flush()
+    expect(current().responses).toHaveLength(0)
+    expect(host.getState("pub_1")?.logs.join(" ")).toContain("malformed")
+  })
+
   it("does not leak host internals when a handler throws", async () => {
     const { current } = makeHost({
       capabilities: ["project.read"],
@@ -147,6 +173,7 @@ describe("Worker host — lifecycle", () => {
     host.start({
       publicationId: "pub_1",
       entrypoint: "worker.js",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
       grant: normalizeGrant({ capabilities: ["project.read"] }),
       binding: BINDING,
       leaseId: "agent_1",
@@ -159,6 +186,7 @@ describe("Worker host — lifecycle", () => {
     host.start({
       publicationId: "pub_1",
       entrypoint: "worker.js",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
       grant: normalizeGrant({ capabilities: ["project.read"] }),
       binding: BINDING,
       leaseId: "agent_1",
@@ -233,10 +261,15 @@ describe("Worker host — lifecycle", () => {
 describe("Worker host — request pressure", () => {
   it("refuses once too many requests are in flight", async () => {
     let release = () => {}
-    const gate = new Promise<void>((resolve) => { release = resolve })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
     const { current } = makeHost({
       capabilities: ["project.read"],
-      handler: async () => { await gate; return "ok" },
+      handler: async () => {
+        await gate
+        return "ok"
+      },
     })
 
     for (let i = 0; i < 70; i += 1) {
@@ -257,11 +290,33 @@ describe("Worker host — spawn wiring", () => {
     host.start({
       publicationId: "pub_9",
       entrypoint: "server/worker.js",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
       grant: normalizeGrant({ capabilities: [] }),
       binding: BINDING,
       leaseId: "tile_1",
     })
-    expect(spawn).toHaveBeenCalledWith({ entrypoint: "server/worker.js", publicationId: "pub_9" })
+    expect(spawn).toHaveBeenCalledWith({
+      entrypoint: "server/worker.js",
+      publicationId: "pub_9",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+    })
+    expect(host.getState("pub_9")?.protocolVersion).toBe(DEV_APP_WORKER_PROTOCOL_VERSION)
+  })
+
+  it("refuses an unsupported protocol before spawning code", () => {
+    const spawn = vi.fn(() => new FakeWorker())
+    const host = new DevAppWorkerHost(spawn, {})
+    expect(() =>
+      host.start({
+        publicationId: "pub_9",
+        entrypoint: "server/worker.js",
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION + 1,
+        grant: normalizeGrant({ capabilities: [] }),
+        binding: BINDING,
+        leaseId: "tile_1",
+      }),
+    ).toThrow(/Unsupported DevApp worker protocol/)
+    expect(spawn).not.toHaveBeenCalled()
   })
 })
 
@@ -270,12 +325,22 @@ describe("Worker host — the binding reaches handlers", () => {
     const seen: DevAppWorkerBinding[] = []
     const spawned: FakeWorker[] = []
     const host = new DevAppWorkerHost(
-      () => { const w = new FakeWorker(); spawned.push(w); return w },
-      { "project.readFile": async (_r, ctx) => { seen.push(ctx.binding); return "ok" } },
+      () => {
+        const w = new FakeWorker()
+        spawned.push(w)
+        return w
+      },
+      {
+        "project.readFile": async (_r, ctx) => {
+          seen.push(ctx.binding)
+          return "ok"
+        },
+      },
     )
     host.start({
       publicationId: "pub_1",
       entrypoint: "worker.js",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
       grant: normalizeGrant({ capabilities: ["project.read"] }),
       binding: BINDING,
       leaseId: "tile_1",

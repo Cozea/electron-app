@@ -1,7 +1,10 @@
 import type { DevAppGrant } from "../../../../shared/devAppCapabilities"
 import {
+  DEV_APP_WORKER_PROTOCOL_MIN_VERSION,
+  DEV_APP_WORKER_PROTOCOL_VERSION,
   authorizeWorkerMethod,
   parseWorkerMessage,
+  supportsDevAppWorkerProtocolVersion,
   workerErrorResponse,
   type DevAppWorkerError,
   type DevAppWorkerMessage,
@@ -32,6 +35,7 @@ export interface DevAppWorkerProcess {
 export type DevAppWorkerSpawn = (options: {
   entrypoint: string
   publicationId: string
+  protocolVersion: number
 }) => DevAppWorkerProcess
 
 /**
@@ -57,6 +61,7 @@ export type DevAppWorkerStatus = "starting" | "ready" | "stopped" | "crashed"
 
 export interface DevAppWorkerState {
   publicationId: string
+  protocolVersion: number
   status: DevAppWorkerStatus
   restarts: number
   lastError: string | null
@@ -103,12 +108,21 @@ export class DevAppWorkerHost {
   start(options: {
     publicationId: string
     entrypoint: string
+    protocolVersion: number
     grant: DevAppGrant
     binding: DevAppWorkerBinding
     leaseId: string
   }): DevAppWorkerState {
+    if (!supportsDevAppWorkerProtocolVersion(options.protocolVersion)) {
+      throw new RangeError(
+        `Unsupported DevApp worker protocol ${String(options.protocolVersion)}; supported range is ${DEV_APP_WORKER_PROTOCOL_MIN_VERSION}-${DEV_APP_WORKER_PROTOCOL_VERSION}.`,
+      )
+    }
     const existing = this.workers.get(options.publicationId)
     if (existing && !existing.disposed) {
+      if (existing.state.protocolVersion !== options.protocolVersion) {
+        throw new Error("A running DevApp worker cannot change protocol versions in place.")
+      }
       existing.leases.add(options.leaseId)
       return existing.state
     }
@@ -119,6 +133,7 @@ export class DevAppWorkerHost {
     options: {
       publicationId: string
       entrypoint: string
+      protocolVersion: number
       grant: DevAppGrant
       binding: DevAppWorkerBinding
       leaseId: string
@@ -127,13 +142,18 @@ export class DevAppWorkerHost {
   ): DevAppWorkerState {
     const state: DevAppWorkerState = {
       publicationId: options.publicationId,
+      protocolVersion: options.protocolVersion,
       status: "starting",
       restarts,
       lastError: null,
       logs: [],
     }
 
-    const process = this.spawn({ entrypoint: options.entrypoint, publicationId: options.publicationId })
+    const process = this.spawn({
+      entrypoint: options.entrypoint,
+      publicationId: options.publicationId,
+      protocolVersion: options.protocolVersion,
+    })
     const worker: ActiveWorker = {
       process,
       grant: options.grant,
@@ -205,7 +225,10 @@ export class DevAppWorkerHost {
     const worker = this.workers.get(publicationId)
     if (!worker || worker.disposed) return
 
-    const message: DevAppWorkerMessage | null = parseWorkerMessage(raw)
+    const message: DevAppWorkerMessage | null = parseWorkerMessage(
+      raw,
+      worker.state.protocolVersion,
+    )
     if (!message) {
       // A malformed message is dropped rather than answered: there is no id to reply to,
       // and echoing unparsed input back would be its own hazard.
@@ -215,10 +238,17 @@ export class DevAppWorkerHost {
     if (message.kind !== "request") return
 
     if (worker.inFlight >= MAX_PENDING_REQUESTS) {
-      this.respond(worker, workerErrorResponse(message.id, {
-        code: "internal-error",
-        message: "Too many requests in flight.",
-      }))
+      this.respond(
+        worker,
+        workerErrorResponse(
+          message.id,
+          {
+            code: "internal-error",
+            message: "Too many requests in flight.",
+          },
+          worker.state.protocolVersion,
+        ),
+      )
       return
     }
 
@@ -226,23 +256,38 @@ export class DevAppWorkerHost {
     if (!authorization.allowed) {
       // A denial is an ordinary response. Killing the worker for asking would make an
       // over-broad manifest an outage rather than a fixable mistake.
-      this.respond(worker, workerErrorResponse(message.id, authorization.error))
+      this.respond(
+        worker,
+        workerErrorResponse(message.id, authorization.error, worker.state.protocolVersion),
+      )
       return
     }
 
     const handler = this.handlers[message.method]
     if (!handler) {
-      this.respond(worker, workerErrorResponse(message.id, {
-        code: "unknown-method",
-        message: `${message.method} has no handler.`,
-      }))
+      this.respond(
+        worker,
+        workerErrorResponse(
+          message.id,
+          {
+            code: "unknown-method",
+            message: `${message.method} has no handler.`,
+          },
+          worker.state.protocolVersion,
+        ),
+      )
       return
     }
 
     worker.inFlight += 1
     try {
       const result = await handler(message, { publicationId, binding: worker.binding })
-      this.respond(worker, { kind: "response", id: message.id, result: result ?? null })
+      this.respond(worker, {
+        kind: "response",
+        protocolVersion: worker.state.protocolVersion,
+        id: message.id,
+        result: result ?? null,
+      })
     } catch (error) {
       // Handler failures must not leak host internals to worker code.
       const detail: DevAppWorkerError = {
@@ -250,7 +295,7 @@ export class DevAppWorkerHost {
         message: error instanceof Error ? error.message : "The request failed.",
       }
       worker.state.logs.push(`${message.method} failed: ${detail.message}`)
-      this.respond(worker, workerErrorResponse(message.id, detail))
+      this.respond(worker, workerErrorResponse(message.id, detail, worker.state.protocolVersion))
     } finally {
       worker.inFlight -= 1
     }
