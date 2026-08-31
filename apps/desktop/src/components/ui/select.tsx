@@ -83,11 +83,11 @@ function SelectContent({
 }: React.ComponentProps<typeof BaseSelect.Popup> & { position?: string; align?: string }) {
   return (
     <BaseSelect.Portal>
-      <BaseSelect.Positioner align={align as any} sideOffset={4} className="z-50">
+      <BaseSelect.Positioner align={align as any} sideOffset={4} className="z-[var(--cozea-layer-menu)]">
         <BaseSelect.Popup
           data-slot="select-content"
           className={cn(
-            "titlebar-no-drag relative z-50 flex min-w-32 flex-col origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+            "titlebar-no-drag relative flex min-w-32 flex-col origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             className
           )}
           style={style}

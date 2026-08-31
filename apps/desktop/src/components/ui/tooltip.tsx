@@ -32,11 +32,11 @@ function TooltipContent({
         side={side as any}
         align={align as any}
         sideOffset={sideOffset}
-        className="z-50 max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
+        className="z-[var(--cozea-layer-tooltip)] max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
       >
         <BaseTooltip.Popup
           className={cn(
-            "relative z-50 w-fit origin-(--transform-origin) text-balance rounded-md border bg-popover not-dark:bg-clip-padding px-2 py-1 text-popover-foreground text-xs shadow-md/5 transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-md)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 data-instant:duration-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+            "relative w-fit origin-(--transform-origin) text-balance rounded-md border bg-popover not-dark:bg-clip-padding px-2 py-1 text-popover-foreground text-xs shadow-md/5 transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-md)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 data-instant:duration-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             className
           )}
           {...props}

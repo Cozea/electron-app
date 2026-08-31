@@ -64,7 +64,7 @@ function DropdownMenuContent({
         side={side as any}
         align={align as any}
         sideOffset={sideOffset}
-        className="z-50"
+        className="z-[var(--cozea-layer-menu)]"
       >
         <BaseMenu.Popup
           data-slot="dropdown-menu-content"
@@ -278,7 +278,7 @@ function DropdownMenuSubContent({
 }: React.ComponentProps<typeof BaseMenu.Popup> & { sideOffset?: number }) {
   return (
     <BaseMenu.Portal>
-      <BaseMenu.Positioner side="right" sideOffset={sideOffset} className="z-50">
+      <BaseMenu.Positioner side="right" sideOffset={sideOffset} className="z-[var(--cozea-layer-menu)]">
         <BaseMenu.Popup
           data-slot="dropdown-menu-sub-content"
           className={cn(dropdownMenuPopupClassName, className)}
