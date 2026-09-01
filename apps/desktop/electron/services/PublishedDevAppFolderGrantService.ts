@@ -22,13 +22,17 @@ function isStoredGrant(value: unknown): value is DevAppFolderGrant {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false
   const grant = value as Partial<DevAppFolderGrant>
   return (
-    typeof grant.grantId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(grant.grantId) &&
-    typeof grant.publicationId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(grant.publicationId) &&
-    typeof grant.releaseId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(grant.releaseId) &&
+    typeof grant.grantId === "string" &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(grant.grantId) &&
+    typeof grant.publicationId === "string" &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(grant.publicationId) &&
+    typeof grant.releaseId === "string" &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(grant.releaseId) &&
     typeof grant.canonicalHostPath === "string" &&
     grant.guestPath === `/cozea/grants/${grant.grantId}` &&
     (grant.access === "read" || grant.access === "readWrite") &&
-    typeof grant.expiresAt === "number" && Number.isFinite(grant.expiresAt)
+    typeof grant.expiresAt === "number" &&
+    Number.isFinite(grant.expiresAt)
   )
 }
 
@@ -38,11 +42,7 @@ export class PublishedDevAppFolderGrantService {
   private readonly installations: OrgDevAppInstallationService
   private readonly now: () => number
 
-  constructor(
-    storePath: () => string,
-    installations: OrgDevAppInstallationService,
-    now: () => number = Date.now,
-  ) {
+  constructor(storePath: () => string, installations: OrgDevAppInstallationService, now: () => number = Date.now) {
     this.storePath = storePath
     this.installations = installations
     this.now = now
@@ -52,11 +52,12 @@ export class PublishedDevAppFolderGrantService {
     const installation = this.installations.resolve(ref)
     if (!installation) throw new Error("This exact DevApp release is not installed.")
     const now = this.now()
-    return this.read().grants.filter((grant) =>
-      grant.publicationId === installation.publicationId &&
-      grant.releaseId === installation.activeRelease.id &&
-      grant.expiresAt > now &&
-      this.isStillCanonical(grant.canonicalHostPath),
+    return this.read().grants.filter(
+      (grant) =>
+        grant.publicationId === installation.publicationId &&
+        grant.releaseId === installation.activeRelease.id &&
+        grant.expiresAt > now &&
+        this.isStillCanonical(grant.canonicalHostPath),
     )
   }
 
@@ -83,10 +84,11 @@ export class PublishedDevAppFolderGrantService {
       throw new Error("The DevApp folder grant expiry is invalid.")
     }
     const store = this.read()
-    const current = store.grants.filter((grant) =>
-      grant.publicationId === installation.publicationId &&
-      grant.releaseId === installation.activeRelease.id &&
-      grant.expiresAt > now,
+    const current = store.grants.filter(
+      (grant) =>
+        grant.publicationId === installation.publicationId &&
+        grant.releaseId === installation.activeRelease.id &&
+        grant.expiresAt > now,
     )
     if (current.length >= DEV_APP_CONTAINED_RUNTIME_MAX_MOUNTS) {
       throw new Error("This DevApp already has the maximum number of folder grants.")
@@ -101,10 +103,11 @@ export class PublishedDevAppFolderGrantService {
       access: input.access,
       expiresAt,
     }
-    store.grants = store.grants.filter((entry) =>
-      entry.publicationId !== grant.publicationId ||
-      entry.releaseId !== grant.releaseId ||
-      entry.canonicalHostPath !== grant.canonicalHostPath,
+    store.grants = store.grants.filter(
+      (entry) =>
+        entry.publicationId !== grant.publicationId ||
+        entry.releaseId !== grant.releaseId ||
+        entry.canonicalHostPath !== grant.canonicalHostPath,
     )
     store.grants.push(grant)
     this.write(store)
@@ -116,13 +119,24 @@ export class PublishedDevAppFolderGrantService {
     if (!installation) throw new Error("This exact DevApp release is not installed.")
     const store = this.read()
     const before = store.grants.length
-    store.grants = store.grants.filter((grant) =>
-      grant.grantId !== grantId ||
-      grant.publicationId !== installation.publicationId ||
-      grant.releaseId !== installation.activeRelease.id,
+    store.grants = store.grants.filter(
+      (grant) =>
+        grant.grantId !== grantId ||
+        grant.publicationId !== installation.publicationId ||
+        grant.releaseId !== installation.activeRelease.id,
     )
     if (store.grants.length !== before) this.write(store)
     return store.grants.length !== before
+  }
+
+  removeReleases(publicationId: string, releaseIds: string[]): void {
+    const targets = new Set(releaseIds)
+    if (targets.size === 0 || !fs.existsSync(this.storePath())) return
+    const store = this.read()
+    const grants = store.grants.filter(
+      (grant) => grant.publicationId !== publicationId || !targets.has(grant.releaseId),
+    )
+    if (grants.length !== store.grants.length) this.write({ version: 1, grants })
   }
 
   private isStillCanonical(hostPath: string): boolean {

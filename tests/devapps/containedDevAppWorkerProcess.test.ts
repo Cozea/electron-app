@@ -64,7 +64,11 @@ describe("contained DevApp worker adapter", () => {
     const emit = (event: string, value: unknown) => {
       for (const listener of listeners.get(event) ?? []) listener(value as never)
     }
-    const spawn = createContainedDevAppWorkerSpawn(runtime, () => request)
+    const spawn = createContainedDevAppWorkerSpawn(() => ({
+      runtimeId: request.runtimeId,
+      runtime,
+      start: () => runtime.start(request),
+    }))
     const process = spawn({
       entrypoint: "/cozea/package/worker",
       packageRoot: "/cozea/package",
@@ -123,5 +127,41 @@ describe("contained DevApp worker adapter", () => {
       transport: { channel: "view", connectionId: "view_1", message: { ok: true } },
     })
     expect(portMessages).toEqual([{ ok: true }])
+
+    process.kill()
+    await vi.waitFor(() => expect(runtime.stop).toHaveBeenCalledWith(request.runtimeId))
+    await vi.waitFor(() => expect(runtime.delete).toHaveBeenCalledWith(request.runtimeId))
+  })
+
+  it("delegates teardown to the runtime owner when one is supplied", async () => {
+    const runtime = {
+      start: vi.fn(async () => ({ status: "running" })),
+      stop: vi.fn(async () => ({ status: "stopped" })),
+      delete: vi.fn(async () => null),
+      sendMessage: vi.fn(async () => undefined),
+      on: vi.fn(() => () => undefined),
+    } as unknown as DeviceContainedDevAppRuntimeService
+    const stopRuntime = vi.fn(async () => undefined)
+    const spawn = createContainedDevAppWorkerSpawn(
+      () => ({
+        runtimeId: request.runtimeId,
+        runtime,
+        start: () => runtime.start(request),
+      }),
+      () => true,
+      stopRuntime,
+    )
+    const process = spawn({
+      entrypoint: "/cozea/package/worker",
+      packageRoot: "/cozea/package",
+      publicationId: "pub_runtime",
+      protocolVersion: 1,
+    })
+    await process.ready
+
+    process.kill()
+    await vi.waitFor(() => expect(stopRuntime).toHaveBeenCalledWith(request.runtimeId))
+    expect(runtime.stop).not.toHaveBeenCalled()
+    expect(runtime.delete).not.toHaveBeenCalled()
   })
 })

@@ -1,28 +1,17 @@
 import { ConvexError, v } from "convex/values"
 
 import { partsForPublishedRuntimeKind, type DevAppParts } from "../shared/devAppParts"
-import {
-  validateDevAppRuntimeReleaseImage,
-  type DevAppRuntimeReleaseImage,
-} from "../shared/devAppContainedRuntime"
+import { validateDevAppRuntimeReleaseImage, type DevAppRuntimeReleaseImage } from "../shared/devAppContainedRuntime"
 
 import type { Doc, Id } from "./_generated/dataModel"
 import { type MutationCtx, type QueryCtx } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { canEditProject } from "./lib/projectAccess"
-import {
-  isOrgMember,
-  requireOrgAdmin,
-  requireOrgMember,
-  toConsumerDevApp,
-} from "./lib/orgAccess"
+import { isOrgMember, requireOrgAdmin, requireOrgMember, toConsumerDevApp } from "./lib/orgAccess"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import { resolvePublicationReferenceRecord } from "./lib/devAppReferenceResolution"
 import { normalizeStorageSha256 } from "./lib/storageHash"
-import {
-  orgDevAppArtifactLimits,
-  ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS,
-} from "../shared/orgDevAppLimits"
+import { orgDevAppArtifactLimits, ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS } from "../shared/orgDevAppLimits"
 
 const DEVAPP_NAME_MAX_LENGTH = 80
 const DEVAPP_DESCRIPTION_MAX_LENGTH = 500
@@ -178,7 +167,10 @@ export const registerUploadedArtifact = mutation({
       return { registered: false, error: "The uploaded DevApp artifact exceeds the size limit" }
     }
     if (metadata.contentType !== "application/zip") {
-      return { registered: false, error: "The uploaded DevApp artifact has an invalid content type" }
+      return {
+        registered: false,
+        error: "The uploaded DevApp artifact has an invalid content type",
+      }
     }
     if (normalizeStorageSha256(metadata.sha256) !== contentHash) {
       return { registered: false, error: "The uploaded DevApp artifact hash does not match" }
@@ -247,13 +239,8 @@ export const getRuntimePullAuthorizationForServer = query({
       .query("users")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
       .unique()
-    const [publication, release] = await Promise.all([
-      ctx.db.get(args.publicationId),
-      ctx.db.get(args.releaseId),
-    ])
-    const member = user?.status === "active"
-      ? await isOrgMember(ctx, args.organizationId, user._id)
-      : false
+    const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
+    const member = user?.status === "active" ? await isOrgMember(ctx, args.organizationId, user._id) : false
     const allowed = Boolean(
       member &&
       publication &&
@@ -265,6 +252,57 @@ export const getRuntimePullAuthorizationForServer = query({
       release.parts?.runtime?.kind === "container",
     )
     return { allowed }
+  },
+})
+
+/** Cloudflare resolves hosted launch authority from current organization state. */
+export const getHostedRuntimeAuthorizationForServer = query({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    organizationId: v.id("organizations"),
+    publicationId: v.id("devAppPublications"),
+    releaseId: v.id("devAppReleases"),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+      .unique()
+    const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
+    const member = user?.status === "active" ? await isOrgMember(ctx, args.organizationId, user._id) : false
+    if (
+      !member ||
+      !publication ||
+      publication.organizationId !== args.organizationId ||
+      publication.status !== "active" ||
+      publication.activeReleaseId !== args.releaseId ||
+      !release ||
+      release.publicationId !== args.publicationId ||
+      release.parts?.runtime?.kind !== "container" ||
+      release.parts.runtime.location !== "hosted" ||
+      (release.parts.runtime.state !== "none" && release.parts.runtime.state !== "organization") ||
+      release.parts.worker?.capabilities.some((capability) => capability !== "net.outbound") ||
+      !release.runtimeImage ||
+      !release.runtimeSourceDigest ||
+      !release.packageManifestDigest
+    ) {
+      return { allowed: false as const }
+    }
+    return {
+      allowed: true as const,
+      release: {
+        id: release._id,
+        version: release.version,
+        contentHash: release.contentHash,
+        runtimeKind: release.runtimeKind,
+        parts: release.parts,
+        runtimeSourceDigest: release.runtimeSourceDigest,
+        packageManifestDigest: release.packageManifestDigest,
+        runtimeImage: release.runtimeImage,
+      },
+    }
   },
 })
 
@@ -304,10 +342,7 @@ export const registerRuntimeBuildFromServer = mutation({
     }
     const buildId = normalizeRuntimeBuildId(args.buildId)
     const sourceDigest = normalizeContentHash(args.sourceDigest)
-    const packageManifestDigest = normalizeSha256Digest(
-      args.packageManifestDigest,
-      "packageManifestDigest",
-    )
+    const packageManifestDigest = normalizeSha256Digest(args.packageManifestDigest, "packageManifestDigest")
     await ctx.db.patch(args.reservationId, {
       runtimeBuildId: buildId,
       runtimeBuildStatus: "queued",
@@ -368,11 +403,7 @@ export const completeRuntimeBuildFromServer = mutation({
     } else if (args.status === "failed") {
       await ctx.db.patch(reservation._id, {
         runtimeBuildStatus: "failed",
-        runtimeBuildError: normalizeBoundedText(
-          args.error ?? "The central build failed",
-          "error",
-          1_000,
-        ),
+        runtimeBuildError: normalizeBoundedText(args.error ?? "The central build failed", "error", 1_000),
       })
     } else {
       await ctx.db.patch(reservation._id, { runtimeBuildStatus: "building" })
@@ -438,9 +469,10 @@ export const publish = mutation({
     }
 
     const name = normalizeBoundedText(args.name, "name", DEVAPP_NAME_MAX_LENGTH)
-    const description = args.description === undefined
-      ? undefined
-      : normalizeBoundedText(args.description, "description", DEVAPP_DESCRIPTION_MAX_LENGTH)
+    const description =
+      args.description === undefined
+        ? undefined
+        : normalizeBoundedText(args.description, "description", DEVAPP_DESCRIPTION_MAX_LENGTH)
     const framework = normalizeBoundedText(args.framework, "framework", DEVAPP_FRAMEWORK_MAX_LENGTH)
     const entryPath = normalizeBoundedText(args.entryPath, "entryPath", DEVAPP_ENTRY_PATH_MAX_LENGTH)
     if (entryPath.includes("..") || entryPath.startsWith("/") || entryPath.includes("\\")) {
@@ -467,7 +499,7 @@ export const publish = mutation({
     ) {
       throw new ConvexError(
         reservation.runtimeBuildStatus === "failed"
-          ? reservation.runtimeBuildError ?? "The central DevApp build failed"
+          ? (reservation.runtimeBuildError ?? "The central DevApp build failed")
           : "The central DevApp build is not ready",
       )
     }
@@ -492,10 +524,7 @@ export const publish = mutation({
         })
 
     if (existingPublication) {
-      if (
-        existingPublication.organizationId &&
-        existingPublication.organizationId !== project.organizationId
-      ) {
+      if (existingPublication.organizationId && existingPublication.organizationId !== project.organizationId) {
         throw new ConvexError("This DevApp belongs to another organization")
       }
     }
@@ -517,12 +546,8 @@ export const publish = mutation({
       contentHash: reservation.contentHash,
       runtimeKind: args.runtimeKind,
       parts: reservation.runtimeParts ?? partsForPublishedRuntimeKind(args.runtimeKind),
-      ...(reservation.runtimeSourceDigest
-        ? { runtimeSourceDigest: reservation.runtimeSourceDigest }
-        : {}),
-      ...(reservation.packageManifestDigest
-        ? { packageManifestDigest: reservation.packageManifestDigest }
-        : {}),
+      ...(reservation.runtimeSourceDigest ? { runtimeSourceDigest: reservation.runtimeSourceDigest } : {}),
+      ...(reservation.packageManifestDigest ? { packageManifestDigest: reservation.packageManifestDigest } : {}),
       ...(reservation.runtimeImage ? { runtimeImage: reservation.runtimeImage } : {}),
       ...(args.manifestVersion ? { manifestVersion: args.manifestVersion } : {}),
       ...(args.platform ? { platform: args.platform } : {}),
@@ -557,10 +582,7 @@ export const publish = mutation({
       await ctx.db.delete(staleRelease._id)
     }
 
-    const [publication, release] = await Promise.all([
-      ctx.db.get(publicationId),
-      ctx.db.get(releaseId),
-    ])
+    const [publication, release] = await Promise.all([ctx.db.get(publicationId), ctx.db.get(releaseId)])
     if (!publication || !release) {
       throw new ConvexError("The DevApp release could not be read after publishing")
     }
@@ -650,9 +672,7 @@ export const listForOrganization = query({
       }),
     )
 
-    return rows
-      .flatMap((row) => (row ? [row] : []))
-      .sort((left, right) => left.name.localeCompare(right.name))
+    return rows.flatMap((row) => (row ? [row] : [])).sort((left, right) => left.name.localeCompare(right.name))
   },
 })
 

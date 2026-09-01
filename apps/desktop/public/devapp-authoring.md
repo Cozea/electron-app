@@ -74,19 +74,31 @@ without `$ref`; a worker with no operations writes `"tools": []`. The authentica
 session exposes the declarations for an existing development preview. Invocation is available only
 for an exact installed release running in the contained runtime; the catalog alone grants nothing.
 
+Published executable packages also require `package.json`, a deterministic `build` script, and a
+committed `bun.lock`. Cozea sends a bounded, secret-screened source snapshot to the central builder,
+which emits signed Linux ARM64 and AMD64 images. A Node service necessarily receives a network
+interface so Cozea can reach its private HTTP port. Worker-only outbound access still requires
+`net.outbound`.
+
+Native dependencies are supported in published executable packages when they build successfully
+for both Linux target architectures. Do not ship a publisher-machine `node_modules` tree: the
+release artifact never executes those bytes, and the central builder performs the authoritative
+locked install and build. A worker-only package still appears as a tile using Cozea's administrative
+view so its approval and lifecycle remain user-controlled.
+
 ## Typed view/worker client
 
 `@cozea/devapp-api` exports the manifest types and `createDevAppClient`. Define the private methods shared by the package view and worker:
 
 ```ts
-import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api";
+import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api"
 
 interface Methods {
-  search: DevAppMethodDefinition<{ query: string }, { paths: string[] }>;
+  search: DevAppMethodDefinition<{ query: string }, { paths: string[] }>
 }
 
-const worker = createDevAppClient<Methods>();
-const result = await worker.request("search", { query: "manifest" });
+const worker = createDevAppClient<Methods>()
+const result = await worker.request("search", { query: "manifest" })
 ```
 
 The client uses the MessagePort transferred only to that package's view. It supplies request correlation, bounded timeouts, structured errors, and typed results. The view does not receive host capabilities; the worker holds the approved grant and the main process enforces it.
@@ -104,6 +116,11 @@ host with an approved capability grant. They are not consumer apps and are not r
 sandbox. Published or externally sourced executable parts are a different tier and must run through
 the contained-runtime adapter; missing containment fails closed without falling back to the
 development host.
+
+Device placement can receive an explicit release-bound folder grant when native filesystem
+semantics are genuinely required. Hosted placement can never mount local files. See the
+[DevApp Runtime Contract](./devapp-runtime-contract.md) and
+[Published DevApp Contained Runtime](./devapp-contained-runtime.md).
 
 ## In-product agent documentation
 

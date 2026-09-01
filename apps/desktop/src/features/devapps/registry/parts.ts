@@ -104,22 +104,22 @@ export function partsForPackage(manifest: DevAppPackage): DevAppParts {
   return {
     // Authored views are always package-sourced. `native` is reserved for components
     // compiled into Cozea, which a published package can never become.
-    ...(manifest.view ? { view: { source: "package" as const } } : {}),
+    ...(manifest.view || hasExecutablePart ? { view: { source: "package" as const } } : {}),
     ...(manifest.worker
       ? {
-        worker: {
-          capabilities: manifest.worker.capabilities,
-          protocolVersion: manifest.worker.protocolVersion,
-          ...(manifest.worker.tools.length > 0 ? { tools: manifest.worker.tools } : {}),
-        },
-      }
+          worker: {
+            capabilities: manifest.worker.capabilities,
+            protocolVersion: manifest.worker.protocolVersion,
+            ...(manifest.worker.tools.length > 0 ? { tools: manifest.worker.tools } : {}),
+          },
+        }
       : {}),
     ...(manifest.service
       ? {
-        service: {
-          runtimeKind: manifest.service.runtimeKind,
-        },
-      }
+          service: {
+            runtimeKind: manifest.service.runtimeKind,
+          },
+        }
       : {}),
     ...(hasExecutablePart
       ? {
@@ -128,7 +128,7 @@ export function partsForPackage(manifest: DevAppPackage): DevAppParts {
             location: "device" as const,
             // Development is always local. Organization state becomes device-scoped test
             // state until the exact package is published into its declared hosted runtime.
-            state: manifest.runtime?.state === "none" ? "none" as const : "device" as const,
+            state: manifest.runtime?.state === "none" ? ("none" as const) : ("device" as const),
           },
         }
       : {}),

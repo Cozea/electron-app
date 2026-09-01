@@ -26,12 +26,12 @@ Static views contain no executable package part and therefore declare no runtime
 
 ## Placement and state
 
-| Placement | Allowed state | Meaning |
-| --- | --- | --- |
-| `device` | `none` | Writable runtime data is ephemeral and removed with the instance. |
-| `device` | `device` | Cozea owns a publication-scoped device volume. It survives release replacement until uninstall. |
-| `hosted` | `none` | Runtime disk is ephemeral. Durable data must be external. |
-| `hosted` | `organization` | State is organization-scoped and persists through the hosted state adapter. |
+| Placement | Allowed state  | Meaning                                                                                         |
+| --------- | -------------- | ----------------------------------------------------------------------------------------------- |
+| `device`  | `none`         | Writable runtime data is ephemeral and removed with the instance.                               |
+| `device`  | `device`       | Cozea owns a publication-scoped device volume. It survives release replacement until uninstall. |
+| `hosted`  | `none`         | Runtime disk is ephemeral. Durable data must be external.                                       |
+| `hosted`  | `organization` | State is organization-scoped and persists through the hosted state adapter.                     |
 
 `device` + `organization` and `hosted` + `device` are invalid. A package cannot claim a state scope
 that its selected runtime cannot authoritatively own.
@@ -40,6 +40,9 @@ Container root filesystems are immutable release images. A bounded writable laye
 runtime changes. Device state is a separate app-owned volume, not a writable copy of the release.
 Hosted instance disks are disposable; organization state belongs in the durable hosted state
 service and object storage.
+
+The shipping adapters, resource ceilings, lease model, signed-image chain, and deployment
+requirements are specified in [Published DevApp Contained Runtime](./devapp-contained-runtime.md).
 
 ## Local filesystem access
 
@@ -87,7 +90,12 @@ paths, and credentials are runtime-owned and are never persisted in tile or work
 The central builder receives immutable source/artifact input, builds both supported platforms in a
 network-controlled environment, emits deterministic OCI metadata, scans the result, signs the
 manifest digest, and publishes it before Convex can activate the release. The desktop verifies the
-same release identity again before starting a device container.
+same release identity again before starting a device container. Cloudflare independently repeats
+that verification before starting a hosted container.
+
+A published Node service records an explicit network contract because Cozea must reach its private
+HTTP listener. Worker-only runtimes receive outbound networking only through `net.outbound`.
+Hosted egress begins deny-by-default; device networking is enabled only for those two cases.
 
 ## Failure rules
 
@@ -97,4 +105,5 @@ same release identity again before starting a device container.
 - Hosted runtime requested while offline: report hosted unavailable; do not run it on the device.
 - State or folder grant does not match the immutable release: do not attach it.
 - Container exits or the helper disconnects: revoke its live tool endpoint and leases before retry.
-
+- Hosted client disappears: let its renewable lease expire; do not let another client stop a
+  still-leased organization runtime.

@@ -10,10 +10,10 @@ export interface ServiceDevAppEnvironmentEntry {
 }
 
 export interface ServiceDevAppManifest {
-  schemaVersion: 1
+  schemaVersion: 2
   kind: "service"
-  platform: "darwin"
-  arch: "arm64"
+  platform: "linux"
+  arch: "multi"
   framework: string
   runtime: {
     kind: "node"
@@ -36,9 +36,18 @@ export interface ServiceDevAppManifest {
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9@._+-]+$/
 const SAFE_ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/
 const RESERVED_ENV_NAMES = new Set([
-  "PATH", "HOME", "SHELL", "TMPDIR", "NODE_OPTIONS", "NODE_PATH",
-  "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH", "ELECTRON_RUN_AS_NODE",
-  "PORT", "HOST", "HOSTNAME",
+  "PATH",
+  "HOME",
+  "SHELL",
+  "TMPDIR",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "ELECTRON_RUN_AS_NODE",
+  "PORT",
+  "HOST",
+  "HOSTNAME",
 ])
 
 function objectValue(value: unknown, label: string): Record<string, unknown> {
@@ -72,7 +81,7 @@ export function normalizeServiceDevAppPath(value: unknown, label: string): strin
 
 function environmentName(value: unknown, label: string, allowReserved = false): string {
   const name = boundedString(value, label, 64)
-  if (!SAFE_ENV_NAME.test(name) || (!allowReserved && RESERVED_ENV_NAMES.has(name))) {
+  if (!SAFE_ENV_NAME.test(name) || (!allowReserved && (RESERVED_ENV_NAMES.has(name) || name.startsWith("COZEA_")))) {
     throw new Error(`${label} is reserved or invalid.`)
   }
   return name
@@ -87,23 +96,37 @@ function exactKeys(value: Record<string, unknown>, keys: string[], label: string
 
 export function parseServiceDevAppManifest(value: unknown): ServiceDevAppManifest {
   const root = objectValue(value, "DevApp manifest")
-  exactKeys(root, ["schemaVersion", "kind", "platform", "arch", "framework", "runtime", "server", "environment", "permissions"], "DevApp manifest")
-  if (root.schemaVersion !== 1 || root.kind !== "service" || root.platform !== "darwin" || root.arch !== "arm64") {
+  exactKeys(
+    root,
+    ["schemaVersion", "kind", "platform", "arch", "framework", "runtime", "server", "environment", "permissions"],
+    "DevApp manifest",
+  )
+  if (root.schemaVersion !== 2 || root.kind !== "service" || root.platform !== "linux" || root.arch !== "multi") {
     throw new Error("This Service DevApp manifest version or platform is unsupported.")
   }
   const runtime = objectValue(root.runtime, "runtime")
   exactKeys(runtime, ["kind", "entrypoint", "args"], "runtime")
   if (runtime.kind !== "node") throw new Error("Only the bundled Node runtime is supported.")
   const args = runtime.args
-  if (!Array.isArray(args) || args.length > 16 || args.some((arg) => typeof arg !== "string" || arg.length > 256 || /[\0\r\n]/.test(arg))) {
+  if (
+    !Array.isArray(args) ||
+    args.length > 16 ||
+    args.some((arg) => typeof arg !== "string" || arg.length > 256 || /[\0\r\n]/.test(arg))
+  ) {
     throw new Error("runtime.args is invalid.")
   }
   const server = objectValue(root.server, "server")
   exactKeys(server, ["hostEnv", "portEnv", "healthPath", "startupTimeoutMs"], "server")
   const healthPath = boundedString(server.healthPath, "server.healthPath", 512)
-  if (!healthPath.startsWith("/") || healthPath.startsWith("//")) throw new Error("server.healthPath must be an origin-relative path.")
+  if (!healthPath.startsWith("/") || healthPath.startsWith("//"))
+    throw new Error("server.healthPath must be an origin-relative path.")
   const startupTimeoutMs = server.startupTimeoutMs
-  if (typeof startupTimeoutMs !== "number" || !Number.isInteger(startupTimeoutMs) || startupTimeoutMs < 1_000 || startupTimeoutMs > 120_000) {
+  if (
+    typeof startupTimeoutMs !== "number" ||
+    !Number.isInteger(startupTimeoutMs) ||
+    startupTimeoutMs < 1_000 ||
+    startupTimeoutMs > 120_000
+  ) {
     throw new Error("server.startupTimeoutMs is invalid.")
   }
   if (!Array.isArray(root.environment) || root.environment.length > 32) throw new Error("environment is invalid.")
@@ -114,12 +137,17 @@ export function parseServiceDevAppManifest(value: unknown): ServiceDevAppManifes
     const name = environmentName(item.name, `environment[${index}].name`)
     if (names.has(name)) throw new Error(`environment contains duplicate ${name}.`)
     names.add(name)
-    if (typeof item.required !== "boolean" || typeof item.secret !== "boolean") throw new Error(`environment[${index}] flags are invalid.`)
+    if (typeof item.required !== "boolean" || typeof item.secret !== "boolean")
+      throw new Error(`environment[${index}] flags are invalid.`)
     return {
       name,
       required: item.required,
       secret: item.secret,
-      ...(item.description === undefined ? {} : { description: boundedString(item.description, `environment[${index}].description`, 240) }),
+      ...(item.description === undefined
+        ? {}
+        : {
+            description: boundedString(item.description, `environment[${index}].description`, 240),
+          }),
     }
   })
   const permissions = objectValue(root.permissions, "permissions")
@@ -128,12 +156,16 @@ export function parseServiceDevAppManifest(value: unknown): ServiceDevAppManifes
     throw new Error("permissions are invalid.")
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "service",
-    platform: "darwin",
-    arch: "arm64",
+    platform: "linux",
+    arch: "multi",
     framework: boundedString(root.framework, "framework", 80),
-    runtime: { kind: "node", entrypoint: normalizeServiceDevAppPath(runtime.entrypoint, "runtime.entrypoint"), args: [...args] as string[] },
+    runtime: {
+      kind: "node",
+      entrypoint: normalizeServiceDevAppPath(runtime.entrypoint, "runtime.entrypoint"),
+      args: [...args] as string[],
+    },
     server: {
       hostEnv: environmentName(server.hostEnv, "server.hostEnv", true),
       portEnv: environmentName(server.portEnv, "server.portEnv", true),
@@ -147,7 +179,9 @@ export function parseServiceDevAppManifest(value: unknown): ServiceDevAppManifes
 
 export function serviceDevAppPermissionSetHash(manifest: ServiceDevAppManifest): string {
   const canonical = JSON.stringify({
-    environment: [...manifest.environment].map(({ name, required, secret }) => ({ name, required, secret })).sort((a, b) => a.name.localeCompare(b.name)),
+    environment: [...manifest.environment]
+      .map(({ name, required, secret }) => ({ name, required, secret }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
     permissions: manifest.permissions,
   })
   return createHash("sha256").update(canonical).digest("hex")

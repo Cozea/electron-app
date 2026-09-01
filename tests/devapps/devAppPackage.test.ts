@@ -83,7 +83,12 @@ describe("DevApp manifest — the happy path", () => {
   it("drops a duplicated capability rather than asking for it twice", () => {
     const result = parse({
       ...valid,
-      worker: { entry: "w.js", protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION, capabilities: ["project.read", "project.read"], tools: [] },
+      worker: {
+        entry: "w.js",
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+        capabilities: ["project.read", "project.read"],
+        tools: [],
+      },
       runtime: deviceRuntime,
     })
     expect(result.manifest?.worker?.capabilities).toEqual(["project.read"])
@@ -98,9 +103,7 @@ describe("DevApp manifest — fails closed", () => {
       runtime: deviceRuntime,
     })
     expect(result.manifest).toBeNull()
-    expect(result.diagnostics).toContainEqual(
-      expect.objectContaining({ field: "worker.tools", severity: "blocker" }),
-    )
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ field: "worker.tools", severity: "blocker" }))
   })
 
   it("rejects remote references and duplicate tool names", () => {
@@ -110,7 +113,13 @@ describe("DevApp manifest — fails closed", () => {
         entry: "w.js",
         protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
         capabilities: [],
-        tools: [{ name: "lookup", description: "Look up data.", inputSchema: { type: "object", $ref: "https://example.test/schema" } }],
+        tools: [
+          {
+            name: "lookup",
+            description: "Look up data.",
+            inputSchema: { type: "object", $ref: "https://example.test/schema" },
+          },
+        ],
       },
       runtime: deviceRuntime,
     })
@@ -137,7 +146,12 @@ describe("DevApp manifest — fails closed", () => {
     // approval prompt would under-report what it can do.
     const result = parse({
       ...valid,
-      worker: { entry: "w.js", protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION, capabilities: ["project.read", "fs.destroy"], tools: [] },
+      worker: {
+        entry: "w.js",
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+        capabilities: ["project.read", "fs.destroy"],
+        tools: [],
+      },
       runtime: deviceRuntime,
     })
     expect(codes(result)).toContain("manifest-unknown-capability")
@@ -147,7 +161,12 @@ describe("DevApp manifest — fails closed", () => {
   it("refuses a capability name borrowed from the prototype chain", () => {
     const result = parse({
       ...valid,
-      worker: { entry: "w.js", protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION, capabilities: ["constructor", "toString", "__proto__"], tools: [] },
+      worker: {
+        entry: "w.js",
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+        capabilities: ["constructor", "toString", "__proto__"],
+        tools: [],
+      },
       runtime: deviceRuntime,
     })
     expect(result.manifest).toBeNull()
@@ -242,9 +261,16 @@ describe("DevApp manifest — paths stay inside the package", () => {
   })
 
   it("applies the same rule to worker and service entries", () => {
-    expect(parse({ ...valid, worker: { entry: "../w.js", protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION, capabilities: [], tools: [] }, runtime: deviceRuntime }).manifest).toBeNull()
-    expect(parse({ ...valid, service: { runtimeKind: "node", entry: "/srv.js" }, runtime: deviceRuntime }).manifest)
-      .toBeNull()
+    expect(
+      parse({
+        ...valid,
+        worker: { entry: "../w.js", protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION, capabilities: [], tools: [] },
+        runtime: deviceRuntime,
+      }).manifest,
+    ).toBeNull()
+    expect(
+      parse({ ...valid, service: { runtimeKind: "node", entry: "/srv.js" }, runtime: deviceRuntime }).manifest,
+    ).toBeNull()
   })
 })
 
@@ -272,8 +298,7 @@ describe("DevApp manifest — the development view URL", () => {
   })
 
   it("refuses https even on loopback, since the dev origin is plain http", () => {
-    expect(parse({ ...valid, view: { entry: "a.html", dev: { url: "https://localhost:5173" } } })
-      .manifest).toBeNull()
+    expect(parse({ ...valid, view: { entry: "a.html", dev: { url: "https://localhost:5173" } } }).manifest).toBeNull()
   })
 })
 
@@ -319,12 +344,33 @@ describe("Requested grant", () => {
       tools: [],
     }
     expect(parse({ ...valid, worker }).manifest).toBeNull()
-    expect(parse({ ...valid, worker, runtime: { location: "device", state: "organization" } }).manifest)
-      .toBeNull()
-    expect(parse({ ...valid, worker, runtime: { location: "hosted", state: "device" } }).manifest)
-      .toBeNull()
-    expect(parse({ ...valid, worker, runtime: { location: "hosted", state: "organization" } }).manifest)
-      .not.toBeNull()
+    expect(parse({ ...valid, worker, runtime: { location: "device", state: "organization" } }).manifest).toBeNull()
+    expect(parse({ ...valid, worker, runtime: { location: "hosted", state: "device" } }).manifest).toBeNull()
+    expect(parse({ ...valid, worker, runtime: { location: "hosted", state: "organization" } }).manifest).not.toBeNull()
+  })
+
+  it("keeps device capabilities out of hosted workers", () => {
+    const hosted = (capabilities: string[]) =>
+      parse({
+        ...valid,
+        worker: {
+          entry: "w.js",
+          protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+          capabilities,
+          tools: [],
+        },
+        runtime: { location: "hosted", state: "organization" },
+      })
+    expect(hosted(["net.outbound"]).manifest).not.toBeNull()
+    expect(hosted(["project.read"]).manifest).toBeNull()
+    expect(hosted(["fs.read"]).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "blocker",
+          message: expect.stringContaining("cannot request capabilities that act on a member's device"),
+        }),
+      ]),
+    )
   })
 
   it("rejects the pre-containment manifest version", () => {

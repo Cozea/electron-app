@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { PublishedDevAppRuntimeService } from "../../apps/desktop/electron/services/PublishedDevAppRuntimeService"
 import type { DeviceContainedDevAppRuntimeService } from "../../apps/desktop/electron/services/ContainedDevAppRuntimeService"
+import type {
+  HostedContainedDevAppRuntimeService,
+  HostedContainedRuntimeStartRequest,
+} from "../../apps/desktop/electron/services/HostedContainedDevAppRuntimeService"
 import type { OrgDevAppInstallationService } from "../../apps/desktop/electron/services/OrgDevAppInstallationService"
 import type { DevAppWorkerHost } from "../../apps/desktop/electron/services/DevAppWorkerHost"
 import type { OrgDevAppInstallation } from "../../shared/orgDevAppInstallation"
@@ -70,7 +74,9 @@ function installation(): OrgDevAppInstallation {
 }
 
 function installedService(value: OrgDevAppInstallation): OrgDevAppInstallationService {
-  return { resolve: (ref: string) => ref === value.ref ? value : null } as unknown as OrgDevAppInstallationService
+  return {
+    resolve: (ref: string) => (ref === value.ref ? value : null),
+  } as unknown as OrgDevAppInstallationService
 }
 
 function runningState(request: DevAppContainedRuntimeStartRequest): DevAppContainedRuntimeState {
@@ -94,17 +100,105 @@ function runningState(request: DevAppContainedRuntimeStartRequest): DevAppContai
 afterEach(() => vi.unstubAllGlobals())
 
 describe("published DevApp runtime coordination", () => {
-  it("coalesces duplicate starts and refuses two simultaneous mounts of publication state", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
-      scheme: "bearer",
-      token: "pull-token",
-      expiresAt: Date.now() + 60_000,
-    })))
-    let releaseStart!: () => void
-    const start = vi.fn((request: DevAppContainedRuntimeStartRequest) =>
-      new Promise<DevAppContainedRuntimeState>((resolve) => {
-        releaseStart = () => resolve(runningState(request))
+  it("routes hosted releases to Cloudflare without registry tokens or local folder grants", async () => {
+    const release = installation()
+    release.activeRelease.parts.runtime = {
+      kind: "container",
+      location: "hosted",
+      state: "organization",
+    }
+    release.activeRelease.parts.worker!.capabilities = ["net.outbound"]
+    const device = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      delete: vi.fn(),
+      sendMessage: vi.fn(),
+      on: vi.fn(() => () => undefined),
+    } as unknown as DeviceContainedDevAppRuntimeService
+    const hostedStart = vi.fn(async (request: HostedContainedRuntimeStartRequest) => ({
+      runtimeId: request.runtimeId,
+      status: "running" as const,
+      location: "hosted" as const,
+      state: request.state,
+      publicationId: request.identity.publicationId,
+      releaseId: request.identity.releaseId,
+      imageDigest: `sha256:${"f".repeat(64)}`,
+      guestAddress: null,
+      servicePort: null,
+      startedAt: 1,
+      exitedAt: null,
+      exitCode: null,
+      error: null,
+    }))
+    const hosted = {
+      start: hostedStart,
+      serviceUrl: vi.fn(() => null),
+      serviceToken: vi.fn(() => null),
+      stop: vi.fn(async () => ({ status: "stopped" })),
+      delete: vi.fn(async () => null),
+      sendMessage: vi.fn(async () => undefined),
+      on: vi.fn(() => () => undefined),
+    } as unknown as HostedContainedDevAppRuntimeService
+    const service = new PublishedDevAppRuntimeService(installedService(release), device, hosted)
+    const options = {
+      ref: release.ref,
+      workspaceId: "workspace_1",
+      workspaceRoot: "/tmp/workspace_1",
+      leaseId: "tile_1",
+      gatewayBaseUrl: "https://gateway.example",
+      accessToken: "device-token",
+    }
+
+    const active = await service.start(options)
+    expect(active.state.location).toBe("hosted")
+    expect(hostedStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        location: "hosted",
+        state: "organization",
+        gatewayBaseUrl: "https://gateway.example",
       }),
+    )
+    expect(device.start).not.toHaveBeenCalled()
+    expect(hostedStart.mock.calls[0]?.[0]).not.toHaveProperty("registryAuth")
+    expect(hostedStart.mock.calls[0]?.[0]).not.toHaveProperty("folderGrants")
+    await expect(
+      service.start({
+        ...options,
+        workspaceId: "workspace_2",
+        leaseId: "tile_2",
+        folderGrants: [
+          {
+            grantId: "grant_1",
+            publicationId: "pub_1",
+            releaseId: "release_1",
+            canonicalHostPath: "/tmp/local",
+            guestPath: "/cozea/grants/grant_1",
+            access: "read",
+            expiresAt: Date.now() + 60_000,
+          },
+        ],
+      }),
+    ).rejects.toThrow("cannot mount or browse folders")
+    await service.dispose()
+  })
+
+  it("coalesces duplicate starts and refuses two simultaneous mounts of publication state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          scheme: "bearer",
+          token: "pull-token",
+          expiresAt: Date.now() + 60_000,
+        }),
+      ),
+    )
+    let releaseStart!: () => void
+    const start = vi.fn(
+      (request: DevAppContainedRuntimeStartRequest) =>
+        new Promise<DevAppContainedRuntimeState>((resolve) => {
+          releaseStart = () => resolve(runningState(request))
+        }),
     )
     const listeners = new Map<string, Set<(event: never) => void>>()
     const runtime = {
@@ -138,21 +232,64 @@ describe("published DevApp runtime coordination", () => {
     expect(same).toBe(active)
     expect(active.leases).toEqual(new Set(["tile_1", "tile_2"]))
 
-    await expect(service.start({
-      ...base,
-      workspaceId: "workspace_2",
-      workspaceRoot: "/tmp/workspace_2",
-      leaseId: "tile_3",
-    })).rejects.toThrow("already mounted in another workspace")
+    await expect(
+      service.start({
+        ...base,
+        workspaceId: "workspace_2",
+        workspaceRoot: "/tmp/workspace_2",
+        leaseId: "tile_3",
+      }),
+    ).rejects.toThrow("already mounted in another workspace")
+    await service.dispose()
+  })
+
+  it("stops and deletes a runtime after its last surface lease is released", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          scheme: "bearer",
+          token: "pull-token",
+          expiresAt: Date.now() + 60_000,
+        }),
+      ),
+    )
+    const runtime = {
+      start: vi.fn(async (request: DevAppContainedRuntimeStartRequest) => runningState(request)),
+      stop: vi.fn(async (runtimeId: string) => ({ runtimeId, status: "stopped" })),
+      delete: vi.fn(async () => null),
+      sendMessage: vi.fn(async () => undefined),
+      on: vi.fn(() => () => undefined),
+    } as unknown as DeviceContainedDevAppRuntimeService
+    const release = installation()
+    const service = new PublishedDevAppRuntimeService(installedService(release), runtime)
+    const active = await service.start({
+      ref: release.ref,
+      workspaceId: "workspace_1",
+      workspaceRoot: "/tmp/workspace_1",
+      leaseId: "tile_1",
+      gatewayBaseUrl: "https://gateway.example",
+      accessToken: "device-token",
+    })
+
+    expect(service.releaseFor(release.ref, "workspace_1", "tile_1")).toBe(true)
+    await vi.waitFor(() => expect(runtime.stop).toHaveBeenCalledWith(active.key))
+    await vi.waitFor(() => expect(runtime.delete).toHaveBeenCalledWith(active.key))
+    expect(service.get(active.key)).toBeNull()
     await service.dispose()
   })
 
   it("invokes only an exact declared tool in the exact running workspace", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
-      scheme: "bearer",
-      token: "pull-token",
-      expiresAt: Date.now() + 60_000,
-    })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          scheme: "bearer",
+          token: "pull-token",
+          expiresAt: Date.now() + 60_000,
+        }),
+      ),
+    )
     const runtime = {
       start: vi.fn(async (request: DevAppContainedRuntimeStartRequest) => runningState(request)),
       stop: vi.fn(async (runtimeId: string) => ({ runtimeId, status: "stopped" })),
@@ -199,33 +336,65 @@ describe("published DevApp runtime coordination", () => {
       accessToken: "device-token",
     })
 
-    await expect(service.invokeTool({
-      ref: release.ref,
-      workspaceId: "workspace_1",
-      name: "search_records",
-      input: { query: "Ada" },
-    })).resolves.toEqual({ records: [1] })
+    await expect(
+      service.invokeTool({
+        ref: release.ref,
+        workspaceId: "workspace_1",
+        name: "search_records",
+        input: { query: "Ada" },
+      }),
+    ).resolves.toEqual({ records: [1] })
     expect(invoke).toHaveBeenCalledWith(active.key, "search_records", { query: "Ada" }, undefined)
 
-    await expect(service.invokeTool({
-      ref: release.ref,
-      workspaceId: "workspace_1",
-      name: "search_records",
-      input: { query: "" },
-    })).rejects.toThrow(/too short/)
-    await expect(service.invokeTool({
-      ref: release.ref,
-      workspaceId: "workspace_other",
-      name: "search_records",
-      input: { query: "Ada" },
-    })).rejects.toThrow(/not running/)
-    await expect(service.invokeTool({
-      ref: release.ref,
-      workspaceId: "workspace_1",
-      name: "delete_records",
-      input: {},
-    })).rejects.toThrow(/did not declare/)
+    await expect(
+      service.invokeTool({
+        ref: release.ref,
+        workspaceId: "workspace_1",
+        name: "search_records",
+        input: { query: "" },
+      }),
+    ).rejects.toThrow(/too short/)
+    await expect(
+      service.invokeTool({
+        ref: release.ref,
+        workspaceId: "workspace_other",
+        name: "search_records",
+        input: { query: "Ada" },
+      }),
+    ).rejects.toThrow(/not running/)
+    await expect(
+      service.invokeTool({
+        ref: release.ref,
+        workspaceId: "workspace_1",
+        name: "delete_records",
+        input: {},
+      }),
+    ).rejects.toThrow(/did not declare/)
     expect(invoke).toHaveBeenCalledTimes(1)
     await service.dispose()
   })
+
+  it.runIf(process.platform === "darwin" && process.arch === "arm64")(
+    "removes exact device images and publication state during final uninstall",
+    async () => {
+      const cleanup = vi.fn(async () => undefined)
+      const runtime = {
+        cleanup,
+        stop: vi.fn(),
+        delete: vi.fn(),
+        sendMessage: vi.fn(),
+        on: vi.fn(() => () => undefined),
+      } as unknown as DeviceContainedDevAppRuntimeService
+      const release = installation()
+      const service = new PublishedDevAppRuntimeService(installedService(release), runtime)
+
+      await service.prepareInstallationRemoval([release], true)
+
+      expect(cleanup).toHaveBeenNthCalledWith(1, {
+        imageReference: release.activeRelease.runtimeImage!.reference,
+      })
+      expect(cleanup).toHaveBeenNthCalledWith(2, { publicationId: release.publicationId })
+      await service.dispose()
+    },
+  )
 })

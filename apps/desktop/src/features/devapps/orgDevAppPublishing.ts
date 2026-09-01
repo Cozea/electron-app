@@ -1,15 +1,9 @@
 import type { Id } from "../../../../../convex/_generated/dataModel"
 import { api } from "../../../../../convex/_generated/api"
 import type { ConvexReactClient } from "convex/react"
-import { getDeviceGatewayBaseUrl, getDeviceSession } from "@/lib/deviceSession"
+import { getDeviceSession } from "@/lib/deviceSession"
 
-export type OrgDevAppPublishStage =
-  | "building"
-  | "uploading"
-  | "verifying"
-  | "runtimeBuild"
-  | "publishing"
-  | "complete"
+export type OrgDevAppPublishStage = "building" | "uploading" | "verifying" | "runtimeBuild" | "publishing" | "complete"
 
 export async function publishOrgDevAppFromWorkspace(input: {
   convex: ConvexReactClient
@@ -63,17 +57,15 @@ export async function publishOrgDevAppFromWorkspace(input: {
       inspection.inspection.status === "valid" &&
       Boolean(
         inspection.inspection.source.manifest.worker ||
-          inspection.inspection.source.manifest.service?.runtimeKind === "node",
+        inspection.inspection.source.manifest.service?.runtimeKind === "node",
       )
     if (packed.runtimeKind === "service" || authoredExecutable) {
       input.onStageChange?.("runtimeBuild")
       const session = await getDeviceSession()
-      const gatewayBaseUrl = getDeviceGatewayBaseUrl()
       const started = await window.electronAPI.orgDevApp.startRuntimeBuild({
         workspaceId: input.workspaceId,
         projectId: input.projectId,
         uploadReservationId: reservation.reservationId,
-        gatewayBaseUrl,
         accessToken: session.accessToken,
       })
       if (!started.success) throw new Error(started.error)
@@ -88,7 +80,6 @@ export async function publishOrgDevAppFromWorkspace(input: {
         await new Promise<void>((resolve) => setTimeout(resolve, 2_000))
         const current = await window.electronAPI.orgDevApp.getRuntimeBuild({
           buildId: build.buildId,
-          gatewayBaseUrl,
           accessToken: session.accessToken,
         })
         if (!current.success) throw new Error(current.error)
@@ -116,9 +107,11 @@ export async function publishOrgDevAppFromWorkspace(input: {
     })
     input.onStageChange?.("complete")
   } catch (error) {
-    await input.convex.mutation(api.devApps.abandonUploadReservation, {
-      reservationId: reservation.reservationId,
-    }).catch(() => undefined)
+    await input.convex
+      .mutation(api.devApps.abandonUploadReservation, {
+        reservationId: reservation.reservationId,
+      })
+      .catch(() => undefined)
     throw error
   } finally {
     input.signal?.removeEventListener("abort", cancelBuild)

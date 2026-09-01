@@ -120,10 +120,14 @@ export interface Env {
   DEVICE_AUTH_PREVIOUS_KEY_ID?: string
   COLLAB_ROOM: DurableObjectNamespaceLike
   DEVAPP_RUNTIME_BUILD: DurableObjectNamespaceLike
+  DEVAPP_SANDBOX: DurableObjectNamespace<import('./durableObjects/CozeaDevAppSandbox').CozeaDevAppSandbox>
   DEVAPP_BUILD_INPUTS: R2Bucket
+  DEVAPP_ORG_STATE: R2Bucket
   DEVAPP_BUILDER_GITHUB_TOKEN: string
   DEVAPP_BUILDER_GITHUB_REPOSITORY: string
   DEVAPP_BUILDER_CALLBACK_TOKEN: string
   DEVAPP_IMAGE_REGISTRY_USERNAME: string
   DEVAPP_IMAGE_REGISTRY_TOKEN: string
+  DEVAPP_SANDBOX_PREVIEW_HOSTNAME: string
+  COZEA_RUNTIME_SIGNING_PUBLIC_KEY: string
 }

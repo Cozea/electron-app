@@ -21,6 +21,8 @@ export interface DevAppWorkerPart {
 export interface DevAppServicePart {
   runtimeKind: "static" | "node"
   singleton?: boolean
+  /** Published Node services require an ingress network and disclose outbound reach. */
+  network?: boolean
 }
 
 /** Where third-party executable code is allowed to run. */
@@ -66,7 +68,7 @@ export function partsForPublishedRuntimeKind(runtimeKind: "static" | "service"):
     view: { source: "package" },
     ...(runtimeKind === "service"
       ? {
-          service: { runtimeKind: "node" as const },
+          service: { runtimeKind: "node" as const, network: true },
           runtime: {
             kind: "container" as const,
             location: "device" as const,
@@ -90,7 +92,10 @@ export function partsForPublishedPackage(manifest: DevAppPackage): DevAppParts {
     throw new Error("Executable DevApps require an explicit runtime contract.")
   }
   return {
-    ...(manifest.view ? { view: { source: "package" as const } } : {}),
+    // Executable-only packages still need a user-owned surface for approval, lifecycle,
+    // logs, and tool status. The publisher supplies a small administrative view when the
+    // package does not author one itself.
+    ...(manifest.view || executable ? { view: { source: "package" as const } } : {}),
     ...(manifest.worker
       ? {
           worker: {
@@ -101,7 +106,12 @@ export function partsForPublishedPackage(manifest: DevAppPackage): DevAppParts {
         }
       : {}),
     ...(manifest.service
-      ? { service: { runtimeKind: manifest.service.runtimeKind } }
+      ? {
+          service: {
+            runtimeKind: manifest.service.runtimeKind,
+            ...(manifest.service.runtimeKind === "node" ? { network: true } : {}),
+          },
+        }
       : {}),
     ...(executable
       ? {

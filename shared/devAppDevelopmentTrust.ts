@@ -1,9 +1,4 @@
-import {
-  grantFingerprint,
-  normalizeGrant,
-  type DevAppCapability,
-  type DevAppGrant,
-} from "./devAppCapabilities"
+import { grantFingerprint, normalizeGrant, type DevAppCapability, type DevAppGrant } from "./devAppCapabilities"
 
 /**
  * Trust for a DevApp being developed on this machine.
@@ -21,8 +16,8 @@ import {
  *
  * It is not a substitute for published trust. "Provisional" means shorter-lived and
  * clearly labelled: every worker execution is explicitly approved, the same capabilities
- * are asked for, and escalating ones are still escalating. Published worker execution is
- * blocked until the container runtime exists.
+ * are asked for, and escalating ones are still escalating. Published workers use the signed
+ * contained-runtime path and never share this provisional trust store.
  */
 
 /** Prefix keeping development approvals out of the published `worker:` namespace. */
@@ -52,7 +47,12 @@ export function developmentApprovalKey(sourceId: string, grant: DevAppGrant): st
 
 export type DevAppDevelopmentTrustState =
   /** Nothing approved, or what was approved no longer covers what is asked for. */
-  | { status: "unapproved"; requested: DevAppGrant; missing: DevAppCapability[]; needsAgentInvocable: boolean }
+  | {
+      status: "unapproved"
+      requested: DevAppGrant
+      missing: DevAppCapability[]
+      needsAgentInvocable: boolean
+    }
   /** Approved and in force. `effective` is what the app actually runs with. */
   | { status: "approved"; effective: DevAppGrant; expiresAt: number }
   | { status: "expired"; requested: DevAppGrant }
@@ -102,11 +102,7 @@ export class DevAppDevelopmentTrustStore {
     // click through a dialog that never says anything, which is how a prompt that does
     // matter stops being read. The badge still marks the build as unpublished, and the
     // code still runs — the same thing the Dev Server tile already does for a project.
-    if (
-      !options.requireExplicitApproval &&
-      requested.capabilities.length === 0 &&
-      !requested.agentInvocable
-    ) {
+    if (!options.requireExplicitApproval && requested.capabilities.length === 0 && !requested.agentInvocable) {
       return {
         status: "approved",
         effective: requested,
@@ -130,9 +126,7 @@ export class DevAppDevelopmentTrustStore {
       return { status: "expired", requested }
     }
 
-    const missing = requested.capabilities.filter(
-      (capability) => !approval.grant.capabilities.includes(capability),
-    )
+    const missing = requested.capabilities.filter((capability) => !approval.grant.capabilities.includes(capability))
     const needsAgentInvocable = requested.agentInvocable && !approval.grant.agentInvocable
     if (missing.length > 0 || needsAgentInvocable) {
       // Asking for more than was approved is a new question, not a partial answer.
@@ -180,9 +174,10 @@ export function developmentTrustBadge(state: DevAppDevelopmentTrustState): DevAp
     return {
       tone: "development",
       label: "Development",
-      detail: state.effective.capabilities.length > 0
-        ? "Unpublished code running with capabilities you granted for this session."
-        : "Unpublished code. It has not been granted any capabilities.",
+      detail:
+        state.effective.capabilities.length > 0
+          ? "Unpublished code running with capabilities you granted for this session."
+          : "Unpublished code. It has not been granted any capabilities.",
     }
   }
   if (state.status === "expired") {

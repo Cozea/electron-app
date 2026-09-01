@@ -6,6 +6,11 @@
 > custom-scheme and authenticated loopback origins stay inside the publication session and are
 > never offered to the external-browser action.
 
+> **Contained runtime cutover (2026-09-01):** Published workers and Node services now run only from
+> signed multi-platform OCI releases through either the bundled Apple Containerization adapter or
+> the hosted Cloudflare Sandbox adapter. Missing containment fails closed. Local development
+> previews remain intentionally powerful approval-gated developer code.
+
 Org DevApps publish an immutable **static** or **service** artifact to a Cozea-owned organization.
 Every org member can open every published DevApp in that org. Consumers never receive the source
 project, a local path, a development command, or a dependency-install recipe.
@@ -40,6 +45,9 @@ rechecking the device's organization membership.
 - Open path is an isolated in-Cozea tile (`addTile` + `orgDevApp`), never the Dev Server singleton.
   Static releases use `cozea-devapp://`; service releases use an authenticated release-scoped
   loopback gateway and never expose their raw process port.
+- Published executable packages require a root `cozea-devapp.json`, deterministic build script,
+  and committed `bun.lock`. Their manifest selects `device` or `hosted` placement and exact state
+  ownership; a protected central builder produces the signed runtime image.
 - Consumer payloads contain publication metadata + artifact identity only. They must not include `projectId`, `localPath`, git URL, `workspaceId`, `devCommand`, or `devPort`.
 - Store cards are labeled with the **organization name**. Do not describe this catalog as This Mac / Local DevApps.
 
@@ -62,10 +70,11 @@ Every authenticated Convex function that lists or mutates an org checks membersh
 1. The project overflow menu shows **Publish** when the project has no active artifact release.
 2. If the project is not attached to an org, Cozea prompts to create one or attach an existing org you belong to.
 3. First publish always asks for a PNG, JPEG, or WebP logo. Later **Update** reuses the publication logo unless it is missing.
-4. Electron main detects a **build** script (not `dev`) and runs it without a shell. A static
-   `index.html` remains the first output choice. Next.js `output: "standalone"`, Nuxt `.output`, or
-   an explicit self-contained `cozeaDevApp.service` output produces a service release. Cozea never
-   ships `npm run dev` to the organization.
+4. Electron main detects a **build** script (not `dev`) and runs it without a shell. A package with
+   a v2 root manifest `service.runtimeKind: "node"` is a service release, and its authoritative
+   `service.entry` must exist after the build. Other packages publish their static `index.html` or,
+   for a worker-only package, Cozea's administrative lifecycle view. Cozea never ships `npm run
+dev` or publisher-host executable output to the organization.
 5. Main packs the output as a zip, hashes it (SHA-256), and uploads those exact bytes directly to Convex `_storage`; the artifact does not cross renderer IPC. Convex verifies the stored digest before inserting an immutable `devAppReleases` row. The publication points at that release.
 6. Name and logo live on the publication. Editing them in Project Settings or the identity dialog does not append a release.
 
@@ -101,10 +110,9 @@ If the project has no linked local folder, no `build` script, or no static `inde
    artifact before consulting Convex, so installed releases launch offline.
 5. **Uninstall** stops the publication runtime, removes every installed version, and deletes an
    artifact only when no remaining installation references its content hash.
-6. A service release validates platform, manifest, entrypoint, symlinks, and native-code exclusions;
-   blocks on missing environment values; shows trusted-code approval bound to its content and
-   permission hashes; then starts with Cozea's Electron executable in Node mode, a minimal
-   environment, a publication-scoped data directory, and a 1 GiB V8 heap ceiling.
+6. An executable release validates manifest, exact image digests, builder signature, attestation,
+   source identity, entrypoint, state, and placement; blocks on missing environment values or
+   approval; then starts in the device or hosted contained adapter with fixed resource ceilings.
 7. The main-process gateway continues to bind a secret header and exact content host to the leased
    runtime. Its authenticated loopback origin is rendered only inside the prepared publication
    session and is never exposed to the external-browser action.
@@ -114,9 +122,11 @@ If the project has no linked local folder, no `build` script, or no static `inde
    service release.
 9. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
 
-Service releases run separately on each authorized Mac. Local files/databases are device-local;
-shared data still requires an external HTTPS backend. Service code is trusted organization code in
-the beta, not an OS-enforced sandbox.
+`device` releases run separately on each authorized Mac. Their optional state volume is
+publication-owned and local to that Mac. `hosted` + `organization` releases share a
+publication-scoped R2 mount and leased organization runtime; `hosted` + `none` is ephemeral.
+Hosted releases cannot access local files. Device releases receive no local path unless the user
+creates an exact, expiring, release-bound folder grant.
 
 Online catalog listing, new installs, and pasted-ref resolution re-evaluate organization access.
 An already-installed exact release is deliberately an offline product: archiving the publication or
@@ -208,9 +218,12 @@ Every development package that declares a worker requires an explicit, expiring 
 even when it requests no host capabilities. Its Electron utility process receives a minimal
 environment plus package/data filesystem allowances under Node's permission model, but that is
 defense in depth rather than an OS sandbox and does not restrict network access in Electron 40.
-Published worker execution remains disconnected until the container/VM runtime exists. The
-threat model, closed findings, and required phase ordering are recorded in
-[DevApp Worker Security Review](./devapp-worker-security-review.md).
+Published workers use the same contained instance as their service/view and may expose declared
+tools to authenticated assistants. Invocation rechecks the exact release, living runtime,
+declaration, input schema, workspace, unexpired capability grant, and `agentInvocable` bit. The
+threat model is recorded in [DevApp Worker Security Review](./devapp-worker-security-review.md),
+and adapter details are in
+[Published DevApp Contained Runtime](./devapp-contained-runtime.md).
 
 Project deletion owns both lifecycles: it removes the source project's machine-local publication
 and releases immediately, then the bounded Convex project cascade removes any org publication,

@@ -4,11 +4,7 @@ import path from "node:path"
 
 import { afterEach, describe, expect, it } from "vitest"
 
-import {
-  detectFramework,
-  preflightProject,
-  scanOutputTree,
-} from "../../apps/desktop/electron/services/orgDevAppPreflight"
+import { detectFramework, preflightProject } from "../../apps/desktop/electron/services/orgDevAppPreflight"
 import type { OrgDevAppDiagnosticCode } from "../../shared/orgDevAppDiagnostics"
 
 const temporaryRoots: string[] = []
@@ -31,6 +27,15 @@ function writeProject(files: Record<string, string>): string {
 
 function codes(diagnostics: ReadonlyArray<{ code: OrgDevAppDiagnosticCode }>): OrgDevAppDiagnosticCode[] {
   return diagnostics.map((diagnostic) => diagnostic.code)
+}
+
+function containedServiceManifest(entry = ".next/standalone/server.js"): string {
+  return JSON.stringify({
+    manifestVersion: 2,
+    name: "Contained service",
+    service: { runtimeKind: "node", entry },
+    runtime: { location: "device", state: "device" },
+  })
 }
 
 afterEach(() => {
@@ -62,8 +67,7 @@ describe("Org DevApp preflight — project analysis", () => {
     expect(report.expectedRuntimeKind).toBe("static")
   })
 
-  // The exact failure a real Next.js project hit: three problems, three builds to find them.
-  it("reports every Next.js problem in one pass without building", () => {
+  it("reports every actionable Next.js problem in one pass without building", () => {
     const root = writeProject({
       "package.json": JSON.stringify({
         scripts: { build: "next build" },
@@ -78,7 +82,7 @@ describe("Org DevApp preflight — project analysis", () => {
     expect(report.ok).toBe(false)
     expect(report.framework).toBe("nextjs")
     expect(codes(report.diagnostics)).toEqual(
-      expect.arrayContaining(["next-missing-standalone", "native-runtime-dependency", "public-env-inlined"]),
+      expect.arrayContaining(["next-missing-standalone", "contained-runtime-manifest-missing", "public-env-inlined"]),
     )
 
     // Only the public key is named; the service-role secret must never be echoed back.
@@ -91,10 +95,24 @@ describe("Org DevApp preflight — project analysis", () => {
     const root = writeProject({
       "package.json": JSON.stringify({ scripts: { build: "next build" }, dependencies: { next: "16.2.10" } }),
       "next.config.ts": `export default { output: "standalone" };`,
+      "cozea-devapp.json": containedServiceManifest(),
     })
     const report = preflightProject(root)
     expect(report.ok).toBe(true)
     expect(report.expectedRuntimeKind).toBe("service")
+  })
+
+  it("blocks an inferred service until placement and state are explicit", () => {
+    const root = writeProject({
+      "package.json": JSON.stringify({
+        scripts: { build: "next build" },
+        dependencies: { next: "16.2.10" },
+      }),
+      "next.config.ts": `export default { output: "standalone" };`,
+    })
+    const report = preflightProject(root)
+    expect(report.ok).toBe(false)
+    expect(codes(report.diagnostics)).toContain("contained-runtime-manifest-missing")
   })
 
   it("treats a static export as a static DevApp", () => {
@@ -117,50 +135,45 @@ describe("Org DevApp preflight — project analysis", () => {
     expect(report.diagnostics.find((d) => d.code === "next-missing-standalone")?.severity).toBe("warning")
   })
 
-  it("blocks when a built standalone output actually contains native code", () => {
+  it("allows native packages because the central builder targets both Linux architectures", () => {
     const root = writeProject({
-      "package.json": JSON.stringify({ scripts: { build: "next build" }, dependencies: { next: "16.2.10" } }),
+      "package.json": JSON.stringify({
+        scripts: { build: "next build" },
+        dependencies: { next: "16.2.10", sharp: "^0.34.5" },
+      }),
       "next.config.ts": `export default { output: "standalone" };`,
+      "cozea-devapp.json": containedServiceManifest(),
       ".next/standalone/node_modules/@img/sharp-darwin-arm64/lib/sharp.node": "native",
     })
     const report = preflightProject(root)
-    const native = report.diagnostics.find((d) => d.code === "native-runtime-dependency")
-    expect(native?.severity).toBe("blocker")
-    expect(native?.message).toContain("sharp")
-    expect(report.ok).toBe(false)
+    expect(report.ok).toBe(true)
   })
 
-  // Regression: the trace lists what tracing found, not what it keeps. A project whose
-  // config excludes sharp still names it in nft.json, and blocking on that would refuse
-  // to publish a project that builds a perfectly clean artifact.
-  it("does not block on a trace entry that outputFileTracingExcludes removes", () => {
+  it("does not treat publisher-host trace files as contained-runtime authority", () => {
     const root = writeProject({
       "package.json": JSON.stringify({ scripts: { build: "next build" }, dependencies: { next: "16.2.10" } }),
       "next.config.ts": `export default { output: "standalone", outputFileTracingExcludes: { "*": ["**/@img/**"] } };`,
+      "cozea-devapp.json": containedServiceManifest(),
       ".next/next-server.js.nft.json": JSON.stringify({
         files: ["../node_modules/@img/sharp-darwin-arm64/lib/sharp.node"],
       }),
     })
     const report = preflightProject(root)
     expect(report.ok).toBe(true)
-    const native = report.diagnostics.find((d) => d.code === "native-runtime-dependency")
-    expect(native?.severity).toBe("warning")
-    expect(native?.detail).toContain("outputFileTracingExcludes")
   })
 
-  // The built tree is authoritative in both directions.
-  it("clears a suspected native dependency when the built output does not contain it", () => {
+  it("accepts native runtime dependencies before a publisher-host build exists", () => {
     const root = writeProject({
       "package.json": JSON.stringify({
         scripts: { build: "next build" },
         dependencies: { next: "16.2.10", sharp: "^0.34.5" },
       }),
       "next.config.ts": `export default { output: "standalone", outputFileTracingExcludes: { "*": ["**/@img/**"] } };`,
+      "cozea-devapp.json": containedServiceManifest(),
       ".next/standalone/server.js": "",
     })
     const report = preflightProject(root)
     expect(report.ok).toBe(true)
-    expect(codes(report.diagnostics)).not.toContain("native-runtime-dependency")
   })
 
   it("does not flag native build tooling that never reaches the artifact", () => {
@@ -171,9 +184,9 @@ describe("Org DevApp preflight — project analysis", () => {
         devDependencies: { "@swc/core": "^1", lightningcss: "^1", "@tailwindcss/oxide": "^4" },
       }),
       "next.config.ts": `export default { output: "standalone" };`,
+      "cozea-devapp.json": containedServiceManifest(),
     })
     const report = preflightProject(root)
-    expect(codes(report.diagnostics)).not.toContain("native-runtime-dependency")
     expect(report.ok).toBe(true)
   })
 
@@ -182,64 +195,5 @@ describe("Org DevApp preflight — project analysis", () => {
       "package.json": JSON.stringify({ scripts: { build: "vite build" }, devDependencies: { "@sveltejs/kit": "^2" } }),
     })
     expect(detectFramework(sveltekit)).toBe("sveltekit")
-  })
-})
-
-describe("Org DevApp preflight — output scan", () => {
-  it("reports a dangling symlink instead of throwing ENOENT", () => {
-    const root = temporaryRoot("cozea-output-")
-    fs.writeFileSync(path.join(root, "server.js"), "")
-    fs.symlinkSync(path.join(root, "missing-package"), path.join(root, "sharp"))
-
-    // The shipped packer calls realpathSync unguarded here and escapes as a bare ENOENT.
-    expect(() => scanOutputTree(root, { runtimeKind: "service" })).not.toThrow()
-    const diagnostics = scanOutputTree(root, { runtimeKind: "service" })
-    expect(codes(diagnostics)).toContain("dangling-symlink")
-    expect(diagnostics.find((d) => d.code === "dangling-symlink")?.paths).toContain("sharp")
-  })
-
-  it("reports native code and Mach-O binaries in a service output", () => {
-    const root = temporaryRoot("cozea-output-native-")
-    fs.writeFileSync(path.join(root, "server.js"), "")
-    fs.writeFileSync(path.join(root, "binding.node"), "native")
-    const machO = Buffer.alloc(8)
-    machO.writeUInt32BE(0xfeedfacf, 0)
-    fs.writeFileSync(path.join(root, "helper"), machO)
-
-    const diagnostics = scanOutputTree(root, { runtimeKind: "service" })
-    const native = diagnostics.find((d) => d.code === "native-code-in-output")
-    expect(native?.severity).toBe("blocker")
-    expect(native?.paths).toEqual(expect.arrayContaining(["binding.node", "helper"]))
-  })
-
-  it("ignores native files in a static output, which never executes", () => {
-    const root = temporaryRoot("cozea-output-static-")
-    fs.writeFileSync(path.join(root, "index.html"), "<!doctype html>")
-    fs.writeFileSync(path.join(root, "binding.node"), "native")
-
-    expect(scanOutputTree(root, { runtimeKind: "static" })).toEqual([])
-  })
-
-  it("reports a symlink that escapes the output tree", () => {
-    const outside = temporaryRoot("cozea-outside-")
-    fs.writeFileSync(path.join(outside, "secret.txt"), "")
-    const root = temporaryRoot("cozea-output-escape-")
-    fs.symlinkSync(path.join(outside, "secret.txt"), path.join(root, "linked.txt"))
-
-    expect(codes(scanOutputTree(root, { runtimeKind: "service" }))).toContain("symlink-escapes-output")
-  })
-
-  it("collects every fault in one pass rather than stopping at the first", () => {
-    const root = temporaryRoot("cozea-output-many-")
-    fs.writeFileSync(path.join(root, "binding.node"), "native")
-    fs.symlinkSync(path.join(root, "gone"), path.join(root, "broken"))
-
-    const diagnostics = scanOutputTree(root, { runtimeKind: "service" })
-    expect(codes(diagnostics)).toEqual(expect.arrayContaining(["dangling-symlink", "native-code-in-output"]))
-  })
-
-  it("reports a missing output directory", () => {
-    const root = path.join(temporaryRoot("cozea-output-absent-"), "never-built")
-    expect(codes(scanOutputTree(root, { runtimeKind: "static" }))).toEqual(["no-publishable-output"])
   })
 })

@@ -27,6 +27,12 @@ const kernel = {
 const initfsReference =
   'ghcr.io/apple/containerization/vminit@sha256:41934356c47f526640b2e865225c2f597bc5e6f1391ad300f95b9c0257fbba44'
 const containerizationVersion = '0.43.0'
+// Apple Containerization opens a vmnet interface before any per-request branching, so the
+// helper cannot start a container of any kind without the virtualization entitlement. Sign
+// with the same plist electron-builder later inherits onto this binary, so a locally prepared
+// helper carries exactly the entitlements the packaged one will.
+const entitlementsPath = path.join(repositoryRoot, 'build', 'entitlements.mac.plist')
+const requiredEntitlement = 'com.apple.security.virtualization'
 
 function log(message) {
   console.log(`[devapp-container-runtime] ${message}`)
@@ -40,6 +46,37 @@ function run(command, args, options = {}) {
     ...options,
   })
   if (result.status !== 0) process.exit(result.status ?? 1)
+}
+
+function capture(command, args) {
+  const result = spawnSync(command, args, { cwd: repositoryRoot, encoding: 'utf8' })
+  return `${result.stdout ?? ''}${result.stderr ?? ''}`
+}
+
+function signHelper(helperPath) {
+  if (!fs.existsSync(entitlementsPath)) {
+    throw new Error(`helper entitlements are missing at ${entitlementsPath}`)
+  }
+  // Ad-hoc keeps this reproducible and keychain-independent. Release builds re-sign with the
+  // real identity and the same entitlements, so `--force` here is replaced, not layered.
+  run('/usr/bin/codesign', [
+    '--force',
+    '--sign',
+    '-',
+    '--options',
+    'runtime',
+    '--entitlements',
+    entitlementsPath,
+    '--',
+    helperPath,
+  ])
+  if (!helperEntitlements(helperPath).includes(requiredEntitlement)) {
+    throw new Error('the signed helper does not carry the virtualization entitlement')
+  }
+}
+
+function helperEntitlements(helperPath) {
+  return capture('/usr/bin/codesign', ['-d', '--entitlements', '-', '--xml', '--', helperPath])
 }
 
 function sha256(data) {
@@ -101,6 +138,8 @@ async function prepareResources() {
   const kernelDestination = path.join(outputRoot, 'vmlinux')
   fs.copyFileSync(helperSource, helperDestination)
   fs.chmodSync(helperDestination, 0o755)
+  // Must precede the digest below: signing rewrites the binary.
+  signHelper(helperDestination)
   fs.copyFileSync(extractedKernel, kernelDestination)
   fs.chmodSync(kernelDestination, 0o644)
 
@@ -141,6 +180,9 @@ async function checkResources() {
     manifest.kernelSource?.archiveSha256 !== kernel.archiveSha256
   ) {
     throw new Error('prepared runtime resource verification failed')
+  }
+  if (!helperEntitlements(helperPath).includes(requiredEntitlement)) {
+    throw new Error('the prepared helper cannot start containers without the virtualization entitlement')
   }
   log('Prepared runtime resources verified')
 }

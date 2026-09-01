@@ -21,7 +21,6 @@ jobs:
       BUILD_ID: ${{ github.event.client_payload.buildId }}
       BUILDER_GATEWAY: ${{ secrets.COZEA_DEVAPP_BUILDER_GATEWAY_URL }}
       BUILDER_TOKEN: ${{ secrets.COZEA_DEVAPP_BUILDER_CALLBACK_TOKEN }}
-      COZEA_RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY }}
       IMAGE_REPOSITORY: ghcr.io/cozea/devapps
     steps:
       - name: Validate opaque build ID
@@ -110,6 +109,7 @@ jobs:
         env:
           ARM64_DIGEST: ${{ steps.arm64.outputs.digest }}
           AMD64_DIGEST: ${{ steps.amd64.outputs.digest }}
+          COZEA_RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY }}
         run: |
           docker buildx imagetools create \
             --tag "$IMAGE_REPOSITORY:$BUILD_ID" \

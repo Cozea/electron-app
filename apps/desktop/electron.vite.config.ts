@@ -22,9 +22,7 @@ function resolveAiProxyTarget(): string {
   const defaultRemoteTarget = 'https://cozea-collab.kelyan-engone.workers.dev'
 
   // Optional explicit proxy target (origin or full URL).
-  const configured =
-    process.env.VITE_AI_PROXY_TARGET ||
-    process.env.VITE_AI_API_URL
+  const configured = process.env.VITE_AI_PROXY_TARGET || process.env.VITE_AI_API_URL
 
   if (!configured) {
     return defaultRemoteTarget
@@ -42,7 +40,21 @@ function resolveAiProxyTarget(): string {
   }
 }
 
+function resolveDeviceGatewayOrigin(): string {
+  const configured = process.env.VITE_AUTH_SERVER_URL || process.env.VITE_COLLAB_BASE_URL || 'https://api.cozea.app'
+  try {
+    const url = new URL(configured)
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.hostname === '127.0.0.1')) {
+      throw new Error('The device gateway must use HTTPS')
+    }
+    return url.origin
+  } catch {
+    throw new Error('VITE_AUTH_SERVER_URL must be an HTTPS origin')
+  }
+}
+
 const aiProxyTarget = resolveAiProxyTarget()
+const deviceGatewayOrigin = resolveDeviceGatewayOrigin()
 const reactCompilerEnabled = readBooleanFlag('VITE_FF_REACT_COMPILER', true)
 const rolldownBuildEnabled = readBooleanFlag('VITE_FF_ROLLDOWN_BUILD', true)
 const repoRoot = path.resolve(__dirname, '../..')
@@ -187,10 +199,7 @@ function rendererManualChunks(id: string): string | undefined {
   ) {
     return 'vendor-workbench-dockview'
   }
-  if (
-    normalizedId.includes('/node_modules/@codemirror/') ||
-    normalizedId.includes('/node_modules/codemirror/')
-  ) {
+  if (normalizedId.includes('/node_modules/@codemirror/') || normalizedId.includes('/node_modules/codemirror/')) {
     return 'vendor-codemirror'
   }
   if (
@@ -212,10 +221,7 @@ function rendererManualChunks(id: string): string | undefined {
   ) {
     return 'vendor-ui'
   }
-  if (
-    normalizedId.includes('/node_modules/lexical/') ||
-    normalizedId.includes('/node_modules/@lexical/')
-  ) {
+  if (normalizedId.includes('/node_modules/lexical/') || normalizedId.includes('/node_modules/@lexical/')) {
     return 'vendor-editor'
   }
 
@@ -224,6 +230,9 @@ function rendererManualChunks(id: string): string | undefined {
 
 export default defineConfig({
   main: {
+    define: {
+      __COZEA_DEVICE_GATEWAY_ORIGIN__: JSON.stringify(deviceGatewayOrigin),
+    },
     resolve: {
       alias: sharedAliases,
     },
@@ -291,8 +300,7 @@ export default defineConfig({
         external: ['electron'],
         output: {
           format: 'cjs',
-          entryFileNames: (chunk) =>
-            chunk.name === 'index' ? 'index.js' : '[name].cjs',
+          entryFileNames: (chunk) => (chunk.name === 'index' ? 'index.js' : '[name].cjs'),
         },
       },
     },
@@ -304,8 +312,8 @@ export default defineConfig({
       react({
         babel: reactCompilerEnabled
           ? {
-            plugins: [['babel-plugin-react-compiler', {}]],
-          }
+              plugins: [['babel-plugin-react-compiler', {}]],
+            }
           : undefined,
       }),
       tailwindcss(),
@@ -326,11 +334,7 @@ export default defineConfig({
       // invalidate the main checkout's Vite optimizer (stale Lexical/dockview
       // prebundles → "Failed to fetch dynamically imported module").
       watch: {
-        ignored: [
-          '**/.worktrees/**',
-          '**/.agent/**',
-          '**/node_modules/**',
-        ],
+        ignored: ['**/.worktrees/**', '**/.agent/**', '**/node_modules/**'],
       },
       headers: {
         'Cross-Origin-Embedder-Policy': 'credentialless',

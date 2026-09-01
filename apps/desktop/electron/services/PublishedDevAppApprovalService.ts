@@ -3,11 +3,7 @@ import path from "node:path"
 
 import { safeStorage } from "electron"
 
-import {
-  grantFingerprint,
-  normalizeGrant,
-  type DevAppGrant,
-} from "../../../../shared/devAppCapabilities"
+import { grantFingerprint, normalizeGrant, type DevAppGrant } from "../../../../shared/devAppCapabilities"
 import type { OrgDevAppInstallationService } from "./OrgDevAppInstallationService"
 
 const MAX_APPROVAL_MS = 30 * 24 * 60 * 60_000
@@ -31,11 +27,7 @@ export class PublishedDevAppApprovalService {
   private readonly installations: OrgDevAppInstallationService
   private readonly now: () => number
 
-  constructor(
-    storePath: () => string,
-    installations: OrgDevAppInstallationService,
-    now: () => number = Date.now,
-  ) {
+  constructor(storePath: () => string, installations: OrgDevAppInstallationService, now: () => number = Date.now) {
     this.storePath = storePath
     this.installations = installations
     this.now = now
@@ -51,17 +43,19 @@ export class PublishedDevAppApprovalService {
     const installation = this.installations.resolve(ref)
     const requested = this.requested(ref)
     if (!installation || !requested || !installation.activeRelease.packageManifestDigest) return null
-    const current = this.read().approvals.find((approval) =>
-      approval.ref === installation.ref &&
-      approval.workspaceId === workspaceId &&
-      approval.packageManifestDigest === installation.activeRelease.packageManifestDigest,
+    const current = this.read().approvals.find(
+      (approval) =>
+        approval.ref === installation.ref &&
+        approval.workspaceId === workspaceId &&
+        approval.packageManifestDigest === installation.activeRelease.packageManifestDigest,
     )
     if (!current || current.expiresAt <= this.now()) return null
     const normalized = normalizeGrant(current.grant)
     if (
       normalized.capabilities.join("\0") !== requested.capabilities.join("\0") ||
       current.fingerprint !== grantFingerprint(normalized)
-    ) return null
+    )
+      return null
     return { ...current, grant: normalized }
   }
 
@@ -98,8 +92,8 @@ export class PublishedDevAppApprovalService {
       expiresAt,
     }
     const store = this.read()
-    store.approvals = store.approvals.filter((entry) =>
-      entry.ref !== approval.ref || entry.workspaceId !== approval.workspaceId,
+    store.approvals = store.approvals.filter(
+      (entry) => entry.ref !== approval.ref || entry.workspaceId !== approval.workspaceId,
     )
     store.approvals.push(approval)
     this.write(store)
@@ -108,10 +102,16 @@ export class PublishedDevAppApprovalService {
 
   revoke(ref: string, workspaceId: string): void {
     const store = this.read()
-    store.approvals = store.approvals.filter((entry) =>
-      entry.ref !== ref || entry.workspaceId !== workspaceId,
-    )
+    store.approvals = store.approvals.filter((entry) => entry.ref !== ref || entry.workspaceId !== workspaceId)
     this.write(store)
+  }
+
+  removeReleases(refs: string[]): void {
+    const targets = new Set(refs)
+    if (targets.size === 0 || !fs.existsSync(this.storePath())) return
+    const store = this.read()
+    const approvals = store.approvals.filter((entry) => !targets.has(entry.ref))
+    if (approvals.length !== store.approvals.length) this.write({ version: 1, approvals })
   }
 
   private read(): ApprovalStore {
@@ -125,13 +125,14 @@ export class PublishedDevAppApprovalService {
       if (value.version !== 1 || !Array.isArray(value.approvals)) throw new Error("invalid")
       return {
         version: 1,
-        approvals: value.approvals.filter((entry) =>
-          entry &&
-          typeof entry.ref === "string" &&
-          typeof entry.workspaceId === "string" &&
-          typeof entry.packageManifestDigest === "string" &&
-          typeof entry.fingerprint === "string" &&
-          Number.isFinite(entry.expiresAt),
+        approvals: value.approvals.filter(
+          (entry) =>
+            entry &&
+            typeof entry.ref === "string" &&
+            typeof entry.workspaceId === "string" &&
+            typeof entry.packageManifestDigest === "string" &&
+            typeof entry.fingerprint === "string" &&
+            Number.isFinite(entry.expiresAt),
         ),
       }
     } catch {

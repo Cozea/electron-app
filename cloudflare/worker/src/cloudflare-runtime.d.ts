@@ -4,12 +4,21 @@ interface DurableObjectStub {
   fetch(request: Request): Promise<Response>
 }
 
-interface DurableObjectState {
+interface DurableObjectNamespace<T = DurableObjectStub> {
+  idFromName(name: string): DurableObjectId
+  get(id: DurableObjectId): T
+}
+
+interface DurableObjectState<T = unknown> {
   acceptWebSocket(socket: WebSocket): void
-  storage: {
-    get<T>(key: string): Promise<T | undefined>
-    put<T>(key: string, value: T): Promise<void>
-  }
+  storage: DurableObjectStorage
+}
+
+interface DurableObjectStorage {
+  get<T>(key: string): Promise<T | undefined>
+  put<T>(key: string, value: T): Promise<void>
+  delete(key: string): Promise<boolean>
+  transaction<T>(closure: (transaction: DurableObjectStorage) => Promise<T>): Promise<T>
 }
 
 interface DurableObject {

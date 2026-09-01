@@ -1,11 +1,11 @@
 # DevApp Worker Security Review
 
-Status: completed 2026-09-01 for the development-worker host and protocol-v1 boundary.
+Status: completed 2026-09-01 for the development-worker host, protocol-v1 boundary, and published
+contained-runtime cutover.
 
 This review treats authored worker code, worker messages, manifests, paths, and renderer IPC as
-hostile. It covers the local development preview path that exists today. Published worker
-execution does not exist and must remain disconnected until the Phase 8 container/VM runtime is
-available.
+hostile. It covers both the intentionally powerful local development preview and the separate
+published contained-runtime path.
 
 ## Security decision
 
@@ -23,8 +23,8 @@ The resulting product rules are:
 - the worker receives only package/data filesystem allowances and a minimal environment;
 - every host request still passes protocol parsing, the exact v1 method table, capability
   authorization, binding enforcement, parameter validation, and symlink-aware host services;
-- no published release can start this worker host; external worker authoring remains blocked on
-  the container runtime.
+- no published release can start this worker host; published code is accepted only by the signed
+  contained-runtime adapters.
 
 Primary platform references: [Electron utility processes](https://www.electronjs.org/docs/latest/api/utility-process),
 [Electron process model](https://www.electronjs.org/docs/latest/tutorial/process-model), and
@@ -59,7 +59,41 @@ remains a separate trust tier.
 | Reopening one source could overwrite another surface's lease; an unmounted pending open could leak        | Preview ownership is multi-lease, close is lease-specific, watchers survive until the last lease, and late open results release themselves. Each renderer open attempt owns a unique lease so React Strict Mode cleanup cannot release its successor. |
 | Worker data paths and environment inherited unnecessary machine details                                   | Data directories use hashed worker identities and the child receives only `NODE_ENV` and its own data-directory variable.                                                                                                                             |
 | The DevApp view could not reach its own worker without adding another authority path                      | A DevApp-only preload receives a main-issued port through a bounded, version-checked broker. The view gets no Electron IPC or host method; privileged worker requests stay on the original capability-gated port.                                     |
-| A boolean could claim an agent surface without defining anything callable                                | Worker manifests now require bounded concrete tool declarations. Authenticated sessions expose them through the read-only `devapp_tool_catalog`; invocation remains explicitly unavailable until Phase 8.                                             |
+| A boolean could claim an agent surface without defining anything callable                                 | Worker manifests require bounded concrete tool declarations. Catalog and invocation are separate; invoke rechecks the living contained release, declaration, schema, workspace, approval, timeout, concurrency, and result bound.                     |
+
+## Published contained-runtime addendum
+
+Published workers and Node services never enter Electron's development utility process. The
+Phase 8 review closed these additional boundaries:
+
+- source upload rejects secret files and symlinks and is bound to the authenticated project,
+  organization, reservation, source digest, and package-manifest digest;
+- the protected builder emits Linux ARM64/AMD64 images, exact OCI digests, SBOM/provenance, and a
+  canonical Ed25519-signed attestation; tags are not launch authority;
+- desktop and Cloudflare independently verify the release, attestation, signature, and selected
+  platform digest before pulling or starting it;
+- device execution uses a bundled Apple Containerization VM with fixed resources, read-only root,
+  empty Linux capabilities, no-new-privileges, minimal environment, and only explicit
+  release-bound VirtioFS grants;
+- hosted execution uses a Cloudflare Sandbox VM around rootless Docker-in-Docker, begins with
+  deny-by-default egress, drops every inner capability, and never accepts a local path or a device
+  capability other than `net.outbound`;
+- hosted start reauthorizes current membership and the active immutable release in Convex; a
+  build-pinned main-process gateway origin prevents renderer-selected bearer-token exfiltration;
+- runtime transport, service proxy, and renewable per-client control leases use separate
+  capabilities. Only the transport origin is exposed; the inner service port is not. Cold starts
+  are serialized, one organization client cannot stop another, and crashed clients age out;
+- organization state is confined to one R2 prefix per organization/publication and never appears as
+  a host filesystem mount; the authenticated hosted service proxy is hidden behind the existing
+  authenticated release-scoped loopback origin;
+- publisher-host service output is never executed or shipped as a second runtime. The protected
+  builder validates both Linux architectures, so native dependencies are runtime-scoped instead of
+  prohibited by a macOS artifact scan;
+- autonomous tool calls cannot approve code, grant folders, change placement, or bypass the same
+  capability and workspace checks used by user-triggered worker calls.
+
+Implementation and operator requirements are in
+[Published DevApp Contained Runtime](./devapp-contained-runtime.md).
 
 ## Verification evidence
 
@@ -101,8 +135,13 @@ in [DevApp Worker Protocol](./devapp-worker-protocol.md).
 - The Phase 4 view bridge remains deliberately low-level beneath the Phase 6 public typed client.
   Package-private methods share protocol v1 envelopes; host authority remains exclusively behind
   the original capability-gated worker port.
-- Published worker execution, external worker packages, and autonomous worker tools must not ship
-  before the container/VM adapter. Phase 6 may deliver schema, typings, view-only scaffolding, and
-  documentation first, but must mark worker execution as unavailable until Phase 8.
+- The device adapter currently requires Apple-silicon macOS 26 or newer. Other platforms fail
+  closed; they do not fall back to a host process.
+- A Node service has a network interface because Cozea must reach its listener. Worker-only hosted
+  egress remains opt-in through `net.outbound`; a service's broader network authority is explicit
+  in its immutable parts and approval copy.
+- Hosted isolation, availability, and durable organization storage depend on Cloudflare Sandbox and
+  R2 plus correctly installed operator keys/secrets. Source tests and dry runs do not replace the
+  real signed-image/deployed-runtime acceptance gate.
 
 These are architectural constraints, not deferred bugs to hide behind a feature flag.

@@ -124,7 +124,13 @@ private struct HelperRequest: Codable, Sendable {
     let task: String
     let start: StartSpec?
     let runtimeId: String?
+    let cleanup: CleanupSpec?
     let transport: TransportEnvelope?
+}
+
+private struct CleanupSpec: Codable, Sendable {
+    let publicationId: String?
+    let imageReference: String?
 }
 
 private struct Availability: Codable, Sendable {
@@ -315,6 +321,7 @@ private actor RuntimeCoordinator {
     private let emitter: LineEmitter
     private var manager: ContainerManager?
     private var runtimes: [String: ActiveRuntime] = [:]
+    private var reconciledContainerRoots = false
 
     init(root: URL, kernelPath: URL, initfsReference: String, emitter: LineEmitter) {
         self.root = root
@@ -354,12 +361,27 @@ private actor RuntimeCoordinator {
             throw RuntimeError.invalid("The Apple Containerization runtime is unavailable.")
         }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try reconcileAbandonedContainerRoots()
         manager = try await ContainerManager(
             kernel: Kernel(path: kernelPath, platform: .linuxArm),
             initfsReference: initfsReference,
             root: root,
             network: try VmnetNetwork()
         )
+    }
+
+    private func reconcileAbandonedContainerRoots() throws {
+        guard !reconciledContainerRoots else { return }
+        let containerRoot = root.appendingPathComponent("containers", isDirectory: true)
+        if FileManager.default.fileExists(atPath: containerRoot.path) {
+            for entry in try FileManager.default.contentsOfDirectory(
+                at: containerRoot,
+                includingPropertiesForKeys: nil
+            ) {
+                try FileManager.default.removeItem(at: entry)
+            }
+        }
+        reconciledContainerRoots = true
     }
 
     func start(_ spec: StartSpec) async throws -> RuntimeState {
@@ -525,6 +547,43 @@ private actor RuntimeCoordinator {
         return previous
     }
 
+    func cleanup(_ spec: CleanupSpec) async throws {
+        guard spec.publicationId != nil || spec.imageReference != nil else {
+            throw RuntimeError.invalid("The cleanup request is empty.")
+        }
+        if let publicationId = spec.publicationId {
+            guard matches(publicationId, "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$") else {
+                throw RuntimeError.invalid("The cleanup publication is invalid.")
+            }
+            guard !runtimes.values.contains(where: {
+                $0.state.publicationId == publicationId &&
+                    $0.state.status != "stopped" && $0.state.status != "failed"
+            }) else {
+                throw RuntimeError.invalid("The publication still has a running container.")
+            }
+            let statePath = root
+                .appendingPathComponent("state", isDirectory: true)
+                .appendingPathComponent("\(publicationId).ext4")
+            if FileManager.default.fileExists(atPath: statePath.path) {
+                try FileManager.default.removeItem(at: statePath)
+            }
+        }
+        if let imageReference = spec.imageReference {
+            guard matches(imageReference, "^.+@sha256:[a-f0-9]{64}$") else {
+                throw RuntimeError.invalid("The cleanup image reference is invalid.")
+            }
+            let imageDigest = String(imageReference.split(separator: "@").last ?? "")
+            guard !runtimes.values.contains(where: {
+                $0.state.imageDigest == imageDigest &&
+                    $0.state.status != "stopped" && $0.state.status != "failed"
+            }) else {
+                throw RuntimeError.invalid("The image still has a running container.")
+            }
+            let imageStore = if let manager { manager.imageStore } else { try ImageStore(path: root) }
+            try? await imageStore.delete(reference: imageReference, performCleanup: true)
+        }
+    }
+
     private func recordExit(runtimeId: String, status: ExitStatus?, error: String?) async {
         guard var active = runtimes[runtimeId] else { return }
         active.input.close()
@@ -650,7 +709,9 @@ private actor RuntimeCoordinator {
         }
         guard spec.environment.count <= maximumEnvironment,
               spec.environment.allSatisfy({ key, value in
-                  matches(key, "^[A-Z_][A-Z0-9_]{0,127}$") && value.utf8.count <= 16 * 1024
+                  matches(key, "^[A-Z_][A-Z0-9_]{0,127}$") &&
+                      value.utf8.count <= 16 * 1024 &&
+                      !value.contains("\0") && !value.contains("\n") && !value.contains("\r")
               }) else {
             throw RuntimeError.invalid("The container environment is invalid.")
         }
@@ -807,6 +868,19 @@ private struct CozeaDevAppContainerRuntime {
                         success: true,
                         availability: nil,
                         state: try await coordinator.delete(runtimeId),
+                        error: nil
+                    )
+                case "cleanup":
+                    guard let cleanup = request.cleanup else {
+                        throw RuntimeError.invalid("A cleanup request has no scope.")
+                    }
+                    try await coordinator.cleanup(cleanup)
+                    response = HelperResponse(
+                        protocolVersion: protocolVersion,
+                        requestId: request.requestId,
+                        success: true,
+                        availability: nil,
+                        state: nil,
                         error: nil
                     )
                 case "message":

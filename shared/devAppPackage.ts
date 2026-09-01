@@ -266,15 +266,7 @@ export interface DevAppPackageParseResult {
   diagnostics: DevAppPackageDiagnostic[]
 }
 
-const KNOWN_ROOT_FIELDS = new Set([
-  "manifestVersion",
-  "name",
-  "description",
-  "view",
-  "worker",
-  "service",
-  "runtime",
-])
+const KNOWN_ROOT_FIELDS = new Set(["manifestVersion", "name", "description", "view", "worker", "service", "runtime"])
 
 const MAX_NAME_LENGTH = 120
 const MAX_DESCRIPTION_LENGTH = 500
@@ -308,11 +300,9 @@ function rejectUnknownFields(
 ): void {
   const unknown = Object.keys(record).filter((key) => !allowed.includes(key))
   if (unknown.length === 0) return
-  diagnostics.push(blocker(
-    "manifest-unknown-field",
-    `${field} contains unsupported fields: ${unknown.join(", ")}.`,
-    { field },
-  ))
+  diagnostics.push(
+    blocker("manifest-unknown-field", `${field} contains unsupported fields: ${unknown.join(", ")}.`, { field }),
+  )
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -345,14 +335,20 @@ function isBoundedToolSchema(value: unknown): value is Record<string, unknown> {
 
 function parseTools(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): DevAppPackageToolSpec[] {
   if (!Array.isArray(raw)) {
-    diagnostics.push(blocker("manifest-field-invalid", "worker.tools must be an array.", {
-      field: "worker.tools",
-      fix: "Use an empty array when the worker exposes no agent operations.",
-    }))
+    diagnostics.push(
+      blocker("manifest-field-invalid", "worker.tools must be an array.", {
+        field: "worker.tools",
+        fix: "Use an empty array when the worker exposes no agent operations.",
+      }),
+    )
     return []
   }
   if (raw.length > MAX_TOOLS) {
-    diagnostics.push(blocker("manifest-field-invalid", `worker.tools may contain at most ${MAX_TOOLS} operations.`, { field: "worker.tools" }))
+    diagnostics.push(
+      blocker("manifest-field-invalid", `worker.tools may contain at most ${MAX_TOOLS} operations.`, {
+        field: "worker.tools",
+      }),
+    )
   }
   const names = new Set<string>()
   const tools: DevAppPackageToolSpec[] = []
@@ -368,22 +364,41 @@ function parseTools(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): DevAp
       return
     }
     if (typeof candidate.name !== "string" || !TOOL_NAME.test(candidate.name)) {
-      diagnostics.push(blocker("manifest-field-invalid", `${field}.name must be a lowercase MCP operation name.`, { field: `${field}.name` }))
+      diagnostics.push(
+        blocker("manifest-field-invalid", `${field}.name must be a lowercase MCP operation name.`, {
+          field: `${field}.name`,
+        }),
+      )
       return
     }
     if (names.has(candidate.name)) {
-      diagnostics.push(blocker("manifest-field-invalid", `${field}.name duplicates another operation.`, { field: `${field}.name` }))
-      return
-    }
-    if (typeof candidate.description !== "string" || candidate.description.trim().length === 0 || candidate.description.length > MAX_DESCRIPTION_LENGTH) {
-      diagnostics.push(blocker("manifest-field-invalid", `${field}.description must describe the operation.`, { field: `${field}.description` }))
+      diagnostics.push(
+        blocker("manifest-field-invalid", `${field}.name duplicates another operation.`, {
+          field: `${field}.name`,
+        }),
+      )
       return
     }
     if (
-      !isBoundedToolSchema(candidate.inputSchema) ||
-      !isSupportedDevAppToolInputSchema(candidate.inputSchema)
+      typeof candidate.description !== "string" ||
+      candidate.description.trim().length === 0 ||
+      candidate.description.length > MAX_DESCRIPTION_LENGTH
     ) {
-      diagnostics.push(blocker("manifest-field-invalid", `${field}.inputSchema must use Cozea's bounded enforceable object JSON Schema subset.`, { field: `${field}.inputSchema` }))
+      diagnostics.push(
+        blocker("manifest-field-invalid", `${field}.description must describe the operation.`, {
+          field: `${field}.description`,
+        }),
+      )
+      return
+    }
+    if (!isBoundedToolSchema(candidate.inputSchema) || !isSupportedDevAppToolInputSchema(candidate.inputSchema)) {
+      diagnostics.push(
+        blocker(
+          "manifest-field-invalid",
+          `${field}.inputSchema must use Cozea's bounded enforceable object JSON Schema subset.`,
+          { field: `${field}.inputSchema` },
+        ),
+      )
       return
     }
     names.add(candidate.name)
@@ -425,11 +440,7 @@ function isConfinedRelativePath(value: string): boolean {
   return depth > 0
 }
 
-function readPath(
-  raw: unknown,
-  field: string,
-  diagnostics: DevAppPackageDiagnostic[],
-): string | null {
+function readPath(raw: unknown, field: string, diagnostics: DevAppPackageDiagnostic[]): string | null {
   if (typeof raw !== "string") {
     diagnostics.push(blocker("manifest-field-invalid", `${field} must be a string path.`, { field }))
     return null
@@ -446,10 +457,7 @@ function readPath(
   return raw
 }
 
-function parseView(
-  raw: unknown,
-  diagnostics: DevAppPackageDiagnostic[],
-): DevAppPackageViewSpec | undefined {
+function parseView(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): DevAppPackageViewSpec | undefined {
   if (raw === undefined) return undefined
   if (!isPlainObject(raw)) {
     diagnostics.push(blocker("manifest-field-invalid", "view must be an object.", { field: "view" }))
@@ -462,9 +470,7 @@ function parseView(
 
   if (raw.dev !== undefined) {
     if (!isPlainObject(raw.dev)) {
-      diagnostics.push(
-        blocker("manifest-field-invalid", "view.dev must be an object.", { field: "view.dev" }),
-      )
+      diagnostics.push(blocker("manifest-field-invalid", "view.dev must be an object.", { field: "view.dev" }))
     } else {
       rejectUnknownFields(raw.dev, ["command", "url"], "view.dev", diagnostics)
       const dev: { command?: string; url?: string } = {}
@@ -510,8 +516,11 @@ function parseDevUrl(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): stri
     diagnostics.push(blocker("manifest-field-invalid", `${field} must be a URL.`, { field }))
     return null
   }
-  const loopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1"
-    || parsed.hostname === "[::1]" || parsed.hostname === "::1"
+  const loopback =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "[::1]" ||
+    parsed.hostname === "::1"
   if (parsed.protocol !== "http:" || !loopback) {
     diagnostics.push(
       blocker("manifest-field-invalid", `${field} must be a http://localhost address.`, {
@@ -524,15 +533,10 @@ function parseDevUrl(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): stri
   return raw
 }
 
-function parseWorker(
-  raw: unknown,
-  diagnostics: DevAppPackageDiagnostic[],
-): DevAppPackageWorkerSpec | undefined {
+function parseWorker(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): DevAppPackageWorkerSpec | undefined {
   if (raw === undefined) return undefined
   if (!isPlainObject(raw)) {
-    diagnostics.push(
-      blocker("manifest-field-invalid", "worker must be an object.", { field: "worker" }),
-    )
+    diagnostics.push(blocker("manifest-field-invalid", "worker must be an object.", { field: "worker" }))
     return undefined
   }
   rejectUnknownFields(raw, ["entry", "protocolVersion", "capabilities", "tools"], "worker", diagnostics)
@@ -599,15 +603,10 @@ function parseWorker(
   return { entry, protocolVersion, capabilities, tools }
 }
 
-function parseService(
-  raw: unknown,
-  diagnostics: DevAppPackageDiagnostic[],
-): DevAppPackageServiceSpec | undefined {
+function parseService(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): DevAppPackageServiceSpec | undefined {
   if (raw === undefined) return undefined
   if (!isPlainObject(raw)) {
-    diagnostics.push(
-      blocker("manifest-field-invalid", "service must be an object.", { field: "service" }),
-    )
+    diagnostics.push(blocker("manifest-field-invalid", "service must be an object.", { field: "service" }))
     return undefined
   }
   rejectUnknownFields(raw, ["runtimeKind", "entry"], "service", diagnostics)
@@ -615,7 +614,7 @@ function parseService(
   const runtimeKind = raw.runtimeKind
   if (runtimeKind !== "static" && runtimeKind !== "node") {
     diagnostics.push(
-      blocker("manifest-field-invalid", "service.runtimeKind must be \"static\" or \"node\".", {
+      blocker("manifest-field-invalid", 'service.runtimeKind must be "static" or "node".', {
         field: "service.runtimeKind",
       }),
     )
@@ -637,47 +636,50 @@ function parseService(
   return service
 }
 
-function parseRuntime(
-  raw: unknown,
-  diagnostics: DevAppPackageDiagnostic[],
-): DevAppPackageRuntimeSpec | undefined {
+function parseRuntime(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): DevAppPackageRuntimeSpec | undefined {
   if (raw === undefined) return undefined
   if (!isPlainObject(raw)) {
-    diagnostics.push(blocker("manifest-field-invalid", "runtime must be an object.", {
-      field: "runtime",
-    }))
+    diagnostics.push(
+      blocker("manifest-field-invalid", "runtime must be an object.", {
+        field: "runtime",
+      }),
+    )
     return undefined
   }
   rejectUnknownFields(raw, ["location", "state"], "runtime", diagnostics)
   const location = raw.location
   const state = raw.state
   if (location !== "device" && location !== "hosted") {
-    diagnostics.push(blocker("manifest-field-invalid", "runtime.location must be \"device\" or \"hosted\".", {
-      field: "runtime.location",
-    }))
+    diagnostics.push(
+      blocker("manifest-field-invalid", 'runtime.location must be "device" or "hosted".', {
+        field: "runtime.location",
+      }),
+    )
     return undefined
   }
   if (state !== "none" && state !== "device" && state !== "organization") {
-    diagnostics.push(blocker(
-      "manifest-field-invalid",
-      "runtime.state must be \"none\", \"device\", or \"organization\".",
-      { field: "runtime.state" },
-    ))
+    diagnostics.push(
+      blocker("manifest-field-invalid", 'runtime.state must be "none", "device", or "organization".', {
+        field: "runtime.state",
+      }),
+    )
     return undefined
   }
   if (location === "device" && state === "organization") {
-    diagnostics.push(blocker(
-      "manifest-field-invalid",
-      "A device runtime cannot claim organization-owned state.",
-      { field: "runtime.state", fix: "Use device or none, or move the runtime to hosted." },
-    ))
+    diagnostics.push(
+      blocker("manifest-field-invalid", "A device runtime cannot claim organization-owned state.", {
+        field: "runtime.state",
+        fix: "Use device or none, or move the runtime to hosted.",
+      }),
+    )
   }
   if (location === "hosted" && state === "device") {
-    diagnostics.push(blocker(
-      "manifest-field-invalid",
-      "A hosted runtime cannot claim device-owned state.",
-      { field: "runtime.state", fix: "Use organization or none, or move the runtime to device." },
-    ))
+    diagnostics.push(
+      blocker("manifest-field-invalid", "A hosted runtime cannot claim device-owned state.", {
+        field: "runtime.state",
+        fix: "Use organization or none, or move the runtime to device.",
+      }),
+    )
   }
   return { location, state }
 }
@@ -693,11 +695,9 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
     return {
       manifest: null,
       diagnostics: [
-        blocker(
-          "manifest-unparsable",
-          `${DEV_APP_MANIFEST_FILENAME} is not valid JSON.`,
-          { fix: error instanceof Error ? error.message : undefined },
-        ),
+        blocker("manifest-unparsable", `${DEV_APP_MANIFEST_FILENAME} is not valid JSON.`, {
+          fix: error instanceof Error ? error.message : undefined,
+        }),
       ],
     }
   }
@@ -705,9 +705,7 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
   if (!isPlainObject(raw)) {
     return {
       manifest: null,
-      diagnostics: [
-        blocker("manifest-not-object", `${DEV_APP_MANIFEST_FILENAME} must contain an object.`),
-      ],
+      diagnostics: [blocker("manifest-not-object", `${DEV_APP_MANIFEST_FILENAME} must contain an object.`)],
     }
   }
 
@@ -724,23 +722,22 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
       blocker(
         "manifest-version-unsupported",
         `This Cozea build requires DevApp manifest version ${DEV_APP_MANIFEST_VERSION}; this package declares ${version}.`,
-        { field: "manifestVersion", fix: `Regenerate the package with manifest version ${DEV_APP_MANIFEST_VERSION}.` },
+        {
+          field: "manifestVersion",
+          fix: `Regenerate the package with manifest version ${DEV_APP_MANIFEST_VERSION}.`,
+        },
       ),
     )
   }
 
   if (typeof raw.name !== "string" || raw.name.trim().length === 0 || raw.name.length > MAX_NAME_LENGTH) {
-    diagnostics.push(
-      blocker("manifest-field-invalid", "name must be a non-empty string.", { field: "name" }),
-    )
+    diagnostics.push(blocker("manifest-field-invalid", "name must be a non-empty string.", { field: "name" }))
   }
   if (
-    raw.description !== undefined
-    && (typeof raw.description !== "string" || raw.description.length > MAX_DESCRIPTION_LENGTH)
+    raw.description !== undefined &&
+    (typeof raw.description !== "string" || raw.description.length > MAX_DESCRIPTION_LENGTH)
   ) {
-    diagnostics.push(
-      blocker("manifest-field-invalid", "description must be a string.", { field: "description" }),
-    )
+    diagnostics.push(blocker("manifest-field-invalid", "description must be a string.", { field: "description" }))
   }
 
   // The manifest version is exact. Unknown root fields are therefore typos or semantics
@@ -762,22 +759,30 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
 
   const hasExecutablePart = Boolean(worker || service?.runtimeKind === "node")
   if (hasExecutablePart && !runtime && raw.runtime === undefined) {
-    diagnostics.push(blocker(
-      "manifest-field-invalid",
-      "Executable DevApps must declare runtime placement and state ownership.",
-      { field: "runtime", fix: "Add runtime.location and runtime.state." },
-    ))
+    diagnostics.push(
+      blocker("manifest-field-invalid", "Executable DevApps must declare runtime placement and state ownership.", {
+        field: "runtime",
+        fix: "Add runtime.location and runtime.state.",
+      }),
+    )
   }
   if (!hasExecutablePart && runtime) {
-    diagnostics.push(blocker(
-      "manifest-field-invalid",
-      "runtime is only valid when the package has a worker or Node service.",
-      { field: "runtime" },
-    ))
+    diagnostics.push(
+      blocker("manifest-field-invalid", "runtime is only valid when the package has a worker or Node service.", {
+        field: "runtime",
+      }),
+    )
+  }
+  if (runtime?.location === "hosted" && worker?.capabilities.some((capability) => capability !== "net.outbound")) {
+    diagnostics.push(
+      blocker("manifest-field-invalid", "Hosted workers cannot request capabilities that act on a member's device.", {
+        field: "worker.capabilities",
+        fix: "Use only net.outbound in hosted workers, or choose runtime.location device for explicit local access.",
+      }),
+    )
   }
 
-  if (!view && !worker && !service && raw.view === undefined && raw.worker === undefined
-    && raw.service === undefined) {
+  if (!view && !worker && !service && raw.view === undefined && raw.worker === undefined && raw.service === undefined) {
     diagnostics.push(
       blocker("manifest-no-parts", "A DevApp needs at least one of view, worker, or service.", {
         fix: "Add a view to render a tile, or a worker to expose operations.",

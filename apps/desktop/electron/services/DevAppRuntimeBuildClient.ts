@@ -1,29 +1,29 @@
 import {
   DEV_APP_RUNTIME_BUILD_SOURCE_MAX_BYTES,
   type DevAppRuntimeBuildDescriptor,
-} from "../../../../shared/devAppContainedRuntime";
-import { createDevAppRuntimeSourceBundle } from "./DevAppRuntimeSourceBundle";
+} from "../../../../shared/devAppContainedRuntime"
+import { createDevAppRuntimeSourceBundle } from "./DevAppRuntimeSourceBundle"
 
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 60_000
 
 function cleanGatewayUrl(value: string): string {
-  const url = new URL(value);
+  const url = new URL(value)
   if (url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "127.0.0.1")) {
-    throw new Error("The DevApp builder gateway must use HTTPS.");
+    throw new Error("The DevApp builder gateway must use HTTPS.")
   }
-  return url.origin;
+  return url.origin
 }
 
 function boundedSegment(value: string, label: string): string {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error(`${label} is invalid.`);
-  return value;
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error(`${label} is invalid.`)
+  return value
 }
 
 function parseDescriptor(value: unknown): DevAppRuntimeBuildDescriptor {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("The DevApp builder returned an invalid response.");
+    throw new Error("The DevApp builder returned an invalid response.")
   }
-  const descriptor = value as Partial<DevAppRuntimeBuildDescriptor>;
+  const descriptor = value as Partial<DevAppRuntimeBuildDescriptor>
   if (
     typeof descriptor.buildId !== "string" ||
     typeof descriptor.projectId !== "string" ||
@@ -34,9 +34,9 @@ function parseDescriptor(value: unknown): DevAppRuntimeBuildDescriptor {
     !Number.isFinite(descriptor.createdAt) ||
     !Number.isFinite(descriptor.updatedAt)
   ) {
-    throw new Error("The DevApp builder returned an invalid response.");
+    throw new Error("The DevApp builder returned an invalid response.")
   }
-  return descriptor as DevAppRuntimeBuildDescriptor;
+  return descriptor as DevAppRuntimeBuildDescriptor
 }
 
 async function gatewayRequest(
@@ -45,63 +45,64 @@ async function gatewayRequest(
   init: RequestInit,
 ): Promise<DevAppRuntimeBuildDescriptor> {
   if (!accessToken.trim() || accessToken.length > 16_384) {
-    throw new Error("An authenticated device session is required for the central build.");
+    throw new Error("An authenticated device session is required for the central build.")
   }
   const response = await fetch(url, {
     ...init,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: { authorization: `Bearer ${accessToken}`, ...init.headers },
-  });
-  const body: unknown = await response.json().catch(() => null);
+  })
+  const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {
-    const message = body && typeof body === "object" && "message" in body
-      ? String((body as { message: unknown }).message)
-      : `Central DevApp build request failed (${response.status}).`;
-    throw new Error(message.slice(0, 1_000));
+    const message =
+      body && typeof body === "object"
+        ? "error" in body
+          ? String((body as { error: unknown }).error)
+          : "message" in body
+            ? String((body as { message: unknown }).message)
+            : `Central DevApp build request failed (${response.status}).`
+        : `Central DevApp build request failed (${response.status}).`
+    throw new Error(message.slice(0, 1_000))
   }
-  return parseDescriptor(body);
+  return parseDescriptor(body)
 }
 
 export async function startDevAppRuntimeBuild(input: {
-  projectRoot: string;
-  projectId: string;
-  uploadReservationId: string;
-  gatewayBaseUrl: string;
-  accessToken: string;
+  projectRoot: string
+  projectId: string
+  uploadReservationId: string
+  gatewayBaseUrl: string
+  accessToken: string
 }): Promise<DevAppRuntimeBuildDescriptor> {
-  const projectId = boundedSegment(input.projectId, "The project ID");
-  const reservationId = boundedSegment(input.uploadReservationId, "The upload reservation ID");
-  const bundle = createDevAppRuntimeSourceBundle(input.projectRoot);
+  const projectId = boundedSegment(input.projectId, "The project ID")
+  const reservationId = boundedSegment(input.uploadReservationId, "The upload reservation ID")
+  const bundle = createDevAppRuntimeSourceBundle(input.projectRoot)
   if (bundle.zip.byteLength > DEV_APP_RUNTIME_BUILD_SOURCE_MAX_BYTES) {
-    throw new Error("The central build source exceeds 128 MB.");
+    throw new Error("The central build source exceeds 128 MB.")
   }
-  return await gatewayRequest(
-    `${cleanGatewayUrl(input.gatewayBaseUrl)}/devapps/runtime-builds`,
-    input.accessToken,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/zip",
-        "content-length": String(bundle.zip.byteLength),
-        "x-cozea-project-id": projectId,
-        "x-cozea-upload-reservation-id": reservationId,
-        "x-cozea-source-digest": bundle.sourceDigest,
-        "x-cozea-package-manifest-digest": bundle.packageManifestDigest,
-      },
-      body: Uint8Array.from(bundle.zip).buffer,
+  return await gatewayRequest(`${cleanGatewayUrl(input.gatewayBaseUrl)}/devapps/runtime-builds`, input.accessToken, {
+    method: "POST",
+    headers: {
+      "content-type": "application/zip",
+      "content-length": String(bundle.zip.byteLength),
+      "x-cozea-project-id": projectId,
+      "x-cozea-upload-reservation-id": reservationId,
+      "x-cozea-source-digest": bundle.sourceDigest,
+      "x-cozea-package-manifest-digest": bundle.packageManifestDigest,
     },
-  );
+    body: Uint8Array.from(bundle.zip).buffer,
+  })
 }
 
 export async function getDevAppRuntimeBuild(input: {
-  buildId: string;
-  gatewayBaseUrl: string;
-  accessToken: string;
+  buildId: string
+  gatewayBaseUrl: string
+  accessToken: string
 }): Promise<DevAppRuntimeBuildDescriptor> {
-  const buildId = boundedSegment(input.buildId, "The build ID");
+  const buildId = boundedSegment(input.buildId, "The build ID")
   return await gatewayRequest(
     `${cleanGatewayUrl(input.gatewayBaseUrl)}/devapps/runtime-builds/${encodeURIComponent(buildId)}`,
     input.accessToken,
     { method: "GET" },
-  );
+  )
 }
