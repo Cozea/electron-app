@@ -17,6 +17,12 @@ export interface WorkbenchIntent {
   laneId?: string | null
   openTile?: Extract<WorkbenchTileType, "assistantChat" | "devServer" | "terminal">
   focusTileId?: string | null
+  openDevAppPreview?: {
+    relativePath: string
+    sourceProjectId?: string | null
+    sourceWorkspaceId?: string | null
+    sourceRef?: string | null
+  }
 }
 
 export interface WorkbenchIntentNavigationState {

@@ -118,6 +118,14 @@ describe("Preview tile — surface isolation reaches the descriptor", () => {
 })
 
 describe("Preview tile — registration", () => {
+  it("waits for the concrete workspace before applying an immediate-preview intent", () => {
+    expect(workbenchSurfaceSource).toContain(
+      "if (workbenchIntent.openDevAppPreview && !activeWorkbenchId) return",
+    )
+    expect(workbenchSurfaceSource.indexOf("!activeWorkbenchId) return"))
+      .toBeLessThan(workbenchSurfaceSource.indexOf("markWorkbenchIntentApplied(workbenchIntent)"))
+  })
+
   it("is reachable from the normal workbench command palette", () => {
     expect(commandSource).toContain('id: "workbench.previewDevApp"')
     expect(commandSource).toContain('title: "Select cozea-devapp.json"')

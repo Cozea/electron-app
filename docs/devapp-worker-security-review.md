@@ -58,10 +58,12 @@ remains a separate trust tier.
 | Messages, logs, requests, workers, leases, previews, manifests, and file operations had incomplete bounds | The host now caps each class, including a 12 MiB structured-message graph, 16 in-flight requests, 200 log lines, 16 workers, 64 leases, 64 preview sessions, 1 MiB manifests, 5 MiB text files, and 10,000 directory entries.                         |
 | Reopening one source could overwrite another surface's lease; an unmounted pending open could leak        | Preview ownership is multi-lease, close is lease-specific, watchers survive until the last lease, and late open results release themselves. Each renderer open attempt owns a unique lease so React Strict Mode cleanup cannot release its successor. |
 | Worker data paths and environment inherited unnecessary machine details                                   | Data directories use hashed worker identities and the child receives only `NODE_ENV` and its own data-directory variable.                                                                                                                             |
+| The DevApp view could not reach its own worker without adding another authority path                      | A DevApp-only preload receives a main-issued port through a bounded, version-checked broker. The view gets no Electron IPC or host method; privileged worker requests stay on the original capability-gated port.                                     |
+| A boolean could claim an agent surface without defining anything callable                                | Worker manifests now require bounded concrete tool declarations. Authenticated sessions expose them through the read-only `devapp_tool_catalog`; invocation remains explicitly unavailable until Phase 8.                                             |
 
 ## Verification evidence
 
-Automated verification passes all three TypeScript projects, lint, 201 test files / 1,563 tests,
+Automated verification passes all three TypeScript projects, lint, 212 test files / 1,613 tests,
 the Electron IPC and renderer-bridge audits, production build, the pinned T3 runtime check, and
 `git diff --check`.
 
@@ -70,6 +72,10 @@ real view-plus-worker package. Approval dismissed, the confined `cozea-devapp://
 and Electron started the worker utility process with the 512 MiB heap ceiling plus the exact
 package-read, data-read, and data-write permission flags. The smoke also found and closed a React
 Strict Mode lease race and made approval failures visible instead of silently swallowing them.
+The same package then sent a protocol-v1 request from its living guest to its approved utility
+worker and rendered the worker response. The acceptance pass also requires every sandboxed picker
+or PiP preload to be emitted as a self-contained single-entry artifact; a relative Rollup chunk
+was rejected by Electron's sandbox before this build invariant was added.
 
 ## Protocol-v1 callable surface
 
@@ -92,8 +98,9 @@ in [DevApp Worker Protocol](./devapp-worker-protocol.md).
 - Development approval is intentionally source-and-capability scoped rather than content-hash
   scoped, so ordinary authoring edits do not prompt continuously. This is suitable only for a
   user-authorized local project, not an installed third-party artifact.
-- A DevApp view still has no view-to-worker bridge. The bridge must reuse this exact protocol and
-  capability gate; it may not introduce a second authority path.
+- The Phase 4 view bridge remains deliberately low-level beneath the Phase 6 public typed client.
+  Package-private methods share protocol v1 envelopes; host authority remains exclusively behind
+  the original capability-gated worker port.
 - Published worker execution, external worker packages, and autonomous worker tools must not ship
   before the container/VM adapter. Phase 6 may deliver schema, typings, view-only scaffolding, and
   documentation first, but must mark worker execution as unavailable until Phase 8.

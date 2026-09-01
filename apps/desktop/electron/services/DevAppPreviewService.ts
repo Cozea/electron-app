@@ -14,6 +14,8 @@ import { DevAppPreviewWatcher, type DevAppWatch } from "./DevAppPreviewWatcher"
 import { hashSourcePath, nodePreviewFs } from "./devAppPreviewAdapters"
 import { ORG_DEVAPP_SCHEME } from "../../../../shared/orgDevAppProtocol"
 import { parseDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol"
+import type { DevAppWorkerViewPortBootstrap } from "../../../../shared/devAppWorkerProtocol"
+import type { DevAppWorkerState, DevAppWorkerTransferablePort } from "./DevAppWorkerHost"
 
 /**
  * Owns the development preview: the session, the watcher, and telling the renderer.
@@ -53,6 +55,10 @@ export class DevAppPreviewService {
   private readonly roots = new Map<string, string>()
   private readonly entryPaths = new Map<string, string>()
   private readonly registeredSessionProtocols = new WeakSet<Session>()
+  private readonly workerStateListeners = new Set<
+    (sourceId: string, state: DevAppWorkerState) => void
+  >()
+  private readonly removeWorkerStateListener: (() => void) | null
 
   constructor(deps: DevAppPreviewServiceDeps) {
     this.broadcast = deps.broadcast
@@ -70,6 +76,12 @@ export class DevAppPreviewService {
       setTimer: (callback, ms) => setTimeout(callback, ms),
       clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
     })
+    this.removeWorkerStateListener =
+      deps.worker.onStateChange?.((change) => {
+        const match = /^dev:([0-9a-f]{32})$/.exec(change.publicationId)
+        if (!match) return
+        for (const listener of this.workerStateListeners) listener(match[1]!, change.state)
+      }) ?? null
   }
 
   /**
@@ -122,6 +134,30 @@ export class DevAppPreviewService {
 
   status(sourceId: string): DevAppPreviewStatus | null {
     return this.session.status(sourceId)
+  }
+
+  workerConnection(sourceId: string): {
+    protocolVersion: number
+  } | null {
+    const connection = this.session.workerConnection(sourceId)
+    return connection ? { protocolVersion: connection.protocolVersion } : null
+  }
+
+  attachViewPort(
+    sourceId: string,
+    connectionId: string,
+    port: DevAppWorkerTransferablePort,
+  ): DevAppWorkerViewPortBootstrap {
+    return this.session.attachViewPort(sourceId, connectionId, port)
+  }
+
+  detachViewPort(sourceId: string, connectionId: string): void {
+    this.session.detachViewPort(sourceId, connectionId)
+  }
+
+  onWorkerStateChange(listener: (sourceId: string, state: DevAppWorkerState) => void): () => void {
+    this.workerStateListeners.add(listener)
+    return () => this.workerStateListeners.delete(listener)
   }
 
   close(sourceId: string, leaseId: string): void {
@@ -197,6 +233,8 @@ export class DevAppPreviewService {
   }
 
   dispose(): void {
+    this.removeWorkerStateListener?.()
+    this.workerStateListeners.clear()
     this.watcher.stopAll()
     for (const sourceId of Array.from(this.roots.keys())) this.session.close(sourceId)
     this.roots.clear()

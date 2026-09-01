@@ -34,16 +34,19 @@ import {
   broadcastDevAppPreviewStatus,
   registerDevAppPreviewHandlers,
 } from './ipc/registerDevAppPreviewHandlers'
+import { registerDevAppAuthoringHandlers } from './ipc/registerDevAppAuthoringHandlers'
 import { DevAppWorkerHost } from './services/DevAppWorkerHost'
 import { createUtilityProcessSpawn } from './services/devAppUtilityProcess'
 import { createDevAppWorkerHandlers } from './services/devAppWorkerHandlers'
 import { createNodeDevAppHostServices } from './services/devAppHostServices'
 import { DevAppPreviewService } from './services/DevAppPreviewService'
+import { DevAppAuthoringService } from './services/DevAppAuthoringService'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
 import { OrgDevAppArtifactService } from './services/OrgDevAppArtifactService'
+import { OrgDevAppInstallationService } from './services/OrgDevAppInstallationService'
 import { T3BrowserSurfaceService } from './services/T3BrowserSurfaceService'
 import { WorkbenchSessionManager } from './services/WorkbenchSessionManager'
 import { ORG_DEVAPP_SCHEME } from '../../../shared/orgDevAppProtocol'
@@ -1083,6 +1086,10 @@ let unregisterBrowserSurfaceHandlers: (() => void) | null = null
 const orgDevAppArtifactService = new OrgDevAppArtifactService(
   () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
 )
+const orgDevAppInstallationService = new OrgDevAppInstallationService(
+  () => path.join(app.getPath('userData'), 'org-devapp-installations.json'),
+  orgDevAppArtifactService,
+)
 
 /**
  * The worker host, and the development preview that drives it.
@@ -1107,6 +1114,7 @@ const devAppPreviewService = new DevAppPreviewService({
     broadcastDevAppPreviewStatus(() => (win ? [win.webContents] : []), sourceId, status)
   },
 })
+const devAppAuthoringService = new DevAppAuthoringService()
 const DEFAULT_SETTINGS_ROUTE = '/settings/account'
 const SETTINGS_ROUTES = new Set([
   '/settings/account',
@@ -1735,10 +1743,16 @@ registerYjsHandlers(ipcMain)
 
 registerOrgDevAppHandlers(ipcMain, {
   service: orgDevAppArtifactService,
+  installations: orgDevAppInstallationService,
+  getMainWindow: () => win,
 })
 
 registerDevAppPreviewHandlers(ipcMain, {
   service: devAppPreviewService,
+})
+
+registerDevAppAuthoringHandlers(ipcMain, {
+  service: devAppAuthoringService,
 })
 
 registerWorkbenchSessionHandlers(ipcMain, {
@@ -1832,6 +1846,7 @@ app.whenReady().then(() => {
     devAppPreviewService,
     artifactsDirectory: path.join(app.getPath('userData'), 'browser-artifacts'),
     pickPreloadPath: path.join(__dirname, '../preload/preview-pick-preload.cjs'),
+    devAppPickPreloadPath: path.join(__dirname, '../preload/devapp-preview-pick-preload.cjs'),
     pictureInPicturePreloadPath: path.join(__dirname, '../preload/preview-pip-preload.cjs'),
   })
   unregisterBrowserSurfaceHandlers = registerBrowserSurfaceHandlers(ipcMain, {

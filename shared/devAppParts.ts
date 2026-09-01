@@ -1,4 +1,5 @@
 import type { DevAppCapability } from "./devAppCapabilities"
+import type { DevAppPackageToolSpec } from "./devAppPackage"
 
 /** How a tile's content is produced. Views never hold host capabilities. */
 export type DevAppViewSource = "native" | "package"
@@ -13,7 +14,7 @@ export interface DevAppViewPart {
 export interface DevAppWorkerPart {
   capabilities: DevAppCapability[]
   protocolVersion?: number
-  exposesTools?: boolean
+  tools?: DevAppPackageToolSpec[]
 }
 
 /** A long-lived or static service reached through a managed origin. */
@@ -34,7 +35,7 @@ export type DevAppSurface = "tile" | "agentTool" | "backgroundService"
 export function derivableSurfaces(parts: DevAppParts): DevAppSurface[] {
   const surfaces: DevAppSurface[] = []
   if (parts.view) surfaces.push("tile")
-  if (parts.worker?.exposesTools) surfaces.push("agentTool")
+  if ((parts.worker?.tools?.length ?? 0) > 0) surfaces.push("agentTool")
   if (parts.worker || (parts.service && parts.service.runtimeKind !== "static")) {
     surfaces.push("backgroundService")
   }

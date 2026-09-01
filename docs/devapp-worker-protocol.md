@@ -31,6 +31,32 @@ the Phase-5 development workers, an omitted message version is accepted as versi
 explicit mismatch is malformed input and is dropped before authorization or method dispatch. Host
 responses always include the explicit selected version.
 
+The same selected protocol now carries the package-private channel between a development view and
+its own worker. Main creates an opaque connection id and transfers two separate
+`MessageChannelMain` endpoints through a bounded broker: one to the DevApp-only guest preload and
+one to the already-approved utility process. Both sides receive this bootstrap metadata:
+
+```json
+{
+  "kind": "cozea-devapp-view-port",
+  "protocolVersion": 1,
+  "supportedProtocolVersions": { "min": 1, "max": 1 },
+  "connectionId": "<main-issued opaque id>"
+}
+```
+
+The page obtains its DOM `MessagePort` with `window.cozeaDevApp.connectWorker()`. It can subscribe
+to replacements with `onWorkerConnection`; Phase 6's public `@cozea/devapp-api` package will wrap
+this low-level bridge in typed request helpers. View/worker methods are private to the package but
+still use the same request/response/event envelope. Main bounds each direction to 16 pending
+requests, applies a 30-second broker timeout, rejects malformed/version-mismatched and unsolicited
+response messages, and revokes both ports on page reload, guest destruction, worker replacement,
+authorization expiry, surface release, or application shutdown.
+
+The view port is not a second host API. Privileged Cozea operations remain on the worker's original
+`cozea-devapp-port`; every such request still passes the approved capability table and immutable
+workspace binding.
+
 Protocol v1 exposes exactly six host methods: `project.metadata`, `project.readFile`,
 `project.listDirectory`, `project.writeFile`, `shell.open`, and `shell.reveal`. The implementation
 has an invariant test requiring the method table and handler set to match exactly. Capabilities in
@@ -84,5 +110,5 @@ complete security boundary. Published worker execution therefore remains disconn
 container/VM runtime exists. See
 [DevApp Worker Security Review](./devapp-worker-security-review.md).
 
-The future view-to-worker client must reuse this selected version and bootstrap metadata. It must
-not create another independently versioned bridge.
+The future typed view client must continue to reuse this selected version and bootstrap metadata.
+It must not create another independently versioned bridge.

@@ -3,7 +3,6 @@ import type { DockviewApi, DockviewPanelApi } from "dockview-react";
 import { useQuery } from "convex/react";
 
 import { api } from "../../../../../../../convex/_generated/api";
-import type { Id } from "../../../../../../../convex/_generated/dataModel";
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
 import {
   browserSurfaceRuntimeTabId,
@@ -30,6 +29,43 @@ import {
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 import type { OrgDevAppRuntimeState } from "@shared/orgDevAppRuntime";
 import type { OrgDevAppEnvironmentStatus } from "@shared/orgDevAppEnvironment";
+import type { OrgDevAppInstallation } from "@shared/orgDevAppInstallation";
+
+interface ResolvedOrgDevAppArtifact {
+  url: string;
+  publicationId: string;
+  organizationId: string;
+  contentHash: string;
+  entryPath: string;
+  releaseId: string;
+  version: number;
+  runtimeKind: "static" | "service";
+  manifestVersion: number | null;
+  platform: string | null;
+  arch: string | null;
+  permissionSetHash: string | null;
+  publisherIdentityKey: string | null;
+  publisherDeviceLabel: string | null;
+}
+
+function artifactFromInstallation(installation: OrgDevAppInstallation): ResolvedOrgDevAppArtifact {
+  return {
+    url: `cozea-installed://${installation.activeRelease.contentHash}`,
+    publicationId: installation.publicationId,
+    organizationId: installation.organizationId,
+    contentHash: installation.activeRelease.contentHash,
+    entryPath: installation.activeRelease.entryPath,
+    releaseId: installation.activeRelease.id,
+    version: installation.activeRelease.version,
+    runtimeKind: installation.activeRelease.runtimeKind,
+    manifestVersion: installation.activeRelease.manifestVersion,
+    platform: installation.activeRelease.platform,
+    arch: installation.activeRelease.arch,
+    permissionSetHash: installation.activeRelease.permissionSetHash,
+    publisherIdentityKey: installation.activeRelease.publisherIdentityKey,
+    publisherDeviceLabel: installation.activeRelease.publisherDeviceLabel,
+  };
+}
 
 interface WorkbenchOrgDevAppTileProps {
   projectId: string;
@@ -73,22 +109,58 @@ export function WorkbenchOrgDevAppTile({
     network: boolean;
     persistentData: boolean;
   } | null>(null);
+  const [installedResolution, setInstalledResolution] = useState<
+    | undefined
+    | null
+    | { artifact: ResolvedOrgDevAppArtifact; error: string | null }
+  >(undefined);
 
-  const artifact = useQuery(
+  const remoteArtifact = useQuery(
     api.devApps.getArtifactUrl,
-    convexUserId && tile.publicationId
-      ? {
-          publicationId: tile.publicationId as Id<"devAppPublications">,
-        }
+    convexUserId && tile.devAppRef
+      ? { ref: tile.devAppRef }
       : "skip",
   );
+  const artifact: ResolvedOrgDevAppArtifact | null | undefined =
+    installedResolution === undefined
+      ? undefined
+      : installedResolution?.artifact ?? remoteArtifact;
+
+  useEffect(() => {
+    if (!tile.devAppRef) {
+      setInstalledResolution(null);
+      return;
+    }
+    let cancelled = false;
+    setInstalledResolution(undefined);
+    void window.electronAPI.orgDevApp.getInstallation({ ref: tile.devAppRef }).then(async (result) => {
+      if (cancelled) return;
+      if (!result.success || !result.installation) {
+        setInstalledResolution(null);
+        return;
+      }
+      const mapped = artifactFromInstallation(result.installation);
+      const prepared = await window.electronAPI.orgDevApp.prepareInstalled({ ref: tile.devAppRef });
+      if (cancelled) return;
+      setInstalledResolution({
+        artifact: mapped,
+        error: prepared.success ? null : prepared.error,
+      });
+    }).catch((error) => {
+      if (!cancelled) {
+        setInstalledResolution(null);
+        setPrepareError(error instanceof Error ? error.message : t("orgDevApp.open.failed"));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [prepareAttempt, t, tile.devAppRef]);
 
   const releaseKey = artifact ? `${artifact.contentHash}:${artifact.runtimeKind}` : null;
-  const originUrl = preparedOrigin?.releaseKey === releaseKey ? preparedOrigin.url : "";
+  const originUrl = preparedOrigin?.releaseKey === releaseKey ? (preparedOrigin?.url ?? "") : "";
   const serviceApproved = releaseKey !== null && approvedReleaseKey === releaseKey;
   const serviceNeedsApproval = releaseKey !== null && approvalRequiredReleaseKey === releaseKey;
-  const runtimeContentHash = artifact?.contentHash ?? tile.contentHash;
-  const runtimeKind = artifact?.runtimeKind ?? tile.runtimeKind;
+  const runtimeContentHash = artifact?.contentHash ?? "";
+  const runtimeKind = artifact?.runtimeKind ?? null;
 
   useEffect(() => {
     setPreparedOrigin(null);
@@ -102,15 +174,13 @@ export function WorkbenchOrgDevAppTile({
   }, [releaseKey]);
 
   useEffect(() => {
+    if (installedResolution?.error) {
+      setPrepareError(installedResolution.error);
+      return;
+    }
     if (artifact === null) {
       setPreparedOrigin(null);
       setPrepareError(t("orgDevApp.open.accessLost"));
-      if (tile.runtimeKind === "service") {
-        void window.electronAPI.orgDevApp.stopRuntime({
-          contentHash: tile.contentHash,
-          publicationId: tile.publicationId,
-        });
-      }
       return;
     }
     if (!artifact) return;
@@ -137,7 +207,7 @@ export function WorkbenchOrgDevAppTile({
             throw new Error("The Service DevApp permission metadata is missing.");
           const environment = await window.electronAPI.orgDevApp.getRuntimeEnvironment({
             contentHash: artifact.contentHash,
-            publicationId: tile.publicationId,
+            publicationId: artifact.publicationId,
           });
           if (!environment.success) throw new Error(environment.error);
           setEnvironmentStatus(environment.status);
@@ -147,7 +217,7 @@ export function WorkbenchOrgDevAppTile({
           }
           const trust = await window.electronAPI.orgDevApp.getRuntimeTrust({
             contentHash: artifact.contentHash,
-            publicationId: tile.publicationId,
+            publicationId: artifact.publicationId,
             permissionSetHash,
           });
           if (!trust.success) throw new Error(trust.error);
@@ -159,7 +229,7 @@ export function WorkbenchOrgDevAppTile({
           setApprovalRequiredReleaseKey(null);
           const started = await window.electronAPI.orgDevApp.startRuntime({
             contentHash: artifact.contentHash,
-            publicationId: tile.publicationId,
+            publicationId: artifact.publicationId,
             permissionSetHash,
             leaseId: tile.id,
           });
@@ -183,18 +253,18 @@ export function WorkbenchOrgDevAppTile({
     return () => {
       cancelled = true;
     };
-  }, [artifact, prepareAttempt, releaseKey, serviceApproved, t, tile.id, tile.publicationId]);
+  }, [artifact, installedResolution, prepareAttempt, releaseKey, serviceApproved, t, tile.id]);
 
   useEffect(
     () => () => {
       if (runtimeKind !== "service") return;
       void window.electronAPI.orgDevApp.releaseRuntime({
         contentHash: runtimeContentHash,
-        publicationId: tile.publicationId,
+        publicationId: artifact?.publicationId ?? "",
         leaseId: tile.id,
       });
     },
-    [runtimeContentHash, runtimeKind, tile.id, tile.publicationId],
+    [artifact?.publicationId, runtimeContentHash, runtimeKind, tile.id],
   );
 
   useEffect(() => {
@@ -203,7 +273,7 @@ export function WorkbenchOrgDevAppTile({
     const refresh = async () => {
       const result = await window.electronAPI.orgDevApp.getRuntimeState({
         contentHash: artifact.contentHash,
-        publicationId: tile.publicationId,
+        publicationId: artifact.publicationId,
       });
       if (cancelled || !result.success) return;
       setRuntimeState(result.state);
@@ -218,7 +288,7 @@ export function WorkbenchOrgDevAppTile({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [artifact?.contentHash, artifact?.runtimeKind, serviceApproved, showLogs, tile.publicationId]);
+  }, [artifact?.contentHash, artifact?.publicationId, artifact?.runtimeKind, serviceApproved, showLogs]);
 
   const runtimeGeneration = releaseKey
     ? `${releaseKey}:${artifact?.runtimeKind === "service" ? prepareAttempt : 0}`
@@ -251,8 +321,8 @@ export function WorkbenchOrgDevAppTile({
       storageScope: "orgDevApp",
       workspaceId,
       laneId,
-      publicationId: tile.publicationId,
-      organizationId: tile.organizationId ?? null,
+      publicationId: artifact.publicationId,
+      organizationId: artifact.organizationId,
       contentHash: artifact.contentHash,
       runtimeKind: artifact.runtimeKind,
       runtimeGeneration,
@@ -265,8 +335,6 @@ export function WorkbenchOrgDevAppTile({
     runtimeGeneration,
     runtimeTabId,
     tile.id,
-    tile.organizationId,
-    tile.publicationId,
     tile.title,
     workbenchSessionKey,
     workspaceId,
@@ -283,6 +351,7 @@ export function WorkbenchOrgDevAppTile({
   };
 
   const statusMessage = useMemo(() => {
+    if (!tile.devAppRef) return t("orgDevApp.open.referenceMissing");
     if (prepareError) return prepareError;
     if (serviceNeedsApproval)
       return "This Service DevApp runs trusted organization code on this Mac.";
@@ -291,7 +360,7 @@ export function WorkbenchOrgDevAppTile({
         ? "Starting Service DevApp…"
         : t("orgDevApp.open.preparing");
     return null;
-  }, [artifact?.runtimeKind, originUrl, prepareError, serviceNeedsApproval, t]);
+  }, [artifact?.runtimeKind, originUrl, prepareError, serviceNeedsApproval, t, tile.devAppRef]);
 
   return (
     <WorkbenchTileChrome
@@ -300,7 +369,7 @@ export function WorkbenchOrgDevAppTile({
       containerApi={containerApi}
       chromeVariant="pill"
       tileType="orgDevApp"
-      devAppId={tile.publicationId}
+      devAppId={artifact?.publicationId ?? tile.publicationId}
       logoDataUrl={tile.logoDataUrl}
       hideTitlePill={false}
       actions={
@@ -335,7 +404,7 @@ export function WorkbenchOrgDevAppTile({
                 void window.electronAPI.orgDevApp
                   .stopRuntime({
                     contentHash: artifact.contentHash,
-                    publicationId: tile.publicationId,
+                    publicationId: artifact.publicationId,
                   })
                   .then((result) => {
                     if (result.success) setRuntimeState(result.state);
@@ -354,7 +423,7 @@ export function WorkbenchOrgDevAppTile({
                 void window.electronAPI.orgDevApp
                   .stopRuntime({
                     contentHash: artifact.contentHash,
-                    publicationId: tile.publicationId,
+                    publicationId: artifact.publicationId,
                   })
                   .finally(() => {
                     setPreparedOrigin(null);
@@ -416,7 +485,7 @@ export function WorkbenchOrgDevAppTile({
                   void window.electronAPI.orgDevApp
                     .approveRuntime({
                       contentHash: artifact.contentHash,
-                      publicationId: tile.publicationId,
+                      publicationId: artifact.publicationId,
                       permissionSetHash: artifact.permissionSetHash,
                     })
                     .then((result) => {
@@ -545,7 +614,7 @@ export function WorkbenchOrgDevAppTile({
                   void window.electronAPI.orgDevApp
                     .setRuntimeEnvironment({
                       contentHash: artifact.contentHash,
-                      publicationId: tile.publicationId,
+                      publicationId: artifact.publicationId,
                       values,
                     })
                     .then(async (result) => {
@@ -560,7 +629,7 @@ export function WorkbenchOrgDevAppTile({
                       if (runtimeState?.status === "ready") {
                         await window.electronAPI.orgDevApp.stopRuntime({
                           contentHash: artifact.contentHash,
-                          publicationId: tile.publicationId,
+                          publicationId: artifact.publicationId,
                         });
                         setPreparedOrigin(null);
                       }

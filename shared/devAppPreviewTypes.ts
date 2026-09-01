@@ -1,5 +1,5 @@
 import type { DevAppGrant } from "./devAppCapabilities"
-import type { DevAppPackageDiagnostic } from "./devAppPackage"
+import type { DevAppPackageDiagnostic, DevAppPackageToolSpec } from "./devAppPackage"
 import type { DevAppTrustBadge } from "./devAppDevelopmentTrust"
 import type { OrgDevAppPreflightReport } from "./orgDevAppDiagnostics"
 
@@ -35,6 +35,7 @@ export type DevAppPreviewStatus =
     sourceId: string
     name: string
     requested: DevAppGrant
+    declaredTools: DevAppPackageToolSpec[]
     /** Worker code executes out of process but is not an OS sandbox. */
     workerExecution: boolean
     /** Binds approval to the exact request the user was shown. */
@@ -49,6 +50,7 @@ export type DevAppPreviewStatus =
     name: string
     view: DevAppPreviewView
     grant: DevAppGrant
+    declaredTools: DevAppPackageToolSpec[]
     badge: DevAppTrustBadge
     preflight: OrgDevAppPreflightReport
     worker: DevAppPreviewWorkerState | null

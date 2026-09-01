@@ -25,6 +25,13 @@ geometry, browser-backing, header ownership, default labels, icon source, restor
 registration consume that contract. Tile-specific process and data lifecycles remain in their
 typed implementations; they must not be inferred from layout policy.
 
+Published apps have durable refs in the form `cozea-devapp:<organization>/<publication>` for the
+active release or `cozea-devapp:<organization>/<publication>@<version>` for a pinned immutable
+release. The grammar is shared by renderer and Convex. Store cards expose the latest ref for copy,
+while installation and Add Tile persist an exact version. The workbench launcher lists active
+device-local installations; a pasted ref may still resolve across project boundaries after
+rechecking the device's organization membership.
+
 ## Product rules
 
 - Identity is a Cozea device group. Admins add initialized device principals by their public
@@ -78,33 +85,47 @@ If the project has no linked local folder, no `build` script, or no static `inde
 
 ## Open lifecycle
 
-1. Store **Your org** and the workbench launcher load `devApps.listMine` / `listForOrganization`.
-2. Choosing an org DevApp resolves to `addTile` + `tileType: "orgDevApp"` (`publishedDevApp` launch kind).
-3. The tile asks Convex for a short-lived artifact URL (`getArtifactUrl`), verifies the ZIP/hash,
-   caches the immutable release under app data, prepares its publication-scoped browser session,
-   and renders the static custom-scheme origin through the shared T3 host.
-4. A service release validates platform, manifest, entrypoint, symlinks, and native-code exclusions;
+1. Store **Your org** loads `devApps.listMine`; Add Tile reads the device-local installation
+   registry and offers only each publication's active installed exact release. A pasted durable ref
+   still uses `devApps.resolveReference`; malformed, inaccessible, mismatched, archived, or
+   unavailable versions return no consumer record.
+2. **Install** resolves the current release to `@N`, downloads the ref-bound artifact, verifies its
+   ZIP/hash, and atomically records that immutable version locally. **Update** installs another
+   exact version and changes the active local pointer only after the user asks; it never silently
+   follows `activeReleaseId`.
+3. Older installed versions remain pinned until removed in the Store's storage section. Per-version
+   and total disk usage are visible there, and installed hashes are protected from cache age,
+   count, and byte pruning.
+4. Choosing an installed org DevApp resolves to `addTile` + `tileType: "orgDevApp"`
+   (`publishedDevApp` launch kind) and persists the exact ref. The tile prepares that verified local
+   artifact before consulting Convex, so installed releases launch offline.
+5. **Uninstall** stops the publication runtime, removes every installed version, and deletes an
+   artifact only when no remaining installation references its content hash.
+6. A service release validates platform, manifest, entrypoint, symlinks, and native-code exclusions;
    blocks on missing environment values; shows trusted-code approval bound to its content and
    permission hashes; then starts with Cozea's Electron executable in Node mode, a minimal
    environment, a publication-scoped data directory, and a 1 GiB V8 heap ceiling.
-5. The main-process gateway continues to bind a secret header and exact content host to the leased
+7. The main-process gateway continues to bind a secret header and exact content host to the leased
    runtime. Its authenticated loopback origin is rendered only inside the prepared publication
    session and is never exposed to the external-browser action.
-6. `OrgDevAppArtifactService` registers the hardened custom protocol and authenticated gateway
+8. `OrgDevAppArtifactService` registers the hardened custom protocol and authenticated gateway
    header once per persistent publication session. A release/content-hash change replaces the
    living guest generation, and main-process navigation policy confines it to that exact static or
    service release.
-7. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
+9. Several org apps, Browser, and Dev Server can be open at once. They do not share a run key.
 
 Service releases run separately on each authorized Mac. Local files/databases are device-local;
 shared data still requires an external HTTPS backend. Service code is trusted organization code in
 the beta, not an OS-enforced sandbox.
 
-Access is re-evaluated reactively while a tile is open. Archiving the publication or removing the
-device from the organization stops access and prevents cached reopening. Guests use T3's approved
-clipboard, notification, and geolocation permission allowlist; all other permissions and unmanaged
-downloads are denied. Public HTTPS top-level links open externally, while custom-scheme,
-authenticated loopback, cross-release, public HTTP, file, and other schemes never do.
+Online catalog listing, new installs, and pasted-ref resolution re-evaluate organization access.
+An already-installed exact release is deliberately an offline product: archiving the publication or
+removing the device from the organization cannot revoke bytes while that Mac is disconnected and
+does not silently uninstall them later. The user must remove that installation from the Store.
+Guests use T3's approved clipboard, notification, and geolocation permission allowlist; all other
+permissions and unmanaged downloads are denied. Public HTTPS top-level links open externally,
+while custom-scheme, authenticated loopback, cross-release, public HTTP, file, and other schemes
+never do.
 
 ## Artifact and cache limits
 
@@ -114,8 +135,9 @@ authenticated loopback, cross-release, public HTTP, file, and other schemes neve
 - compression ratio: 200:1 maximum per file
 - symbolic links, traversal, duplicate/case-colliding paths, invalid CRCs, truncated records, and
   unsupported compression methods are rejected
-- local cache: 4 GiB, newest 48 releases, 30-day inactivity expiry, with atomic staging,
-  coalesced preparation, and active-runtime eviction protection
+- uninstalled cache: 4 GiB, newest 48 releases, 30-day inactivity expiry, with atomic staging,
+  coalesced preparation, and active-runtime eviction protection; installed hashes are exempt until
+  the user removes the installation
 
 The complete ZIP is still held as one bounded main-process upload buffer. Static and service limits
 are deliberately separate; further increases require streaming pack/upload/download verification.
@@ -143,7 +165,14 @@ The machine-local `localProjectDevAppStore` is compatibility-only for already-pe
 tiles. It is not a consumer catalog. Store, launcher, settings, and the left-nav publish control must
 not read it.
 
-### Compatibility development preview
+### Development preview
+
+The current command-palette manifest picker is an advanced preview hook for an already-authored
+package. It is not the intended developer onboarding flow. Phase 6 owns the first-class native
+DevApp entry points: **Create native DevApp** alongside project creation and on the DevApps
+browsing surface, plus **Open existing DevApp project** through the normal folder-import path.
+Both routes operate on a real project/repository and open this preview after scaffold or manifest
+validation.
 
 Already-persisted `devAppPreview` tiles remain supported without re-entering the old browser host.
 Framework manifests with `view.dev.url` render that loopback URL through the renderer-wide T3
@@ -164,6 +193,16 @@ spawning code, states the selected version and supported range when transferring
 and rejects mismatched message envelopes before capability authorization. Pre-Phase-6 manifests
 that omit the field are interpreted as protocol 1 only; new authoring tools must write it
 explicitly. See [DevApp Worker Protocol](./devapp-worker-protocol.md).
+
+When the approved package has both a view and a worker, its isolated guest receives a dedicated
+preload and a main-issued `MessagePort` at `window.cozeaDevApp`. The port is brokered to that exact
+source's running worker, replaced after guest reload or bounded worker restart, and revoked when
+the worker grant expires or the surface closes. It is deliberately not Electron IPC: host file,
+process, and shell operations remain available only to the worker through the existing approved
+capability gate. Ordinary Browser and published Org DevApp guests do not load this bridge preload.
+The sandboxed picker, DevApp picker, and PiP preloads are emitted as independent bundles rather
+than shared Rollup chunks, because Electron's sandbox loader cannot resolve relative preload
+dependencies.
 
 Every development package that declares a worker requires an explicit, expiring session approval,
 even when it requests no host capabilities. Its Electron utility process receives a minimal

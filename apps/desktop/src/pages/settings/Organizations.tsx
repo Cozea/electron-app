@@ -34,6 +34,7 @@ import {
 import { useTranslation } from "@/lib/i18n"
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
+import { formatDevAppRef } from "@shared/devAppRef"
 import { cn } from "@/lib/utils"
 import {
   createOrganizationRecoveryCode,
@@ -841,6 +842,12 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                                 "orgDevApp",
                                 {
                                   title: app.name,
+                                  devAppRef: formatDevAppRef({
+                                    kind: "publication",
+                                    organizationId: app.organizationId,
+                                    publicationId: app.publicationId,
+                                    version: "latest",
+                                  }),
                                   orgDevAppPublicationId: app.publicationId,
                                   orgDevAppOrganizationId: app.organizationId,
                                   orgDevAppContentHash: app.activeRelease.contentHash,

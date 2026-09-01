@@ -8,7 +8,10 @@ import {
   type DevAppPreviewFs,
 } from "../../apps/desktop/electron/services/DevAppPreviewSession"
 import type { DevAppWorkerState } from "../../apps/desktop/electron/services/DevAppWorkerHost"
-import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../shared/devAppWorkerProtocol"
+import {
+  DEV_APP_WORKER_PROTOCOL_VERSION,
+  createDevAppWorkerViewPortBootstrap,
+} from "../../shared/devAppWorkerProtocol"
 
 const WORKSPACE = "/Users/admin/proj"
 const SOURCE = "/Users/admin/proj/apps/inventory"
@@ -37,7 +40,10 @@ function approveCurrent(session: DevAppPreviewSession): ReturnType<DevAppPreview
     : status
 }
 
-function makeFs(files: Record<string, string>, links: Record<string, string> = {}): DevAppPreviewFs {
+function makeFs(
+  files: Record<string, string>,
+  links: Record<string, string> = {},
+): DevAppPreviewFs {
   return {
     readFile: (p) => files[p] ?? null,
     exists: (p) => p in files || p in links || p === SOURCE || p === WORKSPACE,
@@ -45,27 +51,44 @@ function makeFs(files: Record<string, string>, links: Record<string, string> = {
   }
 }
 
-function makeSession(options: {
-  manifest?: unknown
-  files?: Record<string, string>
-  links?: Record<string, string>
-  preflight?: OrgDevAppPreflightReport
-} = {}) {
+function makeSession(
+  options: {
+    manifest?: unknown
+    files?: Record<string, string>
+    links?: Record<string, string>
+    preflight?: OrgDevAppPreflightReport
+  } = {},
+) {
   const manifestPath = `${SOURCE}/cozea-devapp.json`
   const files: Record<string, string> = {
     ...(options.manifest === undefined
-      ? { [manifestPath]: JSON.stringify({ manifestVersion: 1, name: "Inventory", view: { entry: "dist/index.html" } }) }
+      ? {
+          [manifestPath]: JSON.stringify({
+            manifestVersion: 1,
+            name: "Inventory",
+            view: { entry: "dist/index.html" },
+          }),
+        }
       : options.manifest === null
         ? {}
         : { [manifestPath]: JSON.stringify(options.manifest) }),
     ...options.files,
   }
 
+  const runningWorkers = new Map<string, DevAppWorkerState>()
   const worker = {
-    start: vi.fn((input: { publicationId: string }) => workerState(input.publicationId)),
-    stop: vi.fn(),
+    start: vi.fn((input: { publicationId: string }) => {
+      const state = workerState(input.publicationId)
+      runningWorkers.set(input.publicationId, state)
+      return state
+    }),
+    stop: vi.fn((publicationId: string) => runningWorkers.delete(publicationId)),
     release: vi.fn(),
-    getState: vi.fn(() => null),
+    getState: vi.fn((publicationId: string) => runningWorkers.get(publicationId) ?? null),
+    attachViewPort: vi.fn((_publicationId: string, connectionId: string, protocolVersion: number) =>
+      createDevAppWorkerViewPortBootstrap(connectionId, protocolVersion),
+    ),
+    detachViewPort: vi.fn(),
   }
   const preflight = vi.fn(() => options.preflight ?? CLEAN_PREFLIGHT)
   const trust = new DevAppDevelopmentTrustStore(() => 1_000_000)
@@ -80,12 +103,13 @@ function makeSession(options: {
     worker,
   })
 
-  const open = () => session.open({
-    sourcePath: SOURCE,
-    workspaceId: "ws_1",
-    workspaceRoot: WORKSPACE,
-    leaseId: "tile_1",
-  })
+  const open = () =>
+    session.open({
+      sourcePath: SOURCE,
+      workspaceId: "ws_1",
+      workspaceRoot: WORKSPACE,
+      leaseId: "tile_1",
+    })
 
   return { session, worker, preflight, trust, open, files }
 }
@@ -133,11 +157,16 @@ describe("Preview session — refuses what it should not load", () => {
 
   it("passes the manifest parser's diagnostics straight through", () => {
     const { open } = makeSession({
-      manifest: { manifestVersion: 1, name: "A", worker: { entry: "w.js", capabilities: ["nope"] } },
+      manifest: {
+        manifestVersion: 1,
+        name: "A",
+        worker: { entry: "w.js", capabilities: ["nope"], tools: [] },
+      },
     })
     const status = open()
-    expect(status.status === "invalid" && status.diagnostics.map((d) => d.code))
-      .toContain("manifest-unknown-capability")
+    expect(status.status === "invalid" && status.diagnostics.map((d) => d.code)).toContain(
+      "manifest-unknown-capability",
+    )
   })
 })
 
@@ -146,7 +175,7 @@ describe("Preview session — approval comes first", () => {
     manifestVersion: 1,
     name: "Inventory",
     view: { entry: "dist/index.html" },
-    worker: { entry: "worker.js", capabilities: ["project.read"] },
+    worker: { entry: "worker.js", capabilities: ["project.read"], tools: [] },
   }
 
   it("does not start a worker before the user has approved", () => {
@@ -166,7 +195,7 @@ describe("Preview session — approval comes first", () => {
         manifestVersion: 1,
         name: "Inventory",
         view: { entry: "dist/index.html" },
-        worker: { entry: "worker.js", capabilities: [] },
+        worker: { entry: "worker.js", capabilities: [], tools: [] },
       },
       files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
     })
@@ -186,14 +215,16 @@ describe("Preview session — approval comes first", () => {
     open()
     const status = approveCurrent(session)
     expect(status?.status).toBe("running")
-    expect(worker.start).toHaveBeenCalledWith(expect.objectContaining({
-      entrypoint: `${SOURCE}/worker.js`,
-      packageRoot: SOURCE,
-      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
-      grant: { capabilities: ["project.read"], agentInvocable: false },
-      authorizationExpiresAt: 44_200_000,
-      binding: { workspaceId: "ws_1", workspaceRoot: WORKSPACE },
-    }))
+    expect(worker.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entrypoint: `${SOURCE}/worker.js`,
+        packageRoot: SOURCE,
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+        grant: { capabilities: ["project.read"], agentInvocable: false },
+        authorizationExpiresAt: 44_200_000,
+        binding: { workspaceId: "ws_1", workspaceRoot: WORKSPACE },
+      }),
+    )
   })
 
   it("namespaces the worker key so it cannot address a published worker", () => {
@@ -207,6 +238,31 @@ describe("Preview session — approval comes first", () => {
     expect(developmentWorkerKey(SOURCE_ID)).toBe(`dev:${SOURCE_ID}`)
   })
 
+  it("binds a view port to only the approved worker for that source", () => {
+    const { open, session, worker } = makeSession({
+      manifest: withWorker,
+      files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    open()
+    expect(() => session.attachViewPort(SOURCE_ID, "view_1", {})).toThrow(/no available worker/)
+    approveCurrent(session)
+
+    const bootstrap = session.attachViewPort(SOURCE_ID, "view_1", {})
+    expect(bootstrap).toMatchObject({
+      kind: "cozea-devapp-view-port",
+      connectionId: "view_1",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+    })
+    expect(worker.attachViewPort).toHaveBeenCalledWith(
+      `dev:${SOURCE_ID}`,
+      "view_1",
+      DEV_APP_WORKER_PROTOCOL_VERSION,
+      {},
+    )
+    session.detachViewPort(SOURCE_ID, "view_1")
+    expect(worker.detachViewPort).toHaveBeenCalledWith(`dev:${SOURCE_ID}`, "view_1")
+  })
+
   it("runs a view-only package with no worker at all", () => {
     const { open, session, worker } = makeSession({
       files: { [`${SOURCE}/dist/index.html`]: "<html>" },
@@ -216,6 +272,7 @@ describe("Preview session — approval comes first", () => {
     expect(status?.status).toBe("running")
     expect(status?.status === "running" && status.worker).toBeNull()
     expect(worker.start).not.toHaveBeenCalled()
+    expect(() => session.attachViewPort(SOURCE_ID, "view_1", {})).toThrow(/no available worker/)
   })
 })
 
@@ -225,7 +282,7 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     manifestVersion: 1,
     name: "Inventory",
     view: { entry: "dist/index.html" },
-    worker: { entry: "worker.js", capabilities: ["project.read"] },
+    worker: { entry: "worker.js", capabilities: ["project.read"], tools: [] },
   }
 
   function running() {
@@ -234,11 +291,21 @@ describe("Preview session — hot reload cannot widen a grant", () => {
       [`${SOURCE}/worker.js`]: "//",
       [`${SOURCE}/dist/index.html`]: "<html>",
     }
+    const runningWorkers = new Map<string, DevAppWorkerState>()
     const worker = {
-      start: vi.fn((input: { publicationId: string }) => workerState(input.publicationId)),
-      stop: vi.fn(),
+      start: vi.fn((input: { publicationId: string }) => {
+        const state = workerState(input.publicationId)
+        runningWorkers.set(input.publicationId, state)
+        return state
+      }),
+      stop: vi.fn((publicationId: string) => runningWorkers.delete(publicationId)),
       release: vi.fn(),
-      getState: vi.fn(() => null),
+      getState: vi.fn((publicationId: string) => runningWorkers.get(publicationId) ?? null),
+      attachViewPort: vi.fn(
+        (_publicationId: string, connectionId: string, protocolVersion: number) =>
+          createDevAppWorkerViewPortBootstrap(connectionId, protocolVersion),
+      ),
+      detachViewPort: vi.fn(),
     }
     const session = new DevAppPreviewSession({
       fs: {
@@ -253,7 +320,12 @@ describe("Preview session — hot reload cannot widen a grant", () => {
       trust: new DevAppDevelopmentTrustStore(() => 1_000_000),
       worker,
     })
-    session.open({ sourcePath: SOURCE, workspaceId: "ws_1", workspaceRoot: WORKSPACE, leaseId: "tile_1" })
+    session.open({
+      sourcePath: SOURCE,
+      workspaceId: "ws_1",
+      workspaceRoot: WORKSPACE,
+      leaseId: "tile_1",
+    })
     approveCurrent(session)
     return { session, worker, files }
   }
@@ -264,7 +336,7 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     const { session, worker, files } = running()
     files[manifestPath] = JSON.stringify({
       ...narrow,
-      worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"] },
+      worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"], tools: [] },
     })
     const status = session.reload(SOURCE_ID)
     expect(status?.status).toBe("needsApproval")
@@ -278,7 +350,7 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     expect(shown?.status).toBe("running")
     files[manifestPath] = JSON.stringify({
       ...narrow,
-      worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"] },
+      worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"], tools: [] },
     })
     const widened = session.reload(SOURCE_ID)
     expect(widened?.status).toBe("needsApproval")
@@ -293,7 +365,7 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     const { session, files } = running()
     files[manifestPath] = JSON.stringify({
       ...narrow,
-      worker: { entry: "worker.js", capabilities: [] },
+      worker: { entry: "worker.js", capabilities: [], tools: [] },
     })
     const status = session.reload(SOURCE_ID)
     expect(status?.status).toBe("running")
@@ -362,27 +434,34 @@ describe("Preview session — where the view comes from", () => {
   }
 
   it("prefers a declared dev server, so hot reload is available", () => {
-    const status = approved({
-      manifestVersion: 1,
-      name: "A",
-      view: { entry: "dist/index.html", dev: { url: "http://localhost:5173" } },
-    }, { [`${SOURCE}/dist/index.html`]: "<html>" })
-    expect(status?.status === "running" && status.view)
-      .toEqual({ kind: "devServer", url: "http://localhost:5173" })
+    const status = approved(
+      {
+        manifestVersion: 1,
+        name: "A",
+        view: { entry: "dist/index.html", dev: { url: "http://localhost:5173" } },
+      },
+      { [`${SOURCE}/dist/index.html`]: "<html>" },
+    )
+    expect(status?.status === "running" && status.view).toEqual({
+      kind: "devServer",
+      url: "http://localhost:5173",
+    })
   })
 
   it("falls back to the built output publishing would pack", () => {
-    const status = approved({
-      manifestVersion: 1,
-      name: "A",
-      view: { entry: "dist/index.html" },
-    }, { [`${SOURCE}/dist/index.html`]: "<html>" })
-    expect(status?.status === "running" && status.view)
-      .toEqual({
-        kind: "builtOutput",
-        entryPath: "dist/index.html",
-        url: `cozea-devapp://${SOURCE_ID}.dev/dist/index.html`,
-      })
+    const status = approved(
+      {
+        manifestVersion: 1,
+        name: "A",
+        view: { entry: "dist/index.html" },
+      },
+      { [`${SOURCE}/dist/index.html`]: "<html>" },
+    )
+    expect(status?.status === "running" && status.view).toEqual({
+      kind: "builtOutput",
+      entryPath: "dist/index.html",
+      url: `cozea-devapp://${SOURCE_ID}.dev/dist/index.html`,
+    })
   })
 
   it("says what to do when there is neither", () => {
@@ -414,7 +493,7 @@ describe("Preview session — where the view comes from", () => {
         manifestVersion: 1,
         name: "A",
         view: { entry: "dist/index.html" },
-        worker: { entry: "worker.js", capabilities: [] },
+        worker: { entry: "worker.js", capabilities: [], tools: [] },
       },
       files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
       links: { [`${SOURCE}/worker.js`]: "/usr/local/bin/anything" },
@@ -432,25 +511,28 @@ describe("Preview session — preflight runs the whole time", () => {
       ok: false,
       framework: "next",
       expectedRuntimeKind: "service",
-      diagnostics: [{
-        code: "next-missing-standalone",
-        severity: "blocker",
-        message: "next.config needs output: 'standalone'.",
-      }],
+      diagnostics: [
+        {
+          code: "next-missing-standalone",
+          severity: "blocker",
+          message: "next.config needs output: 'standalone'.",
+        },
+      ],
     }
     const { open } = makeSession({
       manifest: {
         manifestVersion: 1,
         name: "A",
         view: { entry: "dist/index.html" },
-        worker: { entry: "w.js", capabilities: ["project.read"] },
+        worker: { entry: "w.js", capabilities: ["project.read"], tools: [] },
       },
       preflight: failing,
     })
     const status = open()
     expect(status.status).toBe("needsApproval")
-    expect(status.status === "needsApproval" && status.preflight.diagnostics[0]?.code)
-      .toBe("next-missing-standalone")
+    expect(status.status === "needsApproval" && status.preflight.diagnostics[0]?.code).toBe(
+      "next-missing-standalone",
+    )
   })
 
   it("re-runs preflight on every reload rather than caching a stale verdict", () => {
@@ -472,7 +554,7 @@ describe("Preview session — closing", () => {
         manifestVersion: 1,
         name: "A",
         view: { entry: "dist/index.html" },
-        worker: { entry: "worker.js", capabilities: [] },
+        worker: { entry: "worker.js", capabilities: [], tools: [] },
       },
       files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
     })
@@ -494,7 +576,7 @@ describe("Preview session — closing", () => {
         manifestVersion: 1,
         name: "A",
         view: { entry: "dist/index.html" },
-        worker: { entry: "worker.js", capabilities: [] },
+        worker: { entry: "worker.js", capabilities: [], tools: [] },
       },
       files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
     })

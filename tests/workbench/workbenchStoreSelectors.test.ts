@@ -245,6 +245,7 @@ describe("workbench store selectors", () => {
       {
         title: "Org DevApp",
         url: `cozea-devapp://${"a".repeat(64)}.release/index.html`,
+        devAppRef: "cozea-devapp:organization-1/publication-2@3",
         orgDevAppPublicationId: "publication-2",
         orgDevAppOrganizationId: "organization-1",
         orgDevAppContentHash: "a".repeat(64),
@@ -281,6 +282,7 @@ describe("workbench store selectors", () => {
     });
     expect(workbench?.tiles[orgDevAppTileId]).toMatchObject({
       id: orgDevAppTileId,
+      devAppRef: "cozea-devapp:organization-1/publication-2@3",
       publicationId: "publication-2",
       organizationId: "organization-1",
       contentHash: "a".repeat(64),

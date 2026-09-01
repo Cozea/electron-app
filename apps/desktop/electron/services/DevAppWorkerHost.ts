@@ -9,6 +9,7 @@ import {
   DEV_APP_WORKER_PROTOCOL_MIN_VERSION,
   DEV_APP_WORKER_PROTOCOL_VERSION,
   authorizeWorkerMethod,
+  createDevAppWorkerViewPortBootstrap,
   parseWorkerMessage,
   supportsDevAppWorkerProtocolVersion,
   workerErrorResponse,
@@ -16,6 +17,7 @@ import {
   type DevAppWorkerMessage,
   type DevAppWorkerRequest,
   type DevAppWorkerResponse,
+  type DevAppWorkerViewPortBootstrap,
 } from "../../../../shared/devAppWorkerProtocol"
 
 /**
@@ -32,11 +34,18 @@ import {
 
 export interface DevAppWorkerProcess {
   postMessage: (message: unknown) => void
+  attachViewPort: (
+    bootstrap: DevAppWorkerViewPortBootstrap,
+    port: DevAppWorkerTransferablePort,
+  ) => void
   onMessage: (listener: (message: unknown) => void) => void
   onExit: (listener: (code: number | null) => void) => void
   onLog: (listener: (line: string) => void) => void
   kill: () => void
 }
+
+/** Opaque in the supervisor; the Electron adapter owns the concrete MessagePortMain type. */
+export type DevAppWorkerTransferablePort = object
 
 export type DevAppWorkerSpawn = (options: {
   entrypoint: string
@@ -75,11 +84,17 @@ export interface DevAppWorkerState {
   logs: string[]
 }
 
+export interface DevAppWorkerStateChange {
+  publicationId: string
+  state: DevAppWorkerState
+}
+
 const MAX_LOG_LINES = 200
 const MAX_RESTARTS = 3
 const MAX_PENDING_REQUESTS = 16
 const MAX_ACTIVE_WORKERS = 16
 const MAX_LEASES_PER_WORKER = 64
+const MAX_VIEW_CONNECTIONS_PER_WORKER = 64
 
 interface ActiveWorker {
   process: DevAppWorkerProcess
@@ -91,12 +106,14 @@ interface ActiveWorker {
   state: DevAppWorkerState
   leases: Set<string>
   inFlight: number
+  viewConnections: Set<string>
   expiryTimer: unknown | null
   disposed: boolean
 }
 
 export class DevAppWorkerHost {
   private readonly workers = new Map<string, ActiveWorker>()
+  private readonly stateListeners = new Set<(change: DevAppWorkerStateChange) => void>()
 
   private readonly spawn: DevAppWorkerSpawn
   private readonly handlers: Readonly<Record<string, DevAppWorkerMethodHandler>>
@@ -158,10 +175,7 @@ export class DevAppWorkerHost {
     ) {
       throw new Error("The DevApp worker authorization expiry is invalid.")
     }
-    if (
-      options.authorizationExpiresAt !== null &&
-      options.authorizationExpiresAt <= this.now()
-    ) {
+    if (options.authorizationExpiresAt !== null && options.authorizationExpiresAt <= this.now()) {
       throw new Error("The DevApp worker authorization has expired.")
     }
     const normalizedOptions = {
@@ -251,6 +265,7 @@ export class DevAppWorkerHost {
       state,
       leases: new Set([options.leaseId]),
       inFlight: 0,
+      viewConnections: new Set(),
       expiryTimer: null,
       disposed: false,
     }
@@ -280,6 +295,7 @@ export class DevAppWorkerHost {
       // worker dying does not take down the tile that is holding it open.
       current.state.status = "crashed"
       current.state.lastError = `Worker exited with code ${code ?? "unknown"}.`
+      this.emitState(current.state)
       if (current.leases.size > 0 && restarts < MAX_RESTARTS) {
         const leases = [...current.leases]
         const relaunched = this.launch({ ...options, leaseId: leases[0]! }, restarts + 1)
@@ -290,7 +306,47 @@ export class DevAppWorkerHost {
     })
 
     state.status = "ready"
+    this.emitState(state)
     return state
+  }
+
+  /** Transfers one package-private view port to the currently authorized worker. */
+  attachViewPort(
+    publicationId: string,
+    connectionId: string,
+    protocolVersion: number,
+    port: DevAppWorkerTransferablePort,
+  ): DevAppWorkerViewPortBootstrap {
+    const worker = this.workers.get(publicationId)
+    if (!worker || worker.disposed || worker.state.status !== "ready") {
+      throw new Error("The DevApp worker is unavailable.")
+    }
+    if (worker.authorizationExpiresAt !== null && worker.authorizationExpiresAt <= this.now()) {
+      this.stop(publicationId)
+      throw new Error("The DevApp worker authorization has expired.")
+    }
+    if (protocolVersion !== worker.state.protocolVersion) {
+      throw new Error("The DevApp view and worker protocol versions do not match.")
+    }
+    if (
+      !worker.viewConnections.has(connectionId) &&
+      worker.viewConnections.size >= MAX_VIEW_CONNECTIONS_PER_WORKER
+    ) {
+      throw new Error("This DevApp worker has too many attached views.")
+    }
+    const bootstrap = createDevAppWorkerViewPortBootstrap(connectionId, protocolVersion)
+    worker.viewConnections.add(connectionId)
+    try {
+      worker.process.attachViewPort(bootstrap, port)
+    } catch (error) {
+      worker.viewConnections.delete(connectionId)
+      throw error
+    }
+    return bootstrap
+  }
+
+  detachViewPort(publicationId: string, connectionId: string): void {
+    this.workers.get(publicationId)?.viewConnections.delete(connectionId)
   }
 
   /** Releases a lease; the worker stops when the last one goes. */
@@ -309,12 +365,18 @@ export class DevAppWorkerHost {
     worker.leases.clear()
     if (worker.expiryTimer !== null) this.clearTimer(worker.expiryTimer)
     worker.expiryTimer = null
+    this.emitState(worker.state)
     worker.process.kill()
     this.workers.delete(publicationId)
   }
 
   getState(publicationId: string): DevAppWorkerState | null {
     return this.workers.get(publicationId)?.state ?? null
+  }
+
+  onStateChange(listener: (change: DevAppWorkerStateChange) => void): () => void {
+    this.stateListeners.add(listener)
+    return () => this.stateListeners.delete(listener)
   }
 
   private scheduleAuthorizationExpiry(publicationId: string, worker: ActiveWorker): void {
@@ -350,10 +412,7 @@ export class DevAppWorkerHost {
     }
     if (message.kind !== "request") return
 
-    if (
-      worker.authorizationExpiresAt !== null &&
-      worker.authorizationExpiresAt <= this.now()
-    ) {
+    if (worker.authorizationExpiresAt !== null && worker.authorizationExpiresAt <= this.now()) {
       this.respond(
         worker,
         workerErrorResponse(
@@ -451,6 +510,20 @@ export class DevAppWorkerHost {
     state.logs.push(line.slice(0, 2048))
     if (state.logs.length > MAX_LOG_LINES) {
       state.logs.splice(0, state.logs.length - MAX_LOG_LINES)
+    }
+  }
+
+  private emitState(state: DevAppWorkerState): void {
+    const change: DevAppWorkerStateChange = {
+      publicationId: state.publicationId,
+      state: { ...state, logs: [...state.logs] },
+    }
+    for (const listener of this.stateListeners) {
+      try {
+        listener(change)
+      } catch {
+        // A UI observer must not affect worker supervision.
+      }
     }
   }
 

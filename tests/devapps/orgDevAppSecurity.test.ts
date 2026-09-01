@@ -8,6 +8,10 @@ import { partitionForDescriptor } from "@shared/browserSurfaceSessions";
 
 const root = process.cwd();
 const devApps = fs.readFileSync(path.join(root, "convex/devApps.ts"), "utf8");
+const devAppReferenceResolution = fs.readFileSync(
+  path.join(root, "convex/lib/devAppReferenceResolution.ts"),
+  "utf8",
+);
 const artifacts = fs.readFileSync(
   path.join(root, "apps/desktop/electron/services/OrgDevAppArtifactService.ts"),
   "utf8",
@@ -43,8 +47,10 @@ describe("org DevApp security lifecycle", () => {
   it("bounds release retention and denies cached reopening after access loss", () => {
     expect(devApps).toContain("DEVAPP_RELEASE_RETENTION");
     expect(devApps).toContain("retainedReleases.slice(DEVAPP_RELEASE_RETENTION)");
-    expect(devApps).toContain("if (!(await isOrgMember");
-    expect(devApps).toContain("return null");
+    expect(devApps).toContain("resolvePublicationReferenceRecord");
+    expect(devAppReferenceResolution).toContain("await isOrgMember");
+    expect(devAppReferenceResolution).toContain('publication.status !== "active"');
+    expect(devAppReferenceResolution).toContain("return null");
   });
 
   it("connects hardened custom-protocol handling only to prepared T3 publication sessions", () => {

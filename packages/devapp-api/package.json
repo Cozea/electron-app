@@ -1,0 +1,35 @@
+{
+  "name": "@cozea/devapp-api",
+  "version": "0.1.0",
+  "description": "Typed view-to-worker client and authoring contract for native Cozea DevApps.",
+  "keywords": [
+    "cozea",
+    "devapp",
+    "electron"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cozea/electron-app.git",
+    "directory": "packages/devapp-api"
+  },
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema": "./schema/cozea-devapp.schema.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --format esm --target browser && bunx tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build"
+  }
+}

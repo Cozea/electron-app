@@ -32,6 +32,7 @@ const orgApp: DevAppManifest = {
   launch: {
     kind: "publishedDevApp",
     tileType: "orgDevApp",
+    ref: "cozea-devapp:org_1/publication_1@1",
     publicationId: "pub-1",
     organizationId: "org-1",
     organizationName: "Acme",

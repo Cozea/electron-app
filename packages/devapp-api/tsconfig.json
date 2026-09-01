@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.electron.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "src",
+    "../../shared/devAppCapabilities.ts",
+    "../../shared/devAppPackage.ts",
+    "../../shared/devAppViewBridge.ts",
+    "../../shared/devAppWorkerProtocol.ts"
+  ]
+}

@@ -91,6 +91,10 @@ export function createUtilityProcessSpawn(
       postMessage: (message) => {
         if (!exited) channel.port1.postMessage(message)
       },
+      attachViewPort: (bootstrap, port) => {
+        if (exited) throw new Error("The DevApp worker is unavailable.")
+        child.postMessage(bootstrap, [port as Electron.MessagePortMain])
+      },
       onMessage: (listener) => {
         channel.port1.on("message", (event) => listener(event.data))
         channel.port1.start()

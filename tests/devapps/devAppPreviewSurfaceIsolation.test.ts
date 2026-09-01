@@ -38,14 +38,16 @@ const preview = (devSourceId: string): BrowserSurfaceDescriptor => ({
 
 describe("Preview surfaces are isolated from published ones", () => {
   it("gives a preview its own partition", () => {
-    expect(partitionForDescriptor(preview("a".repeat(32))))
-      .toBe(`persist:cozea-devapp-preview.${"a".repeat(32)}`)
+    expect(partitionForDescriptor(preview("a".repeat(32)))).toBe(
+      `persist:cozea-devapp-preview.${"a".repeat(32)}`,
+    )
   })
 
   it("never collides with a published app's partition", () => {
     const sourceId = "b".repeat(32)
-    expect(partitionForDescriptor(preview(sourceId)))
-      .not.toBe(partitionForDescriptor(published(sourceId)))
+    expect(partitionForDescriptor(preview(sourceId))).not.toBe(
+      partitionForDescriptor(published(sourceId)),
+    )
   })
 
   it("cannot be reached by a publication named to look like a preview", () => {
@@ -57,14 +59,16 @@ describe("Preview surfaces are isolated from published ones", () => {
       `preview-${sourceId}`,
       `preview${sourceId}`,
     ]) {
-      expect(partitionForDescriptor(published(impersonation)), impersonation)
-        .not.toBe(partitionForDescriptor(preview(sourceId)))
+      expect(partitionForDescriptor(published(impersonation)), impersonation).not.toBe(
+        partitionForDescriptor(preview(sourceId)),
+      )
     }
   })
 
   it("keeps two different sources apart", () => {
-    expect(partitionForDescriptor(preview("d".repeat(32))))
-      .not.toBe(partitionForDescriptor(preview("e".repeat(32))))
+    expect(partitionForDescriptor(preview("d".repeat(32)))).not.toBe(
+      partitionForDescriptor(preview("e".repeat(32))),
+    )
   })
 
   it("falls back to an ephemeral partition when a preview has no source id", () => {
@@ -75,10 +79,12 @@ describe("Preview surfaces are isolated from published ones", () => {
   })
 
   it("leaves the existing partitions unchanged", () => {
-    expect(partitionForDescriptor({ ...base, storageScope: "global" }))
-      .toBe("persist:cozea-browser-global")
-    expect(partitionForDescriptor({ ...base, storageScope: "workspace", workspaceId: "ws_1" }))
-      .toBe("persist:cozea-browser-workspace-ws_1")
+    expect(partitionForDescriptor({ ...base, storageScope: "global" })).toBe(
+      "persist:cozea-browser-global",
+    )
+    expect(
+      partitionForDescriptor({ ...base, storageScope: "workspace", workspaceId: "ws_1" }),
+    ).toBe("persist:cozea-browser-workspace-ws_1")
     expect(partitionForDescriptor(published("pub_1"))).toBe("persist:cozea-devapp-pub_1")
     expect(partitionForDescriptor(base)).toBe("cozea-browser-ephemeral-tile_1")
   })

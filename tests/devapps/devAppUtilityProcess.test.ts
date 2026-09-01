@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEV_APP_WORKER_PROTOCOL_MIN_VERSION,
   DEV_APP_WORKER_PROTOCOL_VERSION,
+  createDevAppWorkerViewPortBootstrap,
 } from "../../shared/devAppWorkerProtocol"
 
 const electronMocks = vi.hoisted(() => {
@@ -59,12 +60,14 @@ describe("DevApp utility process protocol bootstrap", () => {
   })
 
   it("states the selected protocol and host range when it transfers the port", () => {
-    const spawn = createUtilityProcessSpawn(({ entrypoint: selectedEntrypoint, packageRoot: selectedPackageRoot, publicationId }) => ({
-      packageRoot: selectedPackageRoot,
-      entrypoint: selectedEntrypoint,
-      publicationId,
-      dataDir,
-    }))
+    const spawn = createUtilityProcessSpawn(
+      ({ entrypoint: selectedEntrypoint, packageRoot: selectedPackageRoot, publicationId }) => ({
+        packageRoot: selectedPackageRoot,
+        entrypoint: selectedEntrypoint,
+        publicationId,
+        dataDir,
+      }),
+    )
 
     spawn({
       entrypoint,
@@ -106,6 +109,27 @@ describe("DevApp utility process protocol bootstrap", () => {
         ],
       }),
     )
+  })
+
+  it("transfers a main-issued view port to the existing utility process", () => {
+    const spawn = createUtilityProcessSpawn(({ publicationId }) => ({
+      packageRoot,
+      entrypoint,
+      publicationId,
+      dataDir,
+    }))
+    const process = spawn({
+      entrypoint,
+      packageRoot,
+      publicationId: "pub_1",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+    })
+    const bootstrap = createDevAppWorkerViewPortBootstrap("view_1", DEV_APP_WORKER_PROTOCOL_VERSION)
+    const viewPort = { name: "view-worker-port" }
+
+    process.attachViewPort(bootstrap, viewPort)
+
+    expect(electronMocks.childPostMessage).toHaveBeenLastCalledWith(bootstrap, [viewPort])
   })
 
   it("rejects an entrypoint that resolves outside its package", () => {

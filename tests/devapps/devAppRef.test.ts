@@ -15,6 +15,7 @@ import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
 const PUBLISHED: DevAppLaunchSpec = {
   kind: "publishedDevApp",
   tileType: "orgDevApp",
+  ref: "cozea-devapp:org_abc/pub_123@7",
   publicationId: "pub_123",
   organizationId: "org_abc",
   organizationName: "Cozea",
@@ -133,8 +134,7 @@ describe("DevApp refs — identity", () => {
 })
 
 describe("DevApp refs — deriving identity from what already ships", () => {
-  it("gives an already-persisted published tile an addressable identity", () => {
-    // This is what lets existing workbench state gain a durable handle with no migration.
+  it("preserves the originating ref on a materialized publication launch", () => {
     expect(refForLaunchSpec(PUBLISHED)).toEqual({
       kind: "publication",
       organizationId: "org_abc",

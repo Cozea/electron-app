@@ -8,7 +8,7 @@ import {
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
-type ProjectCreationMenuAction = "empty" | "local"
+type ProjectCreationMenuAction = CreateProjectDialogMode
 
 function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: number } | undefined {
   if (event) {
@@ -38,27 +38,19 @@ export function useProjectCreationMenu() {
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
 
-  const chooseLocalFolder = useCallback(async () => {
-    const selectedPath = await browseForDirectory("Select local project folder")
-    if (!selectedPath?.trim()) {
-      return
-    }
-
-    openCreateProjectDialog({
-      mode: "local",
-      localFolderPath: selectedPath,
-    })
-  }, [openCreateProjectDialog])
-
   const openDirect = useCallback(
     (mode: CreateProjectDialogMode = "empty") => {
-      if (mode === "local") {
-        void chooseLocalFolder()
+      if (mode === "local" || mode === "devapp-local") {
+        void browseForDirectory(
+          mode === "devapp-local" ? "Select existing DevApp project" : "Select local project folder",
+        ).then((selectedPath) => {
+          if (selectedPath?.trim()) openCreateProjectDialog({ mode, localFolderPath: selectedPath })
+        })
         return
       }
       openCreateProjectDialog({ mode })
     },
-    [chooseLocalFolder, openCreateProjectDialog],
+    [openCreateProjectDialog],
   )
 
   const openMenu = useCallback(
@@ -72,6 +64,8 @@ export function useProjectCreationMenu() {
         [
           { id: "empty", label: t("menu.emptyProject") },
           { id: "local", label: t("menu.importLocalFolder") },
+          { id: "devapp", label: t("menu.createNativeDevApp") },
+          { id: "devapp-local", label: t("menu.openExistingDevApp") },
         ],
         resolveMenuPosition(event),
       )
@@ -80,14 +74,19 @@ export function useProjectCreationMenu() {
         return
       }
 
-      if (selection === "local") {
-        await chooseLocalFolder()
+      if (selection === "local" || selection === "devapp-local") {
+        const selectedPath = await browseForDirectory(
+          selection === "devapp-local" ? "Select existing DevApp project" : "Select local project folder",
+        )
+        if (selectedPath?.trim()) {
+          openCreateProjectDialog({ mode: selection, localFolderPath: selectedPath })
+        }
         return
       }
 
       openCreateProjectDialog({ mode: selection })
     },
-    [chooseLocalFolder, openCreateProjectDialog, t],
+    [openCreateProjectDialog, t],
   )
 
   return {

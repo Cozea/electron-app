@@ -13,6 +13,10 @@ export interface WorkbenchSelectionCreateOptions {
   devAppId?: string | null
   devAppReleaseId?: string | null
   devAppReleaseVersion?: number | null
+  devAppRef?: string | null
+  devAppPreviewRelativePath?: string | null
+  devAppPreviewSourceProjectId?: string | null
+  devAppPreviewSourceWorkspaceId?: string | null
   orgDevAppPublicationId?: string | null
   orgDevAppOrganizationId?: string | null
   orgDevAppContentHash?: string | null
@@ -24,7 +28,7 @@ export interface WorkbenchSelectionCreateOptions {
 
 export interface ResolvedWorkbenchSelectionAddTileAction {
   action: "addTile"
-  tileType: "assistantChat" | "browser" | "terminal" | "orgDevApp"
+  tileType: "assistantChat" | "browser" | "terminal" | "orgDevApp" | "devAppPreview"
   options?: WorkbenchSelectionCreateOptions
 }
 
@@ -41,6 +45,23 @@ export type ResolvedWorkbenchSelectionLaunchAction =
 export function resolveWorkbenchSelectionLaunchRequest(
   request: WorkbenchSelectionLaunchRequest,
 ): ResolvedWorkbenchSelectionLaunchAction {
+  if (request.developmentDevApp) {
+    const devApp = request.developmentDevApp
+    if (request.appId !== `development-devapp:${devApp.sourceId}`) {
+      throw new Error(`Invalid development DevApp launch request for "${request.appId}"`)
+    }
+    return {
+      action: "addTile",
+      tileType: "devAppPreview",
+      options: {
+        title: devApp.name,
+        devAppRef: devApp.ref,
+        devAppPreviewRelativePath: devApp.relativePath,
+        devAppPreviewSourceProjectId: devApp.projectId,
+        devAppPreviewSourceWorkspaceId: devApp.workspaceId,
+      },
+    }
+  }
   if (request.publishedDevApp) {
     const devApp = request.publishedDevApp
     if (request.appId !== `org-devapp:${devApp.publicationId}`) {
@@ -54,6 +75,7 @@ export function resolveWorkbenchSelectionLaunchRequest(
         title: devApp.name,
         url: "",
         storageScope: "orgDevApp",
+        devAppRef: devApp.ref,
         devAppId: devApp.publicationId,
         devAppReleaseId: devApp.releaseId,
         devAppReleaseVersion: devApp.releaseVersion,
@@ -122,6 +144,7 @@ export function resolveWorkbenchSelectionLaunchRequest(
       }
     case "publishedDevApp":
     case "projectDevApp":
+    case "developmentDevApp":
       throw new Error(`Unsupported DevApp launch request for "${manifest.id}"`)
   }
 

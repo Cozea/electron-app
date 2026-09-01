@@ -3,11 +3,23 @@ import { useQuery } from "convex/react"
 
 import { api } from "../../../../../../../convex/_generated/api"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
-import { buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
+import { buildInstalledDevAppManifest, buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
+import { useOrgDevAppInstallations } from "@/features/devapps/useOrgDevAppInstallations"
+import { buildDevelopmentDevAppManifest } from "@/features/devapps/developmentDevAppManifest"
 import { listLauncherApps } from "@/features/devapps/registry"
+import {
+  DEV_APP_REF_SCHEME,
+  parseDevAppRef,
+  resolveBuiltinRef,
+} from "@/features/devapps/registry/ref"
 import { featureFlags } from "@/lib/featureFlags"
 import { useAuth } from "@/contexts/AuthContext"
-import type { DevAppManifest, PublishedDevAppLaunchSpec } from "@/features/devapps/registry/types"
+import type {
+  DevAppManifest,
+  DevelopmentDevAppLaunchSpec,
+  PublishedDevAppLaunchSpec,
+} from "@/features/devapps/registry/types"
+import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
 import type {
   WorkbenchSelectionTile,
 } from "@/stores/useProjectWorkbenchStore"
@@ -391,15 +403,49 @@ export function WorkbenchSelectionTile({
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const { convexUserId } = useAuth()
-  const orgDevApps = useQuery(
-    api.devApps.listMine,
-    featureFlags.projectDevApps && convexUserId ? {} : "skip",
+  const [developmentSources, setDevelopmentSources] = useState<DevAppDevelopmentSource[]>([])
+  const normalizedRefSearch = searchQuery.trim()
+  const parsedRef = useMemo(() => parseDevAppRef(normalizedRefSearch), [normalizedRefSearch])
+  const isDevAppRefInput = normalizedRefSearch.startsWith(`${DEV_APP_REF_SCHEME}:`)
+  const canResolvePublicationRef = featureFlags.projectDevApps && Boolean(convexUserId)
+  const { installations } = useOrgDevAppInstallations()
+  const resolvedPublicationRef = useQuery(
+    api.devApps.resolveReference,
+    canResolvePublicationRef && parsedRef?.kind === "publication"
+      ? { ref: normalizedRefSearch }
+      : "skip",
   )
 
+  useEffect(() => {
+    let cancelled = false
+    void window.electronAPI.devAppAuthoring.listDevelopmentSources().then((result) => {
+      if (!cancelled && result.success) setDevelopmentSources(result.sources)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+
   const orgDevAppOptions = useMemo(
-    () => (orgDevApps ?? []).map((entry) => buildPublishedDevAppManifest(entry)),
-    [orgDevApps],
+    () => installations.filter((entry) => entry.active).map(buildInstalledDevAppManifest),
+    [installations],
   )
+  const developmentDevAppOptions = useMemo(
+    () => developmentSources.map(buildDevelopmentDevAppManifest),
+    [developmentSources],
+  )
+  const resolvedRefOptions = useMemo<DevAppManifest[]>(() => {
+    if (parsedRef?.kind === "builtin") {
+      const manifest = resolveBuiltinRef(parsedRef)
+      return manifest ? [manifest] : []
+    }
+    if (parsedRef?.kind === "publication" && resolvedPublicationRef) {
+      return [buildPublishedDevAppManifest(resolvedPublicationRef, normalizedRefSearch)]
+    }
+    if (parsedRef?.kind === "development") {
+      const source = developmentSources.find((candidate) => candidate.sourceId === parsedRef.sourceId)
+      return source ? [buildDevelopmentDevAppManifest(source)] : []
+    }
+    return []
+  }, [developmentSources, normalizedRefSearch, parsedRef, resolvedPublicationRef])
   const hasOrgDevApps = orgDevAppOptions.length > 0
   const categories = useMemo(
     () => getWorkbenchSelectionCategories(hasOrgDevApps),
@@ -428,26 +474,45 @@ export function WorkbenchSelectionTile({
   const allOptions = useMemo(
     () =>
       listLauncherApps({
-        additionalApps: orgDevAppOptions,
+        additionalApps: [...developmentDevAppOptions, ...orgDevAppOptions],
         enabledAssistantProviders,
       }),
-    [enabledAssistantProviders, orgDevAppOptions],
+    [developmentDevAppOptions, enabledAssistantProviders, orgDevAppOptions],
   )
   const searchedOptions = useMemo(
     () =>
-      searchQuery.trim()
-        ? listLauncherApps({
-            additionalApps: orgDevAppOptions,
+      parsedRef
+        ? resolvedRefOptions
+        : searchQuery.trim()
+          ? listLauncherApps({
+            additionalApps: [...developmentDevAppOptions, ...orgDevAppOptions],
             enabledAssistantProviders,
             query: searchQuery,
           })
-        : allOptions,
-    [allOptions, enabledAssistantProviders, orgDevAppOptions, searchQuery],
+          : allOptions,
+    [allOptions, developmentDevAppOptions, enabledAssistantProviders, orgDevAppOptions, parsedRef, resolvedRefOptions, searchQuery],
   )
   const filteredOptions = useMemo(
-    () => filterWorkbenchSelectionApps(searchedOptions, resolvedActiveCategory),
-    [resolvedActiveCategory, searchedOptions],
+    () =>
+      parsedRef
+        ? searchedOptions
+        : filterWorkbenchSelectionApps(searchedOptions, resolvedActiveCategory),
+    [parsedRef, resolvedActiveCategory, searchedOptions],
   )
+  const emptyResultsMessage = useMemo(() => {
+    if (isDevAppRefInput && !parsedRef) return t("workbench.selection.invalidDevAppRef")
+    if (
+      parsedRef?.kind === "publication" &&
+      canResolvePublicationRef &&
+      resolvedPublicationRef === undefined
+    ) {
+      return t("workbench.selection.resolvingDevAppRef")
+    }
+    if (parsedRef && resolvedRefOptions.length === 0) {
+      return t("workbench.selection.unavailableDevAppRef")
+    }
+    return `${t("workbench.selection.noResults")} "${searchQuery.trim()}".`
+  }, [canResolvePublicationRef, isDevAppRefInput, parsedRef, resolvedPublicationRef, resolvedRefOptions.length, searchQuery, t])
   const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, rootRef)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
@@ -550,9 +615,12 @@ export function WorkbenchSelectionTile({
     (option: DevAppManifest) => {
       const publishedDevApp: PublishedDevAppLaunchSpec | undefined =
         option.launch.kind === "publishedDevApp" ? option.launch : undefined
+      const developmentDevApp: DevelopmentDevAppLaunchSpec | undefined =
+        option.launch.kind === "developmentDevApp" ? option.launch : undefined
       onChoose({
         appId: option.id,
         ...(publishedDevApp ? { publishedDevApp } : {}),
+        ...(developmentDevApp ? { developmentDevApp } : {}),
       })
     },
     [onChoose],
@@ -616,7 +684,7 @@ export function WorkbenchSelectionTile({
                   ))
                 ) : (
                   <div className="px-3 py-4 text-xs text-muted-foreground">
-                    {t('workbench.selection.noResults')} "{searchQuery.trim()}".
+                    {emptyResultsMessage}
                   </div>
                 )}
               </div>
@@ -667,7 +735,7 @@ export function WorkbenchSelectionTile({
                       centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
                     )}
                   >
-                    {t('workbench.selection.noResults')} "{searchQuery.trim()}".
+                    {emptyResultsMessage}
                   </div>
                 )}
               </>

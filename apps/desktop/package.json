@@ -11,6 +11,6 @@
     "typecheck": "tsc --project tsconfig.app.json",
     "typecheck:electron": "tsc --project tsconfig.electron.json",
     "dist": "electron-vite build && electron-builder --config electron-builder.config.cjs",
-    "dist:local": "CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist -- --publish never"
+    "dist:local": "COZEA_LOCAL_UNSIGNED_DIST=1 COZEA_SKIP_NOTARIZE=1 CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist -- --publish never"
   }
 }

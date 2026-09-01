@@ -53,7 +53,10 @@ function resolvePublishConfig() {
 module.exports = {
   appId: "com.cozea.app",
   productName: "Cozea",
-  forceCodeSigning: true,
+  // Release builds must be signed. `dist:local` opts into an unsigned package
+  // explicitly so a developer without the release certificate can still smoke
+  // the assembled application bundle.
+  forceCodeSigning: process.env.COZEA_LOCAL_UNSIGNED_DIST !== "1",
   generateUpdatesFilesForAllChannels: true,
   // Pack archive rewriting must happen before app signing/notarization.
   // Running it after notarization invalidates Gatekeeper trust for the final app.

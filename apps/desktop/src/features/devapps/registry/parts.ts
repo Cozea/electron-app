@@ -76,6 +76,9 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
     case "publishedDevApp":
       throw new Error("Published DevApp parts must come from the immutable release record")
 
+    case "developmentDevApp":
+      throw new Error("Development DevApp parts must come from the authored package")
+
     case "projectDevApp":
       return {
         view: { source: "package" },
@@ -103,7 +106,7 @@ export function partsForPackage(manifest: DevAppPackage): DevAppParts {
         worker: {
           capabilities: manifest.worker.capabilities,
           protocolVersion: manifest.worker.protocolVersion,
-          ...(manifest.worker.exposesTools ? { exposesTools: true } : {}),
+          ...(manifest.worker.tools.length > 0 ? { tools: manifest.worker.tools } : {}),
         },
       }
       : {}),

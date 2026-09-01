@@ -4,11 +4,13 @@ import { normalizeGrant, type DevAppCapability } from "../../shared/devAppCapabi
 import {
   DEV_APP_WORKER_PROTOCOL_VERSION,
   type DevAppWorkerResponse,
+  type DevAppWorkerViewPortBootstrap,
 } from "../../shared/devAppWorkerProtocol"
 import {
   DevAppWorkerHost,
   type DevAppWorkerBinding,
   type DevAppWorkerProcess,
+  type DevAppWorkerTransferablePort,
 } from "../../apps/desktop/electron/services/DevAppWorkerHost"
 
 const BINDING: DevAppWorkerBinding = {
@@ -22,6 +24,10 @@ const ENTRYPOINT = `${PACKAGE_ROOT}/worker.js`
 /** A worker process standing in for utilityProcess, so supervision is testable alone. */
 class FakeWorker implements DevAppWorkerProcess {
   readonly sent: unknown[] = []
+  readonly attachedViews: Array<{
+    bootstrap: DevAppWorkerViewPortBootstrap
+    port: DevAppWorkerTransferablePort
+  }> = []
   killed = false
   private messageListener: ((message: unknown) => void) | null = null
   private exitListener: ((code: number | null) => void) | null = null
@@ -29,6 +35,12 @@ class FakeWorker implements DevAppWorkerProcess {
 
   postMessage(message: unknown): void {
     this.sent.push(message)
+  }
+  attachViewPort(
+    bootstrap: DevAppWorkerViewPortBootstrap,
+    port: DevAppWorkerTransferablePort,
+  ): void {
+    this.attachedViews.push({ bootstrap, port })
   }
   onMessage(listener: (message: unknown) => void): void {
     this.messageListener = listener
@@ -174,9 +186,7 @@ describe("Worker host — the gate runs on every request", () => {
     expect(response.error?.message).toBe("The host could not complete this request.")
     expect(response.error?.message).not.toContain("/Users/admin/.ssh/id_rsa")
     expect(response.error).not.toHaveProperty("stack")
-    expect(host.getState("pub_1")?.logs.join(" ")).toContain(
-      "ENOENT: /Users/admin/.ssh/id_rsa",
-    )
+    expect(host.getState("pub_1")?.logs.join(" ")).toContain("ENOENT: /Users/admin/.ssh/id_rsa")
   })
 
   it("expires authorization on every request and stops the worker", async () => {
@@ -241,6 +251,58 @@ describe("Worker host — the gate runs on every request", () => {
 })
 
 describe("Worker host — lifecycle", () => {
+  it("transfers a version-bound view port only to the live worker", () => {
+    const { host, current } = makeHost()
+    const port = {}
+    const bootstrap = host.attachViewPort("pub_1", "view_1", DEV_APP_WORKER_PROTOCOL_VERSION, port)
+    expect(bootstrap).toEqual({
+      kind: "cozea-devapp-view-port",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      supportedProtocolVersions: {
+        min: DEV_APP_WORKER_PROTOCOL_VERSION,
+        max: DEV_APP_WORKER_PROTOCOL_VERSION,
+      },
+      connectionId: "view_1",
+    })
+    expect(current().attachedViews).toEqual([{ bootstrap, port }])
+    host.detachViewPort("pub_1", "view_1")
+  })
+
+  it("refuses a view port with a mismatched protocol or stopped worker", () => {
+    const { host } = makeHost()
+    expect(() =>
+      host.attachViewPort("pub_1", "view_1", DEV_APP_WORKER_PROTOCOL_VERSION + 1, {}),
+    ).toThrow(/protocol versions/)
+    host.stop("pub_1")
+    expect(() =>
+      host.attachViewPort("pub_1", "view_1", DEV_APP_WORKER_PROTOCOL_VERSION, {}),
+    ).toThrow(/unavailable/)
+  })
+
+  it("publishes crash, replacement-ready, and stop lifecycle changes", () => {
+    const spawned: FakeWorker[] = []
+    const host = new DevAppWorkerHost(() => {
+      const worker = new FakeWorker()
+      spawned.push(worker)
+      return worker
+    }, {})
+    const statuses: string[] = []
+    host.onStateChange(({ state }) => statuses.push(state.status))
+    host.start({
+      publicationId: "pub_1",
+      entrypoint: ENTRYPOINT,
+      packageRoot: PACKAGE_ROOT,
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      grant: normalizeGrant({ capabilities: [] }),
+      authorizationExpiresAt: null,
+      binding: BINDING,
+      leaseId: "tile_1",
+    })
+    spawned[0]!.crash(1)
+    host.stop("pub_1")
+    expect(statuses).toEqual(["ready", "crashed", "ready", "stopped"])
+  })
+
   it("joins an already-running worker rather than spawning a second", () => {
     const { host, spawned } = makeHost()
     host.start({

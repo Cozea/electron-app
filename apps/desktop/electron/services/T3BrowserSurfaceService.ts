@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import {
   BrowserWindow,
+  MessageChannelMain,
   type Event,
   type IpcMainInvokeEvent,
   type Session,
@@ -49,9 +51,17 @@ import {
   isContentHash,
   normalizeContentHash,
 } from "../../../../shared/orgDevAppProtocol";
-import { parseDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol";
+import {
+  evaluateDevAppPreviewNavigation,
+  parseDevAppPreviewUrl,
+} from "../../../../shared/devAppPreviewProtocol";
+import {
+  DEV_APP_VIEW_WORKER_PORT_CHANNEL,
+  DEV_APP_VIEW_WORKER_REVOKED_CHANNEL,
+} from "../../../../shared/devAppViewBridge";
 import type { OrgDevAppArtifactService } from "./OrgDevAppArtifactService";
 import type { DevAppPreviewService } from "./DevAppPreviewService";
+import { createDevAppViewBridge, type DevAppViewBridgeHandle } from "./DevAppViewBridge";
 
 import * as T3Effect from "../../../../vendor/t3code/apps/desktop/node_modules/effect/dist/Effect.js";
 import * as T3Fiber from "../../../../vendor/t3code/apps/desktop/node_modules/effect/dist/Fiber.js";
@@ -88,12 +98,20 @@ interface AttachedSurfaceListeners {
   dispose: () => void;
 }
 
+interface AttachedDevAppViewBridge {
+  webContents: WebContents;
+  sourceId: string;
+  connectionId: string;
+  handle: DevAppViewBridgeHandle;
+}
+
 interface BrowserSurfaceServiceOptions {
   getMainWindow: () => BrowserWindow | null;
   orgDevAppArtifactService: OrgDevAppArtifactService;
   devAppPreviewService: DevAppPreviewService;
   artifactsDirectory: string;
   pickPreloadPath: string;
+  devAppPickPreloadPath: string;
   pictureInPicturePreloadPath: string;
 }
 
@@ -126,10 +144,13 @@ function shouldOpenOrgSurfaceExternally(
 }
 
 function isDirectNavigationSurface(descriptor: BrowserSurfaceDescriptor): boolean {
-  return descriptor.kind === "orgDevApp" || Boolean(
-    descriptor.kind === "devAppPreview" &&
+  return (
+    descriptor.kind === "orgDevApp" ||
+    Boolean(
+      descriptor.kind === "devAppPreview" &&
       descriptor.initialUrl &&
       parseDevAppPreviewUrl(descriptor.initialUrl),
+    )
   );
 }
 
@@ -140,14 +161,8 @@ function shouldOpenRestrictedSurfaceExternally(
   if (descriptor.kind === "orgDevApp") {
     return shouldOpenOrgSurfaceExternally(descriptor, rawUrl);
   }
-  if (descriptor.kind !== "devAppPreview" || !parseDevAppPreviewUrl(descriptor.initialUrl ?? "")) {
-    return false;
-  }
-  try {
-    return new URL(rawUrl).protocol === "https:";
-  } catch {
-    return false;
-  }
+  if (descriptor.kind !== "devAppPreview" || !descriptor.initialUrl) return false;
+  return evaluateDevAppPreviewNavigation(descriptor.initialUrl, rawUrl).reason === "external-https";
 }
 
 function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): void {
@@ -159,9 +174,7 @@ function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): voi
     if (!/^[0-9a-f]{32}$/.test(descriptor.devSourceId)) {
       throw new Error("The DevApp preview surface descriptor is incomplete.");
     }
-    const previewUrl = descriptor.initialUrl
-      ? parseDevAppPreviewUrl(descriptor.initialUrl)
-      : null;
+    const previewUrl = descriptor.initialUrl ? parseDevAppPreviewUrl(descriptor.initialUrl) : null;
     if (previewUrl && previewUrl.sourceId !== descriptor.devSourceId) {
       throw new Error("The DevApp preview URL does not match its prepared source.");
     }
@@ -213,6 +226,7 @@ export class T3BrowserSurfaceService {
   private readonly activeByTabId = new Map<string, boolean>();
   private readonly pendingDirectNavigationByTabId = new Map<string, string>();
   private readonly listenersByTabId = new Map<string, AttachedSurfaceListeners>();
+  private readonly devAppViewBridgesByTabId = new Map<string, AttachedDevAppViewBridge>();
   private readonly stateListeners = new Set<
     (tabId: string, state: CozeaBrowserSurfaceState) => void
   >();
@@ -229,9 +243,23 @@ export class T3BrowserSurfaceService {
   private stateSubscriptionFiber: T3Fiber.Fiber<never, unknown> | null = null;
   private pointerSubscriptionFiber: T3Fiber.Fiber<never, unknown> | null = null;
   private recordingSubscriptionFiber: T3Fiber.Fiber<never, unknown> | null = null;
+  private readonly removeDevAppWorkerStateListener: () => void;
 
   constructor(options: BrowserSurfaceServiceOptions) {
     this.options = options;
+    this.removeDevAppWorkerStateListener = options.devAppPreviewService.onWorkerStateChange(
+      (sourceId, state) => {
+        for (const [tabId, descriptor] of this.descriptors) {
+          if (descriptor.kind !== "devAppPreview" || descriptor.devSourceId !== sourceId) continue;
+          if (state.status !== "ready") {
+            this.detachDevAppViewBridge(tabId, "The DevApp worker stopped.");
+            continue;
+          }
+          const guest = this.listenersByTabId.get(tabId)?.webContents;
+          if (guest && !guest.isDestroyed()) this.attachDevAppViewBridge(tabId, guest, descriptor);
+        }
+      },
+    );
     const browserSessionService = T3BrowserSession.BrowserSession.of({
       getPartition: (scope = "shared") =>
         T3Effect.sync(() => {
@@ -445,11 +473,14 @@ export class T3BrowserSurfaceService {
   canAttachWebview(webPreferences: WebPreferences, params: Record<string, unknown>): boolean {
     const partition = typeof params.partition === "string" ? params.partition : "";
     if (!partition || !this.sessionsByPartition.has(partition)) return false;
-    const hasPreparedTab = Array.from(this.descriptors.entries()).some(([tabId, descriptor]) => {
-      if (partitionForDescriptor(descriptor) !== partition) return false;
-      return this.stateByTabId.get(tabId)?.webContentsId == null;
-    });
-    if (!hasPreparedTab) return false;
+    const preparedDescriptors = Array.from(this.descriptors.entries())
+      .filter(
+        ([tabId, descriptor]) =>
+          partitionForDescriptor(descriptor) === partition &&
+          this.stateByTabId.get(tabId)?.webContentsId == null,
+      )
+      .map(([, descriptor]) => descriptor);
+    if (preparedDescriptors.length === 0) return false;
 
     const preload = typeof params.preload === "string" ? params.preload : null;
     const normalizedPreload = preload?.startsWith("file:")
@@ -457,7 +488,16 @@ export class T3BrowserSurfaceService {
       : preload
         ? path.normalize(preload)
         : null;
-    if (normalizedPreload !== path.normalize(this.options.pickPreloadPath)) return false;
+    const expectedPreloads = new Set(
+      preparedDescriptors.map((descriptor) => path.normalize(this.preloadPath(descriptor))),
+    );
+    if (
+      expectedPreloads.size !== 1 ||
+      !normalizedPreload ||
+      !expectedPreloads.has(normalizedPreload)
+    ) {
+      return false;
+    }
 
     webPreferences.sandbox = true;
     webPreferences.nodeIntegration = false;
@@ -466,8 +506,14 @@ export class T3BrowserSurfaceService {
     webPreferences.webSecurity = true;
     webPreferences.allowRunningInsecureContent = false;
     webPreferences.webviewTag = false;
-    webPreferences.preload = this.options.pickPreloadPath;
+    webPreferences.preload = normalizedPreload;
     return true;
+  }
+
+  private preloadPath(descriptor: BrowserSurfaceDescriptor): string {
+    return descriptor.kind === "devAppPreview"
+      ? this.options.devAppPickPreloadPath
+      : this.options.pickPreloadPath;
   }
 
   async prepareSurface(descriptor: BrowserSurfaceDescriptor): Promise<PreparedBrowserSurface> {
@@ -513,7 +559,7 @@ export class T3BrowserSurfaceService {
         config: {
           partition,
           webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
-          preloadUrl: pathToFileURL(this.options.pickPreloadPath).href,
+          preloadUrl: pathToFileURL(this.preloadPath(descriptor)).href,
         },
         state: preparedState,
       };
@@ -567,7 +613,7 @@ export class T3BrowserSurfaceService {
     return {
       partition: partitionForDescriptor(descriptor),
       webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
-      preloadUrl: pathToFileURL(this.options.pickPreloadPath).href,
+      preloadUrl: pathToFileURL(this.preloadPath(descriptor)).href,
     };
   }
 
@@ -601,6 +647,7 @@ export class T3BrowserSurfaceService {
 
     await this.run((manager) => manager.registerWebview(tabId, webContentsId));
     this.attachCozeaListeners(tabId, guest, descriptor);
+    this.attachDevAppViewBridge(tabId, guest, descriptor);
     const pendingDirectNavigation = this.pendingDirectNavigationByTabId.get(tabId);
     if (pendingDirectNavigation) {
       this.pendingDirectNavigationByTabId.delete(tabId);
@@ -655,6 +702,7 @@ export class T3BrowserSurfaceService {
       };
     };
     const didFinishLoad = () => {
+      this.attachDevAppViewBridge(tabId, guest, descriptor);
       const response = pendingHttpResponse;
       if (!response) return;
       void this.classifyHttpError(
@@ -727,10 +775,79 @@ export class T3BrowserSurfaceService {
   }
 
   private detachCozeaListeners(tabId: string): void {
+    this.detachDevAppViewBridge(tabId);
     const current = this.listenersByTabId.get(tabId);
     if (!current) return;
     current.dispose();
     this.listenersByTabId.delete(tabId);
+  }
+
+  private attachDevAppViewBridge(
+    tabId: string,
+    guest: WebContents,
+    descriptor: BrowserSurfaceDescriptor,
+  ): void {
+    if (descriptor.kind !== "devAppPreview" || !descriptor.devSourceId) return;
+    this.detachDevAppViewBridge(tabId, "The DevApp view reloaded.");
+    const connection = this.options.devAppPreviewService.workerConnection(descriptor.devSourceId);
+    if (!connection || guest.isDestroyed()) return;
+
+    const viewChannel = new MessageChannelMain();
+    const workerChannel = new MessageChannelMain();
+    const connectionId = randomUUID();
+    const handle = createDevAppViewBridge({
+      viewPort: viewChannel.port1,
+      workerPort: workerChannel.port1,
+      protocolVersion: connection.protocolVersion,
+      onClose: (reason) => {
+        const current = this.devAppViewBridgesByTabId.get(tabId);
+        if (current?.connectionId !== connectionId) return;
+        this.devAppViewBridgesByTabId.delete(tabId);
+        this.notifyDevAppViewBridgeRevoked(current, reason);
+        this.options.devAppPreviewService.detachViewPort(current.sourceId, connectionId);
+      },
+    });
+    this.devAppViewBridgesByTabId.set(tabId, {
+      webContents: guest,
+      sourceId: descriptor.devSourceId,
+      connectionId,
+      handle,
+    });
+
+    try {
+      const bootstrap = this.options.devAppPreviewService.attachViewPort(
+        descriptor.devSourceId,
+        connectionId,
+        workerChannel.port2,
+      );
+      guest.postMessage(DEV_APP_VIEW_WORKER_PORT_CHANNEL, bootstrap, [viewChannel.port2]);
+    } catch {
+      this.detachDevAppViewBridge(tabId, "The DevApp worker is unavailable.");
+    }
+  }
+
+  private detachDevAppViewBridge(tabId: string, reason?: string): void {
+    const current = this.devAppViewBridgesByTabId.get(tabId);
+    if (!current) return;
+    this.devAppViewBridgesByTabId.delete(tabId);
+    this.notifyDevAppViewBridgeRevoked(current, reason);
+    this.options.devAppPreviewService.detachViewPort(current.sourceId, current.connectionId);
+    current.handle.close(reason);
+  }
+
+  private notifyDevAppViewBridgeRevoked(
+    bridge: AttachedDevAppViewBridge,
+    reason = "The DevApp worker connection closed.",
+  ): void {
+    if (bridge.webContents.isDestroyed()) return;
+    try {
+      bridge.webContents.send(DEV_APP_VIEW_WORKER_REVOKED_CHANNEL, {
+        connectionId: bridge.connectionId,
+        reason,
+      });
+    } catch {
+      // The guest may disappear between the destroyed check and the send.
+    }
   }
 
   private async classifyHttpError(
@@ -764,10 +881,8 @@ export class T3BrowserSurfaceService {
       return evaluateOrgSurfaceNavigation(descriptor, rawUrl).allowed;
     }
     if (descriptor.kind === "devAppPreview") {
-      const expectedPreview = parseDevAppPreviewUrl(descriptor.initialUrl ?? "");
-      if (expectedPreview) {
-        return parseDevAppPreviewUrl(rawUrl)?.sourceId === expectedPreview.sourceId;
-      }
+      if (!descriptor.initialUrl) return false;
+      return evaluateDevAppPreviewNavigation(descriptor.initialUrl, rawUrl).allowed;
     }
     return isHttpUrl(rawUrl);
   }
@@ -1030,6 +1145,7 @@ export class T3BrowserSurfaceService {
   }
 
   async dispose(): Promise<void> {
+    this.removeDevAppWorkerStateListener();
     for (const tabId of Array.from(this.descriptors.keys())) {
       try {
         await this.releaseSurface(tabId);

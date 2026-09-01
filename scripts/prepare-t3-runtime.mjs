@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,7 +57,10 @@ export function parseGitlink(output) {
 
 export function parsePnpmVersion(packageManager) {
   const match = /^pnpm@([^\s]+)$/.exec(packageManager?.trim() ?? "");
-  if (!match) fail(`Expected vendor/t3code packageManager to be pnpm@<version>, received ${packageManager || "nothing"}.`);
+  if (!match)
+    fail(
+      `Expected vendor/t3code packageManager to be pnpm@<version>, received ${packageManager || "nothing"}.`,
+    );
   return match[1];
 }
 
@@ -80,7 +84,10 @@ function expectedVendorPin() {
 }
 
 function currentVendorPin() {
-  if (!fs.existsSync(path.join(vendorRoot, ".git")) && !fs.existsSync(path.join(vendorRoot, "package.json"))) {
+  if (
+    !fs.existsSync(path.join(vendorRoot, ".git")) &&
+    !fs.existsSync(path.join(vendorRoot, "package.json"))
+  ) {
     return null;
   }
   try {
@@ -91,9 +98,13 @@ function currentVendorPin() {
 }
 
 function assertVendorCleanBeforeCheckout() {
-  const changes = run("git", ["-C", vendorRoot, "status", "--porcelain", "--untracked-files=no"], { capture: true });
+  const changes = run("git", ["-C", vendorRoot, "status", "--porcelain", "--untracked-files=no"], {
+    capture: true,
+  });
   if (changes) {
-    fail("vendor/t3code has tracked local changes; refusing to replace its checkout. Commit or stash them first.");
+    fail(
+      "vendor/t3code has tracked local changes; refusing to replace its checkout. Commit or stash them first.",
+    );
   }
 }
 
@@ -102,13 +113,17 @@ function ensureVendorCheckout(expectedPin, checkOnly) {
   if (currentPin === expectedPin) return;
 
   if (checkOnly) {
-    fail(currentPin
-      ? `vendor/t3code is at ${currentPin}, expected ${expectedPin}.`
-      : "vendor/t3code is not initialized.");
+    fail(
+      currentPin
+        ? `vendor/t3code is at ${currentPin}, expected ${expectedPin}.`
+        : "vendor/t3code is not initialized.",
+    );
   }
 
   if (currentPin) assertVendorCleanBeforeCheckout();
-  console.log(`[prepare-t3-runtime] Initializing vendor/t3code at ${expectedPin.slice(0, 8)} (non-recursive)…`);
+  console.log(
+    `[prepare-t3-runtime] Initializing vendor/t3code at ${expectedPin.slice(0, 8)} (non-recursive)…`,
+  );
   run("git", ["submodule", "update", "--init", "--depth", "1", "vendor/t3code"]);
   currentPin = currentVendorPin();
   if (currentPin !== expectedPin) {
@@ -118,7 +133,8 @@ function ensureVendorCheckout(expectedPin, checkOnly) {
 
 function readPnpmVersion() {
   const packageJsonPath = path.join(vendorRoot, "package.json");
-  if (!fs.existsSync(packageJsonPath)) fail("vendor/t3code/package.json is missing after submodule initialization.");
+  if (!fs.existsSync(packageJsonPath))
+    fail("vendor/t3code/package.json is missing after submodule initialization.");
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   return parsePnpmVersion(packageJson.packageManager);
 }
@@ -146,20 +162,57 @@ function readBundleStamp() {
   }
 }
 
-function prepareSourceRuntime(expectedPin, pnpmVersion, { checkOnly, force }) {
+export function buildVendorSourceStamp(expectedPin, trackedDiff, untrackedFiles = []) {
+  if (!trackedDiff && untrackedFiles.length === 0) return expectedPin;
+  const hash = createHash("sha256");
+  hash.update(expectedPin);
+  hash.update("\0tracked\0");
+  hash.update(trackedDiff);
+  for (const entry of [...untrackedFiles].sort((left, right) =>
+    left.path.localeCompare(right.path),
+  )) {
+    hash.update("\0untracked\0");
+    hash.update(entry.path);
+    hash.update("\0");
+    hash.update(entry.contents);
+  }
+  return `${expectedPin}:dirty:${hash.digest("hex")}`;
+}
+
+function currentVendorSourceStamp(expectedPin) {
+  const trackedDiff = run("git", ["-C", vendorRoot, "diff", "--binary", "HEAD", "--"], {
+    capture: true,
+  });
+  const untrackedOutput = run(
+    "git",
+    ["-C", vendorRoot, "ls-files", "--others", "--exclude-standard", "-z"],
+    { capture: true },
+  );
+  const untrackedFiles = untrackedOutput
+    .split("\0")
+    .filter(Boolean)
+    .map((relativePath) => ({
+      path: relativePath,
+      contents: fs.readFileSync(path.join(vendorRoot, relativePath)),
+    }));
+  return buildVendorSourceStamp(expectedPin, trackedDiff, untrackedFiles);
+}
+
+function prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, { checkOnly, force }) {
   const validBundle = bundleLoads();
   const stamp = readBundleStamp();
-  const mayAdoptExistingBundle = validBundle && stamp === null;
-  const current = validBundle && (stamp === expectedPin || mayAdoptExistingBundle);
+  const mayAdoptExistingBundle = validBundle && stamp === null && sourceStamp === expectedPin;
+  const current = validBundle && (stamp === sourceStamp || mayAdoptExistingBundle);
 
   if (checkOnly) {
-    if (!current) fail(`T3 server bundle is missing, unloadable, or stale for ${expectedPin.slice(0, 8)}.`);
+    if (!current)
+      fail(`T3 server bundle is missing, unloadable, or stale for ${expectedPin.slice(0, 8)}.`);
     return;
   }
 
   if (!force && current) {
     if (mayAdoptExistingBundle) {
-      fs.writeFileSync(bundlePinStamp, `${expectedPin}\n`);
+      fs.writeFileSync(bundlePinStamp, `${sourceStamp}\n`);
     }
     console.log(`[prepare-t3-runtime] T3 server bundle is ready at ${expectedPin.slice(0, 8)}.`);
     return;
@@ -170,7 +223,7 @@ function prepareSourceRuntime(expectedPin, pnpmVersion, { checkOnly, force }) {
   console.log("[prepare-t3-runtime] Building the T3 server bundle…");
   runPnpm(pnpmVersion, ["--filter", "t3", "build:bundle"]);
   if (!bundleLoads()) fail("The T3 server bundle was built but cannot be loaded by Node.");
-  fs.writeFileSync(bundlePinStamp, `${expectedPin}\n`);
+  fs.writeFileSync(bundlePinStamp, `${sourceStamp}\n`);
 }
 
 function preparePackagedRuntime(expectedPin, pnpmVersion) {
@@ -185,7 +238,8 @@ function preparePackagedRuntime(expectedPin, pnpmVersion) {
   const nodeModulesRoot = path.join(packagedRuntimeRoot, "node_modules");
   const hiddenStore = path.join(nodeModulesRoot, ".pnpm");
   const visibleStore = path.join(nodeModulesRoot, "pnpm-store");
-  if (!fs.existsSync(hiddenStore)) fail("Portable T3 deployment did not create node_modules/.pnpm.");
+  if (!fs.existsSync(hiddenStore))
+    fail("Portable T3 deployment did not create node_modules/.pnpm.");
   fs.renameSync(hiddenStore, visibleStore);
 
   const rewriteStoreLinks = (directory) => {
@@ -213,13 +267,22 @@ function preparePackagedRuntime(expectedPin, pnpmVersion) {
     stdio: "pipe",
   });
   if (result.status !== 0) {
-    fail(`Portable T3 runtime failed its launch check.\n${(result.stderr || result.stdout || "").trim()}`);
+    fail(
+      `Portable T3 runtime failed its launch check.\n${(result.stderr || result.stdout || "").trim()}`,
+    );
   }
-  fs.writeFileSync(path.join(packagedRuntimeRoot, "cozea-runtime.json"), `${JSON.stringify({
-    schemaVersion: 1,
-    t3Pin: expectedPin,
-    packageManager: `pnpm@${pnpmVersion}`,
-  }, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(packagedRuntimeRoot, "cozea-runtime.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        t3Pin: expectedPin,
+        packageManager: `pnpm@${pnpmVersion}`,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 export function parseArguments(argv) {
@@ -236,14 +299,18 @@ export function parseArguments(argv) {
 
 export function main(argv = process.argv.slice(2)) {
   const options = parseArguments(argv);
-  if (options.checkOnly && options.packageRuntime) fail("--check and --package cannot be combined.");
+  if (options.checkOnly && options.packageRuntime)
+    fail("--check and --package cannot be combined.");
 
   const expectedPin = expectedVendorPin();
   ensureVendorCheckout(expectedPin, options.checkOnly);
+  const sourceStamp = currentVendorSourceStamp(expectedPin);
   const pnpmVersion = readPnpmVersion();
-  prepareSourceRuntime(expectedPin, pnpmVersion, options);
+  prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, options);
   if (options.packageRuntime) preparePackagedRuntime(expectedPin, pnpmVersion);
-  console.log(`[prepare-t3-runtime] Complete (T3 ${expectedPin.slice(0, 8)}, pnpm ${pnpmVersion}).`);
+  console.log(
+    `[prepare-t3-runtime] Complete (T3 ${expectedPin.slice(0, 8)}, pnpm ${pnpmVersion}).`,
+  );
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";

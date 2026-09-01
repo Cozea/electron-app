@@ -41,6 +41,7 @@ describe("resolveWorkbenchSelectionLaunchRequest", () => {
         publishedDevApp: {
           kind: "publishedDevApp",
           tileType: "orgDevApp",
+          ref: "cozea-devapp:org_1/publication_1@2",
           publicationId: "publication_1",
           organizationId: "org_1",
           organizationName: "Acme",
@@ -60,6 +61,7 @@ describe("resolveWorkbenchSelectionLaunchRequest", () => {
         title: "Inventory Console",
         url: "",
         storageScope: "orgDevApp",
+        devAppRef: "cozea-devapp:org_1/publication_1@2",
         devAppId: "publication_1",
         devAppReleaseId: "release_2",
         devAppReleaseVersion: 2,

@@ -62,6 +62,8 @@ export function WorkbenchDevAppPreviewTile({
   const runtimeOwnerRef = useRef(Symbol(`devapp-preview:${tile.id}`));
 
   const preview = window.electronAPI?.devAppPreview;
+  const sourceWorkspaceId = tile.sourceWorkspaceId || workspaceId;
+  const sourceLaneId = sourceWorkspaceId === workspaceId ? laneId : null;
 
   useEffect(() => {
     publishDevAppPreviewRuntime(runtimeOwnerRef.current, {
@@ -80,7 +82,7 @@ export function WorkbenchDevAppPreviewTile({
 
   // Opening is what assigns the source id, so the tile holds no location of its own.
   useEffect(() => {
-    if (!preview || !workspaceId || !tile.relativePath) return;
+    if (!preview || !sourceWorkspaceId || !tile.relativePath) return;
     let cancelled = false;
     let openedSourceId: string | null = null;
     // React Strict Mode may overlap a superseded open with the active one. A lease per
@@ -89,8 +91,8 @@ export function WorkbenchDevAppPreviewTile({
 
     void preview
       .open({
-        workspaceId,
-        laneId,
+        workspaceId: sourceWorkspaceId,
+        laneId: sourceLaneId,
         relativePath: tile.relativePath,
         leaseId,
       })
@@ -132,7 +134,7 @@ export function WorkbenchDevAppPreviewTile({
         void preview.close({ sourceId: openedSourceId, leaseId }).catch(() => undefined);
       }
     };
-  }, [laneId, preview, tile.id, tile.relativePath, workspaceId]);
+  }, [preview, sourceLaneId, sourceWorkspaceId, tile.id, tile.relativePath]);
 
   // The host pushes a fresh status on every reload, crash, and preflight verdict.
   useEffect(() => {

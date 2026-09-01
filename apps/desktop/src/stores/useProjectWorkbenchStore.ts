@@ -125,6 +125,8 @@ export interface WorkbenchBrowserTile extends WorkbenchBaseTile {
 export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
   type: "orgDevApp"
   url: string
+  /** Durable publication identity. Empty legacy values fail closed and must be reopened. */
+  devAppRef: string
   publicationId: string
   organizationId?: string
   contentHash: string
@@ -145,6 +147,10 @@ export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
 export interface WorkbenchDevAppPreviewTile extends WorkbenchBaseTile {
   type: "devAppPreview"
   relativePath: string
+  /** Source identity for cross-project integration testing; never an absolute path. */
+  sourceProjectId?: string | null
+  sourceWorkspaceId?: string | null
+  devAppRef?: string | null
   /** Assigned by the host on open; absent until then. */
   sourceId?: string | null
 }
@@ -277,6 +283,7 @@ export interface CreateTileOptions {
   devAppFramework?: string | null
   devAppCommand?: string | null
   devAppPort?: number | null
+  devAppRef?: string | null
   orgDevAppPublicationId?: string | null
   orgDevAppOrganizationId?: string | null
   orgDevAppContentHash?: string | null
@@ -285,6 +292,8 @@ export interface CreateTileOptions {
   orgDevAppLogoDataUrl?: string | null
   /** Path to a package under development, relative to the workspace root. */
   devAppPreviewRelativePath?: string | null
+  devAppPreviewSourceProjectId?: string | null
+  devAppPreviewSourceWorkspaceId?: string | null
   autoStart?: boolean
   /** Add the surface without changing the user's active Dockview tab. */
   activate?: boolean
@@ -686,6 +695,9 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         // Relative on purpose: the absolute location is never persisted, so a restored
         // tile cannot name a directory outside the project it belongs to.
         relativePath: options.devAppPreviewRelativePath?.trim() || "",
+        sourceProjectId: normalizeOptionalString(options.devAppPreviewSourceProjectId),
+        sourceWorkspaceId: normalizeOptionalString(options.devAppPreviewSourceWorkspaceId),
+        devAppRef: normalizeOptionalString(options.devAppRef),
         sourceId: null,
       }
     case "orgDevApp":
@@ -695,6 +707,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         title,
         createdAt,
         url: options.url?.trim() || "",
+        devAppRef: normalizeOptionalString(options.devAppRef) || "",
         publicationId:
           normalizeOptionalString(options.orgDevAppPublicationId) ||
           normalizeOptionalString(options.devAppId) ||
@@ -845,6 +858,18 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
       continue
     }
 
+    if (tile.type === "devAppPreview") {
+      sanitizedTiles[tileId] = {
+        ...tile,
+        relativePath: normalizeOptionalString(tile.relativePath) || ".",
+        sourceProjectId: normalizeOptionalString(tile.sourceProjectId),
+        sourceWorkspaceId: normalizeOptionalString(tile.sourceWorkspaceId),
+        devAppRef: normalizeOptionalString(tile.devAppRef),
+        sourceId: null,
+      }
+      continue
+    }
+
     if (tile.type === "devServer") {
       const devAppId = normalizeOptionalString(tile.devAppId)
       const sanitizedTile: WorkbenchDevServerTile = {
@@ -902,6 +927,21 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
       }
 
       sanitizedTiles[tileId] = sanitizedTile
+      continue
+    }
+
+    if (tile.type === "orgDevApp") {
+      sanitizedTiles[tileId] = {
+        ...tile,
+        devAppRef: normalizeOptionalString(tile.devAppRef) || "",
+        publicationId: normalizeOptionalString(tile.publicationId) || "",
+        organizationId: normalizeOptionalString(tile.organizationId),
+        contentHash: normalizeOptionalString(tile.contentHash) || "",
+        entryPath: normalizeOptionalString(tile.entryPath) || "index.html",
+        runtimeKind: tile.runtimeKind === "service" ? "service" : "static",
+        logoDataUrl: normalizeOptionalString(tile.logoDataUrl) ?? null,
+        storageScope: "orgDevApp",
+      }
       continue
     }
 

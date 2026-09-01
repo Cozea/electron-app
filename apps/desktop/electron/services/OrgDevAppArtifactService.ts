@@ -544,9 +544,26 @@ export class OrgDevAppArtifactService {
   private readonly gatewayPublications = new Map<string, string>()
   private gatewayServer: HttpServer | null = null
   private gatewayPort: number | null = null
+  private protectedContentHashes: () => ReadonlySet<string> = () => new Set()
 
   constructor(getCacheRoot: () => string) {
     this.getCacheRoot = getCacheRoot
+  }
+
+  setProtectedContentHashes(provider: () => ReadonlySet<string>): void {
+    this.protectedContentHashes = provider
+  }
+
+  getPreparedArtifactSize(contentHash: string): number {
+    return directorySize(this.getCacheDir(contentHash))
+  }
+
+  removePreparedArtifact(contentHashInput: string): void {
+    const contentHash = normalizeContentHash(contentHashInput)
+    if (!isContentHash(contentHash)) throw new Error("The DevApp artifact hash is invalid.")
+    const active = [...this.activeServiceRuntimes.keys()].some((key) => key.endsWith(`:${contentHash}`))
+    if (active) throw new Error("The DevApp is still running.")
+    removeCachedArtifact(this.getCacheDir(contentHash))
   }
 
   private runtimeKey(contentHash: string, publicationId: string): string {
@@ -805,12 +822,13 @@ export class OrgDevAppArtifactService {
     const activeHashes = new Set(
       [...this.activeServiceRuntimes.keys()].map((key) => key.slice(key.lastIndexOf(":") + 1)),
     )
+    const installedHashes = this.protectedContentHashes()
     for (const entry of entries) {
       const expired = now - entry.lastUsedAt > DEVAPP_CACHE_MAX_AGE_MS
       const overQuota =
         retainedCount >= DEVAPP_CACHE_MAX_RELEASES ||
         retainedBytes + entry.size > DEVAPP_CACHE_MAX_BYTES
-      if (entry.contentHash !== protectedHash && !activeHashes.has(entry.contentHash) && (expired || overQuota)) {
+      if (entry.contentHash !== protectedHash && !activeHashes.has(entry.contentHash) && !installedHashes.has(entry.contentHash) && (expired || overQuota)) {
         removeCachedArtifact(entry.cacheDir)
         continue
       }
@@ -982,6 +1000,40 @@ export class OrgDevAppArtifactService {
       if (this.pendingArtifacts.get(contentHash) === preparation) {
         this.pendingArtifacts.delete(contentHash)
       }
+    }
+  }
+
+  prepareCachedArtifact(input: {
+    contentHash: string
+    entryPath?: string
+    runtimeKind?: OrgDevAppRuntimeKind
+  }): OrgDevAppPrepareResult {
+    const contentHash = normalizeContentHash(input.contentHash)
+    if (!isContentHash(contentHash)) throw new Error("The DevApp artifact hash is invalid.")
+    const entryPath = normalizeEntryPath(input.entryPath)
+    const cacheDir = this.getCacheDir(contentHash)
+    const readyMarker = path.join(cacheDir, ".cozea-ready")
+    const isService = input.runtimeKind === "service"
+    const requiredFile = isService
+      ? path.join(cacheDir, "cozea-devapp.json")
+      : path.join(cacheDir, entryPath)
+    if (!fs.existsSync(readyMarker) || !fs.existsSync(requiredFile)) {
+      throw new Error("This installed DevApp is missing from local storage. Reinstall it while online.")
+    }
+    const manifest = isService
+      ? parseServiceDevAppManifest(JSON.parse(fs.readFileSync(requiredFile, "utf8")))
+      : undefined
+    if (manifest && (process.platform !== manifest.platform || process.arch !== manifest.arch)) {
+      throw new Error(`This Service DevApp requires ${manifest.platform} ${manifest.arch}.`)
+    }
+    this.touchReadyMarker(cacheDir)
+    return {
+      contentHash,
+      entryPath,
+      originUrl: buildOrgDevAppUrl({ contentHash, entryPath }),
+      cacheDir,
+      runtimeKind: isService ? "service" : "static",
+      ...(manifest ? { manifest } : {}),
     }
   }
 

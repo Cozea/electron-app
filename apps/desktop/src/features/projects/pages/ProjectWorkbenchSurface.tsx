@@ -263,6 +263,13 @@ export function ProjectWorkbenchSurface() {
     if (!projectId || !workbenchIntent || laneResolutionPending) return;
     if (wasWorkbenchIntentApplied(workbenchIntent)) return;
 
+    // A freshly created/imported project can render this route before its local
+    // workspace identity has hydrated. Applying a preview intent at that point
+    // writes the tile into the workspace-less fallback bench, then the real bench
+    // replaces it a moment later. Wait for the concrete target workspace so the
+    // generated DevApp opens exactly once in the bench the user will keep.
+    if (workbenchIntent.openDevAppPreview && !activeWorkbenchId) return;
+
     if (workbenchIntent.laneId && workbenchIntent.laneId !== activeLaneId) {
       // Activate the requested lane; the effect re-runs once activeLaneId
       // converges and then applies the tile part of the intent.
@@ -290,6 +297,22 @@ export function ProjectWorkbenchSurface() {
     }
     if (workbenchIntent.openTile) {
       openWorkbenchTarget(workbenchIntent.openTile);
+      return;
+    }
+    if (workbenchIntent.openDevAppPreview) {
+      workbenchActions.addTile(
+        projectId,
+        activeLaneId,
+        "devAppPreview",
+        {
+          title: "DevApp (development)",
+          devAppPreviewRelativePath: workbenchIntent.openDevAppPreview.relativePath,
+          devAppPreviewSourceProjectId: workbenchIntent.openDevAppPreview.sourceProjectId,
+          devAppPreviewSourceWorkspaceId: workbenchIntent.openDevAppPreview.sourceWorkspaceId,
+          devAppRef: workbenchIntent.openDevAppPreview.sourceRef,
+        },
+        activeWorkbenchId,
+      );
     }
   }, [
     activeLaneId,

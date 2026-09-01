@@ -105,6 +105,10 @@ Push to `main` after updating `package.json` to a new version. CircleCI uploads 
 
 Auto-update clients only install versions newer than their installed version, so main releases still require an intentional version bump before publishing.
 
+### Local package smoke test
+
+Run `bun run dist:local` to assemble the production application and installers without publishing. This path deliberately disables macOS signing and notarization so contributors without Cozea's release certificate can validate packaged resources locally. It is not a releasable artifact; every GitHub Actions, CircleCI, and `bun run release` build still requires the normal signing identity.
+
 ## CircleCI Configuration
 
 Create a CircleCI context named `cozea-release` with these environment variables:

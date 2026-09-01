@@ -7,12 +7,12 @@ import { type MutationCtx, type QueryCtx } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { canEditProject } from "./lib/projectAccess"
 import {
-  isOrgMember,
   requireOrgAdmin,
   requireOrgMember,
   toConsumerDevApp,
 } from "./lib/orgAccess"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
+import { resolvePublicationReferenceRecord } from "./lib/devAppReferenceResolution"
 import { normalizeStorageSha256 } from "./lib/storageHash"
 import {
   orgDevAppArtifactLimits,
@@ -458,6 +458,21 @@ export const listMine = query({
   },
 })
 
+/** Resolves a durable publication ref without exposing source-project data. */
+export const resolveReference = query({
+  args: { ref: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    const resolved = await resolvePublicationReferenceRecord(ctx, args.ref, user._id)
+    if (!resolved) return null
+    return toConsumerDevApp({
+      publication: resolved.publication,
+      release: resolved.release,
+      organizationName: resolved.organization.name,
+    })
+  },
+})
+
 export const listPublisherStatus = query({
   args: {},
   handler: async (ctx) => {
@@ -518,36 +533,31 @@ export const getForProject = query({
 
 export const getArtifactUrl = query({
   args: {
-    publicationId: v.id("devAppPublications"),
+    ref: v.string(),
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
-    const publication = await ctx.db.get(args.publicationId)
-    if (!publication?.organizationId || publication.status !== "active") {
-      return null
-    }
-    if (!(await isOrgMember(ctx, publication.organizationId, user._id))) return null
-    const release = await getActiveRelease(ctx, publication)
-    if (!release?.artifactStorageId || !release.contentHash) {
-      throw new ConvexError("DevApp has no artifact")
-    }
-    const url = await ctx.storage.getUrl(release.artifactStorageId)
+    const resolved = await resolvePublicationReferenceRecord(ctx, args.ref, user._id)
+    if (!resolved) return null
+    const url = await ctx.storage.getUrl(resolved.release.artifactStorageId)
     if (!url) {
       throw new ConvexError("DevApp artifact is unavailable")
     }
     return {
       url,
-      contentHash: release.contentHash,
-      entryPath: release.entryPath,
-      releaseId: release._id,
-      version: release.version,
-      runtimeKind: release.runtimeKind,
-      manifestVersion: release.manifestVersion ?? null,
-      platform: release.platform ?? null,
-      arch: release.arch ?? null,
-      permissionSetHash: release.permissionSetHash ?? null,
-      publisherIdentityKey: release.publisherIdentityKey ?? null,
-      publisherDeviceLabel: release.publisherDeviceLabel ?? null,
+      publicationId: resolved.publication._id,
+      organizationId: resolved.organization._id,
+      contentHash: resolved.release.contentHash,
+      entryPath: resolved.release.entryPath,
+      releaseId: resolved.release._id,
+      version: resolved.release.version,
+      runtimeKind: resolved.release.runtimeKind,
+      manifestVersion: resolved.release.manifestVersion ?? null,
+      platform: resolved.release.platform ?? null,
+      arch: resolved.release.arch ?? null,
+      permissionSetHash: resolved.release.permissionSetHash ?? null,
+      publisherIdentityKey: resolved.release.publisherIdentityKey ?? null,
+      publisherDeviceLabel: resolved.release.publisherDeviceLabel ?? null,
     }
   },
 })

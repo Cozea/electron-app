@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.cozea.dev/schemas/cozea-devapp.schema.json",
+  "title": "Cozea DevApp package",
+  "description": "Authoring manifest for a Cozea developer application.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "manifestVersion",
+    "name"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "view"
+      ]
+    },
+    {
+      "required": [
+        "worker"
+      ]
+    },
+    {
+      "required": [
+        "service"
+      ]
+    }
+  ],
+  "properties": {
+    "manifestVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry"
+      ],
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/packagePath"
+        },
+        "dev": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "url": {
+              "type": "string",
+              "pattern": "^http://(?:localhost|127\\.0\\.0\\.1|\\[?::1\\]?)(?::[0-9]{1,5})?(?:/.*)?$"
+            }
+          }
+        }
+      }
+    },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry",
+        "protocolVersion",
+        "capabilities",
+        "tools"
+      ],
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/packagePath"
+        },
+        "protocolVersion": {
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "project.read",
+              "project.write",
+              "project.metadata",
+              "git.read",
+              "git.write",
+              "fs.read",
+              "fs.write",
+              "terminal.spawn",
+              "process.spawn",
+              "net.outbound",
+              "shell.open",
+              "shell.reveal"
+            ]
+          }
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "description",
+              "inputSchema"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeKind"
+      ],
+      "properties": {
+        "runtimeKind": {
+          "type": "string",
+          "enum": [
+            "static",
+            "node"
+          ]
+        },
+        "entry": {
+          "$ref": "#/$defs/packagePath"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "packagePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?![\\\\/])(?![A-Za-z]:)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+$"
+    }
+  }
+}

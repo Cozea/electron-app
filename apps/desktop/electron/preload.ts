@@ -393,6 +393,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openSettings: (route = '/settings/account') => ipcRenderer.invoke('window:openSettings', { route }),
   },
   orgDevApp: {
+    listInstallations: () => ipcRenderer.invoke('orgDevApp:listInstallations'),
+    getInstallation: (options: { ref: string }) =>
+      ipcRenderer.invoke('orgDevApp:getInstallation', options),
+    install: (request: import('../../../shared/orgDevAppInstallation').OrgDevAppInstallRequest) =>
+      ipcRenderer.invoke('orgDevApp:install', request),
+    prepareInstalled: (options: { ref: string }) =>
+      ipcRenderer.invoke('orgDevApp:prepareInstalled', options),
+    uninstallPublication: (options: { publicationId: string }) =>
+      ipcRenderer.invoke('orgDevApp:uninstallPublication', options),
+    removeInstalledVersion: (options: { ref: string }) =>
+      ipcRenderer.invoke('orgDevApp:removeInstalledVersion', options),
+    onInstallationsChanged: (
+      listener: (installations: import('../../../shared/orgDevAppInstallation').OrgDevAppInstallation[]) => void,
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        installations: import('../../../shared/orgDevAppInstallation').OrgDevAppInstallation[],
+      ) => listener(installations)
+      ipcRenderer.on('orgDevApp:installationsChanged', handler)
+      return () => ipcRenderer.removeListener('orgDevApp:installationsChanged', handler)
+    },
     buildAndUpload: (options: {
       workspaceId: string
       laneId?: string | null
@@ -449,6 +470,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.removeListener('devAppPreview:status', wrapped)
       }
     },
+  },
+  devAppAuthoring: {
+    inspectWorkspace: (options: { workspaceId: string; relativePath?: string }) =>
+      ipcRenderer.invoke('devAppAuthoring:inspectWorkspace', options),
+    inspectFolder: (options: { folderPath: string }) =>
+      ipcRenderer.invoke('devAppAuthoring:inspectFolder', options),
+    listDevelopmentSources: () =>
+      ipcRenderer.invoke('devAppAuthoring:listDevelopmentSources'),
+    scaffold: (options: {
+      workspaceId: string
+      name: string
+      starter: import('@shared/devAppAuthoringTypes').DevAppScaffoldStarter
+    }) => ipcRenderer.invoke('devAppAuthoring:scaffold', options),
   },
   workbenchSession: {
     ensureSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>

@@ -1,8 +1,5 @@
 import type { OrgDevAppPreflightReport } from "../../../../shared/orgDevAppDiagnostics"
-import {
-  grantFingerprint,
-  type DevAppGrant,
-} from "../../../../shared/devAppCapabilities"
+import { grantFingerprint, type DevAppGrant } from "../../../../shared/devAppCapabilities"
 import {
   DEV_APP_MANIFEST_FILENAME,
   parseDevAppPackage,
@@ -13,11 +10,14 @@ import {
   developmentTrustBadge,
   type DevAppDevelopmentTrustStore,
 } from "../../../../shared/devAppDevelopmentTrust"
+import type { DevAppPreviewStatus, DevAppPreviewView } from "../../../../shared/devAppPreviewTypes"
 import type {
-  DevAppPreviewStatus,
-  DevAppPreviewView,
-} from "../../../../shared/devAppPreviewTypes"
-import type { DevAppWorkerBinding, DevAppWorkerState } from "./DevAppWorkerHost"
+  DevAppWorkerBinding,
+  DevAppWorkerState,
+  DevAppWorkerStateChange,
+  DevAppWorkerTransferablePort,
+} from "./DevAppWorkerHost"
+import type { DevAppWorkerViewPortBootstrap } from "../../../../shared/devAppWorkerProtocol"
 import { buildDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol"
 
 /**
@@ -56,6 +56,14 @@ export interface DevAppPreviewWorkerHost {
   stop: (publicationId: string) => void
   release: (publicationId: string, leaseId: string) => void
   getState: (publicationId: string) => DevAppWorkerState | null
+  attachViewPort: (
+    publicationId: string,
+    connectionId: string,
+    protocolVersion: number,
+    port: DevAppWorkerTransferablePort,
+  ) => DevAppWorkerViewPortBootstrap
+  detachViewPort: (publicationId: string, connectionId: string) => void
+  onStateChange?: (listener: (change: DevAppWorkerStateChange) => void) => () => void
 }
 
 export interface DevAppPreviewDeps {
@@ -127,12 +135,14 @@ export class DevAppPreviewSession {
     if (!sourcePath || !workspaceRoot || !isInside(workspaceRoot, sourcePath)) {
       return {
         status: "invalid",
-        diagnostics: [{
-          code: "manifest-missing",
-          severity: "blocker",
-          message: "A DevApp can only be previewed from inside the project it belongs to.",
-          fix: "Move the package into this project, or open the project that holds it.",
-        }],
+        diagnostics: [
+          {
+            code: "manifest-missing",
+            severity: "blocker",
+            message: "A DevApp can only be previewed from inside the project it belongs to.",
+            fix: "Move the package into this project, or open the project that holds it.",
+          },
+        ],
       }
     }
 
@@ -141,12 +151,14 @@ export class DevAppPreviewSession {
     if (source === null) {
       return {
         status: "invalid",
-        diagnostics: [{
-          code: "manifest-missing",
-          severity: "blocker",
-          message: `This folder has no ${DEV_APP_MANIFEST_FILENAME}.`,
-          fix: `Add ${DEV_APP_MANIFEST_FILENAME} describing the app's view, worker, or service.`,
-        }],
+        diagnostics: [
+          {
+            code: "manifest-missing",
+            severity: "blocker",
+            message: `This folder has no ${DEV_APP_MANIFEST_FILENAME}.`,
+            fix: `Add ${DEV_APP_MANIFEST_FILENAME} describing the app's view, worker, or service.`,
+          },
+        ],
       }
     }
 
@@ -217,11 +229,13 @@ export class DevAppPreviewSession {
       this.stopWorker(session)
       return {
         status: "invalid",
-        diagnostics: [{
-          code: "manifest-missing",
-          severity: "blocker",
-          message: `${DEV_APP_MANIFEST_FILENAME} is no longer there.`,
-        }],
+        diagnostics: [
+          {
+            code: "manifest-missing",
+            severity: "blocker",
+            message: `${DEV_APP_MANIFEST_FILENAME} is no longer there.`,
+          },
+        ],
       }
     }
 
@@ -239,6 +253,46 @@ export class DevAppPreviewSession {
   status(sourceId: string): DevAppPreviewStatus | null {
     const session = this.sessions.get(sourceId)
     return session ? this.settle(session) : null
+  }
+
+  workerConnection(sourceId: string): {
+    workerKey: string
+    protocolVersion: number
+  } | null {
+    const session = this.sessions.get(sourceId)
+    if (!session?.workerKey || session.workerProtocolVersion === null) return null
+    const state = this.deps.worker.getState(session.workerKey)
+    if (
+      !state ||
+      state.status !== "ready" ||
+      state.protocolVersion !== session.workerProtocolVersion
+    ) {
+      return null
+    }
+    return {
+      workerKey: session.workerKey,
+      protocolVersion: session.workerProtocolVersion,
+    }
+  }
+
+  attachViewPort(
+    sourceId: string,
+    connectionId: string,
+    port: DevAppWorkerTransferablePort,
+  ): DevAppWorkerViewPortBootstrap {
+    const connection = this.workerConnection(sourceId)
+    if (!connection) throw new Error("This DevApp preview has no available worker.")
+    return this.deps.worker.attachViewPort(
+      connection.workerKey,
+      connectionId,
+      connection.protocolVersion,
+      port,
+    )
+  }
+
+  detachViewPort(sourceId: string, connectionId: string): void {
+    const session = this.sessions.get(sourceId)
+    if (session?.workerKey) this.deps.worker.detachViewPort(session.workerKey, connectionId)
   }
 
   /** Releases one surface lease, or every lease during application shutdown. */
@@ -287,9 +341,10 @@ export class DevAppPreviewSession {
     const badge = workerExecution
       ? {
           ...defaultBadge,
-          detail: trust.status === "approved"
-            ? "Unpublished worker code is running with restricted filesystem and process access, but it can reach the network and is not OS-sandboxed."
-            : "Unpublished worker code requires approval before it can run. It is not an OS sandbox.",
+          detail:
+            trust.status === "approved"
+              ? "Unpublished worker code is running with restricted filesystem and process access, but it can reach the network and is not OS-sandboxed."
+              : "Unpublished worker code requires approval before it can run. It is not an OS sandbox.",
         }
       : defaultBadge
 
@@ -300,6 +355,7 @@ export class DevAppPreviewSession {
         sourceId: session.sourceId,
         name: session.manifest.name,
         requested,
+        declaredTools: session.manifest.worker?.tools ?? [],
         workerExecution,
         approvalFingerprint: grantFingerprint(requested),
         missing: trust.status === "unapproved" ? [...trust.missing] : [...requested.capabilities],
@@ -314,13 +370,10 @@ export class DevAppPreviewSession {
       name: session.manifest.name,
       view: this.resolveView(session),
       grant: trust.effective,
+      declaredTools: session.manifest.worker?.tools ?? [],
       badge,
       preflight,
-      worker: this.ensureWorker(
-        session,
-        trust.effective,
-        workerExecution ? trust.expiresAt : null,
-      ),
+      worker: this.ensureWorker(session, trust.effective, workerExecution ? trust.expiresAt : null),
       reloadToken: session.reloadToken,
     }
   }

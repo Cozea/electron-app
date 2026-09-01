@@ -61,7 +61,13 @@ export function useLocalProjectImport() {
   )
 
   const navigateToProjectWorkbench = useCallback(
-    (projectId: string, projectSlug: string, workspaceId: string, projectName: string) => {
+    (
+      projectId: string,
+      projectSlug: string,
+      workspaceId: string,
+      projectName: string,
+      devAppRelativePath?: string | null,
+    ) => {
       // Ensure a workbench shell exists, then open the assistant tile so the
       // attachment lands in an active workbench instead of only the sidebar.
       useProjectWorkbenchStore
@@ -80,7 +86,15 @@ export function useLocalProjectImport() {
             },
             buildWorkbenchIntentState({
               laneId: DEFAULT_WORKBENCH_LANE_ID,
-              openTile: "assistantChat",
+              ...(devAppRelativePath
+                ? {
+                    openDevAppPreview: {
+                      relativePath: devAppRelativePath,
+                      sourceProjectId: projectId,
+                      sourceWorkspaceId: workspaceId,
+                    },
+                  }
+                : { openTile: "assistantChat" as const }),
             }),
           ),
         },
@@ -104,6 +118,7 @@ export function useLocalProjectImport() {
   const importPickedLocalFolder = useCallback(async (
     selectedPath: string,
     requestedName = "",
+    options: { requireDevApp?: boolean } = {},
   ): Promise<LocalProjectImportOutcome> => {
     const localFolderPath = selectedPath.trim()
     if (!localFolderPath) {
@@ -116,6 +131,22 @@ export function useLocalProjectImport() {
     }
 
     try {
+      const authoringInspection = await window.electronAPI.devAppAuthoring.inspectFolder({
+        folderPath: localFolderPath,
+      })
+      if (!authoringInspection.success) throw new Error(authoringInspection.error)
+      if (authoringInspection.inspection.status === "invalid") {
+        throw new Error(
+          authoringInspection.inspection.diagnostics.map((diagnostic) => diagnostic.message).join("\n"),
+        )
+      }
+      if (options.requireDevApp && authoringInspection.inspection.status !== "valid") {
+        throw new Error("This folder does not contain a valid cozea-devapp.json manifest.")
+      }
+      const devAppRelativePath =
+        authoringInspection.inspection.status === "valid"
+          ? authoringInspection.inspection.source.relativePath
+          : null
       const projectName = resolveImportedProjectName(requestedName, localFolderPath)
       let preflight = await window.electronAPI.workspace!.preflightExistingFolder({
         folderPath: localFolderPath,
@@ -136,6 +167,7 @@ export function useLocalProjectImport() {
             accessibleProject.slug,
             preflight.existingWorkspace.workspaceId,
             accessibleProject.name,
+            devAppRelativePath,
           )
           return "imported"
         }
@@ -220,6 +252,7 @@ export function useLocalProjectImport() {
         result.slug,
         importResult.workspaceId,
         projectName,
+        devAppRelativePath,
       )
       return "imported"
     } catch (error) {

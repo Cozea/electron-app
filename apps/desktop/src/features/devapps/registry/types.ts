@@ -16,7 +16,7 @@ export type DevAppLauncherGroup = "Development" | "Assistant"
 
 export type DevAppWorkbenchTileTarget = Exclude<
   RenderableWorkbenchTileType,
-  "selection" | "devAppPreview"
+  "selection"
 >
 
 export interface DevAppIconDefinition {
@@ -76,10 +76,23 @@ export interface ProjectDevAppLaunchSpec extends DevAppLaunchBase {
   devPort?: number
 }
 
+export interface DevelopmentDevAppLaunchSpec extends DevAppLaunchBase {
+  kind: "developmentDevApp"
+  tileType: "devAppPreview"
+  ref: string
+  sourceId: string
+  projectId: string
+  workspaceId: string
+  relativePath: string
+  name: string
+}
+
 export interface PublishedDevAppLaunchSpec extends DevAppLaunchBase {
   kind: "publishedDevApp"
   tileType: "orgDevApp"
   singleton?: false
+  /** Durable authority-preserving identity; `latest` refs follow the active release. */
+  ref: string
   publicationId: string
   organizationId: string
   organizationName: string
@@ -116,6 +129,7 @@ export type DevAppLaunchSpec =
   | DevAppAssistantLaunchSpec
   | DevAppBrowserLaunchSpec
   | DevAppDevServerLaunchSpec
+  | DevelopmentDevAppLaunchSpec
   | DevAppLlamaLaunchSpec
   | DevAppMobileSimulatorLaunchSpec
   | PublishedDevAppLaunchSpec
@@ -139,4 +153,5 @@ export interface DevAppLaunchRequest {
   appId: string
   publishedDevApp?: PublishedDevAppLaunchSpec
   projectDevApp?: ProjectDevAppLaunchSpec
+  developmentDevApp?: DevelopmentDevAppLaunchSpec
 }

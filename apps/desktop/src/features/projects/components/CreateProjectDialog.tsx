@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { GhCliStatus } from "../../../../../../shared/electronApiTypes"
+import type { DevAppScaffoldStarter } from "../../../../../../shared/devAppAuthoringTypes"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
@@ -118,11 +119,31 @@ export function CreateProjectDialog({
   const [createGitHubRepo, setCreateGitHubRepo] = useState(false)
   const [repoVisibility, setRepoVisibility] = useState<"private" | "public">("public")
   const [ghCliAvailable, setGhCliAvailable] = useState<boolean | null>(cachedGhCliStatus?.available ?? null)
+  const [devAppStarter, setDevAppStarter] = useState<DevAppScaffoldStarter>("view-worker")
+  const isLocalMode = mode === "local" || mode === "devapp-local"
+  const isFreshMode = !isLocalMode
+  const isDevAppMode = mode === "devapp" || mode === "devapp-local"
 
   const copy = useMemo(() => {
     const selectedLocalFolderPath = localFolderPath.trim() || initialLocalFolderPath.trim()
 
-    if (mode !== "local" || !selectedLocalFolderPath) {
+    if (!isLocalMode || !selectedLocalFolderPath) {
+      if (isDevAppMode) {
+        return {
+          title:
+            mode === "devapp"
+              ? t("createProject.devAppCreateTitle")
+              : t("createProject.devAppOpenTitle"),
+          description:
+            mode === "devapp"
+              ? t("createProject.devAppCreateDesc")
+              : t("createProject.devAppOpenDesc"),
+          submitLabel:
+            mode === "devapp"
+              ? t("createProject.devAppCreateBtn")
+              : t("createProject.devAppOpenBtn"),
+        } satisfies DialogCopy
+      }
       return {
         title: mode === "empty" ? t("createProject.emptyTitle") : t("createProject.localTitle"),
         description: mode === "empty" ? t("createProject.emptyDesc") : t("createProject.localDescFallback"),
@@ -131,12 +152,19 @@ export function CreateProjectDialog({
     }
 
     const folderName = deriveNameFromPath(selectedLocalFolderPath) || "this folder"
+    if (isDevAppMode) {
+      return {
+        title: t("createProject.devAppOpenTitle"),
+        description: t("createProject.devAppOpenSelectedDesc").replace("{folderName}", folderName),
+        submitLabel: t("createProject.devAppOpenBtn"),
+      } satisfies DialogCopy
+    }
     return {
       title: t("createProject.localTitle"),
       description: t("createProject.localDescFormat").replace("{folderName}", folderName),
       submitLabel: t("createProject.importBtn"),
     } satisfies DialogCopy
-  }, [initialLocalFolderPath, localFolderPath, mode, t])
+  }, [initialLocalFolderPath, isDevAppMode, isLocalMode, localFolderPath, mode, t])
   const locationPathPreview = useMemo(
     () => formatLocationPathPreview(parentDirectory, 2),
     [parentDirectory],
@@ -162,14 +190,15 @@ export function CreateProjectDialog({
 
         setName("")
         setParentDirectory(settings.projectsDirectory)
-        setLocalFolderPath(mode === "local" ? initialLocalFolderPath : "")
+        setLocalFolderPath(isLocalMode ? initialLocalFolderPath : "")
         setLocalGitState(null)
         setError(null)
         setHasEditedName(false)
         setCreateGitHubRepo(false)
+        setDevAppStarter("view-worker")
 
         // Resolve cached gh CLI status (fires once per app session)
-        if (mode === "empty") {
+        if (isFreshMode) {
           void getGhCliStatus().then((status) => {
             if (!cancelled) setGhCliAvailable(status.available)
           })
@@ -183,18 +212,18 @@ export function CreateProjectDialog({
     return () => {
       cancelled = true
     }
-  }, [initialLocalFolderPath, open, mode])
+  }, [initialLocalFolderPath, isFreshMode, isLocalMode, open, mode])
 
   useEffect(() => {
-    if (mode !== "local" || hasEditedName || !localFolderPath) {
+    if (!isLocalMode || hasEditedName || !localFolderPath) {
       return
     }
 
     setName(deriveNameFromPath(localFolderPath))
-  }, [hasEditedName, localFolderPath, mode])
+  }, [hasEditedName, isLocalMode, localFolderPath])
 
   useEffect(() => {
-    if (mode !== "local" || !localFolderPath.trim()) {
+    if (!isLocalMode || !localFolderPath.trim()) {
       setLocalGitState(null)
       return
     }
@@ -217,7 +246,7 @@ export function CreateProjectDialog({
     return () => {
       cancelled = true
     }
-  }, [localFolderPath, mode])
+  }, [isLocalMode, localFolderPath])
 
   const closeDialog = useCallback(() => {
     if (isSubmitting) return
@@ -225,7 +254,13 @@ export function CreateProjectDialog({
   }, [isSubmitting, onOpenChange])
 
   const navigateToProjectWorkbench = useCallback(
-    (projectId: string, projectSlug: string, workspaceId: string, projectName: string) => {
+    (
+      projectId: string,
+      projectSlug: string,
+      workspaceId: string,
+      projectName: string,
+      devAppRef?: string | null,
+    ) => {
       onOpenChange(false)
       useProjectWorkbenchStore
         .getState()
@@ -242,7 +277,16 @@ export function CreateProjectDialog({
             },
             buildWorkbenchIntentState({
               laneId: DEFAULT_WORKBENCH_LANE_ID,
-              openTile: "assistantChat",
+              ...(devAppRef
+                ? {
+                    openDevAppPreview: {
+                      relativePath: ".",
+                      sourceProjectId: projectId,
+                      sourceWorkspaceId: workspaceId,
+                      sourceRef: devAppRef,
+                    },
+                  }
+                : { openTile: "assistantChat" as const }),
             }),
           ),
         },
@@ -252,8 +296,8 @@ export function CreateProjectDialog({
   )
   const isCreateProjectDisabled =
     isSubmitting ||
-    (mode === "empty" && name.trim().length === 0) ||
-    (mode === "local" && localFolderPath.trim().length === 0)
+    (isFreshMode && name.trim().length === 0) ||
+    (isLocalMode && localFolderPath.trim().length === 0)
 
   const handleSubmit = useCallback(async () => {
     if (!convexUserId || isSubmitting) {
@@ -263,7 +307,7 @@ export function CreateProjectDialog({
     const trimmedParentDirectory = parentDirectory.trim()
     const trimmedLocalFolderPath = localFolderPath.trim()
     const trimmedName =
-      mode === "local"
+      isLocalMode
         ? resolveImportedProjectName(name, trimmedLocalFolderPath)
         : name.trim()
 
@@ -271,12 +315,12 @@ export function CreateProjectDialog({
       return
     }
 
-    if (mode === "empty" && !trimmedParentDirectory) {
+    if (isFreshMode && !trimmedParentDirectory) {
       setError("Choose a project location.")
       return
     }
 
-    if (mode === "local" && !trimmedLocalFolderPath) {
+    if (isLocalMode && !trimmedLocalFolderPath) {
       setError("Choose a local folder to open.")
       return
     }
@@ -287,7 +331,7 @@ export function CreateProjectDialog({
     let createdWorkspaceId: string | null = null
 
     try {
-      if (mode === "empty") {
+      if (isFreshMode) {
         const result = await createProject({
           userId: convexUserId,
           name: trimmedName,
@@ -314,6 +358,17 @@ export function CreateProjectDialog({
         }
 
         createdWorkspaceId = createWorkspaceResult.workspace.workspaceId
+
+        const scaffold = isDevAppMode
+          ? await window.electronAPI.devAppAuthoring.scaffold({
+              workspaceId: createdWorkspaceId,
+              name: trimmedName,
+              starter: devAppStarter,
+            })
+          : null
+        if (scaffold && !scaffold.success) {
+          throw new Error(scaffold.error)
+        }
 
         // Optionally create a GitHub repo
         let gitHubRepoUrl: string | undefined
@@ -347,12 +402,15 @@ export function CreateProjectDialog({
           result.slug,
           createdWorkspaceId,
           trimmedName,
+          scaffold?.success ? scaffold.source.ref : null,
         )
         return
       }
 
-      if (mode === "local") {
-        const outcome = await importPickedLocalFolder(trimmedLocalFolderPath, trimmedName)
+      if (isLocalMode) {
+        const outcome = await importPickedLocalFolder(trimmedLocalFolderPath, trimmedName, {
+          requireDevApp: mode === "devapp-local",
+        })
         if (outcome === "imported") {
           closeDialog()
         } else if (outcome === "error") {
@@ -371,6 +429,9 @@ export function CreateProjectDialog({
     createProject,
     isSubmitting,
     importPickedLocalFolder,
+    isDevAppMode,
+    isFreshMode,
+    isLocalMode,
     localFolderPath,
     mode,
     name,
@@ -378,6 +439,7 @@ export function CreateProjectDialog({
     closeDialog,
     parentDirectory,
     updateProjectStatus,
+    devAppStarter,
   ])
 
   return (
@@ -401,7 +463,7 @@ export function CreateProjectDialog({
         <div
           className={cn(
             "max-h-[calc(100vh-16rem)] overflow-y-auto",
-            mode === "local" ? "space-y-2" : "space-y-2.5",
+            isLocalMode ? "space-y-2" : "space-y-2.5",
           )}
         >
           <section>
@@ -418,7 +480,7 @@ export function CreateProjectDialog({
                       setError(null)
                     }}
                     placeholder={
-                      mode === "local"
+                      isLocalMode
                         ? localFolderName || t('createProject.folderNamePlaceholder')
                         : t('createProject.namePlaceholder')
                     }
@@ -429,7 +491,7 @@ export function CreateProjectDialog({
                 </SettingsRowControl>
               </SettingsRow>
 
-              {mode === "empty" ? (
+              {isFreshMode ? (
                 <SettingsRow>
                   <SettingsRowLabel
                     title={t('createProject.path')}
@@ -460,7 +522,7 @@ export function CreateProjectDialog({
                 </SettingsRow>
               ) : null}
 
-              {mode === "local" ? (
+              {isLocalMode ? (
                 <SettingsRow>
                   <SettingsRowLabel
                     title={t('createProject.path')}
@@ -491,7 +553,30 @@ export function CreateProjectDialog({
                 </SettingsRow>
               ) : null}
 
-              {mode === "empty" ? (
+              {isDevAppMode && isFreshMode ? (
+                <SettingsRow>
+                  <SettingsRowLabel
+                    title={t("createProject.devAppStarter")}
+                    description={t("createProject.devAppStarterDesc")}
+                    htmlFor="create-devapp-starter"
+                  />
+                  <SettingsRowControl className={cn("min-w-0", settingsInlineInputWidth)}>
+                    <select
+                      id="create-devapp-starter"
+                      value={devAppStarter}
+                      onChange={(event) => setDevAppStarter(event.target.value as DevAppScaffoldStarter)}
+                      disabled={isSubmitting}
+                      className="h-7 w-full rounded-md border border-border/60 bg-background px-2 text-xs text-foreground outline-none"
+                    >
+                      <option value="view-worker">{t("createProject.devAppStarterViewWorker")}</option>
+                      <option value="view">{t("createProject.devAppStarterView")}</option>
+                      <option value="worker">{t("createProject.devAppStarterWorker")}</option>
+                    </select>
+                  </SettingsRowControl>
+                </SettingsRow>
+              ) : null}
+
+              {isFreshMode ? (
                 <SettingsRow>
                   <SettingsRowLabel
                     title={t('createProject.github')}
@@ -526,7 +611,7 @@ export function CreateProjectDialog({
                 </SettingsRow>
               ) : null}
 
-              {mode === "empty" && createGitHubRepo ? (
+              {isFreshMode && createGitHubRepo ? (
                 <SettingsRow>
                   <SettingsRowLabel
                     title={t('createProject.privateRepo')}
@@ -544,7 +629,7 @@ export function CreateProjectDialog({
                 </SettingsRow>
               ) : null}
 
-              {mode === "empty" ? (
+              {isFreshMode ? (
                 <SettingsRow>
                   <div className="min-w-0 flex-1" />
                   <SettingsRowControl className="gap-2">
@@ -576,7 +661,7 @@ export function CreateProjectDialog({
             </SettingsGroup>
           </section>
 
-          {mode === "local" && localGitState?.isLoading ? (
+          {isLocalMode && localGitState?.isLoading ? (
             <Alert className="rounded-2xl bg-secondary/35">
               <div className="loader" />
               <AlertTitle>{t('createProject.checkingFolder')}</AlertTitle>
@@ -589,7 +674,7 @@ export function CreateProjectDialog({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
 
-        {mode === "local" ? (
+        {isLocalMode ? (
           <DialogFooter className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <div className="flex shrink-0 justify-end gap-2">
               <Button

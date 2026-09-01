@@ -4,6 +4,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   FolderAddIcon as __FolderAddHugeIcon,
+  Search01Icon as __SearchHugeIcon,
   ShoppingBag01Icon as __ShoppingBagHugeIcon,
 } from '@hugeicons/core-free-icons'
 
@@ -84,6 +85,7 @@ import {
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/projects/hooks/useProjectWorkspaceActions";
+import { openCommandPalette } from "@/features/projects/components/command-palette/commandPaletteBus";
 
 const LazyProjectDeleteDialog = React.lazy(() =>
   import("./ProjectDeleteDialog").then((module) => ({
@@ -927,6 +929,18 @@ export function ProjectSidebar({
               >
                 <HugeiconsIcon icon={__ShoppingBagHugeIcon} />
                 <span className="truncate">{t('nav.devAppsStore')}</span>
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                  "px-1.5",
+                  "[&>svg]:text-current",
+                )}
+                onClick={() => openCommandPalette()}
+              >
+                <HugeiconsIcon icon={__SearchHugeIcon} />
+                <span className="truncate">{t('nav.search')}</span>
               </button>
             </div>
           )}

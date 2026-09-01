@@ -1,17 +1,81 @@
-import type { IpcMain } from "electron"
+import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from "electron"
 
 import { resolveAuthorizedWorkspaceAccess } from "../workspaces/authorization"
 import type { OrgDevAppArtifactService } from "../services/OrgDevAppArtifactService"
+import type { OrgDevAppInstallationService } from "../services/OrgDevAppInstallationService"
+import type { OrgDevAppInstallRequest } from "../../../../shared/orgDevAppInstallation"
 
 interface RegisterOrgDevAppHandlersDeps {
   service: OrgDevAppArtifactService
+  installations: OrgDevAppInstallationService
+  getMainWindow: () => BrowserWindow | null
 }
 
 export function registerOrgDevAppHandlers(
   ipcMain: IpcMain,
   deps: RegisterOrgDevAppHandlersDeps,
 ): void {
-  const { service } = deps
+  const { service, installations } = deps
+
+  const assertMainRenderer = (event: IpcMainInvokeEvent): void => {
+    const window = deps.getMainWindow()
+    if (!window || window.isDestroyed() || event.sender !== window.webContents) {
+      throw new Error("DevApp installation IPC is restricted to the main Cozea renderer.")
+    }
+  }
+
+  const sendInstallations = installations.onChange((next) => {
+    const window = deps.getMainWindow()
+    if (window && !window.isDestroyed()) {
+      window.webContents.send("orgDevApp:installationsChanged", next)
+    }
+  })
+
+  ipcMain.handle("orgDevApp:listInstallations", (event) => {
+    assertMainRenderer(event)
+    return { success: true as const, installations: installations.list() }
+  })
+
+  ipcMain.handle("orgDevApp:getInstallation", (event, options: { ref: string }) => {
+    assertMainRenderer(event)
+    return { success: true as const, installation: installations.resolve(options.ref) }
+  })
+
+  ipcMain.handle("orgDevApp:install", async (event, request: OrgDevAppInstallRequest) => {
+    assertMainRenderer(event)
+    try {
+      return { success: true as const, installation: await installations.install(request) }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to install the DevApp." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:prepareInstalled", async (event, options: { ref: string }) => {
+    assertMainRenderer(event)
+    try {
+      return { success: true as const, artifact: await installations.prepare(options.ref) }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to open the installed DevApp." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:uninstallPublication", (event, options: { publicationId: string }) => {
+    assertMainRenderer(event)
+    try {
+      return { success: true as const, removed: installations.uninstallPublication(options.publicationId) }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to uninstall the DevApp." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:removeInstalledVersion", (event, options: { ref: string }) => {
+    assertMainRenderer(event)
+    try {
+      return { success: true as const, removed: installations.removeVersion(options.ref) }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to remove the DevApp release." }
+    }
+  })
 
   ipcMain.handle(
     "orgDevApp:buildAndUpload",
@@ -163,4 +227,6 @@ export function registerOrgDevAppHandlers(
       return { success: false as const, error: error instanceof Error ? error.message : "Failed to inspect Service DevApp." }
     }
   })
+
+  void sendInstallations
 }

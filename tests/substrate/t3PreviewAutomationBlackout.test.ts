@@ -505,6 +505,7 @@ describe("T3 preview automation host", () => {
           sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
           name: "Inventory",
           requested: { capabilities: ["project.metadata"], agentInvocable: false },
+          declaredTools: [],
           workerExecution: true,
           approvalFingerprint: "v1;project.metadata;agent=0",
           missing: ["project.metadata"],
@@ -564,7 +565,8 @@ describe("T3 preview automation host", () => {
           entryPath: "dist/index.html",
           url: "cozea-devapp://8a9f6d2f624cb5e73e4b6f5a67d21dc9.dev/dist/index.html",
         },
-        grant: { capabilities: [], agentInvocable: false },
+      grant: { capabilities: [], agentInvocable: false },
+      declaredTools: [],
         badge: { tone: "development", label: "Development", detail: "Approved." },
         preflight: {
           ok: true,

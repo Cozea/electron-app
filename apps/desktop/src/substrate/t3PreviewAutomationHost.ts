@@ -581,6 +581,14 @@ async function readDevAppPreviewAutomationStatus(
       : status?.status === "running"
         ? status.grant.agentInvocable
         : false;
+  const declaredTools =
+    status && status.status !== "invalid"
+      ? status.declaredTools.slice(0, 32).map((tool) => ({
+          name: tool.name.slice(0, 64),
+          description: tool.description.slice(0, 500),
+          inputSchema: tool.inputSchema,
+        }))
+      : [];
   const phase = snapshot.openError ? "invalid" : (status?.status ?? "opening");
   const worker =
     status?.status === "running" && status.worker
@@ -600,6 +608,8 @@ async function readDevAppPreviewAutomationStatus(
     ready: status?.status === "running" && status.view.kind !== "unavailable" && surface.available,
     requestedCapabilities: requestedCapabilities.slice(0, 64).map((value) => value.slice(0, 128)),
     agentInvocable,
+    declaredTools,
+    toolInvocationAvailable: false,
     diagnostics: readDevAppPreviewDiagnostics(snapshot),
     worker,
     surface,

@@ -253,4 +253,37 @@ describe("persisted workbench migration", () => {
     expect(tile).not.toHaveProperty("devAppPort")
     expect(tile).not.toHaveProperty("autoStart")
   })
+
+  it("preserves a durable Org DevApp ref across workbench restoration", () => {
+    const persisted = bench({
+      projectId: "p8",
+      workspaceId: "lws_org_devapp",
+      tiles: [{ id: "org-app", type: "orgDevApp" }],
+    })
+    persisted.tiles["org-app"] = {
+      ...persisted.tiles["org-app"],
+      title: "Inventory",
+      devAppRef: "  cozea-devapp:org_1/pub_1@2  ",
+      publicationId: " pub_1 ",
+      organizationId: " org_1 ",
+      contentHash: ` ${"a".repeat(64)} `,
+      entryPath: " index.html ",
+      runtimeKind: "static",
+      storageScope: "workspace",
+    }
+
+    const migrated = migratePersistedWorkbenchState({ workbenches: { persisted } })
+    const tile = Object.values(migrated.workbenches)[0]!.tiles["org-app"]
+
+    expect(tile).toMatchObject({
+      type: "orgDevApp",
+      devAppRef: "cozea-devapp:org_1/pub_1@2",
+      publicationId: "pub_1",
+      organizationId: "org_1",
+      contentHash: "a".repeat(64),
+      entryPath: "index.html",
+      runtimeKind: "static",
+      storageScope: "orgDevApp",
+    })
+  })
 })

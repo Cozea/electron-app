@@ -1448,6 +1448,33 @@ export interface ElectronAPI {
     openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
   orgDevApp: {
+    listInstallations: () => Promise<
+      | { success: true; installations: import('./orgDevAppInstallation').OrgDevAppInstallation[] }
+      | { success: false; error: string }
+    >
+    getInstallation: (options: { ref: string }) => Promise<
+      | { success: true; installation: import('./orgDevAppInstallation').OrgDevAppInstallation | null }
+      | { success: false; error: string }
+    >
+    install: (request: import('./orgDevAppInstallation').OrgDevAppInstallRequest) => Promise<
+      | { success: true; installation: import('./orgDevAppInstallation').OrgDevAppInstallation }
+      | { success: false; error: string }
+    >
+    prepareInstalled: (options: { ref: string }) => Promise<
+      | { success: true; artifact: import('./orgDevAppInstallation').OrgDevAppInstalledArtifact }
+      | { success: false; error: string }
+    >
+    uninstallPublication: (options: { publicationId: string }) => Promise<
+      | { success: true; removed: number }
+      | { success: false; error: string }
+    >
+    removeInstalledVersion: (options: { ref: string }) => Promise<
+      | { success: true; removed: boolean }
+      | { success: false; error: string }
+    >
+    onInstallationsChanged: (
+      listener: (installations: import('./orgDevAppInstallation').OrgDevAppInstallation[]) => void,
+    ) => () => void
     buildAndUpload: (options: {
       workspaceId: string
       laneId?: string | null
@@ -1534,6 +1561,22 @@ export interface ElectronAPI {
         status: import('./devAppPreviewTypes').DevAppPreviewStatus
       }) => void,
     ) => () => void
+  }
+  devAppAuthoring: {
+    inspectWorkspace: (options: { workspaceId: string; relativePath?: string }) => Promise<
+      import('./devAppAuthoringTypes').DevAppAuthoringInspectionResult
+    >
+    inspectFolder: (options: { folderPath: string }) => Promise<
+      import('./devAppAuthoringTypes').DevAppAuthoringInspectionResult
+    >
+    listDevelopmentSources: () => Promise<
+      import('./devAppAuthoringTypes').DevAppAuthoringListResult
+    >
+    scaffold: (options: {
+      workspaceId: string
+      name: string
+      starter: import('./devAppAuthoringTypes').DevAppScaffoldStarter
+    }) => Promise<import('./devAppAuthoringTypes').DevAppAuthoringScaffoldResult>
   }
   workbenchSession: {
     ensureSession: (options: {

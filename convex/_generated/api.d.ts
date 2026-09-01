@@ -15,6 +15,7 @@ import type * as deployments from "../deployments.js";
 import type * as devApps from "../devApps.js";
 import type * as fileTombstones from "../fileTombstones.js";
 import type * as lib_authenticatedFunctions from "../lib/authenticatedFunctions.js";
+import type * as lib_devAppReferenceResolution from "../lib/devAppReferenceResolution.js";
 import type * as lib_deviceAuth from "../lib/deviceAuth.js";
 import type * as lib_encryption from "../lib/encryption.js";
 import type * as lib_modelTiers from "../lib/modelTiers.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   devApps: typeof devApps;
   fileTombstones: typeof fileTombstones;
   "lib/authenticatedFunctions": typeof lib_authenticatedFunctions;
+  "lib/devAppReferenceResolution": typeof lib_devAppReferenceResolution;
   "lib/deviceAuth": typeof lib_deviceAuth;
   "lib/encryption": typeof lib_encryption;
   "lib/modelTiers": typeof lib_modelTiers;

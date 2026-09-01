@@ -10,6 +10,8 @@ import {
   DEV_APP_METHOD_CAPABILITIES,
   authorizeWorkerMethod,
   capabilityForMethod,
+  createDevAppWorkerViewPortBootstrap,
+  parseDevAppWorkerViewPortBootstrap,
   parseWorkerMessage,
   reachableCapabilities,
   supportsDevAppWorkerProtocolVersion,
@@ -98,6 +100,23 @@ describe("Worker capability table — coverage", () => {
 })
 
 describe("Worker message parsing — untrusted input", () => {
+  it("uses the selected worker protocol for main-issued view ports", () => {
+    const bootstrap = createDevAppWorkerViewPortBootstrap("view_1", DEV_APP_WORKER_PROTOCOL_VERSION)
+    expect(parseDevAppWorkerViewPortBootstrap(bootstrap)).toEqual(bootstrap)
+    expect(
+      parseDevAppWorkerViewPortBootstrap({
+        ...bootstrap,
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION + 1,
+      }),
+    ).toBeNull()
+    expect(
+      parseDevAppWorkerViewPortBootstrap({
+        ...bootstrap,
+        connectionId: "x".repeat(200),
+      }),
+    ).toBeNull()
+  })
+
   it("publishes one explicit supported protocol range", () => {
     expect(DEV_APP_WORKER_PROTOCOL_MIN_VERSION).toBe(1)
     expect(DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION).toBe(1)

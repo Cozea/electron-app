@@ -11,7 +11,7 @@ function resolveMode(search: string): CreateProjectDialogMode {
   const params = new URLSearchParams(search)
   const rawMode = params.get("mode")
 
-  if (rawMode === "local") {
+  if (rawMode === "local" || rawMode === "devapp" || rawMode === "devapp-local") {
     return rawMode
   }
 
@@ -41,19 +41,21 @@ export default function NewProject() {
 
     const nextMode = resolveMode(window.location.search)
 
-    if (nextMode === "local") {
+    if (nextMode === "local" || nextMode === "devapp-local") {
       // Local import needs the Convex profile; wait for auth before the
       // one-shot picker so the import doesn't run with a stale null user.
       if (!convexUserId) return
       hasStartedRef.current = true
-      void browseForDirectory("Select local project folder").then((selectedPath) => {
+      void browseForDirectory(
+        nextMode === "devapp-local" ? "Select existing DevApp project" : "Select local project folder",
+      ).then((selectedPath) => {
         if (!selectedPath?.trim()) {
           navigate("/projects", { replace: true })
           return
         }
 
         openCreateProjectDialog({
-          mode: "local",
+          mode: nextMode,
           localFolderPath: selectedPath,
         })
         navigate("/projects", { replace: true })

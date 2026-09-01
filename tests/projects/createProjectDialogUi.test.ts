@@ -27,8 +27,9 @@ describe("create project dialog UI", () => {
   it("submits the chosen local project name with a folder-name fallback", () => {
     expect(dialogSource).toContain("resolveImportedProjectName(name, trimmedLocalFolderPath)")
     expect(dialogSource).toContain(
-      "importPickedLocalFolder(trimmedLocalFolderPath, trimmedName)",
+      "importPickedLocalFolder(trimmedLocalFolderPath, trimmedName,",
     )
+    expect(dialogSource).toContain('requireDevApp: mode === "devapp-local"')
   })
 
   it("routes picker and drop entry points through the naming dialog", () => {
@@ -39,9 +40,11 @@ describe("create project dialog UI", () => {
     ].map(readWorkspaceSource)
 
     for (const source of entryPointSources) {
-      expect(source).toContain('mode: "local"')
       expect(source).toContain("localFolderPath:")
       expect(source).not.toContain("importPickedLocalFolder(")
     }
+    expect(entryPointSources[0]).toContain('nextMode === "local"')
+    expect(entryPointSources[1]).toContain('selection === "local"')
+    expect(entryPointSources[2]).toContain('mode: "local"')
   })
 })

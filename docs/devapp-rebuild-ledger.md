@@ -7,17 +7,20 @@ what was left suspended with the reason it stopped.
 | ----------------------- | --------------------------------------------------------- |
 | Original parent commits | 15                                                        |
 | Phase 5 follow-up       | 2 parent commits + 3 T3 fork commits                      |
-| New modules             | 17                                                        |
-| Test files              | 21                                                        |
-| Full suite              | 202 files / 1568 tests passing (1 file / 4 tests skipped) |
-| Phases complete         | 4 of 9                                                    |
+| New modules             | 33 plus generated authoring assets                        |
+| Test files              | 30                                                        |
+| Full suite              | 212 files / 1613 tests passing (1 file / 4 tests skipped) |
+| Phases complete         | 8 of 9                                                    |
 
 Originally audited at `78cb74bd` on `main`; live Phase 5 acceptance was refreshed on
 2026-09-01 from the current `main` line plus the dedicated acceptance, protocol, registry, and
 worker-security branches.
-All three typecheck projects, focused tests, lint, the full suite, and the production build pass. Phase scope is
-quoted from the DevApp Rebuild Plan. Every "left suspended" item was checked in code
-rather than recalled.
+All three typecheck projects, focused tests, lint, the full suite, and the production build pass.
+The explicit unsigned local distribution smoke also produces the macOS application, DMG, ZIP,
+and blockmaps; release builds still require the Developer ID identity.
+The durable-reference queries were deployed to the production Convex deployment on 2026-09-01
+after a clean dry run with no index deletion. Phase scope is quoted from the DevApp Rebuild Plan.
+Every "left suspended" item was checked in code rather than recalled.
 
 ---
 
@@ -34,15 +37,16 @@ storage and crosses projects. It can ask for capabilities from a settled vocabul
 local development worker behind a versioned gate after explicit approval. Published worker
 execution remains blocked until its container runtime exists.
 
-What does not exist yet is the half that makes it a _platform_ rather than a better
-runtime: nobody outside the team can author against it, worker-declared agent tools do not
-flow into ACP sessions, and installation is still a cache rather than an install. Agents can
-now create or attach a development preview and drive its living guest after the user grants
-the package's requested session capabilities.
+What does not exist yet is execution of published or autonomous worker tools. Concrete worker-tool
+declarations now flow through the authenticated ACP/MCP session as an inspectable catalog, while
+invocation stays unavailable until the contained runtime exists. Organization DevApps are real,
+version-pinned device installations rather than cache entries. External authoring has a generated
+schema, self-contained typed client, first-class project workflow, public documentation, and
+in-product MCP references. Agents can create or attach a development preview and drive its living
+guest after the user grants the package's requested session capabilities.
 
-> **The honest headline: 4 phases delivered, 2 partial, 3 untouched.**
-> The two partials each have a specific, named gap that a later phase depends on — which
-> is why they are counted as partials here rather than quietly rounded up.
+> **The honest headline: 8 phases delivered, 0 partial, 1 untouched.**
+> Phase 4 now includes the living view-to-worker bridge rather than stopping at the host.
 
 ---
 
@@ -78,7 +82,7 @@ localhost recipe fields were removed at the same cutover.
 The machine-local `localProjectDevAppStore` remains a distinct development compatibility product,
 not a fallback for organization release records.
 
-### Phase 2 — Registry and surface resolver — **Partial**
+### Phase 2 — Registry and surface resolver — **Delivered**
 
 **Shipped.** Durable refs — `cozea-devapp:org_x/pub_y@7` — that survive storage, cross
 project boundaries, and can be written by hand. Parsing fails closed, and `builtin` and
@@ -97,9 +101,16 @@ layout restoration, tile chrome, sidebar summaries, and component registration c
 Renderer implementations remain a separate typed catalog, so an identity may reuse an existing
 renderer without adding another shell switch; only a genuinely new UI needs a new component.
 
-**Left suspended.** Publication resolution against Convex is deferred, and the cross-project
-reference UX was never built, so durable refs still have no consumer. A new built-in using an
-existing surface now adds one manifest module; a new persisted tile identity adds one shell
+The ref grammar now lives in the shared contract used by both renderer and Convex. Authenticated
+resolution binds the encoded organization and publication IDs, checks current membership and
+publication status, and selects either the active release or an exact retained immutable version.
+Malformed, mismatched, inaccessible, archived, and unavailable-release refs all fail closed.
+
+The Store exposes a copyable latest-release ref. Pasting a built-in or publication ref into the
+workbench launcher resolves it independently of the current project and category. Launched Org
+DevApp tiles persist the originating ref, and artifact retrieval resolves that ref again, so
+`latest` follows the active release while `@N` remains pinned across restoration. A new built-in
+using an existing surface adds one manifest module; a new persisted tile identity adds one shell
 descriptor plus its actual data/component implementation when that UI does not already exist.
 
 ### Phase 3 — Capability vocabulary — **Delivered**
@@ -115,7 +126,7 @@ had been conflated. Opening a URL and revealing a path are different powers: the
 restricted to web schemes, the second is bounded to the workspace or the app's own data
 directory.
 
-### Phase 4 — Worker host and protocol — **Partial**
+### Phase 4 — Worker host and protocol — **Delivered**
 
 **Shipped.** An out-of-process host with crash capture, bounded restarts, a log ring
 buffer, and lease-based lifetime — one mechanism serving tile, agent, and background
@@ -130,11 +141,20 @@ authority narrows, resolves symlinks at every host filesystem boundary, hides ho
 worker responses, bounds messages/resources, and requires the v1 method table to match the real
 handler set. Node permission flags and a minimal environment are defense in depth only.
 
-**Left suspended.** The plan called for `MessageChannelMain` ports bridged to _views_
-through preload. That does not exist — `preload.ts` has zero worker references, so a worker
-can talk to main but a view cannot talk to a worker. The previously overdue protocol
-versioning and adversarial-review gates are now complete; the missing view bridge is the remaining
-Phase 4 gap. Published workers are separately blocked on Phase 8 containment.
+The missing view path is now delivered. A development-preview-only preload preserves T3's picker
+and exposes a frozen low-level `window.cozeaDevApp` bridge without exposing `ipcRenderer`. Main
+creates separate view and worker channels, brokers the shared protocol-v1 envelopes with message,
+pressure, correlation, and timeout checks, and transfers only main-issued endpoints to the exact
+prepared guest and approved worker. Reload, crash replacement, grant expiry, surface release, and
+shutdown revoke the old connection; bounded worker restart issues a fresh one to the living guest.
+The picker, DevApp picker, and PiP preloads are built as independent single-entry artifacts because
+Electron's sandboxed preload loader cannot resolve Rollup's relative shared chunks.
+
+This does not bypass the capability model. View/worker calls are package-private, while every
+privileged Cozea request still travels over the worker's original host port and through the
+approved method-capability table and workspace binding. Ordinary Browser and published Org DevApp
+guests retain the picker-only preload and cannot receive a development worker port. Published
+workers remain separately blocked on Phase 8 containment.
 
 ### Phase 5 — Development mode and preview tile — **Delivered**
 
@@ -160,23 +180,60 @@ an autonomous agent surface.
 Every package that declares a worker now pauses for explicit session approval, including a worker
 that declares zero host capabilities. View-only packages remain prompt-free.
 
-### Phase 6 — Authoring contract and headless publish — **Not started**
+### Phase 6 — Authoring contract and headless publish — **Delivered**
 
-`cozea-devapp.schema.json` generated from the internal source; `@cozea/devapp-api` typings
-and the view-side port client; a scaffold command; programmatic publish that bypasses the
-dialog flow; docs served publicly and as an MCP server inside Cozea.
+**Shipped.** `shared/devAppPackage.ts` now generates the public JSON Schema, the Electron public
+asset, and exact contract copies inside `@cozea/devapp-api`; `devapp:check` fails when any copy or
+the public authoring guide drifts. The SDK builds to a self-contained browser ESM package with
+declarations, typed request/results, bounded correlation and errors, and replacement-port handling
+after worker restart. A Bun dry-run pack proves the public tarball contains no private source-tree
+imports.
 
-**Its single internal source now exists** — `shared/devAppPackage.ts` was written in Phase 5
-to be exactly that, so this phase starts from a settled format rather than inventing one. The
-schema, typings, view-only scaffold, documentation, and headless publish work may proceed before
-Phase 8; published/external worker execution may not.
+Native DevApps now begin at the project boundary. **Create native DevApp** is beside ordinary
+project creation and on the DevApps browsing page; it creates a normal managed Git project with a
+view, worker, or combined starter, schema association, typed client example, build scripts, valid
+built output, and an immediate preview intent. **Open existing DevApp** uses ordinary folder import
+but requires a valid root manifest; ordinary folder import also detects a valid native package and
+opens its preview. Invalid manifests fail with their complete diagnostics. The command-palette
+package picker remains an advanced shortcut.
 
-### Phase 7 — Agent surface and installation semantics — **Not started**
+Device-local authoring packages appear under **Add Tile → Development**, never in the Store. A
+target project can launch a package owned by another local project through an opaque development
+ref and source workspace ID; no absolute path or source copy enters the target layout. Missing or
+detached sources fail independently, so one broken catalog entry cannot hide every other package.
 
-Workers declaring MCP operations that flow into ACP session setup; resolving the five
-installed-but-unreferenced MCP packages; turning the cache into a real install with
-uninstall, version pinning, and offline launch; storage management UI and an
-update-available state instead of silently following `activeReleaseId`.
+`publishNativeDevAppProgrammatically` validates the root manifest, derives publication metadata,
+and bypasses dialogs while reusing the authenticated reservation, upload, artifact verification,
+organization authorization, and immutable-release pipeline. First publication still requires a
+logo. The generated public Markdown guide covers creation, cross-project testing, SDK use,
+publishing, and the development-versus-published security boundary. T3's authenticated MCP server
+registers a separate read-only `devapp_authoring_docs` tool, and runtime preparation fingerprints
+dirty fork source so a changed MCP tool cannot be silently omitted from local/package builds.
+
+Published or externally sourced worker execution remains blocked on Phase 8 containment; Phase 6
+does not weaken that boundary.
+
+### Phase 7 — Agent surface and installation semantics — **Delivered**
+
+**Shipped.** Worker manifests declare concrete operations as bounded `name`, `description`, and
+object `inputSchema` records. The former exposure boolean is rejected rather than retained as a
+compatibility alias. Preview status carries the exact declarations, and every authenticated T3 MCP
+session exposes `devapp_tool_catalog` for an already-open development preview. The catalog cannot
+start code, grant capabilities, or invoke an operation; it reports
+`toolInvocationAvailable: false` until Phase 8 provides containment.
+
+Organization DevApps now install to an atomic device-local registry under exact immutable refs.
+Multiple versions may coexist, updates explicitly change the active pointer, Add Tile lists only
+the active installed version, existing exact-version tiles remain pinned, and prepared artifacts
+launch without a network fetch. Installed content hashes are protected from ordinary cache pruning.
+Uninstall removes every installed version for a publication and version removal retains a shared
+artifact until its final installation reference disappears.
+
+The Store remains the online catalog and now provides explicit Install, Update, and Uninstall
+states. Its Updates category compares the catalog release to the locally active exact version, and
+its storage section shows total/per-version usage with version removal controls. The five
+installed-but-unreferenced MCP dependencies — the Git, shell, filesystem, Playwright, and repository
+search servers — are absent from package manifests and the Bun lockfile.
 
 ### Phase 8 — Container runtime, then hosted location — **Not started**
 
@@ -202,12 +259,13 @@ Dockview placement, capability-approval status, workbench targeting, and transla
 development session into the shared T3 surface inventory. It never grants capabilities on the
 assistant's behalf.
 
-### The view-to-worker bridge — Phase 4, not built
+### The view-to-worker bridge — Phase 4, completed 2026-09-01
 
-A DevApp's view has no way to call its own worker. The host is complete and the gate works,
-but nothing bridges a `MessageChannelMain` port through preload to the renderer. Until this
-exists, a worker is reachable only by main — so the tile surface can show worker logs and
-crashes but cannot invoke anything.
+A DevApp's living T3 guest can now reach its own approved worker over a main-issued DOM
+`MessagePort`. The guest receives a dedicated preload; main owns correlation, request bounds,
+timeouts, and revocation; the worker receives a second port without changing its original gated
+host channel. The raw bridge is sufficient for internal packages now, while Phase 6 remains
+responsible for the public typed client and generated authoring contract.
 
 ### Protocol versioning policy — cross-cutting, completed 2026-09-01
 
@@ -235,6 +293,19 @@ Protocol v1 was also corrected to advertise exactly the six methods it implement
 require a new explicit protocol version. Residual local-development risks and phase ordering are in
 `docs/devapp-worker-security-review.md`.
 
+### Agent tool catalog and installation product — Phase 7, completed 2026-09-01
+
+The public manifest, generated schema, typed contract copy, preview status, parent bridge, and T3
+MCP contract all carry the same concrete worker-tool declarations. An authenticated assistant can
+inspect them through `devapp_tool_catalog`; it cannot invoke them or manufacture approval. That
+keeps the authoring contract complete without moving the Phase 8 containment boundary.
+
+The former artifact cache is no longer treated as installation state. A main-process registry owns
+exact versions and the active pointer, while the verified artifact service owns bytes. Store,
+launcher, offline preparation, cache pruning, runtime teardown, and storage removal consume that
+single split instead of inferring installation from a cached directory or the catalog's current
+`activeReleaseId`.
+
 ### Registry consolidation — Phase 2, completed 2026-09-01
 
 `BUILTIN_DEV_APPS` is discovered from self-contained manifest modules, and the parallel
@@ -251,11 +322,11 @@ and published manifests use it directly. Release records require artifact identi
 and parts; there is no default, migration function, or launch-spec reconstruction left in the
 shipping tree.
 
-### Cross-project references — Phase 2, open
+### Cross-project references — Phase 2, completed 2026-09-01
 
-Refs can name an app published from another project. Nothing resolves that name yet — there
-is no Convex-side lookup and no UI for picking such an app. The addressing primitive shipped
-without its consumer.
+Refs can name an app published from another project without carrying source metadata. Convex now
+resolves them under current organization membership, the Store exposes copyable refs, the launcher
+accepts pasted refs, and Org DevApp tiles preserve latest-versus-pinned release semantics.
 
 ### Build adapter test fixtures — cross-cutting, open
 
@@ -272,7 +343,7 @@ and is already used for dev-command candidates. Genuinely optional.
 
 ## Live verification status
 
-Three formerly unverified paths now have direct Electron evidence. One broader lifecycle walk
+Four formerly unverified paths now have direct Electron evidence. One broader lifecycle walk
 remains.
 
 **The utilityProcess adapter — verified 2026-09-01.** A real development package with a
@@ -287,6 +358,13 @@ the persisted tile restored after app restart, and a `dist/index.html` edit hot-
 place. This smoke found and fixed two real gaps: missing Dockview registration and generated
 output being ignored by the watcher.
 
+**The view-to-worker bridge — verified 2026-09-01.** The real approved package's living
+`cozea-devapp://` guest called `window.cozeaDevApp.connectWorker()`, transferred a versioned
+request over its main-issued port, and rendered the utility worker's response: “View-to-worker
+bridge verified in Electron.” The first attempt found that the correct preload had been split
+behind a relative Rollup `require`, which Electron's sandbox rejected. Independent preload
+bundling fixed the defect for the DevApp picker and the two upstream T3 sandboxed preloads.
+
 **Agent preview use — verified 2026-09-01.** A real Codex tile called
 `devapp_preview_ensure`, received `needsApproval` without a guest or tab ID, and could not
 bypass the session grant. After the user-scoped approval, `devapp_preview_attach` returned the
@@ -296,9 +374,27 @@ guest.” This smoke found and fixed two packaging/runtime gaps: hidden guests c
 `webContents.capturePage()`, and Playwright's injected selector runtime must be embedded in the
 desktop bundle rather than resolved from the packaged main output at runtime.
 
+**Native authoring and cross-project testing — verified 2026-09-01.** The first-class creation
+form created the `Phase Six Smoke Live` managed project with a combined starter. Its unpublished
+worker paused for the exact session approval, and the confined guest rendered the generated built
+view. The `new test` project then opened that same source from Add Tile → Development and rendered
+it without a copy; restart restored the cross-project tile. The Store exposed Create/Open authoring
+entry points but did not list the local package. The first smoke exposed a workspace-hydration race
+that could consume the immediate-preview intent in a workspace-less bench; application now waits
+for the concrete workspace, with a focused regression protecting the ordering.
+
+**Installation UI boundary — verified 2026-09-01.** The real Electron Store showed the organization
+release as catalog content with an explicit Install action, the Updates category derived an empty
+state with no local install, and Add Tile omitted that uninstalled release while retaining local
+development and built-in surfaces. No unregistered IPC or renderer error appeared. The live Install
+button was deliberately not activated because doing so downloads organization code onto the Mac;
+exact install/update/remove, shared-hash retention, and fetch-free offline preparation are covered
+by the main-process integration suite.
+
 **The full loop, end to end.** Author a package, preview it, fix a preflight failure,
 publish, install, open. Each segment is tested; the whole path has never been walked. That
-walk is the real acceptance test for Phase 5 and it has not happened.
+walk remains a cross-phase live release exercise rather than an open Phase 6 code path; the
+Phase 6 smoke deliberately did not create another organization release in production.
 
 ---
 
@@ -310,42 +406,66 @@ walk is the real acceptance test for Phase 5 and it has not happened.
 | --------------------------- | -------------------------------- |
 | `devAppCapabilities.ts`     | vocabulary, tiers, grants        |
 | `devAppWorkerProtocol.ts`   | wire format, authorization table |
+| `devAppViewBridge.ts`       | low-level guest bridge contract  |
 | `devAppPackage.ts`          | `cozea-devapp.json` parser       |
 | `devAppParts.ts`            | parts, surfaces, release adapter |
+| `devAppRef.ts`              | durable ref grammar and identity |
 | `devAppDevelopmentTrust.ts` | provisional grants               |
 | `devAppPreviewTypes.ts`     | status the tile renders          |
 | `devAppPreviewProtocol.ts`  | the `.dev` origin                |
+| `devAppAuthoringTypes.ts`   | scaffold and local-source IPC    |
+| `orgDevAppInstallation.ts`  | exact local installation records |
 | `orgDevAppDiagnostics.ts`   | error taxonomy                   |
 | `browserSurfaceSessions.ts` | partition isolation              |
 
 The worker wire lifecycle and compatibility policy are documented in
 `docs/devapp-worker-protocol.md`.
 
+Convex resolves publication refs through `convex/lib/devAppReferenceResolution.ts`; that boundary
+binds organization/publication identity, membership, status, and latest/pinned release selection
+before returning consumer-safe metadata.
+
 ### Host — `apps/desktop/electron/services/`
 
-| Module                     | Role                      |
-| -------------------------- | ------------------------- |
-| `DevAppWorkerHost.ts`      | supervisor and gate       |
-| `devAppWorkerHandlers.ts`  | binding-enforced methods  |
-| `devAppHostServices.ts`    | real fs, shell, workspace |
-| `devAppUtilityProcess.ts`  | the Electron adapter      |
-| `DevAppPreviewSession.ts`  | the authoring loop        |
-| `DevAppPreviewService.ts`  | session + watcher + IPC   |
-| `DevAppPreviewWatcher.ts`  | debounced reload          |
-| `devAppPreviewAdapters.ts` | fs port, source ids       |
-| `orgDevAppPreflight.ts`    | the validator             |
+| Module                                    | Role                       |
+| ----------------------------------------- | -------------------------- |
+| `DevAppWorkerHost.ts`                     | supervisor and gate        |
+| `DevAppViewBridge.ts`                     | bounded view/worker broker |
+| `devAppWorkerHandlers.ts`                 | binding-enforced methods   |
+| `devAppHostServices.ts`                   | real fs, shell, workspace  |
+| `devAppUtilityProcess.ts`                 | the Electron adapter       |
+| `DevAppPreviewSession.ts`                 | the authoring loop         |
+| `DevAppPreviewService.ts`                 | session + watcher + IPC    |
+| `DevAppPreviewWatcher.ts`                 | debounced reload           |
+| `DevAppAuthoringService.ts`               | inspect and scaffold       |
+| `OrgDevAppInstallationService.ts`         | exact installs and storage |
+| `devAppPreviewAdapters.ts`                | fs port, source ids        |
+| `../preloads/devAppPreviewPickPreload.ts` | DevApp-only guest bridge   |
+| `orgDevAppPreflight.ts`                   | the validator              |
 
 ### Renderer — `apps/desktop/src/`
 
 | Module                                                                  | Role                          |
 | ----------------------------------------------------------------------- | ----------------------------- |
 | `features/devapps/registry/parts.ts`                                    | built-in/local parts adapters |
-| `features/devapps/registry/ref.ts`                                      | durable names                 |
+| `features/devapps/registry/ref.ts`                                      | built-in launch resolution    |
+| `features/devapps/developmentDevAppManifest.ts`                         | local Add Tile adapter        |
+| `features/devapps/devAppAuthoringPublish.ts`                            | non-dialog publication API    |
+| `features/devapps/useOrgDevAppInstallations.ts`                         | live local install inventory  |
 | `features/projects/lib/workbenchTileRegistry.ts`                        | workbench shell contract      |
 | `features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx` | the tile                      |
 | `features/projects/devapps/devAppPreviewRuntimeStore.ts`                | live status for automation    |
 | `features/projects/devapps/devAppPreviewSurfaceController.ts`           | package-to-Dockview placement |
 | `electron/ipc/registerDevAppPreviewHandlers.ts`                         | IPC boundary                  |
+
+### Public authoring — `packages/devapp-api/` and `docs/`
+
+| Module / asset                         | Role                                     |
+| -------------------------------------- | ---------------------------------------- |
+| `packages/devapp-api/src/index.ts`     | typed view/worker client                 |
+| `packages/devapp-api/schema/`          | generated public manifest schema         |
+| `docs/devapp-authoring.md`             | canonical public authoring guide         |
+| `scripts/generate-devapp-authoring.ts` | schema/contract/documentation drift gate |
 
 ---
 
@@ -368,8 +488,7 @@ In dependency order, not preference order.
 
 4. **Registry/surface consolidation — complete 2026-09-01.** Built-ins are self-contained,
    parts drive surface resolution, and the workbench shell consumes one typed descriptor instead
-   of parallel tile lists. Cross-project durable-reference resolution remains the independent
-   Phase 2 gap.
+   of parallel tile lists.
 
 5. **Adversarial capability/runtime review — complete 2026-09-01.** The development boundary is
    hardened and honestly disclosed; published worker execution is blocked on Phase 8 containment.
@@ -377,11 +496,24 @@ In dependency order, not preference order.
 6. **Put parts on immutable release records — complete 2026-09-01.** The final schema requires
    parts and has no compatibility fallback; current static/service behavior is unchanged.
 
-7. **Resolve durable publication refs.** Add the Convex lookup and cross-project consumer that the
-   Phase 2 addressing primitive still lacks.
+7. **Resolve durable publication refs — complete 2026-09-01.** Shared parsing, authenticated
+   latest/pinned resolution, copy UX, launcher consumption, and ref-backed tile restoration close
+   Phase 2.
 
-8. **Finish the view-to-worker bridge.** Reuse protocol v1 and its capability gate; do not create a
-   renderer-owned authority path.
+8. **Finish the view-to-worker bridge — complete 2026-09-01.** The dedicated preload and
+   main-owned broker reuse protocol v1, survive reload/restart, and leave host authority behind
+   the existing capability gate.
 
-9. **Start Phase 6 in two lanes.** Schema, typings, view-only scaffold, docs, and headless publish
-   may proceed. Published/external worker execution stays unavailable until Phase 8 lands.
+9. **Phase 6 authoring contract — complete 2026-09-01.** Project creation/opening, generated
+   schema, publishable typed client, scaffold, immediate preview, cross-project development tiles,
+   non-dialog publication API, public docs, and authenticated MCP documentation are delivered.
+   Published/external worker execution stays unavailable until Phase 8 lands.
+
+10. **Phase 7 agent catalog and installation semantics — complete 2026-09-01.** Concrete tool
+    declarations flow through authenticated preview sessions without becoming invocable; exact
+    local versions, explicit updates/uninstall, offline launch, pruning protection, storage UI, and
+    dependency cleanup replace cache-as-install behavior.
+
+11. **Phase 8 containment — next.** Implement the container runtime adapter before enabling
+    published workers or autonomous worker-tool invocation, then add the central build path,
+    hosted location, and shared-state trust semantics.

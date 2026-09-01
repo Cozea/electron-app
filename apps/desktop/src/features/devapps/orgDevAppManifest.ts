@@ -2,6 +2,8 @@ import { resolveProjectDevAppDisplayLogoDataUrl } from "@/features/devapps/proje
 import { buildPublishedDevAppIconDefinition } from "@/features/devapps/publishedDevAppIcon"
 import type { DevAppManifest, PublishedDevAppLaunchSpec } from "@/features/devapps/registry/types"
 import type { DevAppParts } from "@shared/devAppParts"
+import type { OrgDevAppInstallation } from "@shared/orgDevAppInstallation"
+import { formatDevAppRef } from "@shared/devAppRef"
 import { buildOrgDevAppUrl } from "@shared/orgDevAppProtocol"
 
 export interface OrgDevAppConsumerRecord {
@@ -35,12 +37,19 @@ export function buildPublishedDevAppId(publicationId: string): string {
 
 export function buildPublishedDevAppLaunchSpec(
   entry: OrgDevAppConsumerRecord,
+  ref: string = formatDevAppRef({
+    kind: "publication",
+    organizationId: entry.organizationId,
+    publicationId: entry.publicationId,
+    version: "latest",
+  }),
 ): PublishedDevAppLaunchSpec {
   const logoDataUrl = resolveProjectDevAppDisplayLogoDataUrl(entry.logoDataUrl)
 
   return {
     kind: "publishedDevApp",
     tileType: "orgDevApp",
+    ref,
     publicationId: entry.publicationId,
     organizationId: entry.organizationId,
     organizationName: entry.organizationName,
@@ -56,11 +65,14 @@ export function buildPublishedDevAppLaunchSpec(
   }
 }
 
-export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): DevAppManifest {
+export function buildPublishedDevAppManifest(
+  entry: OrgDevAppConsumerRecord,
+  ref?: string,
+): DevAppManifest {
   const description =
     entry.description?.trim() ||
     `Published to ${entry.organizationName} as a built artifact.`
-  const launch = buildPublishedDevAppLaunchSpec(entry)
+  const launch = buildPublishedDevAppLaunchSpec(entry, ref)
 
   return {
     id: buildPublishedDevAppId(entry.publicationId),
@@ -79,6 +91,7 @@ export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): De
         "devapp",
         entry.organizationName,
         entry.activeRelease.framework,
+        launch.ref,
       ],
     },
     store: {
@@ -90,6 +103,15 @@ export function buildPublishedDevAppManifest(entry: OrgDevAppConsumerRecord): De
     parts: entry.activeRelease.parts,
     launch,
   }
+}
+
+export function buildInstalledDevAppManifest(
+  installation: OrgDevAppInstallation,
+): DevAppManifest {
+  return buildPublishedDevAppManifest(
+    { ...installation, status: "active" },
+    installation.ref,
+  )
 }
 
 export function buildPublishedDevAppOriginUrl(entry: OrgDevAppConsumerRecord): string {

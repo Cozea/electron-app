@@ -1,10 +1,17 @@
 
-import { useMemo } from "react"
-import { useQuery } from "convex/react"
+import { useMemo, useState } from "react"
+import { useConvex, useQuery } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
+import {
+  activeInstallationsByPublication,
+  isOrgDevAppUpdateAvailable,
+  totalInstalledDevAppBytes,
+} from "@/features/devapps/orgDevAppInstallationCatalog"
+import { useOrgDevAppInstallations } from "@/features/devapps/useOrgDevAppInstallations"
+import { formatDevAppRef } from "@shared/devAppRef"
 import { listStoreApps } from "@/features/devapps/registry"
 import { useAuth } from "@/contexts/AuthContext"
 import {
@@ -12,6 +19,7 @@ import {
   SettingsSectionTitle,
 } from "@/components/settings/SettingsChrome"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/components/ProjectShellTitleBarCenterFromLabel"
 import {
   resolveAppStoreCategory,
@@ -21,9 +29,13 @@ import { useTranslation } from "@/lib/i18n"
 import { featureFlags } from "@/lib/featureFlags"
 import { useSearchParams } from "@/lib/router"
 import { cn } from "@/lib/utils"
+import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore"
+import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  CheckmarkCircle02Icon as __CheckHugeIcon,
+  Copy01Icon as __CopyHugeIcon,
   CpuChargeIcon as __ChipHugeIcon,
   FirstBracketCircleIcon as __BoltHugeIcon,
 } from '@hugeicons/core-free-icons'
@@ -31,9 +43,15 @@ import {
 export function AppStorePage() {
   const { t } = useTranslation()
   const { convexUserId } = useAuth()
+  const convex = useConvex()
   const [searchParams] = useSearchParams()
   const activeCategory = resolveAppStoreCategory(searchParams.get("category"))
   const query = searchParams.get("q") ?? ""
+  const [copiedRef, setCopiedRef] = useState<string | null>(null)
+  const [pendingPublicationId, setPendingPublicationId] = useState<string | null>(null)
+  const [installationError, setInstallationError] = useState<string | null>(null)
+  const { installations } = useOrgDevAppInstallations()
+  const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const orgDevApps = useQuery(
     api.devApps.listMine,
     featureFlags.projectDevApps && convexUserId ? {} : "skip",
@@ -61,9 +79,16 @@ export function AppStorePage() {
         entry,
         app: buildPublishedDevAppManifest(entry),
       }))
-      .filter(({ app }) =>
-        activeCategory.id === "discover" || app.categories.includes(activeCategory.id),
-      )
+      .filter(({ app, entry }) => {
+        if (activeCategory.id === "updates") {
+          return isOrgDevAppUpdateAvailable(
+            installations,
+            entry.publicationId,
+            entry.activeRelease.version,
+          )
+        }
+        return activeCategory.id === "discover" || app.categories.includes(activeCategory.id)
+      })
       .filter(({ app, entry }) => {
         if (!normalizedQuery) return true
 
@@ -76,11 +101,63 @@ export function AppStorePage() {
           `v${entry.activeRelease.version}`,
         ].some((value) => value.toLowerCase().includes(normalizedQuery))
       })
-  }, [orgDevApps, activeCategory.id, query])
+  }, [orgDevApps, activeCategory.id, installations, query])
+
+  const activeInstallationByPublication = useMemo(
+    () => activeInstallationsByPublication(installations),
+    [installations],
+  )
+
+  const installRelease = async (entry: (typeof visibleOrgDevApps)[number]["entry"]): Promise<void> => {
+    setPendingPublicationId(entry.publicationId)
+    setInstallationError(null)
+    try {
+      const ref = formatDevAppRef({
+        kind: "publication",
+        organizationId: entry.organizationId,
+        publicationId: entry.publicationId,
+        version: entry.activeRelease.version,
+      })
+      const artifact = await convex.query(api.devApps.getArtifactUrl, { ref })
+      if (!artifact) throw new Error(t("appStore.install.accessLost"))
+      const result = await window.electronAPI.orgDevApp.install({
+        downloadUrl: artifact.url,
+        installation: {
+          ref,
+          publicationId: entry.publicationId,
+          organizationId: entry.organizationId,
+          organizationName: entry.organizationName,
+          name: entry.name,
+          description: entry.description,
+          logoDataUrl: entry.logoDataUrl,
+          activeRelease: entry.activeRelease,
+        },
+      })
+      if (!result.success) throw new Error(result.error)
+    } catch (error) {
+      setInstallationError(error instanceof Error ? error.message : t("appStore.install.failed"))
+    } finally {
+      setPendingPublicationId(null)
+    }
+  }
+
+  const uninstallPublication = async (publicationId: string): Promise<void> => {
+    setPendingPublicationId(publicationId)
+    setInstallationError(null)
+    try {
+      const result = await window.electronAPI.orgDevApp.uninstallPublication({ publicationId })
+      if (!result.success) throw new Error(result.error)
+    } catch (error) {
+      setInstallationError(error instanceof Error ? error.message : t("appStore.uninstall.failed"))
+    } finally {
+      setPendingPublicationId(null)
+    }
+  }
 
   const hasResults =
     visibleOrgDevApps.length > 0 ||
-    visiblePreviewApps.length > 0
+    visiblePreviewApps.length > 0 ||
+    installations.length > 0
 
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-8 px-6 pt-5 pb-8">
@@ -91,6 +168,40 @@ export function AppStorePage() {
             ? t('appStore.page.resultsFor').replace('{query}', query).replace('{category}', ((t as any)(`devApp.category.${activeCategory.id}`) ?? activeCategory.label).toLowerCase())
             : (t as any)(`appStore.${activeCategory.id}.desc`) || activeCategory.description}
         </SettingsSectionDescription>
+
+        {activeCategory.id === "discover" && !query.trim() ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-secondary/25 p-3">
+            <div className="min-w-0 flex-1 px-1">
+              <p className="text-sm font-medium text-foreground">{t("appStore.page.buildNativeDevApp")}</p>
+              <p className="text-xs text-muted-foreground">
+                {t("appStore.page.buildNativeDevAppDesc")}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-full"
+              onClick={() => openCreateProjectDialog({ mode: "devapp" })}
+            >
+              {t("appStore.page.createNativeDevApp")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => {
+                void browseForDirectory("Select existing DevApp project").then((selectedPath) => {
+                  if (selectedPath?.trim()) {
+                    openCreateProjectDialog({ mode: "devapp-local", localFolderPath: selectedPath })
+                  }
+                })
+              }}
+            >
+              {t("appStore.page.openExistingDevApp")}
+            </Button>
+          </div>
+        ) : null}
 
         {activeCategory.id === "discover" && !query.trim() ? (
           <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_2fr]">
@@ -148,6 +259,12 @@ export function AppStorePage() {
         ) : null}
       </section>
 
+      {installationError ? (
+        <div className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+          {installationError}
+        </div>
+      ) : null}
+
       {hasResults ? (
         <>
           {visibleOrgDevApps.length > 0 ? (
@@ -173,11 +290,21 @@ export function AppStorePage() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {visibleOrgDevApps.map(({ app, entry }) => (
-                  <article
-                    key={app.id}
-                    className="flex min-h-36 flex-col rounded-[22px] bg-background px-4 py-4"
-                  >
+                {visibleOrgDevApps.map(({ app, entry }) => {
+                  const ref = formatDevAppRef({
+                    kind: "publication",
+                    organizationId: entry.organizationId,
+                    publicationId: entry.publicationId,
+                    version: "latest",
+                  })
+                  const installed = activeInstallationByPublication.get(entry.publicationId)
+                  const isCurrent = installed?.activeRelease.version === entry.activeRelease.version
+                  const isPending = pendingPublicationId === entry.publicationId
+                  return (
+                    <article
+                      key={app.id}
+                      className="flex min-h-36 flex-col rounded-[22px] bg-background px-4 py-4"
+                    >
                     <div className="flex items-start gap-3">
                       <div
                         className={cn(
@@ -218,8 +345,57 @@ export function AppStorePage() {
                     <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">
                       {app.description}
                     </p>
-                  </article>
-                ))}
+                    <div className="mt-auto flex min-w-0 items-center gap-2 pt-3">
+                      <code className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+                        {ref}
+                      </code>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        title={t("appStore.page.copyReference")}
+                        aria-label={t("appStore.page.copyReference")}
+                        onClick={() => {
+                          void navigator.clipboard
+                            .writeText(ref)
+                            .then(() => {
+                              setCopiedRef(ref)
+                              window.setTimeout(() => {
+                                setCopiedRef((current) => (current === ref ? null : current))
+                              }, 1_500)
+                            })
+                            .catch(() => undefined)
+                        }}
+                      >
+                        <HugeiconsIcon
+                          icon={copiedRef === ref ? __CheckHugeIcon : __CopyHugeIcon}
+                          className="size-3.5"
+                          aria-hidden
+                        />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={installed ? "outline" : "default"}
+                        className="rounded-full"
+                        disabled={isPending}
+                        onClick={() => {
+                          if (isCurrent) void uninstallPublication(entry.publicationId)
+                          else void installRelease(entry)
+                        }}
+                      >
+                        {isPending
+                          ? t("appStore.install.working")
+                          : isCurrent
+                            ? t("appStore.install.uninstall")
+                            : installed
+                              ? t("appStore.install.update")
+                              : t("appStore.install.install")}
+                      </Button>
+                    </div>
+                    </article>
+                  )
+                })}
               </div>
             </section>
           ) : null}
@@ -274,6 +450,58 @@ export function AppStorePage() {
               })}
             </div>
           </section> : null}
+
+          {installations.length > 0 ? (
+            <section className="space-y-4">
+              <div className="flex items-end justify-between gap-4 px-1">
+                <div className="space-y-1">
+                  <h2 className="text-xl font-medium tracking-[-0.03em] text-foreground">
+                    {t("appStore.install.storageTitle")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t("appStore.install.storageDescription")}
+                  </p>
+                </div>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {(totalInstalledDevAppBytes(installations) / 1024 / 1024).toFixed(1)} MB
+                </span>
+              </div>
+              <div className="divide-y divide-border/60 rounded-[22px] bg-background px-4">
+                {installations.map((installation) => (
+                  <div key={installation.ref} className="flex items-center gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-foreground">{installation.name}</p>
+                        <span className="text-[11px] tabular-nums text-muted-foreground">
+                          V{installation.activeRelease.version}{installation.active ? ` · ${t("appStore.install.active")}` : ""}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">{installation.ref}</p>
+                    </div>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {(installation.sizeBytes / 1024 / 1024).toFixed(1)} MB
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={pendingPublicationId === installation.publicationId}
+                      onClick={() => {
+                        setPendingPublicationId(installation.publicationId)
+                        void window.electronAPI.orgDevApp.removeInstalledVersion({ ref: installation.ref })
+                          .then((result) => {
+                            if (!result.success) setInstallationError(result.error)
+                          })
+                          .finally(() => setPendingPublicationId(null))
+                      }}
+                    >
+                      {t("appStore.install.removeVersion")}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </>
       ) : (
         <section className="overflow-hidden rounded-[28px] bg-[linear-gradient(180deg,rgba(120,119,198,0.08),rgba(255,255,255,0.02))]">

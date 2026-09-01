@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-export type CreateProjectDialogMode = "empty" | "local"
+export type CreateProjectDialogMode = "empty" | "local" | "devapp" | "devapp-local"
 
 interface OpenCreateProjectDialogOptions {
   mode?: CreateProjectDialogMode

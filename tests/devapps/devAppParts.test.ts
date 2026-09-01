@@ -12,6 +12,7 @@ import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
 const PUBLISHED_STATIC: DevAppLaunchSpec = {
   kind: "publishedDevApp",
   tileType: "orgDevApp",
+  ref: "cozea-devapp:org_1/pub_1@1",
   publicationId: "pub_1",
   organizationId: "org_1",
   organizationName: "Cozea",
@@ -100,7 +101,7 @@ describe("DevApp surfaces — derived, never declared", () => {
 
   it("offers an agent surface only when a worker exposes tools", () => {
     const silent: DevAppParts = { worker: { capabilities: ["git.read"] } }
-    const speaking: DevAppParts = { worker: { capabilities: ["git.read"], exposesTools: true } }
+    const speaking: DevAppParts = { worker: { capabilities: ["git.read"], tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }] } }
     expect(derivableSurfaces(silent)).not.toContain("agentTool")
     expect(derivableSurfaces(speaking)).toContain("agentTool")
   })
@@ -118,7 +119,7 @@ describe("DevApp surfaces — derived, never declared", () => {
 
   it("supports a headless worker with no tile at all", () => {
     // The shape today's closed union cannot express: an app with no view.
-    expect(derivableSurfaces({ worker: { capabilities: ["git.read"], exposesTools: true } }))
+    expect(derivableSurfaces({ worker: { capabilities: ["git.read"], tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }] } }))
       .toEqual(["agentTool", "backgroundService"])
   })
 })
@@ -178,13 +179,13 @@ describe("Packages resolve through the same parts model as installed apps", () =
     expect(parts.view?.source).toBe("package")
   })
 
-  it("derives the agent surface from the package's own exposesTools", async () => {
+  it("derives the agent surface from the package's declared tools", async () => {
     const { partsForPackage } = await import("@/features/devapps/registry/parts")
     const speaking = partsForPackage(
       await parsePackage({
         manifestVersion: 1,
         name: "A",
-        worker: { entry: "w.js", capabilities: ["project.read"], exposesTools: true },
+        worker: { entry: "w.js", capabilities: ["project.read"], tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }] },
       }),
     )
     expect(derivableSurfaces(speaking)).toEqual(["agentTool", "backgroundService"])
@@ -196,7 +197,7 @@ describe("Packages resolve through the same parts model as installed apps", () =
       await parsePackage({
         manifestVersion: 1,
         name: "A",
-        worker: { entry: "w.js", capabilities: ["project.read", "git.read"] },
+        worker: { entry: "w.js", capabilities: ["project.read", "git.read"], tools: [] },
       }),
     )
     expect(parts.worker?.capabilities).toEqual(["project.read", "git.read"])

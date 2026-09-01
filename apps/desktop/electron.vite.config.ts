@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import fs from 'node:fs'
-import type { Alias } from 'vite'
+import { build as viteBuild, type Alias, type Plugin } from 'vite'
 
 function readBooleanFlag(name: string, fallback: boolean): boolean {
   const raw = process.env[name]
@@ -108,6 +108,64 @@ const sharedAliases: Alias[] = [
     replacement: `${path.resolve(t3Root, 'packages/shared/src')}/$1.ts`,
   },
 ]
+
+interface SandboxedPreloadBundle {
+  entry: string
+  fileName: string
+}
+
+const sandboxedPreloadBundles: SandboxedPreloadBundle[] = [
+  {
+    entry: path.resolve(t3DesktopSource, 'preview-pick-preload.ts'),
+    fileName: 'preview-pick-preload.cjs',
+  },
+  {
+    entry: path.resolve(__dirname, 'electron/preloads/devAppPreviewPickPreload.ts'),
+    fileName: 'devapp-preview-pick-preload.cjs',
+  },
+  {
+    entry: path.resolve(t3DesktopSource, 'preview-pip-preload.ts'),
+    fileName: 'preview-pip-preload.cjs',
+  },
+]
+
+/**
+ * Electron's sandboxed preload loader cannot resolve relative Rollup chunks.
+ * Keep the entries in electron-vite's preload graph for watch invalidation,
+ * then overwrite each emitted entry with T3's single-entry bundle shape.
+ */
+function sandboxedPreloadBundlesPlugin(): Plugin {
+  return {
+    name: 'cozea-sandboxed-preload-bundles',
+    async closeBundle() {
+      for (const bundle of sandboxedPreloadBundles) {
+        await viteBuild({
+          configFile: false,
+          logLevel: 'warn',
+          resolve: {
+            alias: sharedAliases,
+          },
+          build: {
+            emptyOutDir: false,
+            outDir: path.resolve(__dirname, 'out/preload'),
+            target: 'node22',
+            lib: {
+              entry: bundle.entry,
+              formats: ['cjs'],
+              fileName: () => bundle.fileName,
+            },
+            rollupOptions: {
+              external: ['electron'],
+              output: {
+                inlineDynamicImports: true,
+              },
+            },
+          },
+        })
+      }
+    },
+  }
+}
 
 function normalizeModuleId(id: string): string {
   return id.split(path.sep).join('/')
@@ -216,6 +274,7 @@ export default defineConfig({
     resolve: {
       alias: sharedAliases,
     },
+    plugins: [sandboxedPreloadBundlesPlugin()],
     build: {
       externalizeDeps: {
         exclude: ['@t3tools/contracts', 'react-grab'],
@@ -224,6 +283,7 @@ export default defineConfig({
         entry: {
           index: 'electron/preload.ts',
           'preview-pick-preload': path.resolve(t3DesktopSource, 'preview-pick-preload.ts'),
+          'devapp-preview-pick-preload': 'electron/preloads/devAppPreviewPickPreload.ts',
           'preview-pip-preload': path.resolve(t3DesktopSource, 'preview-pip-preload.ts'),
         },
       },

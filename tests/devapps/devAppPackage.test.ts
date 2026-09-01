@@ -43,7 +43,7 @@ describe("DevApp manifest — the happy path", () => {
       worker: {
         entry: "worker/index.js",
         capabilities: ["project.read", "git.read"],
-        exposesTools: true,
+        tools: [{ name: "inventory_lookup", description: "Look up inventory.", inputSchema: { type: "object" } }],
       },
       service: { runtimeKind: "node", entry: "server.js" },
     })
@@ -53,14 +53,14 @@ describe("DevApp manifest — the happy path", () => {
     expect(result.manifest?.service).toEqual({ runtimeKind: "node", entry: "server.js" })
   })
 
-  it("trims the name and defaults exposesTools to false", () => {
+  it("trims the name and reads an empty tool declaration", () => {
     const result = parse({
       ...valid,
       name: "  Spaced  ",
-      worker: { entry: "w.js", capabilities: [] },
+      worker: { entry: "w.js", capabilities: [], tools: [] },
     })
     expect(result.manifest?.name).toBe("Spaced")
-    expect(result.manifest?.worker?.exposesTools).toBe(false)
+    expect(result.manifest?.worker?.tools).toEqual([])
     expect(result.manifest?.worker?.protocolVersion).toBe(DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION)
   })
 
@@ -71,6 +71,7 @@ describe("DevApp manifest — the happy path", () => {
         entry: "w.js",
         protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
         capabilities: [],
+        tools: [],
       },
     })
     expect(blockers(result)).toEqual([])
@@ -80,19 +81,55 @@ describe("DevApp manifest — the happy path", () => {
   it("drops a duplicated capability rather than asking for it twice", () => {
     const result = parse({
       ...valid,
-      worker: { entry: "w.js", capabilities: ["project.read", "project.read"] },
+      worker: { entry: "w.js", capabilities: ["project.read", "project.read"], tools: [] },
     })
     expect(result.manifest?.worker?.capabilities).toEqual(["project.read"])
   })
 })
 
 describe("DevApp manifest — fails closed", () => {
+  it("requires concrete tool declarations instead of an exposure boolean", () => {
+    const result = parse({
+      ...valid,
+      worker: { entry: "w.js", capabilities: ["project.read"] },
+    })
+    expect(result.manifest).toBeNull()
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({ field: "worker.tools", severity: "blocker" }),
+    )
+  })
+
+  it("rejects remote references and duplicate tool names", () => {
+    const remote = parse({
+      ...valid,
+      worker: {
+        entry: "w.js",
+        capabilities: [],
+        tools: [{ name: "lookup", description: "Look up data.", inputSchema: { type: "object", $ref: "https://example.test/schema" } }],
+      },
+    })
+    expect(remote.manifest).toBeNull()
+
+    const duplicate = parse({
+      ...valid,
+      worker: {
+        entry: "w.js",
+        capabilities: [],
+        tools: [
+          { name: "lookup", description: "One.", inputSchema: { type: "object" } },
+          { name: "lookup", description: "Two.", inputSchema: { type: "object" } },
+        ],
+      },
+    })
+    expect(duplicate.manifest).toBeNull()
+  })
+
   it("refuses a capability it does not recognise instead of dropping it", () => {
     // Dropping it would let the app install asking for less than it does, and the
     // approval prompt would under-report what it can do.
     const result = parse({
       ...valid,
-      worker: { entry: "w.js", capabilities: ["project.read", "fs.destroy"] },
+      worker: { entry: "w.js", capabilities: ["project.read", "fs.destroy"], tools: [] },
     })
     expect(codes(result)).toContain("manifest-unknown-capability")
     expect(result.manifest).toBeNull()
@@ -101,7 +138,7 @@ describe("DevApp manifest — fails closed", () => {
   it("refuses a capability name borrowed from the prototype chain", () => {
     const result = parse({
       ...valid,
-      worker: { entry: "w.js", capabilities: ["constructor", "toString", "__proto__"] },
+      worker: { entry: "w.js", capabilities: ["constructor", "toString", "__proto__"], tools: [] },
     })
     expect(result.manifest).toBeNull()
     expect(codes(result).filter((code) => code === "manifest-unknown-capability")).toHaveLength(3)
@@ -125,6 +162,7 @@ describe("DevApp manifest — fails closed", () => {
         entry: "w.js",
         protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION + 1,
         capabilities: [],
+        tools: [],
       },
     })
     expect(codes(result)).toContain("worker-protocol-version-unsupported")
@@ -135,7 +173,7 @@ describe("DevApp manifest — fails closed", () => {
     for (const protocolVersion of [0, -1, 1.5, "1", null]) {
       const result = parse({
         ...valid,
-        worker: { entry: "w.js", protocolVersion, capabilities: [] },
+        worker: { entry: "w.js", protocolVersion, capabilities: [], tools: [] },
       })
       expect(codes(result), String(protocolVersion)).toContain("manifest-field-invalid")
       expect(result.manifest).toBeNull()
@@ -192,7 +230,7 @@ describe("DevApp manifest — paths stay inside the package", () => {
   })
 
   it("applies the same rule to worker and service entries", () => {
-    expect(parse({ ...valid, worker: { entry: "../w.js", capabilities: [] } }).manifest).toBeNull()
+    expect(parse({ ...valid, worker: { entry: "../w.js", capabilities: [], tools: [] } }).manifest).toBeNull()
     expect(parse({ ...valid, service: { runtimeKind: "node", entry: "/srv.js" } }).manifest)
       .toBeNull()
   })
@@ -247,7 +285,11 @@ describe("Requested grant", () => {
   it("is what the package asks for, not what it holds", () => {
     const result = parse({
       ...valid,
-      worker: { entry: "w.js", capabilities: ["project.read"], exposesTools: true },
+      worker: {
+        entry: "w.js",
+        capabilities: ["project.read"],
+        tools: [{ name: "read_project", description: "Read project data.", inputSchema: { type: "object" } }],
+      },
     })
     expect(requestedGrant(result.manifest!)).toEqual({
       capabilities: ["project.read"],

@@ -265,7 +265,9 @@ See `docs/device-identity.md` for the protocol and deployment requirements.
 - Publication and consumption derive the device principal from verified Convex auth. Uploads use a
   short-lived reservation bound to that device, project, and organization; never accept a
   caller-selected user identity or an unreserved storage object.
-- The Store and workbench launcher list organization releases only. Consumers receive bounded,
+- The Store lists organization releases, while Add Tile lists only active exact-version releases
+  installed on this device. Install/update/uninstall is explicit; installed artifacts launch
+  offline and never silently follow a publication's active release. Consumers receive bounded,
   immutable artifacts and never receive project source, local paths, workspace IDs, dev commands,
   or dependency-install recipes.
 - Static releases use per-hash `cozea-devapp` origins. Service releases use strict manifests,
@@ -281,6 +283,20 @@ See `docs/device-identity.md` for the protocol and deployment requirements.
   approval. Their utility process uses Node permissions as defense in depth but is not an OS
   sandbox and can reach the network. Published worker execution and autonomous worker tools remain
   blocked until the container/VM runtime; see `docs/devapp-worker-security-review.md`.
+- Development workers declare concrete agent operations (`name`, `description`, bounded object
+  `inputSchema`) through `worker.tools`. The authenticated MCP catalog can inspect declarations,
+  but it cannot invoke them before the Phase 8 contained runtime exists.
+- Approved development-preview guests alone expose `window.cozeaDevApp`, a versioned port to that
+  package's worker. Privileged host operations stay on the worker's separate capability-gated
+  channel; ordinary Browser and published DevApp guests never receive this preload API.
+- Native DevApps are first-class projects. Use **Create native DevApp** or **Open existing DevApp**;
+  the root `cozea-devapp.json` is validated during ordinary folder import. Local development
+  packages appear only under Add Tile → Development, including from other projects on the same
+  device; they never appear in the Store. `shared/devAppPackage.ts` is authoritative: run
+  `bun run devapp:generate` after changing it and `bun run devapp:check` in verification.
+- `@cozea/devapp-api` is the publishable, self-contained view/worker client. Keep its generated
+  contract copies synchronized and verify its public boundary with
+  `bun run --cwd packages/devapp-api build` plus `bun pm pack --dry-run` from that package.
 - The historical machine-local `localProjectDevAppStore` and Dev Server source metadata remain only
   as compatibility support for already-persisted development tiles. Do not add new Store or publish
   callers to that catalog.

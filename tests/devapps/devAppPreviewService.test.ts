@@ -7,7 +7,14 @@ import type { Session } from "electron"
 import { DevAppPreviewService } from "../../apps/desktop/electron/services/DevAppPreviewService"
 import type { DevAppWatch } from "../../apps/desktop/electron/services/DevAppPreviewWatcher"
 import type { DevAppPreviewStatus } from "../../shared/devAppPreviewTypes"
-import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../shared/devAppWorkerProtocol"
+import {
+  DEV_APP_WORKER_PROTOCOL_VERSION,
+  createDevAppWorkerViewPortBootstrap,
+} from "../../shared/devAppWorkerProtocol"
+import type {
+  DevAppWorkerState,
+  DevAppWorkerStateChange,
+} from "../../apps/desktop/electron/services/DevAppWorkerHost"
 
 /**
  * Exercises the real filesystem adapter, the real path joining, and the real preflight.
@@ -18,12 +25,13 @@ let root: string
 let workspaceRoot: string
 let sourcePath: string
 
-const manifest = (extra: Record<string, unknown> = {}) => JSON.stringify({
-  manifestVersion: 1,
-  name: "Inventory",
-  view: { entry: "dist/index.html" },
-  ...extra,
-})
+const manifest = (extra: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    manifestVersion: 1,
+    name: "Inventory",
+    view: { entry: "dist/index.html" },
+    ...extra,
+  })
 
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "devapp-preview-"))
@@ -45,25 +53,49 @@ function makeService() {
     return { close: () => emitters.delete(watched) }
   }
   const broadcasts: { sourceId: string; status: DevAppPreviewStatus }[] = []
+  const runningWorkers = new Map<string, DevAppWorkerState>()
+  let stateListener: ((change: DevAppWorkerStateChange) => void) | null = null
   const worker = {
-    start: vi.fn((input: { publicationId: string }) => ({
-      publicationId: input.publicationId,
-      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
-      status: "ready" as const,
-      restarts: 0,
-      lastError: null,
-      logs: [],
-    })),
-    stop: vi.fn(),
+    start: vi.fn((input: { publicationId: string }) => {
+      const state: DevAppWorkerState = {
+        publicationId: input.publicationId,
+        protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+        status: "ready",
+        restarts: 0,
+        lastError: null,
+        logs: [],
+      }
+      runningWorkers.set(input.publicationId, state)
+      return state
+    }),
+    stop: vi.fn((publicationId: string) => runningWorkers.delete(publicationId)),
     release: vi.fn(),
-    getState: vi.fn(() => null),
+    getState: vi.fn((publicationId: string) => runningWorkers.get(publicationId) ?? null),
+    attachViewPort: vi.fn((_publicationId: string, connectionId: string, protocolVersion: number) =>
+      createDevAppWorkerViewPortBootstrap(connectionId, protocolVersion),
+    ),
+    detachViewPort: vi.fn(),
+    onStateChange: vi.fn((listener: (change: DevAppWorkerStateChange) => void) => {
+      stateListener = listener
+      return () => {
+        stateListener = null
+      }
+    }),
   }
   const service = new DevAppPreviewService({
     worker,
-    broadcast: (sourceId, status) => { broadcasts.push({ sourceId, status }) },
+    broadcast: (sourceId, status) => {
+      broadcasts.push({ sourceId, status })
+    },
     watch,
   })
-  return { service, broadcasts, worker, touch: (rel: string) => emitters.get(sourcePath)?.(rel) }
+  return {
+    service,
+    broadcasts,
+    worker,
+    emitWorkerState: (change: DevAppWorkerStateChange) => stateListener?.(change),
+    touch: (rel: string) => emitters.get(sourcePath)?.(rel),
+  }
 }
 
 const open = (service: DevAppPreviewService, relativePath = "apps/inventory") =>
@@ -255,7 +287,7 @@ describe("Preview service — approval", () => {
     fs.writeFileSync(path.join(sourcePath, "worker.js"), "//")
     fs.writeFileSync(
       path.join(sourcePath, "cozea-devapp.json"),
-      manifest({ worker: { entry: "worker.js", capabilities: ["project.read"] } }),
+      manifest({ worker: { entry: "worker.js", capabilities: ["project.read"], tools: [] } }),
     )
     const { service, worker } = makeService()
     const status = open(service)
@@ -266,6 +298,41 @@ describe("Preview service — approval", () => {
     const approved = service.approve(status.sourceId, status.approvalFingerprint)
     expect(approved?.status).toBe("running")
     expect(worker.start).toHaveBeenCalledOnce()
+
+    const port = {}
+    const bootstrap = service.attachViewPort(status.sourceId, "view_1", port)
+    expect(bootstrap).toMatchObject({
+      kind: "cozea-devapp-view-port",
+      connectionId: "view_1",
+    })
+    expect(worker.attachViewPort).toHaveBeenCalledWith(
+      `dev:${status.sourceId}`,
+      "view_1",
+      DEV_APP_WORKER_PROTOCOL_VERSION,
+      port,
+    )
+    service.detachViewPort(status.sourceId, "view_1")
+    expect(worker.detachViewPort).toHaveBeenCalledWith(`dev:${status.sourceId}`, "view_1")
+    service.dispose()
+  })
+
+  it("forwards only development-worker lifecycle events to bridge owners", () => {
+    const { service, emitWorkerState } = makeService()
+    const changes: Array<{ sourceId: string; status: string }> = []
+    service.onWorkerStateChange((sourceId, state) => {
+      changes.push({ sourceId, status: state.status })
+    })
+    const state: DevAppWorkerState = {
+      publicationId: `dev:${"a".repeat(32)}`,
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      status: "ready",
+      restarts: 0,
+      lastError: null,
+      logs: [],
+    }
+    emitWorkerState({ publicationId: state.publicationId, state })
+    emitWorkerState({ publicationId: "pub_1", state: { ...state, publicationId: "pub_1" } })
+    expect(changes).toEqual([{ sourceId: "a".repeat(32), status: "ready" }])
     service.dispose()
   })
 
@@ -279,7 +346,7 @@ describe("Preview service — approval", () => {
     fs.writeFileSync(path.join(sourcePath, "worker.js"), "//")
     fs.writeFileSync(
       path.join(sourcePath, "cozea-devapp.json"),
-      manifest({ worker: { entry: "worker.js", capabilities: ["project.read"] } }),
+      manifest({ worker: { entry: "worker.js", capabilities: ["project.read"], tools: [] } }),
     )
     const { service, worker, touch } = makeService()
     const shown = open(service)
@@ -292,6 +359,7 @@ describe("Preview service — approval", () => {
         worker: {
           entry: "worker.js",
           capabilities: ["project.read", "process.spawn"],
+          tools: [],
         },
       }),
     )

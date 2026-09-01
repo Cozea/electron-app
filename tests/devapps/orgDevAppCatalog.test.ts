@@ -204,6 +204,7 @@ describe("published DevApp manifests", () => {
 
     expect(spec.kind).toBe("publishedDevApp")
     expect(spec.tileType).toBe("orgDevApp")
+    expect(spec.ref).toBe("cozea-devapp:org_1/pub_1")
     expect(spec).not.toHaveProperty("projectId")
     expect(spec).not.toHaveProperty("devCommand")
     expect(manifest.launch.kind).toBe("publishedDevApp")
@@ -212,5 +213,36 @@ describe("published DevApp manifests", () => {
     expect(manifest.icon.src).toContain("/published/icon.png")
     expect(manifest.icon.className).toBe("scale-[1.25]")
     expect(manifest.parts).toBe(entry.activeRelease.parts)
+  })
+
+  it("preserves a pinned durable ref through manifest materialization", () => {
+    const entry = {
+      publicationId: "pub_1",
+      organizationId: "org_1",
+      organizationName: "Acme",
+      name: "Inventory",
+      description: null,
+      logoDataUrl: null,
+      status: "active" as const,
+      activeRelease: {
+        id: "rel_1",
+        version: 1,
+        framework: "vite-react",
+        entryPath: "index.html",
+        contentHash: "c".repeat(64),
+        runtimeKind: "static" as const,
+        manifestVersion: null,
+        platform: null,
+        arch: null,
+        permissionSetHash: null,
+        publisherIdentityKey: null,
+        publisherDeviceLabel: null,
+        parts: { view: { source: "package" as const } },
+      },
+    }
+
+    expect(
+      buildPublishedDevAppManifest(entry, "cozea-devapp:org_1/pub_1@1").launch,
+    ).toMatchObject({ ref: "cozea-devapp:org_1/pub_1@1", releaseVersion: 1 })
   })
 })
