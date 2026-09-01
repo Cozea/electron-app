@@ -50,7 +50,8 @@ describe("immutable DevApp release parts", () => {
     })
     expect(partsForPublishedRuntimeKind("service")).toEqual({
       view: { source: "package" },
-      service: { runtimeKind: "node", location: "device" },
+      service: { runtimeKind: "node" },
+      runtime: { kind: "container", location: "device", state: "device" },
     })
     expect(partsForPublishedRuntimeKind("service").worker).toBeUndefined()
   })

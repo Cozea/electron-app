@@ -27,14 +27,28 @@ const devAppPartsValidator = v.object({
     v.object({
       capabilities: v.array(devAppCapabilityValidator),
       protocolVersion: v.optional(v.number()),
-      exposesTools: v.optional(v.boolean()),
+      tools: v.optional(
+        v.array(
+          v.object({
+            name: v.string(),
+            description: v.string(),
+            inputSchema: v.any(),
+          }),
+        ),
+      ),
     }),
   ),
   service: v.optional(
     v.object({
-      runtimeKind: v.union(v.literal("static"), v.literal("node"), v.literal("container")),
-      location: v.union(v.literal("device"), v.literal("hosted")),
+      runtimeKind: v.union(v.literal("static"), v.literal("node")),
       singleton: v.optional(v.boolean()),
+    }),
+  ),
+  runtime: v.optional(
+    v.object({
+      kind: v.union(v.literal("development"), v.literal("container")),
+      location: v.union(v.literal("device"), v.literal("hosted")),
+      state: v.union(v.literal("none"), v.literal("device"), v.literal("organization")),
     }),
   ),
 })

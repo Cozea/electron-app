@@ -25,7 +25,7 @@ export const llamaDevAppManifest = {
   },
   parts: {
     view: { source: "native", rendererId: "llama" },
-    service: { runtimeKind: "node", location: "device", singleton: true },
+    service: { runtimeKind: "node", singleton: true },
   },
   launch: {
     kind: "llama",

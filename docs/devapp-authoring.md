@@ -30,6 +30,21 @@ bun run devapp:check
 
 The generated file is `packages/devapp-api/schema/cozea-devapp.schema.json`. The manifest version and worker protocol version are independent. Unknown capabilities fail closed. A manifest requests capabilities; only an explicit development approval grants them.
 
+Manifest version 2 also requires every worker or Node service to declare runtime placement and
+state ownership:
+
+```json
+{
+  "manifestVersion": 2,
+  "runtime": { "location": "device", "state": "device" }
+}
+```
+
+Allowed combinations and filesystem behavior are defined in the
+[DevApp Runtime Contract](./devapp-runtime-contract.md). A local preview always remains a powerful,
+approval-gated development runtime on the device; the declaration describes the package's
+published execution and storage contract.
+
 Workers declare agent-facing operations explicitly rather than setting an exposure flag:
 
 ```json
@@ -56,9 +71,8 @@ Workers declare agent-facing operations explicitly rather than setting an exposu
 
 Tool names are package-local lowercase identifiers. Input schemas are bounded object JSON Schemas
 without `$ref`; a worker with no operations writes `"tools": []`. The authenticated agent MCP
-session exposes `devapp_tool_catalog`, which returns these declarations for an existing development
-preview. The catalog reports `toolInvocationAvailable: false` until Phase 8 supplies the contained
-runtime required for autonomous execution.
+session exposes the declarations for an existing development preview. Invocation is available only
+for an exact installed release running in the contained runtime; the catalog alone grants nothing.
 
 ## Typed view/worker client
 
@@ -85,7 +99,11 @@ The package is built as a self-contained browser ESM distribution with declarati
 
 ## Security boundary
 
-Development workers are trusted local developer code and run in Cozea's managed utility-process host with an approved capability grant. They are not consumer apps and are not represented as an OS sandbox. Published or externally sourced worker execution remains disabled until the Phase 8 container/VM runtime ships. Static and service publication behavior is unchanged.
+Development workers are trusted local developer code and run in Cozea's managed utility-process
+host with an approved capability grant. They are not consumer apps and are not represented as an OS
+sandbox. Published or externally sourced executable parts are a different tier and must run through
+the contained-runtime adapter; missing containment fails closed without falling back to the
+development host.
 
 ## In-product agent documentation
 

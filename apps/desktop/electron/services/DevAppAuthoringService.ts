@@ -183,6 +183,7 @@ function scaffoldFiles(name: string, starter: DevAppScaffoldStarter): Record<str
             capabilities: ["project.metadata", "project.read"],
             tools: [],
           },
+          runtime: { location: "device", state: "device" },
         }
       : {}),
     service: { runtimeKind: "static" },
@@ -228,7 +229,7 @@ function scaffoldFiles(name: string, starter: DevAppScaffoldStarter): Record<str
     "scripts/build.ts": hasView
       ? `import { cp, mkdir } from "node:fs/promises"\n\nawait mkdir("dist", { recursive: true })\nawait cp("src/index.html", "dist/index.html")\nawait cp("src/styles.css", "dist/styles.css")\nconsole.log("Built ${name}")\n`
       : `console.log("${name} is a worker-only DevApp; its plain JavaScript worker needs no view build.")\n`,
-    "README.md": `# ${name}\n\nA native Cozea DevApp. Open this project in Cozea to preview it, or add its development tile to another project for integration testing.\n\n- \`bun run build\` refreshes the built view.\n- \`cozea-devapp.json\` declares the view, worker, and requested capabilities.\n- Development workers are trusted local code. Published worker execution remains unavailable until the isolated runtime ships.\n`,
+    "README.md": `# ${name}\n\nA native Cozea DevApp. Open this project in Cozea to preview it, or add its development tile to another project for integration testing.\n\n- \`bun run build\` refreshes the built view.\n- \`cozea-devapp.json\` declares the view, worker, requested capabilities, runtime placement, and state ownership.\n- Development workers are trusted local code and may use their approved project capabilities. Published executable parts run only inside Cozea's contained runtime.\n`,
   };
   if (hasView) {
     files["src/index.html"] =

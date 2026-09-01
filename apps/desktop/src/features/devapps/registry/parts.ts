@@ -5,6 +5,9 @@ export {
   derivableSurfaces,
   type DevAppParts,
   type DevAppServicePart,
+  type DevAppRuntimeLocation,
+  type DevAppRuntimePart,
+  type DevAppStateScope,
   type DevAppSurface,
   type DevAppViewPart,
   type DevAppViewSource,
@@ -52,13 +55,13 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
       return {
         view: NATIVE_VIEW("devServer"),
         worker: { capabilities: ["process.spawn", "project.read"] },
-        service: { runtimeKind: "node", location: "device", singleton: true },
+        service: { runtimeKind: "node", singleton: true },
       }
 
     case "llama":
       return {
         view: NATIVE_VIEW("llama"),
-        service: { runtimeKind: "node", location: "device", singleton: true },
+        service: { runtimeKind: "node", singleton: true },
       }
 
     case "mobileSimulator":
@@ -82,7 +85,7 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
     case "projectDevApp":
       return {
         view: { source: "package" },
-        service: { runtimeKind: "node", location: "device", singleton: true },
+        service: { runtimeKind: "node", singleton: true },
       }
   }
 }
@@ -97,6 +100,7 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
  * here.
  */
 export function partsForPackage(manifest: DevAppPackage): DevAppParts {
+  const hasExecutablePart = Boolean(manifest.worker || manifest.service?.runtimeKind === "node")
   return {
     // Authored views are always package-sourced. `native` is reserved for components
     // compiled into Cozea, which a published package can never become.
@@ -114,9 +118,19 @@ export function partsForPackage(manifest: DevAppPackage): DevAppParts {
       ? {
         service: {
           runtimeKind: manifest.service.runtimeKind,
-          location: "device" as const,
         },
       }
+      : {}),
+    ...(hasExecutablePart
+      ? {
+          runtime: {
+            kind: "development" as const,
+            location: "device" as const,
+            // Development is always local. Organization state becomes device-scoped test
+            // state until the exact package is published into its declared hosted runtime.
+            state: manifest.runtime?.state === "none" ? "none" as const : "device" as const,
+          },
+        }
       : {}),
   }
 }

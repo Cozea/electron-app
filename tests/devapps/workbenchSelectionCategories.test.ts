@@ -19,7 +19,7 @@ const builtIn: DevAppManifest = {
   parts: {
     view: { source: "native", rendererId: "devServer" },
     worker: { capabilities: ["process.spawn", "project.read"] },
-    service: { runtimeKind: "node", location: "device", singleton: true },
+    service: { runtimeKind: "node", singleton: true },
   },
   launch: { kind: "devServer", tileType: "devServer", singleton: true },
 };

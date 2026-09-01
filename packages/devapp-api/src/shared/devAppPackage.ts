@@ -6,7 +6,6 @@ import {
   type DevAppGrant,
 } from "./devAppCapabilities"
 import {
-  DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION,
   DEV_APP_WORKER_PROTOCOL_VERSION,
   DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
   supportsDevAppWorkerProtocolVersion,
@@ -57,7 +56,16 @@ export interface DevAppPackageDiagnostic {
 export const DEV_APP_MANIFEST_FILENAME = "cozea-devapp.json"
 
 /** Bumped only for a change old Cozea builds cannot safely ignore. */
-export const DEV_APP_MANIFEST_VERSION = 1
+export const DEV_APP_MANIFEST_VERSION = 2
+
+export type DevAppPackageRuntimeLocation = "device" | "hosted"
+export type DevAppPackageStateScope = "none" | "device" | "organization"
+
+/** Placement and state contract for every executable part in this package. */
+export interface DevAppPackageRuntimeSpec {
+  location: DevAppPackageRuntimeLocation
+  state: DevAppPackageStateScope
+}
 
 export interface DevAppPackageViewSpec {
   /** Entry relative to the package root, served from the app's own origin. */
@@ -99,6 +107,7 @@ export interface DevAppPackage {
   view?: DevAppPackageViewSpec
   worker?: DevAppPackageWorkerSpec
   service?: DevAppPackageServiceSpec
+  runtime?: DevAppPackageRuntimeSpec
 }
 
 /**
@@ -108,13 +117,14 @@ export interface DevAppPackage {
  * change therefore has one review surface: the runtime parser, public schema, scaffold,
  * and authoring package all consume this module instead of maintaining parallel shapes.
  */
+// oxlint-disable unicorn/no-thenable -- `then` is a required JSON Schema conditional keyword.
 export const DEV_APP_PACKAGE_JSON_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: "https://docs.cozea.dev/schemas/cozea-devapp.schema.json",
   title: "Cozea DevApp package",
   description: "Authoring manifest for a Cozea developer application.",
   type: "object",
-  additionalProperties: true,
+  additionalProperties: false,
   required: ["manifestVersion", "name"],
   anyOf: [{ required: ["view"] }, { required: ["worker"] }, { required: ["service"] }],
   properties: {
@@ -180,7 +190,64 @@ export const DEV_APP_PACKAGE_JSON_SCHEMA = {
         entry: { $ref: "#/$defs/packagePath" },
       },
     },
+    runtime: {
+      type: "object",
+      additionalProperties: false,
+      required: ["location", "state"],
+      properties: {
+        location: { type: "string", enum: ["device", "hosted"] },
+        state: { type: "string", enum: ["none", "device", "organization"] },
+      },
+      allOf: [
+        {
+          if: { properties: { location: { const: "device" } }, required: ["location"] },
+          then: { properties: { state: { enum: ["none", "device"] } } },
+        },
+        {
+          if: { properties: { location: { const: "hosted" } }, required: ["location"] },
+          then: { properties: { state: { enum: ["none", "organization"] } } },
+        },
+      ],
+    },
   },
+  allOf: [
+    {
+      if: {
+        anyOf: [
+          { required: ["worker"] },
+          {
+            required: ["service"],
+            properties: {
+              service: {
+                type: "object",
+                required: ["runtimeKind"],
+                properties: { runtimeKind: { const: "node" } },
+              },
+            },
+          },
+        ],
+      },
+      then: { required: ["runtime"] },
+    },
+    {
+      if: { required: ["runtime"] },
+      then: {
+        anyOf: [
+          { required: ["worker"] },
+          {
+            required: ["service"],
+            properties: {
+              service: {
+                type: "object",
+                required: ["runtimeKind"],
+                properties: { runtimeKind: { const: "node" } },
+              },
+            },
+          },
+        ],
+      },
+    },
+  ],
   $defs: {
     packagePath: {
       type: "string",
@@ -190,6 +257,7 @@ export const DEV_APP_PACKAGE_JSON_SCHEMA = {
     },
   },
 } as const
+// oxlint-enable unicorn/no-thenable
 
 export interface DevAppPackageParseResult {
   /** Null whenever any diagnostic is a blocker — a partly-understood manifest is not usable. */
@@ -204,6 +272,7 @@ const KNOWN_ROOT_FIELDS = new Set([
   "view",
   "worker",
   "service",
+  "runtime",
 ])
 
 const MAX_NAME_LENGTH = 120
@@ -228,6 +297,21 @@ function warning(
   extra: { field?: string; fix?: string } = {},
 ): DevAppPackageDiagnostic {
   return { code, severity: "warning", message, ...extra }
+}
+
+function rejectUnknownFields(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  field: string,
+  diagnostics: DevAppPackageDiagnostic[],
+): void {
+  const unknown = Object.keys(record).filter((key) => !allowed.includes(key))
+  if (unknown.length === 0) return
+  diagnostics.push(blocker(
+    "manifest-unknown-field",
+    `${field} contains unsupported fields: ${unknown.join(", ")}.`,
+    { field },
+  ))
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -367,6 +451,7 @@ function parseView(
     diagnostics.push(blocker("manifest-field-invalid", "view must be an object.", { field: "view" }))
     return undefined
   }
+  rejectUnknownFields(raw, ["entry", "dev"], "view", diagnostics)
 
   const entry = readPath(raw.entry, "view.entry", diagnostics)
   const view: DevAppPackageViewSpec = { entry: entry ?? "" }
@@ -377,6 +462,7 @@ function parseView(
         blocker("manifest-field-invalid", "view.dev must be an object.", { field: "view.dev" }),
       )
     } else {
+      rejectUnknownFields(raw.dev, ["command", "url"], "view.dev", diagnostics)
       const dev: { command?: string; url?: string } = {}
       if (raw.dev.command !== undefined) {
         if (typeof raw.dev.command !== "string" || raw.dev.command.length > MAX_COMMAND_LENGTH) {
@@ -445,12 +531,12 @@ function parseWorker(
     )
     return undefined
   }
+  rejectUnknownFields(raw, ["entry", "protocolVersion", "capabilities", "tools"], "worker", diagnostics)
 
   const entry = readPath(raw.entry, "worker.entry", diagnostics)
 
-  let protocolVersion = DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION
-  const declaredProtocolVersion =
-    raw.protocolVersion === undefined ? DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION : raw.protocolVersion
+  let protocolVersion = DEV_APP_WORKER_PROTOCOL_VERSION
+  const declaredProtocolVersion = raw.protocolVersion
   if (
     typeof declaredProtocolVersion !== "number" ||
     !Number.isInteger(declaredProtocolVersion) ||
@@ -478,31 +564,29 @@ function parseWorker(
   }
 
   const capabilities: DevAppCapability[] = []
-  if (raw.capabilities !== undefined) {
-    if (!Array.isArray(raw.capabilities)) {
-      diagnostics.push(
-        blocker("manifest-field-invalid", "worker.capabilities must be an array.", {
-          field: "worker.capabilities",
-        }),
-      )
-    } else {
-      raw.capabilities.forEach((candidate, index) => {
-        const field = `worker.capabilities[${index}]`
-        if (typeof candidate !== "string" || !isDevAppCapability(candidate)) {
-          // Fails closed on purpose: dropping it would let the app install asking for
-          // less than it does, and the approval prompt would under-report it.
-          diagnostics.push(
-            blocker(
-              "manifest-unknown-capability",
-              `${String(candidate)} is not a capability this version of Cozea knows.`,
-              { field, fix: "Remove it, or update Cozea if the app needs a newer capability." },
-            ),
-          )
-          return
-        }
-        if (!capabilities.includes(candidate)) capabilities.push(candidate)
-      })
-    }
+  if (!Array.isArray(raw.capabilities)) {
+    diagnostics.push(
+      blocker("manifest-field-invalid", "worker.capabilities must be an array.", {
+        field: "worker.capabilities",
+      }),
+    )
+  } else {
+    raw.capabilities.forEach((candidate, index) => {
+      const field = `worker.capabilities[${index}]`
+      if (typeof candidate !== "string" || !isDevAppCapability(candidate)) {
+        // Fails closed on purpose: dropping it would let the app install asking for
+        // less than it does, and the approval prompt would under-report it.
+        diagnostics.push(
+          blocker(
+            "manifest-unknown-capability",
+            `${String(candidate)} is not a capability this version of Cozea knows.`,
+            { field, fix: "Remove it, or update Cozea if the app needs a newer capability." },
+          ),
+        )
+        return
+      }
+      if (!capabilities.includes(candidate)) capabilities.push(candidate)
+    })
   }
 
   const tools = parseTools(raw.tools, diagnostics)
@@ -522,6 +606,7 @@ function parseService(
     )
     return undefined
   }
+  rejectUnknownFields(raw, ["runtimeKind", "entry"], "service", diagnostics)
 
   const runtimeKind = raw.runtimeKind
   if (runtimeKind !== "static" && runtimeKind !== "node") {
@@ -546,6 +631,51 @@ function parseService(
     )
   }
   return service
+}
+
+function parseRuntime(
+  raw: unknown,
+  diagnostics: DevAppPackageDiagnostic[],
+): DevAppPackageRuntimeSpec | undefined {
+  if (raw === undefined) return undefined
+  if (!isPlainObject(raw)) {
+    diagnostics.push(blocker("manifest-field-invalid", "runtime must be an object.", {
+      field: "runtime",
+    }))
+    return undefined
+  }
+  rejectUnknownFields(raw, ["location", "state"], "runtime", diagnostics)
+  const location = raw.location
+  const state = raw.state
+  if (location !== "device" && location !== "hosted") {
+    diagnostics.push(blocker("manifest-field-invalid", "runtime.location must be \"device\" or \"hosted\".", {
+      field: "runtime.location",
+    }))
+    return undefined
+  }
+  if (state !== "none" && state !== "device" && state !== "organization") {
+    diagnostics.push(blocker(
+      "manifest-field-invalid",
+      "runtime.state must be \"none\", \"device\", or \"organization\".",
+      { field: "runtime.state" },
+    ))
+    return undefined
+  }
+  if (location === "device" && state === "organization") {
+    diagnostics.push(blocker(
+      "manifest-field-invalid",
+      "A device runtime cannot claim organization-owned state.",
+      { field: "runtime.state", fix: "Use device or none, or move the runtime to hosted." },
+    ))
+  }
+  if (location === "hosted" && state === "device") {
+    diagnostics.push(blocker(
+      "manifest-field-invalid",
+      "A hosted runtime cannot claim device-owned state.",
+      { field: "runtime.state", fix: "Use organization or none, or move the runtime to device." },
+    ))
+  }
+  return { location, state }
 }
 
 /** Parses a manifest that has already been read off disk. */
@@ -585,14 +715,12 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
         fix: `Use ${DEV_APP_MANIFEST_VERSION}.`,
       }),
     )
-  } else if (version > DEV_APP_MANIFEST_VERSION) {
-    // Refused rather than best-effort read: a newer manifest may express a part or a
-    // constraint this build cannot enforce, and a half-understood one is the dangerous case.
+  } else if (version !== DEV_APP_MANIFEST_VERSION) {
     diagnostics.push(
       blocker(
         "manifest-version-unsupported",
-        `This DevApp needs a newer Cozea (manifest version ${version}).`,
-        { field: "manifestVersion", fix: "Update Cozea." },
+        `This Cozea build requires DevApp manifest version ${DEV_APP_MANIFEST_VERSION}; this package declares ${version}.`,
+        { field: "manifestVersion", fix: `Regenerate the package with manifest version ${DEV_APP_MANIFEST_VERSION}.` },
       ),
     )
   }
@@ -611,12 +739,12 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
     )
   }
 
-  // Unknown fields are a warning, not a blocker: an older Cozea reading a manifest that
-  // gained an optional field should still run the app rather than refuse it.
+  // The manifest version is exact. Unknown root fields are therefore typos or semantics
+  // this build cannot enforce, and accepting them would make the approval summary incomplete.
   for (const key of Object.keys(raw)) {
     if (!KNOWN_ROOT_FIELDS.has(key)) {
       diagnostics.push(
-        warning("manifest-unknown-field", `${key} is not a field this version of Cozea reads.`, {
+        blocker("manifest-unknown-field", `${key} is not a field this version of Cozea reads.`, {
           field: key,
         }),
       )
@@ -626,6 +754,23 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
   const view = parseView(raw.view, diagnostics)
   const worker = parseWorker(raw.worker, diagnostics)
   const service = parseService(raw.service, diagnostics)
+  const runtime = parseRuntime(raw.runtime, diagnostics)
+
+  const hasExecutablePart = Boolean(worker || service?.runtimeKind === "node")
+  if (hasExecutablePart && !runtime && raw.runtime === undefined) {
+    diagnostics.push(blocker(
+      "manifest-field-invalid",
+      "Executable DevApps must declare runtime placement and state ownership.",
+      { field: "runtime", fix: "Add runtime.location and runtime.state." },
+    ))
+  }
+  if (!hasExecutablePart && runtime) {
+    diagnostics.push(blocker(
+      "manifest-field-invalid",
+      "runtime is only valid when the package has a worker or Node service.",
+      { field: "runtime" },
+    ))
+  }
 
   if (!view && !worker && !service && raw.view === undefined && raw.worker === undefined
     && raw.service === undefined) {
@@ -647,6 +792,7 @@ export function parseDevAppPackage(source: string): DevAppPackageParseResult {
     ...(view ? { view } : {}),
     ...(worker ? { worker } : {}),
     ...(service ? { service } : {}),
+    ...(runtime ? { runtime } : {}),
   }
   return { manifest, diagnostics }
 }

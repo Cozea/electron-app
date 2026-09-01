@@ -3,6 +3,7 @@ import type {
   DevAppManifest,
   DevelopmentDevAppLaunchSpec,
 } from "@/features/devapps/registry/types";
+import { partsForPackage } from "@/features/devapps/registry/parts";
 import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes";
 
 export function buildDevelopmentDevAppLaunchSpec(
@@ -38,26 +39,7 @@ export function buildDevelopmentDevAppManifest(source: DevAppDevelopmentSource):
       accentClassName: "from-cyan-500/18 via-sky-500/8 to-transparent",
       badgeLabel: "Development",
     },
-    parts: {
-      ...(source.manifest.view ? { view: { source: "package" as const } } : {}),
-      ...(source.manifest.worker
-        ? {
-            worker: {
-              capabilities: source.manifest.worker.capabilities,
-              protocolVersion: source.manifest.worker.protocolVersion,
-              tools: source.manifest.worker.tools,
-            },
-          }
-        : {}),
-      ...(source.manifest.service
-        ? {
-            service: {
-              runtimeKind: source.manifest.service.runtimeKind,
-              location: "device" as const,
-            },
-          }
-        : {}),
-    },
+    parts: partsForPackage(source.manifest),
     launch: buildDevelopmentDevAppLaunchSpec(source),
   };
 }

@@ -19,15 +19,33 @@ export interface DevAppWorkerPart {
 
 /** A long-lived or static service reached through a managed origin. */
 export interface DevAppServicePart {
-  runtimeKind: "static" | "node" | "container"
-  location: "device" | "hosted"
+  runtimeKind: "static" | "node"
   singleton?: boolean
+}
+
+/** Where third-party executable code is allowed to run. */
+export type DevAppRuntimeLocation = "device" | "hosted"
+
+/** Who owns state created by the executable package runtime. */
+export type DevAppStateScope = "none" | "device" | "organization"
+
+/**
+ * The execution boundary is independent from the workload inside it.
+ *
+ * `development` is intentionally powerful, user-approved code from a local project.
+ * `container` is the only valid boundary for published worker or service code.
+ */
+export interface DevAppRuntimePart {
+  kind: "development" | "container"
+  location: DevAppRuntimeLocation
+  state: DevAppStateScope
 }
 
 export interface DevAppParts {
   view?: DevAppViewPart
   worker?: DevAppWorkerPart
   service?: DevAppServicePart
+  runtime?: DevAppRuntimePart
 }
 
 export type DevAppSurface = "tile" | "agentTool" | "backgroundService"
@@ -47,7 +65,14 @@ export function partsForPublishedRuntimeKind(runtimeKind: "static" | "service"):
   return {
     view: { source: "package" },
     ...(runtimeKind === "service"
-      ? { service: { runtimeKind: "node" as const, location: "device" as const } }
+      ? {
+          service: { runtimeKind: "node" as const },
+          runtime: {
+            kind: "container" as const,
+            location: "device" as const,
+            state: "device" as const,
+          },
+        }
       : {}),
   }
 }

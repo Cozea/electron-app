@@ -8,6 +8,7 @@ import {
   type DevAppPreviewFs,
 } from "../../apps/desktop/electron/services/DevAppPreviewSession"
 import type { DevAppWorkerState } from "../../apps/desktop/electron/services/DevAppWorkerHost"
+import { DEV_APP_MANIFEST_VERSION } from "../../shared/devAppPackage"
 import {
   DEV_APP_WORKER_PROTOCOL_VERSION,
   createDevAppWorkerViewPortBootstrap,
@@ -16,6 +17,28 @@ import {
 const WORKSPACE = "/Users/admin/proj"
 const SOURCE = "/Users/admin/proj/apps/inventory"
 const SOURCE_ID = "b".repeat(32)
+
+function phaseEightManifestFixture(candidate: unknown): unknown {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return candidate
+  const record = candidate as Record<string, unknown>
+  const worker = record.worker && typeof record.worker === "object" && !Array.isArray(record.worker)
+    ? record.worker as Record<string, unknown>
+    : null
+  const service = record.service && typeof record.service === "object" && !Array.isArray(record.service)
+    ? record.service as Record<string, unknown>
+    : null
+  const executable = Boolean(worker || service?.runtimeKind === "node")
+  return {
+    ...record,
+    ...(record.manifestVersion === 1 ? { manifestVersion: DEV_APP_MANIFEST_VERSION } : {}),
+    ...(worker
+      ? { worker: { protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION, ...worker } }
+      : {}),
+    ...(executable && record.runtime === undefined
+      ? { runtime: { location: "device", state: "device" } }
+      : {}),
+  }
+}
 
 const CLEAN_PREFLIGHT: OrgDevAppPreflightReport = {
   ok: true,
@@ -64,14 +87,14 @@ function makeSession(
     ...(options.manifest === undefined
       ? {
           [manifestPath]: JSON.stringify({
-            manifestVersion: 1,
+            manifestVersion: DEV_APP_MANIFEST_VERSION,
             name: "Inventory",
             view: { entry: "dist/index.html" },
           }),
         }
       : options.manifest === null
         ? {}
-        : { [manifestPath]: JSON.stringify(options.manifest) }),
+        : { [manifestPath]: JSON.stringify(phaseEightManifestFixture(options.manifest)) }),
     ...options.files,
   }
 
@@ -287,7 +310,7 @@ describe("Preview session — hot reload cannot widen a grant", () => {
 
   function running() {
     const files: Record<string, string> = {
-      [manifestPath]: JSON.stringify(narrow),
+      [manifestPath]: JSON.stringify(phaseEightManifestFixture(narrow)),
       [`${SOURCE}/worker.js`]: "//",
       [`${SOURCE}/dist/index.html`]: "<html>",
     }
@@ -334,10 +357,10 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     // Without this, editing a file on disk would be a way to gain capabilities the user
     // was never shown.
     const { session, worker, files } = running()
-    files[manifestPath] = JSON.stringify({
+    files[manifestPath] = JSON.stringify(phaseEightManifestFixture({
       ...narrow,
       worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"], tools: [] },
-    })
+    }))
     const status = session.reload(SOURCE_ID)
     expect(status?.status).toBe("needsApproval")
     expect(status?.status === "needsApproval" && status.missing).toEqual(["process.spawn"])
@@ -348,10 +371,10 @@ describe("Preview session — hot reload cannot widen a grant", () => {
     const { session, worker, files } = running()
     const shown = session.status(SOURCE_ID)
     expect(shown?.status).toBe("running")
-    files[manifestPath] = JSON.stringify({
+    files[manifestPath] = JSON.stringify(phaseEightManifestFixture({
       ...narrow,
       worker: { entry: "worker.js", capabilities: ["project.read", "process.spawn"], tools: [] },
-    })
+    }))
     const widened = session.reload(SOURCE_ID)
     expect(widened?.status).toBe("needsApproval")
     const startsBeforeStaleApproval = worker.start.mock.calls.length
@@ -363,10 +386,10 @@ describe("Preview session — hot reload cannot widen a grant", () => {
 
   it("keeps running when the manifest narrows, with the narrowed grant", () => {
     const { session, files } = running()
-    files[manifestPath] = JSON.stringify({
+    files[manifestPath] = JSON.stringify(phaseEightManifestFixture({
       ...narrow,
       worker: { entry: "worker.js", capabilities: [], tools: [] },
-    })
+    }))
     const status = session.reload(SOURCE_ID)
     expect(status?.status).toBe("running")
     expect(status?.status === "running" && status.grant.capabilities).toEqual([])
@@ -404,13 +427,13 @@ describe("Preview session — hot reload cannot widen a grant", () => {
 
   it("stops the worker when the manifest targets an unsupported protocol", () => {
     const { session, worker, files } = running()
-    files[manifestPath] = JSON.stringify({
+    files[manifestPath] = JSON.stringify(phaseEightManifestFixture({
       ...narrow,
       worker: {
         ...narrow.worker,
         protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION + 1,
       },
-    })
+    }))
     const status = session.reload(SOURCE_ID)
     expect(status?.status).toBe("invalid")
     expect(
