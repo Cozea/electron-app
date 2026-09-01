@@ -314,12 +314,19 @@ executable DevApp. Four problems, each with its field path and its remedy, in a 
 Phase 0's diagnostic taxonomy and Phase 8's manifest break are both live in the product. Packages
 authored before this phase must be regenerated; there is no compatibility path, by design.
 
+`ContainedDevAppRuntimeService` now drives the prepared helper directly under test, rather than the
+fake process every other case substitutes: it reads the real resource manifest, checks the real
+digests, spawns the real binary, and agrees with it on the line protocol. The test activates
+wherever `prepare:devapp-runtime` has produced resources and skips silently elsewhere, and a second
+case proves the integrity gate refuses a helper the manifest does not describe. The attestation
+verifier was already exercised against real Ed25519 keys and signatures across four cases,
+including a tampered statement whose declared digest was corrected to match.
+
 **What is not finished.** The published DevApp available to test with is static — `runtimeKind:
-"static"`, `parts.view.source: "package"`, no runtime image — so the loop above never reached a
-container. Two seams therefore remain untouched: the Electron service has never driven the helper,
-since the probe spoke the line protocol directly, and the attestation verifier has never seen a
-real signed image, because the central builder has not produced one. Both close the moment one
-executable release is built.
+"static"`, `parts.view.source: "package"`, no runtime image — so the product loop never reached a
+container, and the central builder has never produced a signed image for the verifier to accept in
+anger. Every seam has code and coverage behind it; what is missing is one artifact that travels the
+whole path at once.
 
 ---
 
