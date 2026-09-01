@@ -1798,6 +1798,7 @@ registerOrgDevAppHandlers(ipcMain, {
 
 registerDevAppPreviewHandlers(ipcMain, {
   service: devAppPreviewService,
+  getMainWindow: () => win,
 })
 
 registerDevAppAuthoringHandlers(ipcMain, {

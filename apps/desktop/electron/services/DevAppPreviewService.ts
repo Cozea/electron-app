@@ -143,6 +143,15 @@ export class DevAppPreviewService {
     return connection ? { protocolVersion: connection.protocolVersion } : null
   }
 
+  invokeTool(
+    sourceId: string,
+    name: string,
+    input: unknown,
+    timeoutMs?: number,
+  ): Promise<unknown> {
+    return this.session.invokeTool(sourceId, name, input, timeoutMs)
+  }
+
   attachViewPort(
     sourceId: string,
     connectionId: string,

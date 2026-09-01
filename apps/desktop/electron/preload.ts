@@ -448,6 +448,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('orgDevApp:revokeFolderGrant', options),
     stopPublishedRuntime: (options: { ref: string; workspaceId: string }) =>
       ipcRenderer.invoke('orgDevApp:stopPublishedRuntime', options),
+    getPublishedToolStatus: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+    }) => ipcRenderer.invoke('orgDevApp:getPublishedToolStatus', options),
+    invokePublishedTool: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+      name: string
+      input: unknown
+      timeoutMs?: number
+    }) => ipcRenderer.invoke('orgDevApp:invokePublishedTool', options),
     ensurePublishedRuntime: (options: {
       ref: string
       workspaceId: string
@@ -496,6 +509,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('devAppPreview:approve', options),
     status: (options: { sourceId: string }) =>
       ipcRenderer.invoke('devAppPreview:status', options),
+    invokeTool: (options: {
+      sourceId: string
+      name: string
+      input: unknown
+      timeoutMs?: number
+    }) => ipcRenderer.invoke('devAppPreview:invokeTool', options),
     close: (options: { sourceId: string; leaseId: string }) =>
       ipcRenderer.invoke('devAppPreview:close', options),
     onStatus: (

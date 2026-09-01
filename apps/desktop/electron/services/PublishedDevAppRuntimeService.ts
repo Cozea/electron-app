@@ -23,6 +23,7 @@ import { createContainedDevAppWorkerSpawn } from "./containedDevAppWorkerProcess
 import type { DeviceContainedDevAppRuntimeService } from "./ContainedDevAppRuntimeService"
 import { requestDevAppRuntimeRegistryAuth } from "./DevAppRuntimeAccessClient"
 import type { OrgDevAppInstallationService } from "./OrgDevAppInstallationService"
+import { validateDevAppToolInput } from "../../../../shared/devAppToolInputValidation"
 
 const SERVICE_PORT = 8080
 const MAX_LOG_LINES = 200
@@ -278,6 +279,7 @@ export class PublishedDevAppRuntimeService {
       authorizationExpiresAt,
       binding,
       leaseId,
+      declaredToolNames: worker.tools?.map((tool) => tool.name) ?? [],
     })
     return {
       workerKey,
@@ -301,6 +303,40 @@ export class PublishedDevAppRuntimeService {
     return state?.status === "ready"
       ? { workerKey: active.key, protocolVersion: state.protocolVersion }
       : null
+  }
+
+  workerStateFor(ref: string, workspaceId: string): DevAppWorkerState | null {
+    if (!this.workerHost) return null
+    const installation = this.installations.resolve(ref)
+    if (!installation) return null
+    const key = runtimeKey(installation.activeRelease.id, workspaceId)
+    const active = this.active.get(key)
+    if (!active || active.state.status !== "running") return null
+    return this.workerHost.getState(key)
+  }
+
+  async invokeTool(options: {
+    ref: string
+    workspaceId: string
+    name: string
+    input: unknown
+    timeoutMs?: number
+  }): Promise<unknown> {
+    if (!this.workerHost) throw new Error("The published DevApp worker host is unavailable.")
+    const installation = this.installations.resolve(options.ref)
+    if (!installation) throw new Error("This exact DevApp release is not installed.")
+    const tool = installation.activeRelease.parts.worker?.tools?.find(
+      (candidate) => candidate.name === options.name,
+    )
+    if (!tool) throw new Error("This exact DevApp release did not declare that tool.")
+    const inputError = validateDevAppToolInput(tool.inputSchema, options.input)
+    if (inputError) throw new Error(inputError)
+    const key = runtimeKey(installation.activeRelease.id, options.workspaceId)
+    const active = this.active.get(key)
+    if (!active || active.state.status !== "running") {
+      throw new Error("This exact DevApp release is not running in the requested workspace.")
+    }
+    return await this.workerHost.invoke(key, tool.name, options.input, options.timeoutMs)
   }
 
   attachViewPort(

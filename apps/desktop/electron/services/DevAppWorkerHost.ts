@@ -1,4 +1,5 @@
 import path from "node:path"
+import { randomUUID } from "node:crypto"
 
 import {
   grantFingerprint,
@@ -97,6 +98,14 @@ const MAX_PENDING_REQUESTS = 16
 const MAX_ACTIVE_WORKERS = 16
 const MAX_LEASES_PER_WORKER = 64
 const MAX_VIEW_CONNECTIONS_PER_WORKER = 64
+const MAX_PENDING_TOOL_INVOCATIONS = 16
+const MAX_TOOL_RESULT_BYTES = 1024 * 1024
+
+interface PendingToolInvocation {
+  resolve: (value: unknown) => void
+  reject: (error: Error) => void
+  timer: unknown
+}
 
 interface ActiveWorker {
   process: DevAppWorkerProcess
@@ -105,10 +114,12 @@ interface ActiveWorker {
   entrypoint: string
   packageRoot: string
   authorizationExpiresAt: number | null
+  declaredTools: Set<string>
   state: DevAppWorkerState
   leases: Set<string>
   inFlight: number
   viewConnections: Set<string>
+  pendingToolInvocations: Map<string, PendingToolInvocation>
   expiryTimer: unknown | null
   disposed: boolean
 }
@@ -159,6 +170,7 @@ export class DevAppWorkerHost {
     authorizationExpiresAt: number | null
     binding: DevAppWorkerBinding
     leaseId: string
+    declaredToolNames?: string[]
   }): DevAppWorkerState {
     assertWorkerIdentity(options.publicationId, options.leaseId)
     if (!supportsDevAppWorkerProtocolVersion(options.protocolVersion)) {
@@ -185,6 +197,7 @@ export class DevAppWorkerHost {
       entrypoint,
       packageRoot,
       grant: normalizeGrant(options.grant),
+      declaredToolNames: [...new Set(options.declaredToolNames ?? [])].sort(),
     }
     const existing = this.workers.get(options.publicationId)
     if (existing && !existing.disposed) {
@@ -198,7 +211,9 @@ export class DevAppWorkerHost {
         existing.entrypoint !== normalizedOptions.entrypoint ||
         existing.packageRoot !== normalizedOptions.packageRoot ||
         grantFingerprint(existing.grant) !== grantFingerprint(normalizedOptions.grant) ||
-        existing.authorizationExpiresAt !== normalizedOptions.authorizationExpiresAt
+        existing.authorizationExpiresAt !== normalizedOptions.authorizationExpiresAt ||
+        [...existing.declaredTools].sort().join("\0") !==
+          normalizedOptions.declaredToolNames.join("\0")
       if (executionChanged) {
         const leases = new Set(existing.leases)
         leases.add(normalizedOptions.leaseId)
@@ -239,6 +254,7 @@ export class DevAppWorkerHost {
       authorizationExpiresAt: number | null
       binding: DevAppWorkerBinding
       leaseId: string
+      declaredToolNames: string[]
     },
     restarts: number,
   ): DevAppWorkerState {
@@ -264,10 +280,12 @@ export class DevAppWorkerHost {
       entrypoint: options.entrypoint,
       packageRoot: options.packageRoot,
       authorizationExpiresAt: options.authorizationExpiresAt,
+      declaredTools: new Set(options.declaredToolNames),
       state,
       leases: new Set([options.leaseId]),
       inFlight: 0,
       viewConnections: new Set(),
+      pendingToolInvocations: new Map(),
       expiryTimer: null,
       disposed: false,
     }
@@ -298,6 +316,7 @@ export class DevAppWorkerHost {
       current.state.status = "crashed"
       current.state.lastError = `Worker exited with code ${code ?? "unknown"}.`
       this.emitState(current.state)
+      this.rejectToolInvocations(current, "The DevApp worker exited during the tool invocation.")
       if (current.leases.size > 0 && restarts < MAX_RESTARTS) {
         const leases = [...current.leases]
         const relaunched = this.launch({ ...options, leaseId: leases[0]! }, restarts + 1)
@@ -371,6 +390,54 @@ export class DevAppWorkerHost {
     this.workers.get(publicationId)?.viewConnections.delete(connectionId)
   }
 
+  /** Invokes one exact operation declared by an agent-enabled worker approval. */
+  invoke(
+    publicationId: string,
+    method: string,
+    params: unknown,
+    timeoutMs: number = 30_000,
+  ): Promise<unknown> {
+    const worker = this.workers.get(publicationId)
+    if (!worker || worker.disposed || worker.state.status !== "ready") {
+      return Promise.reject(new Error("The DevApp worker is unavailable."))
+    }
+    if (worker.authorizationExpiresAt !== null && worker.authorizationExpiresAt <= this.now()) {
+      this.stop(publicationId)
+      return Promise.reject(new Error("The DevApp worker authorization has expired."))
+    }
+    if (!worker.grant.agentInvocable) {
+      return Promise.reject(new Error("This DevApp worker is not approved for agent invocation."))
+    }
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(method) || !worker.declaredTools.has(method)) {
+      return Promise.reject(new Error("This DevApp worker did not declare that tool."))
+    }
+    if (worker.pendingToolInvocations.size >= MAX_PENDING_TOOL_INVOCATIONS) {
+      return Promise.reject(new Error("This DevApp worker has too many tool calls in flight."))
+    }
+    const boundedTimeout = Math.max(250, Math.min(timeoutMs, 60_000))
+    const id = `agent_${randomUUID()}`
+    return new Promise((resolve, reject) => {
+      const timer = this.setTimer(() => {
+        worker.pendingToolInvocations.delete(id)
+        reject(new Error(`DevApp tool ${method} timed out.`))
+      }, boundedTimeout)
+      worker.pendingToolInvocations.set(id, { resolve, reject, timer })
+      try {
+        worker.process.postMessage({
+          kind: "request",
+          protocolVersion: worker.state.protocolVersion,
+          id,
+          method,
+          params,
+        } satisfies DevAppWorkerRequest)
+      } catch {
+        worker.pendingToolInvocations.delete(id)
+        this.clearTimer(timer)
+        reject(new Error("The DevApp worker disconnected before the tool call was sent."))
+      }
+    })
+  }
+
   /** Releases a lease; the worker stops when the last one goes. */
   release(publicationId: string, leaseId: string): void {
     const worker = this.workers.get(publicationId)
@@ -388,6 +455,7 @@ export class DevAppWorkerHost {
     if (worker.expiryTimer !== null) this.clearTimer(worker.expiryTimer)
     worker.expiryTimer = null
     this.emitState(worker.state)
+    this.rejectToolInvocations(worker, "The DevApp worker stopped during the tool invocation.")
     worker.process.kill()
     this.workers.delete(publicationId)
   }
@@ -430,6 +498,29 @@ export class DevAppWorkerHost {
       // A malformed message is dropped rather than answered: there is no id to reply to,
       // and echoing unparsed input back would be its own hazard.
       this.appendLog(worker.state, "Dropped a malformed message from the worker.")
+      return
+    }
+    if (message.kind === "response") {
+      const pending = worker.pendingToolInvocations.get(message.id)
+      if (!pending) return
+      worker.pendingToolInvocations.delete(message.id)
+      this.clearTimer(pending.timer)
+      if (message.error) {
+        const detail = typeof message.error.message === "string"
+          ? message.error.message.slice(0, 2_048)
+          : "The DevApp tool failed."
+        pending.reject(new Error(detail))
+        return
+      }
+      try {
+        const encoded = JSON.stringify(message.result)
+        if (encoded === undefined || Buffer.byteLength(encoded) > MAX_TOOL_RESULT_BYTES) {
+          throw new Error("The DevApp tool result exceeds 1 MiB.")
+        }
+        pending.resolve(JSON.parse(encoded) as unknown)
+      } catch (error) {
+        pending.reject(error instanceof Error ? error : new Error("The DevApp tool result is invalid."))
+      }
       return
     }
     if (message.kind !== "request") return
@@ -526,6 +617,14 @@ export class DevAppWorkerHost {
     } catch {
       // The port closed between dispatch and reply; the exit handler owns recovery.
     }
+  }
+
+  private rejectToolInvocations(worker: ActiveWorker, reason: string): void {
+    for (const pending of worker.pendingToolInvocations.values()) {
+      this.clearTimer(pending.timer)
+      pending.reject(new Error(reason))
+    }
+    worker.pendingToolInvocations.clear()
   }
 
   private appendLog(state: DevAppWorkerState, line: string): void {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { PublishedDevAppRuntimeService } from "../../apps/desktop/electron/services/PublishedDevAppRuntimeService"
 import type { DeviceContainedDevAppRuntimeService } from "../../apps/desktop/electron/services/ContainedDevAppRuntimeService"
 import type { OrgDevAppInstallationService } from "../../apps/desktop/electron/services/OrgDevAppInstallationService"
+import type { DevAppWorkerHost } from "../../apps/desktop/electron/services/DevAppWorkerHost"
 import type { OrgDevAppInstallation } from "../../shared/orgDevAppInstallation"
 import type {
   DevAppContainedRuntimeStartRequest,
@@ -143,6 +144,88 @@ describe("published DevApp runtime coordination", () => {
       workspaceRoot: "/tmp/workspace_2",
       leaseId: "tile_3",
     })).rejects.toThrow("already mounted in another workspace")
+    await service.dispose()
+  })
+
+  it("invokes only an exact declared tool in the exact running workspace", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      scheme: "bearer",
+      token: "pull-token",
+      expiresAt: Date.now() + 60_000,
+    })))
+    const runtime = {
+      start: vi.fn(async (request: DevAppContainedRuntimeStartRequest) => runningState(request)),
+      stop: vi.fn(async (runtimeId: string) => ({ runtimeId, status: "stopped" })),
+      delete: vi.fn(async () => null),
+      sendMessage: vi.fn(async () => undefined),
+      on: vi.fn(() => () => undefined),
+    } as unknown as DeviceContainedDevAppRuntimeService
+    const release = installation()
+    release.activeRelease.parts.worker!.tools = [
+      {
+        name: "search_records",
+        description: "Search records.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["query"],
+          properties: { query: { type: "string", minLength: 1 } },
+        },
+      },
+    ]
+    const invoke = vi.fn(async () => ({ records: [1] }))
+    const workerHost = {
+      invoke,
+      getState: vi.fn(() => ({
+        publicationId: "runtime",
+        protocolVersion: 1,
+        status: "ready",
+        restarts: 0,
+        lastError: null,
+        logs: [],
+      })),
+      onStateChange: vi.fn(() => () => undefined),
+      stop: vi.fn(),
+      dispose: vi.fn(),
+    } as unknown as DevAppWorkerHost
+    const service = new PublishedDevAppRuntimeService(installedService(release), runtime)
+    service.setWorkerHost(workerHost)
+    const active = await service.start({
+      ref: release.ref,
+      workspaceId: "workspace_1",
+      workspaceRoot: "/tmp/workspace_1",
+      leaseId: "tile_1",
+      gatewayBaseUrl: "https://gateway.example",
+      accessToken: "device-token",
+    })
+
+    await expect(service.invokeTool({
+      ref: release.ref,
+      workspaceId: "workspace_1",
+      name: "search_records",
+      input: { query: "Ada" },
+    })).resolves.toEqual({ records: [1] })
+    expect(invoke).toHaveBeenCalledWith(active.key, "search_records", { query: "Ada" }, undefined)
+
+    await expect(service.invokeTool({
+      ref: release.ref,
+      workspaceId: "workspace_1",
+      name: "search_records",
+      input: { query: "" },
+    })).rejects.toThrow(/too short/)
+    await expect(service.invokeTool({
+      ref: release.ref,
+      workspaceId: "workspace_other",
+      name: "search_records",
+      input: { query: "Ada" },
+    })).rejects.toThrow(/not running/)
+    await expect(service.invokeTool({
+      ref: release.ref,
+      workspaceId: "workspace_1",
+      name: "delete_records",
+      input: {},
+    })).rejects.toThrow(/did not declare/)
+    expect(invoke).toHaveBeenCalledTimes(1)
     await service.dispose()
   })
 })

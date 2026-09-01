@@ -19,6 +19,7 @@ import type {
 } from "./DevAppWorkerHost"
 import type { DevAppWorkerViewPortBootstrap } from "../../../../shared/devAppWorkerProtocol"
 import { buildDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol"
+import { validateDevAppToolInput } from "../../../../shared/devAppToolInputValidation"
 
 /**
  * Runs an unpublished DevApp from a local directory.
@@ -52,7 +53,14 @@ export interface DevAppPreviewWorkerHost {
     authorizationExpiresAt: number | null
     binding: DevAppWorkerBinding
     leaseId: string
+    declaredToolNames?: string[]
   }) => DevAppWorkerState
+  invoke?: (
+    publicationId: string,
+    method: string,
+    params: unknown,
+    timeoutMs?: number,
+  ) => Promise<unknown>
   stop: (publicationId: string) => void
   release: (publicationId: string, leaseId: string) => void
   getState: (publicationId: string) => DevAppWorkerState | null
@@ -117,6 +125,25 @@ export class DevAppPreviewSession {
 
   constructor(deps: DevAppPreviewDeps) {
     this.deps = deps
+  }
+
+  async invokeTool(
+    sourceId: string,
+    name: string,
+    input: unknown,
+    timeoutMs?: number,
+  ): Promise<unknown> {
+    const session = this.sessions.get(sourceId)
+    const tool = session?.manifest.worker?.tools.find((candidate) => candidate.name === name)
+    if (!session || !tool || !session.workerKey) {
+      throw new Error("The development DevApp did not declare a running tool with that name.")
+    }
+    const inputError = validateDevAppToolInput(tool.inputSchema, input)
+    if (inputError) throw new Error(inputError)
+    if (!this.deps.worker.invoke) {
+      throw new Error("The development DevApp worker cannot accept tool invocations.")
+    }
+    return await this.deps.worker.invoke(session.workerKey, tool.name, input, timeoutMs)
   }
 
   open(options: DevAppPreviewOpenOptions): DevAppPreviewStatus {
@@ -442,6 +469,7 @@ export class DevAppPreviewSession {
         authorizationExpiresAt,
         binding: session.binding,
         leaseId,
+        declaredToolNames: worker.tools.map((tool) => tool.name),
       })
     }
     session.workerKey = key

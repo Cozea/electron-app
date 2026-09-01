@@ -298,6 +298,71 @@ export function registerOrgDevAppHandlers(
     }
   })
 
+  ipcMain.handle("orgDevApp:getPublishedToolStatus", async (event, options: {
+    ref: string
+    workspaceId: string
+    laneId?: string | null
+  }) => {
+    assertMainRenderer(event)
+    try {
+      await resolveAuthorizedWorkspaceAccess({
+        workspaceId: options.workspaceId,
+        laneId: options.laneId,
+        operation: "runtime-detect",
+      })
+      const installation = installations.resolve(options.ref)
+      if (!installation) throw new Error("This exact DevApp release is not installed.")
+      const approval = publishedApprovals.get(options.ref, options.workspaceId)
+      const worker = publishedRuntime.workerStateFor(options.ref, options.workspaceId)
+      const declaredTools = installation.activeRelease.parts.worker?.tools ?? []
+      const agentInvocable = approval?.grant.agentInvocable === true
+      return {
+        success: true as const,
+        status: {
+          ref: installation.ref,
+          name: installation.name,
+          declaredTools,
+          agentInvocable,
+          toolInvocationAvailable:
+            agentInvocable && worker?.status === "ready" && declaredTools.length > 0,
+          worker: worker
+            ? {
+                status: worker.status,
+                restarts: worker.restarts,
+                lastError: worker.lastError,
+              }
+            : null,
+        },
+      }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to inspect published DevApp tools." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:invokePublishedTool", async (event, options: {
+    ref: string
+    workspaceId: string
+    laneId?: string | null
+    name: string
+    input: unknown
+    timeoutMs?: number
+  }) => {
+    assertMainRenderer(event)
+    try {
+      await resolveAuthorizedWorkspaceAccess({
+        workspaceId: options.workspaceId,
+        laneId: options.laneId,
+        operation: "runtime-detect",
+      })
+      return {
+        success: true as const,
+        result: await publishedRuntime.invokeTool(options),
+      }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "The published DevApp tool failed." }
+    }
+  })
+
   ipcMain.handle("orgDevApp:ensurePublishedRuntime", async (event, options: {
     ref: string
     workspaceId: string

@@ -1551,6 +1551,39 @@ export interface ElectronAPI {
       | { success: true; stopped: boolean }
       | { success: false; error: string }
     >
+    getPublishedToolStatus: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+    }) => Promise<
+      | {
+          success: true
+          status: {
+            ref: string
+            name: string
+            declaredTools: import('./devAppPackage').DevAppPackageToolSpec[]
+            agentInvocable: boolean
+            toolInvocationAvailable: boolean
+            worker: null | {
+              status: 'starting' | 'ready' | 'stopped' | 'crashed'
+              restarts: number
+              lastError: string | null
+            }
+          }
+        }
+      | { success: false; error: string }
+    >
+    invokePublishedTool: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+      name: string
+      input: unknown
+      timeoutMs?: number
+    }) => Promise<
+      | { success: true; result: unknown }
+      | { success: false; error: string }
+    >
     ensurePublishedRuntime: (options: {
       ref: string
       workspaceId: string
@@ -1635,6 +1668,15 @@ export interface ElectronAPI {
     >
     status: (options: { sourceId: string }) => Promise<
       import('./devAppPreviewTypes').DevAppPreviewResult
+    >
+    invokeTool: (options: {
+      sourceId: string
+      name: string
+      input: unknown
+      timeoutMs?: number
+    }) => Promise<
+      | { success: true; result: unknown }
+      | { success: false; error: string }
     >
     close: (options: { sourceId: string; leaseId: string }) => Promise<{ success: true }>
     onStatus: (

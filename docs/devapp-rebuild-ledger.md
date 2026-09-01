@@ -168,7 +168,7 @@ reloads when generated output under `dist`, `build`, or `out` changes.
 
 The `Cozea/t3code` fork now owns `devapp_preview_ensure` and
 `devapp_preview_attach`; the generated parent contracts are synchronized from pinned fork
-revision `5725b2eb`. Ensure creates or reuses a project-confined package tile without granting
+revision `c1f224d9`. Ensure creates or reuses a project-confined package tile without granting
 capabilities. Attach binds an existing approved package to its exact runtime tab. Generic T3
 snapshot and interaction operations then target the same living guest the user sees.
 

@@ -1,4 +1,4 @@
-import type { IpcMain, WebContents } from "electron"
+import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 
 import { resolveAuthorizedWorkspaceAccess } from "../workspaces/authorization"
 import type { DevAppPreviewService } from "../services/DevAppPreviewService"
@@ -17,6 +17,7 @@ export const DEV_APP_PREVIEW_STATUS_CHANNEL = "devAppPreview:status"
 
 interface RegisterDevAppPreviewHandlersDeps {
   service: DevAppPreviewService
+  getMainWindow: () => BrowserWindow | null
 }
 
 /** Source ids are hashes we produced; anything else is not addressing our session. */
@@ -29,11 +30,17 @@ export function registerDevAppPreviewHandlers(
   deps: RegisterDevAppPreviewHandlersDeps,
 ): void {
   const { service } = deps
+  const assertMainRenderer = (event: IpcMainInvokeEvent): void => {
+    const window = deps.getMainWindow()
+    if (!window || window.isDestroyed() || event.sender !== window.webContents) {
+      throw new Error("DevApp preview IPC is restricted to the main Cozea renderer.")
+    }
+  }
 
   ipcMain.handle(
     "devAppPreview:open",
     async (
-      _event,
+      event,
       options: {
         workspaceId: string
         laneId?: string | null
@@ -42,6 +49,7 @@ export function registerDevAppPreviewHandlers(
       },
     ) => {
       try {
+        assertMainRenderer(event)
         if (
           typeof options?.workspaceId !== "string" ||
           options.workspaceId.length === 0 ||
@@ -77,10 +85,11 @@ export function registerDevAppPreviewHandlers(
     },
   )
 
-  ipcMain.handle("devAppPreview:approve", async (_event, options: {
+  ipcMain.handle("devAppPreview:approve", async (event, options: {
     sourceId: string
     approvalFingerprint: string
   }) => {
+    assertMainRenderer(event)
     if (!isSourceId(options?.sourceId)) return { success: false as const, error: "Unknown preview." }
     if (typeof options.approvalFingerprint !== "string" || options.approvalFingerprint.length > 512) {
       return { success: false as const, error: "The approval request is invalid." }
@@ -98,7 +107,8 @@ export function registerDevAppPreviewHandlers(
     }
   })
 
-  ipcMain.handle("devAppPreview:status", async (_event, options: { sourceId: string }) => {
+  ipcMain.handle("devAppPreview:status", async (event, options: { sourceId: string }) => {
+    assertMainRenderer(event)
     if (!isSourceId(options?.sourceId)) return { success: false as const, error: "Unknown preview." }
     const status = service.status(options.sourceId)
     return status
@@ -106,7 +116,37 @@ export function registerDevAppPreviewHandlers(
       : { success: false as const, error: "That preview is no longer open." }
   })
 
-  ipcMain.handle("devAppPreview:close", async (_event, options: { sourceId: string; leaseId: string }) => {
+  ipcMain.handle("devAppPreview:invokeTool", async (event, options: {
+    sourceId: string
+    name: string
+    input: unknown
+    timeoutMs?: number
+  }) => {
+    assertMainRenderer(event)
+    if (
+      !isSourceId(options?.sourceId) ||
+      typeof options?.name !== "string" ||
+      !/^[a-z][a-z0-9_-]{0,63}$/.test(options.name)
+    ) {
+      return { success: false as const, error: "The DevApp tool target is invalid." }
+    }
+    try {
+      return {
+        success: true as const,
+        result: await service.invokeTool(
+          options.sourceId,
+          options.name,
+          options.input,
+          options.timeoutMs,
+        ),
+      }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "The DevApp tool failed." }
+    }
+  })
+
+  ipcMain.handle("devAppPreview:close", async (event, options: { sourceId: string; leaseId: string }) => {
+    assertMainRenderer(event)
     if (isSourceId(options?.sourceId) && isLeaseId(options?.leaseId)) {
       service.close(options.sourceId, options.leaseId)
     }

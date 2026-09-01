@@ -108,6 +108,7 @@ function makeSession(
     stop: vi.fn((publicationId: string) => runningWorkers.delete(publicationId)),
     release: vi.fn(),
     getState: vi.fn((publicationId: string) => runningWorkers.get(publicationId) ?? null),
+    invoke: vi.fn(async () => ({ records: [1] })),
     attachViewPort: vi.fn((_publicationId: string, connectionId: string, protocolVersion: number) =>
       createDevAppWorkerViewPortBootstrap(connectionId, protocolVersion),
     ),
@@ -248,6 +249,52 @@ describe("Preview session — approval comes first", () => {
         binding: { workspaceId: "ws_1", workspaceRoot: WORKSPACE },
       }),
     )
+  })
+
+  it("invokes only an approved exact declared development tool with valid input", async () => {
+    const { open, session, worker } = makeSession({
+      manifest: {
+        manifestVersion: 1,
+        name: "Inventory",
+        view: { entry: "dist/index.html" },
+        worker: {
+          entry: "worker.js",
+          capabilities: ["project.read"],
+          tools: [
+            {
+              name: "search_records",
+              description: "Search inventory records.",
+              inputSchema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["query"],
+                properties: { query: { type: "string", minLength: 1 } },
+              },
+            },
+          ],
+        },
+      },
+      files: { [`${SOURCE}/worker.js`]: "//", [`${SOURCE}/dist/index.html`]: "<html>" },
+    })
+    open()
+    approveCurrent(session)
+
+    await expect(
+      session.invokeTool(SOURCE_ID, "search_records", { query: "Ada" }, 2_000),
+    ).resolves.toEqual({ records: [1] })
+    expect(worker.invoke).toHaveBeenCalledWith(
+      `dev:${SOURCE_ID}`,
+      "search_records",
+      { query: "Ada" },
+      2_000,
+    )
+    await expect(
+      session.invokeTool(SOURCE_ID, "search_records", { query: "" }),
+    ).rejects.toThrow(/too short/)
+    await expect(session.invokeTool(SOURCE_ID, "delete_records", {})).rejects.toThrow(
+      /did not declare/,
+    )
+    expect(worker.invoke).toHaveBeenCalledTimes(1)
   })
 
   it("namespaces the worker key so it cannot address a published worker", () => {

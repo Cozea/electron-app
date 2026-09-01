@@ -10,6 +10,7 @@ import {
   DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
   supportsDevAppWorkerProtocolVersion,
 } from "./devAppWorkerProtocol"
+import { isSupportedDevAppToolInputSchema } from "./devAppToolInputValidation"
 
 /**
  * The authoring contract: `cozea-devapp.json`, the file that makes a directory a DevApp.
@@ -378,8 +379,11 @@ function parseTools(raw: unknown, diagnostics: DevAppPackageDiagnostic[]): DevAp
       diagnostics.push(blocker("manifest-field-invalid", `${field}.description must describe the operation.`, { field: `${field}.description` }))
       return
     }
-    if (!isBoundedToolSchema(candidate.inputSchema)) {
-      diagnostics.push(blocker("manifest-field-invalid", `${field}.inputSchema must be a bounded object JSON Schema without references.`, { field: `${field}.inputSchema` }))
+    if (
+      !isBoundedToolSchema(candidate.inputSchema) ||
+      !isSupportedDevAppToolInputSchema(candidate.inputSchema)
+    ) {
+      diagnostics.push(blocker("manifest-field-invalid", `${field}.inputSchema must use Cozea's bounded enforceable object JSON Schema subset.`, { field: `${field}.inputSchema` }))
       return
     }
     names.add(candidate.name)
