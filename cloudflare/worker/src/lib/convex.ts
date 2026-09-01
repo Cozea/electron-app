@@ -9,6 +9,8 @@ import type {
 import { ConvexHttpClient } from 'convex/browser'
 import type { FunctionReference } from 'convex/server'
 import { isTokenIssuedAfterRevocationBoundary } from '../../../../shared/deviceIdentity'
+import type { DevAppRuntimeReleaseImage } from '../../../../shared/devAppContainedRuntime'
+import type { DevAppParts } from '../../../../shared/devAppParts'
 
 type AnyQueryReference = FunctionReference<'query', 'public', Record<string, unknown>, unknown>
 type AnyMutationReference = FunctionReference<'mutation', 'public', Record<string, unknown>, unknown>
@@ -161,6 +163,57 @@ async function runMutation<T>(
   args: Record<string, unknown>,
 ): Promise<T> {
   return (await getClient(env).mutation(asMutation(name), args)) as T
+}
+
+export async function authorizeDevAppRuntimeBuildInConvex(
+  env: Env,
+  auth: DeviceAccessClaims,
+  args: { projectId: string; reservationId: string },
+): Promise<void> {
+  await requireActiveDeviceAccessInConvex(env, auth)
+  const result = await runServerQuery<{ allowed: boolean }>(
+    env,
+    'devApps:getRuntimeBuildAuthorizationForServer',
+    {
+      identityKey: auth.sub,
+      projectId: args.projectId,
+      reservationId: args.reservationId,
+    },
+  )
+  if (!result.allowed) throw new Error('The DevApp runtime build is not authorized')
+}
+
+export async function registerDevAppRuntimeBuildInConvex(
+  env: Env,
+  args: {
+    identityKey: string
+    projectId: string
+    reservationId: string
+    buildId: string
+    sourceDigest: string
+    packageManifestDigest: string
+  },
+): Promise<void> {
+  await runMutation(env, 'devApps:registerRuntimeBuildFromServer', {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    ...args,
+  })
+}
+
+export async function completeDevAppRuntimeBuildInConvex(
+  env: Env,
+  args: {
+    buildId: string
+    status: 'building' | 'ready' | 'failed'
+    runtimeImage?: DevAppRuntimeReleaseImage
+    runtimeParts?: DevAppParts
+    error?: string
+  },
+): Promise<void> {
+  await runMutation(env, 'devApps:completeRuntimeBuildFromServer', {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    ...args,
+  })
 }
 
 async function runServerQuery<T>(

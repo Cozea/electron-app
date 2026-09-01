@@ -28,7 +28,9 @@ build/runtime/**
 !build/runtime/
 !build/runtime/README.md
 build/local-automation/**
+build/devapp-container-runtime/**
 native/**/.build/
+native/**/.cache/
 
 # Server (separate repo — root only; apps/server is in-tree)
 /server/

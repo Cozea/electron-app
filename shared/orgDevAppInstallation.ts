@@ -1,4 +1,5 @@
 import type { DevAppParts } from "./devAppParts"
+import type { DevAppRuntimeReleaseImage } from "./devAppContainedRuntime"
 
 /**
  * One immutable organization release installed on this device.
@@ -32,6 +33,9 @@ export interface OrgDevAppInstallation {
     publisherIdentityKey: string | null
     publisherDeviceLabel: string | null
     parts: DevAppParts
+    runtimeSourceDigest: string | null
+    packageManifestDigest: string | null
+    runtimeImage: DevAppRuntimeReleaseImage | null
   }
 }
 

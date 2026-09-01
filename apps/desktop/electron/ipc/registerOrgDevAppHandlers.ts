@@ -4,6 +4,10 @@ import { resolveAuthorizedWorkspaceAccess } from "../workspaces/authorization"
 import type { OrgDevAppArtifactService } from "../services/OrgDevAppArtifactService"
 import type { OrgDevAppInstallationService } from "../services/OrgDevAppInstallationService"
 import type { OrgDevAppInstallRequest } from "../../../../shared/orgDevAppInstallation"
+import {
+  getDevAppRuntimeBuild,
+  startDevAppRuntimeBuild,
+} from "../services/DevAppRuntimeBuildClient"
 
 interface RegisterOrgDevAppHandlersDeps {
   service: OrgDevAppArtifactService
@@ -80,7 +84,7 @@ export function registerOrgDevAppHandlers(
   ipcMain.handle(
     "orgDevApp:buildAndUpload",
     async (
-      _event,
+      event,
       options: {
         workspaceId: string
         laneId?: string | null
@@ -103,6 +107,7 @@ export function registerOrgDevAppHandlers(
       | { success: false; error: string }
     > => {
       try {
+        assertMainRenderer(event)
         const access = await resolveAuthorizedWorkspaceAccess({
           workspaceId: options.workspaceId,
           laneId: options.laneId,
@@ -131,6 +136,53 @@ export function registerOrgDevAppHandlers(
       }
     },
   )
+
+  ipcMain.handle("orgDevApp:startRuntimeBuild", async (event, options: {
+    workspaceId: string
+    laneId?: string | null
+    projectId: string
+    uploadReservationId: string
+    gatewayBaseUrl: string
+    accessToken: string
+  }) => {
+    assertMainRenderer(event)
+    try {
+      const access = await resolveAuthorizedWorkspaceAccess({
+        workspaceId: options.workspaceId,
+        laneId: options.laneId,
+        operation: "runtime-detect",
+      })
+      const build = await startDevAppRuntimeBuild({
+        projectRoot: access.projectRootPath,
+        projectId: options.projectId,
+        uploadReservationId: options.uploadReservationId,
+        gatewayBaseUrl: options.gatewayBaseUrl,
+        accessToken: options.accessToken,
+      })
+      return { success: true as const, build }
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Failed to start the contained DevApp build.",
+      }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:getRuntimeBuild", async (event, options: {
+    buildId: string
+    gatewayBaseUrl: string
+    accessToken: string
+  }) => {
+    assertMainRenderer(event)
+    try {
+      return { success: true as const, build: await getDevAppRuntimeBuild(options) }
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Failed to read the contained DevApp build.",
+      }
+    }
+  })
 
   ipcMain.handle(
     "orgDevApp:cancelBuild",

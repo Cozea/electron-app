@@ -9,6 +9,10 @@ import type {
 import { formatDevAppRef, parseDevAppRef } from "../../../../shared/devAppRef"
 import { isContentHash, normalizeContentHash, normalizeEntryPath } from "../../../../shared/orgDevAppProtocol"
 import type { OrgDevAppArtifactService } from "./OrgDevAppArtifactService"
+import {
+  validateDevAppRuntimeReleaseImage,
+  type DevAppRuntimeReleaseImage,
+} from "../../../../shared/devAppContainedRuntime"
 
 interface InstallationRegistry {
   version: 1
@@ -73,6 +77,36 @@ function validateInstallation(
   if (!parts || typeof parts !== "object" || Array.isArray(parts)) {
     throw new Error("The DevApp release parts are invalid.")
   }
+  const executable = Boolean(parts.worker || parts.service?.runtimeKind === "node")
+  const runtimeSourceDigest = optionalString(
+    raw.activeRelease.runtimeSourceDigest,
+    "The runtime source digest",
+    64,
+  )
+  const packageManifestDigest = optionalString(
+    raw.activeRelease.packageManifestDigest,
+    "The package manifest digest",
+    71,
+  )
+  const runtimeImage = raw.activeRelease.runtimeImage as DevAppRuntimeReleaseImage | null
+  if (executable) {
+    if (
+      !runtimeSourceDigest ||
+      !/^[a-f0-9]{64}$/.test(runtimeSourceDigest) ||
+      !packageManifestDigest ||
+      !/^sha256:[a-f0-9]{64}$/.test(packageManifestDigest) ||
+      !runtimeImage
+    ) {
+      throw new Error("The executable DevApp release has no contained runtime image.")
+    }
+    const imageError = validateDevAppRuntimeReleaseImage(runtimeImage, {
+      sourceDigest: runtimeSourceDigest,
+      packageManifestDigest,
+    })
+    if (imageError) throw new Error(imageError)
+  } else if (runtimeSourceDigest || packageManifestDigest || runtimeImage) {
+    throw new Error("A static DevApp release cannot carry executable runtime authority.")
+  }
   return {
     ref: formatDevAppRef({ ...parsed, version: raw.activeRelease.version }),
     publicationId,
@@ -95,6 +129,9 @@ function validateInstallation(
       publisherIdentityKey: optionalString(raw.activeRelease.publisherIdentityKey, "The publisher identity", 256),
       publisherDeviceLabel: optionalString(raw.activeRelease.publisherDeviceLabel, "The publisher device", 200),
       parts,
+      runtimeSourceDigest,
+      packageManifestDigest,
+      runtimeImage: runtimeImage ?? null,
     },
   }
 }

@@ -39,6 +39,9 @@ function request(version: number, contentHash = String(version).repeat(64)): Org
         publisherIdentityKey: null,
         publisherDeviceLabel: null,
         parts: { view: { source: "package" } },
+        runtimeSourceDigest: null,
+        packageManifestDigest: null,
+        runtimeImage: null,
       },
     },
   }

@@ -53,6 +53,37 @@ const devAppPartsValidator = v.object({
   ),
 })
 
+const devAppRuntimePlatformValidator = v.union(
+  v.literal("linux/arm64"),
+  v.literal("linux/amd64"),
+)
+
+const devAppRuntimePlatformImageValidator = v.object({
+  platform: devAppRuntimePlatformValidator,
+  digest: v.string(),
+})
+
+const devAppRuntimeImageAttestationValidator = v.object({
+  version: v.literal(1),
+  builderId: v.literal("cozea-devapp-builder/v1"),
+  sourceDigest: v.string(),
+  packageManifestDigest: v.string(),
+  manifestDigest: v.string(),
+  platforms: v.array(devAppRuntimePlatformImageValidator),
+  materials: v.array(v.object({ uri: v.string(), digest: v.string() })),
+  builtAt: v.number(),
+  reproducible: v.literal(true),
+})
+
+const devAppRuntimeReleaseImageValidator = v.object({
+  reference: v.string(),
+  manifestDigest: v.string(),
+  platforms: v.array(devAppRuntimePlatformImageValidator),
+  signature: v.string(),
+  attestationDigest: v.string(),
+  attestation: devAppRuntimeImageAttestationValidator,
+})
+
 export default defineSchema({
   // Device principals. In the product model one physical device is one user.
   users: defineTable({
@@ -581,6 +612,9 @@ export default defineSchema({
     publisherIdentityKey: v.optional(v.string()),
     publisherDeviceLabel: v.optional(v.string()),
     parts: devAppPartsValidator,
+    runtimeSourceDigest: v.optional(v.string()),
+    packageManifestDigest: v.optional(v.string()),
+    runtimeImage: v.optional(devAppRuntimeReleaseImageValidator),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
@@ -599,12 +633,25 @@ export default defineSchema({
     contentHash: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     runtimeKind: v.optional(v.union(v.literal("static"), v.literal("service"))),
+    runtimeBuildId: v.optional(v.string()),
+    runtimeBuildStatus: v.optional(v.union(
+      v.literal("queued"),
+      v.literal("building"),
+      v.literal("ready"),
+      v.literal("failed"),
+    )),
+    runtimeSourceDigest: v.optional(v.string()),
+    packageManifestDigest: v.optional(v.string()),
+    runtimeImage: v.optional(devAppRuntimeReleaseImageValidator),
+    runtimeParts: v.optional(devAppPartsValidator),
+    runtimeBuildError: v.optional(v.string()),
     expiresAt: v.number(),
     createdAt: v.number(),
   })
     .index("by_expiration", ["expiresAt"])
     .index("by_creator", ["createdBy"])
-    .index("by_project", ["projectId"]),
+    .index("by_project", ["projectId"])
+    .index("by_runtime_build_id", ["runtimeBuildId"]),
 
   projectTrustedDevices: defineTable({
     projectId: v.id("projects"),

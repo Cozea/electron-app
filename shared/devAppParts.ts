@@ -1,5 +1,5 @@
 import type { DevAppCapability } from "./devAppCapabilities"
-import type { DevAppPackageToolSpec } from "./devAppPackage"
+import type { DevAppPackage, DevAppPackageToolSpec } from "./devAppPackage"
 
 /** How a tile's content is produced. Views never hold host capabilities. */
 export type DevAppViewSource = "native" | "package"
@@ -71,6 +71,44 @@ export function partsForPublishedRuntimeKind(runtimeKind: "static" | "service"):
             kind: "container" as const,
             location: "device" as const,
             state: "device" as const,
+          },
+        }
+      : {}),
+  }
+}
+
+/**
+ * Converts the exact authored manifest into immutable published release parts.
+ *
+ * Development and publication deliberately share the same workload description, but not the
+ * execution boundary. Published executable code always uses the contained adapter and retains
+ * the manifest's explicit placement/state contract.
+ */
+export function partsForPublishedPackage(manifest: DevAppPackage): DevAppParts {
+  const executable = Boolean(manifest.worker || manifest.service?.runtimeKind === "node")
+  if (executable && !manifest.runtime) {
+    throw new Error("Executable DevApps require an explicit runtime contract.")
+  }
+  return {
+    ...(manifest.view ? { view: { source: "package" as const } } : {}),
+    ...(manifest.worker
+      ? {
+          worker: {
+            capabilities: manifest.worker.capabilities,
+            protocolVersion: manifest.worker.protocolVersion,
+            ...(manifest.worker.tools.length > 0 ? { tools: manifest.worker.tools } : {}),
+          },
+        }
+      : {}),
+    ...(manifest.service
+      ? { service: { runtimeKind: manifest.service.runtimeKind } }
+      : {}),
+    ...(executable
+      ? {
+          runtime: {
+            kind: "container" as const,
+            location: manifest.runtime!.location,
+            state: manifest.runtime!.state,
           },
         }
       : {}),

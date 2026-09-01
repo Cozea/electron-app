@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -38,7 +39,7 @@ function fixturePaths(): {
   helperPath: string;
   rootPath: string;
   kernelPath: string;
-  initfsReference: string;
+  resourceManifestPath: string;
 } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-contained-runtime-"));
   temporaryRoots.push(root);
@@ -46,11 +47,24 @@ function fixturePaths(): {
   const kernelPath = path.join(root, "kernel");
   fs.writeFileSync(helperPath, "helper");
   fs.writeFileSync(kernelPath, "kernel");
+  const resourceManifestPath = path.join(root, "resources.json");
+  const sha256 = (value: string) =>
+    `sha256:${createHash("sha256").update(value).digest("hex")}`;
+  fs.writeFileSync(
+    resourceManifestPath,
+    JSON.stringify({
+      version: 1,
+      containerizationVersion: "0.43.0",
+      helperSha256: sha256("helper"),
+      kernelSha256: sha256("kernel"),
+      initfsReference: `registry.example/cozea/initfs@${digest}`,
+    }),
+  );
   return {
     helperPath,
     rootPath: path.join(root, "state"),
     kernelPath,
-    initfsReference: `registry.example/cozea/initfs@${digest}`,
+    resourceManifestPath,
   };
 }
 
@@ -63,6 +77,8 @@ function startRequest(): DevAppContainedRuntimeStartRequest {
       releaseId: "release-a",
       releaseVersion: 1,
       contentHash: "d".repeat(64),
+      sourceDigest: "d".repeat(64),
+      packageManifestDigest: `sha256:${"f".repeat(64)}`,
     },
     location: "device",
     state: "device",
@@ -73,6 +89,20 @@ function startRequest(): DevAppContainedRuntimeStartRequest {
       platform: "linux/arm64",
       signature: "signed-envelope",
       attestationDigest,
+      attestation: {
+        version: 1,
+        builderId: "cozea-devapp-builder/v1",
+        sourceDigest: "d".repeat(64),
+        packageManifestDigest: `sha256:${"f".repeat(64)}`,
+        manifestDigest: digest,
+        platforms: [
+          { platform: "linux/arm64", digest: platformDigest },
+          { platform: "linux/amd64", digest: `sha256:${"e".repeat(64)}` },
+        ],
+        materials: [],
+        builtAt: 1,
+        reproducible: true,
+      },
     },
     command: ["/app/server"],
     environment: { NODE_ENV: "production" },

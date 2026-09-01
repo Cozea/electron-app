@@ -1,6 +1,10 @@
 import { ConvexError, v } from "convex/values"
 
-import { partsForPublishedRuntimeKind } from "../shared/devAppParts"
+import { partsForPublishedRuntimeKind, type DevAppParts } from "../shared/devAppParts"
+import {
+  validateDevAppRuntimeReleaseImage,
+  type DevAppRuntimeReleaseImage,
+} from "../shared/devAppContainedRuntime"
 
 import type { Doc, Id } from "./_generated/dataModel"
 import { type MutationCtx, type QueryCtx } from "./_generated/server"
@@ -48,6 +52,28 @@ function normalizeContentHash(value: string): string {
   const normalized = normalizeRequiredText(value, "contentHash").toLowerCase()
   if (!/^[a-f0-9]{64}$/.test(normalized)) {
     throw new ConvexError("contentHash must be a SHA-256 digest")
+  }
+  return normalized
+}
+
+function normalizeSha256Digest(value: string, fieldName: string): string {
+  const normalized = normalizeRequiredText(value, fieldName).toLowerCase()
+  if (!/^sha256:[a-f0-9]{64}$/.test(normalized)) {
+    throw new ConvexError(`${fieldName} must be a SHA-256 digest`)
+  }
+  return normalized
+}
+
+function assertServerSecret(value: string): void {
+  if (!process.env.AI_GATEWAY_SECRET || value !== process.env.AI_GATEWAY_SECRET) {
+    throw new ConvexError("Unauthorized")
+  }
+}
+
+function normalizeRuntimeBuildId(value: string): string {
+  const normalized = normalizeRequiredText(value, "buildId")
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(normalized)) {
+    throw new ConvexError("The DevApp runtime build ID is invalid")
   }
   return normalized
 }
@@ -172,6 +198,151 @@ export const abandonUploadReservation = mutation({
   },
 })
 
+/** Cloudflare's authenticated build gateway rechecks reservation ownership before accepting bytes. */
+export const getRuntimeBuildAuthorizationForServer = query({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    projectId: v.id("projects"),
+    reservationId: v.id("devAppArtifactUploads"),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const [user, reservation] = await Promise.all([
+      ctx.db
+        .query("users")
+        .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+        .unique(),
+      ctx.db.get(args.reservationId),
+    ])
+    const allowed = Boolean(
+      user &&
+      user.status === "active" &&
+      reservation &&
+      reservation.projectId === args.projectId &&
+      reservation.createdBy === user._id &&
+      reservation.expiresAt > Date.now() &&
+      reservation.storageId &&
+      reservation.contentHash &&
+      reservation.runtimeKind,
+    )
+    return { allowed }
+  },
+})
+
+/** Records the only build ID allowed to turn this upload reservation into executable release data. */
+export const registerRuntimeBuildFromServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    projectId: v.id("projects"),
+    reservationId: v.id("devAppArtifactUploads"),
+    buildId: v.string(),
+    sourceDigest: v.string(),
+    packageManifestDigest: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+      .unique()
+    const reservation = await ctx.db.get(args.reservationId)
+    if (
+      !user ||
+      user.status !== "active" ||
+      !reservation ||
+      reservation.projectId !== args.projectId ||
+      reservation.createdBy !== user._id ||
+      reservation.expiresAt <= Date.now() ||
+      !reservation.storageId ||
+      !reservation.contentHash ||
+      !reservation.runtimeKind
+    ) {
+      throw new ConvexError("The DevApp runtime build reservation is invalid")
+    }
+    if (reservation.runtimeBuildId) {
+      throw new ConvexError("The DevApp upload already has a runtime build")
+    }
+    const buildId = normalizeRuntimeBuildId(args.buildId)
+    const sourceDigest = normalizeContentHash(args.sourceDigest)
+    const packageManifestDigest = normalizeSha256Digest(
+      args.packageManifestDigest,
+      "packageManifestDigest",
+    )
+    await ctx.db.patch(args.reservationId, {
+      runtimeBuildId: buildId,
+      runtimeBuildStatus: "queued",
+      runtimeSourceDigest: sourceDigest,
+      packageManifestDigest,
+      runtimeBuildError: undefined,
+    })
+    return { registered: true }
+  },
+})
+
+/** Trusted builder callback; the desktop still verifies the detached signature before launch. */
+export const completeRuntimeBuildFromServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    buildId: v.string(),
+    status: v.union(v.literal("building"), v.literal("ready"), v.literal("failed")),
+    runtimeImage: v.optional(v.any()),
+    runtimeParts: v.optional(v.any()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const buildId = normalizeRuntimeBuildId(args.buildId)
+    const reservation = await ctx.db
+      .query("devAppArtifactUploads")
+      .withIndex("by_runtime_build_id", (q) => q.eq("runtimeBuildId", buildId))
+      .unique()
+    if (
+      !reservation ||
+      reservation.expiresAt <= Date.now() ||
+      !reservation.runtimeSourceDigest ||
+      !reservation.packageManifestDigest ||
+      reservation.runtimeBuildStatus === "ready" ||
+      reservation.runtimeBuildStatus === "failed"
+    ) {
+      throw new ConvexError("The DevApp runtime build is unavailable or already final")
+    }
+    if (args.status === "ready") {
+      if (!args.runtimeImage || !args.runtimeParts) {
+        throw new ConvexError("A successful DevApp runtime build is incomplete")
+      }
+      const runtimeImage = args.runtimeImage as DevAppRuntimeReleaseImage
+      const imageError = validateDevAppRuntimeReleaseImage(runtimeImage, {
+        sourceDigest: reservation.runtimeSourceDigest,
+        packageManifestDigest: reservation.packageManifestDigest,
+      })
+      const runtimeParts = args.runtimeParts as DevAppParts
+      if (imageError || !runtimeParts.runtime || runtimeParts.runtime.kind !== "container") {
+        throw new ConvexError(imageError ?? "The DevApp runtime parts are invalid")
+      }
+      await ctx.db.patch(reservation._id, {
+        runtimeBuildStatus: "ready",
+        runtimeImage,
+        runtimeParts,
+        runtimeBuildError: undefined,
+      })
+    } else if (args.status === "failed") {
+      await ctx.db.patch(reservation._id, {
+        runtimeBuildStatus: "failed",
+        runtimeBuildError: normalizeBoundedText(
+          args.error ?? "The central build failed",
+          "error",
+          1_000,
+        ),
+      })
+    } else {
+      await ctx.db.patch(reservation._id, { runtimeBuildStatus: "building" })
+    }
+    return { updated: true }
+  },
+})
+
 export const publish = mutation({
   args: {
     projectId: v.id("projects"),
@@ -241,12 +412,26 @@ export const publish = mutation({
       throw new ConvexError("The DevApp logo exceeds the allowed size")
     }
     if (args.runtimeKind === "service") {
-      if (args.manifestVersion !== 1 || args.platform !== "darwin" || args.arch !== "arm64") {
-        throw new ConvexError("The Service DevApp runtime metadata is unsupported")
-      }
       if (!args.permissionSetHash || !/^[a-f0-9]{64}$/.test(args.permissionSetHash)) {
         throw new ConvexError("The Service DevApp permission hash is invalid")
       }
+    }
+    if (args.runtimeKind === "service" && !reservation.runtimeBuildId) {
+      throw new ConvexError("Published Service DevApps require a successful central runtime build")
+    }
+    if (
+      reservation.runtimeBuildId &&
+      (reservation.runtimeBuildStatus !== "ready" ||
+        !reservation.runtimeImage ||
+        !reservation.runtimeParts ||
+        !reservation.runtimeSourceDigest ||
+        !reservation.packageManifestDigest)
+    ) {
+      throw new ConvexError(
+        reservation.runtimeBuildStatus === "failed"
+          ? reservation.runtimeBuildError ?? "The central DevApp build failed"
+          : "The central DevApp build is not ready",
+      )
     }
     const now = Date.now()
 
@@ -293,7 +478,14 @@ export const publish = mutation({
       entryPath,
       contentHash: reservation.contentHash,
       runtimeKind: args.runtimeKind,
-      parts: partsForPublishedRuntimeKind(args.runtimeKind),
+      parts: reservation.runtimeParts ?? partsForPublishedRuntimeKind(args.runtimeKind),
+      ...(reservation.runtimeSourceDigest
+        ? { runtimeSourceDigest: reservation.runtimeSourceDigest }
+        : {}),
+      ...(reservation.packageManifestDigest
+        ? { packageManifestDigest: reservation.packageManifestDigest }
+        : {}),
+      ...(reservation.runtimeImage ? { runtimeImage: reservation.runtimeImage } : {}),
       ...(args.manifestVersion ? { manifestVersion: args.manifestVersion } : {}),
       ...(args.platform ? { platform: args.platform } : {}),
       ...(args.arch ? { arch: args.arch } : {}),

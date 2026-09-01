@@ -420,6 +420,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       operationId?: string
       uploadUrl: string
     }) => ipcRenderer.invoke('orgDevApp:buildAndUpload', options),
+    startRuntimeBuild: (options: {
+      workspaceId: string
+      laneId?: string | null
+      projectId: string
+      uploadReservationId: string
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => ipcRenderer.invoke('orgDevApp:startRuntimeBuild', options),
+    getRuntimeBuild: (options: {
+      buildId: string
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => ipcRenderer.invoke('orgDevApp:getRuntimeBuild', options),
     cancelBuild: (options: { operationId: string }) =>
       ipcRenderer.invoke('orgDevApp:cancelBuild', options),
     prepareArtifact: (options: {

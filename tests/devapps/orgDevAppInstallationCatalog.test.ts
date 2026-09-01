@@ -38,6 +38,9 @@ function installation(
       publisherIdentityKey: null,
       publisherDeviceLabel: null,
       parts: { view: { source: "package" } },
+      runtimeSourceDigest: null,
+      packageManifestDigest: null,
+      runtimeImage: null,
     },
   }
 }

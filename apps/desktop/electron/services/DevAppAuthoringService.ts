@@ -241,9 +241,9 @@ function scaffoldFiles(name: string, starter: DevAppScaffoldStarter): Record<str
   }
   if (hasWorker) {
     files["worker/index.js"] =
-      `// Trusted local development worker. Published execution stays disabled until Phase 8.\nconst parent = process.parentPort\n\nparent?.on("message", (event) => {\n  const bootstrap = event.data\n  const port = event.ports?.[0]\n  if (!port) return\n\n  if (bootstrap?.kind === "cozea-devapp-port") {\n    // Host capability channel. Send project.* requests here when this worker needs them.\n    port.start()\n    return\n  }\n\n  if (bootstrap?.kind !== "cozea-devapp-view-port") {\n    port.close()\n    return\n  }\n\n  // Private channel for this package's own view. Replace the example response with\n  // methods shared by the view and worker; the host never sees these method names.\n  port.on("message", (messageEvent) => {\n    const message = messageEvent.data\n    if (message?.kind !== "request") return\n    port.postMessage({\n      kind: "response",\n      protocolVersion: bootstrap.protocolVersion,\n      id: message.id,\n      result: { ok: true, method: message.method },\n    })\n  })\n  port.start()\n})\n`;
+      `import { createDevAppWorker } from "@cozea/devapp-api"\n\n// This same worker runs as powerful, approval-gated local development code and inside\n// Cozea's contained runtime after publication. The SDK selects the correct transport.\ncreateDevAppWorker({\n  ping: async ({ message }) => ({ ok: true, method: "ping", message }),\n})\n`;
     files["src/cozea-devapp.ts"] =
-      `import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api"\n\ninterface Methods {\n  ping: DevAppMethodDefinition<{ message: string }, { ok: boolean; method: string }>\n}\n\nexport const worker = createDevAppClient<Methods>()\n`;
+      `import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api"\n\ninterface Methods {\n  ping: DevAppMethodDefinition<{ message: string }, { ok: boolean; method: string; message: string }>\n}\n\nexport const worker = createDevAppClient<Methods>()\n`;
   }
   return files;
 }

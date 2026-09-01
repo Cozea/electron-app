@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
@@ -15,6 +15,7 @@ import {
   type DevAppContainedRuntimeAvailability,
   type DevAppContainedRuntimeStartRequest,
   type DevAppContainedRuntimeState,
+  type DevAppContainedRuntimeTransportEnvelope,
   type DevAppContainerHelperEvent,
   type DevAppContainerHelperRequest,
   type DevAppContainerHelperResponse,
@@ -48,6 +49,14 @@ export interface DeviceContainedRuntimePaths {
   helperPath: string;
   rootPath: string;
   kernelPath: string;
+  resourceManifestPath: string;
+}
+
+interface DeviceRuntimeResourceManifest {
+  version: 1;
+  containerizationVersion: string;
+  helperSha256: string;
+  kernelSha256: string;
   initfsReference: string;
 }
 
@@ -75,9 +84,15 @@ export interface ContainedRuntimeStateEvent {
   state: DevAppContainedRuntimeState;
 }
 
+export interface ContainedRuntimeMessageEvent {
+  runtimeId: string;
+  transport: DevAppContainedRuntimeTransportEnvelope;
+}
+
 export type ContainedRuntimeListener =
   | ((event: ContainedRuntimeLogEvent) => void)
-  | ((event: ContainedRuntimeStateEvent) => void);
+  | ((event: ContainedRuntimeStateEvent) => void)
+  | ((event: ContainedRuntimeMessageEvent) => void);
 
 function spawnHelperProcess(executable: string, args: string[]): ChildProcessWithoutNullStreams {
   return spawn(executable, args, {
@@ -102,6 +117,33 @@ function assertRuntimeId(value: string): void {
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value)) {
     throw new Error("The contained runtime ID is invalid.");
   }
+}
+
+function sha256File(filePath: string): string {
+  return `sha256:${createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
+}
+
+function readResourceManifest(filePath: string): DeviceRuntimeResourceManifest {
+  let value: unknown;
+  try {
+    value = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    throw new Error("The DevApp runtime resource manifest is missing or invalid.");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The DevApp runtime resource manifest is invalid.");
+  }
+  const manifest = value as Partial<DeviceRuntimeResourceManifest>;
+  if (
+    manifest.version !== 1 ||
+    typeof manifest.containerizationVersion !== "string" ||
+    !isSha256Digest(manifest.helperSha256 ?? "") ||
+    !isSha256Digest(manifest.kernelSha256 ?? "") ||
+    !isDigestPinnedImageReference(manifest.initfsReference ?? "")
+  ) {
+    throw new Error("The DevApp runtime resource manifest is invalid.");
+  }
+  return manifest as DeviceRuntimeResourceManifest;
 }
 
 function validateStartRequest(request: DevAppContainedRuntimeStartRequest, now: number): void {
@@ -157,14 +199,27 @@ function isResponse(value: unknown): value is DevAppContainerHelperResponse {
   );
 }
 
+function isTransportEnvelope(value: unknown): value is DevAppContainedRuntimeTransportEnvelope {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const envelope = value as Partial<DevAppContainedRuntimeTransportEnvelope>;
+  return (
+    (envelope.channel === "host" || envelope.channel === "view") &&
+    (envelope.channel !== "view" ||
+      (typeof envelope.connectionId === "string" &&
+        /^[A-Za-z0-9_-]{1,128}$/.test(envelope.connectionId))) &&
+    (envelope.close === undefined || typeof envelope.close === "boolean")
+  );
+}
+
 function isEvent(value: unknown): value is DevAppContainerHelperEvent {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const event = value as Partial<DevAppContainerHelperEvent>;
-  return (
+  const valid = (
     event.protocolVersion === DEV_APP_CONTAINED_RUNTIME_PROTOCOL_VERSION &&
-    (event.event === "log" || event.event === "state") &&
+    (event.event === "log" || event.event === "state" || event.event === "message") &&
     typeof event.runtimeId === "string"
   );
+  return valid && (event.event !== "message" || isTransportEnvelope(event.transport));
 }
 
 /**
@@ -189,7 +244,8 @@ export class DeviceContainedDevAppRuntimeService {
 
   on(event: "log", listener: (event: ContainedRuntimeLogEvent) => void): () => void;
   on(event: "state", listener: (event: ContainedRuntimeStateEvent) => void): () => void;
-  on(event: "log" | "state", listener: ContainedRuntimeListener): () => void {
+  on(event: "message", listener: (event: ContainedRuntimeMessageEvent) => void): () => void;
+  on(event: "log" | "state" | "message", listener: ContainedRuntimeListener): () => void {
     this.events.on(event, listener);
     return () => this.events.off(event, listener);
   }
@@ -205,7 +261,11 @@ export class DeviceContainedDevAppRuntimeService {
       };
     }
     const paths = this.validatePaths(false);
-    if (!fs.existsSync(paths.helperPath) || !fs.existsSync(paths.kernelPath)) {
+    if (
+      !fs.existsSync(paths.helperPath) ||
+      !fs.existsSync(paths.kernelPath) ||
+      !fs.existsSync(paths.resourceManifestPath)
+    ) {
       return {
         available: false,
         adapter: "unavailable",
@@ -246,6 +306,22 @@ export class DeviceContainedDevAppRuntimeService {
     return response.state ?? null;
   }
 
+  async sendMessage(
+    runtimeId: string,
+    transport: DevAppContainedRuntimeTransportEnvelope,
+  ): Promise<void> {
+    assertRuntimeId(runtimeId);
+    if (
+      (transport.channel !== "host" && transport.channel !== "view") ||
+      (transport.channel === "view" &&
+        (typeof transport.connectionId !== "string" ||
+          !/^[A-Za-z0-9_-]{1,128}$/.test(transport.connectionId)))
+    ) {
+      throw new Error("The contained runtime transport envelope is invalid.");
+    }
+    await this.send({ task: "message", runtimeId, transport });
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -262,12 +338,17 @@ export class DeviceContainedDevAppRuntimeService {
       helperPath: assertSafeAbsolutePath(raw.helperPath, "The DevApp runtime helper path"),
       rootPath: assertSafeAbsolutePath(raw.rootPath, "The DevApp runtime root path"),
       kernelPath: assertSafeAbsolutePath(raw.kernelPath, "The DevApp runtime kernel path"),
-      initfsReference: raw.initfsReference.trim(),
+      resourceManifestPath: assertSafeAbsolutePath(
+        raw.resourceManifestPath,
+        "The DevApp runtime resource manifest path",
+      ),
     };
-    if (!isDigestPinnedImageReference(paths.initfsReference)) {
-      throw new Error("The DevApp runtime init filesystem must use an exact OCI digest reference.");
-    }
-    if (requireExisting && (!fs.existsSync(paths.helperPath) || !fs.existsSync(paths.kernelPath))) {
+    if (
+      requireExisting &&
+      (!fs.existsSync(paths.helperPath) ||
+        !fs.existsSync(paths.kernelPath) ||
+        !fs.existsSync(paths.resourceManifestPath))
+    ) {
       throw new Error("The signed DevApp container runtime resources are missing.");
     }
     return paths;
@@ -277,10 +358,24 @@ export class DeviceContainedDevAppRuntimeService {
     if (this.disposed) throw new Error("The DevApp contained runtime service is disposed.");
     if (this.child && this.child.exitCode === null) return this.child;
     const paths = this.validatePaths();
+    const resources = readResourceManifest(paths.resourceManifestPath);
+    if (
+      sha256File(paths.helperPath) !== resources.helperSha256 ||
+      sha256File(paths.kernelPath) !== resources.kernelSha256
+    ) {
+      throw new Error("The DevApp container runtime resources failed integrity verification.");
+    }
     fs.mkdirSync(paths.rootPath, { recursive: true, mode: 0o700 });
     const child: ContainedRuntimeHelperProcess = (this.options.spawnHelper ?? spawnHelperProcess)(
       paths.helperPath,
-      ["--root", paths.rootPath, "--kernel", paths.kernelPath, "--initfs", paths.initfsReference],
+      [
+        "--root",
+        paths.rootPath,
+        "--kernel",
+        paths.kernelPath,
+        "--initfs",
+        resources.initfsReference,
+      ],
     );
     this.child = child;
     this.stdoutBuffer = "";
@@ -388,6 +483,11 @@ export class DeviceContainedDevAppRuntimeService {
           runtimeId: value.runtimeId,
           state: value.state,
         } satisfies ContainedRuntimeStateEvent);
+      } else if (value.event === "message" && value.transport) {
+        this.events.emit("message", {
+          runtimeId: value.runtimeId,
+          transport: value.transport,
+        } satisfies ContainedRuntimeMessageEvent);
       }
       return;
     }

@@ -4,6 +4,13 @@ import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
+import { DevAppRuntimeBuild } from './durableObjects/DevAppRuntimeBuild'
+import {
+  handleCompleteDevAppRuntimeBuild,
+  handleCreateDevAppRuntimeBuild,
+  handleGetDevAppRuntimeBuild,
+  handleGetDevAppRuntimeBuildSource,
+} from './routes/devAppRuntimeBuilds'
 import {
   handleDeviceAuthChallenge,
   handleDeviceAuthComplete,
@@ -99,6 +106,29 @@ export default {
         }
       }
 
+      if (request.method === 'POST' && url.pathname === '/devapps/runtime-builds') {
+        return await handleCreateDevAppRuntimeBuild(request, env)
+      }
+
+      const runtimeBuildMatch = url.pathname.match(/^\/devapps\/runtime-builds\/([A-Za-z0-9_-]+)$/)
+      if (request.method === 'GET' && runtimeBuildMatch) {
+        return await handleGetDevAppRuntimeBuild(request, env, runtimeBuildMatch[1])
+      }
+
+      const internalSourceMatch = url.pathname.match(
+        /^\/internal\/devapps\/runtime-builds\/([A-Za-z0-9_-]+)\/source$/,
+      )
+      if (request.method === 'GET' && internalSourceMatch) {
+        return await handleGetDevAppRuntimeBuildSource(request, env, internalSourceMatch[1])
+      }
+
+      const internalCompleteMatch = url.pathname.match(
+        /^\/internal\/devapps\/runtime-builds\/([A-Za-z0-9_-]+)\/complete$/,
+      )
+      if (request.method === 'POST' && internalCompleteMatch) {
+        return await handleCompleteDevAppRuntimeBuild(request, env, internalCompleteMatch[1])
+      }
+
       if (url.pathname === '/collab/ws') {
         const roomId = url.searchParams.get('roomId')
         if (!roomId) {
@@ -121,4 +151,4 @@ export default {
   },
 } satisfies ExportedHandler<Env>
 
-export { CollabRoom }
+export { CollabRoom, DevAppRuntimeBuild }

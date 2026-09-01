@@ -15,6 +15,44 @@ private let maximumMounts = 8
 private let maximumEnvironment = 64
 private let maximumLogBytes = 64 * 1024
 
+private enum JSONValue: Codable, Sendable {
+    case string(String)
+    case number(Double)
+    case object([String: JSONValue])
+    case array([JSONValue])
+    case bool(Bool)
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .bool(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else if let value = try? container.decode(String.self) { self = .string(value) }
+        else if let value = try? container.decode([String: JSONValue].self) { self = .object(value) }
+        else { self = .array(try container.decode([JSONValue].self)) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        case .array(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+}
+
+private struct TransportEnvelope: Codable, Sendable {
+    let channel: String
+    let connectionId: String?
+    let message: JSONValue?
+    let close: Bool?
+}
+
 private func matches(_ value: String, _ pattern: String) -> Bool {
     value.range(of: pattern, options: .regularExpression) != nil
 }
@@ -74,6 +112,7 @@ private struct HelperRequest: Codable, Sendable {
     let task: String
     let start: StartSpec?
     let runtimeId: String?
+    let transport: TransportEnvelope?
 }
 
 private struct Availability: Codable, Sendable {
@@ -115,6 +154,7 @@ private struct HelperEvent: Codable, Sendable {
     let stream: String?
     let message: String?
     let state: RuntimeState?
+    let transport: TransportEnvelope?
 }
 
 private final class LineEmitter: @unchecked Sendable {
@@ -136,7 +176,8 @@ private final class LineEmitter: @unchecked Sendable {
             runtimeId: runtimeId,
             stream: stream,
             message: bounded,
-            state: nil
+            state: nil,
+            transport: nil
         ))
     }
 
@@ -147,7 +188,20 @@ private final class LineEmitter: @unchecked Sendable {
             runtimeId: state.runtimeId,
             stream: nil,
             message: nil,
-            state: state
+            state: state,
+            transport: nil
+        ))
+    }
+
+    func transport(runtimeId: String, envelope: TransportEnvelope) {
+        emit(HelperEvent(
+            protocolVersion: protocolVersion,
+            event: "message",
+            runtimeId: runtimeId,
+            stream: nil,
+            message: nil,
+            state: nil,
+            transport: envelope
         ))
     }
 }
@@ -175,8 +229,70 @@ private final class RuntimeLogWriter: Writer, @unchecked Sendable {
     func close() throws {}
 }
 
+private final class RuntimeInput: ReaderStream, @unchecked Sendable {
+    private let streamValue: AsyncStream<Data>
+    private let continuation: AsyncStream<Data>.Continuation
+
+    init() {
+        let pair = AsyncStream<Data>.makeStream()
+        self.streamValue = pair.stream
+        self.continuation = pair.continuation
+    }
+
+    func stream() -> AsyncStream<Data> { streamValue }
+
+    func send(_ envelope: TransportEnvelope) throws {
+        var data = try JSONEncoder().encode(envelope)
+        guard data.count <= 2 * 1024 * 1024 else {
+            throw RuntimeError.invalid("The contained transport message is too large.")
+        }
+        data.append(0x0A)
+        continuation.yield(data)
+    }
+
+    func close() { continuation.finish() }
+}
+
+private final class RuntimeProtocolWriter: Writer, @unchecked Sendable {
+    private let lock = NSLock()
+    private let emitter: LineEmitter
+    private let runtimeId: String
+    private var buffer = Data()
+
+    init(emitter: LineEmitter, runtimeId: String) {
+        self.emitter = emitter
+        self.runtimeId = runtimeId
+    }
+
+    func write(_ data: Data) throws {
+        guard !data.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        buffer.append(data)
+        if buffer.count > 2 * 1024 * 1024 && !buffer.contains(0x0A) {
+            buffer.removeAll(keepingCapacity: false)
+            emitter.event(runtimeId: runtimeId, stream: "stderr", message: "Dropped an oversized runtime protocol line.")
+            return
+        }
+        while let newline = buffer.firstIndex(of: 0x0A) {
+            let line = Data(buffer[..<newline])
+            buffer.removeSubrange(...newline)
+            guard !line.isEmpty else { continue }
+            guard line.count <= 2 * 1024 * 1024,
+                  let envelope = try? JSONDecoder().decode(TransportEnvelope.self, from: line) else {
+                emitter.event(runtimeId: runtimeId, stream: "stderr", message: String(decoding: line.prefix(maximumLogBytes), as: UTF8.self))
+                continue
+            }
+            emitter.transport(runtimeId: runtimeId, envelope: envelope)
+        }
+    }
+
+    func close() throws {}
+}
+
 private struct ActiveRuntime: Sendable {
     let container: LinuxContainer
+    let input: RuntimeInput
     var state: RuntimeState
 }
 
@@ -244,7 +360,8 @@ private actor RuntimeCoordinator {
             throw RuntimeError.invalid("The container manager did not initialize.")
         }
 
-        let stdout = RuntimeLogWriter(emitter: emitter, runtimeId: spec.runtimeId, stream: "stdout")
+        let input = RuntimeInput()
+        let stdout = RuntimeProtocolWriter(emitter: emitter, runtimeId: spec.runtimeId)
         let stderr = RuntimeLogWriter(emitter: emitter, runtimeId: spec.runtimeId, stream: "stderr")
         let stateMount = try stateMount(for: spec)
         let grants = try spec.folderGrants.map { try folderMount($0, spec: spec) }
@@ -267,6 +384,7 @@ private actor RuntimeCoordinator {
             config.process.capabilities = LinuxCapabilities()
             config.process.stdout = stdout
             config.process.stderr = stderr
+            config.process.stdin = input
             config.process.rlimits = [
                 LinuxRLimit(kind: .openFiles, limit: 4096),
                 LinuxRLimit(kind: .numberOfProcesses, limit: 512),
@@ -279,7 +397,7 @@ private actor RuntimeCoordinator {
         manager = currentManager
 
         let starting = stateFor(spec, status: "starting")
-        runtimes[spec.runtimeId] = ActiveRuntime(container: container, state: starting)
+        runtimes[spec.runtimeId] = ActiveRuntime(container: container, input: input, state: starting)
         emitter.state(starting)
         do {
             try await container.create()
@@ -308,7 +426,7 @@ private actor RuntimeCoordinator {
             exitCode: nil,
             error: nil
         )
-        runtimes[spec.runtimeId] = ActiveRuntime(container: container, state: running)
+        runtimes[spec.runtimeId] = ActiveRuntime(container: container, input: input, state: running)
         emitter.state(running)
         Task { [container] in
             do {
@@ -327,6 +445,17 @@ private actor RuntimeCoordinator {
 
     func inspect(_ runtimeId: String) -> RuntimeState? {
         runtimes[runtimeId]?.state
+    }
+
+    func send(_ runtimeId: String, envelope: TransportEnvelope) throws {
+        guard let active = runtimes[runtimeId], active.state.status == "running" else {
+            throw RuntimeError.invalid("The contained runtime is unavailable.")
+        }
+        guard envelope.channel == "host" || envelope.channel == "view",
+              envelope.channel != "view" || matches(envelope.connectionId ?? "", "^[A-Za-z0-9_-]{1,128}$") else {
+            throw RuntimeError.invalid("The contained transport envelope is invalid.")
+        }
+        try active.input.send(envelope)
     }
 
     func stop(_ runtimeId: String) async throws -> RuntimeState {
@@ -353,6 +482,7 @@ private actor RuntimeCoordinator {
         )
         runtimes[runtimeId] = active
         emitter.state(active.state)
+        active.input.close()
         try? await active.container.kill(.term)
         let status = try? await active.container.wait(timeoutInSeconds: 10)
         if status == nil {
@@ -380,6 +510,7 @@ private actor RuntimeCoordinator {
 
     private func recordExit(runtimeId: String, status: ExitStatus?, error: String?) async {
         guard var active = runtimes[runtimeId] else { return }
+        active.input.close()
         try? await active.container.stop()
         active.state = RuntimeState(
             runtimeId: active.state.runtimeId,
@@ -653,6 +784,20 @@ private struct CozeaDevAppContainerRuntime {
                         success: true,
                         availability: nil,
                         state: try await coordinator.delete(runtimeId),
+                        error: nil
+                    )
+                case "message":
+                    guard let runtimeId = request.runtimeId,
+                          let transport = request.transport else {
+                        throw RuntimeError.invalid("A message request is incomplete.")
+                    }
+                    try await coordinator.send(runtimeId, envelope: transport)
+                    response = HelperResponse(
+                        protocolVersion: protocolVersion,
+                        requestId: request.requestId,
+                        success: true,
+                        availability: nil,
+                        state: nil,
                         error: nil
                     )
                 default:

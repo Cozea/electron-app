@@ -33,6 +33,8 @@ import {
  */
 
 export interface DevAppWorkerProcess {
+  /** Optional asynchronous adapter startup (container pull/VM boot or hosted allocation). */
+  ready?: Promise<void>
   postMessage: (message: unknown) => void
   attachViewPort: (
     bootstrap: DevAppWorkerViewPortBootstrap,
@@ -305,8 +307,28 @@ export class DevAppWorkerHost {
       }
     })
 
-    state.status = "ready"
-    this.emitState(state)
+    if (process.ready) {
+      void process.ready.then(
+        () => {
+          const current = this.workers.get(options.publicationId)
+          if (!current || current.process !== process || current.disposed) return
+          current.state.status = "ready"
+          current.state.lastError = null
+          this.emitState(current.state)
+        },
+        (error) => {
+          const current = this.workers.get(options.publicationId)
+          if (!current || current.process !== process || current.disposed) return
+          current.state.status = "crashed"
+          current.state.lastError = error instanceof Error ? error.message : "Worker startup failed."
+          this.emitState(current.state)
+          process.kill()
+        },
+      )
+    } else {
+      state.status = "ready"
+      this.emitState(state)
+    }
     return state
   }
 

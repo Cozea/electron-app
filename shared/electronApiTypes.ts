@@ -1495,6 +1495,25 @@ export interface ElectronAPI {
         }
       | { success: false; error: string }
     >
+    startRuntimeBuild: (options: {
+      workspaceId: string
+      laneId?: string | null
+      projectId: string
+      uploadReservationId: string
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => Promise<
+      | { success: true; build: import('./devAppContainedRuntime').DevAppRuntimeBuildDescriptor }
+      | { success: false; error: string }
+    >
+    getRuntimeBuild: (options: {
+      buildId: string
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => Promise<
+      | { success: true; build: import('./devAppContainedRuntime').DevAppRuntimeBuildDescriptor }
+      | { success: false; error: string }
+    >
     cancelBuild: (options: { operationId: string }) => Promise<{ cancelled: boolean }>
     prepareArtifact: (options: {
       downloadUrl: string

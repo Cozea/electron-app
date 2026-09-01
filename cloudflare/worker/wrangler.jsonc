@@ -10,6 +10,10 @@
       {
         "name": "COLLAB_ROOM",
         "class_name": "CollabRoom"
+      },
+      {
+        "name": "DEVAPP_RUNTIME_BUILD",
+        "class_name": "DevAppRuntimeBuild"
       }
     ]
   },
@@ -17,6 +21,16 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["CollabRoom"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["DevAppRuntimeBuild"]
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DEVAPP_BUILD_INPUTS",
+      "bucket_name": "cozea-devapp-build-inputs"
     }
   ],
   "vars": {
