@@ -1514,6 +1514,59 @@ export interface ElectronAPI {
       | { success: true; build: import('./devAppContainedRuntime').DevAppRuntimeBuildDescriptor }
       | { success: false; error: string }
     >
+    getPublishedWorkerApproval: (options: { ref: string; workspaceId: string }) => Promise<
+      | {
+          success: true
+          requestedCapabilities: import('./devAppCapabilities').DevAppCapability[]
+          approved: boolean
+          agentInvocable: boolean
+          expiresAt: number | null
+        }
+      | { success: false; error: string }
+    >
+    approvePublishedWorker: (options: {
+      ref: string
+      workspaceId: string
+      agentInvocable: boolean
+    }) => Promise<
+      | { success: true; expiresAt: number }
+      | { success: false; error: string }
+    >
+    listFolderGrants: (options: { ref: string }) => Promise<
+      | { success: true; grants: import('./devAppContainedRuntime').DevAppFolderGrant[] }
+      | { success: false; error: string }
+    >
+    grantFolder: (options: {
+      ref: string
+      access: import('./devAppContainedRuntime').DevAppFolderGrantAccess
+    }) => Promise<
+      | { success: true; grant: import('./devAppContainedRuntime').DevAppFolderGrant | null }
+      | { success: false; error: string }
+    >
+    revokeFolderGrant: (options: { ref: string; grantId: string }) => Promise<
+      | { success: true; revoked: boolean }
+      | { success: false; error: string }
+    >
+    stopPublishedRuntime: (options: { ref: string; workspaceId: string }) => Promise<
+      | { success: true; stopped: boolean }
+      | { success: false; error: string }
+    >
+    ensurePublishedRuntime: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+      leaseId: string
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => Promise<
+      | {
+          success: true
+          runtimeId: string
+          workerStatus: 'none' | 'starting' | 'approvalRequired'
+          requestedCapabilities?: import('./devAppCapabilities').DevAppCapability[]
+        }
+      | { success: false; error: string }
+    >
     cancelBuild: (options: { operationId: string }) => Promise<{ cancelled: boolean }>
     prepareArtifact: (options: {
       downloadUrl: string
@@ -1540,7 +1593,17 @@ export interface ElectronAPI {
       | { success: true; status: import('./orgDevAppEnvironment').OrgDevAppEnvironmentStatus }
       | { success: false; error: string }
     >
-    startRuntime: (options: { contentHash: string; publicationId?: string; permissionSetHash?: string; leaseId?: string }) => Promise<
+    startRuntime: (options: {
+      ref: string
+      contentHash: string
+      publicationId: string
+      permissionSetHash: string
+      leaseId: string
+      workspaceId: string
+      laneId?: string | null
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => Promise<
       | { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState }
       | { success: false; error: string }
     >

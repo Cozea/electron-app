@@ -165,6 +165,14 @@ function validateStartRequest(request: DevAppContainedRuntimeStartRequest, now: 
   if (request.image.platform !== "linux/arm64") {
     throw new Error("The macOS device runtime requires a Linux ARM64 image.");
   }
+  if (
+    request.registryAuth.scheme !== "bearer" ||
+    !request.registryAuth.token ||
+    request.registryAuth.token.length > 16_384 ||
+    request.registryAuth.expiresAt <= now
+  ) {
+    throw new Error("The contained runtime registry authorization is invalid or expired.");
+  }
   if (request.command.length === 0 || request.command.length > 64) {
     throw new Error("The contained runtime command is invalid.");
   }
@@ -176,14 +184,20 @@ function validateStartRequest(request: DevAppContainedRuntimeStartRequest, now: 
   }
   for (const grant of request.folderGrants) {
     if (
+      !/^[A-Za-z0-9_-]{1,128}$/.test(grant.grantId) ||
       grant.publicationId !== request.identity.publicationId ||
       grant.releaseId !== request.identity.releaseId ||
-      grant.expiresAt <= now
+      grant.expiresAt <= now ||
+      (grant.access !== "read" && grant.access !== "readWrite")
     ) {
       throw new Error("A contained runtime folder grant is expired or belongs to another release.");
     }
     assertSafeAbsolutePath(grant.canonicalHostPath, "A contained runtime folder grant");
-    if (!grant.guestPath.startsWith("/cozea/grants/")) {
+    if (
+      grant.guestPath !== `/cozea/grants/${grant.grantId}` ||
+      !fs.statSync(grant.canonicalHostPath).isDirectory() ||
+      fs.realpathSync.native(grant.canonicalHostPath) !== grant.canonicalHostPath
+    ) {
       throw new Error("A contained runtime folder grant has an invalid guest path.");
     }
   }

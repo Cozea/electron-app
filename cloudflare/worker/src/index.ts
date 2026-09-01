@@ -11,6 +11,7 @@ import {
   handleGetDevAppRuntimeBuild,
   handleGetDevAppRuntimeBuildSource,
 } from './routes/devAppRuntimeBuilds'
+import { handleCreateDevAppRuntimePull } from './routes/devAppRuntimePull'
 import {
   handleDeviceAuthChallenge,
   handleDeviceAuthComplete,
@@ -108,6 +109,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/devapps/runtime-builds') {
         return await handleCreateDevAppRuntimeBuild(request, env)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/devapps/runtime-pulls') {
+        return await handleCreateDevAppRuntimePull(request, env)
       }
 
       const runtimeBuildMatch = url.pathname.match(/^\/devapps\/runtime-builds\/([A-Za-z0-9_-]+)$/)

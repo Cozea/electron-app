@@ -251,6 +251,29 @@ describe("Worker host — the gate runs on every request", () => {
 })
 
 describe("Worker host — lifecycle", () => {
+  it("stays starting until an asynchronous contained adapter is ready", async () => {
+    let resolveReady = () => {}
+    class StartingWorker extends FakeWorker {
+      ready = new Promise<void>((resolve) => { resolveReady = resolve })
+    }
+    const worker = new StartingWorker()
+    const host = new DevAppWorkerHost(() => worker, {})
+    const initial = host.start({
+      publicationId: "pub_async",
+      entrypoint: ENTRYPOINT,
+      packageRoot: PACKAGE_ROOT,
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      grant: normalizeGrant({ capabilities: [] }),
+      authorizationExpiresAt: null,
+      binding: BINDING,
+      leaseId: "tile_1",
+    })
+    expect(initial.status).toBe("starting")
+    resolveReady()
+    await flush()
+    expect(host.getState("pub_async")?.status).toBe("ready")
+  })
+
   it("transfers a version-bound view port only to the live worker", () => {
     const { host, current } = makeHost()
     const port = {}

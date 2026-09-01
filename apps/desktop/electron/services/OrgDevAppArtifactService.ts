@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import fs from "node:fs"
 import { createServer as createHttpServer, request as httpRequest, type Server as HttpServer } from "node:http"
-import { connect as connectSocket, createServer as createNetServer } from "node:net"
+import { connect as connectSocket } from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { net, protocol, safeStorage, type Session } from "electron"
@@ -35,6 +35,7 @@ import {
 } from "../../../../shared/serviceDevAppManifest"
 import type { OrgDevAppRuntimeState } from "../../../../shared/orgDevAppRuntime"
 import type { OrgDevAppEnvironmentStatus } from "../../../../shared/orgDevAppEnvironment"
+import type { DevAppFolderGrant } from "../../../../shared/devAppContainedRuntime"
 
 export type { OrgDevAppRuntimeState } from "../../../../shared/orgDevAppRuntime"
 
@@ -105,11 +106,31 @@ export interface OrgDevAppPrepareResult {
 }
 
 interface ActiveServiceRuntime {
-  child: ChildProcess
+  runtimeId: string
   state: OrgDevAppRuntimeState
+  host: string
   port: number
   leases: Set<string>
   idleTimer: NodeJS.Timeout | null
+}
+
+export interface OrgDevAppContainedServiceAdapter {
+  start(options: {
+    ref: string
+    workspaceId: string
+    workspaceRoot: string
+    leaseId: string
+    gatewayBaseUrl: string
+    accessToken: string
+    environment: Record<string, string>
+    folderGrants: DevAppFolderGrant[]
+  }): Promise<{
+    key: string
+    state: { status: string; guestAddress: string | null; servicePort: number | null; error: string | null }
+    logs: string[]
+  }>
+  stop(runtimeId: string): Promise<void>
+  release(runtimeId: string, leaseId: string): boolean
 }
 
 interface StoredServiceTrust {
@@ -385,18 +406,6 @@ function stageNuxtService(projectRoot: string): { outputDir: string; manifest: S
   return { outputDir: stagingRoot, manifest }
 }
 
-async function allocateLoopbackPort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createNetServer()
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address()
-      const port = typeof address === "object" && address ? address.port : 0
-      server.close((error) => error ? reject(error) : resolve(port))
-    })
-  })
-}
-
 function terminateChildProcess(child: ChildProcess): void {
   if (!child.pid || child.exitCode !== null) return
   const pid = child.pid
@@ -545,6 +554,7 @@ export class OrgDevAppArtifactService {
   private gatewayServer: HttpServer | null = null
   private gatewayPort: number | null = null
   private protectedContentHashes: () => ReadonlySet<string> = () => new Set()
+  private containedServiceAdapter: OrgDevAppContainedServiceAdapter | null = null
 
   constructor(getCacheRoot: () => string) {
     this.getCacheRoot = getCacheRoot
@@ -552,6 +562,10 @@ export class OrgDevAppArtifactService {
 
   setProtectedContentHashes(provider: () => ReadonlySet<string>): void {
     this.protectedContentHashes = provider
+  }
+
+  setContainedServiceAdapter(adapter: OrgDevAppContainedServiceAdapter): void {
+    this.containedServiceAdapter = adapter
   }
 
   getPreparedArtifactSize(contentHash: string): number {
@@ -689,7 +703,7 @@ export class OrgDevAppArtifactService {
     const publicationId = this.gatewayPublications.get(gatewayToken)
     if (!publicationId) return null
     const runtime = this.activeServiceRuntimes.get(this.runtimeKey(contentHash, publicationId))
-    return runtime?.state.status === "ready" && runtime.child.exitCode === null ? runtime : null
+    return runtime?.state.status === "ready" ? runtime : null
   }
 
   private gatewayAccessToken(headers: NodeJS.Dict<string | string[] | undefined>): string | null {
@@ -729,9 +743,9 @@ export class OrgDevAppArtifactService {
           name.toLowerCase() !== DEVAPP_GATEWAY_TOKEN_HEADER && !HOP_BY_HOP_HEADERS.has(name.toLowerCase()),
         ),
       )
-      headers.host = `127.0.0.1:${runtime.port}`
+      headers.host = `${runtime.host}:${runtime.port}`
       const upstream = httpRequest({
-        host: "127.0.0.1",
+        host: runtime.host,
         port: runtime.port,
         method: request.method,
         path: request.url,
@@ -762,7 +776,7 @@ export class OrgDevAppArtifactService {
         socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
         return
       }
-      const upstream = connectSocket(runtime.port, "127.0.0.1", () => {
+      const upstream = connectSocket(runtime.port, runtime.host, () => {
         const headerLines = Object.entries(request.headers)
           .filter(([name]) => name.toLowerCase() !== DEVAPP_GATEWAY_TOKEN_HEADER)
           .map(([name, value]) => `${name}: ${Array.isArray(value) ? value.join(", ") : value ?? ""}`)
@@ -855,7 +869,9 @@ export class OrgDevAppArtifactService {
     this.activeBuilds.clear()
     for (const upload of this.activeUploads.values()) upload.abort()
     this.activeUploads.clear()
-    for (const runtime of this.activeServiceRuntimes.values()) terminateChildProcess(runtime.child)
+    for (const runtime of this.activeServiceRuntimes.values()) {
+      void this.containedServiceAdapter?.stop(runtime.runtimeId)
+    }
     this.activeServiceRuntimes.clear()
     this.gatewayPublications.clear()
     this.gatewayServer?.close()
@@ -1142,33 +1158,36 @@ export class OrgDevAppArtifactService {
     }
   }
 
-  async startRuntime(contentHashInput: string, publicationIdInput?: string, permissionSetHashInput?: string, leaseIdInput?: string): Promise<OrgDevAppRuntimeState> {
-    const contentHash = normalizeContentHash(contentHashInput)
+  async startRuntime(options: {
+    ref: string
+    contentHash: string
+    publicationId: string
+    permissionSetHash: string
+    leaseId: string
+    workspaceId: string
+    workspaceRoot: string
+    gatewayBaseUrl: string
+    accessToken: string
+    folderGrants: DevAppFolderGrant[]
+  }): Promise<OrgDevAppRuntimeState> {
+    if (!this.containedServiceAdapter) {
+      throw new Error("The contained Service DevApp runtime is unavailable.")
+    }
+    const contentHash = normalizeContentHash(options.contentHash)
     const cacheDir = this.getCacheDir(contentHash)
     const manifest = parseServiceDevAppManifest(
       JSON.parse(fs.readFileSync(path.join(cacheDir, "cozea-devapp.json"), "utf8")),
     )
-    if (process.platform !== manifest.platform || process.arch !== manifest.arch) {
-      throw new Error(`This Service DevApp requires ${manifest.platform} ${manifest.arch}.`)
-    }
-    const entrypoint = path.join(cacheDir, manifest.runtime.entrypoint)
-    if (!fs.existsSync(entrypoint)) throw new Error("The Service DevApp entrypoint is missing.")
-    const port = await allocateLoopbackPort()
-    const logs: string[] = []
-    const appendLog = (chunk: Buffer | string) => {
-      logs.push(...chunk.toString().split(/\r?\n/).filter(Boolean))
-      if (logs.length > 200) logs.splice(0, logs.length - 200)
-    }
-    const publicationId = publicationIdInput?.trim()
+    const publicationId = options.publicationId.trim()
     if (publicationId && !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) throw new Error("The DevApp publication ID is invalid.")
-    if (!publicationId || !permissionSetHashInput || !this.isRuntimeTrusted(contentHash, publicationId, permissionSetHashInput)) {
+    if (!publicationId || !this.isRuntimeTrusted(contentHash, publicationId, options.permissionSetHash)) {
       throw new Error("Approve this Service DevApp release before starting it.")
     }
     const runtimeKey = this.runtimeKey(contentHash, publicationId)
     const existing = this.activeServiceRuntimes.get(runtimeKey)
-    const leaseId = leaseIdInput?.trim()
+    const leaseId = options.leaseId.trim()
     if (!leaseId || !/^[A-Za-z0-9_-]{1,160}$/.test(leaseId)) throw new Error("The DevApp runtime lease is invalid.")
-    if (existing && existing.child.exitCode === null) {
+    if (existing && existing.state.status === "ready") {
       existing.leases.add(leaseId)
       if (existing.idleTimer) clearTimeout(existing.idleTimer)
       existing.idleTimer = null
@@ -1177,44 +1196,40 @@ export class OrgDevAppArtifactService {
     const storedEnvironment = this.readTrust().configurations[publicationId] ?? {}
     const missingRequired = manifest.environment.filter((entry) => entry.required && !storedEnvironment[entry.name])
     if (missingRequired.length > 0) throw new Error(`Configure ${missingRequired.map((entry) => entry.name).join(", ")} before starting this Service DevApp.`)
-    const dataDir = path.join(this.getCacheRoot(), "data", publicationId ?? contentHash)
-    fs.mkdirSync(dataDir, { recursive: true })
-    const child = spawn(process.execPath, [entrypoint, ...manifest.runtime.args], {
-      cwd: path.dirname(entrypoint),
-      detached: true,
-      env: {
-        PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
-        NODE_ENV: "production",
-        NODE_OPTIONS: "--max-old-space-size=1024",
-        ELECTRON_RUN_AS_NODE: "1",
-        [manifest.server.hostEnv]: "127.0.0.1",
-        [manifest.server.portEnv]: String(port),
-        COZEA_DEVAPP_DATA_DIR: dataDir,
-        ...Object.fromEntries(manifest.environment.flatMap((entry) => {
-          const value = storedEnvironment[entry.name]
-          return value === undefined ? [] : [[entry.name, value]]
-        })),
-      },
-      stdio: ["ignore", "pipe", "pipe"],
+    const active = await this.containedServiceAdapter.start({
+      ref: options.ref,
+      workspaceId: options.workspaceId,
+      workspaceRoot: options.workspaceRoot,
+      leaseId,
+      gatewayBaseUrl: options.gatewayBaseUrl,
+      accessToken: options.accessToken,
+      environment: Object.fromEntries(manifest.environment.flatMap((entry) => {
+        const value = storedEnvironment[entry.name]
+        return value === undefined ? [] : [[entry.name, value]]
+      })),
+      folderGrants: options.folderGrants,
     })
-    child.stdout?.on("data", appendLog)
-    child.stderr?.on("data", appendLog)
-    const state: OrgDevAppRuntimeState = {
-      contentHash, status: "starting", originUrl: null, error: null, logs,
+    if (!active.state.guestAddress || !active.state.servicePort) {
+      await this.containedServiceAdapter.stop(active.key)
+      throw new Error("The contained Service DevApp exposed no private service endpoint.")
     }
-    this.activeServiceRuntimes.set(runtimeKey, { child, state, port, leases: new Set([leaseId]), idleTimer: null })
-    child.once("exit", (code) => {
-      const runtime = this.activeServiceRuntimes.get(runtimeKey)
-      if (!runtime || runtime.child !== child) return
-      runtime.state.status = code === 0 ? "stopped" : "failed"
-      runtime.state.error = code === 0 ? null : `Service exited with code ${code ?? "unknown"}.`
-      runtime.state.originUrl = null
+    const state: OrgDevAppRuntimeState = {
+      contentHash, status: "starting", originUrl: null, error: null, logs: active.logs,
+    }
+    this.activeServiceRuntimes.set(runtimeKey, {
+      runtimeId: active.key,
+      state,
+      host: active.state.guestAddress,
+      port: active.state.servicePort,
+      leases: new Set([leaseId]),
+      idleTimer: null,
     })
     const deadline = Date.now() + manifest.server.startupTimeoutMs
     while (Date.now() < deadline) {
-      if (child.exitCode !== null) break
       try {
-        const response = await net.fetch(`http://127.0.0.1:${port}${manifest.server.healthPath}`)
+        const response = await net.fetch(
+          `http://${active.state.guestAddress}:${active.state.servicePort}${manifest.server.healthPath}`,
+        )
         if (response.status >= 100) {
           const gatewayPort = await this.ensureGateway()
           state.status = "ready"
@@ -1226,13 +1241,13 @@ export class OrgDevAppArtifactService {
       }
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
-    terminateChildProcess(child)
+    await this.containedServiceAdapter.stop(active.key)
     state.status = "failed"
     state.error = state.error ?? "The Service DevApp did not become ready in time."
     return state
   }
 
-  stopRuntime(contentHashInput: string, publicationIdInput?: string): OrgDevAppRuntimeState {
+  async stopRuntime(contentHashInput: string, publicationIdInput?: string): Promise<OrgDevAppRuntimeState> {
     const contentHash = normalizeContentHash(contentHashInput)
     const publicationId = publicationIdInput?.trim()
     if (!publicationId || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) throw new Error("The DevApp publication ID is invalid.")
@@ -1240,7 +1255,7 @@ export class OrgDevAppArtifactService {
     const runtime = this.activeServiceRuntimes.get(runtimeKey)
     if (runtime) {
       if (runtime.idleTimer) clearTimeout(runtime.idleTimer)
-      terminateChildProcess(runtime.child)
+      await this.containedServiceAdapter?.stop(runtime.runtimeId)
       this.activeServiceRuntimes.delete(runtimeKey)
     }
     return {
@@ -1261,7 +1276,7 @@ export class OrgDevAppArtifactService {
       runtime.idleTimer = setTimeout(() => {
         const current = this.activeServiceRuntimes.get(runtimeKey)
         if (!current || current.leases.size > 0) return
-        terminateChildProcess(current.child)
+        void this.containedServiceAdapter?.stop(current.runtimeId)
         this.activeServiceRuntimes.delete(runtimeKey)
       }, DEVAPP_RUNTIME_IDLE_TIMEOUT_MS)
       runtime.idleTimer.unref()

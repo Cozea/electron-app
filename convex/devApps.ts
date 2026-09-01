@@ -11,6 +11,7 @@ import { type MutationCtx, type QueryCtx } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { canEditProject } from "./lib/projectAccess"
 import {
+  isOrgMember,
   requireOrgAdmin,
   requireOrgMember,
   toConsumerDevApp,
@@ -225,6 +226,43 @@ export const getRuntimeBuildAuthorizationForServer = query({
       reservation.storageId &&
       reservation.contentHash &&
       reservation.runtimeKind,
+    )
+    return { allowed }
+  },
+})
+
+/** Grants a short-lived registry pull only for an exact executable release the device may use. */
+export const getRuntimePullAuthorizationForServer = query({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    organizationId: v.id("organizations"),
+    publicationId: v.id("devAppPublications"),
+    releaseId: v.id("devAppReleases"),
+    manifestDigest: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+      .unique()
+    const [publication, release] = await Promise.all([
+      ctx.db.get(args.publicationId),
+      ctx.db.get(args.releaseId),
+    ])
+    const member = user?.status === "active"
+      ? await isOrgMember(ctx, args.organizationId, user._id)
+      : false
+    const allowed = Boolean(
+      member &&
+      publication &&
+      publication.organizationId === args.organizationId &&
+      publication.status === "active" &&
+      release &&
+      release.publicationId === args.publicationId &&
+      release.runtimeImage?.manifestDigest === args.manifestDigest &&
+      release.parts?.runtime?.kind === "container",
     )
     return { allowed }
   },
@@ -744,6 +782,7 @@ export const getArtifactUrl = query({
       releaseId: resolved.release._id,
       version: resolved.release.version,
       runtimeKind: resolved.release.runtimeKind,
+      parts: resolved.release.parts,
       manifestVersion: resolved.release.manifestVersion ?? null,
       platform: resolved.release.platform ?? null,
       arch: resolved.release.arch ?? null,

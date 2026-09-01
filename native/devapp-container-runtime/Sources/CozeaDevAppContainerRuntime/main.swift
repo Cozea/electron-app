@@ -81,6 +81,17 @@ private struct RuntimeResources: Codable, Sendable {
     let writableLayerBytes: UInt64
 }
 
+private struct RegistryAuth: Codable, Sendable {
+    let scheme: String
+    let token: String
+    let expiresAt: Double
+}
+
+private struct BearerAuthentication: Authentication {
+    let value: String
+    func token() async throws -> String { "Bearer \(value)" }
+}
+
 private struct FolderGrant: Codable, Sendable {
     let grantId: String
     let publicationId: String
@@ -97,6 +108,7 @@ private struct StartSpec: Codable, Sendable {
     let location: String
     let state: String
     let image: RuntimeImage
+    let registryAuth: RegistryAuth
     let command: [String]
     let environment: [String: String]
     let workingDirectory: String
@@ -365,9 +377,14 @@ private actor RuntimeCoordinator {
         let stderr = RuntimeLogWriter(emitter: emitter, runtimeId: spec.runtimeId, stream: "stderr")
         let stateMount = try stateMount(for: spec)
         let grants = try spec.folderGrants.map { try folderMount($0, spec: spec) }
+        let image = try await currentManager.imageStore.pull(
+            reference: spec.image.reference,
+            platform: Platform(arch: "arm64", os: "linux"),
+            auth: BearerAuthentication(value: spec.registryAuth.token)
+        )
         let container = try await currentManager.create(
             spec.runtimeId,
-            reference: spec.image.reference,
+            image: image,
             rootfsSizeInBytes: spec.resources.rootfsBytes,
             writableLayerSizeInBytes: spec.resources.writableLayerBytes,
             readOnly: true,
@@ -575,7 +592,7 @@ private actor RuntimeCoordinator {
             throw RuntimeError.invalid("A folder grant does not match this release or has expired.")
         }
         guard grant.guestPath.hasPrefix("/cozea/grants/"),
-              grant.guestPath.split(separator: "/").count == 4 else {
+              grant.guestPath.split(separator: "/").count == 3 else {
             throw RuntimeError.invalid("A folder grant has an invalid guest path.")
         }
         let source = URL(fileURLWithPath: grant.canonicalHostPath).standardizedFileURL
@@ -616,6 +633,12 @@ private actor RuntimeCoordinator {
         }
         guard !spec.image.signature.isEmpty, !spec.image.attestationDigest.isEmpty else {
             throw RuntimeError.invalid("The image has no verified signature or attestation.")
+        }
+        guard spec.registryAuth.scheme == "bearer",
+              !spec.registryAuth.token.isEmpty,
+              spec.registryAuth.token.utf8.count <= 16 * 1024,
+              spec.registryAuth.expiresAt > Date().timeIntervalSince1970 * 1000 else {
+            throw RuntimeError.invalid("The registry authorization is invalid or expired.")
         }
         guard !spec.command.isEmpty, spec.command.count <= 64,
               spec.command.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 4096 }) else {

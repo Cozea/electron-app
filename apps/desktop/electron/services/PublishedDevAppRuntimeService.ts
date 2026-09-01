@@ -1,0 +1,358 @@
+import { createHash } from "node:crypto"
+
+import {
+  selectDevAppRuntimeImage,
+  type DevAppContainedRuntimeStartRequest,
+  type DevAppContainedRuntimeState,
+  type DevAppFolderGrant,
+} from "../../../../shared/devAppContainedRuntime"
+import { normalizeGrant, type DevAppGrant } from "../../../../shared/devAppCapabilities"
+import type { OrgDevAppInstallation } from "../../../../shared/orgDevAppInstallation"
+import type {
+  DevAppWorkerBinding,
+  DevAppWorkerSpawn,
+  DevAppWorkerState,
+  DevAppWorkerTransferablePort,
+  DevAppWorkerHost,
+} from "./DevAppWorkerHost"
+import {
+  parseWorkerMessage,
+  type DevAppWorkerViewPortBootstrap,
+} from "../../../../shared/devAppWorkerProtocol"
+import { createContainedDevAppWorkerSpawn } from "./containedDevAppWorkerProcess"
+import type { DeviceContainedDevAppRuntimeService } from "./ContainedDevAppRuntimeService"
+import { requestDevAppRuntimeRegistryAuth } from "./DevAppRuntimeAccessClient"
+import type { OrgDevAppInstallationService } from "./OrgDevAppInstallationService"
+
+const SERVICE_PORT = 8080
+const MAX_LOG_LINES = 200
+
+export interface ActivePublishedRuntime {
+  key: string
+  installation: OrgDevAppInstallation
+  workspaceId: string
+  request: DevAppContainedRuntimeStartRequest
+  state: DevAppContainedRuntimeState
+  logs: string[]
+  leases: Set<string>
+}
+
+export interface StartPublishedRuntimeOptions {
+  ref: string
+  workspaceId: string
+  workspaceRoot: string
+  leaseId: string
+  gatewayBaseUrl: string
+  accessToken: string
+  environment?: Record<string, string>
+  folderGrants?: DevAppFolderGrant[]
+}
+
+function runtimeKey(releaseId: string, workspaceId: string): string {
+  return `pub_${createHash("sha256").update(`${releaseId}\0${workspaceId}`).digest("hex").slice(0, 32)}`
+}
+
+function assertLease(value: string): void {
+  if (!/^[A-Za-z0-9_-]{1,192}$/.test(value)) throw new Error("The DevApp runtime lease is invalid.")
+}
+
+/** Owns exact installed published runtimes; development workers never enter this service. */
+export class PublishedDevAppRuntimeService {
+  private readonly installations: OrgDevAppInstallationService
+  private readonly runtime: DeviceContainedDevAppRuntimeService
+  private readonly active = new Map<string, ActivePublishedRuntime>()
+  private readonly pendingStarts = new Map<string, Promise<ActivePublishedRuntime>>()
+  private readonly pendingStateOwners = new Map<string, string>()
+  private readonly pendingByWorkerKey = new Map<string, DevAppContainedRuntimeStartRequest>()
+  private readonly readyRuntimes = new Set<string>()
+  private readonly removeListeners: Array<() => void>
+  private workerHost: DevAppWorkerHost | null = null
+
+  constructor(
+    installations: OrgDevAppInstallationService,
+    runtime: DeviceContainedDevAppRuntimeService,
+  ) {
+    this.installations = installations
+    this.runtime = runtime
+    this.removeListeners = [
+      runtime.on("log", (event) => {
+        const active = this.active.get(event.runtimeId)
+        if (!active) return
+        active.logs.push(event.message.slice(0, 2048))
+        if (active.logs.length > MAX_LOG_LINES) active.logs.splice(0, active.logs.length - MAX_LOG_LINES)
+      }),
+      runtime.on("state", (event) => {
+        const active = this.active.get(event.runtimeId)
+        if (active) active.state = event.state
+        if (event.state.status === "stopped" || event.state.status === "failed") {
+          this.readyRuntimes.delete(event.runtimeId)
+        }
+      }),
+      runtime.on("message", (event) => {
+        if (event.transport.channel !== "host") return
+        const parsed = parseWorkerMessage(event.transport.message, 1)
+        if (parsed?.kind === "event" && parsed.topic === "runtime.ready") {
+          this.readyRuntimes.add(event.runtimeId)
+        }
+      }),
+    ]
+  }
+
+  createWorkerSpawn(): DevAppWorkerSpawn {
+    return createContainedDevAppWorkerSpawn(
+      this.runtime,
+      ({ publicationId }) => {
+        const request = this.pendingByWorkerKey.get(publicationId)
+        if (!request) throw new Error("The published DevApp worker has no authorized runtime.")
+        return request
+      },
+      (runtimeId) => this.readyRuntimes.has(runtimeId),
+    )
+  }
+
+  setWorkerHost(workerHost: DevAppWorkerHost): void {
+    this.workerHost = workerHost
+  }
+
+  async start(options: StartPublishedRuntimeOptions): Promise<ActivePublishedRuntime> {
+    assertLease(options.leaseId)
+    const installation = this.installations.resolve(options.ref)
+    if (!installation) throw new Error("This exact DevApp release is not installed.")
+    const release = installation.activeRelease
+    const placement = release.parts.runtime
+    if (!placement || placement.kind !== "container") {
+      throw new Error("This DevApp release has no contained runtime contract.")
+    }
+    if (placement.location !== "device") {
+      throw new Error("This DevApp is hosted and cannot be started on the device runtime.")
+    }
+    if (!release.runtimeImage || !release.runtimeSourceDigest || !release.packageManifestDigest) {
+      throw new Error("This executable DevApp release has no signed runtime image.")
+    }
+    const key = runtimeKey(release.id, options.workspaceId)
+    const existing = this.active.get(key)
+    if (existing && existing.state.status === "running") {
+      existing.leases.add(options.leaseId)
+      return existing
+    }
+    const pending = this.pendingStarts.get(key)
+    if (pending) {
+      const active = await pending
+      active.leases.add(options.leaseId)
+      return active
+    }
+    if (placement.state === "device") {
+      const conflicting = [...this.active.values()].find((candidate) =>
+        candidate.key !== key &&
+        candidate.installation.publicationId === installation.publicationId &&
+        candidate.state.status === "running",
+      )
+      const pendingOwner = this.pendingStateOwners.get(installation.publicationId)
+      if (conflicting || (pendingOwner && pendingOwner !== key)) {
+        throw new Error(
+          "This DevApp's publication-owned device state is already mounted in another workspace.",
+        )
+      }
+      this.pendingStateOwners.set(installation.publicationId, key)
+    }
+    const start = this.startNew(options, installation, key).finally(() => {
+      this.pendingStarts.delete(key)
+      if (this.pendingStateOwners.get(installation.publicationId) === key) {
+        this.pendingStateOwners.delete(installation.publicationId)
+      }
+    })
+    this.pendingStarts.set(key, start)
+    return await start
+  }
+
+  private async startNew(
+    options: StartPublishedRuntimeOptions,
+    installation: OrgDevAppInstallation,
+    key: string,
+  ): Promise<ActivePublishedRuntime> {
+    const release = installation.activeRelease
+    const placement = release.parts.runtime!
+    const runtimeImage = release.runtimeImage
+    const sourceDigest = release.runtimeSourceDigest
+    const packageManifestDigest = release.packageManifestDigest
+    if (!runtimeImage || !sourceDigest || !packageManifestDigest) {
+      throw new Error("This executable DevApp release has no signed runtime image.")
+    }
+    const registryAuth = await requestDevAppRuntimeRegistryAuth({
+      gatewayBaseUrl: options.gatewayBaseUrl,
+      accessToken: options.accessToken,
+      organizationId: installation.organizationId,
+      publicationId: installation.publicationId,
+      releaseId: release.id,
+      manifestDigest: runtimeImage.manifestDigest,
+    })
+    const service = release.parts.service?.runtimeKind === "node"
+    const network = service || release.parts.worker?.capabilities.includes("net.outbound") === true
+    const request: DevAppContainedRuntimeStartRequest = {
+      runtimeId: key,
+      identity: {
+        organizationId: installation.organizationId,
+        publicationId: installation.publicationId,
+        releaseId: release.id,
+        releaseVersion: release.version,
+        contentHash: release.contentHash,
+        sourceDigest,
+        packageManifestDigest,
+      },
+      location: placement.location,
+      state: placement.state,
+      image: selectDevAppRuntimeImage(runtimeImage, "linux/arm64"),
+      registryAuth,
+      command: ["bun", "/cozea/runtime/index.ts"],
+      environment: {
+        COZEA_DEVAPP_PUBLICATION_ID: installation.publicationId,
+        COZEA_DEVAPP_RELEASE_ID: release.id,
+        COZEA_DEVAPP_DATA_DIR: placement.state === "device" ? "/cozea/state" : "/tmp",
+        ...(service ? { HOST: "0.0.0.0", HOSTNAME: "0.0.0.0", PORT: String(SERVICE_PORT) } : {}),
+        ...options.environment,
+      },
+      workingDirectory: "/cozea/package",
+      ...(service ? { servicePort: SERVICE_PORT } : {}),
+      network,
+      resources: {
+        cpus: 2,
+        memoryBytes: 1024 * 1024 * 1024,
+        rootfsBytes: 4 * 1024 * 1024 * 1024,
+        writableLayerBytes: 512 * 1024 * 1024,
+      },
+      folderGrants: options.folderGrants ?? [],
+    }
+    const state = await this.runtime.start(request)
+    if (state.status !== "running") {
+      throw new Error(state.error ?? "The contained DevApp runtime did not start.")
+    }
+    const active: ActivePublishedRuntime = {
+      key,
+      installation,
+      workspaceId: options.workspaceId,
+      request,
+      state,
+      logs: [],
+      leases: new Set([options.leaseId]),
+    }
+    this.active.set(key, active)
+    return active
+  }
+
+  onWorkerStateChange(
+    listener: (workerKey: string, state: DevAppWorkerState) => void,
+  ): () => void {
+    if (!this.workerHost) throw new Error("The published DevApp worker host is unavailable.")
+    return this.workerHost.onStateChange(({ publicationId, state }) => {
+      listener(publicationId, state)
+    })
+  }
+
+  startWorker(
+    active: ActivePublishedRuntime,
+    binding: DevAppWorkerBinding,
+    grantInput: DevAppGrant,
+    authorizationExpiresAt: number,
+    leaseId: string,
+  ): { workerKey: string; grant: DevAppGrant; protocolVersion: number } | null {
+    const worker = active.installation.activeRelease.parts.worker
+    if (!worker) return null
+    if (!this.workerHost) throw new Error("The published DevApp worker host is unavailable.")
+    const workerKey = active.key
+    if (active.workspaceId !== binding.workspaceId) {
+      throw new Error("The published DevApp worker workspace binding does not match its runtime.")
+    }
+    const requested = normalizeGrant({ capabilities: worker.capabilities })
+    const grant = normalizeGrant(grantInput)
+    if (requested.capabilities.join("\0") !== grant.capabilities.join("\0")) {
+      throw new Error("The published DevApp worker approval does not match this release.")
+    }
+    this.pendingByWorkerKey.set(workerKey, active.request)
+    const protocolVersion = worker.protocolVersion ?? 1
+    this.workerHost.start({
+      publicationId: workerKey,
+      entrypoint: "/cozea/package/runtime-worker",
+      packageRoot: "/cozea/package",
+      protocolVersion,
+      grant,
+      authorizationExpiresAt,
+      binding,
+      leaseId,
+    })
+    return {
+      workerKey,
+      grant,
+      protocolVersion,
+    }
+  }
+
+  workerConnection(publicationId: string, workspaceId: string): {
+    workerKey: string
+    protocolVersion: number
+  } | null {
+    if (!this.workerHost) return null
+    const active = [...this.active.values()].find((candidate) =>
+      candidate.installation.publicationId === publicationId &&
+      candidate.workspaceId === workspaceId &&
+      candidate.state.status === "running",
+    )
+    if (!active) return null
+    const state = this.workerHost.getState(active.key)
+    return state?.status === "ready"
+      ? { workerKey: active.key, protocolVersion: state.protocolVersion }
+      : null
+  }
+
+  attachViewPort(
+    workerKey: string,
+    connectionId: string,
+    protocolVersion: number,
+    port: DevAppWorkerTransferablePort,
+  ): DevAppWorkerViewPortBootstrap {
+    if (!this.workerHost) throw new Error("The published DevApp worker host is unavailable.")
+    return this.workerHost.attachViewPort(workerKey, connectionId, protocolVersion, port)
+  }
+
+  detachViewPort(workerKey: string, connectionId: string): void {
+    this.workerHost?.detachViewPort(workerKey, connectionId)
+  }
+
+  get(runtimeId: string): ActivePublishedRuntime | null {
+    return this.active.get(runtimeId) ?? null
+  }
+
+  async stopFor(ref: string, workspaceId: string): Promise<boolean> {
+    const installation = this.installations.resolve(ref)
+    if (!installation) return false
+    const key = runtimeKey(installation.activeRelease.id, workspaceId)
+    if (!this.active.has(key) && !this.pendingStarts.has(key)) return false
+    const pending = this.pendingStarts.get(key)
+    if (pending) await pending.catch(() => undefined)
+    await this.stop(key)
+    return true
+  }
+
+  release(runtimeId: string, leaseId: string): boolean {
+    const active = this.active.get(runtimeId)
+    if (!active) return false
+    active.leases.delete(leaseId)
+    if (active.leases.size === 0) void this.stop(runtimeId)
+    return true
+  }
+
+  async stop(runtimeId: string): Promise<void> {
+    const active = this.active.get(runtimeId)
+    if (!active) return
+    this.active.delete(runtimeId)
+    this.readyRuntimes.delete(runtimeId)
+    this.pendingByWorkerKey.delete(runtimeId)
+    this.workerHost?.stop(runtimeId)
+    await this.runtime.stop(runtimeId).catch(() => undefined)
+    await this.runtime.delete(runtimeId).catch(() => undefined)
+  }
+
+  async dispose(): Promise<void> {
+    for (const remove of this.removeListeners.splice(0)) remove()
+    await Promise.all([...this.active.keys()].map((runtimeId) => this.stop(runtimeId)))
+  }
+}

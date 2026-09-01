@@ -104,6 +104,11 @@ function startRequest(): DevAppContainedRuntimeStartRequest {
         reproducible: true,
       },
     },
+    registryAuth: {
+      scheme: "bearer",
+      token: "short-lived-pull-token",
+      expiresAt: Date.now() + 60_000,
+    },
     command: ["/app/server"],
     environment: { NODE_ENV: "production" },
     workingDirectory: "/app",

@@ -1,8 +1,12 @@
-import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from "electron"
+import { dialog, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron"
 
 import { resolveAuthorizedWorkspaceAccess } from "../workspaces/authorization"
 import type { OrgDevAppArtifactService } from "../services/OrgDevAppArtifactService"
 import type { OrgDevAppInstallationService } from "../services/OrgDevAppInstallationService"
+import type { PublishedDevAppRuntimeService } from "../services/PublishedDevAppRuntimeService"
+import type { PublishedDevAppApprovalService } from "../services/PublishedDevAppApprovalService"
+import type { PublishedDevAppFolderGrantService } from "../services/PublishedDevAppFolderGrantService"
+import type { DevAppFolderGrantAccess } from "../../../../shared/devAppContainedRuntime"
 import type { OrgDevAppInstallRequest } from "../../../../shared/orgDevAppInstallation"
 import {
   getDevAppRuntimeBuild,
@@ -12,6 +16,9 @@ import {
 interface RegisterOrgDevAppHandlersDeps {
   service: OrgDevAppArtifactService
   installations: OrgDevAppInstallationService
+  publishedRuntime: PublishedDevAppRuntimeService
+  publishedApprovals: PublishedDevAppApprovalService
+  publishedFolderGrants: PublishedDevAppFolderGrantService
   getMainWindow: () => BrowserWindow | null
 }
 
@@ -19,7 +26,13 @@ export function registerOrgDevAppHandlers(
   ipcMain: IpcMain,
   deps: RegisterOrgDevAppHandlersDeps,
 ): void {
-  const { service, installations } = deps
+  const {
+    service,
+    installations,
+    publishedRuntime,
+    publishedApprovals,
+    publishedFolderGrants,
+  } = deps
 
   const assertMainRenderer = (event: IpcMainInvokeEvent): void => {
     const window = deps.getMainWindow()
@@ -184,6 +197,157 @@ export function registerOrgDevAppHandlers(
     }
   })
 
+  ipcMain.handle("orgDevApp:getPublishedWorkerApproval", (event, options: {
+    ref: string
+    workspaceId: string
+  }) => {
+    assertMainRenderer(event)
+    try {
+      const requested = publishedApprovals.requested(options.ref)
+      const approval = publishedApprovals.get(options.ref, options.workspaceId)
+      return {
+        success: true as const,
+        requestedCapabilities: requested?.capabilities ?? [],
+        approved: Boolean(approval),
+        agentInvocable: approval?.grant.agentInvocable ?? false,
+        expiresAt: approval?.expiresAt ?? null,
+      }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to inspect the DevApp approval." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:approvePublishedWorker", (event, options: {
+    ref: string
+    workspaceId: string
+    agentInvocable: boolean
+  }) => {
+    assertMainRenderer(event)
+    try {
+      const approval = publishedApprovals.approve(options)
+      return { success: true as const, expiresAt: approval.expiresAt }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to approve the DevApp worker." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:listFolderGrants", (event, options: { ref: string }) => {
+    assertMainRenderer(event)
+    try {
+      return { success: true as const, grants: publishedFolderGrants.list(options.ref) }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to inspect DevApp folder grants." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:grantFolder", async (event, options: {
+    ref: string
+    access: DevAppFolderGrantAccess
+  }) => {
+    assertMainRenderer(event)
+    const owner = deps.getMainWindow()
+    if (!owner || owner.isDestroyed()) {
+      return { success: false as const, error: "The Cozea window is unavailable." }
+    }
+    const selected = await dialog.showOpenDialog(owner, {
+      title: options.access === "readWrite" ? "Grant read and write access" : "Grant read access",
+      buttonLabel: "Grant folder",
+      properties: ["openDirectory"],
+    })
+    if (selected.canceled || selected.filePaths.length !== 1) {
+      return { success: true as const, grant: null }
+    }
+    try {
+      return {
+        success: true as const,
+        grant: publishedFolderGrants.grant({
+          ref: options.ref,
+          access: options.access,
+          hostPath: selected.filePaths[0]!,
+        }),
+      }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to grant the folder." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:revokeFolderGrant", (event, options: {
+    ref: string
+    grantId: string
+  }) => {
+    assertMainRenderer(event)
+    try {
+      return { success: true as const, revoked: publishedFolderGrants.revoke(options.ref, options.grantId) }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to revoke the folder grant." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:stopPublishedRuntime", async (event, options: {
+    ref: string
+    workspaceId: string
+  }) => {
+    assertMainRenderer(event)
+    try {
+      return {
+        success: true as const,
+        stopped: await publishedRuntime.stopFor(options.ref, options.workspaceId),
+      }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to stop the published DevApp runtime." }
+    }
+  })
+
+  ipcMain.handle("orgDevApp:ensurePublishedRuntime", async (event, options: {
+    ref: string
+    workspaceId: string
+    laneId?: string | null
+    leaseId: string
+    gatewayBaseUrl: string
+    accessToken: string
+  }) => {
+    assertMainRenderer(event)
+    try {
+      const access = await resolveAuthorizedWorkspaceAccess({
+        workspaceId: options.workspaceId,
+        laneId: options.laneId,
+        operation: "runtime-detect",
+      })
+      const active = await publishedRuntime.start({
+        ...options,
+        workspaceRoot: access.projectRootPath,
+        folderGrants: publishedFolderGrants.list(options.ref),
+      })
+      const requested = active.installation.activeRelease.parts.worker
+      if (!requested) {
+        return { success: true as const, runtimeId: active.key, workerStatus: "none" as const }
+      }
+      const approval = publishedApprovals.get(options.ref, options.workspaceId)
+      if (!approval) {
+        return {
+          success: true as const,
+          runtimeId: active.key,
+          workerStatus: "approvalRequired" as const,
+          requestedCapabilities: requested.capabilities,
+        }
+      }
+      const connection = publishedRuntime.startWorker(
+        active,
+        { workspaceId: options.workspaceId, workspaceRoot: access.projectRootPath },
+        approval.grant,
+        approval.expiresAt,
+        options.leaseId,
+      )
+      return {
+        success: true as const,
+        runtimeId: active.key,
+        workerStatus: connection ? "starting" as const : "none" as const,
+      }
+    } catch (error) {
+      return { success: false as const, error: error instanceof Error ? error.message : "Failed to start the published DevApp runtime." }
+    }
+  })
+
   ipcMain.handle(
     "orgDevApp:cancelBuild",
     (_event, options: { operationId: string }): { cancelled: boolean } => ({
@@ -252,9 +416,32 @@ export function registerOrgDevAppHandlers(
     }
   })
 
-  ipcMain.handle("orgDevApp:startRuntime", async (_event, options: { contentHash: string; publicationId?: string; permissionSetHash?: string; leaseId?: string }) => {
+  ipcMain.handle("orgDevApp:startRuntime", async (event, options: {
+    ref: string
+    contentHash: string
+    publicationId: string
+    permissionSetHash: string
+    leaseId: string
+    workspaceId: string
+    laneId?: string | null
+    gatewayBaseUrl: string
+    accessToken: string
+  }) => {
     try {
-      return { success: true as const, state: await service.startRuntime(options.contentHash, options.publicationId, options.permissionSetHash, options.leaseId) }
+      assertMainRenderer(event)
+      const access = await resolveAuthorizedWorkspaceAccess({
+        workspaceId: options.workspaceId,
+        laneId: options.laneId,
+        operation: "runtime-detect",
+      })
+      return {
+        success: true as const,
+        state: await service.startRuntime({
+          ...options,
+          workspaceRoot: access.projectRootPath,
+          folderGrants: publishedFolderGrants.list(options.ref),
+        }),
+      }
     } catch (error) {
       return { success: false as const, error: error instanceof Error ? error.message : "Failed to start Service DevApp." }
     }
@@ -264,9 +451,9 @@ export function registerOrgDevAppHandlers(
     released: service.releaseRuntime(options.contentHash, options.publicationId, options.leaseId),
   }))
 
-  ipcMain.handle("orgDevApp:stopRuntime", (_event, options: { contentHash: string; publicationId: string }) => {
+  ipcMain.handle("orgDevApp:stopRuntime", async (_event, options: { contentHash: string; publicationId: string }) => {
     try {
-      return { success: true as const, state: service.stopRuntime(options.contentHash, options.publicationId) }
+      return { success: true as const, state: await service.stopRuntime(options.contentHash, options.publicationId) }
     } catch (error) {
       return { success: false as const, error: error instanceof Error ? error.message : "Failed to stop Service DevApp." }
     }

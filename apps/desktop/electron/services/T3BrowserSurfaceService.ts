@@ -61,6 +61,7 @@ import {
 } from "../../../../shared/devAppViewBridge";
 import type { OrgDevAppArtifactService } from "./OrgDevAppArtifactService";
 import type { DevAppPreviewService } from "./DevAppPreviewService";
+import type { PublishedDevAppRuntimeService } from "./PublishedDevAppRuntimeService";
 import { createDevAppViewBridge, type DevAppViewBridgeHandle } from "./DevAppViewBridge";
 
 import * as T3Effect from "../../../../vendor/t3code/apps/desktop/node_modules/effect/dist/Effect.js";
@@ -100,7 +101,8 @@ interface AttachedSurfaceListeners {
 
 interface AttachedDevAppViewBridge {
   webContents: WebContents;
-  sourceId: string;
+  workerKind: "development" | "published";
+  workerKey: string;
   connectionId: string;
   handle: DevAppViewBridgeHandle;
 }
@@ -109,6 +111,7 @@ interface BrowserSurfaceServiceOptions {
   getMainWindow: () => BrowserWindow | null;
   orgDevAppArtifactService: OrgDevAppArtifactService;
   devAppPreviewService: DevAppPreviewService;
+  publishedDevAppRuntimeService: PublishedDevAppRuntimeService;
   artifactsDirectory: string;
   pickPreloadPath: string;
   devAppPickPreloadPath: string;
@@ -244,6 +247,7 @@ export class T3BrowserSurfaceService {
   private pointerSubscriptionFiber: T3Fiber.Fiber<never, unknown> | null = null;
   private recordingSubscriptionFiber: T3Fiber.Fiber<never, unknown> | null = null;
   private readonly removeDevAppWorkerStateListener: () => void;
+  private readonly removePublishedDevAppWorkerStateListener: () => void;
 
   constructor(options: BrowserSurfaceServiceOptions) {
     this.options = options;
@@ -260,6 +264,28 @@ export class T3BrowserSurfaceService {
         }
       },
     );
+    this.removePublishedDevAppWorkerStateListener =
+      options.publishedDevAppRuntimeService.onWorkerStateChange((workerKey, state) => {
+        for (const [tabId, descriptor] of this.descriptors) {
+          if (descriptor.kind !== "orgDevApp" || !descriptor.publicationId || !descriptor.workspaceId) {
+            continue;
+          }
+          const current = this.devAppViewBridgesByTabId.get(tabId);
+          if (state.status !== "ready") {
+            if (current?.workerKind === "published" && current.workerKey === workerKey) {
+              this.detachDevAppViewBridge(tabId, "The published DevApp worker stopped.");
+            }
+            continue;
+          }
+          const connection = options.publishedDevAppRuntimeService.workerConnection(
+            descriptor.publicationId,
+            descriptor.workspaceId,
+          );
+          if (connection?.workerKey !== workerKey) continue;
+          const guest = this.listenersByTabId.get(tabId)?.webContents;
+          if (guest && !guest.isDestroyed()) this.attachDevAppViewBridge(tabId, guest, descriptor);
+        }
+      });
     const browserSessionService = T3BrowserSession.BrowserSession.of({
       getPartition: (scope = "shared") =>
         T3Effect.sync(() => {
@@ -511,7 +537,7 @@ export class T3BrowserSurfaceService {
   }
 
   private preloadPath(descriptor: BrowserSurfaceDescriptor): string {
-    return descriptor.kind === "devAppPreview"
+    return descriptor.kind === "devAppPreview" || descriptor.kind === "orgDevApp"
       ? this.options.devAppPickPreloadPath
       : this.options.pickPreloadPath;
   }
@@ -787,10 +813,28 @@ export class T3BrowserSurfaceService {
     guest: WebContents,
     descriptor: BrowserSurfaceDescriptor,
   ): void {
-    if (descriptor.kind !== "devAppPreview" || !descriptor.devSourceId) return;
+    const connection = descriptor.kind === "devAppPreview" && descriptor.devSourceId
+      ? {
+          workerKind: "development" as const,
+          workerKey: descriptor.devSourceId,
+          connection: this.options.devAppPreviewService.workerConnection(descriptor.devSourceId),
+        }
+      : descriptor.kind === "orgDevApp" && descriptor.publicationId && descriptor.workspaceId
+        ? (() => {
+            const published = this.options.publishedDevAppRuntimeService.workerConnection(
+              descriptor.publicationId,
+              descriptor.workspaceId,
+            );
+            return {
+              workerKind: "published" as const,
+              workerKey: published?.workerKey ?? "",
+              connection: published,
+            };
+          })()
+        : null;
+    if (!connection || !connection.workerKey) return;
     this.detachDevAppViewBridge(tabId, "The DevApp view reloaded.");
-    const connection = this.options.devAppPreviewService.workerConnection(descriptor.devSourceId);
-    if (!connection || guest.isDestroyed()) return;
+    if (!connection.connection || guest.isDestroyed()) return;
 
     const viewChannel = new MessageChannelMain();
     const workerChannel = new MessageChannelMain();
@@ -798,28 +842,36 @@ export class T3BrowserSurfaceService {
     const handle = createDevAppViewBridge({
       viewPort: viewChannel.port1,
       workerPort: workerChannel.port1,
-      protocolVersion: connection.protocolVersion,
+      protocolVersion: connection.connection.protocolVersion,
       onClose: (reason) => {
         const current = this.devAppViewBridgesByTabId.get(tabId);
         if (current?.connectionId !== connectionId) return;
         this.devAppViewBridgesByTabId.delete(tabId);
         this.notifyDevAppViewBridgeRevoked(current, reason);
-        this.options.devAppPreviewService.detachViewPort(current.sourceId, connectionId);
+        this.detachWorkerViewPort(current);
       },
     });
     this.devAppViewBridgesByTabId.set(tabId, {
       webContents: guest,
-      sourceId: descriptor.devSourceId,
+      workerKind: connection.workerKind,
+      workerKey: connection.workerKey,
       connectionId,
       handle,
     });
 
     try {
-      const bootstrap = this.options.devAppPreviewService.attachViewPort(
-        descriptor.devSourceId,
-        connectionId,
-        workerChannel.port2,
-      );
+      const bootstrap = connection.workerKind === "development"
+        ? this.options.devAppPreviewService.attachViewPort(
+            connection.workerKey,
+            connectionId,
+            workerChannel.port2,
+          )
+        : this.options.publishedDevAppRuntimeService.attachViewPort(
+            connection.workerKey,
+            connectionId,
+            connection.connection.protocolVersion,
+            workerChannel.port2,
+          );
       guest.postMessage(DEV_APP_VIEW_WORKER_PORT_CHANNEL, bootstrap, [viewChannel.port2]);
     } catch {
       this.detachDevAppViewBridge(tabId, "The DevApp worker is unavailable.");
@@ -831,8 +883,19 @@ export class T3BrowserSurfaceService {
     if (!current) return;
     this.devAppViewBridgesByTabId.delete(tabId);
     this.notifyDevAppViewBridgeRevoked(current, reason);
-    this.options.devAppPreviewService.detachViewPort(current.sourceId, current.connectionId);
+    this.detachWorkerViewPort(current);
     current.handle.close(reason);
+  }
+
+  private detachWorkerViewPort(bridge: AttachedDevAppViewBridge): void {
+    if (bridge.workerKind === "development") {
+      this.options.devAppPreviewService.detachViewPort(bridge.workerKey, bridge.connectionId);
+    } else {
+      this.options.publishedDevAppRuntimeService.detachViewPort(
+        bridge.workerKey,
+        bridge.connectionId,
+      );
+    }
   }
 
   private notifyDevAppViewBridgeRevoked(
@@ -1146,6 +1209,7 @@ export class T3BrowserSurfaceService {
 
   async dispose(): Promise<void> {
     this.removeDevAppWorkerStateListener();
+    this.removePublishedDevAppWorkerStateListener();
     for (const tabId of Array.from(this.descriptors.keys())) {
       try {
         await this.releaseSurface(tabId);

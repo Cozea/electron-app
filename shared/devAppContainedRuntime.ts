@@ -96,12 +96,20 @@ export interface DevAppFolderGrant {
   expiresAt: number;
 }
 
+/** Short-lived pull-only authority. It is consumed in memory by the native helper. */
+export interface DevAppRuntimeRegistryAuth {
+  scheme: "bearer";
+  token: string;
+  expiresAt: number;
+}
+
 export interface DevAppContainedRuntimeStartRequest {
   runtimeId: string;
   identity: DevAppRuntimeIdentity;
   location: DevAppRuntimeLocation;
   state: DevAppStateScope;
   image: DevAppRuntimeImage;
+  registryAuth: DevAppRuntimeRegistryAuth;
   command: string[];
   environment: Record<string, string>;
   workingDirectory: string;
@@ -231,7 +239,12 @@ export function validateDevAppRuntimeReleaseImage(
   release: DevAppRuntimeReleaseImage,
   expected: { sourceDigest: string; packageManifestDigest: string },
 ): string | null {
-  if (!release || typeof release !== "object" || !isDigestPinnedImageReference(release.reference)) {
+  if (
+    !release ||
+    typeof release !== "object" ||
+    typeof release.reference !== "string" ||
+    !isDigestPinnedImageReference(release.reference)
+  ) {
     return "The DevApp runtime image reference is invalid.";
   }
   const referenceDigest = release.reference.slice(release.reference.lastIndexOf("@") + 1);
@@ -244,7 +257,15 @@ export function validateDevAppRuntimeReleaseImage(
   ) {
     return "The DevApp runtime image authority is invalid.";
   }
-  if (!Array.isArray(release.platforms)) return "The DevApp runtime image platforms are invalid.";
+  if (
+    !Array.isArray(release.platforms) ||
+    release.platforms.some((entry) =>
+      !entry ||
+      typeof entry !== "object" ||
+      (entry.platform !== "linux/arm64" && entry.platform !== "linux/amd64") ||
+      typeof entry.digest !== "string",
+    )
+  ) return "The DevApp runtime image platforms are invalid.";
   const platforms = new Map(release.platforms.map((entry) => [entry.platform, entry.digest]));
   if (
     release.platforms.length !== 2 ||
@@ -270,7 +291,13 @@ export function validateDevAppRuntimeReleaseImage(
     attestation.materials.length > 32 ||
     attestation.materials.some(
       (material) =>
-        !material.uri || material.uri.length > 2048 || !isSha256Digest(material.digest),
+        !material ||
+        typeof material !== "object" ||
+        typeof material.uri !== "string" ||
+        !material.uri ||
+        material.uri.length > 2048 ||
+        typeof material.digest !== "string" ||
+        !isSha256Digest(material.digest),
     )
   ) {
     return "The DevApp runtime image attestation is invalid.";

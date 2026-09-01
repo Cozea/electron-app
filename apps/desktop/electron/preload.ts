@@ -433,6 +433,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
       gatewayBaseUrl: string
       accessToken: string
     }) => ipcRenderer.invoke('orgDevApp:getRuntimeBuild', options),
+    getPublishedWorkerApproval: (options: { ref: string; workspaceId: string }) =>
+      ipcRenderer.invoke('orgDevApp:getPublishedWorkerApproval', options),
+    approvePublishedWorker: (options: {
+      ref: string
+      workspaceId: string
+      agentInvocable: boolean
+    }) => ipcRenderer.invoke('orgDevApp:approvePublishedWorker', options),
+    listFolderGrants: (options: { ref: string }) =>
+      ipcRenderer.invoke('orgDevApp:listFolderGrants', options),
+    grantFolder: (options: { ref: string; access: 'read' | 'readWrite' }) =>
+      ipcRenderer.invoke('orgDevApp:grantFolder', options),
+    revokeFolderGrant: (options: { ref: string; grantId: string }) =>
+      ipcRenderer.invoke('orgDevApp:revokeFolderGrant', options),
+    stopPublishedRuntime: (options: { ref: string; workspaceId: string }) =>
+      ipcRenderer.invoke('orgDevApp:stopPublishedRuntime', options),
+    ensurePublishedRuntime: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+      leaseId: string
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => ipcRenderer.invoke('orgDevApp:ensurePublishedRuntime', options),
     cancelBuild: (options: { operationId: string }) =>
       ipcRenderer.invoke('orgDevApp:cancelBuild', options),
     prepareArtifact: (options: {
@@ -445,7 +468,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     approveRuntime: (options: { contentHash: string; publicationId: string; permissionSetHash: string }) => ipcRenderer.invoke('orgDevApp:approveRuntime', options),
     getRuntimeEnvironment: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeEnvironment', options),
     setRuntimeEnvironment: (options: { contentHash: string; publicationId: string; values: Record<string, string | null> }) => ipcRenderer.invoke('orgDevApp:setRuntimeEnvironment', options),
-    startRuntime: (options: { contentHash: string; publicationId?: string; permissionSetHash?: string; leaseId?: string }) => ipcRenderer.invoke('orgDevApp:startRuntime', options),
+    startRuntime: (options: {
+      ref: string
+      contentHash: string
+      publicationId: string
+      permissionSetHash: string
+      leaseId: string
+      workspaceId: string
+      laneId?: string | null
+      gatewayBaseUrl: string
+      accessToken: string
+    }) => ipcRenderer.invoke('orgDevApp:startRuntime', options),
     releaseRuntime: (options: { contentHash: string; publicationId: string; leaseId: string }) => ipcRenderer.invoke('orgDevApp:releaseRuntime', options),
     stopRuntime: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:stopRuntime', options),
     getRuntimeState: (options: { contentHash: string; publicationId: string }) => ipcRenderer.invoke('orgDevApp:getRuntimeState', options),

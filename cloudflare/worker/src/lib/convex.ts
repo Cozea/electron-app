@@ -183,6 +183,25 @@ export async function authorizeDevAppRuntimeBuildInConvex(
   if (!result.allowed) throw new Error('The DevApp runtime build is not authorized')
 }
 
+export async function authorizeDevAppRuntimePullInConvex(
+  env: Env,
+  auth: DeviceAccessClaims,
+  args: {
+    organizationId: string
+    publicationId: string
+    releaseId: string
+    manifestDigest: string
+  },
+): Promise<void> {
+  await requireActiveDeviceAccessInConvex(env, auth)
+  const result = await runServerQuery<{ allowed: boolean }>(
+    env,
+    'devApps:getRuntimePullAuthorizationForServer',
+    { identityKey: auth.sub, ...args },
+  )
+  if (!result.allowed) throw new Error('The DevApp runtime image pull is not authorized')
+}
+
 export async function registerDevAppRuntimeBuildInConvex(
   env: Env,
   args: {

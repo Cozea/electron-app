@@ -25,13 +25,15 @@ describe("DevApp view/worker bridge architecture", () => {
     expect(preload).not.toContain("contextBridge.exposeInMainWorld")
   })
 
-  it("lets only a prepared development-preview descriptor receive the bridge preload", () => {
+  it("lets only prepared development or published DevApps receive the bridge preload", () => {
     const surfaceService = read("apps/desktop/electron/services/T3BrowserSurfaceService.ts")
     expect(surfaceService).toContain('descriptor.kind === "devAppPreview"')
+    expect(surfaceService).toContain('descriptor.kind === "orgDevApp"')
     expect(surfaceService).toContain("this.options.devAppPickPreloadPath")
     expect(surfaceService).toContain("DEV_APP_VIEW_WORKER_PORT_CHANNEL")
     expect(surfaceService).toContain("guest.postMessage")
     expect(surfaceService).toContain("workerConnection(descriptor.devSourceId)")
+    expect(surfaceService).toContain("publishedDevAppRuntimeService.workerConnection")
     expect(surfaceService).toContain("detachDevAppViewBridge")
   })
 

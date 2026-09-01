@@ -41,6 +41,12 @@ import { createDevAppWorkerHandlers } from './services/devAppWorkerHandlers'
 import { createNodeDevAppHostServices } from './services/devAppHostServices'
 import { DevAppPreviewService } from './services/DevAppPreviewService'
 import { DevAppAuthoringService } from './services/DevAppAuthoringService'
+import { DeviceContainedDevAppRuntimeService } from './services/ContainedDevAppRuntimeService'
+import { SignedDevAppRuntimeImageVerifier } from './services/DevAppRuntimeImageVerifier'
+import { PublishedDevAppRuntimeService } from './services/PublishedDevAppRuntimeService'
+import { PublishedDevAppApprovalService } from './services/PublishedDevAppApprovalService'
+import { PublishedDevAppFolderGrantService } from './services/PublishedDevAppFolderGrantService'
+import { getBundledRuntimePublicKeyPath } from './runtime/runtimeManifest'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
@@ -1090,6 +1096,46 @@ const orgDevAppInstallationService = new OrgDevAppInstallationService(
   () => path.join(app.getPath('userData'), 'org-devapp-installations.json'),
   orgDevAppArtifactService,
 )
+const containedRuntimeResources = () => {
+  const resourceRoot = app.isPackaged
+    ? path.join(process.resourcesPath, 'devapp-container-runtime')
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'build', 'devapp-container-runtime')
+  return {
+    helperPath: path.join(resourceRoot, 'cozea-devapp-container-runtime'),
+    rootPath: path.join(app.getPath('userData'), 'devapp-contained-runtime'),
+    kernelPath: path.join(resourceRoot, 'vmlinux'),
+    resourceManifestPath: path.join(resourceRoot, 'resource-manifest.json'),
+  }
+}
+const deviceContainedDevAppRuntimeService = new DeviceContainedDevAppRuntimeService({
+  paths: containedRuntimeResources,
+  imageVerifier: new SignedDevAppRuntimeImageVerifier(getBundledRuntimePublicKeyPath),
+})
+const publishedDevAppRuntimeService = new PublishedDevAppRuntimeService(
+  orgDevAppInstallationService,
+  deviceContainedDevAppRuntimeService,
+)
+orgDevAppArtifactService.setContainedServiceAdapter(publishedDevAppRuntimeService)
+const publishedDevAppWorkerHost = new DevAppWorkerHost(
+  publishedDevAppRuntimeService.createWorkerSpawn(),
+  createDevAppWorkerHandlers(createNodeDevAppHostServices()),
+)
+publishedDevAppRuntimeService.setWorkerHost(publishedDevAppWorkerHost)
+let containedDevAppShutdown: Promise<void> | null = null
+const disposeContainedDevAppRuntime = (): Promise<void> => {
+  containedDevAppShutdown ??= publishedDevAppRuntimeService.dispose().finally(() => {
+    deviceContainedDevAppRuntimeService.dispose()
+  })
+  return containedDevAppShutdown
+}
+const publishedDevAppApprovalService = new PublishedDevAppApprovalService(
+  () => path.join(app.getPath('userData'), 'published-devapp-approvals'),
+  orgDevAppInstallationService,
+)
+const publishedDevAppFolderGrantService = new PublishedDevAppFolderGrantService(
+  () => path.join(app.getPath('userData'), 'published-devapp-folder-grants'),
+  orgDevAppInstallationService,
+)
 
 /**
  * The worker host, and the development preview that drives it.
@@ -1744,6 +1790,9 @@ registerYjsHandlers(ipcMain)
 registerOrgDevAppHandlers(ipcMain, {
   service: orgDevAppArtifactService,
   installations: orgDevAppInstallationService,
+  publishedRuntime: publishedDevAppRuntimeService,
+  publishedApprovals: publishedDevAppApprovalService,
+  publishedFolderGrants: publishedDevAppFolderGrantService,
   getMainWindow: () => win,
 })
 
@@ -1778,6 +1827,8 @@ app.on('window-all-closed', () => {
   orgDevAppArtifactService.dispose()
   devAppPreviewService.dispose()
   devAppWorkerHost.dispose()
+  publishedDevAppWorkerHost.dispose()
+  void disposeContainedDevAppRuntime()
   setBroadcastMainWindow(null)
   win = null
 
@@ -1802,6 +1853,8 @@ app.on('before-quit', () => {
   orgDevAppArtifactService.dispose()
   devAppPreviewService.dispose()
   devAppWorkerHost.dispose()
+  publishedDevAppWorkerHost.dispose()
+  void disposeContainedDevAppRuntime()
   PreviewSnapshotService.getInstance().dispose()
   LocalAutomationResolverService.getInstance().dispose()
   void disposeWorkspaceCatalogRuntime()
@@ -1844,6 +1897,7 @@ app.whenReady().then(() => {
     getMainWindow: () => win,
     orgDevAppArtifactService,
     devAppPreviewService,
+    publishedDevAppRuntimeService,
     artifactsDirectory: path.join(app.getPath('userData'), 'browser-artifacts'),
     pickPreloadPath: path.join(__dirname, '../preload/preview-pick-preload.cjs'),
     devAppPickPreloadPath: path.join(__dirname, '../preload/devapp-preview-pick-preload.cjs'),

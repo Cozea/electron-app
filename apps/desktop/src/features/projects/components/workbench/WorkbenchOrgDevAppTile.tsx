@@ -17,6 +17,7 @@ import { WorkbenchTileChrome } from "@/features/projects/components/workbench/Wo
 import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode";
 import type { WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord } from "@/stores/useProjectWorkbenchStore";
 import { useTranslation } from "@/lib/i18n";
+import { getDeviceGatewayBaseUrl, getDeviceSession } from "@/lib/deviceSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -30,6 +31,9 @@ import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 import type { OrgDevAppRuntimeState } from "@shared/orgDevAppRuntime";
 import type { OrgDevAppEnvironmentStatus } from "@shared/orgDevAppEnvironment";
 import type { OrgDevAppInstallation } from "@shared/orgDevAppInstallation";
+import type { DevAppParts } from "@shared/devAppParts";
+import type { DevAppCapability } from "@shared/devAppCapabilities";
+import type { DevAppFolderGrant } from "@shared/devAppContainedRuntime";
 
 interface ResolvedOrgDevAppArtifact {
   url: string;
@@ -46,6 +50,7 @@ interface ResolvedOrgDevAppArtifact {
   permissionSetHash: string | null;
   publisherIdentityKey: string | null;
   publisherDeviceLabel: string | null;
+  parts: DevAppParts;
 }
 
 function artifactFromInstallation(installation: OrgDevAppInstallation): ResolvedOrgDevAppArtifact {
@@ -64,6 +69,7 @@ function artifactFromInstallation(installation: OrgDevAppInstallation): Resolved
     permissionSetHash: installation.activeRelease.permissionSetHash,
     publisherIdentityKey: installation.activeRelease.publisherIdentityKey,
     publisherDeviceLabel: installation.activeRelease.publisherDeviceLabel,
+    parts: installation.activeRelease.parts,
   };
 }
 
@@ -109,6 +115,10 @@ export function WorkbenchOrgDevAppTile({
     network: boolean;
     persistentData: boolean;
   } | null>(null);
+  const [workerApprovalRequired, setWorkerApprovalRequired] = useState(false);
+  const [workerCapabilities, setWorkerCapabilities] = useState<DevAppCapability[]>([]);
+  const [showFolderAccess, setShowFolderAccess] = useState(false);
+  const [folderGrants, setFolderGrants] = useState<DevAppFolderGrant[]>([]);
   const [installedResolution, setInstalledResolution] = useState<
     | undefined
     | null
@@ -171,7 +181,38 @@ export function WorkbenchOrgDevAppTile({
     setEnvironmentValues({});
     setShowConfiguration(false);
     setServicePermissions(null);
+    setWorkerApprovalRequired(false);
+    setWorkerCapabilities([]);
   }, [releaseKey]);
+
+  useEffect(() => {
+    if (!artifact?.parts.worker || !tile.devAppRef || !workspaceId) return;
+    if (artifact.runtimeKind === "service" && !originUrl) return;
+    let cancelled = false;
+    void getDeviceSession()
+      .then(async (session) => {
+        const ensured = await window.electronAPI.orgDevApp.ensurePublishedRuntime({
+          ref: tile.devAppRef!,
+          workspaceId,
+          laneId,
+          leaseId: tile.id,
+          gatewayBaseUrl: getDeviceGatewayBaseUrl(),
+          accessToken: session.accessToken,
+        });
+        if (cancelled) return;
+        if (!ensured.success) throw new Error(ensured.error);
+        if (ensured.workerStatus === "approvalRequired") {
+          setWorkerCapabilities(ensured.requestedCapabilities ?? []);
+          setWorkerApprovalRequired(true);
+        } else {
+          setWorkerApprovalRequired(false);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setPrepareError(error instanceof Error ? error.message : "The DevApp worker failed to start.");
+      });
+    return () => { cancelled = true; };
+  }, [artifact, laneId, originUrl, prepareAttempt, tile.devAppRef, tile.id, workspaceId]);
 
   useEffect(() => {
     if (installedResolution?.error) {
@@ -227,11 +268,20 @@ export function WorkbenchOrgDevAppTile({
             return;
           }
           setApprovalRequiredReleaseKey(null);
+          if (!tile.devAppRef || !workspaceId) {
+            throw new Error("The installed DevApp release is not attached to a workspace.");
+          }
+          const session = await getDeviceSession();
           const started = await window.electronAPI.orgDevApp.startRuntime({
+            ref: tile.devAppRef,
             contentHash: artifact.contentHash,
             publicationId: artifact.publicationId,
             permissionSetHash,
             leaseId: tile.id,
+            workspaceId,
+            laneId,
+            gatewayBaseUrl: getDeviceGatewayBaseUrl(),
+            accessToken: session.accessToken,
           });
           if (!started.success) throw new Error(started.error);
           setRuntimeState(started.state);
@@ -349,18 +399,42 @@ export function WorkbenchOrgDevAppTile({
     if (!runtimeTabId || !previewBridge) return;
     void previewBridge.refresh(runtimeTabId).catch(() => undefined);
   };
+  const refreshFolderGrants = async () => {
+    if (!tile.devAppRef) return;
+    const result = await window.electronAPI.orgDevApp.listFolderGrants({ ref: tile.devAppRef });
+    if (!result.success) throw new Error(result.error);
+    setFolderGrants(result.grants);
+  };
+  const restartAfterFolderChange = async () => {
+    if (!artifact || !tile.devAppRef || !workspaceId) return;
+    if (artifact.runtimeKind === "service") {
+      await window.electronAPI.orgDevApp.stopRuntime({
+        contentHash: artifact.contentHash,
+        publicationId: artifact.publicationId,
+      });
+    } else {
+      await window.electronAPI.orgDevApp.stopPublishedRuntime({
+        ref: tile.devAppRef,
+        workspaceId,
+      });
+    }
+    setPreparedOrigin(null);
+    setPrepareAttempt((attempt) => attempt + 1);
+  };
 
   const statusMessage = useMemo(() => {
     if (!tile.devAppRef) return t("orgDevApp.open.referenceMissing");
     if (prepareError) return prepareError;
     if (serviceNeedsApproval)
       return "This Service DevApp runs trusted organization code on this Mac.";
+    if (workerApprovalRequired)
+      return "This DevApp includes code that can work with the current project.";
     if (!originUrl)
       return artifact?.runtimeKind === "service"
         ? "Starting Service DevApp…"
         : t("orgDevApp.open.preparing");
     return null;
-  }, [artifact?.runtimeKind, originUrl, prepareError, serviceNeedsApproval, t, tile.devAppRef]);
+  }, [artifact?.runtimeKind, originUrl, prepareError, serviceNeedsApproval, t, tile.devAppRef, workerApprovalRequired]);
 
   return (
     <WorkbenchTileChrome
@@ -373,8 +447,10 @@ export function WorkbenchOrgDevAppTile({
       logoDataUrl={tile.logoDataUrl}
       hideTitlePill={false}
       actions={
-        artifact?.runtimeKind === "service" ? (
+        artifact?.parts.runtime ? (
           <div className="flex items-center gap-1">
+            {artifact.runtimeKind === "service" ? (
+              <>
             <Button
               type="button"
               variant="ghost"
@@ -432,6 +508,21 @@ export function WorkbenchOrgDevAppTile({
               }}
             >
               Restart
+            </Button>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => {
+                void refreshFolderGrants()
+                  .then(() => setShowFolderAccess(true))
+                  .catch((error) => setPrepareError(error instanceof Error ? error.message : "Failed to inspect folder access."));
+              }}
+            >
+              Files
             </Button>
           </div>
         ) : null
@@ -501,6 +592,49 @@ export function WorkbenchOrgDevAppTile({
               </Button>
             </div>
           ) : null}
+          {workerApprovalRequired && tile.devAppRef && workspaceId ? (
+            <div className="flex max-w-md flex-col items-center gap-3">
+              <p className="text-xs text-muted-foreground">
+                Requested access: {workerCapabilities.length > 0 ? workerCapabilities.join(", ") : "no host capabilities"}.
+                You can run the worker for this project without granting autonomous agent use.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    void window.electronAPI.orgDevApp.approvePublishedWorker({
+                      ref: tile.devAppRef!,
+                      workspaceId,
+                      agentInvocable: false,
+                    }).then((result) => {
+                      if (!result.success) setPrepareError(result.error);
+                      else setPrepareAttempt((attempt) => attempt + 1);
+                    });
+                  }}
+                >
+                  Run worker
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void window.electronAPI.orgDevApp.approvePublishedWorker({
+                      ref: tile.devAppRef!,
+                      workspaceId,
+                      agentInvocable: true,
+                    }).then((result) => {
+                      if (!result.success) setPrepareError(result.error);
+                      else setPrepareAttempt((attempt) => attempt + 1);
+                    });
+                  }}
+                >
+                  Run and allow agents
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
@@ -547,6 +681,71 @@ export function WorkbenchOrgDevAppTile({
             <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground">
               {(runtimeState?.logs ?? []).join("\n") || "No service output yet."}
             </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showFolderAccess} onOpenChange={setShowFolderAccess}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Local folder access</DialogTitle>
+            <DialogDescription>
+              This contained DevApp sees only folders you explicitly grant. Access is bound to this exact release and expires automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            {folderGrants.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No local folders are mounted.</p>
+            ) : folderGrants.map((grant) => (
+              <div key={grant.grantId} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-foreground">{grant.canonicalHostPath}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {grant.access === "readWrite" ? "Read and write" : "Read only"} · {grant.guestPath}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (!tile.devAppRef) return;
+                    void window.electronAPI.orgDevApp.revokeFolderGrant({
+                      ref: tile.devAppRef,
+                      grantId: grant.grantId,
+                    }).then(async (result) => {
+                      if (!result.success) throw new Error(result.error);
+                      await refreshFolderGrants();
+                      await restartAfterFolderChange();
+                    }).catch((error) => setPrepareError(error instanceof Error ? error.message : "Failed to revoke folder access."));
+                  }}
+                >
+                  Revoke
+                </Button>
+              </div>
+            ))}
+            <div className="flex flex-wrap gap-2">
+              {(["read", "readWrite"] as const).map((access) => (
+                <Button
+                  key={access}
+                  type="button"
+                  variant={access === "read" ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => {
+                    if (!tile.devAppRef) return;
+                    void window.electronAPI.orgDevApp.grantFolder({ ref: tile.devAppRef, access })
+                      .then(async (result) => {
+                        if (!result.success) throw new Error(result.error);
+                        if (!result.grant) return;
+                        await refreshFolderGrants();
+                        await restartAfterFolderChange();
+                      })
+                      .catch((error) => setPrepareError(error instanceof Error ? error.message : "Failed to grant folder access."));
+                  }}
+                >
+                  {access === "read" ? "Grant read-only folder" : "Grant read-write folder"}
+                </Button>
+              ))}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

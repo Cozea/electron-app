@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { request as httpRequest } from "node:http"
+import { createServer, request as httpRequest } from "node:http"
 import os from "node:os"
 import path from "node:path"
 
@@ -120,6 +120,33 @@ describe("Service DevApp build adapter", () => {
     }))
 
     const service = new OrgDevAppArtifactService(() => cacheRoot)
+    const upstream = createServer((_request, response) => response.end("ready"))
+    const upstreamPort = await new Promise<number>((resolve, reject) => {
+      upstream.once("error", reject)
+      upstream.listen(0, "127.0.0.1", () => {
+        const address = upstream.address()
+        resolve(typeof address === "object" && address ? address.port : 0)
+      })
+    })
+    let containedEnvironment: Record<string, string> = {}
+    const stopContained = vi.fn(async () => undefined)
+    service.setContainedServiceAdapter({
+      start: async (options) => {
+        containedEnvironment = options.environment
+        return {
+          key: "pub_runtime_test",
+          state: {
+            status: "running",
+            guestAddress: "127.0.0.1",
+            servicePort: upstreamPort,
+            error: null,
+          },
+          logs: ["contained runtime ready"],
+        }
+      },
+      stop: stopContained,
+      release: () => true,
+    })
     const packed = await service.buildAndPack(projectRoot)
     const cacheDir = path.join(cacheRoot, packed.contentHash)
     unpackZip(Buffer.from(packed.zip), cacheDir, orgDevAppArtifactLimits("service"))
@@ -144,9 +171,21 @@ describe("Service DevApp build adapter", () => {
     let gatewayHeaders: Record<string, string> = {}
     hook.current?.({ requestHeaders: {} }, (result) => { gatewayHeaders = result.requestHeaders })
 
-    const state = await service.startRuntime(packed.contentHash, publicationId, packed.permissionSetHash, "tile_test")
+    const state = await service.startRuntime({
+      ref: "cozea-devapp:org/org_test/publication_test@1",
+      contentHash: packed.contentHash,
+      publicationId,
+      permissionSetHash: packed.permissionSetHash!,
+      leaseId: "tile_test",
+      workspaceId: "workspace_test",
+      workspaceRoot: projectRoot,
+      gatewayBaseUrl: "https://gateway.test",
+      accessToken: "device-token",
+      folderGrants: [],
+    })
     try {
       expect(state.status).toBe("ready")
+      expect(containedEnvironment.TEST_SECRET).toBe("correct")
       expect(state.originUrl).toContain(`${packed.contentHash}.service.localhost`)
       const serviceUrl = new URL(state.originUrl!)
       expect((await requestGateway(serviceUrl, {})).status).toBe(403)
@@ -154,8 +193,9 @@ describe("Service DevApp build adapter", () => {
       expect(response.status).toBe(200)
       expect(response.body).toBe("ready")
     } finally {
-      service.stopRuntime(packed.contentHash, publicationId)
+      await service.stopRuntime(packed.contentHash, publicationId)
       service.dispose()
+      await new Promise<void>((resolve) => upstream.close(() => resolve()))
     }
   })
 })
