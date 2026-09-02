@@ -11,6 +11,14 @@ export default defineConfig({
         desktopRoot,
         "./src/features/assistant",
       ),
+      "@/features/projects/components/workbench": path.resolve(
+        desktopRoot,
+        "./src/features/workbench",
+      ),
+      "@/features/projects/components/command-palette": path.resolve(
+        desktopRoot,
+        "./src/features/workbench/command-palette",
+      ),
       "@": path.resolve(desktopRoot, "./src"),
       "@shared": path.resolve(repoRoot, "./shared"),
       "@cozea/assistant-contracts": path.resolve(repoRoot, "./shared/assistant-contracts/index.ts"),
