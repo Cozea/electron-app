@@ -35,6 +35,8 @@ build/local-automation/**
 build/devapp-container-runtime/**
 native/**/.build/
 native/**/.cache/
+# Cargo output for the native helpers. Hundreds of files, rebuilt on demand.
+native/**/target/
 
 # Server (separate repo — root only; apps/server is in-tree)
 /server/
