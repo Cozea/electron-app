@@ -142,7 +142,7 @@ describe("application layer contract", () => {
     const workbench = read("apps/desktop/src/features/projects/pages/ProjectWorkbenchSurface.tsx");
     const orgDevApp = read("apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx");
     const chat = read("apps/desktop/src/features/assistant/chat/CozeaChatSurface.tsx");
-    const tasks = read("apps/desktop/src/features/projects/pages/TasksPage.tsx");
+    const tasks = read("apps/desktop/src/features/tasks/pages/TasksPage.tsx");
 
     expect(portal).toContain("createPortal(children, document.body)");
     expect(tileChrome).toContain("<AnchoredAppOverlayPortal");
