@@ -480,8 +480,12 @@ jobs:
           # electron-builder copies the t3 runtime's pnpm-store node_modules
           # (many thousands of small files) into the app bundle; macOS's
           # default open-file limit (256) is nowhere near enough for that
-          # and the copy fails with EMFILE partway through.
-          ulimit -n "$(ulimit -Hn)" 2>/dev/null || ulimit -n 65536 2>/dev/null || true
+          # and the copy fails with EMFILE partway through. Raising ulimit -n
+          # alone still hit the same ceiling, since the launchd session caps
+          # what a plain ulimit can request; raise that ceiling first.
+          sudo launchctl limit maxfiles 65536 200000 2>/dev/null || true
+          ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
+          echo "open-file limit: soft=$(ulimit -Sn) hard=$(ulimit -Hn)"
 
           max_attempts=2
           success=0
