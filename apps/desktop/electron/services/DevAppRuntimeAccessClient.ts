@@ -1,4 +1,5 @@
 import type { DevAppRuntimeRegistryAuth } from "../../../../shared/devAppContainedRuntime"
+import { fetchDevAppGateway } from "./devAppGatewayFetch"
 
 const REQUEST_TIMEOUT_MS = 30_000
 const SEGMENT = /^[A-Za-z0-9_-]{1,128}$/
@@ -31,7 +32,9 @@ export async function requestDevAppRuntimeRegistryAuth(input: {
   if (!SHA256_DIGEST.test(input.manifestDigest)) {
     throw new Error("The DevApp runtime manifest digest is invalid.")
   }
-  const response = await fetch(`${cleanGatewayUrl(input.gatewayBaseUrl)}/devapps/runtime-pulls`, {
+  const response = await fetchDevAppGateway(
+    `${cleanGatewayUrl(input.gatewayBaseUrl)}/devapps/runtime-pulls`,
+    {
     method: "POST",
     headers: {
       authorization: `Bearer ${input.accessToken}`,
@@ -43,8 +46,10 @@ export async function requestDevAppRuntimeRegistryAuth(input: {
       releaseId: assertSegment(input.releaseId, "The release ID"),
       manifestDigest: input.manifestDigest,
     }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    },
+    "DevApp image authorization service",
+  )
   const body = await response.json().catch(() => null) as Partial<DevAppRuntimeRegistryAuth> | null
   if (!response.ok) {
     throw new Error(`The private DevApp image could not be authorized (${response.status}).`)

@@ -3,6 +3,7 @@ import {
   type DevAppRuntimeBuildDescriptor,
 } from "../../../../shared/devAppContainedRuntime"
 import { createDevAppRuntimeSourceBundle } from "./DevAppRuntimeSourceBundle"
+import { fetchDevAppGateway } from "./devAppGatewayFetch"
 
 const REQUEST_TIMEOUT_MS = 60_000
 
@@ -47,11 +48,15 @@ async function gatewayRequest(
   if (!accessToken.trim() || accessToken.length > 16_384) {
     throw new Error("An authenticated device session is required for the central build.")
   }
-  const response = await fetch(url, {
-    ...init,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    headers: { authorization: `Bearer ${accessToken}`, ...init.headers },
-  })
+  const response = await fetchDevAppGateway(
+    url,
+    {
+      ...init,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: { authorization: `Bearer ${accessToken}`, ...init.headers },
+    },
+    "DevApp builder",
+  )
   const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     const message =
