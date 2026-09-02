@@ -128,6 +128,11 @@ module.exports = {
     entitlements: "../../build/entitlements.mac.plist",
     entitlementsInherit: "../../build/entitlements.mac.plist",
     x64ArchFiles: macUniversalX64ArchFiles,
+    // electron-builder reports "skipped macOS application code signing" as a build
+    // failure when it cannot find an identity, so an unsigned build has to opt out
+    // by name: CSC_IDENTITY_AUTO_DISCOVERY=false on its own fails the build rather
+    // than producing an unsigned bundle. Notarization is moot without a signature.
+    ...(process.env.COZEA_MAC_SIGNING === "0" ? { identity: null, notarize: false } : {}),
     ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
     target: ["dmg", "zip"],
   },
