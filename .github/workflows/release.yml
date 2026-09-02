@@ -57,7 +57,7 @@ env:
 jobs:
   plan:
     name: Plan release
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-24.04
     outputs:
       release_tag: ${{ steps.plan.outputs.release_tag }}
       checkout_ref: ${{ steps.plan.outputs.checkout_ref }}
@@ -139,7 +139,7 @@ jobs:
   verify:
     name: Verify release candidate
     needs: plan
-    runs-on: depot-ubuntu-24.04-4
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       COZEA_RUNTIME_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
@@ -151,8 +151,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           ref: ${{ needs.plan.outputs.checkout_ref }}
+          # typecheck:electron resolves imports out of vendor/t3code, so the
+          # substrate must be present here too, not only in the build job.
+          submodules: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -163,6 +166,22 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.0"
+
+      - name: Cache bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Cache vendored T3 substrate
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/t3code/node_modules
+            vendor/t3code/apps/server/dist
+          key: t3-${{ runner.os }}-${{ hashFiles('docs/substrate-t3-pin.md') }}
 
       - name: Verify tag matches package version
         shell: bash
@@ -208,6 +227,9 @@ jobs:
             echo "::warning::Runtime signing key not configured; runtime metadata signatures were not generated."
           fi
 
+      - name: Prepare vendored substrate
+        run: bun run prepare:t3-runtime
+
       - name: Typecheck
         run: bun run typecheck
 
@@ -234,7 +256,7 @@ jobs:
         include:
           - name: macOS arm64
             artifact_name: macos-arm64
-            runs_on: depot-macos-15
+            runs_on: macos-15
             electron_target: mac
             arch: arm64
             git_bundle_targets: darwin-arm64
@@ -243,14 +265,14 @@ jobs:
             artifact_name: macos-x64
             # Blacksmith currently documents Apple Silicon macOS runners, so the
             # x64 package is built from the same macOS 15 pool with an x64 target.
-            runs_on: depot-macos-15
+            runs_on: macos-15
             electron_target: mac
             arch: x64
             git_bundle_targets: darwin-x64
             runtime_bundle_targets: darwin-x64
           - name: Windows x64
             artifact_name: windows-x64
-            runs_on: depot-windows-2025-4
+            runs_on: windows-2025
             electron_target: win
             arch: x64
             git_bundle_targets: win32-x64
@@ -267,7 +289,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           ref: ${{ needs.plan.outputs.checkout_ref }}
           submodules: true
 
@@ -280,6 +302,22 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.0"
+
+      - name: Cache bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Cache vendored T3 substrate
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/t3code/node_modules
+            vendor/t3code/apps/server/dist
+          key: t3-${{ runner.os }}-${{ hashFiles('docs/substrate-t3-pin.md') }}
 
       - name: Validate shared release build env
         shell: bash
