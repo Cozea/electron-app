@@ -1774,7 +1774,6 @@ export function useWorkbenchAssistantTileController(
   const addComposerImages = useCallback(
     (files: File[]) => {
       if (files.length === 0) return
-      if (!thread) return
       if (pendingUserInputs.length > 0) {
         setSendError("Attach images after answering pending questions.")
         return
@@ -1816,7 +1815,7 @@ export function useWorkbenchAssistantTileController(
         setSendError(error)
       }
     },
-    [composerImages.length, pendingUserInputs.length, thread],
+    [composerImages.length, pendingUserInputs.length],
   )
 
   const removeComposerImage = useCallback((imageId: string) => {
