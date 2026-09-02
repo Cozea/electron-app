@@ -115,8 +115,28 @@ jobs:
             --tag "$IMAGE_REPOSITORY:$BUILD_ID" \
             "$IMAGE_REPOSITORY@$ARM64_DIGEST" \
             "$IMAGE_REPOSITORY@$AMD64_DIGEST"
-          MANIFEST_DIGEST="$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$BUILD_ID" | awk '/^Digest:/ {print $2; exit}')"
-          [[ "$MANIFEST_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          # Reading the tag back can fail right after the manifest list is pushed.
+          # Piping inspect straight into awk sent its stdout to the pipeline and left
+          # its exit code to `pipefail`, so a failure here ended the whole step with a
+          # bare "exit code 255" and nothing to read. Capture both streams instead,
+          # print them when an attempt fails, and give the registry a few tries.
+          MANIFEST_DIGEST=""
+          for attempt in 1 2 3 4 5; do
+            if inspect_output="$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$BUILD_ID" 2>&1)"; then
+              candidate="$(printf '%s\n' "$inspect_output" | awk '/^Digest:/ {print $2; exit}')"
+              if [[ "$candidate" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+                MANIFEST_DIGEST="$candidate"
+                break
+              fi
+            fi
+            echo "::warning::imagetools inspect attempt ${attempt} yielded no manifest digest"
+            printf '%s\n' "$inspect_output"
+            sleep "$(( attempt * 3 ))"
+          done
+          if [[ ! "$MANIFEST_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "Could not resolve the manifest digest for ${IMAGE_REPOSITORY}:${BUILD_ID}." >&2
+            exit 1
+          fi
           bun run scripts/finalize-devapp-runtime-build.ts \
             --plan build/devapp-image-plan.json \
             --repository "$IMAGE_REPOSITORY" \
