@@ -52,6 +52,20 @@ app. The first run builds the vendored server bundle and takes considerably long
 subsequent ones; after that a stamp file lets it skip the rebuild while the pin is
 unchanged.
 
+It compiles the container helper but not the kernel and manifest that sit beside it, so
+contained DevApps report themselves unavailable until those are prepared once:
+
+```bash
+bun run prepare:devapp-runtime
+```
+
+That downloads the digest-pinned kernel, ad-hoc signs the helper with the virtualization
+entitlement, and writes `build/devapp-container-runtime/resource-manifest.json` — which
+the app checks the helper and kernel against by sha256 before spawning either. It needs
+Apple silicon and network access but no signing identity, and
+`bun run prepare:devapp-runtime:check` verifies the result. Nothing else in the app
+depends on it.
+
 Copy `.env.example` to `.env` and fill in your own backend endpoints. The repository
 does not ship credentials, and no deployment is named in tracked files.
 
