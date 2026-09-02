@@ -6,16 +6,16 @@ Last reviewed: 2026-04-13
 
 The 2026-04-13 desktop-loading refactor already removed or softened several of the most visible gates:
 
-- common settings/admin route `Suspense` loaders were removed by eagerly importing those surfaces in [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
-- [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx) no longer shows a visible `Loading workspace settings…` banner
-- [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx), [Roles.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Roles.tsx), and [MemberDetails.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/MemberDetails.tsx) now render shell-first and only use inline background-refresh copy
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx) now renders immediately and keeps controls disabled until the connection snapshot is known instead of showing page-level loading cards
-- [BillingContent.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx) now keeps the seat-assignment table visible and uses inline refresh text instead of replacing the table with a loading row
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) no longer blocks on the workbench slice existing before rendering the shell
+- common settings/admin route `Suspense` loaders were removed by eagerly importing those surfaces in [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx)
+- [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx) no longer shows a visible `Loading workspace settings…` banner
+- [Members.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Members.tsx), [Roles.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Roles.tsx), and [MemberDetails.tsx](<home>/Downloads/electron-app-main/src/pages/teams/MemberDetails.tsx) now render shell-first and only use inline background-refresh copy
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx) now renders immediately and keeps controls disabled until the connection snapshot is known instead of showing page-level loading cards
+- [BillingContent.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx) now keeps the seat-assignment table visible and uses inline refresh text instead of replacing the table with a loading row
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) no longer blocks on the workbench slice existing before rendering the shell
 - several local-only pages now use calmer empty-state language instead of explicit `Checking…` / `Loading…` copy:
-  - [Storage.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
-  - [Tooling.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Tooling.tsx)
-  - [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
+  - [Storage.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
+  - [Tooling.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Tooling.tsx)
+  - [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
 
 The lists below still include the remaining gates and mixed states that should be reviewed later.
 

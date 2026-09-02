@@ -14,15 +14,15 @@ membership is absent. See [device-identity.md](./device-identity.md).
 
 ### Implemented on the live path
 
-- Electron-managed device identity and local key wrapping in [collabKeys.ts](/Users/admin/Downloads/electron-app-main/electron/collabKeys.ts)
-- renderer IPC bridge and key operations in [CollabEncryptionService.ts](/Users/admin/Downloads/electron-app-main/electron/services/CollabEncryptionService.ts), [preload.ts](/Users/admin/Downloads/electron-app-main/electron/preload.ts), and [electronApiTypes.ts](/Users/admin/Downloads/electron-app-main/shared/electronApiTypes.ts)
-- encrypted collaboration bootstrap in [collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts) and [useCollabSession.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
-- encrypted room metadata and wrapped-key distribution in [schema.ts](/Users/admin/Downloads/electron-app-main/convex/schema.ts) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-- encrypted websocket updates and awareness payloads in [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
-- encrypted bootstrap snapshots and encrypted local snapshot cache in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx), [cipherEnvelope.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/cipherEnvelope.ts), and [EncryptedLocalSnapshotStore.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
+- Electron-managed device identity and local key wrapping in [collabKeys.ts](<home>/Downloads/electron-app-main/electron/collabKeys.ts)
+- renderer IPC bridge and key operations in [CollabEncryptionService.ts](<home>/Downloads/electron-app-main/electron/services/CollabEncryptionService.ts), [preload.ts](<home>/Downloads/electron-app-main/electron/preload.ts), and [electronApiTypes.ts](<home>/Downloads/electron-app-main/shared/electronApiTypes.ts)
+- encrypted collaboration bootstrap in [collab.ts](<home>/Downloads/electron-app-main/server/src/routes/collab.ts) and [useCollabSession.ts](<home>/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
+- encrypted room metadata and wrapped-key distribution in [schema.ts](<home>/Downloads/electron-app-main/convex/schema.ts) and [yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts)
+- encrypted websocket updates and awareness payloads in [CollabWsProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
+- encrypted bootstrap snapshots and encrypted local snapshot cache in [YjsProjectContext.tsx](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx), [cipherEnvelope.ts](<home>/Downloads/electron-app-main/src/lib/collab/cipherEnvelope.ts), and [EncryptedLocalSnapshotStore.ts](<home>/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
 - stale plaintext-room assumptions removed from the live path; the first encrypted room initialization clears any leftover pre-encryption payloads before the room comes online
-- trusted-device key sharing, recovery-code generation, recovery-code based device recovery, device revocation controls, automatic room-key rotation on revocation, manual room-key rotation, and destructive room recovery in [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx) and [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-- encrypted payload version validation and stale-key websocket invalidation in [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts), [yjsAwareness.ts](/Users/admin/Downloads/electron-app-main/convex/yjsAwareness.ts), [collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts), and [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
+- trusted-device key sharing, recovery-code generation, recovery-code based device recovery, device revocation controls, automatic room-key rotation on revocation, manual room-key rotation, and destructive room recovery in [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx) and [yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts)
+- encrypted payload version validation and stale-key websocket invalidation in [yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts), [yjsAwareness.ts](<home>/Downloads/electron-app-main/convex/yjsAwareness.ts), [collab.ts](<home>/Downloads/electron-app-main/server/src/routes/collab.ts), and [CollabWsProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
 
 ## Goal
 

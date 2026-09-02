@@ -7,7 +7,7 @@ to configure/select them.
 
 T3 reference checkout:
 
-`/Users/admin/Downloads/apps-we-study/t3code-latest-main`
+`<home>/Downloads/apps-we-study/t3code-latest-main`
 
 ## Current Progress
 
@@ -75,9 +75,9 @@ Before every edit:
 Default comparison commands:
 
 ```shell
-rg -n "ProviderInstance|providerInstanceId|ProviderDriverKind|ModelSelection" /Users/admin/Downloads/apps-we-study/t3code-latest-main/packages/contracts/src
-rg -n "ProviderInstanceRegistry|ProviderDriver|providerInstanceId|resolveRoutableSession" /Users/admin/Downloads/apps-we-study/t3code-latest-main/apps/server/src/provider
-rg -n "deriveProviderInstanceEntries|ProviderModelPicker|ProviderInstanceCard" /Users/admin/Downloads/apps-we-study/t3code-latest-main/apps/web/src
+rg -n "ProviderInstance|providerInstanceId|ProviderDriverKind|ModelSelection" <home>/Downloads/apps-we-study/t3code-latest-main/packages/contracts/src
+rg -n "ProviderInstanceRegistry|ProviderDriver|providerInstanceId|resolveRoutableSession" <home>/Downloads/apps-we-study/t3code-latest-main/apps/server/src/provider
+rg -n "deriveProviderInstanceEntries|ProviderModelPicker|ProviderInstanceCard" <home>/Downloads/apps-we-study/t3code-latest-main/apps/web/src
 rg -n "ProviderKind|providerInstanceId|ModelSelection|startSession|sendTurn" shared electron src
 ```
 

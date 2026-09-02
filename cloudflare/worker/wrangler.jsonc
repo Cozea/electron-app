@@ -1,7 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cozea-collab",
-  "account_id": "c9081ef53a698d2ee92516a8a7752ebc",
+  // Account is resolved from the authenticated wrangler session, or set
+  // CLOUDFLARE_ACCOUNT_ID in the environment. Not hardcoded so the public
+  // repository does not name the deploying account.
   "main": "src/index.ts",
   "compatibility_date": "2026-04-17",
   "compatibility_flags": ["nodejs_compat"],

@@ -2,7 +2,7 @@
 
 Operator checklist for landing [PR #70](https://github.com/Cozea/electron-app/pull/70)
 without breaking the production Convex deployment
-(`https://knowing-finch-546.convex.cloud`) or already-installed desktop clients.
+(`https://your-deployment.convex.cloud`) or already-installed desktop clients.
 
 This repo runs **production Convex only**. Every deploy in this document is
 `bunx convex deploy`. Never run `convex dev` / `bunx convex dev --once` — it

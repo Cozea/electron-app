@@ -6,24 +6,24 @@ Last reviewed: 2026-04-13
 
 Implemented in the 2026-04-13 desktop-loading pass:
 
-- common settings/admin routes are now eagerly imported in [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx), so local code-split waits are no longer exposed for the everyday desktop settings surfaces
-- login and onboarding now render directly from [App.tsx](/Users/admin/Downloads/electron-app-main/src/App.tsx), and local `Storage` / `Tooling` snapshots are prewarmed after auth settles
-- [useQueryCache.ts](/Users/admin/Downloads/electron-app-main/src/stores/useQueryCache.ts) now has snapshot-aware semantics that distinguish fresh resolution from cached refresh state, including correct `null` handling
+- common settings/admin routes are now eagerly imported in [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx), so local code-split waits are no longer exposed for the everyday desktop settings surfaces
+- login and onboarding now render directly from [App.tsx](<home>/Downloads/electron-app-main/src/App.tsx), and local `Storage` / `Tooling` snapshots are prewarmed after auth settles
+- [useQueryCache.ts](<home>/Downloads/electron-app-main/src/stores/useQueryCache.ts) now has snapshot-aware semantics that distinguish fresh resolution from cached refresh state, including correct `null` handling
 - scope/access hooks now expose refresh and resolution state instead of forcing page-level `loading` gates:
-  - [useScopedOrganizationData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedOrganizationData.ts)
-  - [useScopedAppContext.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
-  - [useScopedSettingsPage.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedSettingsPage.ts)
+  - [useScopedOrganizationData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedOrganizationData.ts)
+  - [useScopedAppContext.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
+  - [useScopedSettingsPage.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedSettingsPage.ts)
 - people/admin surfaces now render shell-first with inline refresh instead of blocking cards:
-  - [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx)
-  - [Roles.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
-  - [MemberDetails.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/MemberDetails.tsx)
+  - [Members.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Members.tsx)
+  - [Roles.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
+  - [MemberDetails.tsx](<home>/Downloads/electron-app-main/src/pages/teams/MemberDetails.tsx)
 - source control and billing now keep their structure visible while data refreshes in the background:
-  - [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-  - [useScopedBillingData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedBillingData.ts)
-  - [useBillingController.ts](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/useBillingController.ts)
-  - [BillingContent.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx)
-- the workbench now renders its shell as soon as the project identity exists in [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx), instead of waiting for the persisted workbench slice to hydrate first
-- project/workspace context now reuses cached organization snapshots in [useProjectWorkspaceContext.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkspaceContext.ts)
+  - [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+  - [useScopedBillingData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedBillingData.ts)
+  - [useBillingController.ts](<home>/Downloads/electron-app-main/src/pages/workspace/billing/useBillingController.ts)
+  - [BillingContent.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx)
+- the workbench now renders its shell as soon as the project identity exists in [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx), instead of waiting for the persisted workbench slice to hydrate first
+- project/workspace context now reuses cached organization snapshots in [useProjectWorkspaceContext.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkspaceContext.ts)
 
 Still intentionally left for later passes:
 
@@ -51,15 +51,15 @@ This plan is intentionally architectural. The problem is not "too many spinners"
 Cozea currently has several web-app-oriented patterns that are working against a desktop feel:
 
 1. Route-first loading
-- Many screens are lazy-loaded with visible `Suspense` fallbacks in [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx).
+- Many screens are lazy-loaded with visible `Suspense` fallbacks in [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx).
 - This exposes local code loading as visible page loading.
 
 2. Query-gated rendering
 - Many pages render `loading` instead of rendering the shell and filling content progressively.
 - Example hooks:
-  - [useScopedGeneralData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedGeneralData.ts)
-  - [useScopedWorkspacePeopleData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedWorkspacePeopleData.ts)
-  - [useScopedAppContext.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
+  - [useScopedGeneralData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedGeneralData.ts)
+  - [useScopedWorkspacePeopleData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedWorkspacePeopleData.ts)
+  - [useScopedAppContext.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
 
 3. Layered scope/access resolution before page render
 - A settings page often depends on:
@@ -80,7 +80,7 @@ Cozea currently has several web-app-oriented patterns that are working against a
   - terminal/dev-preview boot
 
 5. Cache exists but is not the default UI contract
-- We have [useQueryCache.ts](/Users/admin/Downloads/electron-app-main/src/stores/useQueryCache.ts), which is useful.
+- We have [useQueryCache.ts](<home>/Downloads/electron-app-main/src/stores/useQueryCache.ts), which is useful.
 - But many screens still think in terms of `fresh data or loading` instead of `stale-first, refresh later`.
 
 6. Renderer owns too much orchestration
@@ -239,7 +239,7 @@ This layer should live longer than individual pages and survive remounts.
 
 Possible locations to extend:
 
-- [useQueryCache.ts](/Users/admin/Downloads/electron-app-main/src/stores/useQueryCache.ts)
+- [useQueryCache.ts](<home>/Downloads/electron-app-main/src/stores/useQueryCache.ts)
 - app-specific desktop snapshot stores alongside existing Zustand stores
 
 ### Requirements
@@ -272,9 +272,9 @@ Refactor toward:
 
 Key files:
 
-- [useScopedAppContext.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
-- [useScopedSettingsPage.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedSettingsPage.ts)
-- [useScopedOrganizationData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedOrganizationData.ts)
+- [useScopedAppContext.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
+- [useScopedSettingsPage.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedSettingsPage.ts)
+- [useScopedOrganizationData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedOrganizationData.ts)
 
 ### Desired end state
 
@@ -318,13 +318,13 @@ Can show:
 
 This is especially important for:
 
-- [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx)
-- [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx)
-- [Roles.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
-- [Storage.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
-- [Tooling.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Tooling.tsx)
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-- [BillingContent.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx)
+- [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx)
+- [Members.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Members.tsx)
+- [Roles.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
+- [Storage.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
+- [Tooling.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Tooling.tsx)
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+- [BillingContent.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx)
 
 ## 4. Route Preload Strategy
 
@@ -345,8 +345,8 @@ Make route fallback UI effectively disappear in normal usage.
 
 Relevant files:
 
-- [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
-- [App.tsx](/Users/admin/Downloads/electron-app-main/src/App.tsx)
+- [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx)
+- [App.tsx](<home>/Downloads/electron-app-main/src/App.tsx)
 
 ## 5. Runtime Surface Managers
 
@@ -356,8 +356,8 @@ For heavy local surfaces, we should move from page-driven initialization to pers
 
 Today:
 
-- [useProjectLaneState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- [useProjectLaneState.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
 
 Target:
 
@@ -368,8 +368,8 @@ Target:
 
 Today:
 
-- [WorkbenchTerminalTile.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchTerminalTile.tsx)
-- [TerminalInstance.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/TerminalInstance.tsx)
+- [WorkbenchTerminalTile.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchTerminalTile.tsx)
+- [TerminalInstance.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/TerminalInstance.tsx)
 
 Target:
 
@@ -381,9 +381,9 @@ Target:
 
 Today:
 
-- [WorkbenchDevServerTile.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx)
-- [useWorkbenchBrowserView.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/useWorkbenchBrowserView.ts)
-- [IosSimulatorViewport.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/previews/IosSimulatorViewport.tsx)
+- [WorkbenchDevServerTile.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx)
+- [useWorkbenchBrowserView.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/useWorkbenchBrowserView.ts)
+- [IosSimulatorViewport.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/previews/IosSimulatorViewport.tsx)
 
 Target:
 
@@ -466,8 +466,8 @@ Goal:
 
 ### Files
 
-- [docs/loading-state-inventory.md](/Users/admin/Downloads/electron-app-main/docs/loading-state-inventory.md)
-- [SettingsChrome.tsx](/Users/admin/Downloads/electron-app-main/src/components/settings/SettingsChrome.tsx)
+- [docs/loading-state-inventory.md](<home>/Downloads/electron-app-main/docs/loading-state-inventory.md)
+- [SettingsChrome.tsx](<home>/Downloads/electron-app-main/src/components/settings/SettingsChrome.tsx)
 - shared table components as needed
 
 ## Phase 2: Remove Visible Route Loading For Common Surfaces
@@ -484,8 +484,8 @@ Goal:
 
 ### Files
 
-- [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
-- [App.tsx](/Users/admin/Downloads/electron-app-main/src/App.tsx)
+- [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx)
+- [App.tsx](<home>/Downloads/electron-app-main/src/App.tsx)
 - settings and sidebar/nav entry points
 
 ## Phase 3: Refactor Scoped Context To Snapshot + Refresh
@@ -496,9 +496,9 @@ Goal:
 
 ### Tasks
 
-1. Refactor [useScopedAppContext.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts) to return stable cached snapshot first.
-2. Refactor [useScopedOrganizationData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedOrganizationData.ts) away from `undefined => page loading`.
-3. Refactor [useScopedSettingsPage.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedSettingsPage.ts) so pages get resolved scope + refresh metadata, not a loading gate.
+1. Refactor [useScopedAppContext.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts) to return stable cached snapshot first.
+2. Refactor [useScopedOrganizationData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedOrganizationData.ts) away from `undefined => page loading`.
+3. Refactor [useScopedSettingsPage.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedSettingsPage.ts) so pages get resolved scope + refresh metadata, not a loading gate.
 
 ### Success condition
 
@@ -512,12 +512,12 @@ Goal:
 
 ### Targets
 
-- [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx)
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-- [BillingContent.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx)
-- [Storage.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
-- [Tooling.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Tooling.tsx)
-- [Account.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Account.tsx)
+- [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx)
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+- [BillingContent.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx)
+- [Storage.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
+- [Tooling.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Tooling.tsx)
+- [Account.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Account.tsx)
 
 ### Tasks
 
@@ -535,10 +535,10 @@ Goal:
 
 ### Targets
 
-- [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx)
-- [Roles.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
-- [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- [Members.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Members.tsx)
+- [Roles.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
+- [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
 
 ### Tasks
 
@@ -557,8 +557,8 @@ Goal:
 
 ### Targets
 
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- [useProjectLaneState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- [useProjectLaneState.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
 - workbench tile bootstrap hooks/components
 
 ### Tasks
@@ -706,17 +706,17 @@ We should consider the refactor successful when:
 
 If we want the highest-value first wins, start here:
 
-1. [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
+1. [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx)
    - reduce visible route fallback for common settings/admin screens
-2. [useScopedAppContext.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
+2. [useScopedAppContext.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
    - return stable snapshot-first app context
-3. [useScopedWorkspacePeopleData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedWorkspacePeopleData.ts)
+3. [useScopedWorkspacePeopleData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedWorkspacePeopleData.ts)
    - stop collapsing multiple unresolved queries into a page-blocking `isLoading`
-4. [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx)
+4. [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx)
    - first shell-first settings conversion
-5. [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx)
+5. [Members.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Members.tsx)
    - first shell-first table conversion
-6. [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+6. [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
    - move away from whole-workbench loading gate
 
 ## Final Position

@@ -267,7 +267,7 @@ This is especially true because the path usually does not change often.
 
 ## T3 Reference Direction
 
-Reference clone used for comparison: `/Users/admin/Downloads/t3code`
+Reference clone used for comparison: `<home>/Downloads/t3code`
 
 T3's direction is better here because it treats workspace `cwd` as a persisted local identity, not something that must be reconstructed from a slug every time:
 

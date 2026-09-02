@@ -26,9 +26,9 @@ The end state should let someone:
 
 Today the app still collapses too much into `defaultBranch`.
 
-- Project config resolves one branch from `sourceControl.defaultBranch` / `gitRepository.defaultBranch`: [projectGitRuntime.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts#L84)
-- In attached/local-existing mode, the app overrides that with the branch currently checked out in the local repo: [projectGitRuntime.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts#L205), [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts#L465)
-- Settings actions like fetch/pull/push/ensure still resolve around that same branch concept: [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx#L299)
+- Project config resolves one branch from `sourceControl.defaultBranch` / `gitRepository.defaultBranch`: [projectGitRuntime.ts](<home>/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts#L84)
+- In attached/local-existing mode, the app overrides that with the branch currently checked out in the local repo: [projectGitRuntime.ts](<home>/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts#L205), [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts#L465)
+- Settings actions like fetch/pull/push/ensure still resolve around that same branch concept: [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx#L299)
 
 That means the app currently mixes:
 
@@ -343,18 +343,18 @@ Examples:
 
 ### Shared/Convex/Data Model
 
-- [convex/schema.ts](/Users/admin/Downloads/electron-app-main/convex/schema.ts)
-- [convex/projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
-- [convex/sourceControl.ts](/Users/admin/Downloads/electron-app-main/convex/sourceControl.ts)
-- [shared/versionControl.ts](/Users/admin/Downloads/electron-app-main/shared/versionControl.ts)
-- [shared/electronApiTypes.ts](/Users/admin/Downloads/electron-app-main/shared/electronApiTypes.ts)
+- [convex/schema.ts](<home>/Downloads/electron-app-main/convex/schema.ts)
+- [convex/projects.ts](<home>/Downloads/electron-app-main/convex/projects.ts)
+- [convex/sourceControl.ts](<home>/Downloads/electron-app-main/convex/sourceControl.ts)
+- [shared/versionControl.ts](<home>/Downloads/electron-app-main/shared/versionControl.ts)
+- [shared/electronApiTypes.ts](<home>/Downloads/electron-app-main/shared/electronApiTypes.ts)
 
 ### Branch Resolution / Sync
 
-- [projectGitRuntime.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
-- [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
-- [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- [projectGitRuntime.ts](<home>/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
+- [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
+- [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
 
 ### Local Lane Registry
 
@@ -365,8 +365,8 @@ Likely new files near:
 
 ### Header / Workbench Git Controls
 
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- [WorkbenchHeaderEditorControl.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderEditorControl.tsx)
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- [WorkbenchHeaderEditorControl.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderEditorControl.tsx)
 - new branch/lane control components in `src/features/projects/components/workbench/`
 
 ## Behavior Rules
@@ -449,7 +449,7 @@ The best plan is:
 
 - Added `sourceControl.activeCollabBranch` to the shared project model and kept compatibility reads/writes through the old `defaultBranch` path while we transition.
 - Updated branch resolution in the runtime to prefer `activeCollabBranch` over the legacy field.
-- Added a machine-local Electron lane registry in [projectLaneRegistry.ts](/Users/admin/Downloads/electron-app-main/electron/projectLaneRegistry.ts) with explicit collab lane support.
+- Added a machine-local Electron lane registry in [projectLaneRegistry.ts](<home>/Downloads/electron-app-main/electron/projectLaneRegistry.ts) with explicit collab lane support.
 - Added project IPC/preload APIs for lane state so renderer workbench code can read and switch lanes.
 - Updated project settings to expose `Active Collab Branch` separately from the repository default branch.
 - Updated workbench header branch switching to use T3-style `status + listBranches` data and to create/reuse personal worktree lanes instead of treating the shared checkout as the user branch lane.

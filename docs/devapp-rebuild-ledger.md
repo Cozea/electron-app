@@ -26,7 +26,7 @@ Every "left suspended" item was checked in code rather than recalled.
 
 ## The shape of it
 
-The rebuild started from one bug: `/Users/admin/dev/nihao` could not be published.
+The rebuild started from one bug: `<home>/dev/nihao` could not be published.
 Diagnosing it exposed that the restriction wasn't the bug — the model was. DevApps could
 only be one of eight hardcoded kinds, could only be a web view, and could only be authored
 by building blind and hoping.

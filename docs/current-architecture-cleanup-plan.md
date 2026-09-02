@@ -23,10 +23,10 @@ That was the wrong framing.
 
 The current app already has:
 
-- a shell owner in [ProjectLayout.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
-- a shared header composition system in [UnifiedHeader.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx), [useProjectChromeHeader.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx), and [useProjectHeader.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useProjectHeader.ts)
-- a project/workbench route model in [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
-- a real workbench-centric runtime surface in [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- a shell owner in [ProjectLayout.tsx](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
+- a shared header composition system in [UnifiedHeader.tsx](<home>/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx), [useProjectChromeHeader.tsx](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx), and [useProjectHeader.ts](<home>/Downloads/electron-app-main/src/hooks/useProjectHeader.ts)
+- a project/workbench route model in [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx)
+- a real workbench-centric runtime surface in [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
 
 So the correct plan is:
 
@@ -43,10 +43,10 @@ Do not introduce a new shell layer if the current one already owns the concern.
 
 Current canonical owners:
 
-- app/project shell: [ProjectLayout.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
-- header composition: [useProjectChromeHeader.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx) + [useProjectHeader.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useProjectHeader.ts)
-- workbench runtime page: [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- workbench tiles/runtime: [WorkbenchDockPanels.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDockPanels.tsx)
+- app/project shell: [ProjectLayout.tsx](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
+- header composition: [useProjectChromeHeader.tsx](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx) + [useProjectHeader.ts](<home>/Downloads/electron-app-main/src/hooks/useProjectHeader.ts)
+- workbench runtime page: [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- workbench tiles/runtime: [WorkbenchDockPanels.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDockPanels.tsx)
 
 ### Clean Up Migrated Structure, Don’t Replace It
 
@@ -101,11 +101,11 @@ The current app should be understood as:
 
 That is already reflected in the code:
 
-- workspace and scope resolution: [useScopedAppContext.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
-- project shell and route ownership: [ProjectLayout.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
-- project/workbench routes: [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
-- workbench runtime: [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- per-project workbench state: [useProjectWorkbenchStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/useProjectWorkbenchStore.ts)
+- workspace and scope resolution: [useScopedAppContext.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedAppContext.ts)
+- project shell and route ownership: [ProjectLayout.tsx](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
+- project/workbench routes: [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx)
+- workbench runtime: [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- per-project workbench state: [useProjectWorkbenchStore.ts](<home>/Downloads/electron-app-main/src/stores/useProjectWorkbenchStore.ts)
 
 The cleanup plan should sharpen this model, not replace it.
 
@@ -117,12 +117,12 @@ The route tree still carries migrated compatibility paths and fallback-era behav
 
 Primary files:
 
-- [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx)
-- [ProjectsLaunchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx)
-- [LegacyProjectRedirectPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/LegacyProjectRedirectPage.tsx)
-- [projectRoutes.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectRoutes.ts)
-- [projectShare.ts](/Users/admin/Downloads/electron-app-main/shared/projectShare.ts)
-- [AcceptInvitation.tsx](/Users/admin/Downloads/electron-app-main/src/pages/AcceptInvitation.tsx)
+- [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx)
+- [ProjectsLaunchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx)
+- [LegacyProjectRedirectPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/LegacyProjectRedirectPage.tsx)
+- [projectRoutes.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectRoutes.ts)
+- [projectShare.ts](<home>/Downloads/electron-app-main/shared/projectShare.ts)
+- [AcceptInvitation.tsx](<home>/Downloads/electron-app-main/src/pages/AcceptInvitation.tsx)
 
 Cleanup objective:
 
@@ -137,11 +137,11 @@ The shell is correct, but still carries migrated complexity.
 
 Primary files:
 
-- [ProjectLayout.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
-- [UnifiedHeader.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx)
-- [useProjectChromeHeader.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx)
-- [ProjectShellTitleBarLeft.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectShellTitleBarLeft.tsx)
-- [LayoutToggles.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/LayoutToggles.tsx)
+- [ProjectLayout.tsx](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx)
+- [UnifiedHeader.tsx](<home>/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx)
+- [useProjectChromeHeader.tsx](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx)
+- [ProjectShellTitleBarLeft.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectShellTitleBarLeft.tsx)
+- [LayoutToggles.tsx](<home>/Downloads/electron-app-main/src/components/layouts/LayoutToggles.tsx)
 
 Cleanup objective:
 
@@ -156,10 +156,10 @@ The sidebar is a major source of inherited complexity and state coordination.
 
 Primary files:
 
-- [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
-- [ProjectSidebarTreeItem.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/ProjectSidebarTreeItem.tsx)
-- [projectSidebarShared.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarShared.ts)
-- [projectSidebarState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarState.ts)
+- [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
+- [ProjectSidebarTreeItem.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/ProjectSidebarTreeItem.tsx)
+- [projectSidebarShared.ts](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarShared.ts)
+- [projectSidebarState.ts](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarState.ts)
 
 Cleanup objective:
 
@@ -174,10 +174,10 @@ The workbench is the core product surface, but the cleanup here should be intern
 
 Primary files:
 
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- [useProjectWorkbenchSearchParamSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts)
-- [useWorkbenchDockviewRuntime.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts)
-- [workbenchLayoutPersistence.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/workbenchLayoutPersistence.ts)
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- [useProjectWorkbenchSearchParamSync.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts)
+- [useWorkbenchDockviewRuntime.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts)
+- [workbenchLayoutPersistence.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/workbenchLayoutPersistence.ts)
 
 Cleanup objective:
 
@@ -192,10 +192,10 @@ Some active naming and files still reflect older product models.
 
 Primary files:
 
-- [useProjectPagesStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/useProjectPagesStore.ts)
-- [DevServerPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/DevServerPanel.tsx)
-- [ServerControl.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ServerControl.tsx)
-- [WorkbenchDevServerTile.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx)
+- [useProjectPagesStore.ts](<home>/Downloads/electron-app-main/src/stores/useProjectPagesStore.ts)
+- [DevServerPanel.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/DevServerPanel.tsx)
+- [ServerControl.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ServerControl.tsx)
+- [WorkbenchDevServerTile.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx)
 
 Cleanup objective:
 
@@ -209,9 +209,9 @@ These areas are still large and clearly show layered migration history.
 
 Primary files:
 
-- [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
-- [gitSyncService.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncService.ts)
-- [runtimeWorkspaces.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts)
+- [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
+- [gitSyncService.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncService.ts)
+- [runtimeWorkspaces.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts)
 
 Cleanup objective:
 
@@ -225,12 +225,12 @@ The app still contains structure from older workspace/team/product eras.
 
 Primary files:
 
-- [SettingsSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/SettingsSidebar.tsx)
-- [SettingsDrawer.tsx](/Users/admin/Downloads/electron-app-main/src/components/settings/SettingsDrawer.tsx)
-- [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx)
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-- [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx)
-- [Roles.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
+- [SettingsSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/SettingsSidebar.tsx)
+- [SettingsDrawer.tsx](<home>/Downloads/electron-app-main/src/components/settings/SettingsDrawer.tsx)
+- [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx)
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+- [Members.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Members.tsx)
+- [Roles.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Roles.tsx)
 
 Cleanup objective:
 
@@ -242,7 +242,7 @@ Cleanup objective:
 
 These are hard rules for this cleanup pass:
 
-- Do not add a new shell layer if [ProjectLayout.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx) can own the concern.
+- Do not add a new shell layer if [ProjectLayout.tsx](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx) can own the concern.
 - Do not add new full-screen loading shells for local desktop transitions.
 - Do not move project/team/admin actions into the workbench header unless they already belong there.
 - Do not replace the current header composition system.
@@ -273,17 +273,17 @@ Progress:
 
 - `/join/project/$token` is now reduced to a tiny compatibility redirect to the canonical `/projects/join/$token` route.
 - `/invite/$token` is intentionally still kept for now because it is still part of auth/workspace-selection exemptions and serves an explicit retired-flow message.
-- Legacy slug routing is intentionally still kept for now because [LegacyProjectRedirectPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/LegacyProjectRedirectPage.tsx), [parseProjectRoute](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectRoutes.ts), and [buildLegacyProjectPath](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectRoutes.ts) are still part of active navigation and context resolution.
-- [ProjectsLaunchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx) copy was tightened to use workbench language instead of older page-era wording.
-- Common local project routes now load eagerly in [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx) instead of showing avoidable route-chunk loading interstitials for the normal desktop flow:
-  [ProjectLayout](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx),
-  [ProjectsLaunchPage](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx),
-  [ProjectWorkbenchPage](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx),
-  [TasksPage](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/TasksPage.tsx),
-  [ProjectTeamPage](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx),
-  [ProjectConflictsPage](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectConflictsPage.tsx),
-  and [NewProject](/Users/admin/Downloads/electron-app-main/src/pages/NewProject.tsx).
-- [ProjectsLaunchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx) and [NewProject.tsx](/Users/admin/Downloads/electron-app-main/src/pages/NewProject.tsx) no longer return blank `null` states during fast local transitions; they now keep a stable in-shell loading surface instead.
+- Legacy slug routing is intentionally still kept for now because [LegacyProjectRedirectPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/LegacyProjectRedirectPage.tsx), [parseProjectRoute](<home>/Downloads/electron-app-main/src/features/projects/lib/projectRoutes.ts), and [buildLegacyProjectPath](<home>/Downloads/electron-app-main/src/features/projects/lib/projectRoutes.ts) are still part of active navigation and context resolution.
+- [ProjectsLaunchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx) copy was tightened to use workbench language instead of older page-era wording.
+- Common local project routes now load eagerly in [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx) instead of showing avoidable route-chunk loading interstitials for the normal desktop flow:
+  [ProjectLayout](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx),
+  [ProjectsLaunchPage](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx),
+  [ProjectWorkbenchPage](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx),
+  [TasksPage](<home>/Downloads/electron-app-main/src/features/projects/pages/TasksPage.tsx),
+  [ProjectTeamPage](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx),
+  [ProjectConflictsPage](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectConflictsPage.tsx),
+  and [NewProject](<home>/Downloads/electron-app-main/src/pages/NewProject.tsx).
+- [ProjectsLaunchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectsLaunchPage.tsx) and [NewProject.tsx](<home>/Downloads/electron-app-main/src/pages/NewProject.tsx) no longer return blank `null` states during fast local transitions; they now keep a stable in-shell loading surface instead.
 
 Exit criteria:
 
@@ -293,16 +293,16 @@ Exit criteria:
 
 ### Phase 2: Header and Shell Cleanup
 
-- Keep [ProjectLayout.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx) as shell owner.
-- Keep [useProjectChromeHeader.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx) as the main header composer.
+- Keep [ProjectLayout.tsx](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx) as shell owner.
+- Keep [useProjectChromeHeader.tsx](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx) as the main header composer.
 - Reduce special-case logic in header-related helpers.
 - Document the actual header zones and what belongs in each.
 
 Progress:
 
-- [useProjectHeader.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useProjectHeader.ts) now updates the shared header store without clearing it on every dependency change; reset is now unmount-only.
-- [useProjectHeaderStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/useProjectHeaderStore.ts) now no-ops identical writes and no longer relies on `@ts-nocheck`.
-- [UnifiedHeader.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx) and [ProjectLayout.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx) no longer carry the stale unused `breadcrumbs` prop from an older header composition shape.
+- [useProjectHeader.ts](<home>/Downloads/electron-app-main/src/hooks/useProjectHeader.ts) now updates the shared header store without clearing it on every dependency change; reset is now unmount-only.
+- [useProjectHeaderStore.ts](<home>/Downloads/electron-app-main/src/stores/useProjectHeaderStore.ts) now no-ops identical writes and no longer relies on `@ts-nocheck`.
+- [UnifiedHeader.tsx](<home>/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx) and [ProjectLayout.tsx](<home>/Downloads/electron-app-main/src/features/projects/layouts/ProjectLayout.tsx) no longer carry the stale unused `breadcrumbs` prop from an older header composition shape.
 
 Exit criteria:
 
@@ -317,7 +317,7 @@ Exit criteria:
 
 Progress:
 
-- Project-sidebar route/selection derivation now lives in [projectSidebarRoutes.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarRoutes.ts) instead of being embedded inline inside [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx).
+- Project-sidebar route/selection derivation now lives in [projectSidebarRoutes.ts](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarRoutes.ts) instead of being embedded inline inside [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx).
 - The sidebar still owns rendering and actions, but the current route-state rules for workbench vs settings vs project submenu are now explicit and isolated.
 
 Exit criteria:
@@ -327,23 +327,23 @@ Exit criteria:
 
 ### Phase 4: Workbench Internal Cleanup
 
-- Split [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) by responsibility.
+- Split [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) by responsibility.
 - Keep current header injection model.
 - Keep current route/search-param behavior unless explicitly cleaning a dead path.
 - Narrow selectors and runtime wiring where possible.
 
 Progress:
 
-- [useProjectWorkbenchSearchParamSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts) is now reconnected to the live workbench behavior, including browser/dev-server open targets.
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) no longer carries the lane/open/focus search-param effects inline; that coordination now lives in the dedicated hook again.
+- [useProjectWorkbenchSearchParamSync.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts) is now reconnected to the live workbench behavior, including browser/dev-server open targets.
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) no longer carries the lane/open/focus search-param effects inline; that coordination now lives in the dedicated hook again.
 - The page still owns its current header injection and overlay rendering model; this pass only removed coordination clutter, not UI ownership.
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) no longer blocks the whole workbench on lane-state resolution. It now bootstraps from the route `projectId` immediately and only waits for the local workbench store entry itself.
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) no longer blocks the whole workbench on lane-state resolution. It now bootstraps from the route `projectId` immediately and only waits for the local workbench store entry itself.
 - Local-loading cleanup also touched related project surfaces:
-  [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx),
-  [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx),
-  [ProjectConflictsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectConflictsPage.tsx),
-  and [TasksPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/TasksPage.tsx) now use calmer inline loading states instead of blank or oversized blockers.
-- [useScopedWorkspacePeopleData.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useScopedWorkspacePeopleData.ts) no longer treats seat-management billing data as part of the core “members page is loading” gate, so [Members.tsx](/Users/admin/Downloads/electron-app-main/src/pages/teams/Members.tsx) can render people data without waiting on a secondary billing fetch.
+  [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx),
+  [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx),
+  [ProjectConflictsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectConflictsPage.tsx),
+  and [TasksPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/TasksPage.tsx) now use calmer inline loading states instead of blank or oversized blockers.
+- [useScopedWorkspacePeopleData.ts](<home>/Downloads/electron-app-main/src/hooks/useScopedWorkspacePeopleData.ts) no longer treats seat-management billing data as part of the core “members page is loading” gate, so [Members.tsx](<home>/Downloads/electron-app-main/src/pages/teams/Members.tsx) can render people data without waiting on a secondary billing fetch.
 
 Exit criteria:
 
@@ -395,9 +395,9 @@ For desktop-sensitive areas, also confirm:
 
 If we continue from this corrected plan, the next cleanup pass should be:
 
-1. Continue sidebar decomposition in [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
-2. Keep trimming workbench coordination inside [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) and [useWorkbenchDockviewRuntime.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts)
-3. Revisit remaining workspace guard loaders in [routes.tsx](/Users/admin/Downloads/electron-app-main/src/router/routes.tsx) so scope resolution does not over-block local settings transitions
+1. Continue sidebar decomposition in [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
+2. Keep trimming workbench coordination inside [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx) and [useWorkbenchDockviewRuntime.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts)
+3. Revisit remaining workspace guard loaders in [routes.tsx](<home>/Downloads/electron-app-main/src/router/routes.tsx) so scope resolution does not over-block local settings transitions
 4. Clean the remaining “secondary data blocks primary content” cases in workspace/team surfaces
 
 That sequence respects the current app instead of fighting it.

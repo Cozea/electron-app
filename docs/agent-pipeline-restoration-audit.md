@@ -28,7 +28,7 @@ The provider model picker and status banner are not the main problem. The pipeli
 
 ## Scope And Method
 
-Compared local files in `/Users/admin/Downloads/electron-app-main` against upstream files in `/Users/admin/Downloads/t3code-main`, with particular focus on:
+Compared local files in `<home>/Downloads/electron-app-main` against upstream files in `<home>/Downloads/t3code-main`, with particular focus on:
 
 - `shared/assistant-contracts/server.ts`
 - `electron/assistant-runtime/provider/providerSnapshot.ts`

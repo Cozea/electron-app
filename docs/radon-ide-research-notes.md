@@ -5,8 +5,8 @@
 These notes are for the specific extracted Radon IDE beta build:
 
 - Version: `1.16.20260304`
-- Package: `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64.vsix`
-- Extracted extension root: `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension`
+- Package: `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64.vsix`
+- Extracted extension root: `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension`
 
 The old repo-local Radon/native-preview reimplementation was removed from this repo. These notes refer to the external extracted VSIX above, not a bundled copy inside this codebase.
 
@@ -2848,7 +2848,7 @@ A local AVD named `Cozea_Pixel_9` was started with the same core emulator flags 
 The emulator itself printed:
 
 - `Started GRPC server at 127.0.0.1:8554, security: Local, auth: +token`
-- `Advertising in: /Users/admin/Library/Caches/TemporaryItems/avd/running/pid_87318.ini`
+- `Advertising in: <home>/Library/Caches/TemporaryItems/avd/running/pid_87318.ini`
 
 The advertised runtime file then contained:
 
@@ -3717,7 +3717,7 @@ These are useful for a full Radon clone, but not on the critical path for embedd
 
 The local clone at:
 
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-public-src`
+- `<home>/Downloads/radon-ide-download/radon-ide-public-src`
 
 contains:
 

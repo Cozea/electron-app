@@ -73,65 +73,65 @@ Refactor the next largest cross-cutting areas of the app after the workbench/sid
   - heavy renderer-side `window.electronAPI` usage in the git/open pipeline
   - oversized runtime workspace and git service modules
 - Confirmed especially strong duplication in:
-  - [composerDraftStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/composerDraftStore.ts)
-  - [assistant-composerDraftStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-composerDraftStore.ts)
-  - [terminalStateStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/terminalStateStore.ts)
-  - [assistant-terminalStateStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-terminalStateStore.ts)
+  - [composerDraftStore.ts](<home>/Downloads/electron-app-main/src/stores/composerDraftStore.ts)
+  - [assistant-composerDraftStore.ts](<home>/Downloads/electron-app-main/src/stores/assistant-composerDraftStore.ts)
+  - [terminalStateStore.ts](<home>/Downloads/electron-app-main/src/stores/terminalStateStore.ts)
+  - [assistant-terminalStateStore.ts](<home>/Downloads/electron-app-main/src/stores/assistant-terminalStateStore.ts)
 - Confirmed the next large component/page targets:
-  - [Billing.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/Billing.tsx)
-  - [UnifiedHeader.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx)
+  - [Billing.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/Billing.tsx)
+  - [UnifiedHeader.tsx](<home>/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx)
 - Confirmed the next large service/pipeline targets:
-  - [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
-  - [gitSyncService.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncService.ts)
-  - [runtimeWorkspaces.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts)
+  - [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
+  - [gitSyncService.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncService.ts)
+  - [runtimeWorkspaces.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts)
 - Consolidated the obvious assistant duplicate store surfaces while preserving existing import paths:
-  - [assistant-modelSelection.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-modelSelection.ts)
-  - [assistant-storage.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-storage.ts)
-  - [assistant-types.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-types.ts)
-  - [assistant-terminalStateStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-terminalStateStore.ts)
-  - [assistant-composerDraftStore.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-composerDraftStore.ts)
+  - [assistant-modelSelection.ts](<home>/Downloads/electron-app-main/src/stores/assistant-modelSelection.ts)
+  - [assistant-storage.ts](<home>/Downloads/electron-app-main/src/stores/assistant-storage.ts)
+  - [assistant-types.ts](<home>/Downloads/electron-app-main/src/stores/assistant-types.ts)
+  - [assistant-terminalStateStore.ts](<home>/Downloads/electron-app-main/src/stores/assistant-terminalStateStore.ts)
+  - [assistant-composerDraftStore.ts](<home>/Downloads/electron-app-main/src/stores/assistant-composerDraftStore.ts)
 - Split the billing surface into a shell, shared billing helpers, a controller hook, and focused content sections:
-  - [Billing.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/Billing.tsx) now acts as the route shell and guard.
-  - [billingShared.ts](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/billingShared.ts) centralizes plan metadata and pure helpers.
-  - [useBillingController.ts](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/useBillingController.ts) owns billing orchestration and actions.
-  - [BillingContent.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx) renders the page sections and dialogs.
+  - [Billing.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/Billing.tsx) now acts as the route shell and guard.
+  - [billingShared.ts](<home>/Downloads/electron-app-main/src/pages/workspace/billing/billingShared.ts) centralizes plan metadata and pure helpers.
+  - [useBillingController.ts](<home>/Downloads/electron-app-main/src/pages/workspace/billing/useBillingController.ts) owns billing orchestration and actions.
+  - [BillingContent.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/billing/BillingContent.tsx) renders the page sections and dialogs.
 - Split the unified header into a composition shell plus focused collaboration controls:
-  - [UnifiedHeader.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx)
-  - [HeaderInboxButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderInboxButton.tsx)
-  - [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
-  - [HeaderProjectChangesButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectChangesButton.tsx)
-  - [headerShared.ts](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/headerShared.ts)
+  - [UnifiedHeader.tsx](<home>/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx)
+  - [HeaderInboxButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderInboxButton.tsx)
+  - [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
+  - [HeaderProjectChangesButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectChangesButton.tsx)
+  - [headerShared.ts](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/headerShared.ts)
 - Narrowed renderer-side Electron usage in the project-open flow:
-  - [projectOpenDesktopClient.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenDesktopClient.ts) wraps the renderer bridge calls used by project open.
-  - [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts) owns source-control and repository access readiness checks.
-  - [projectOpenTypes.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenTypes.ts) holds the shared project-open types.
-  - [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts) now composes those helpers instead of directly reaching into `window.electronAPI`.
-- Extracted shared git helper logic out of the Electron git sync service into [gitSyncShared.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncShared.ts), reducing duplicated branch/remote/status normalization logic inside [gitSyncService.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncService.ts).
-- Extracted common normalization and path helpers from [runtimeWorkspaces.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts) into [shared.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/shared.ts) without changing the external route contract.
+  - [projectOpenDesktopClient.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenDesktopClient.ts) wraps the renderer bridge calls used by project open.
+  - [projectOpenAccess.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts) owns source-control and repository access readiness checks.
+  - [projectOpenTypes.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenTypes.ts) holds the shared project-open types.
+  - [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts) now composes those helpers instead of directly reaching into `window.electronAPI`.
+- Extracted shared git helper logic out of the Electron git sync service into [gitSyncShared.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncShared.ts), reducing duplicated branch/remote/status normalization logic inside [gitSyncService.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncService.ts).
+- Extracted common normalization and path helpers from [runtimeWorkspaces.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts) into [shared.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/shared.ts) without changing the external route contract.
 - Continued the runtime workspace split by moving route registration into focused modules:
-  - [lifecycle.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/lifecycle.ts)
-  - [files.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/files.ts)
-  - [terminal.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/terminal.ts)
-  - [preview.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/preview.ts)
-  - [types.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/types.ts)
-- Continued the git sync split by moving the stash replay / auto-resolve / sequencer helpers into [gitReplayWorkspaceState.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitReplayWorkspaceState.ts), leaving [gitSyncService.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncService.ts) as a thinner coordinator for those flows.
-- Split the git remote synchronization family into [gitRemoteSync.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitRemoteSync.ts), moving the `fetch`, `pull`, `push`, and `commitAndPush` flows out of [gitSyncService.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncService.ts).
+  - [lifecycle.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/lifecycle.ts)
+  - [files.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/files.ts)
+  - [terminal.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/terminal.ts)
+  - [preview.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/routes/preview.ts)
+  - [types.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces/types.ts)
+- Continued the git sync split by moving the stash replay / auto-resolve / sequencer helpers into [gitReplayWorkspaceState.ts](<home>/Downloads/electron-app-main/electron/services/gitReplayWorkspaceState.ts), leaving [gitSyncService.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncService.ts) as a thinner coordinator for those flows.
+- Split the git remote synchronization family into [gitRemoteSync.ts](<home>/Downloads/electron-app-main/electron/services/gitRemoteSync.ts), moving the `fetch`, `pull`, `push`, and `commitAndPush` flows out of [gitSyncService.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncService.ts).
 - Removed `@ts-nocheck` from the central assistant renderer state files:
-  - [assistant-store.ts](/Users/admin/Downloads/electron-app-main/src/stores/assistant-store.ts)
-  - [types.ts](/Users/admin/Downloads/electron-app-main/src/stores/types.ts)
+  - [assistant-store.ts](<home>/Downloads/electron-app-main/src/stores/assistant-store.ts)
+  - [types.ts](<home>/Downloads/electron-app-main/src/stores/types.ts)
 - Captured the top-level file-size reduction at the main entry points:
-  - [UnifiedHeader.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx): `1915 -> 426` lines
-  - [Billing.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/Billing.tsx): `2375 -> 42` lines, with the UI and controller logic moved into focused billing modules
-  - [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts): `1263 -> 1029` lines after moving shared types and access/client helpers out
-  - [gitSyncService.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncService.ts): `2423 -> 1600` lines after extracting shared helper logic, replay/conflict orchestration, and the remote sync flows
-  - [runtimeWorkspaces.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts): `3970 -> 2028` lines after extracting shared helpers, route registration modules, and the preview proxy/upgrade layer
+  - [UnifiedHeader.tsx](<home>/Downloads/electron-app-main/src/components/layouts/UnifiedHeader.tsx): `1915 -> 426` lines
+  - [Billing.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/Billing.tsx): `2375 -> 42` lines, with the UI and controller logic moved into focused billing modules
+  - [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts): `1263 -> 1029` lines after moving shared types and access/client helpers out
+  - [gitSyncService.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncService.ts): `2423 -> 1600` lines after extracting shared helper logic, replay/conflict orchestration, and the remote sync flows
+  - [runtimeWorkspaces.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts): `3970 -> 2028` lines after extracting shared helpers, route registration modules, and the preview proxy/upgrade layer
 - Verification completed:
   - `bun run typecheck` passed
   - `bun run lint` passed with existing repo warnings only
 
 ## Remaining Follow-Up Opportunities
 
-- Continue shrinking [gitSyncService.ts](/Users/admin/Downloads/electron-app-main/electron/services/gitSyncService.ts) by extracting clone/adopt/restore flows or repo-health/replay orchestration into deeper sub-services if we want another simplification pass.
-- Continue shrinking [runtimeWorkspaces.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts) by extracting the dependency-install/dev-server lifecycle helpers and possibly the runtime state container itself.
+- Continue shrinking [gitSyncService.ts](<home>/Downloads/electron-app-main/electron/services/gitSyncService.ts) by extracting clone/adopt/restore flows or repo-health/replay orchestration into deeper sub-services if we want another simplification pass.
+- Continue shrinking [runtimeWorkspaces.ts](<home>/Downloads/electron-app-main/server/src/routes/runtimeWorkspaces.ts) by extracting the dependency-install/dev-server lifecycle helpers and possibly the runtime state container itself.
 - Remove more `@ts-nocheck` and legacy assistant runtime debt in the deeper assistant runtime/contracts surfaces now that the central renderer store is back under typecheck.
 - Revisit the task board later as a separate refactor track; it was intentionally excluded from this pass.

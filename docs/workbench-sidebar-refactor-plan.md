@@ -62,67 +62,67 @@ Refactor the workbench and project sidebar to reduce unnecessary rerenders, isol
   - Workbench page mirrors Dockview events back into Zustand.
   - Sidebar reads broad workbench state for lane/tile display.
   - Sidebar and workbench page are both very large orchestration components.
-- Split Dockview snapshot persistence out of the shared workbench Zustand store into [workbenchLayoutPersistence.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/workbenchLayoutPersistence.ts).
+- Split Dockview snapshot persistence out of the shared workbench Zustand store into [workbenchLayoutPersistence.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/workbenchLayoutPersistence.ts).
 - Added focused sidebar selectors to avoid subscribing project rows to full workbench objects and layout churn.
 - Extracted sidebar row rendering into:
-  - [ProjectSidebarTreeItem.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/ProjectSidebarTreeItem.tsx)
-  - [SidebarLaneTiles.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/SidebarLaneTiles.tsx)
-  - [projectSidebarShared.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarShared.ts)
-  - [projectSidebarState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarState.ts)
-- Extracted workbench Dockview helpers into [workbenchDockview.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/workbenchDockview.ts).
-- Extracted workbench URL/search-param synchronization into [useProjectWorkbenchSearchParamSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts).
+  - [ProjectSidebarTreeItem.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/ProjectSidebarTreeItem.tsx)
+  - [SidebarLaneTiles.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/SidebarLaneTiles.tsx)
+  - [projectSidebarShared.ts](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarShared.ts)
+  - [projectSidebarState.ts](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarState.ts)
+- Extracted workbench Dockview helpers into [workbenchDockview.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/workbenchDockview.ts).
+- Extracted workbench URL/search-param synchronization into [useProjectWorkbenchSearchParamSync.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts).
 - Reduced top-level file size:
-  - [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx): 1433 -> 756 lines
-  - [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx): 1213 -> 888 lines
+  - [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx): 1433 -> 756 lines
+  - [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx): 1213 -> 888 lines
 - Verification results:
   - `bun run lint` passed with existing warnings only.
   - `bun run typecheck` still fails, but only due to pre-existing unrelated errors in:
-    - [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
-    - [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx)
+    - [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
+    - [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx)
 - Post-refactor regression fix:
   - Fixed an infinite rerender loop in `ProjectSidebarTreeItem` caused by subscribing to a selector that rebuilt a fresh lane-summary object on every store read.
   - The sidebar row now subscribes to the active lane's raw workbench record and memoizes its derived summary locally, which gives React a stable external-store snapshot again.
 - Continued the workbench refactor in one pass:
   - Extracted assistant tile orchestration into:
-    - [useWorkbenchAssistantTileController.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController.tsx)
-    - [useAssistantServerConfig.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useAssistantServerConfig.ts)
-    - [workbenchAssistantShared.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/workbenchAssistantShared.ts)
-    - [WorkbenchAssistantDiffDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog.tsx)
+    - [useWorkbenchAssistantTileController.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController.tsx)
+    - [useAssistantServerConfig.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useAssistantServerConfig.ts)
+    - [workbenchAssistantShared.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/workbenchAssistantShared.ts)
+    - [WorkbenchAssistantDiffDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog.tsx)
   - Extracted branch control orchestration into:
-    - [useWorkbenchBranchControl.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
-    - [workbenchBranchControlShared.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/workbenchBranchControlShared.ts)
-    - [workbenchBranchCompat.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/workbenchBranchCompat.ts)
-  - Extracted Dockview runtime/controller logic into [useWorkbenchDockviewRuntime.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts).
-  - Moved transient seam/edge selection previews out of the shared workbench store and into runtime-only Dockview state exposed through [WorkbenchDockPanels.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDockPanels.tsx).
-  - Updated [workbenchDockview.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/workbenchDockview.ts) so panel reconciliation preserves runtime-only preview panels instead of deleting them during normal store-backed reconciles.
+    - [useWorkbenchBranchControl.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
+    - [workbenchBranchControlShared.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/workbenchBranchControlShared.ts)
+    - [workbenchBranchCompat.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/workbenchBranchCompat.ts)
+  - Extracted Dockview runtime/controller logic into [useWorkbenchDockviewRuntime.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts).
+  - Moved transient seam/edge selection previews out of the shared workbench store and into runtime-only Dockview state exposed through [WorkbenchDockPanels.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchDockPanels.tsx).
+  - Updated [workbenchDockview.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/workbenchDockview.ts) so panel reconciliation preserves runtime-only preview panels instead of deleting them during normal store-backed reconciles.
 - Reduced top-level workbench orchestration files further:
-  - [WorkbenchAssistantChatTile.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchAssistantChatTile.tsx): 1253 -> 62 lines
-  - [WorkbenchHeaderBranchControl.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx): 1077 -> 64 lines
-  - [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx): 1213 -> 403 lines
+  - [WorkbenchAssistantChatTile.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchAssistantChatTile.tsx): 1253 -> 62 lines
+  - [WorkbenchHeaderBranchControl.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx): 1077 -> 64 lines
+  - [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx): 1213 -> 403 lines
 - Verification results after the second pass:
   - `bun run lint` passed with existing warnings only.
   - `bun run typecheck` still failed at that point, but only due to pre-existing unrelated errors in:
-    - [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
-    - [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx)
+    - [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
+    - [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx)
 - Completed the remaining follow-up items:
-  - Introduced a shared assistant runtime metadata service in [assistantRuntimeMetadataStore.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/assistantRuntimeMetadataStore.ts) so assistant tiles no longer each create their own runtime-status and server-config bridge subscriptions.
-  - Rewired [useAssistantRuntimeStatus.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/useAssistantRuntimeStatus.ts) and [useAssistantServerConfig.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useAssistantServerConfig.ts) to read from that shared snapshot.
-  - Replaced the selection tile's `ResizeObserver`-driven layout mode state in [WorkbenchSelectionTile.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchSelectionTile.tsx) with a CSS/container-query-based layout in [workbench.css](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/workbench.css).
-  - Added pure workbench route-intent helpers to [useProjectWorkbenchSearchParamSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts), which also made lane/open/focus logic easier to verify in tests.
+  - Introduced a shared assistant runtime metadata service in [assistantRuntimeMetadataStore.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/assistantRuntimeMetadataStore.ts) so assistant tiles no longer each create their own runtime-status and server-config bridge subscriptions.
+  - Rewired [useAssistantRuntimeStatus.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/useAssistantRuntimeStatus.ts) and [useAssistantServerConfig.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useAssistantServerConfig.ts) to read from that shared snapshot.
+  - Replaced the selection tile's `ResizeObserver`-driven layout mode state in [WorkbenchSelectionTile.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchSelectionTile.tsx) with a CSS/container-query-based layout in [workbench.css](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/workbench.css).
+  - Added pure workbench route-intent helpers to [useProjectWorkbenchSearchParamSync.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectWorkbenchSearchParamSync.ts), which also made lane/open/focus logic easier to verify in tests.
   - Fixed the previously unrelated typecheck blockers in:
-    - [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
-    - [General.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/General.tsx)
+    - [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
+    - [General.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/General.tsx)
   - Added targeted regression coverage:
-    - [workbenchSearchParamSync.test.ts](/Users/admin/Downloads/electron-app-main/tests/workbenchSearchParamSync.test.ts)
-    - [workbenchLayoutPersistence.test.ts](/Users/admin/Downloads/electron-app-main/tests/workbenchLayoutPersistence.test.ts)
-    - [workbenchStoreSelectors.test.ts](/Users/admin/Downloads/electron-app-main/tests/workbenchStoreSelectors.test.ts)
+    - [workbenchSearchParamSync.test.ts](<home>/Downloads/electron-app-main/tests/workbenchSearchParamSync.test.ts)
+    - [workbenchLayoutPersistence.test.ts](<home>/Downloads/electron-app-main/tests/workbenchLayoutPersistence.test.ts)
+    - [workbenchStoreSelectors.test.ts](<home>/Downloads/electron-app-main/tests/workbenchStoreSelectors.test.ts)
 - Final verification results:
   - `bun run typecheck` passed.
   - `bun run lint` passed with existing warnings only.
   - `bun x vitest run tests/workbenchSearchParamSync.test.ts tests/workbenchLayoutPersistence.test.ts tests/workbenchStoreSelectors.test.ts` passed.
   - `bun run test` still fails due unrelated pre-existing suite drift outside this workbench/sidebar refactor:
     - several tests import modules that no longer exist in the current repo shape
-    - [authCallbackState.test.ts](/Users/admin/Downloads/electron-app-main/tests/authCallbackState.test.ts) has an outdated expectation for the current auth-state payload shape
+    - [authCallbackState.test.ts](<home>/Downloads/electron-app-main/tests/authCallbackState.test.ts) has an outdated expectation for the current auth-state payload shape
 
 ## Final Status
 
@@ -138,6 +138,6 @@ Refactor the workbench and project sidebar to reduce unnecessary rerenders, isol
 ## Follow-Up Opportunities
 
 - If we want to keep shrinking write scopes, the biggest remaining internal slices are still:
-  - [useWorkbenchAssistantTileController.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController.tsx)
-  - [useWorkbenchDockviewRuntime.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts)
+  - [useWorkbenchAssistantTileController.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController.tsx)
+  - [useWorkbenchDockviewRuntime.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts)
 - If we want the whole repo test suite green, the next pass should address the unrelated missing-module suites and the stale auth callback expectation.

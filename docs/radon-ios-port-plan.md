@@ -43,8 +43,8 @@ The plan below is now paired with the active execution checklist so there is one
 
 This plan is based on:
 
-- the shipped extracted Radon VSIX at `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension`
-- the reverse-engineering notes in [radon-ide-research-notes.md](/Users/admin/Downloads/electron-app-main/docs/radon-ide-research-notes.md)
+- the shipped extracted Radon VSIX at `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension`
+- the reverse-engineering notes in [radon-ide-research-notes.md](<home>/Downloads/electron-app-main/docs/radon-ide-research-notes.md)
 - the current Cozea preview architecture already present in this repo
 
 The plan intentionally separates:
@@ -61,9 +61,9 @@ These are the pieces where the shipped JS is readable enough that porting or clo
 
 Source modules:
 
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/metro_helpers.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/babel_transformer.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/preview.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/metro_helpers.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/babel_transformer.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/preview.js`
 
 What is good to port:
 
@@ -89,7 +89,7 @@ Practical decision:
 
 Source module:
 
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/runtime.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/runtime.js`
 
 What is good to port:
 
@@ -115,13 +115,13 @@ Practical decision:
 
 Source modules:
 
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/wrapper.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/inspector_bridge.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/react_devtools_agent.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/preview.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/dimensions_observer.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/orientation/orientation.js`
-- `/Users/admin/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/inspector_availability.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/wrapper.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/inspector_bridge.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/react_devtools_agent.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/preview.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/dimensions_observer.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/orientation/orientation.js`
+- `<home>/Downloads/radon-ide-download/radon-ide-1.16.20260304-darwin-x64/extension/lib/inspector_availability.js`
 
 What is good to port:
 
@@ -180,9 +180,9 @@ These are existing Cozea pieces that already solve adjacent problems and should 
 
 Current files:
 
-- [registerPreviewHandlers.ts](/Users/admin/Downloads/electron-app-main/electron/ipc/registerPreviewHandlers.ts)
-- [preload.ts](/Users/admin/Downloads/electron-app-main/electron/preload.ts)
-- [electronApiTypes.ts](/Users/admin/Downloads/electron-app-main/shared/electronApiTypes.ts)
+- [registerPreviewHandlers.ts](<home>/Downloads/electron-app-main/electron/ipc/registerPreviewHandlers.ts)
+- [preload.ts](<home>/Downloads/electron-app-main/electron/preload.ts)
+- [electronApiTypes.ts](<home>/Downloads/electron-app-main/shared/electronApiTypes.ts)
 
 Why they matter:
 
@@ -198,8 +198,8 @@ Practical decision:
 
 Current files:
 
-- [FocusedProjectPreview.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/previews/FocusedProjectPreview.tsx)
-- [ProjectPreviewToolbar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/previews/ProjectPreviewToolbar.tsx)
+- [FocusedProjectPreview.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/previews/FocusedProjectPreview.tsx)
+- [ProjectPreviewToolbar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/previews/ProjectPreviewToolbar.tsx)
 
 Why they matter:
 
@@ -221,8 +221,8 @@ Practical decision:
 
 Current files:
 
-- [previewBridgeBootstrap.ts](/Users/admin/Downloads/electron-app-main/shared/previewBridgeBootstrap.ts)
-- [previewBridge.ts](/Users/admin/Downloads/electron-app-main/src/utils/previewBridge.ts)
+- [previewBridgeBootstrap.ts](<home>/Downloads/electron-app-main/shared/previewBridgeBootstrap.ts)
+- [previewBridge.ts](<home>/Downloads/electron-app-main/src/utils/previewBridge.ts)
 
 Why they matter:
 
@@ -237,8 +237,8 @@ Practical decision:
 
 Current files:
 
-- [projectDetector.ts](/Users/admin/Downloads/electron-app-main/src/utils/projectDetector.ts)
-- [ServerControl.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ServerControl.tsx)
+- [projectDetector.ts](<home>/Downloads/electron-app-main/src/utils/projectDetector.ts)
+- [ServerControl.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ServerControl.tsx)
 
 Why they matter:
 
@@ -371,8 +371,8 @@ Expected handler surface:
 
 Extend:
 
-- [preload.ts](/Users/admin/Downloads/electron-app-main/electron/preload.ts)
-- [electronApiTypes.ts](/Users/admin/Downloads/electron-app-main/shared/electronApiTypes.ts)
+- [preload.ts](<home>/Downloads/electron-app-main/electron/preload.ts)
+- [electronApiTypes.ts](<home>/Downloads/electron-app-main/shared/electronApiTypes.ts)
 
 Responsibilities:
 
@@ -404,8 +404,8 @@ Create:
 
 Adapt from:
 
-- [FocusedProjectPreview.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/previews/FocusedProjectPreview.tsx)
-- [ProjectPreviewToolbar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/previews/ProjectPreviewToolbar.tsx)
+- [FocusedProjectPreview.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/previews/FocusedProjectPreview.tsx)
+- [ProjectPreviewToolbar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/previews/ProjectPreviewToolbar.tsx)
 
 Responsibilities:
 

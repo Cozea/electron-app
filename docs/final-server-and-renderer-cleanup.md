@@ -22,8 +22,8 @@ This sweep closes the last explicitly documented cleanup items that remained aft
 ### Step 0: Initial audit
 
 - Confirmed the only remaining live `t3code:*` references are renderer migration shims in local-storage/state code.
-- Confirmed the server still concentrates bootstrap, plugin registration, feature flags, routes, root routes, health, and process startup in [server/src/index.ts](/Users/admin/Downloads/electron-app-main/server/src/index.ts).
-- Confirmed [server/src/routes/settings.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/settings.ts) still depends on sibling routes via internal `fastify.inject(...)` calls, so service boundaries need to preserve those relationships.
+- Confirmed the server still concentrates bootstrap, plugin registration, feature flags, routes, root routes, health, and process startup in [server/src/index.ts](<home>/Downloads/electron-app-main/server/src/index.ts).
+- Confirmed [server/src/routes/settings.ts](<home>/Downloads/electron-app-main/server/src/routes/settings.ts) still depends on sibling routes via internal `fastify.inject(...)` calls, so service boundaries need to preserve those relationships.
 
 ### Step 1: Renderer cleanup
 

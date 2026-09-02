@@ -180,7 +180,7 @@ GH_TOKEN="$(gh auth token)" bun run release
 >
 > - Always use `bunx convex deploy` to push schema/function changes
 > - **NEVER** use `convex dev` or `bunx convex dev --once` - it switches the app to a dev deployment
-> - Production URL: `https://knowing-finch-546.convex.cloud`
+> - Production URL: `https://your-deployment.convex.cloud`
 
 ### Documentation Layout
 

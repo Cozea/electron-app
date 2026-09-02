@@ -22,11 +22,11 @@ This is an architecture reset, not a hosting change.
 
 The migration is now partially scaffolded in-repo so the plan has an executable target:
 
-- [`cloudflare/worker/package.json`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/package.json:1)
-- [`cloudflare/worker/wrangler.jsonc`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/wrangler.jsonc:1)
-- [`cloudflare/worker/src/index.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/index.ts:1)
-- [`cloudflare/worker/src/durableObjects/CollabRoom.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/durableObjects/CollabRoom.ts:1)
-- [`docs/cloudflare/worker/PROTOCOL.md`](/Users/admin/Downloads/electron-app-main/docs/cloudflare/worker/PROTOCOL.md:1)
+- [`cloudflare/worker/package.json`](<home>/Downloads/electron-app-main/cloudflare/worker/package.json:1)
+- [`cloudflare/worker/wrangler.jsonc`](<home>/Downloads/electron-app-main/cloudflare/worker/wrangler.jsonc:1)
+- [`cloudflare/worker/src/index.ts`](<home>/Downloads/electron-app-main/cloudflare/worker/src/index.ts:1)
+- [`cloudflare/worker/src/durableObjects/CollabRoom.ts`](<home>/Downloads/electron-app-main/cloudflare/worker/src/durableObjects/CollabRoom.ts:1)
+- [`docs/cloudflare/worker/PROTOCOL.md`](<home>/Downloads/electron-app-main/docs/cloudflare/worker/PROTOCOL.md:1)
 
 This scaffold is intentionally not wired into production yet. It defines the target contract and removes ambiguity about what the Cloudflare replacement actually is.
 
@@ -34,7 +34,7 @@ This scaffold is intentionally not wired into production yet. It defines the tar
 
 The scaffold turns the migration into four concrete implementation tracks:
 
-1. Replace the stubbed Convex bridge in [`cloudflare/worker/src/lib/convex.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/lib/convex.ts:1) with real Convex HTTP actions for:
+1. Replace the stubbed Convex bridge in [`cloudflare/worker/src/lib/convex.ts`](<home>/Downloads/electron-app-main/cloudflare/worker/src/lib/convex.ts:1) with real Convex HTTP actions for:
    - device-backed session bootstrap
    - project access verification
    - Yjs delta fetch
@@ -76,11 +76,11 @@ Implemented:
 
 Files:
 
-- [`cloudflare/worker/src/lib/convex.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/lib/convex.ts:1)
-- [`cloudflare/worker/src/routes/collabSession.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/routes/collabSession.ts:1)
-- [`cloudflare/worker/src/durableObjects/CollabRoom.ts`](/Users/admin/Downloads/electron-app-main/cloudflare/worker/src/durableObjects/CollabRoom.ts:1)
-- [`src/hooks/useCollabSession.ts`](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts:1)
-- [`src/lib/yjs/CollabWsProvider.ts`](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts:1)
+- [`cloudflare/worker/src/lib/convex.ts`](<home>/Downloads/electron-app-main/cloudflare/worker/src/lib/convex.ts:1)
+- [`cloudflare/worker/src/routes/collabSession.ts`](<home>/Downloads/electron-app-main/cloudflare/worker/src/routes/collabSession.ts:1)
+- [`cloudflare/worker/src/durableObjects/CollabRoom.ts`](<home>/Downloads/electron-app-main/cloudflare/worker/src/durableObjects/CollabRoom.ts:1)
+- [`src/hooks/useCollabSession.ts`](<home>/Downloads/electron-app-main/src/hooks/useCollabSession.ts:1)
+- [`src/lib/yjs/CollabWsProvider.ts`](<home>/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts:1)
 
 ## Remaining Work
 
@@ -157,11 +157,11 @@ Hosted backend responsibilities:
 
 Current implementation files:
 
-- [`server/src/server/app.ts`](/Users/admin/Downloads/electron-app-main/server/src/server/app.ts:1)
-- [`server/src/server/core.ts`](/Users/admin/Downloads/electron-app-main/server/src/server/core.ts:1)
-- [`server/src/server/services/collabRuntime.ts`](/Users/admin/Downloads/electron-app-main/server/src/server/services/collabRuntime.ts:1)
-- [`server/src/routes/collab.ts`](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts:1)
-- [`server/src/lib/convex.ts`](/Users/admin/Downloads/electron-app-main/server/src/lib/convex.ts:1)
+- [`server/src/server/app.ts`](<home>/Downloads/electron-app-main/server/src/server/app.ts:1)
+- [`server/src/server/core.ts`](<home>/Downloads/electron-app-main/server/src/server/core.ts:1)
+- [`server/src/server/services/collabRuntime.ts`](<home>/Downloads/electron-app-main/server/src/server/services/collabRuntime.ts:1)
+- [`server/src/routes/collab.ts`](<home>/Downloads/electron-app-main/server/src/routes/collab.ts:1)
+- [`server/src/lib/convex.ts`](<home>/Downloads/electron-app-main/server/src/lib/convex.ts:1)
 
 ### What Convex Already Owns
 
@@ -253,7 +253,7 @@ This remains the durable backend.
 
 The current auth model is understandable locally but muddy in production:
 
-- app auth is device-based in [`AuthContext.tsx`](/Users/admin/Downloads/electron-app-main/src/contexts/AuthContext.tsx:1)
+- app auth is device-based in [`AuthContext.tsx`](<home>/Downloads/electron-app-main/src/contexts/AuthContext.tsx:1)
 - collaboration bootstrap in production is still behaving like it may depend on an HTTP session or older gateway assumptions
 
 That ambiguity must be removed.
@@ -432,12 +432,12 @@ The end state should delete the collaboration server path under `server/` entire
 
 Delete after cutover:
 
-- [`server/src/server/app.ts`](/Users/admin/Downloads/electron-app-main/server/src/server/app.ts:1)
-- [`server/src/server/core.ts`](/Users/admin/Downloads/electron-app-main/server/src/server/core.ts:1)
-- [`server/src/server/services/collabRuntime.ts`](/Users/admin/Downloads/electron-app-main/server/src/server/services/collabRuntime.ts:1)
-- [`server/src/routes/collab.ts`](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts:1)
-- [`server/src/entrypoints/all.ts`](/Users/admin/Downloads/electron-app-main/server/src/entrypoints/all.ts:1)
-- [`server/src/entrypoints/collab-runtime.ts`](/Users/admin/Downloads/electron-app-main/server/src/entrypoints/collab-runtime.ts:1)
+- [`server/src/server/app.ts`](<home>/Downloads/electron-app-main/server/src/server/app.ts:1)
+- [`server/src/server/core.ts`](<home>/Downloads/electron-app-main/server/src/server/core.ts:1)
+- [`server/src/server/services/collabRuntime.ts`](<home>/Downloads/electron-app-main/server/src/server/services/collabRuntime.ts:1)
+- [`server/src/routes/collab.ts`](<home>/Downloads/electron-app-main/server/src/routes/collab.ts:1)
+- [`server/src/entrypoints/all.ts`](<home>/Downloads/electron-app-main/server/src/entrypoints/all.ts:1)
+- [`server/src/entrypoints/collab-runtime.ts`](<home>/Downloads/electron-app-main/server/src/entrypoints/collab-runtime.ts:1)
 
 Keep temporarily only as reference during implementation.
 
@@ -523,9 +523,9 @@ Acceptance:
 
 Deliverables:
 
-- update [`useCollabSession.ts`](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts:1)
-- update [`CollabWsProvider.ts`](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts:1)
-- update [`YjsProjectContext.tsx`](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx:1)
+- update [`useCollabSession.ts`](<home>/Downloads/electron-app-main/src/hooks/useCollabSession.ts:1)
+- update [`CollabWsProvider.ts`](<home>/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts:1)
+- update [`YjsProjectContext.tsx`](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx:1)
 - remove any logic preserved only for Railway/Fastify quirks
 
 Acceptance:

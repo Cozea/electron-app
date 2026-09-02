@@ -8,52 +8,52 @@ This map is now implemented on the active product path.
 
 ### Completed on the live path
 
-- websocket-only client collaboration path through [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx) and [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
+- websocket-only client collaboration path through [YjsProjectContext.tsx](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx) and [CollabWsProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
 - git removed from collaborative durability in:
-  - [ProjectSyncProviderRuntime.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
-  - [ProjectFilesPersistence.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
-  - [useYjsFileWriteback.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
-  - [BinaryFileSync.ts](/Users/admin/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts)
+  - [ProjectSyncProviderRuntime.tsx](<home>/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
+  - [ProjectFilesPersistence.ts](<home>/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
+  - [useYjsFileWriteback.ts](<home>/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
+  - [BinaryFileSync.ts](<home>/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts)
 - project open moved onto a local-first Cozea path in:
-  - [projectOpenLocal.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenLocal.ts)
-  - [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
+  - [projectOpenLocal.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenLocal.ts)
+  - [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
 - branch compatibility simplified to:
   - shared branch = collaboration enabled
   - non-shared branch = local-only mode
-- last-branch memory now uses the smaller [projectBranchSessionStore.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectBranchSessionStore.ts)
+- last-branch memory now uses the smaller [projectBranchSessionStore.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectBranchSessionStore.ts)
 - project creation and local import no longer require remote repo setup in:
-  - [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
-  - [useLocalProjectImport.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useLocalProjectImport.ts)
-  - [convex/projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
+  - [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
+  - [useLocalProjectImport.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useLocalProjectImport.ts)
+  - [convex/projects.ts](<home>/Downloads/electron-app-main/convex/projects.ts)
 - member/share flows no longer automate repo access in:
-  - [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
-  - [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
+  - [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
+  - [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
 - active project and settings flows now use a smaller repository-integration mental model instead of exposing git sync / collab-branch controls by default:
-  - [projectRepositoryIntegration.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepositoryIntegration.ts)
-  - [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
-  - [ProjectSettingsSourceControlPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
-  - [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+  - [projectRepositoryIntegration.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepositoryIntegration.ts)
+  - [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+  - [ProjectSettingsSourceControlPanel.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
+  - [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
 - new project creation no longer writes default git-sync metadata just because a repository is attached:
-  - [convex/projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
+  - [convex/projects.ts](<home>/Downloads/electron-app-main/convex/projects.ts)
 - project records no longer carry `syncMode`, `sourceControl.activeCollabBranch`, or `sourceControl.syncPolicy` on the active schema path:
-  - [schema.ts](/Users/admin/Downloads/electron-app-main/convex/schema.ts)
-  - [projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
-  - [projectPagination.ts](/Users/admin/Downloads/electron-app-main/convex/lib/projectPagination.ts)
+  - [schema.ts](<home>/Downloads/electron-app-main/convex/schema.ts)
+  - [projects.ts](<home>/Downloads/electron-app-main/convex/projects.ts)
+  - [projectPagination.ts](<home>/Downloads/electron-app-main/convex/lib/projectPagination.ts)
 - stale git-era helpers were removed from the active tree:
-  - [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
-  - [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
-  - [projectLaneContext.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectLaneContext.ts)
-  - [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
+  - [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
+  - [projectOpenAccess.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
+  - [projectLaneContext.ts](<home>/Downloads/electron-app-main/src/lib/git/projectLaneContext.ts)
+  - [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
 - end-to-end encrypted collaboration is now active on the websocket collaboration path through:
-  - [collabKeys.ts](/Users/admin/Downloads/electron-app-main/electron/collabKeys.ts)
-  - [CollabEncryptionService.ts](/Users/admin/Downloads/electron-app-main/electron/services/CollabEncryptionService.ts)
-  - [collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts)
-  - [yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-  - [cipherEnvelope.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/cipherEnvelope.ts)
-  - [EncryptedLocalSnapshotStore.ts](/Users/admin/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
-  - [useCollabSession.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
-  - [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+  - [collabKeys.ts](<home>/Downloads/electron-app-main/electron/collabKeys.ts)
+  - [CollabEncryptionService.ts](<home>/Downloads/electron-app-main/electron/services/CollabEncryptionService.ts)
+  - [collab.ts](<home>/Downloads/electron-app-main/server/src/routes/collab.ts)
+  - [yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts)
+  - [cipherEnvelope.ts](<home>/Downloads/electron-app-main/src/lib/collab/cipherEnvelope.ts)
+  - [EncryptedLocalSnapshotStore.ts](<home>/Downloads/electron-app-main/src/lib/collab/EncryptedLocalSnapshotStore.ts)
+  - [useCollabSession.ts](<home>/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
+  - [YjsProjectContext.tsx](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
 - legacy plaintext room assumptions have been removed from the live collaboration path; any stale pre-encryption payloads are cleared when a shared room initializes
 - trusted-device key sharing, recovery-code based non-destructive device recovery, key rotation, automatic key rotation on device revocation, destructive room recovery, and revoked-device blocking are now implemented on the active encrypted collaboration path
 
@@ -119,7 +119,7 @@ Cozea will not keep:
   - room lifecycle
   - observability
   - encrypted collaboration behavior
-- it reduces conceptual duplication in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx), where we currently branch between websocket and Convex providers
+- it reduces conceptual duplication in [YjsProjectContext.tsx](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx), where we currently branch between websocket and Convex providers
 
 ### Important nuance
 
@@ -127,8 +127,8 @@ This does **not** mean the server stops existing in the collaboration path.
 
 In the current app, websocket collaboration still persists updates server-side through:
 
-- [server/src/routes/collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts)
-- [convex/yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
+- [server/src/routes/collab.ts](<home>/Downloads/electron-app-main/server/src/routes/collab.ts)
+- [convex/yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts)
 
 So the websocket decision is about:
 
@@ -167,26 +167,26 @@ Today git is still deeply involved in collaboration and project open.
 
 ### 1. Project open is git-gated
 
-Current open flow in [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts):
+Current open flow in [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts):
 
-- resolves remote config through [projectGitRuntime.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
-- checks source-control readiness through [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
-- checks / provisions repository access through [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
+- resolves remote config through [projectGitRuntime.ts](<home>/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
+- checks source-control readiness through [projectOpenAccess.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
+- checks / provisions repository access through [projectOpenAccess.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
 - ensures collab lane state before open
 - prepares local git repo state before navigation
 
-This flow is called directly from [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx).
+This flow is called directly from [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx).
 
 ### 2. Collaborative durability is routed through git
 
 The collaboration runtime currently attaches git durability at multiple points:
 
-- [ProjectSyncProviderRuntime.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
-- [ProjectFilesPersistence.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
-- [useYjsFileWriteback.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
-- [BinaryFileSync.ts](/Users/admin/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts)
+- [ProjectSyncProviderRuntime.tsx](<home>/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
+- [ProjectFilesPersistence.ts](<home>/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
+- [useYjsFileWriteback.ts](<home>/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
+- [BinaryFileSync.ts](<home>/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts)
 
-All of those rely on [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts), which:
+All of those rely on [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts), which:
 
 - debounces collaborative edits
 - ensures / initializes local git repo state
@@ -200,9 +200,9 @@ That is the biggest architectural coupling in the app.
 
 The lane model is currently git-shaped:
 
-- registry: [projectLaneRegistry.ts](/Users/admin/Downloads/electron-app-main/electron/projectLaneRegistry.ts)
-- renderer hook: [useProjectLaneState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
-- workbench control: [useWorkbenchBranchControl.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
+- registry: [projectLaneRegistry.ts](<home>/Downloads/electron-app-main/electron/projectLaneRegistry.ts)
+- renderer hook: [useProjectLaneState.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
+- workbench control: [useWorkbenchBranchControl.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
 
 The current concepts:
 
@@ -217,9 +217,9 @@ all implicitly teach users that collaboration is fundamentally a git branch work
 
 Repository access automation appears in collaboration-adjacent surfaces:
 
-- [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
-- [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
-- [projectRepoAutomation.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts)
+- [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
+- [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
+- [projectRepoAutomation.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts)
 
 That means:
 
@@ -231,7 +231,7 @@ This is exactly the coupling the refactor should remove.
 
 ### 5. Project creation still assumes remote automation matters early
 
-[CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx) currently:
+[CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx) currently:
 
 - reads workspace source-control readiness
 - blocks some creation/import flows on GitHub setup
@@ -243,8 +243,8 @@ That makes git feel like part of project creation, not an optional later step.
 
 Current project records still bundle collaboration-adjacent behavior into git-shaped fields in:
 
-- [convex/projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
-- [convex/sourceControl.ts](/Users/admin/Downloads/electron-app-main/convex/sourceControl.ts)
+- [convex/projects.ts](<home>/Downloads/electron-app-main/convex/projects.ts)
+- [convex/sourceControl.ts](<home>/Downloads/electron-app-main/convex/sourceControl.ts)
 
 Examples:
 
@@ -260,9 +260,9 @@ This makes the core project entity heavier and more git-opinionated than the pro
 
 Source-control assumptions are embedded into:
 
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
-- [ProjectSettingsSourceControlPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
-- [projectGitRuntime.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- [ProjectSettingsSourceControlPanel.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
+- [projectGitRuntime.ts](<home>/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
 
 Current project settings still expose:
 
@@ -275,7 +275,7 @@ Those should no longer define how collaboration works.
 
 ### 8. Error handling still assumes git is part of project access
 
-[projectCloudAccessPresentation.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts) maps many project-open failures to:
+[projectCloudAccessPresentation.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts) maps many project-open failures to:
 
 - repo corruption
 - missing provider identity
@@ -429,7 +429,7 @@ After the refactor:
 
 Main surface:
 
-- [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
+- [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
 
 ## Open project
 
@@ -443,7 +443,7 @@ After the refactor:
 
 Main surface:
 
-- [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
+- [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
 
 ## Close project
 
@@ -457,7 +457,7 @@ Main areas affected:
 
 - workbench session lifecycle
 - project sync runtime shutdown
-- any remaining `beforeunload` git hooks inherited from [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
+- any remaining `beforeunload` git hooks inherited from [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
 
 ## Workbench header
 
@@ -469,8 +469,8 @@ After the refactor:
 
 Main surfaces:
 
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- [WorkbenchHeaderBranchControl.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx)
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- [WorkbenchHeaderBranchControl.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx)
 
 ## Members and invites
 
@@ -482,7 +482,7 @@ After the refactor:
 
 Main surface:
 
-- [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
+- [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
 
 ## Share button / join links
 
@@ -494,7 +494,7 @@ After the refactor:
 
 Main surface:
 
-- [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
+- [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
 
 ## Project settings
 
@@ -507,8 +507,8 @@ After the refactor:
 
 Main surfaces:
 
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
-- [ProjectSettingsSourceControlPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- [ProjectSettingsSourceControlPanel.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
 
 ## Workspace source control settings
 
@@ -520,7 +520,7 @@ After the refactor:
 
 Main surface:
 
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
 
 ## Sync status UI
 
@@ -533,7 +533,7 @@ After the refactor:
 
 Main surface:
 
-- [ProjectSyncIndicator.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx)
+- [ProjectSyncIndicator.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx)
 
 ## Local storage / project folders
 
@@ -546,8 +546,8 @@ After the refactor:
 
 Main surfaces:
 
-- [Storage.tsx](/Users/admin/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
-- [projectCloudAccessPresentation.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
+- [Storage.tsx](<home>/Downloads/electron-app-main/src/pages/settings/Storage.tsx)
+- [projectCloudAccessPresentation.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
 
 ## Activity and audit
 
@@ -559,8 +559,8 @@ After the refactor:
 
 Main surface / infra:
 
-- [ProjectFilesPersistence.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
-- [convex/activity.ts](/Users/admin/Downloads/electron-app-main/convex/activity.ts)
+- [ProjectFilesPersistence.ts](<home>/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
+- [convex/activity.ts](<home>/Downloads/electron-app-main/convex/activity.ts)
 
 ## Refactor Strategy
 
@@ -586,23 +586,23 @@ Collapse collaboration onto one dedicated websocket transport before deeper prod
 
 ### Files to change
 
-- [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
-- [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
-- [useCollabSession.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
-- [YConvexProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/YConvexProvider.ts)
-- [YConvexAwarenessProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/YConvexAwarenessProvider.ts)
-- [server/src/routes/collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts)
-- [convex/yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-- [convex/yjsAwareness.ts](/Users/admin/Downloads/electron-app-main/convex/yjsAwareness.ts)
+- [YjsProjectContext.tsx](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
+- [CollabWsProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
+- [useCollabSession.ts](<home>/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
+- [YConvexProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/YConvexProvider.ts)
+- [YConvexAwarenessProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/YConvexAwarenessProvider.ts)
+- [server/src/routes/collab.ts](<home>/Downloads/electron-app-main/server/src/routes/collab.ts)
+- [convex/yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts)
+- [convex/yjsAwareness.ts](<home>/Downloads/electron-app-main/convex/yjsAwareness.ts)
 
 ### Exact changes
 
-- Remove the runtime branch in [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx) that chooses between websocket and Convex-tail collaboration.
+- Remove the runtime branch in [YjsProjectContext.tsx](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx) that chooses between websocket and Convex-tail collaboration.
 - Make websocket session bootstrap the single normal live-collaboration path.
 - Keep Convex persistence as backend storage only, not as a parallel client transport.
-- Demote or remove [YConvexProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/YConvexProvider.ts) and [YConvexAwarenessProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/YConvexAwarenessProvider.ts) from the active client transport path.
-- Keep [server/src/routes/collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts) as the collaboration gateway and harden it as the enterprise realtime entrypoint.
-- Keep [convex/yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts) and [convex/yjsAwareness.ts](/Users/admin/Downloads/electron-app-main/convex/yjsAwareness.ts) as persistence/storage infrastructure behind the websocket path until encryption lands.
+- Demote or remove [YConvexProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/YConvexProvider.ts) and [YConvexAwarenessProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/YConvexAwarenessProvider.ts) from the active client transport path.
+- Keep [server/src/routes/collab.ts](<home>/Downloads/electron-app-main/server/src/routes/collab.ts) as the collaboration gateway and harden it as the enterprise realtime entrypoint.
+- Keep [convex/yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts) and [convex/yjsAwareness.ts](<home>/Downloads/electron-app-main/convex/yjsAwareness.ts) as persistence/storage infrastructure behind the websocket path until encryption lands.
 
 ### Outcome
 
@@ -618,12 +618,12 @@ Collaborative edits should persist to Cozea and local disk only.
 
 ### Files to change
 
-- [ProjectSyncProviderRuntime.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
-- [ProjectFilesPersistence.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
-- [useYjsFileWriteback.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
-- [BinaryFileSync.ts](/Users/admin/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts)
-- [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
-- [ProjectSyncIndicator.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx)
+- [ProjectSyncProviderRuntime.tsx](<home>/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
+- [ProjectFilesPersistence.ts](<home>/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
+- [useYjsFileWriteback.ts](<home>/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
+- [BinaryFileSync.ts](<home>/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts)
+- [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
+- [ProjectSyncIndicator.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx)
 
 ### Exact changes
 
@@ -632,17 +632,17 @@ Collaborative edits should persist to Cozea and local disk only.
   - Yjs file persistence
   - remote writeback
   - binary sync
-- Redefine `triggerSync` in [ProjectSyncProviderRuntime.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx) to mean:
+- Redefine `triggerSync` in [ProjectSyncProviderRuntime.tsx](<home>/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx) to mean:
   - flush local pending collaboration state
   - or re-run Cozea sync/reconciliation
   - never perform git operations
-- Update [ProjectFilesPersistence.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts) comment and behavior so it becomes:
+- Update [ProjectFilesPersistence.ts](<home>/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts) comment and behavior so it becomes:
   - activity log persistence
   - Cozea durability scheduling
   - not git durability
-- Update [BinaryFileSync.ts](/Users/admin/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts) so binary changes queue Cozea persistence, not git sync.
-- Delete [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts) entirely once no longer referenced, or temporarily replace it with a thin no-op compatibility shim if the rollout is staged.
-- Reword [ProjectSyncIndicator.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx) so:
+- Update [BinaryFileSync.ts](<home>/Downloads/electron-app-main/src/lib/sync/BinaryFileSync.ts) so binary changes queue Cozea persistence, not git sync.
+- Delete [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts) entirely once no longer referenced, or temporarily replace it with a thin no-op compatibility shim if the rollout is staged.
+- Reword [ProjectSyncIndicator.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx) so:
   - “sync” means Cozea collaboration sync
   - it does not imply git upload/download semantics
 
@@ -660,15 +660,15 @@ Opening a project should never require GitHub/provider setup or repo access.
 
 ### Files to change
 
-- [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
-- [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
-- [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
-- [projectCloudAccessPresentation.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
+- [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx)
+- [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
+- [projectOpenAccess.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
+- [projectCloudAccessPresentation.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
 - any route state still depending on `syncMode: "git"`
 
 ### Exact changes
 
-- Replace `prepareGitProjectForOpen(...)` in [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx) with a new Cozea-native open helper such as `prepareProjectForOpen(...)`.
+- Replace `prepareGitProjectForOpen(...)` in [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx) with a new Cozea-native open helper such as `prepareProjectForOpen(...)`.
 - New open helper should only:
   - resolve local path
   - remember local path
@@ -679,9 +679,9 @@ Opening a project should never require GitHub/provider setup or repo access.
   - `ensureProjectRepositoryAccessForOpen`
   - remote git reconciliation
   - collab lane bootstrapping
-- Delete or strongly demote [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts). Its logic should only be reachable from explicit repo actions later.
-- Delete or heavily shrink [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts).
-- Simplify [projectCloudAccessPresentation.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts) so project-open errors are about:
+- Delete or strongly demote [projectOpenAccess.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts). Its logic should only be reachable from explicit repo actions later.
+- Delete or heavily shrink [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts).
+- Simplify [projectCloudAccessPresentation.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts) so project-open errors are about:
   - membership
   - billing / seat
   - local path / storage repair
@@ -702,12 +702,12 @@ The workbench should no longer present collaboration as a git-lane workflow, whi
 
 ### Files to change
 
-- [projectLaneRegistry.ts](/Users/admin/Downloads/electron-app-main/electron/projectLaneRegistry.ts)
-- [useProjectLaneState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
-- [useWorkbenchBranchControl.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
-- [WorkbenchHeaderBranchControl.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx)
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- [projectSidebarShared.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarShared.ts)
+- [projectLaneRegistry.ts](<home>/Downloads/electron-app-main/electron/projectLaneRegistry.ts)
+- [useProjectLaneState.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
+- [useWorkbenchBranchControl.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
+- [WorkbenchHeaderBranchControl.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/WorkbenchHeaderBranchControl.tsx)
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- [projectSidebarShared.ts](<home>/Downloads/electron-app-main/src/features/projects/components/sidebar/projectSidebarShared.ts)
 
 ### Exact changes
 
@@ -717,11 +717,11 @@ The workbench should no longer present collaboration as a git-lane workflow, whi
   - non-shared branch => local-only mode
 - Keep branch switching fully manual.
 - Make Cozea remember the last branch used locally for each project on each device.
-- Replace [useProjectLaneState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts) and [projectLaneRegistry.ts](/Users/admin/Downloads/electron-app-main/electron/projectLaneRegistry.ts) with a smaller dedicated branch session store such as `projectBranchSessionStore`, whose only job is:
+- Replace [useProjectLaneState.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts) and [projectLaneRegistry.ts](<home>/Downloads/electron-app-main/electron/projectLaneRegistry.ts) with a smaller dedicated branch session store such as `projectBranchSessionStore`, whose only job is:
   - remember the last branch used for a project on this device
   - remember whether that branch is the shared collaboration branch or a local-only branch
   - restore reopen behavior without carrying lane/worktree semantics
-- Remove personal-lane/worktree creation as the default branch-switch behavior in [useWorkbenchBranchControl.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts).
+- Remove personal-lane/worktree creation as the default branch-switch behavior in [useWorkbenchBranchControl.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts).
 - Before any branch switch away from the shared branch, explicitly detach Yjs collaboration.
 - When switching back to the shared branch, allow collaboration reattach.
 - Remove the branch control from the default collaboration identity in the workbench header, or at minimum make its mode explicit:
@@ -743,26 +743,26 @@ GitHub integration should become optional repo tooling, not collaboration setup.
 
 ### Files to change
 
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-- [useWorkspaceSourceControl.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useWorkspaceSourceControl.ts)
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
-- [ProjectSettingsSourceControlPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
-- [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
-- [RepositoryProvisioner.tsx](/Users/admin/Downloads/electron-app-main/src/components/git/RepositoryProvisioner.tsx)
-- [providerRepositoryManagement.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/providerRepositoryManagement.ts)
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+- [useWorkspaceSourceControl.ts](<home>/Downloads/electron-app-main/src/hooks/useWorkspaceSourceControl.ts)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- [ProjectSettingsSourceControlPanel.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
+- [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
+- [RepositoryProvisioner.tsx](<home>/Downloads/electron-app-main/src/components/git/RepositoryProvisioner.tsx)
+- [providerRepositoryManagement.ts](<home>/Downloads/electron-app-main/src/lib/git/providerRepositoryManagement.ts)
 
 ### Exact changes
 
-- Reframe [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx) as optional “Git Providers” or “Repository Integrations”, not something collaboration needs.
-- In [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx), split project settings into:
+- Reframe [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx) as optional “Git Providers” or “Repository Integrations”, not something collaboration needs.
+- In [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx), split project settings into:
   - core project settings
   - optional repository settings
 - Remove “active collab branch” and “auto sync” from the default mental model.
-- In [ProjectSettingsSourceControlPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx), keep only explicit repo-attachment settings such as:
+- In [ProjectSettingsSourceControlPanel.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx), keep only explicit repo-attachment settings such as:
   - provider
   - repo URL
   - default branch for manual tooling if we still want it
-- In [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx), remove source-control readiness as a blocker for normal project creation and local import.
+- In [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx), remove source-control readiness as a blocker for normal project creation and local import.
 - Repository provisioning should become an optional step after project creation, not part of collaboration bootstrap.
 - New projects should be created with the minimum collaboration-first metadata only; repo metadata should only be written if the user explicitly opts into repository setup.
 
@@ -780,22 +780,22 @@ Project invites and member management should be purely Cozea-level concerns.
 
 ### Files to change
 
-- [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
-- [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
-- [projectRepoAutomation.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts)
-- [projectRepoAccess.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepoAccess.ts)
+- [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
+- [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
+- [projectRepoAutomation.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts)
+- [projectRepoAccess.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepoAccess.ts)
 - related Convex repo-access endpoints once UI is removed
 
 ### Exact changes
 
-- Remove repo-access status badges and repository invitation logic from [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx).
-- Remove `flushProjectBeforeShare` git behavior from [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx).
+- Remove repo-access status badges and repository invitation logic from [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx).
+- Remove `flushProjectBeforeShare` git behavior from [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx).
 - Sharing a project should only:
   - create / revoke Cozea invites
   - manage Cozea project membership
   - optionally create a Cozea join link
-- Move [projectRepoAutomation.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts) out of collaboration surfaces. Keep it only for explicit repo admin actions if still needed.
-- Demote [projectRepoAccess.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepoAccess.ts) to optional git tooling status computation.
+- Move [projectRepoAutomation.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts) out of collaboration surfaces. Keep it only for explicit repo admin actions if still needed.
+- Demote [projectRepoAccess.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepoAccess.ts) to optional git tooling status computation.
 
 ### Outcome
 
@@ -811,7 +811,7 @@ Project collaboration metadata should no longer be branch-centric.
 
 ### Current model pressure points
 
-[convex/projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts) and [convex/sourceControl.ts](/Users/admin/Downloads/electron-app-main/convex/sourceControl.ts) currently still carry fields that collaboration depends on:
+[convex/projects.ts](<home>/Downloads/electron-app-main/convex/projects.ts) and [convex/sourceControl.ts](<home>/Downloads/electron-app-main/convex/sourceControl.ts) currently still carry fields that collaboration depends on:
 
 - `sourceControl.provider`
 - `sourceControl.repoUrl`
@@ -891,11 +891,11 @@ The app should stop teaching users that git is part of collaboration.
 
 ### Files most affected
 
-- [ProjectSyncIndicator.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx)
-- [ProjectWorkbenchPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-- [projectCloudAccessPresentation.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
+- [ProjectSyncIndicator.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSyncIndicator.tsx)
+- [ProjectWorkbenchPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectWorkbenchPage.tsx)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+- [projectCloudAccessPresentation.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
 
 ## Backend / Schema Map
 
@@ -903,19 +903,19 @@ These backend areas will need careful treatment once the frontend is off the git
 
 ## Keep as collaboration backend
 
-- [convex/yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-- [convex/yjsAwareness.ts](/Users/admin/Downloads/electron-app-main/convex/yjsAwareness.ts)
-- [convex/projectMembers.ts](/Users/admin/Downloads/electron-app-main/convex/projectMembers.ts)
-- [convex/projectJoinLinks.ts](/Users/admin/Downloads/electron-app-main/convex/projectJoinLinks.ts)
+- [convex/yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts)
+- [convex/yjsAwareness.ts](<home>/Downloads/electron-app-main/convex/yjsAwareness.ts)
+- [convex/projectMembers.ts](<home>/Downloads/electron-app-main/convex/projectMembers.ts)
+- [convex/projectJoinLinks.ts](<home>/Downloads/electron-app-main/convex/projectJoinLinks.ts)
 
 ## Demote from core collaboration
 
-- [convex/sourceControl.ts](/Users/admin/Downloads/electron-app-main/convex/sourceControl.ts)
+- [convex/sourceControl.ts](<home>/Downloads/electron-app-main/convex/sourceControl.ts)
 - repo-access tables and mutations used by repository invitation automation
 
 ## Migrate carefully
 
-- [convex/projects.ts](/Users/admin/Downloads/electron-app-main/convex/projects.ts)
+- [convex/projects.ts](<home>/Downloads/electron-app-main/convex/projects.ts)
 
 Migration rule:
 
@@ -927,49 +927,49 @@ Migration rule:
 
 ## Remove from collaboration path
 
-- [projectOpenGitSync.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
-- [projectOpenAccess.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
-- [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
-- [projectLaneRegistry.ts](/Users/admin/Downloads/electron-app-main/electron/projectLaneRegistry.ts)
-- [useProjectLaneState.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
-- [useWorkbenchBranchControl.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
+- [projectOpenGitSync.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenGitSync.ts)
+- [projectOpenAccess.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenAccess.ts)
+- [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts)
+- [projectLaneRegistry.ts](<home>/Downloads/electron-app-main/electron/projectLaneRegistry.ts)
+- [useProjectLaneState.ts](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectLaneState.ts)
+- [useWorkbenchBranchControl.ts](<home>/Downloads/electron-app-main/src/features/projects/components/workbench/branch-control/useWorkbenchBranchControl.ts)
 
 ## Keep as core collaboration infrastructure
 
-- [YjsProjectContext.tsx](/Users/admin/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
-- [CollabWsProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
-- [useCollabSession.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
-- [ProjectSyncProviderRuntime.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
-- [ProjectFilesPersistence.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
-- [useYjsFileWriteback.ts](/Users/admin/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
+- [YjsProjectContext.tsx](<home>/Downloads/electron-app-main/src/contexts/YjsProjectContext.tsx)
+- [CollabWsProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/CollabWsProvider.ts)
+- [useCollabSession.ts](<home>/Downloads/electron-app-main/src/hooks/useCollabSession.ts)
+- [ProjectSyncProviderRuntime.tsx](<home>/Downloads/electron-app-main/src/features/projects/contexts/ProjectSyncProviderRuntime.tsx)
+- [ProjectFilesPersistence.ts](<home>/Downloads/electron-app-main/src/lib/yjs/ProjectFilesPersistence.ts)
+- [useYjsFileWriteback.ts](<home>/Downloads/electron-app-main/src/hooks/useYjsFileWriteback.ts)
 
 ## Keep as collaboration persistence infrastructure
 
-- [server/src/routes/collab.ts](/Users/admin/Downloads/electron-app-main/server/src/routes/collab.ts)
-- [convex/yjs.ts](/Users/admin/Downloads/electron-app-main/convex/yjs.ts)
-- [convex/yjsAwareness.ts](/Users/admin/Downloads/electron-app-main/convex/yjsAwareness.ts)
+- [server/src/routes/collab.ts](<home>/Downloads/electron-app-main/server/src/routes/collab.ts)
+- [convex/yjs.ts](<home>/Downloads/electron-app-main/convex/yjs.ts)
+- [convex/yjsAwareness.ts](<home>/Downloads/electron-app-main/convex/yjsAwareness.ts)
 
 ## Remove from active client transport path
 
-- [YConvexProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/YConvexProvider.ts)
-- [YConvexAwarenessProvider.ts](/Users/admin/Downloads/electron-app-main/src/lib/yjs/YConvexAwarenessProvider.ts)
+- [YConvexProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/YConvexProvider.ts)
+- [YConvexAwarenessProvider.ts](<home>/Downloads/electron-app-main/src/lib/yjs/YConvexAwarenessProvider.ts)
 
 ## Demote to optional git tooling
 
-- [projectGitRuntime.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
-- [projectRepoAutomation.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts)
-- [projectRepoAccess.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/projectRepoAccess.ts)
-- [SourceControl.tsx](/Users/admin/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
-- [ProjectSettingsSourceControlPanel.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
-- [RepositoryProvisioner.tsx](/Users/admin/Downloads/electron-app-main/src/components/git/RepositoryProvisioner.tsx)
+- [projectGitRuntime.ts](<home>/Downloads/electron-app-main/src/lib/git/projectGitRuntime.ts)
+- [projectRepoAutomation.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepoAutomation.ts)
+- [projectRepoAccess.ts](<home>/Downloads/electron-app-main/src/lib/git/projectRepoAccess.ts)
+- [SourceControl.tsx](<home>/Downloads/electron-app-main/src/pages/workspace/SourceControl.tsx)
+- [ProjectSettingsSourceControlPanel.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/settings/ProjectSettingsSourceControlPanel.tsx)
+- [RepositoryProvisioner.tsx](<home>/Downloads/electron-app-main/src/components/git/RepositoryProvisioner.tsx)
 
 ## Simplify after rollout
 
-- [projectCloudAccessPresentation.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
-- [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
-- [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
-- [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
-- [ProjectSettingsPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
+- [projectCloudAccessPresentation.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectCloudAccessPresentation.ts)
+- [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx)
+- [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx)
+- [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx)
+- [ProjectSettingsPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectSettingsPage.tsx)
 
 ## Rollout Order
 
@@ -1069,9 +1069,9 @@ The refactor is successful when all of these are true:
 
 The highest-value first slice described above has now been completed:
 
-1. [GitDurabilityCoordinator.ts](/Users/admin/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts) was removed from collaborative durability and deleted.
-2. [ProjectSidebar.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx) now uses the local-first [projectOpenLocal.ts](/Users/admin/Downloads/electron-app-main/src/features/projects/lib/projectOpenLocal.ts) helper instead of the old git-gated open flow.
-3. [ProjectTeamPage.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx) and [HeaderProjectShareButton.tsx](/Users/admin/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx) no longer automate repo access.
-4. [CreateProjectDialog.tsx](/Users/admin/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx) now creates collaboration-first projects without source-control readiness or default remote assumptions.
+1. [GitDurabilityCoordinator.ts](<home>/Downloads/electron-app-main/src/lib/git/GitDurabilityCoordinator.ts) was removed from collaborative durability and deleted.
+2. [ProjectSidebar.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/ProjectSidebar.tsx) now uses the local-first [projectOpenLocal.ts](<home>/Downloads/electron-app-main/src/features/projects/lib/projectOpenLocal.ts) helper instead of the old git-gated open flow.
+3. [ProjectTeamPage.tsx](<home>/Downloads/electron-app-main/src/features/projects/pages/ProjectTeamPage.tsx) and [HeaderProjectShareButton.tsx](<home>/Downloads/electron-app-main/src/components/layouts/unified-header/HeaderProjectShareButton.tsx) no longer automate repo access.
+4. [CreateProjectDialog.tsx](<home>/Downloads/electron-app-main/src/features/projects/components/CreateProjectDialog.tsx) now creates collaboration-first projects without source-control readiness or default remote assumptions.
 
 The remaining work is mostly compatibility cleanup and future-hardening, not the core product shift itself.

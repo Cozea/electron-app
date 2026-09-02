@@ -75,3 +75,10 @@ scratch/diagnostics/search.html
 scratch/diagnostics/stream.out
 scratch/marketplace/marketplace_response.json
 scratch/marketplace/*.vsix
+
+# Local working directories — kept on disk, never published.
+# .agent/CONTINUITY.md is the agent continuity file required by AGENTS.md; it is
+# per-workspace state, not source. research/ and scratch/ are investigation scratch.
+.agent/
+research/
+scratch/

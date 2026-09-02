@@ -712,7 +712,7 @@ They need to be separated.
 
 ## What We Learned From `t3code`
 
-We studied `/Users/admin/Downloads/t3code` as a local reference implementation for session behavior.
+We studied `<home>/Downloads/t3code` as a local reference implementation for session behavior.
 
 Important takeaways:
 
@@ -757,7 +757,7 @@ That is much closer to the model we want.
 
 ## What We Learned From VS Code `browserView`
 
-We also studied `/Users/admin/Downloads/vscode`, specifically the newer `browserView` workbench implementation rather than the older simple-browser extension.
+We also studied `<home>/Downloads/vscode`, specifically the newer `browserView` workbench implementation rather than the older simple-browser extension.
 
 Important reference files:
 
@@ -2042,15 +2042,15 @@ The latest live Electron/CDP verification produced a clearer picture of the rema
 - cold-opening `RadonPreviewSmokeTest` no longer auto-attaches `crossand-plans`
 - `RadonPreviewSmokeTest -> crossand-plans` now behaves correctly
 - after that forward switch:
-  - active `crossand-plans` session path becomes `/Users/admin/Developer/Cozea/crossand-plans`
+  - active `crossand-plans` session path becomes `<workspaces>/crossand-plans`
   - `RadonPreviewSmokeTest` stays backgrounded with `projectPath: null`
   - local `project-path-registry.json` and `project-lane-registry.json` only claim `crossand-plans`
 
 ### What is still broken
 
 - `crossand-plans -> RadonPreviewSmokeTest` still comes back wrong
-- the route changes to the Radon project ID, but the active runtime/session path reattaches to `/Users/admin/Developer/Cozea/crossand-plans`
-- the active terminal snapshot also reports `/Users/admin/Developer/Cozea/crossand-plans`
+- the route changes to the Radon project ID, but the active runtime/session path reattaches to `<workspaces>/crossand-plans`
+- the active terminal snapshot also reports `<workspaces>/crossand-plans`
 
 ### What this means
 
@@ -2070,8 +2070,8 @@ The remaining Radon/Crossand bug turned out to be a **canonical-root poisoning**
 ### What was happening
 
 - `RadonPreviewSmokeTest` is a local-attached project whose real device root is:
-  - `/Users/admin/Desktop/RadonPreviewSmokeTest`
-- a stale borrowed runtime path from another project (`/Users/admin/Developer/Cozea/crossand-plans`) was able to get written back into:
+  - `<home>/Desktop/RadonPreviewSmokeTest`
+- a stale borrowed runtime path from another project (`<workspaces>/crossand-plans`) was able to get written back into:
   - the local canonical path registry
   - the workbench session snapshot
   - the per-user mirrored cloud `localPath`
@@ -2122,22 +2122,22 @@ The validation was done against the real Electron app with the local path regist
 Initial poisoned state:
 
 - `project-path-registry.json` still had:
-  - `m579wb0cefgwx3v4ct2f7pbebx83hsav -> /Users/admin/Developer/Cozea/crossand-plans`
+  - `m579wb0cefgwx3v4ct2f7pbebx83hsav -> <workspaces>/crossand-plans`
   - source `manual`
 
 After calling canonical local-root resolution for Radon with the attached local import hint:
 
 - Electron returned:
-  - `/Users/admin/Desktop/RadonPreviewSmokeTest`
+  - `<home>/Desktop/RadonPreviewSmokeTest`
 - the local registry rewrote itself to:
-  - `m579wb0cefgwx3v4ct2f7pbebx83hsav -> /Users/admin/Desktop/RadonPreviewSmokeTest`
+  - `m579wb0cefgwx3v4ct2f7pbebx83hsav -> <home>/Desktop/RadonPreviewSmokeTest`
   - source `attached-import`
 
 After reopening the Radon workbench:
 
 - the active session snapshot changed to:
   - `projectId: m579wb0cefgwx3v4ct2f7pbebx83hsav`
-  - `projectPath: /Users/admin/Desktop/RadonPreviewSmokeTest`
+  - `projectPath: <home>/Desktop/RadonPreviewSmokeTest`
 - the old borrowed `crossand-plans` cwd no longer remained attached to the Radon workbench session
 
 ### Rule going forward
