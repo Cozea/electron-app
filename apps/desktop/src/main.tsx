@@ -10,7 +10,7 @@ import '@fontsource-variable/jetbrains-mono/index.css'
 import './lib/immer'
 import './index.css'
 import { ConvexProvider } from './contexts/ConvexProvider'
-import { ToastProvider } from './features/projects/components/assistant/ui/toast'
+import { ToastProvider } from './features/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { applyStoredLanguage } from './lib/i18n'
 

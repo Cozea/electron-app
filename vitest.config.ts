@@ -7,6 +7,10 @@ const desktopRoot = path.join(repoRoot, "apps/desktop")
 export default defineConfig({
   resolve: {
     alias: {
+      "@/features/projects/components/assistant": path.resolve(
+        desktopRoot,
+        "./src/features/assistant",
+      ),
       "@": path.resolve(desktopRoot, "./src"),
       "@shared": path.resolve(repoRoot, "./shared"),
       "@cozea/assistant-contracts": path.resolve(repoRoot, "./shared/assistant-contracts/index.ts"),

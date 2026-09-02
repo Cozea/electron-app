@@ -33,6 +33,8 @@
       "@cozea/assistant-shared/*": ["../../shared/assistant-shared/*"],
       "@cozea/effect-acp": ["../../packages/effect-acp/src/client.ts"],
       "@cozea/effect-acp/*": ["../../packages/effect-acp/src/*"],
+      "@/features/projects/components/assistant": ["./src/features/assistant"],
+      "@/features/projects/components/assistant/*": ["./src/features/assistant/*"],
       "@/*": ["./src/*"],
       "@shared/*": ["../../shared/*"],
       "@cozea/contracts": ["../../packages/contracts/src/index.ts"],
