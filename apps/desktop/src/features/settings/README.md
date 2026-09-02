@@ -1,10 +1,9 @@
 # Settings feature
 
-Owns renderer settings navigation, external-tool preferences, and settings-domain state.
+Owns settings routes, settings chrome, drawer navigation, external-tool preferences, and settings-domain state.
 
-- `model/settingsDrawerStore.ts`: drawer route and section state.
-- `model/editorPreferences.ts`: preferred editor selection.
-- `model/externalBrowserPreference.ts`: preferred browser persistence.
-- `model/externalEditorPreference.ts`: workbench external-editor preference.
+- `pages/`: account, appearance, organizations, and tooling surfaces.
+- `ui/`: settings chrome, drawer, and settings-specific disclosure UI.
+- `model/`: drawer state and external browser/editor preferences.
 
-Settings pages and shared settings chrome are migrated here in a later structural stage. Historical modules remain compatibility facades.
+Historical `src/pages/settings`, `src/components/settings`, and `src/stores` modules are compatibility facades. New settings code belongs here.
