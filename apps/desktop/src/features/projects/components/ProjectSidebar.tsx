@@ -603,7 +603,20 @@ export function ProjectSidebar({
       mode: SidebarDevAppPublishMode,
       logoDataUrl: string,
     ) => {
-      if (!featureFlags.projectDevApps || !convexUserId || devAppPublishingRef.current) return;
+      // Re-entrancy and feature gating stay silent; a missing account does not.
+      // Signed out, the old combined guard dropped the click with no dialog and
+      // no log, so Publish looked like it did nothing at all.
+      if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
+      if (!convexUserId) {
+        console.warn("[orgDevApp] Publish blocked: no authenticated Convex user.");
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
+          message: t("orgDevApp.publish.failed"),
+          detail: t("orgDevApp.publish.needsAccount"),
+        });
+        return;
+      }
 
       if (!project.organizationId) {
         await window.electronAPI.dialog.showMessageBox({
@@ -670,7 +683,17 @@ export function ProjectSidebar({
       workspaceId: string | null,
       mode: SidebarDevAppPublishMode,
     ) => {
-      if (!featureFlags.projectDevApps || !convexUserId || devAppPublishingRef.current) return;
+      if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
+      if (!convexUserId) {
+        console.warn("[orgDevApp] Publish request blocked: no authenticated Convex user.");
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
+          message: t("orgDevApp.publish.failed"),
+          detail: t("orgDevApp.publish.needsAccount"),
+        });
+        return;
+      }
 
       if (!workspaceId) {
         await window.electronAPI.dialog.showMessageBox({

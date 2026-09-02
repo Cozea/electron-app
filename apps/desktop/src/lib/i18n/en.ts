@@ -692,6 +692,7 @@ const en = {
   "orgDevApp.open.failed": "Cozea could not open this DevApp.",
   "orgDevApp.open.preparing": "Preparing the published artifact…",
   "orgDevApp.publish.needsOrg": "Attach this project to an organization before publishing.",
+  "orgDevApp.publish.needsAccount": "Sign in before publishing. Publishing needs an authenticated device session.",
   "orgDevApp.publish.failed": "Publishing the DevApp failed.",
   "orgDevApp.publish.noFolder": "Relink this project's local folder before publishing a built artifact.",
   "orgDevApp.publish.title": "Publishing DevApp",

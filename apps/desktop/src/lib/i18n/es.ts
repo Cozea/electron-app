@@ -702,6 +702,8 @@ const es: Record<TranslationKey, string> = {
   "orgDevApp.open.failed": "Cozea no pudo abrir esta DevApp.",
   "orgDevApp.open.preparing": "Preparando el artefacto publicado…",
   "orgDevApp.publish.needsOrg": "Vincula este proyecto a una organización antes de publicar.",
+  "orgDevApp.publish.needsAccount":
+    "Inicia sesión antes de publicar. La publicación requiere una sesión de dispositivo autenticada.",
   "orgDevApp.publish.failed": "No se pudo publicar la DevApp.",
   "orgDevApp.publish.noFolder": "Vuelve a vincular la carpeta local de este proyecto antes de publicar un artefacto compilado.",
   "orgDevApp.publish.title": "Publicando DevApp",

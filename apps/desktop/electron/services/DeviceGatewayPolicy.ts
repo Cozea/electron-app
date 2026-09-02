@@ -5,7 +5,11 @@ export function getTrustedDeviceGatewayBaseUrl(): string {
   const configured =
     typeof __COZEA_DEVICE_GATEWAY_ORIGIN__ === "string"
       ? __COZEA_DEVICE_GATEWAY_ORIGIN__
-      : process.env.VITE_AUTH_SERVER_URL || process.env.VITE_COLLAB_BASE_URL || "https://api.cozea.app"
+      : process.env.VITE_AUTH_SERVER_URL ||
+        process.env.VITE_COLLAB_BASE_URL ||
+        // Matches DEFAULT_COZEA_WORKER_ORIGIN in electron.vite.config.ts. The
+        // previous default, https://api.cozea.app, has no DNS record.
+        "https://cozea-collab.kelyan-engone.workers.dev"
   const url = new URL(configured)
   if (url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "127.0.0.1")) {
     throw new Error("The Cozea device gateway is not configured securely.")

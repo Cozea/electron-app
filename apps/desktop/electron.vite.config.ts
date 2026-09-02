@@ -18,8 +18,15 @@ function readBooleanFlag(name: string, fallback: boolean): boolean {
   return fallback
 }
 
+// Shared default for the collab worker, which serves both the AI proxy and the
+// device gateway (/auth/device/*, /devapps/runtime-builds). The device gateway
+// used to fall back to https://api.cozea.app, which has no DNS record, so an
+// unset VITE_AUTH_SERVER_URL failed a DevApp publish minutes in with
+// "Could not reach the DevApp builder at https://api.cozea.app".
+const DEFAULT_COZEA_WORKER_ORIGIN = 'https://cozea-collab.kelyan-engone.workers.dev'
+
 function resolveAiProxyTarget(): string {
-  const defaultRemoteTarget = 'https://cozea-collab.kelyan-engone.workers.dev'
+  const defaultRemoteTarget = DEFAULT_COZEA_WORKER_ORIGIN
 
   // Optional explicit proxy target (origin or full URL).
   const configured = process.env.VITE_AI_PROXY_TARGET || process.env.VITE_AI_API_URL
@@ -41,7 +48,8 @@ function resolveAiProxyTarget(): string {
 }
 
 function resolveDeviceGatewayOrigin(): string {
-  const configured = process.env.VITE_AUTH_SERVER_URL || process.env.VITE_COLLAB_BASE_URL || 'https://api.cozea.app'
+  const configured =
+    process.env.VITE_AUTH_SERVER_URL || process.env.VITE_COLLAB_BASE_URL || DEFAULT_COZEA_WORKER_ORIGIN
   try {
     const url = new URL(configured)
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.hostname === '127.0.0.1')) {
