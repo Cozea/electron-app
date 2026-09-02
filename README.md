@@ -33,6 +33,23 @@ Windows builds are produced (NSIS), but the contained DevApp runtime is built on
 Containerization framework and declares `.macOS(.v26)`. Elsewhere those surfaces are
 unavailable rather than degraded — development DevApps still work.
 
+## Installing a macOS release
+
+Cozea is free and is not distributed through the Apple Developer Program, so releases are
+**not notarized**. macOS quarantines anything downloaded from the internet and refuses to
+open an unnotarized app on the first attempt, reporting that the developer cannot be
+verified. That warning is about the absence of an Apple subscription, not about the build.
+
+To open it the first time, right-click the app in Finder and choose **Open**, then confirm.
+macOS remembers the decision. If you would rather clear the quarantine flag directly:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Cozea.app
+```
+
+Building from source, as below, avoids this entirely — locally produced apps are never
+quarantined.
+
 ## Getting started
 
 The build depends on a vendored submodule, which must be initialised

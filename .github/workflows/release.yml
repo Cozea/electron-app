@@ -353,24 +353,29 @@ jobs:
             exit 1
           fi
 
-      - name: Validate macOS signing secrets
+      - name: Resolve macOS signing mode
         if: matrix.electron_target == 'mac'
         shell: bash
         run: |
           set -euo pipefail
-          missing=()
-          for name in CSC_LINK CSC_KEY_PASSWORD; do
-            if [[ -z "${!name:-}" ]]; then
-              missing+=("$name")
-            fi
-          done
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing required macOS signing secrets: ${missing[*]}"
-            exit 1
+          # Both a Developer ID certificate and notarization require a paid Apple
+          # Developer Program membership. Cozea ships free, so the release has to
+          # produce usable artifacts without one: fall back to an unsigned build
+          # instead of failing the job, and let the later signing, verification
+          # and notarization steps opt out on this flag.
+          if [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" ]]; then
+            echo "COZEA_MAC_SIGNING=1" >> "$GITHUB_ENV"
+            echo "Signing certificate configured; producing a signed build."
+          else
+            echo "COZEA_MAC_SIGNING=0" >> "$GITHUB_ENV"
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "COZEA_SKIP_NOTARIZE=1" >> "$GITHUB_ENV"
+            echo "COZEA_ALLOW_UNSIGNED_GIT_BUNDLES=1" >> "$GITHUB_ENV"
+            echo "::warning::No macOS signing certificate configured; producing an unsigned build. Downloaders must bypass Gatekeeper on first launch."
           fi
 
       - name: Validate macOS publish secrets
-        if: matrix.electron_target == 'mac' && needs.plan.outputs.publish_mode == 'always'
+        if: matrix.electron_target == 'mac' && needs.plan.outputs.publish_mode == 'always' && env.COZEA_MAC_SIGNING == '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -415,7 +420,7 @@ jobs:
           brew install autoconf
 
       - name: Import macOS signing certificate
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.COZEA_MAC_SIGNING == '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -527,6 +532,16 @@ jobs:
           while IFS= read -r app_path; do
             found_app=1
             echo "Verifying app bundle: ${app_path}"
+
+            if [[ "${COZEA_MAC_SIGNING:-1}" != "1" ]]; then
+              # An unsigned build carries at most an ad-hoc signature, which
+              # Gatekeeper never accepts, so the assertions below would all fail by
+              # design. Check the bundle is structurally intact instead.
+              test -d "${app_path}/Contents/MacOS"
+              echo "Unsigned build: skipped signature, Gatekeeper and staple checks."
+              continue
+            fi
+
             codesign --verify --deep --strict --verbose=2 "${app_path}"
 
             if [[ "${{ needs.plan.outputs.publish_mode }}" == "always" ]]; then
@@ -541,7 +556,7 @@ jobs:
           fi
 
       - name: Notarize and staple DMG
-        if: runner.os == 'macOS' && needs.plan.outputs.publish_mode == 'always'
+        if: runner.os == 'macOS' && needs.plan.outputs.publish_mode == 'always' && env.COZEA_MAC_SIGNING == '1'
         shell: bash
         run: |
           set -euo pipefail
