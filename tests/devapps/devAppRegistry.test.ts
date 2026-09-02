@@ -48,6 +48,12 @@ describe("DevApps registry", () => {
       "codex",
       "cursor",
     ])
+
+    expect(
+      listLauncherApps({
+        enabledAssistantProviders: [],
+      }).map((app) => app.id),
+    ).toEqual(["browser", "dev-server", "terminal", "mobile-simulator", "llama"])
   })
 
   it("filters store apps by category and query", () => {

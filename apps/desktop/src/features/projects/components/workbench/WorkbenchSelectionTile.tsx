@@ -21,6 +21,7 @@ import {
   computeWorkbenchSelectionLauncherLayout,
   type WorkbenchSelectionLauncherLayout,
 } from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
+import { resolveEnabledWorkbenchAssistantProviders } from "@/features/projects/components/workbench/workbenchSelectionAssistantProviders"
 import { useTranslation } from "@/lib/i18n"
 import {
   filterWorkbenchSelectionApps,
@@ -416,13 +417,7 @@ export function WorkbenchSelectionTile({
   }, [activeCategory, resolvedActiveCategory])
 
   const enabledAssistantProviders = useMemo(() => {
-    const providers =
-      config?.providers
-        .filter((provider) => provider.enabled)
-        .map((provider) => ((provider as unknown as { provider?: string }).provider ?? provider.driver ?? provider.instanceId) as "cursor" | "codex" | "claudeAgent" | "opencode")
-        .filter((p): p is "cursor" | "codex" | "claudeAgent" | "opencode" => Boolean(p)) ?? []
-
-    return providers.length > 0 ? providers : null
+    return resolveEnabledWorkbenchAssistantProviders(config?.providers ?? null)
   }, [config])
 
   const allOptions = useMemo(

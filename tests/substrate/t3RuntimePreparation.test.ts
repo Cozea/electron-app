@@ -3,11 +3,21 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { resolveT3RuntimeRoot } from '../../apps/server/src/t3/paths'
-import { sanitizePortableRuntimeSymlinks } from '../../scripts/prepare-t3-runtime.mjs'
+import {
+  patchT3ServerBundleProviderDefaults,
+  sanitizePortableRuntimeSymlinks,
+} from '../../scripts/prepare-t3-runtime.mjs'
 
 const repositoryRoot = path.resolve(__dirname, '../..')
 
 describe('T3 runtime preparation', () => {
+  const unpatchedProviderDefaults = `const CursorSettings = makeProviderSettingsSchema({
+\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(false)), annotateKey({ providerSettingsForm: { hidden: true } })),
+const OpenCodeSettings = makeProviderSettingsSchema({
+\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(false)), annotateKey({ providerSettingsForm: { hidden: true } })),
+enabled: persisted.providers?.cursor?.enabled ?? usedProviders.has("cursor")
+enabled: persisted.providers?.opencode?.enabled ?? usedProviders.has("opencode")`
+
   it('prefers an explicit runtime root', () => {
     expect(resolveT3RuntimeRoot({
       explicitRoot: '/tmp/cozea-explicit-t3',
@@ -47,6 +57,34 @@ describe('T3 runtime preparation', () => {
     expect(builderConfig).toContain('from: "../../build/t3-runtime"')
     expect(builderConfig).toContain('from: "../../build/t3-runtime/node_modules"')
     expect(prepareScript).toContain('"pnpm-store"')
+    expect(prepareScript).toContain('applyCozeaT3RuntimePatches({ checkOnly: false })')
+  })
+
+  it('enables Cursor and OpenCode in the built runtime while preserving explicit disables', () => {
+    const patched = patchT3ServerBundleProviderDefaults(unpatchedProviderDefaults)
+
+    expect(patched.changed).toBe(true)
+    expect(patched.source).toContain(
+      'const CursorSettings = makeProviderSettingsSchema({\n\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(true))',
+    )
+    expect(patched.source).toContain(
+      'const OpenCodeSettings = makeProviderSettingsSchema({\n\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(true))',
+    )
+    expect(patched.source).toContain(
+      'persisted.providers?.cursor?.enabled ?? settings.providers.cursor.enabled',
+    )
+    expect(patched.source).toContain(
+      'persisted.providers?.opencode?.enabled ?? settings.providers.opencode.enabled',
+    )
+
+    const secondPass = patchT3ServerBundleProviderDefaults(patched.source)
+    expect(secondPass.changed).toBe(false)
+    expect(secondPass.source).toBe(patched.source)
+  })
+
+  it('fails loudly when an upstream T3 bundle changes the provider-default anchors', () => {
+    expect(() => patchT3ServerBundleProviderDefaults('const changedUpstreamBundle = true'))
+      .toThrow('Cursor default enablement patch anchor is missing')
   })
 
   it('removes pnpm deploy self-links that escape the packaged runtime', () => {
