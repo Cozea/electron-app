@@ -264,20 +264,13 @@ jobs:
             runtime_bundle_targets: darwin-arm64
           - name: macOS x64
             artifact_name: macos-x64
-            # Blacksmith currently documents Apple Silicon macOS runners, so the
-            # x64 package is built from the same macOS 15 pool with an x64 target.
+            # GitHub's macos-15 pool is Apple Silicon, so the x64 package is
+            # cross-built from the same pool with an x64 target.
             runs_on: macos-15
             electron_target: mac
             arch: x64
             git_bundle_targets: darwin-x64
             runtime_bundle_targets: darwin-x64
-          - name: Windows x64
-            artifact_name: windows-x64
-            runs_on: windows-2025
-            electron_target: win
-            arch: x64
-            git_bundle_targets: win32-x64
-            runtime_bundle_targets: ""
     env:
       COZEA_RUNTIME_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
       COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
