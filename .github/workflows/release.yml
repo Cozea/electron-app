@@ -375,6 +375,24 @@ jobs:
           bun install --frozen-lockfile --ignore-scripts
           bun run postinstall
 
+      - name: Cache Swift build products (container runtime)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: native/devapp-container-runtime/.build
+          key: swift-devapp-runtime-${{ runner.os }}-${{ hashFiles('native/devapp-container-runtime/Package.resolved', 'native/devapp-container-runtime/Package.swift', 'native/devapp-container-runtime/Sources/**') }}
+          restore-keys: |
+            swift-devapp-runtime-${{ runner.os }}-
+
+      - name: Cache Swift build products (local automation)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: native/local-automation-helper/.build
+          key: swift-local-automation-${{ runner.os }}-${{ hashFiles('native/local-automation-helper/Package.swift', 'native/local-automation-helper/Sources/**') }}
+          restore-keys: |
+            swift-local-automation-${{ runner.os }}-
+
       - name: Install macOS build deps
         if: runner.os == 'macOS'
         run: |
