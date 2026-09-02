@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values"
 
 import type { DevAppParts } from "../../shared/devAppParts"
+import type { DevAppRuntimeReleaseImage } from "../../shared/devAppContainedRuntime"
 
 import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
@@ -113,6 +114,9 @@ export function toConsumerDevApp(input: {
     publisherIdentityKey: string | null
     publisherDeviceLabel: string | null
     parts: DevAppParts
+    runtimeSourceDigest: string | null
+    packageManifestDigest: string | null
+    runtimeImage: DevAppRuntimeReleaseImage | null
   }
 } {
   const organizationId = input.publication.organizationId
@@ -145,6 +149,9 @@ export function toConsumerDevApp(input: {
       publisherIdentityKey: input.release.publisherIdentityKey ?? null,
       publisherDeviceLabel: input.release.publisherDeviceLabel ?? null,
       parts: input.release.parts,
+      runtimeSourceDigest: input.release.runtimeSourceDigest ?? null,
+      packageManifestDigest: input.release.packageManifestDigest ?? null,
+      runtimeImage: input.release.runtimeImage ?? null,
     },
   }
 }

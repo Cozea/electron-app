@@ -30,10 +30,7 @@ import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHa
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
-import {
-  broadcastDevAppPreviewStatus,
-  registerDevAppPreviewHandlers,
-} from './ipc/registerDevAppPreviewHandlers'
+import { broadcastDevAppPreviewStatus, registerDevAppPreviewHandlers } from './ipc/registerDevAppPreviewHandlers'
 import { registerDevAppAuthoringHandlers } from './ipc/registerDevAppAuthoringHandlers'
 import { DevAppWorkerHost } from './services/DevAppWorkerHost'
 import { createUtilityProcessSpawn } from './services/devAppUtilityProcess'
@@ -41,6 +38,17 @@ import { createDevAppWorkerHandlers } from './services/devAppWorkerHandlers'
 import { createNodeDevAppHostServices } from './services/devAppHostServices'
 import { DevAppPreviewService } from './services/DevAppPreviewService'
 import { DevAppAuthoringService } from './services/DevAppAuthoringService'
+import { DeviceContainedDevAppRuntimeService } from './services/ContainedDevAppRuntimeService'
+import { HostedContainedDevAppRuntimeService } from './services/HostedContainedDevAppRuntimeService'
+import { SignedDevAppRuntimeImageVerifier } from './services/DevAppRuntimeImageVerifier'
+import {
+  createCodesignHelperVerifier,
+  permissiveHelperSignatureVerifier,
+} from './services/DevAppRuntimeHelperSignature'
+import { PublishedDevAppRuntimeService } from './services/PublishedDevAppRuntimeService'
+import { PublishedDevAppApprovalService } from './services/PublishedDevAppApprovalService'
+import { PublishedDevAppFolderGrantService } from './services/PublishedDevAppFolderGrantService'
+import { getBundledRuntimePublicKeyPath } from './runtime/runtimeManifest'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
@@ -65,7 +73,11 @@ protocol.registerSchemesAsPrivileged([
 ])
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
 import { loadSyncState } from './services/syncJournalStore'
-import { initWorkspaceCatalogRuntime, disposeWorkspaceCatalogRuntime, waitForWorkspaceCatalogRuntime } from './workspaces/WorkspaceCatalogRuntime'
+import {
+  initWorkspaceCatalogRuntime,
+  disposeWorkspaceCatalogRuntime,
+  waitForWorkspaceCatalogRuntime,
+} from './workspaces/WorkspaceCatalogRuntime'
 import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog'
 import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags } from './substrate/flags'
 import { getSharedSubstrateNdjsonWriter } from './substrate/obs'
@@ -109,8 +121,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '..', '..')
 
 // Dev server URL from electron-vite (ELECTRON_RENDERER_URL) or legacy var
-export const VITE_DEV_SERVER_URL =
-  process.env['VITE_DEV_SERVER_URL'] || process.env['ELECTRON_RENDERER_URL']
+export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'] || process.env['ELECTRON_RENDERER_URL']
 
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'out/main')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'out/renderer')
@@ -122,8 +133,7 @@ const PROTOCOL = process.env.COZEA_PROTOCOL || DEFAULT_PROTOCOL
 const LEGACY_PROTOCOL = 'cozea'
 const SUPPORTED_PROTOCOLS = PROTOCOL === LEGACY_PROTOCOL ? [PROTOCOL] : [PROTOCOL, LEGACY_PROTOCOL]
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
-const ASSISTANT_RUNTIME_WS_URL =
-  process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || null
+const ASSISTANT_RUNTIME_WS_URL = process.env.COZEA_ASSISTANT_RUNTIME_WS_URL?.trim() || null
 const ASSISTANT_RUNTIME_WS_URL_ARG = ASSISTANT_RUNTIME_WS_URL
   ? `--cozea-assistant-ws-url=${ASSISTANT_RUNTIME_WS_URL}`
   : null
@@ -159,11 +169,7 @@ function logBootTiming(label: string, startedAt = MAIN_BOOT_STARTED_AT): void {
   })
 }
 
-function scheduleBootWork(
-  label: string,
-  work: () => void | Promise<void>,
-  delayMs = 0,
-): void {
+function scheduleBootWork(label: string, work: () => void | Promise<void>, delayMs = 0): void {
   setTimeout(() => {
     const startedAt = performance.now()
     try {
@@ -196,7 +202,7 @@ const APP_CONTENT_SECURITY_POLICY = [
 ].join('; ')
 const DEV_CONTENT_SECURITY_POLICY = APP_CONTENT_SECURITY_POLICY.replace(
   "script-src 'self'",
-  "script-src 'self' 'unsafe-inline'"
+  "script-src 'self' 'unsafe-inline'",
 )
 
 if (ELECTRON_REMOTE_DEBUGGING_PORT) {
@@ -314,10 +320,7 @@ function extractRendererRoutePath(rawUrl: string): string | null {
   return extractNavigationPathFromFileUrl(rawUrl)
 }
 
-async function loadRendererAtRoute(
-  targetWindow: AppBrowserWindow,
-  routePath: string | null,
-): Promise<void> {
+async function loadRendererAtRoute(targetWindow: AppBrowserWindow, routePath: string | null): Promise<void> {
   if (VITE_DEV_SERVER_URL) {
     if (routePath) {
       const targetUrl = new URL(routePath, VITE_DEV_SERVER_URL)
@@ -423,7 +426,10 @@ function findHeaderKey(headers: ResponseHeaderMap, targetName: string): string |
   return null
 }
 
-function removeFrameAncestorsDirective(policy: string): { policy: string | null; removed: boolean } {
+function removeFrameAncestorsDirective(policy: string): {
+  policy: string | null
+  removed: boolean
+} {
   const directives = policy
     .split(';')
     .map((directive) => directive.trim())
@@ -561,9 +567,7 @@ function broadcastAssistantRuntimeStatus(): void {
   })
 }
 
-function setAssistantRuntimeStatus(
-  patch: Partial<Omit<AssistantRuntimeStatus, 'updatedAt'>>,
-): void {
+function setAssistantRuntimeStatus(patch: Partial<Omit<AssistantRuntimeStatus, 'updatedAt'>>): void {
   const previousStatus = assistantRuntimeStatus
   const nextStatus: AssistantRuntimeStatus = {
     ...assistantRuntimeStatus,
@@ -790,7 +794,8 @@ function beginShadowHostedRuntimeMonitor(generation: number): void {
   stopShadowHostedRuntimeMonitor()
   const featureFlags = readSubstrateFeatureFlags()
   const shadowManager = shadowServerManager ?? getPrimaryShadowServerManager() ?? getShadowServerManager()
-  const shadowBaseUrl = shadowManager?.baseUrl ?? `http://${featureFlags.shadowServer.host}:${featureFlags.shadowServer.port}`
+  const shadowBaseUrl =
+    shadowManager?.baseUrl ?? `http://${featureFlags.shadowServer.host}:${featureFlags.shadowServer.port}`
   shadowHostedRuntimeMonitor = startShadowHostedRuntimeMonitor({
     generation,
     onStarting: () => {
@@ -810,15 +815,11 @@ function beginShadowHostedRuntimeMonitor(generation: number): void {
       logAssistantBridge('shadow-hosted-runtime-error', { generation, message })
       setAssistantRuntimeStatus({
         phase: 'error',
-        lastError:
-          message.trim().length > 0
-            ? message
-            : 'Shadow-hosted assistant runtime failed to become ready.',
+        lastError: message.trim().length > 0 ? message : 'Shadow-hosted assistant runtime failed to become ready.',
       })
     },
     onLog: (event, details) => logAssistantBridge(event, details),
-    shouldApply: (activeGeneration) =>
-      !appIsQuitting && activeGeneration === assistantRuntimeGeneration,
+    shouldApply: (activeGeneration) => !appIsQuitting && activeGeneration === assistantRuntimeGeneration,
     httpOrigin: ASSISTANT_RUNTIME_HTTP_URL ?? undefined,
     shadowBaseUrl,
     preferT3Server: featureFlags.t3Server,
@@ -853,9 +854,7 @@ function prunePreviewHeaderDiagnostics(now = Date.now()): void {
     return
   }
 
-  const sortedEntries = Array.from(previewHeaderDiagnostics.entries()).sort(
-    (a, b) => a[1].capturedAt - b[1].capturedAt
-  )
+  const sortedEntries = Array.from(previewHeaderDiagnostics.entries()).sort((a, b) => a[1].capturedAt - b[1].capturedAt)
   const overflow = sortedEntries.length - PREVIEW_HEADER_DIAGNOSTIC_MAX_ENTRIES
   for (let index = 0; index < overflow; index += 1) {
     previewHeaderDiagnostics.delete(sortedEntries[index][0])
@@ -914,9 +913,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
       return
     }
 
-    const responseHeaders: ResponseHeaderMap = details.responseHeaders
-      ? { ...details.responseHeaders }
-      : {}
+    const responseHeaders: ResponseHeaderMap = details.responseHeaders ? { ...details.responseHeaders } : {}
     let responseHeadersChanged = false
 
     if (isDevRendererUrl) {
@@ -934,7 +931,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
               responseHeaders,
               statusLine: details.statusLine,
             }
-          : {}
+          : {},
       )
       return
     }
@@ -962,7 +959,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
               responseHeaders,
               statusLine: details.statusLine,
             }
-          : {}
+          : {},
       )
       return
     }
@@ -987,7 +984,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
               responseHeaders,
               statusLine: details.statusLine,
             }
-          : {}
+          : {},
       )
       return
     }
@@ -1050,7 +1047,7 @@ function installPreviewHeaderCompatibilityPolicy(): void {
               responseHeaders,
               statusLine: details.statusLine,
             }
-          : {}
+          : {},
       )
       return
     }
@@ -1083,20 +1080,69 @@ let win: AppBrowserWindow | null = null
 let canCreateMainWindow = false
 let t3BrowserSurfaceService: T3BrowserSurfaceService | null = null
 let unregisterBrowserSurfaceHandlers: (() => void) | null = null
-const orgDevAppArtifactService = new OrgDevAppArtifactService(
-  () => path.join(app.getPath('userData'), 'org-devapp-artifacts'),
+const orgDevAppArtifactService = new OrgDevAppArtifactService(() =>
+  path.join(app.getPath('userData'), 'org-devapp-artifacts'),
 )
 const orgDevAppInstallationService = new OrgDevAppInstallationService(
   () => path.join(app.getPath('userData'), 'org-devapp-installations.json'),
   orgDevAppArtifactService,
 )
+const containedRuntimeResources = () => {
+  const resourceRoot = app.isPackaged
+    ? path.join(process.resourcesPath, 'devapp-container-runtime')
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'build', 'devapp-container-runtime')
+  return {
+    helperPath: path.join(resourceRoot, 'cozea-devapp-container-runtime'),
+    rootPath: path.join(app.getPath('userData'), 'devapp-contained-runtime'),
+    kernelPath: path.join(resourceRoot, 'vmlinux'),
+    resourceManifestPath: path.join(resourceRoot, 'resource-manifest.json'),
+  }
+}
+const deviceContainedDevAppRuntimeService = new DeviceContainedDevAppRuntimeService({
+  paths: containedRuntimeResources,
+  imageVerifier: new SignedDevAppRuntimeImageVerifier(getBundledRuntimePublicKeyPath),
+  // Only a packaged macOS build has an OS signature to appeal to; elsewhere the device
+  // runtime cannot start at all, so there is nothing to gate.
+  signatureVerifier:
+    app.isPackaged && process.platform === 'darwin'
+      ? createCodesignHelperVerifier(() => process.execPath)
+      : permissiveHelperSignatureVerifier,
+})
+const hostedContainedDevAppRuntimeService = new HostedContainedDevAppRuntimeService()
+const publishedDevAppRuntimeService = new PublishedDevAppRuntimeService(
+  orgDevAppInstallationService,
+  deviceContainedDevAppRuntimeService,
+  hostedContainedDevAppRuntimeService,
+)
+orgDevAppArtifactService.setContainedServiceAdapter(publishedDevAppRuntimeService)
+const publishedDevAppWorkerHost = new DevAppWorkerHost(
+  publishedDevAppRuntimeService.createWorkerSpawn(),
+  createDevAppWorkerHandlers(createNodeDevAppHostServices()),
+)
+publishedDevAppRuntimeService.setWorkerHost(publishedDevAppWorkerHost)
+let containedDevAppShutdown: Promise<void> | null = null
+const disposeContainedDevAppRuntime = (): Promise<void> => {
+  containedDevAppShutdown ??= publishedDevAppRuntimeService.dispose().finally(() => {
+    deviceContainedDevAppRuntimeService.dispose()
+    hostedContainedDevAppRuntimeService.dispose()
+  })
+  return containedDevAppShutdown
+}
+const publishedDevAppApprovalService = new PublishedDevAppApprovalService(
+  () => path.join(app.getPath('userData'), 'published-devapp-approvals'),
+  orgDevAppInstallationService,
+)
+const publishedDevAppFolderGrantService = new PublishedDevAppFolderGrantService(
+  () => path.join(app.getPath('userData'), 'published-devapp-folder-grants'),
+  orgDevAppInstallationService,
+)
 
 /**
  * The worker host, and the development preview that drives it.
  *
- * Published worker execution remains intentionally disconnected until the container runtime
- * exists. Development workers use the same versioned host/gate intended for that future path,
- * and are keyed `dev:` so they cannot address a publication namespace.
+ * Development workers remain a separate, approval-gated local tier. Published workers use the
+ * contained runtime and a distinct host above; development keys stay `dev:` so neither execution
+ * tier can address the other's namespace.
  */
 const devAppWorkerHost = new DevAppWorkerHost(
   createUtilityProcessSpawn(({ entrypoint, packageRoot, publicationId }) => {
@@ -1143,18 +1189,13 @@ function isBrowserWindowAlive(windowRef: AppBrowserWindow | null): windowRef is 
 }
 
 function attachPreviewDebugLogging(targetWindow: AppBrowserWindow, label: 'main'): void {
-  targetWindow.webContents.on(
-    'did-fail-load',
-    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-      const isLocalPreview = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+/i.test(validatedURL)
-      if (!isMainFrame && !isLocalPreview) return
+  targetWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    const isLocalPreview = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+/i.test(validatedURL)
+    if (!isMainFrame && !isLocalPreview) return
 
-      const frameType = isMainFrame ? 'main-frame' : 'sub-frame'
-      console.error(
-        `[Renderer:${label}] did-fail-load (${frameType}) ${errorCode} ${errorDescription} ${validatedURL}`
-      )
-    }
-  )
+    const frameType = isMainFrame ? 'main-frame' : 'sub-frame'
+    console.error(`[Renderer:${label}] did-fail-load (${frameType}) ${errorCode} ${errorDescription} ${validatedURL}`)
+  })
 }
 
 async function openSettingsWindow(route?: string): Promise<{ success: boolean; error?: string }> {
@@ -1190,14 +1231,7 @@ async function openSettingsWindow(route?: string): Promise<{ success: boolean; e
   }
 }
 
-type UpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'available'
-  | 'downloading'
-  | 'downloaded'
-  | 'not-available'
-  | 'error'
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
 
 interface UpdateProgress {
   percent: number
@@ -1405,7 +1439,6 @@ app.on('open-url', async (event, url) => {
   }
 })
 
-
 // Handle protocol on Windows/Linux (single instance)
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -1487,7 +1520,7 @@ function createWindow() {
     vibrancy: useTransparency ? 'sidebar' : undefined, // options: 'sidebar' | 'under-window' | 'hud' | 'popover' ...
     visualEffectState: useTransparency ? 'active' : undefined,
     backgroundMaterial: isWindows ? 'mica' : undefined,
-    titleBarStyle: isMac ? 'hiddenInset' : (isWindows ? 'hidden' : 'default'),
+    titleBarStyle: isMac ? 'hiddenInset' : isWindows ? 'hidden' : 'default',
     titleBarOverlay: isWindows
       ? {
           color: '#00000000',
@@ -1517,33 +1550,30 @@ function createWindow() {
     })
   }
 
-  win.webContents.on(
-    'did-fail-load',
-    (_event, _errorCode, _errorDescription, validatedURL, isMainFrame) => {
-      if (!isMainFrame || routeRecoveryInFlight) {
-        return
-      }
-
-      const routePath = extractRendererRoutePath(validatedURL)
-      if (!routePath) {
-        return
-      }
-
-      const targetWindow = win
-      if (!isBrowserWindowAlive(targetWindow)) {
-        return
-      }
-
-      routeRecoveryInFlight = true
-      void loadRendererAtRoute(targetWindow, routePath)
-        .catch((error) => {
-          console.error('[Renderer:main] Failed to recover renderer route load', error)
-        })
-        .finally(() => {
-          routeRecoveryInFlight = false
-        })
+  win.webContents.on('did-fail-load', (_event, _errorCode, _errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || routeRecoveryInFlight) {
+      return
     }
-  )
+
+    const routePath = extractRendererRoutePath(validatedURL)
+    if (!routePath) {
+      return
+    }
+
+    const targetWindow = win
+    if (!isBrowserWindowAlive(targetWindow)) {
+      return
+    }
+
+    routeRecoveryInFlight = true
+    void loadRendererAtRoute(targetWindow, routePath)
+      .catch((error) => {
+        console.error('[Renderer:main] Failed to recover renderer route load', error)
+      })
+      .finally(() => {
+        routeRecoveryInFlight = false
+      })
+  })
 
   // Set application menu
   createApplicationMenu({
@@ -1588,7 +1618,7 @@ function createWindow() {
 
     win.webContents.on('before-input-event', (event, input) => {
       const key = input.key.toLowerCase()
-      const isReloadShortcut = input.key === 'F5' || (input.control || input.meta) && key === 'r'
+      const isReloadShortcut = input.key === 'F5' || ((input.control || input.meta) && key === 'r')
       const isDevToolsShortcut =
         input.key === 'F12' ||
         ((input.control || input.meta) && input.alt && key === 'i') ||
@@ -1605,7 +1635,7 @@ function createWindow() {
     // even when focus is inside embedded terminals.
     win.webContents.on('before-input-event', (event, input) => {
       const key = input.key.toLowerCase()
-      const isReloadShortcut = input.key === 'F5' || (input.control || input.meta) && key === 'r'
+      const isReloadShortcut = input.key === 'F5' || ((input.control || input.meta) && key === 'r')
       const isDevToolsShortcut =
         input.key === 'F12' ||
         ((input.control || input.meta) && input.alt && key === 'i') ||
@@ -1679,8 +1709,6 @@ AgentToolService.getInstance().registerIpcHandlers()
 registerTerminalWorkspaceHandlers(ipcMain, TerminalService.getInstance())
 
 registerCoreHandlers(ipcMain, {
-  
-  
   getUpdateState: () => updateState,
   isAutoUpdateEnabled,
   checkForUpdates,
@@ -1724,7 +1752,6 @@ registerNativePreviewHandlers(ipcMain, {
   getMainWindow: () => win,
 })
 
-
 registerSettingsStorageHandlers(ipcMain, {
   getMainWindow: () => win,
   loadSettings,
@@ -1744,11 +1771,15 @@ registerYjsHandlers(ipcMain)
 registerOrgDevAppHandlers(ipcMain, {
   service: orgDevAppArtifactService,
   installations: orgDevAppInstallationService,
+  publishedRuntime: publishedDevAppRuntimeService,
+  publishedApprovals: publishedDevAppApprovalService,
+  publishedFolderGrants: publishedDevAppFolderGrantService,
   getMainWindow: () => win,
 })
 
 registerDevAppPreviewHandlers(ipcMain, {
   service: devAppPreviewService,
+  getMainWindow: () => win,
 })
 
 registerDevAppAuthoringHandlers(ipcMain, {
@@ -1778,6 +1809,8 @@ app.on('window-all-closed', () => {
   orgDevAppArtifactService.dispose()
   devAppPreviewService.dispose()
   devAppWorkerHost.dispose()
+  publishedDevAppWorkerHost.dispose()
+  void disposeContainedDevAppRuntime()
   setBroadcastMainWindow(null)
   win = null
 
@@ -1802,6 +1835,8 @@ app.on('before-quit', () => {
   orgDevAppArtifactService.dispose()
   devAppPreviewService.dispose()
   devAppWorkerHost.dispose()
+  publishedDevAppWorkerHost.dispose()
+  void disposeContainedDevAppRuntime()
   PreviewSnapshotService.getInstance().dispose()
   LocalAutomationResolverService.getInstance().dispose()
   void disposeWorkspaceCatalogRuntime()
@@ -1829,8 +1864,7 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (event, webPreferences, params) => {
     const mainWindow = win
     const service = t3BrowserSurfaceService
-    const isMainWindowOwner =
-      mainWindow && !mainWindow.isDestroyed() && contents === mainWindow.webContents
+    const isMainWindowOwner = mainWindow && !mainWindow.isDestroyed() && contents === mainWindow.webContents
     if (!isMainWindowOwner || !service?.canAttachWebview(webPreferences, params)) {
       event.preventDefault()
     }
@@ -1844,6 +1878,7 @@ app.whenReady().then(() => {
     getMainWindow: () => win,
     orgDevAppArtifactService,
     devAppPreviewService,
+    publishedDevAppRuntimeService,
     artifactsDirectory: path.join(app.getPath('userData'), 'browser-artifacts'),
     pickPreloadPath: path.join(__dirname, '../preload/preview-pick-preload.cjs'),
     devAppPickPreloadPath: path.join(__dirname, '../preload/devapp-preview-pick-preload.cjs'),
@@ -1864,11 +1899,15 @@ app.whenReady().then(() => {
   // as the renderer loads. Internally each handler awaits catalog readiness.
   registerWorkspaceHandlers(ipcMain, { loadSettings, saveSettings })
 
-  scheduleBootWork('workspace-catalog-initialized', async () => {
-    await initWorkspaceCatalogRuntime(app.getPath('userData'))
-    await syncProjectsDirectoryToWorkspaceCatalog()
-    logBootTiming('workspace-catalog-initialized')
-  }, 0)
+  scheduleBootWork(
+    'workspace-catalog-initialized',
+    async () => {
+      await initWorkspaceCatalogRuntime(app.getPath('userData'))
+      await syncProjectsDirectoryToWorkspaceCatalog()
+      logBootTiming('workspace-catalog-initialized')
+    },
+    0,
+  )
 
   installPreviewHeaderCompatibilityPolicy()
   registerAutoUpdater()
@@ -1880,29 +1919,45 @@ app.whenReady().then(() => {
 
   registerSubstrateRemoteHandlers({ wslSettingsPath: resolveSubstrateWslSettingsPath() })
 
-  scheduleBootWork('shell-environment-synced', () => {
-    if (process.platform === 'darwin') {
-      syncShellEnvironment()
-    }
-  }, 0)
+  scheduleBootWork(
+    'shell-environment-synced',
+    () => {
+      if (process.platform === 'darwin') {
+        syncShellEnvironment()
+      }
+    },
+    0,
+  )
   // Phase 4: VCS facade + status invalidation (idempotent; also called from
   // registerWorkspaceSyncHandlers). Safe no-op registration when flag is off.
   bootstrapSubstrateVcs()
   registerSubstrateVcsIpcHandlers()
 
-  scheduleBootWork('substrate-shadow-server-started', () => {
-    void ensureSubstrateShadowServerStarted().catch((error) => {
-      logSubstrateShadow('start-failed', {
-        error: error instanceof Error ? error.message : String(error),
+  scheduleBootWork(
+    'substrate-shadow-server-started',
+    () => {
+      void ensureSubstrateShadowServerStarted().catch((error) => {
+        logSubstrateShadow('start-failed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
       })
-    })
-  }, 250)
-  scheduleBootWork('assistant-runtime-started', () => {
-    ensureAssistantRuntimeStarted()
-  }, 300)
-  scheduleBootWork('update-checks-started', () => {
-    startUpdateChecks()
-  }, 1_000)
+    },
+    250,
+  )
+  scheduleBootWork(
+    'assistant-runtime-started',
+    () => {
+      ensureAssistantRuntimeStarted()
+    },
+    300,
+  )
+  scheduleBootWork(
+    'update-checks-started',
+    () => {
+      startUpdateChecks()
+    },
+    1_000,
+  )
 
   void (async () => {
     const gitHealth = await getGitRuntimeHealth(true)
@@ -1910,7 +1965,7 @@ app.whenReady().then(() => {
       console.error('[GitRuntime] Preflight failed:', gitHealth.error ?? 'Unknown error')
     } else {
       console.log(
-        `[GitRuntime] Ready (${gitHealth.source}): ${gitHealth.gitVersion} @ ${gitHealth.executablePath ?? 'unknown'}`
+        `[GitRuntime] Ready (${gitHealth.source}): ${gitHealth.gitVersion} @ ${gitHealth.executablePath ?? 'unknown'}`,
       )
     }
   })()

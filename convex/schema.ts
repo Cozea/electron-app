@@ -27,16 +27,59 @@ const devAppPartsValidator = v.object({
     v.object({
       capabilities: v.array(devAppCapabilityValidator),
       protocolVersion: v.optional(v.number()),
-      exposesTools: v.optional(v.boolean()),
+      tools: v.optional(
+        v.array(
+          v.object({
+            name: v.string(),
+            description: v.string(),
+            inputSchema: v.any(),
+          }),
+        ),
+      ),
     }),
   ),
   service: v.optional(
     v.object({
-      runtimeKind: v.union(v.literal("static"), v.literal("node"), v.literal("container")),
-      location: v.union(v.literal("device"), v.literal("hosted")),
+      runtimeKind: v.union(v.literal("static"), v.literal("node")),
       singleton: v.optional(v.boolean()),
+      network: v.optional(v.boolean()),
     }),
   ),
+  runtime: v.optional(
+    v.object({
+      kind: v.union(v.literal("development"), v.literal("container")),
+      location: v.union(v.literal("device"), v.literal("hosted")),
+      state: v.union(v.literal("none"), v.literal("device"), v.literal("organization")),
+    }),
+  ),
+})
+
+const devAppRuntimePlatformValidator = v.union(v.literal("linux/arm64"), v.literal("linux/amd64"))
+
+const devAppRuntimePlatformImageValidator = v.object({
+  platform: devAppRuntimePlatformValidator,
+  digest: v.string(),
+})
+
+const devAppRuntimeImageAttestationValidator = v.object({
+  version: v.literal(1),
+  builderId: v.literal("cozea-devapp-builder/v1"),
+  sourceDigest: v.string(),
+  packageManifestDigest: v.string(),
+  manifestDigest: v.string(),
+  platforms: v.array(devAppRuntimePlatformImageValidator),
+  materials: v.array(v.object({ uri: v.string(), digest: v.string() })),
+  builtAt: v.number(),
+  reproducible: v.literal(true),
+})
+
+const devAppRuntimeReleaseImageValidator = v.object({
+  reference: v.string(),
+  manifestDigest: v.string(),
+  platforms: v.array(devAppRuntimePlatformImageValidator),
+  signature: v.string(),
+  attestationDigest: v.string(),
+  attestation: devAppRuntimeImageAttestationValidator,
 })
 
 export default defineSchema({
@@ -80,7 +123,7 @@ export default defineSchema({
         defaultModel: v.optional(v.string()),
         emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
-      })
+      }),
     ),
 
     // Timestamps
@@ -150,14 +193,14 @@ export default defineSchema({
         fallbackPolicy: v.optional(v.any()),
         successCriteria: v.optional(v.any()),
         telemetryHints: v.optional(v.any()),
-      })
+      }),
     ),
     stack: v.optional(
       v.object({
         backend: v.optional(v.string()), // supabase, convex, firebase, postgres
         hosting: v.optional(v.string()), // vercel, netlify, railway, aws
         aiProvider: v.optional(v.string()), // openai, anthropic, google, none
-      })
+      }),
     ),
 
     // Canonical repository descriptor. Written by create/setSourceControl;
@@ -170,14 +213,10 @@ export default defineSchema({
         owner: v.optional(v.string()),
         name: v.optional(v.string()),
         visibility: v.optional(v.string()),
-        workingCopyMode: v.optional(
-          v.union(v.literal("managed"), v.literal("attached"))
-        ),
-        setupMode: v.optional(
-          v.union(v.literal("personal"), v.literal("organization"))
-        ),
+        workingCopyMode: v.optional(v.union(v.literal("managed"), v.literal("attached"))),
+        setupMode: v.optional(v.union(v.literal("personal"), v.literal("organization"))),
         importedFromBranch: v.optional(v.string()),
-      })
+      }),
     ),
 
     // Legacy repository integration metadata.
@@ -190,13 +229,9 @@ export default defineSchema({
         visibility: v.optional(v.string()), // public, private
         mergeStrategy: v.optional(v.string()), // squash, merge, rebase
         mergeQueue: v.optional(v.string()),
-        workingCopyMode: v.optional(
-          v.union(v.literal("managed"), v.literal("attached"))
-        ),
-        setupMode: v.optional(
-          v.union(v.literal("personal"), v.literal("organization"))
-        ),
-      })
+        workingCopyMode: v.optional(v.union(v.literal("managed"), v.literal("attached"))),
+        setupMode: v.optional(v.union(v.literal("personal"), v.literal("organization"))),
+      }),
     ),
 
     // Optional attached repository metadata.
@@ -207,7 +242,7 @@ export default defineSchema({
         name: v.string(),
         url: v.string(),
         defaultBranch: v.string(),
-      })
+      }),
     ),
 
     // Optional repository status metadata kept for compatibility and tooling.
@@ -218,7 +253,7 @@ export default defineSchema({
           v.literal("pending"),
           v.literal("granted"),
           v.literal("missing"),
-          v.literal("error")
+          v.literal("error"),
         ),
         lastFetchedCommit: v.optional(v.string()),
         lastPushedCommit: v.optional(v.string()),
@@ -228,7 +263,7 @@ export default defineSchema({
         lastRepoSizeAt: v.optional(v.number()),
         errorMessage: v.optional(v.string()),
         migratedFromReplicaAt: v.optional(v.number()),
-      })
+      }),
     ),
 
     // Visuals
@@ -241,7 +276,7 @@ export default defineSchema({
         secondaryColor: v.optional(v.string()),
         accentColor: v.optional(v.string()),
         logoUrl: v.optional(v.string()),
-      })
+      }),
     ),
 
     // Preview image (captured from live preview)
@@ -258,16 +293,16 @@ export default defineSchema({
             type: v.string(),
             purpose: v.optional(v.string()),
             actions: v.optional(v.array(v.string())),
-          })
+          }),
         ),
         entities: v.array(
           v.object({
             id: v.string(),
             name: v.string(),
             fields: v.optional(v.array(v.string())),
-          })
+          }),
         ),
-      })
+      }),
     ),
 
     // Status
@@ -278,7 +313,7 @@ export default defineSchema({
       v.literal("building"), // AI building files
       v.literal("active"), // Ready to use
       v.literal("archived"),
-      v.literal("deleted")
+      v.literal("deleted"),
     ),
     // Client-generated idempotency token: retries of the same creation
     // attempt resolve to the same doc instead of minting "name-1" twins.
@@ -290,7 +325,7 @@ export default defineSchema({
         repoFullName: v.string(),
         branch: v.string(),
         detectedStack: v.optional(v.any()),
-      })
+      }),
     ),
 
     // Local path where project files are stored (on creator's machine)
@@ -306,7 +341,7 @@ export default defineSchema({
         devPort: v.optional(v.number()), // 3000, 5173, etc.
         buildCommand: v.optional(v.string()), // npm run build
         startCommand: v.optional(v.string()), // npm start
-      })
+      }),
     ),
 
     // Sync status between local and cloud
@@ -319,8 +354,8 @@ export default defineSchema({
         v.literal("local_ahead"), // Local has changes not in cloud
         v.literal("cloud_ahead"), // Cloud has changes not downloaded
         v.literal("conflict"), // Both have changes (needs resolution)
-        v.literal("error") // Sync failed
-      )
+        v.literal("error"), // Sync failed
+      ),
     ),
     syncError: v.optional(v.string()),
     lastSyncAt: v.optional(v.number()),
@@ -355,7 +390,7 @@ export default defineSchema({
         secondaryColor: v.optional(v.string()),
         accentColor: v.optional(v.string()),
         logoUrl: v.optional(v.string()),
-      })
+      }),
     ),
     generatedPlan: v.optional(
       v.object({
@@ -367,16 +402,16 @@ export default defineSchema({
             type: v.string(),
             purpose: v.optional(v.string()),
             actions: v.optional(v.array(v.string())),
-          })
+          }),
         ),
         entities: v.array(
           v.object({
             id: v.string(),
             name: v.string(),
             fields: v.optional(v.array(v.string())),
-          })
+          }),
         ),
-      })
+      }),
     ),
     buildContract: v.optional(
       v.object({
@@ -388,14 +423,14 @@ export default defineSchema({
         fallbackPolicy: v.optional(v.any()),
         successCriteria: v.optional(v.any()),
         telemetryHints: v.optional(v.any()),
-      })
+      }),
     ),
     stack: v.optional(
       v.object({
         backend: v.optional(v.string()),
         hosting: v.optional(v.string()),
         aiProvider: v.optional(v.string()),
-      })
+      }),
     ),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
@@ -410,7 +445,7 @@ export default defineSchema({
         v.literal("pending"),
         v.literal("granted"),
         v.literal("missing"),
-        v.literal("error")
+        v.literal("error"),
       ),
       lastFetchedCommit: v.optional(v.string()),
       lastPushedCommit: v.optional(v.string()),
@@ -429,12 +464,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     userId: v.id("users"),
     contactEmail: v.optional(v.string()),
-    role: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
+    role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     addedAt: v.number(),
     addedBy: v.id("users"),
     // Per-user local path for this project (machine-specific)
@@ -517,11 +547,7 @@ export default defineSchema({
     role: v.union(v.literal("admin"), v.literal("member")),
     invitedBy: v.id("users"),
     invitedAt: v.number(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("expired"),
-    ),
+    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("expired")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_email", ["email"])
@@ -567,6 +593,9 @@ export default defineSchema({
     publisherIdentityKey: v.optional(v.string()),
     publisherDeviceLabel: v.optional(v.string()),
     parts: devAppPartsValidator,
+    runtimeSourceDigest: v.optional(v.string()),
+    packageManifestDigest: v.optional(v.string()),
+    runtimeImage: v.optional(devAppRuntimeReleaseImageValidator),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
@@ -585,12 +614,22 @@ export default defineSchema({
     contentHash: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     runtimeKind: v.optional(v.union(v.literal("static"), v.literal("service"))),
+    runtimeBuildId: v.optional(v.string()),
+    runtimeBuildStatus: v.optional(
+      v.union(v.literal("queued"), v.literal("building"), v.literal("ready"), v.literal("failed")),
+    ),
+    runtimeSourceDigest: v.optional(v.string()),
+    packageManifestDigest: v.optional(v.string()),
+    runtimeImage: v.optional(devAppRuntimeReleaseImageValidator),
+    runtimeParts: v.optional(devAppPartsValidator),
+    runtimeBuildError: v.optional(v.string()),
     expiresAt: v.number(),
     createdAt: v.number(),
   })
     .index("by_expiration", ["expiresAt"])
     .index("by_creator", ["createdBy"])
-    .index("by_project", ["projectId"]),
+    .index("by_project", ["projectId"])
+    .index("by_runtime_build_id", ["runtimeBuildId"]),
 
   projectTrustedDevices: defineTable({
     projectId: v.id("projects"),
@@ -599,12 +638,7 @@ export default defineSchema({
     deviceLabel: v.string(),
     platform: v.optional(v.string()),
     fingerprint: v.optional(v.string()),
-    role: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
+    role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     addedAt: v.number(),
     addedByUserId: v.optional(v.id("users")),
     addedByDeviceId: v.optional(v.string()),
@@ -633,26 +667,16 @@ export default defineSchema({
     }),
     createdAt: v.number(),
     updatedAt: v.number(),
-  })
-    .index("by_project", ["projectId"]),
+  }).index("by_project", ["projectId"]),
 
   // Project invites for pending team members
   projectInvites: defineTable({
     projectId: v.id("projects"),
     email: v.string(),
-    role: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
+    role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     invitedBy: v.id("users"),
     invitedAt: v.number(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("expired")
-    ),
+    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("expired")),
   })
     .index("by_project", ["projectId"])
     .index("by_email", ["email"])
@@ -664,11 +688,7 @@ export default defineSchema({
     taskKey: v.string(),
     title: v.string(),
     description: v.string(),
-    status: v.union(
-      v.literal("planned"),
-      v.literal("active"),
-      v.literal("done")
-    ),
+    status: v.union(v.literal("planned"), v.literal("active"), v.literal("done")),
     deadlineDate: v.optional(v.string()),
     assignee: v.optional(
       v.object({
@@ -676,7 +696,7 @@ export default defineSchema({
         name: v.string(),
         email: v.optional(v.string()),
         avatarUrl: v.optional(v.string()),
-      })
+      }),
     ),
     context: v.object({
       kind: v.union(v.literal("file"), v.literal("page")),
@@ -688,7 +708,7 @@ export default defineSchema({
       v.object({
         id: v.string(),
         label: v.string(),
-      })
+      }),
     ),
     checkedMarkerIds: v.array(v.string()),
     createdBy: v.id("users"),
@@ -704,18 +724,9 @@ export default defineSchema({
   // Shared completion state for synthesized task-board items.
   projectTaskStates: defineTable({
     projectId: v.id("projects"),
-    source: v.union(
-      v.literal("page"),
-      v.literal("entity"),
-      v.literal("build"),
-      v.literal("lock")
-    ),
+    source: v.union(v.literal("page"), v.literal("entity"), v.literal("build"), v.literal("lock")),
     storageId: v.string(),
-    status: v.union(
-      v.literal("planned"),
-      v.literal("active"),
-      v.literal("done")
-    ),
+    status: v.union(v.literal("planned"), v.literal("active"), v.literal("done")),
     checkedMarkerIds: v.array(v.string()),
     updatedBy: v.id("users"),
     updatedAt: v.number(),
@@ -735,7 +746,7 @@ export default defineSchema({
       v.literal("page"),
       v.literal("entity"),
       v.literal("build"),
-      v.literal("lock")
+      v.literal("lock"),
     ),
     taskStorageId: v.string(),
     taskTitle: v.string(),
@@ -755,12 +766,7 @@ export default defineSchema({
   projectJoinLinks: defineTable({
     projectId: v.id("projects"),
     token: v.string(),
-    role: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
+    role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     status: v.union(v.literal("active"), v.literal("revoked")),
     createdBy: v.id("users"),
     createdAt: v.number(),
@@ -783,7 +789,7 @@ export default defineSchema({
     status: v.union(
       v.literal("free"), // Available for editing (green)
       v.literal("locked"), // Currently being edited (yellow=human, red=agent)
-      v.literal("merging") // Being merged by traffic control
+      v.literal("merging"), // Being merged by traffic control
     ),
 
     // Who has the lock (human)
@@ -849,7 +855,7 @@ export default defineSchema({
     status: v.union(
       v.literal("active"),
       v.literal("deleted"),
-      v.literal("superseded") // Replaced by newer version
+      v.literal("superseded"), // Replaced by newer version
     ),
   })
     .index("by_project", ["projectId"])
@@ -883,11 +889,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     roomId: v.string(),
     keyVersion: v.number(),
-    status: v.union(
-      v.literal("active"),
-      v.literal("rotating"),
-      v.literal("revoked"),
-    ),
+    status: v.union(v.literal("active"), v.literal("rotating"), v.literal("revoked")),
     createdByUserId: v.id("users"),
     createdByDeviceId: v.string(),
     createdAt: v.number(),
@@ -1021,7 +1023,7 @@ export default defineSchema({
       v.object({
         line: v.number(),
         column: v.number(),
-      })
+      }),
     ),
   })
     .index("by_project", ["projectId"])
@@ -1041,12 +1043,7 @@ export default defineSchema({
 
     // File info
     filePath: v.string(),
-    changeType: v.union(
-      v.literal("create"),
-      v.literal("modify"),
-      v.literal("delete"),
-      v.literal("rename")
-    ),
+    changeType: v.union(v.literal("create"), v.literal("modify"), v.literal("delete"), v.literal("rename")),
 
     // For renames: the source path before the rename.
     oldPath: v.optional(v.string()),
@@ -1057,20 +1054,9 @@ export default defineSchema({
     totalLines: v.optional(v.number()),
 
     // Origin tracking (matches Yjs origin)
-    origin: v.union(
-      v.literal("user"),
-      v.literal("agent"),
-      v.literal("remote"),
-      v.literal("init")
-    ),
+    origin: v.union(v.literal("user"), v.literal("agent"), v.literal("remote"), v.literal("init")),
     sourceOrigin: v.optional(v.string()),
-    actorType: v.optional(
-      v.union(
-        v.literal("user"),
-        v.literal("agent"),
-        v.literal("system"),
-      )
-    ),
+    actorType: v.optional(v.union(v.literal("user"), v.literal("agent"), v.literal("system"))),
     actorId: v.optional(v.string()),
     terminalId: v.optional(v.string()),
     terminalTitle: v.optional(v.string()),
@@ -1112,11 +1098,7 @@ export default defineSchema({
     parentCommentId: v.optional(v.id("changeComments")),
 
     // Status
-    status: v.union(
-      v.literal("active"),
-      v.literal("resolved"),
-      v.literal("deleted")
-    ),
+    status: v.union(v.literal("active"), v.literal("resolved"), v.literal("deleted")),
 
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1158,7 +1140,7 @@ export default defineSchema({
         summary: v.string(),
         detectedContent: v.optional(v.array(v.string())),
         suggestedTags: v.optional(v.array(v.string())),
-      })
+      }),
     ),
   })
     .index("by_project", ["projectId"])
@@ -1167,7 +1149,7 @@ export default defineSchema({
     .searchIndex("search_assets", {
       searchField: "name",
       filterFields: ["projectId"],
-  }),
+    }),
 
   // ============================================
   // DEPLOYMENT JOBS
@@ -1183,7 +1165,7 @@ export default defineSchema({
       v.literal("running"),
       v.literal("succeeded"),
       v.literal("failed"),
-      v.literal("canceled")
+      v.literal("canceled"),
     ),
     providerDeploymentId: v.optional(v.string()),
     statusUrl: v.optional(v.string()),

@@ -118,6 +118,8 @@ describe("legacy browser removal boundary", () => {
       "devServerAttach",
       "devAppPreviewEnsure",
       "devAppPreviewAttach",
+      "devAppToolCatalog",
+      "devAppToolInvoke",
     ]) {
       expect(host).toContain(`"${operation}"`);
     }

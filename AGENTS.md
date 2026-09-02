@@ -7,6 +7,7 @@ This file provides instructions for AI coding agents working on this project.
 This is an Electron desktop application with a React frontend and Convex backend. It provides a collaborative AI-assisted development environment — a multi-pane workbench (file editor, AI chat, terminal, browser preview) with real-time collaborative editing powered by Yjs.
 
 **Tech Stack:**
+
 - **Frontend**: React 19, TypeScript, Vite, TailwindCSS v4, shadcn/ui, Radix UI
 - **Routing**: TanStack Router
 - **Desktop**: Electron 40 + electron-vite
@@ -176,6 +177,7 @@ GH_TOKEN="$(gh auth token)" bun run release
 ```
 
 > **IMPORTANT - Convex Deployment**: This project uses **production Convex only**.
+>
 > - Always use `bunx convex deploy` to push schema/function changes
 > - **NEVER** use `convex dev` or `bunx convex dev --once` - it switches the app to a dev deployment
 > - Production URL: `https://knowing-finch-546.convex.cloud`
@@ -211,6 +213,7 @@ Project creation is a simple form — there is no conversational wizard or AI in
 **Component**: `apps/desktop/src/pages/NewProject.tsx` → `apps/desktop/src/features/projects/components/CreateProjectDialog.tsx`
 
 ### Fresh project (`mode=empty`)
+
 1. User fills in: project name, local folder location, optional GitHub repo toggle
 2. On submit:
    - IPC creates the folder on disk, runs `git init`, writes `.gitignore`
@@ -221,6 +224,7 @@ Project creation is a simple form — there is no conversational wizard or AI in
 3. Navigates to `/projects/p/{projectId}/workbench`
 
 ### Open existing folder (`mode=local`)
+
 1. Electron preflights the selected directory and existing Git metadata.
 2. If the canonical path already belongs to a local project, Cozea opens that project instead of creating a duplicate.
 3. Otherwise Convex creates an idempotent `provisioning` project, then the workspace catalog attaches the exact selected path as `attached`.
@@ -270,22 +274,25 @@ See `docs/device-identity.md` for the protocol and deployment requirements.
   offline and never silently follow a publication's active release. Consumers receive bounded,
   immutable artifacts and never receive project source, local paths, workspace IDs, dev commands,
   or dependency-install recipes.
-- Static releases use per-hash `cozea-devapp` origins. Service releases use strict manifests,
-  publication-owned local runtimes, encrypted environment configuration, release-bound trusted-code
-  approval, and an authenticated release-scoped loopback gateway. Next.js standalone and Nuxt are
-  automatic; other self-contained Node outputs use `package.json.cozeaDevApp.service`.
+- Static releases use per-hash `cozea-devapp` origins. Published workers and Node services require
+  a root version-2 `cozea-devapp.json`, committed `bun.lock`, deterministic build, and exact signed
+  multi-platform OCI release. Their manifest selects the app-owned Apple Containerization device
+  adapter or Cloudflare Sandbox hosted adapter plus exact state ownership. Missing containment has
+  no utility-process or child-process fallback.
 - Browser guests use the pinned T3 permission allowlist (clipboard read/sanitized write,
   notifications, and geolocation); all other permissions and unmanaged downloads are denied.
-  Top-level external HTTPS opens outside restricted DevApp tiles. Service code
-  is trusted organization code for the private beta, not an OS-enforced filesystem/network sandbox;
-  see `docs/service-devapps-implementation-plan.md` for the post-beta container/VM milestone.
+  Top-level external HTTPS opens outside restricted DevApp tiles. Device containers receive no host
+  path without an explicit expiring release-bound folder grant; hosted containers can never mount
+  local files. See `docs/devapp-contained-runtime.md`.
 - Unpublished `cozea-devapp.json` workers run only in development preview after explicit expiring
   approval. Their utility process uses Node permissions as defense in depth but is not an OS
-  sandbox and can reach the network. Published worker execution and autonomous worker tools remain
-  blocked until the container/VM runtime; see `docs/devapp-worker-security-review.md`.
+  sandbox and can reach the network. This intentional developer tier is separate from published
+  contained execution; see `docs/devapp-worker-security-review.md`.
 - Development workers declare concrete agent operations (`name`, `description`, bounded object
   `inputSchema`) through `worker.tools`. The authenticated MCP catalog can inspect declarations,
-  but it cannot invoke them before the Phase 8 contained runtime exists.
+  and invokes them only against an exact installed living contained release after main rechecks the
+  declaration, schema, workspace, unexpired approval, `agentInvocable`, concurrency, timeout, and
+  result bounds.
 - Approved development-preview guests alone expose `window.cozeaDevApp`, a versioned port to that
   package's worker. Privileged host operations stay on the worker's separate capability-gated
   channel; ordinary Browser and published DevApp guests never receive this preload API.
@@ -330,6 +337,7 @@ See `docs/dev-server-agent-automation.md` for the lifecycle, tool semantics, and
 ## Code Style
 
 ### TypeScript
+
 - Use explicit types, avoid `any`
 - Prefer interfaces over types for object shapes
 - Use `type` for unions and utility types
@@ -346,6 +354,7 @@ type ProjectConfig = any
 ```
 
 ### React Components
+
 - Use function components with TypeScript
 - Props interfaces named `{ComponentName}Props`
 - Use `cn()` from `@/lib/utils` for conditional classes
@@ -353,20 +362,17 @@ type ProjectConfig = any
 ```tsx
 // ✅ Good
 interface ButtonProps {
-  variant?: 'primary' | 'secondary'
+  variant?: "primary" | "secondary"
   children: React.ReactNode
 }
 
-export function Button({ variant = 'primary', children }: ButtonProps) {
-  return (
-    <button className={cn('btn', variant === 'primary' && 'btn-primary')}>
-      {children}
-    </button>
-  )
+export function Button({ variant = "primary", children }: ButtonProps) {
+  return <button className={cn("btn", variant === "primary" && "btn-primary")}>{children}</button>
 }
 ```
 
 ### Imports
+
 - Use path aliases: `@/` for `src/`, `@shared/` for `shared/`
 - Group imports: React, external libs, internal modules, types
 
@@ -406,12 +412,14 @@ git commit -m "Updated stuff"
 ## Boundaries
 
 ### ✅ Always
+
 - Run `bun run typecheck` before committing
 - Use existing UI components from `src/components/ui/`
 - Follow the established patterns in similar files
 - Use `bun` for all package management and script execution
 
 ### ⚠️ Ask First
+
 - Adding new dependencies
 - Modifying database schema (`convex/schema.ts`)
 - Changes to authentication flow
@@ -419,11 +427,13 @@ git commit -m "Updated stuff"
 - Changes to the vendored T3 server bootstrap (`apps/server/src/t3Bootstrap.ts`)
 
 ### 🚫 Never
+
 - Commit API keys, secrets, or `.env` files
 - Modify `node_modules/` or generated files (`convex/_generated/`)
 - Remove existing tests without explicit approval
 - Push directly to main branch
 - Use `convex dev` — always use `bunx convex deploy`
+
 ## Accuracy, recency, and sourcing (REQUIRED)
 
 When a request depends on recency (e.g., "latest", "current", "today", "as of now"):
@@ -511,11 +521,11 @@ Maintain a single continuity file for the current workspace: `.agent/CONTINUITY.
 
 Update `.agent/CONTINUITY.md` only when there is a meaningful delta in:
 
-  - `[PLANS]`: "Plans Log" is a guide for the next contributor as much as checklists for you.
-  - `[DECISIONS]`: "Decisions Log" is used to record all decisions made.
-  - `[PROGRESS]`: "Progress Log" is used to record course changes mid-implementation, documenting why and reflecting upon the implications.
-  - `[DISCOVERIES]`: "Discoveries Log" is for when when you discover optimizer behavior, performance tradeoffs, unexpected bugs, or inverse/unapply semantics that shaped your approach, capture those observations with short evidence snippets (test output is ideal.
-  - `[OUTCOMES]`: "Outcomes Log" is used at completion of a major task or the full plan, summarizing what was achieved, what remains, and lessons learned.
+- `[PLANS]`: "Plans Log" is a guide for the next contributor as much as checklists for you.
+- `[DECISIONS]`: "Decisions Log" is used to record all decisions made.
+- `[PROGRESS]`: "Progress Log" is used to record course changes mid-implementation, documenting why and reflecting upon the implications.
+- `[DISCOVERIES]`: "Discoveries Log" is for when when you discover optimizer behavior, performance tradeoffs, unexpected bugs, or inverse/unapply semantics that shaped your approach, capture those observations with short evidence snippets (test output is ideal.
+- `[OUTCOMES]`: "Outcomes Log" is used at completion of a major task or the full plan, summarizing what was achieved, what remains, and lessons learned.
 
 ### Anti-drift / anti-bloat rules
 
@@ -524,7 +534,7 @@ Update `.agent/CONTINUITY.md` only when there is a meaningful delta in:
   - a date in ISO timestamp (e.g., `2026-01-13T09:42Z`)
   - a provenance tag: `[USER]`, `[CODE]`, `[TOOL]`, `[ASSUMPTION]`
   - If unknown, write `UNCONFIRMED` (never guess). If something changes, supersede it explicitly (don't silently rewrite history).
-- Keep the file bounded, short and high-signal (anti-bloat). 
+- Keep the file bounded, short and high-signal (anti-bloat).
 - If sections begin to become bloated, compress older items into milestone (`[MILESTONE]`) bullets.
 
 ## Definition of done

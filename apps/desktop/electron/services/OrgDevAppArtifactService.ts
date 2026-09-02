@@ -3,7 +3,9 @@ import type { ChildProcess } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import fs from "node:fs"
 import { createServer as createHttpServer, request as httpRequest, type Server as HttpServer } from "node:http"
-import { connect as connectSocket, createServer as createNetServer } from "node:net"
+import { request as httpsRequest } from "node:https"
+import { connect as connectSocket } from "node:net"
+import { connect as connectTlsSocket } from "node:tls"
 import os from "node:os"
 import path from "node:path"
 import { net, protocol, safeStorage, type Session } from "electron"
@@ -18,23 +20,20 @@ import {
   ORG_DEVAPP_SCHEME,
   parseOrgDevAppUrl,
 } from "../../../../shared/orgDevAppProtocol"
-import {
-  hashBuffer,
-  packDirectoryToZip,
-  unpackZip,
-} from "./orgDevAppZip"
+import { hashBuffer, packDirectoryToZip, unpackZip } from "./orgDevAppZip"
 import { orgDevAppArtifactLimits } from "../../../../shared/orgDevAppLimits"
 import { uploadPackedDevApp } from "./orgDevAppUpload"
-import { preflightProject, scanOutputTree } from "./orgDevAppPreflight"
+import { preflightProject } from "./orgDevAppPreflight"
 import {
   parseServiceDevAppManifest,
-  normalizeServiceDevAppPath,
   serviceDevAppPermissionSetHash,
   type OrgDevAppRuntimeKind,
   type ServiceDevAppManifest,
 } from "../../../../shared/serviceDevAppManifest"
 import type { OrgDevAppRuntimeState } from "../../../../shared/orgDevAppRuntime"
 import type { OrgDevAppEnvironmentStatus } from "../../../../shared/orgDevAppEnvironment"
+import type { DevAppContainedRuntimeState, DevAppFolderGrant } from "../../../../shared/devAppContainedRuntime"
+import { DEV_APP_MANIFEST_FILENAME, parseDevAppPackage, type DevAppPackage } from "../../../../shared/devAppPackage"
 
 export type { OrgDevAppRuntimeState } from "../../../../shared/orgDevAppRuntime"
 
@@ -45,9 +44,16 @@ const DEVAPP_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60_000
 const DEVAPP_GATEWAY_MAX_REQUEST_BYTES = 16 * 1024 * 1024
 const DEVAPP_RUNTIME_IDLE_TIMEOUT_MS = 5 * 60_000
 const DEVAPP_GATEWAY_TOKEN_HEADER = "x-cozea-devapp-gateway"
+const HOSTED_SERVICE_TOKEN_HEADER = "x-cozea-hosted-service-token"
 const HOP_BY_HOP_HEADERS = new Set([
-  "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-  "te", "trailer", "transfer-encoding", "upgrade",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
 ])
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -105,11 +111,34 @@ export interface OrgDevAppPrepareResult {
 }
 
 interface ActiveServiceRuntime {
-  child: ChildProcess
+  runtimeId: string
   state: OrgDevAppRuntimeState
-  port: number
+  targetUrl: URL
+  targetServiceToken: string | null
   leases: Set<string>
   idleTimer: NodeJS.Timeout | null
+}
+
+export interface OrgDevAppContainedServiceAdapter {
+  start(options: {
+    ref: string
+    workspaceId: string
+    workspaceRoot: string
+    leaseId: string
+    gatewayBaseUrl: string
+    accessToken: string
+    environment: Record<string, string>
+    folderGrants: DevAppFolderGrant[]
+  }): Promise<{
+    key: string
+    state: { status: string; guestAddress: string | null; servicePort: number | null; error: string | null }
+    serviceUrl: string | null
+    serviceToken: string | null
+    logs: string[]
+  }>
+  stop(runtimeId: string): Promise<void>
+  release(runtimeId: string, leaseId: string): boolean
+  runtimeState(runtimeId: string): DevAppContainedRuntimeState | null
 }
 
 interface StoredServiceTrust {
@@ -121,9 +150,7 @@ interface StoredServiceTrust {
 function readJsonObject(filePath: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"))
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
   } catch {
     return null
   }
@@ -187,24 +214,8 @@ function findStaticOutput(projectRoot: string): { outputDir: string; entryPath: 
   )
 }
 
-function findFileNamed(root: string, target: string): string | null {
-  if (!fs.existsSync(root)) return null
-  const stack = [root]
-  while (stack.length > 0) {
-    const current = stack.pop()
-    if (!current) continue
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const full = path.join(current, entry.name)
-      if (entry.isDirectory()) stack.push(full)
-      else if (entry.isFile() && entry.name === target) return full
-    }
-  }
-  return null
-}
-
 interface PublisherServiceConfig extends Pick<ServiceDevAppManifest, "environment" | "permissions"> {
-  service?: {
-    outputDir: string
+  service: {
     entrypoint: string
     args: string[]
     hostEnv: string
@@ -214,43 +225,97 @@ interface PublisherServiceConfig extends Pick<ServiceDevAppManifest, "environmen
   }
 }
 
+function readAuthoredPackage(projectRoot: string): DevAppPackage | null {
+  const manifestPath = path.join(projectRoot, DEV_APP_MANIFEST_FILENAME)
+  if (!fs.existsSync(manifestPath)) return null
+  const parsed = parseDevAppPackage(fs.readFileSync(manifestPath, "utf8"))
+  if (!parsed.manifest) {
+    throw new Error(parsed.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+  }
+  return parsed.manifest
+}
+
+function publishedServicePermissions(manifest: DevAppPackage): ServiceDevAppManifest["permissions"] {
+  if (manifest.service?.runtimeKind !== "node" || !manifest.runtime) {
+    throw new Error(
+      "Published Service DevApps require a v2 cozea-devapp.json with a Node service and explicit runtime placement.",
+    )
+  }
+  return {
+    // A Service DevApp must bind its private ingress port. This permission also discloses
+    // that the contained service may make outbound requests.
+    network: true,
+    persistentData: manifest.runtime.state !== "none",
+  }
+}
+
 function readPublisherServiceConfig(projectRoot: string): PublisherServiceConfig {
+  const authored = readAuthoredPackage(projectRoot)
+  if (!authored) {
+    throw new Error("Published Service DevApps require cozea-devapp.json so runtime placement and state are explicit.")
+  }
+  const declaredPermissions = publishedServicePermissions(authored)
   const pkg = readJsonObject(path.join(projectRoot, "package.json"))
   const config = pkg?.cozeaDevApp
   if (config === undefined) {
-    return { environment: [], permissions: { network: true, persistentData: true } }
+    return {
+      environment: [],
+      permissions: declaredPermissions,
+      service: {
+        entrypoint: authored.service!.entry!,
+        args: [],
+        hostEnv: "HOSTNAME",
+        portEnv: "PORT",
+        healthPath: "/",
+        startupTimeoutMs: 30_000,
+      },
+    }
   }
-  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("package.json cozeaDevApp must be an object.")
+  if (!config || typeof config !== "object" || Array.isArray(config))
+    throw new Error("package.json cozeaDevApp must be an object.")
   const record = config as Record<string, unknown>
   for (const key of Object.keys(record)) {
-    if (key !== "environment" && key !== "permissions" && key !== "service") throw new Error(`package.json cozeaDevApp contains unsupported field ${key}.`)
+    if (key !== "environment" && key !== "service")
+      throw new Error(`package.json cozeaDevApp contains unsupported field ${key}.`)
   }
-  const permissions = record.permissions ?? { network: true, persistentData: true }
   const environment = record.environment ?? []
   const checked = parseServiceDevAppManifest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "service",
-    platform: "darwin",
-    arch: "arm64",
+    platform: "linux",
+    arch: "multi",
     framework: "configuration-check",
     runtime: { kind: "node", entrypoint: "server.js", args: [] },
     server: { hostEnv: "HOSTNAME", portEnv: "PORT", healthPath: "/", startupTimeoutMs: 30_000 },
     environment,
-    permissions,
+    permissions: declaredPermissions,
   })
-  if (record.service === undefined) return { environment: checked.environment, permissions: checked.permissions }
-  if (!record.service || typeof record.service !== "object" || Array.isArray(record.service)) throw new Error("package.json cozeaDevApp.service must be an object.")
-  const service = record.service as Record<string, unknown>
-  const allowedServiceKeys = new Set(["outputDir", "entrypoint", "args", "hostEnv", "portEnv", "healthPath", "startupTimeoutMs"])
-  for (const key of Object.keys(service)) {
-    if (!allowedServiceKeys.has(key)) throw new Error(`package.json cozeaDevApp.service contains unsupported field ${key}.`)
+  if (record.service === undefined) {
+    return {
+      environment: checked.environment,
+      permissions: checked.permissions,
+      service: {
+        entrypoint: authored.service!.entry!,
+        args: [],
+        hostEnv: "HOSTNAME",
+        portEnv: "PORT",
+        healthPath: "/",
+        startupTimeoutMs: 30_000,
+      },
+    }
   }
-  const outputDir = normalizeServiceDevAppPath(service.outputDir, "cozeaDevApp.service.outputDir")
-  const entrypoint = normalizeServiceDevAppPath(service.entrypoint, "cozeaDevApp.service.entrypoint")
+  if (!record.service || typeof record.service !== "object" || Array.isArray(record.service))
+    throw new Error("package.json cozeaDevApp.service must be an object.")
+  const service = record.service as Record<string, unknown>
+  const allowedServiceKeys = new Set(["args", "hostEnv", "portEnv", "healthPath", "startupTimeoutMs"])
+  for (const key of Object.keys(service)) {
+    if (!allowedServiceKeys.has(key))
+      throw new Error(`package.json cozeaDevApp.service contains unsupported field ${key}.`)
+  }
   const serviceManifest = parseServiceDevAppManifest({
     ...checked,
     framework: "generic-node",
-    runtime: { kind: "node", entrypoint, args: service.args ?? [] },
+    runtime: { kind: "node", entrypoint: authored.service!.entry!, args: service.args ?? [] },
     server: {
       hostEnv: service.hostEnv ?? "HOSTNAME",
       portEnv: service.portEnv ?? "PORT",
@@ -262,7 +327,6 @@ function readPublisherServiceConfig(projectRoot: string): PublisherServiceConfig
     environment: serviceManifest.environment,
     permissions: serviceManifest.permissions,
     service: {
-      outputDir,
       entrypoint: serviceManifest.runtime.entrypoint,
       args: serviceManifest.runtime.args,
       hostEnv: serviceManifest.server.hostEnv,
@@ -273,80 +337,56 @@ function readPublisherServiceConfig(projectRoot: string): PublisherServiceConfig
   }
 }
 
-/**
- * Rejects a service output that cannot be published.
- *
- * Delegates to the preflight scanner so there is one implementation of "what makes a
- * service tree unpublishable", and so every fault is reported at once. The previous
- * inline walk called `realpathSync` on symlinks unguarded, which meant a dangling link —
- * routine in a pnpm tree — escaped as a bare ENOENT instead of an explicable error.
- */
-function assertPortableServiceTree(root: string): void {
-  const blocking = scanOutputTree(root, { runtimeKind: "service" })
-    .filter((diagnostic) => diagnostic.severity === "blocker")
-  if (blocking.length === 0) return
-  const detail = blocking
-    .map((diagnostic) => {
-      const paths = diagnostic.paths?.length ? ` (${diagnostic.paths.slice(0, 4).join(", ")})` : ""
-      return `- ${diagnostic.message}${paths}`
-    })
-    .join("\n")
-  throw new Error(`This Service DevApp build cannot be published:\n${detail}`)
+function writeServiceMetadataEntry(stagingRoot: string, entrypoint: string): void {
+  const entryFile = path.join(stagingRoot, entrypoint)
+  fs.mkdirSync(path.dirname(entryFile), { recursive: true })
+  // The release artifact is the immutable UI/configuration record. Executable bytes come
+  // exclusively from the signed multi-platform image produced by the central builder.
+  // Keeping only a marker prevents a publisher-host build from becoming a second runtime.
+  fs.writeFileSync(entryFile, "Contained runtime entry; executable bytes are in the signed image.\n")
 }
 
-function stageNextStandalone(projectRoot: string): { outputDir: string; manifest: ServiceDevAppManifest } | null {
-  const standalone = path.join(projectRoot, ".next", "standalone")
-  if (!fs.existsSync(standalone) || !fs.statSync(standalone).isDirectory()) return null
-  assertPortableServiceTree(standalone)
-  const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-service-"))
-  const serverRoot = path.join(stagingRoot, "server")
-  fs.cpSync(standalone, serverRoot, { recursive: true, dereference: true })
-  const staticRoot = path.join(projectRoot, ".next", "static")
-  if (fs.existsSync(staticRoot)) fs.cpSync(staticRoot, path.join(serverRoot, ".next", "static"), { recursive: true, dereference: true })
-  const publicRoot = path.join(projectRoot, "public")
-  if (fs.existsSync(publicRoot)) fs.cpSync(publicRoot, path.join(serverRoot, "public"), { recursive: true, dereference: true })
-  const serverFile = findFileNamed(serverRoot, "server.js")
-  if (!serverFile) {
-    fs.rmSync(stagingRoot, { recursive: true, force: true })
-    return null
-  }
-  const publisherConfig = readPublisherServiceConfig(projectRoot)
-  const manifest = parseServiceDevAppManifest({
-    schemaVersion: 1,
-    kind: "service",
-    platform: "darwin",
-    arch: "arm64",
-    framework: "nextjs",
-    runtime: { kind: "node", entrypoint: path.relative(stagingRoot, serverFile).split(path.sep).join("/"), args: [] },
-    server: { hostEnv: "HOSTNAME", portEnv: "PORT", healthPath: "/", startupTimeoutMs: 30_000 },
-    environment: publisherConfig.environment,
-    permissions: publisherConfig.permissions,
-  })
-  fs.writeFileSync(path.join(stagingRoot, "cozea-devapp.json"), JSON.stringify(manifest, null, 2))
-  return { outputDir: stagingRoot, manifest }
+function stageExecutableOnlyView(manifest: DevAppPackage): string {
+  const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-worker-view-"))
+  const title = manifest.name.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character] ?? character,
+  )
+  fs.writeFileSync(
+    path.join(stagingRoot, "index.html"),
+    `<!doctype html><meta charset="utf-8"><meta name="color-scheme" content="dark light"><title>${title}</title>` +
+      `<style>body{font:14px system-ui;margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#ddd}` +
+      `main{max-width:34rem;padding:2rem}h1{font-size:1.15rem}p{line-height:1.5;color:#aaa}</style>` +
+      `<main><h1>${title}</h1><p>This DevApp runs as a contained background worker. Use the tile controls to approve, monitor, and stop it.</p></main>`,
+    "utf8",
+  )
+  return stagingRoot
 }
 
-function stageExplicitService(projectRoot: string, framework: string): { outputDir: string; manifest: ServiceDevAppManifest } | null {
+function stageContainedService(
+  projectRoot: string,
+  framework: string,
+): { outputDir: string; manifest: ServiceDevAppManifest } {
   const publisherConfig = readPublisherServiceConfig(projectRoot)
-  if (!publisherConfig.service) return null
-  const sourceRoot = path.join(projectRoot, publisherConfig.service.outputDir)
-  if (!fs.existsSync(sourceRoot) || !fs.statSync(sourceRoot).isDirectory()) {
-    throw new Error(`The Service DevApp build did not produce ${publisherConfig.service.outputDir}.`)
-  }
-  assertPortableServiceTree(sourceRoot)
   const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-service-"))
-  const serverRoot = path.join(stagingRoot, "server")
-  fs.cpSync(sourceRoot, serverRoot, { recursive: true, dereference: true })
   const entrypoint = `server/${publisherConfig.service.entrypoint}`
-  if (!fs.existsSync(path.join(stagingRoot, entrypoint))) {
+  const sourceEntry = path.join(projectRoot, publisherConfig.service.entrypoint)
+  if (!fs.existsSync(sourceEntry) || !fs.statSync(sourceEntry).isFile()) {
     fs.rmSync(stagingRoot, { recursive: true, force: true })
-    throw new Error(`The Service DevApp entrypoint ${publisherConfig.service.entrypoint} is missing from ${publisherConfig.service.outputDir}.`)
+    throw new Error(`The Service DevApp entrypoint ${publisherConfig.service.entrypoint} is missing after the build.`)
   }
   const manifest = parseServiceDevAppManifest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "service",
-    platform: "darwin",
-    arch: "arm64",
+    platform: "linux",
+    arch: "multi",
     framework,
     runtime: { kind: "node", entrypoint, args: publisherConfig.service.args },
     server: {
@@ -358,43 +398,9 @@ function stageExplicitService(projectRoot: string, framework: string): { outputD
     environment: publisherConfig.environment,
     permissions: publisherConfig.permissions,
   })
+  writeServiceMetadataEntry(stagingRoot, entrypoint)
   fs.writeFileSync(path.join(stagingRoot, "cozea-devapp.json"), JSON.stringify(manifest, null, 2))
   return { outputDir: stagingRoot, manifest }
-}
-
-function stageNuxtService(projectRoot: string): { outputDir: string; manifest: ServiceDevAppManifest } | null {
-  const sourceRoot = path.join(projectRoot, ".output")
-  const sourceEntrypoint = path.join(sourceRoot, "server", "index.mjs")
-  if (!fs.existsSync(sourceEntrypoint)) return null
-  assertPortableServiceTree(sourceRoot)
-  const publisherConfig = readPublisherServiceConfig(projectRoot)
-  const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cozea-service-"))
-  fs.cpSync(sourceRoot, path.join(stagingRoot, "server"), { recursive: true, dereference: true })
-  const manifest = parseServiceDevAppManifest({
-    schemaVersion: 1,
-    kind: "service",
-    platform: "darwin",
-    arch: "arm64",
-    framework: "nuxt",
-    runtime: { kind: "node", entrypoint: "server/server/index.mjs", args: [] },
-    server: { hostEnv: "NITRO_HOST", portEnv: "NITRO_PORT", healthPath: "/", startupTimeoutMs: 30_000 },
-    environment: publisherConfig.environment,
-    permissions: publisherConfig.permissions,
-  })
-  fs.writeFileSync(path.join(stagingRoot, "cozea-devapp.json"), JSON.stringify(manifest, null, 2))
-  return { outputDir: stagingRoot, manifest }
-}
-
-async function allocateLoopbackPort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createNetServer()
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address()
-      const port = typeof address === "object" && address ? address.port : 0
-      server.close((error) => error ? reject(error) : resolve(port))
-    })
-  })
 }
 
 function terminateChildProcess(child: ChildProcess): void {
@@ -520,12 +526,20 @@ function removeCachedArtifact(rootDir: string): void {
   while (stack.length > 0) {
     const current = stack.pop()
     if (!current) continue
-    try { fs.chmodSync(current, 0o755) } catch { /* Best-effort recovery before removal. */ }
+    try {
+      fs.chmodSync(current, 0o755)
+    } catch {
+      /* Best-effort recovery before removal. */
+    }
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const entryPath = path.join(current, entry.name)
       if (entry.isDirectory()) stack.push(entryPath)
       else {
-        try { fs.chmodSync(entryPath, 0o644) } catch { /* Best-effort recovery before removal. */ }
+        try {
+          fs.chmodSync(entryPath, 0o644)
+        } catch {
+          /* Best-effort recovery before removal. */
+        }
       }
     }
   }
@@ -545,6 +559,7 @@ export class OrgDevAppArtifactService {
   private gatewayServer: HttpServer | null = null
   private gatewayPort: number | null = null
   private protectedContentHashes: () => ReadonlySet<string> = () => new Set()
+  private containedServiceAdapter: OrgDevAppContainedServiceAdapter | null = null
 
   constructor(getCacheRoot: () => string) {
     this.getCacheRoot = getCacheRoot
@@ -552,6 +567,10 @@ export class OrgDevAppArtifactService {
 
   setProtectedContentHashes(provider: () => ReadonlySet<string>): void {
     this.protectedContentHashes = provider
+  }
+
+  setContainedServiceAdapter(adapter: OrgDevAppContainedServiceAdapter): void {
+    this.containedServiceAdapter = adapter
   }
 
   getPreparedArtifactSize(contentHash: string): number {
@@ -574,7 +593,8 @@ export class OrgDevAppArtifactService {
     const contentHash = normalizeContentHash(contentHashInput)
     const publicationId = publicationIdInput.trim()
     const permissionSetHash = normalizeContentHash(permissionSetHashInput)
-    if (!isContentHash(contentHash) || !isContentHash(permissionSetHash)) throw new Error("The DevApp trust metadata is invalid.")
+    if (!isContentHash(contentHash) || !isContentHash(permissionSetHash))
+      throw new Error("The DevApp trust metadata is invalid.")
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) throw new Error("The DevApp publication ID is invalid.")
     return `${publicationId}:${contentHash}:${permissionSetHash}`
   }
@@ -586,9 +606,11 @@ export class OrgDevAppArtifactService {
   private readTrust(): StoredServiceTrust {
     const trustPath = this.trustFilePath()
     if (!fs.existsSync(trustPath)) return { version: 1, approvals: [], configurations: {} }
-    if (!safeStorage.isEncryptionAvailable()) throw new Error("macOS secure storage is unavailable, so Service DevApp trust cannot be verified.")
+    if (!safeStorage.isEncryptionAvailable())
+      throw new Error("macOS secure storage is unavailable, so Service DevApp trust cannot be verified.")
     const parsed: unknown = JSON.parse(safeStorage.decryptString(fs.readFileSync(trustPath)))
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("The Service DevApp trust store is invalid.")
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      throw new Error("The Service DevApp trust store is invalid.")
     const approvals = (parsed as { approvals?: unknown }).approvals
     if (!Array.isArray(approvals) || approvals.some((entry) => typeof entry !== "string")) {
       throw new Error("The Service DevApp trust store is invalid.")
@@ -608,7 +630,8 @@ export class OrgDevAppArtifactService {
   }
 
   private writeTrust(trust: StoredServiceTrust): void {
-    if (!safeStorage.isEncryptionAvailable()) throw new Error("macOS secure storage is unavailable, so Service DevApp trust cannot be saved.")
+    if (!safeStorage.isEncryptionAvailable())
+      throw new Error("macOS secure storage is unavailable, so Service DevApp trust cannot be saved.")
     const root = this.getCacheRoot()
     fs.mkdirSync(root, { recursive: true })
     const trustPath = this.trustFilePath()
@@ -624,7 +647,9 @@ export class OrgDevAppArtifactService {
   approveRuntime(contentHash: string, publicationId: string, permissionSetHash: string): void {
     const key = this.trustKey(contentHash, publicationId, permissionSetHash)
     const cacheDir = this.getCacheDir(contentHash)
-    const manifest = parseServiceDevAppManifest(JSON.parse(fs.readFileSync(path.join(cacheDir, "cozea-devapp.json"), "utf8")))
+    const manifest = parseServiceDevAppManifest(
+      JSON.parse(fs.readFileSync(path.join(cacheDir, "cozea-devapp.json"), "utf8")),
+    )
     if (serviceDevAppPermissionSetHash(manifest) !== normalizeContentHash(permissionSetHash)) {
       throw new Error("The Service DevApp permissions do not match the published release.")
     }
@@ -635,8 +660,11 @@ export class OrgDevAppArtifactService {
   getRuntimeEnvironmentStatus(contentHashInput: string, publicationIdInput: string): OrgDevAppEnvironmentStatus {
     const contentHash = normalizeContentHash(contentHashInput)
     const publicationId = publicationIdInput.trim()
-    if (!isContentHash(contentHash) || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) throw new Error("The DevApp configuration target is invalid.")
-    const manifest = parseServiceDevAppManifest(JSON.parse(fs.readFileSync(path.join(this.getCacheDir(contentHash), "cozea-devapp.json"), "utf8")))
+    if (!isContentHash(contentHash) || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId))
+      throw new Error("The DevApp configuration target is invalid.")
+    const manifest = parseServiceDevAppManifest(
+      JSON.parse(fs.readFileSync(path.join(this.getCacheDir(contentHash), "cozea-devapp.json"), "utf8")),
+    )
     const configured = this.readTrust().configurations[publicationId] ?? {}
     const requirements = manifest.environment.map((entry) => ({
       ...entry,
@@ -648,11 +676,18 @@ export class OrgDevAppArtifactService {
     }
   }
 
-  setRuntimeEnvironment(contentHashInput: string, publicationIdInput: string, values: Record<string, string | null>): OrgDevAppEnvironmentStatus {
+  setRuntimeEnvironment(
+    contentHashInput: string,
+    publicationIdInput: string,
+    values: Record<string, string | null>,
+  ): OrgDevAppEnvironmentStatus {
     const contentHash = normalizeContentHash(contentHashInput)
     const publicationId = publicationIdInput.trim()
-    if (!isContentHash(contentHash) || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) throw new Error("The DevApp configuration target is invalid.")
-    const manifest = parseServiceDevAppManifest(JSON.parse(fs.readFileSync(path.join(this.getCacheDir(contentHash), "cozea-devapp.json"), "utf8")))
+    if (!isContentHash(contentHash) || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId))
+      throw new Error("The DevApp configuration target is invalid.")
+    const manifest = parseServiceDevAppManifest(
+      JSON.parse(fs.readFileSync(path.join(this.getCacheDir(contentHash), "cozea-devapp.json"), "utf8")),
+    )
     const allowedNames = new Set(manifest.environment.map((entry) => entry.name))
     const trust = this.readTrust()
     const next = { ...trust.configurations[publicationId] }
@@ -660,12 +695,33 @@ export class OrgDevAppArtifactService {
       if (!allowedNames.has(name)) throw new Error(`The Service DevApp does not declare ${name}.`)
       if (value === null || value === "") delete next[name]
       else {
-        if (typeof value !== "string" || value.length > 16_384 || /\0/.test(value)) throw new Error(`${name} is too large or invalid.`)
+        if (typeof value !== "string" || value.length > 16_384 || /\0/.test(value))
+          throw new Error(`${name} is too large or invalid.`)
         next[name] = value
       }
     }
-    this.writeTrust({ ...trust, configurations: { ...trust.configurations, [publicationId]: next } })
+    this.writeTrust({
+      ...trust,
+      configurations: { ...trust.configurations, [publicationId]: next },
+    })
     return this.getRuntimeEnvironmentStatus(contentHash, publicationId)
+  }
+
+  removePublicationTrust(publicationIdInput: string): void {
+    const publicationId = publicationIdInput.trim()
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) {
+      throw new Error("The DevApp publication ID is invalid.")
+    }
+    const trust = this.readTrust()
+    const approvals = trust.approvals.filter((entry) => !entry.startsWith(`${publicationId}:`))
+    const configurations = { ...trust.configurations }
+    delete configurations[publicationId]
+    if (
+      approvals.length !== trust.approvals.length ||
+      Object.keys(configurations).length !== Object.keys(trust.configurations).length
+    ) {
+      this.writeTrust({ version: 1, approvals, configurations })
+    }
   }
 
   getCacheDir(contentHash: string): string {
@@ -688,8 +744,25 @@ export class OrgDevAppArtifactService {
     if (!isContentHash(contentHash)) return null
     const publicationId = this.gatewayPublications.get(gatewayToken)
     if (!publicationId) return null
-    const runtime = this.activeServiceRuntimes.get(this.runtimeKey(contentHash, publicationId))
-    return runtime?.state.status === "ready" && runtime.child.exitCode === null ? runtime : null
+    const runtimeKey = this.runtimeKey(contentHash, publicationId)
+    const runtime = this.activeServiceRuntimes.get(runtimeKey)
+    if (!runtime || !this.reconcileContainedRuntime(runtimeKey, runtime)) return null
+    return runtime.state.status === "ready" ? runtime : null
+  }
+
+  private reconcileContainedRuntime(runtimeKey: string, runtime: ActiveServiceRuntime): boolean {
+    const contained = this.containedServiceAdapter?.runtimeState(runtime.runtimeId)
+    if (contained?.status === "running") return true
+    if (runtime.idleTimer) clearTimeout(runtime.idleTimer)
+    runtime.idleTimer = null
+    runtime.state = {
+      ...runtime.state,
+      status: contained?.status === "failed" ? "failed" : "stopped",
+      originUrl: null,
+      error: contained?.error ?? null,
+    }
+    this.activeServiceRuntimes.delete(runtimeKey)
+    return false
   }
 
   private gatewayAccessToken(headers: NodeJS.Dict<string | string[] | undefined>): string | null {
@@ -725,26 +798,38 @@ export class OrgDevAppArtifactService {
         if (received > DEVAPP_GATEWAY_MAX_REQUEST_BYTES) request.destroy(new Error("DevApp request is too large"))
       })
       const headers = Object.fromEntries(
-        Object.entries(request.headers).filter(([name]) =>
-          name.toLowerCase() !== DEVAPP_GATEWAY_TOKEN_HEADER && !HOP_BY_HOP_HEADERS.has(name.toLowerCase()),
+        Object.entries(request.headers).filter(
+          ([name]) =>
+            name.toLowerCase() !== DEVAPP_GATEWAY_TOKEN_HEADER &&
+            name.toLowerCase() !== HOSTED_SERVICE_TOKEN_HEADER &&
+            !HOP_BY_HOP_HEADERS.has(name.toLowerCase()),
         ),
       )
-      headers.host = `127.0.0.1:${runtime.port}`
-      const upstream = httpRequest({
-        host: "127.0.0.1",
-        port: runtime.port,
-        method: request.method,
-        path: request.url,
-        headers,
-      }, (upstreamResponse) => {
-        const responseHeaders = Object.fromEntries(
-          Object.entries(upstreamResponse.headers).filter(([name]) => !HOP_BY_HOP_HEADERS.has(name.toLowerCase())),
-        )
-        responseHeaders["x-content-type-options"] = "nosniff"
-        responseHeaders["permissions-policy"] = "camera=(), microphone=(), geolocation=(), display-capture=(), usb=(), serial=(), hid=()"
-        response.writeHead(upstreamResponse.statusCode ?? 502, responseHeaders)
-        upstreamResponse.pipe(response)
-      })
+      headers.host = runtime.targetUrl.host
+      if (runtime.targetServiceToken) {
+        headers[HOSTED_SERVICE_TOKEN_HEADER] = runtime.targetServiceToken
+      }
+      const targetPath = new URL(request.url ?? "/", runtime.targetUrl)
+      const requestUpstream = runtime.targetUrl.protocol === "https:" ? httpsRequest : httpRequest
+      const upstream = requestUpstream(
+        {
+          hostname: runtime.targetUrl.hostname,
+          port: runtime.targetUrl.port || undefined,
+          method: request.method,
+          path: `${targetPath.pathname}${targetPath.search}`,
+          headers,
+        },
+        (upstreamResponse) => {
+          const responseHeaders = Object.fromEntries(
+            Object.entries(upstreamResponse.headers).filter(([name]) => !HOP_BY_HOP_HEADERS.has(name.toLowerCase())),
+          )
+          responseHeaders["x-content-type-options"] = "nosniff"
+          responseHeaders["permissions-policy"] =
+            "camera=(), microphone=(), geolocation=(), display-capture=(), usb=(), serial=(), hid=()"
+          response.writeHead(upstreamResponse.statusCode ?? 502, responseHeaders)
+          upstreamResponse.pipe(response)
+        },
+      )
       upstream.on("error", () => {
         if (!response.headersSent) response.writeHead(502, { "content-type": "text/plain; charset=utf-8" })
         response.end("DevApp service unavailable")
@@ -762,14 +847,37 @@ export class OrgDevAppArtifactService {
         socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
         return
       }
-      const upstream = connectSocket(runtime.port, "127.0.0.1", () => {
+      const targetPort = Number(runtime.targetUrl.port || (runtime.targetUrl.protocol === "https:" ? 443 : 80))
+      const onConnect = () => {
         const headerLines = Object.entries(request.headers)
-          .filter(([name]) => name.toLowerCase() !== DEVAPP_GATEWAY_TOKEN_HEADER)
-          .map(([name, value]) => `${name}: ${Array.isArray(value) ? value.join(", ") : value ?? ""}`)
-        upstream.write(`${request.method ?? "GET"} ${request.url ?? "/"} HTTP/${request.httpVersion}\r\n${headerLines.join("\r\n")}\r\n\r\n`)
+          .filter(
+            ([name]) =>
+              name.toLowerCase() !== DEVAPP_GATEWAY_TOKEN_HEADER && name.toLowerCase() !== HOSTED_SERVICE_TOKEN_HEADER,
+          )
+          .map(
+            ([name, value]) =>
+              `${name}: ${name.toLowerCase() === "host" ? runtime.targetUrl.host : Array.isArray(value) ? value.join(", ") : (value ?? "")}`,
+          )
+        if (runtime.targetServiceToken) {
+          headerLines.push(`${HOSTED_SERVICE_TOKEN_HEADER}: ${runtime.targetServiceToken}`)
+        }
+        upstream.write(
+          `${request.method ?? "GET"} ${request.url ?? "/"} HTTP/${request.httpVersion}\r\n${headerLines.join("\r\n")}\r\n\r\n`,
+        )
         if (head.length > 0) upstream.write(head)
         socket.pipe(upstream).pipe(socket)
-      })
+      }
+      const upstream =
+        runtime.targetUrl.protocol === "https:"
+          ? connectTlsSocket(
+              {
+                host: runtime.targetUrl.hostname,
+                port: targetPort,
+                servername: runtime.targetUrl.hostname,
+              },
+              onConnect,
+            )
+          : connectSocket(targetPort, runtime.targetUrl.hostname, onConnect)
       upstream.on("error", () => socket.destroy())
     })
     const port = await new Promise<number>((resolve, reject) => {
@@ -803,7 +911,8 @@ export class OrgDevAppArtifactService {
         fs.rmSync(stagingPath, { recursive: true, force: true })
       }
     }
-    const entries = fs.readdirSync(root, { withFileTypes: true })
+    const entries = fs
+      .readdirSync(root, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && isContentHash(entry.name))
       .map((entry) => {
         const cacheDir = path.join(root, entry.name)
@@ -826,9 +935,13 @@ export class OrgDevAppArtifactService {
     for (const entry of entries) {
       const expired = now - entry.lastUsedAt > DEVAPP_CACHE_MAX_AGE_MS
       const overQuota =
-        retainedCount >= DEVAPP_CACHE_MAX_RELEASES ||
-        retainedBytes + entry.size > DEVAPP_CACHE_MAX_BYTES
-      if (entry.contentHash !== protectedHash && !activeHashes.has(entry.contentHash) && !installedHashes.has(entry.contentHash) && (expired || overQuota)) {
+        retainedCount >= DEVAPP_CACHE_MAX_RELEASES || retainedBytes + entry.size > DEVAPP_CACHE_MAX_BYTES
+      if (
+        entry.contentHash !== protectedHash &&
+        !activeHashes.has(entry.contentHash) &&
+        !installedHashes.has(entry.contentHash) &&
+        (expired || overQuota)
+      ) {
         removeCachedArtifact(entry.cacheDir)
         continue
       }
@@ -855,7 +968,9 @@ export class OrgDevAppArtifactService {
     this.activeBuilds.clear()
     for (const upload of this.activeUploads.values()) upload.abort()
     this.activeUploads.clear()
-    for (const runtime of this.activeServiceRuntimes.values()) terminateChildProcess(runtime.child)
+    for (const runtime of this.activeServiceRuntimes.values()) {
+      void this.containedServiceAdapter?.stop(runtime.runtimeId)
+    }
     this.activeServiceRuntimes.clear()
     this.gatewayPublications.clear()
     this.gatewayServer?.close()
@@ -899,11 +1014,9 @@ export class OrgDevAppArtifactService {
     }
   }
 
-  async buildAndPack(
-    projectRoot: string,
-    options: { operationId?: string } = {},
-  ): Promise<OrgDevAppBuildResult> {
+  async buildAndPack(projectRoot: string, options: { operationId?: string } = {}): Promise<OrgDevAppBuildResult> {
     const resolvedRoot = path.resolve(projectRoot)
+    const authoredPackage = readAuthoredPackage(resolvedRoot)
 
     // Report everything statically knowable before spending minutes on a build. Without
     // this a project with three faults costs three builds to discover them.
@@ -932,34 +1045,42 @@ export class OrgDevAppArtifactService {
       throw error
     }
     if (operationId) this.cancelledBuilds.delete(operationId)
-    try {
-      const { outputDir, entryPath } = findStaticOutput(resolvedRoot)
-      const packed = packDirectoryToZip(outputDir)
-      return { zip: packed.zip, contentHash: packed.contentHash, entryPath, framework, outputDir, runtimeKind: "static" }
-    } catch (staticError) {
-      const staged = stageExplicitService(resolvedRoot, framework)
-        ?? (framework === "nextjs" ? stageNextStandalone(resolvedRoot) : null)
-        ?? (framework === "nuxt" ? stageNuxtService(resolvedRoot) : null)
-      if (!staged) {
-        if (framework === "nextjs") {
-          // Distinguish "never configured standalone" from "configured it, but the
-          // staged tree was unusable" — the same message for both made a real staging
-          // failure read as a config mistake the publisher had already fixed.
-          const standaloneRoot = path.join(resolvedRoot, ".next", "standalone")
-          if (fs.existsSync(standaloneRoot)) {
-            throw new Error(
-              "This Next.js app built a standalone output, but Cozea could not find its server entrypoint. Confirm the build completed and that .next/standalone contains server.js.",
-            )
-          }
-          throw new Error("This Next.js app needs `output: 'standalone'` in next.config before it can be published as a Service DevApp.")
+    let staticError: unknown = new Error("This package declares a Node service.")
+    if (authoredPackage?.service?.runtimeKind !== "node") {
+      try {
+        const { outputDir, entryPath } = findStaticOutput(resolvedRoot)
+        const packed = packDirectoryToZip(outputDir)
+        return {
+          zip: packed.zip,
+          contentHash: packed.contentHash,
+          entryPath,
+          framework,
+          outputDir,
+          runtimeKind: "static",
         }
-        if (framework === "nuxt" || framework === "astro" || framework === "remix" || framework === "sveltekit") {
-          throw new Error(
-            `Cozea has no automatic service adapter for ${framework}. Declare a self-contained output with package.json cozeaDevApp.service, or build a static site.`,
-          )
-        }
-        throw staticError
+      } catch (error) {
+        staticError = error
       }
+      if (authoredPackage?.worker && !authoredPackage.view) {
+        const outputDir = stageExecutableOnlyView(authoredPackage)
+        try {
+          const packed = packDirectoryToZip(outputDir)
+          return {
+            zip: packed.zip,
+            contentHash: packed.contentHash,
+            entryPath: "index.html",
+            framework,
+            outputDir,
+            runtimeKind: "static",
+          }
+        } finally {
+          fs.rmSync(outputDir, { recursive: true, force: true })
+        }
+      }
+    }
+    {
+      if (authoredPackage?.service?.runtimeKind !== "node") throw staticError
+      const staged = stageContainedService(resolvedRoot, framework)
       try {
         const packed = packDirectoryToZip(staged.outputDir, orgDevAppArtifactLimits("service"))
         return {
@@ -969,7 +1090,7 @@ export class OrgDevAppArtifactService {
           framework,
           outputDir: staged.outputDir,
           runtimeKind: "service",
-          manifestVersion: 1,
+          manifestVersion: staged.manifest.schemaVersion,
           platform: staged.manifest.platform,
           arch: staged.manifest.arch,
           permissionSetHash: serviceDevAppPermissionSetHash(staged.manifest),
@@ -1014,18 +1135,13 @@ export class OrgDevAppArtifactService {
     const cacheDir = this.getCacheDir(contentHash)
     const readyMarker = path.join(cacheDir, ".cozea-ready")
     const isService = input.runtimeKind === "service"
-    const requiredFile = isService
-      ? path.join(cacheDir, "cozea-devapp.json")
-      : path.join(cacheDir, entryPath)
+    const requiredFile = isService ? path.join(cacheDir, "cozea-devapp.json") : path.join(cacheDir, entryPath)
     if (!fs.existsSync(readyMarker) || !fs.existsSync(requiredFile)) {
       throw new Error("This installed DevApp is missing from local storage. Reinstall it while online.")
     }
     const manifest = isService
       ? parseServiceDevAppManifest(JSON.parse(fs.readFileSync(requiredFile, "utf8")))
       : undefined
-    if (manifest && (process.platform !== manifest.platform || process.arch !== manifest.arch)) {
-      throw new Error(`This Service DevApp requires ${manifest.platform} ${manifest.arch}.`)
-    }
     this.touchReadyMarker(cacheDir)
     return {
       contentHash,
@@ -1055,9 +1171,6 @@ export class OrgDevAppArtifactService {
       const manifest = isService
         ? parseServiceDevAppManifest(JSON.parse(fs.readFileSync(manifestFile, "utf8")))
         : undefined
-      if (manifest && (process.platform !== manifest.platform || process.arch !== manifest.arch)) {
-        throw new Error(`This Service DevApp requires ${manifest.platform} ${manifest.arch}.`)
-      }
       this.touchReadyMarker(cacheDir)
       this.pruneCache(contentHash)
       return {
@@ -1075,10 +1188,7 @@ export class OrgDevAppArtifactService {
       throw new Error(`Cozea could not download the DevApp artifact (${response.status}).`)
     }
     const declaredLength = Number(response.headers.get("content-length"))
-    if (
-      Number.isFinite(declaredLength) &&
-      declaredLength > artifactLimits.maxCompressedBytes
-    ) {
+    if (Number.isFinite(declaredLength) && declaredLength > artifactLimits.maxCompressedBytes) {
       throw new Error("The published DevApp artifact exceeds the download limit.")
     }
     const zip = Buffer.from(await response.arrayBuffer())
@@ -1098,10 +1208,8 @@ export class OrgDevAppArtifactService {
         const extractedManifest = path.join(staging, "cozea-devapp.json")
         if (!fs.existsSync(extractedManifest)) throw new Error("The Service DevApp manifest is missing.")
         const manifest = parseServiceDevAppManifest(JSON.parse(fs.readFileSync(extractedManifest, "utf8")))
-        if (process.platform !== manifest.platform || process.arch !== manifest.arch) {
-          throw new Error(`This Service DevApp requires ${manifest.platform} ${manifest.arch}.`)
-        }
-        if (!fs.existsSync(path.join(staging, manifest.runtime.entrypoint))) throw new Error("The Service DevApp entrypoint is missing.")
+        if (!fs.existsSync(path.join(staging, manifest.runtime.entrypoint)))
+          throw new Error("The Service DevApp entrypoint is missing.")
       } else if (!fs.existsSync(path.join(staging, entryPath))) {
         throw new Error("The DevApp artifact is missing its entry HTML file.")
       }
@@ -1134,41 +1242,52 @@ export class OrgDevAppArtifactService {
   getRuntimeState(contentHashInput: string, publicationIdInput?: string): OrgDevAppRuntimeState {
     const contentHash = normalizeContentHash(contentHashInput)
     const publicationId = publicationIdInput?.trim()
-    const runtime = publicationId && /^[A-Za-z0-9_-]{1,128}$/.test(publicationId)
-      ? this.activeServiceRuntimes.get(this.runtimeKey(contentHash, publicationId))
-      : null
-    return runtime?.state ?? {
-      contentHash, status: "stopped", originUrl: null, error: null, logs: [],
-    }
+    const runtimeKey =
+      publicationId && /^[A-Za-z0-9_-]{1,128}$/.test(publicationId) ? this.runtimeKey(contentHash, publicationId) : null
+    const runtime = runtimeKey ? this.activeServiceRuntimes.get(runtimeKey) : null
+    if (runtime && !this.reconcileContainedRuntime(runtimeKey!, runtime)) return runtime.state
+    return (
+      runtime?.state ?? {
+        contentHash,
+        status: "stopped",
+        originUrl: null,
+        error: null,
+        logs: [],
+      }
+    )
   }
 
-  async startRuntime(contentHashInput: string, publicationIdInput?: string, permissionSetHashInput?: string, leaseIdInput?: string): Promise<OrgDevAppRuntimeState> {
-    const contentHash = normalizeContentHash(contentHashInput)
+  async startRuntime(options: {
+    ref: string
+    contentHash: string
+    publicationId: string
+    permissionSetHash: string
+    leaseId: string
+    workspaceId: string
+    workspaceRoot: string
+    gatewayBaseUrl: string
+    accessToken: string
+    folderGrants: DevAppFolderGrant[]
+  }): Promise<OrgDevAppRuntimeState> {
+    if (!this.containedServiceAdapter) {
+      throw new Error("The contained Service DevApp runtime is unavailable.")
+    }
+    const contentHash = normalizeContentHash(options.contentHash)
     const cacheDir = this.getCacheDir(contentHash)
     const manifest = parseServiceDevAppManifest(
       JSON.parse(fs.readFileSync(path.join(cacheDir, "cozea-devapp.json"), "utf8")),
     )
-    if (process.platform !== manifest.platform || process.arch !== manifest.arch) {
-      throw new Error(`This Service DevApp requires ${manifest.platform} ${manifest.arch}.`)
-    }
-    const entrypoint = path.join(cacheDir, manifest.runtime.entrypoint)
-    if (!fs.existsSync(entrypoint)) throw new Error("The Service DevApp entrypoint is missing.")
-    const port = await allocateLoopbackPort()
-    const logs: string[] = []
-    const appendLog = (chunk: Buffer | string) => {
-      logs.push(...chunk.toString().split(/\r?\n/).filter(Boolean))
-      if (logs.length > 200) logs.splice(0, logs.length - 200)
-    }
-    const publicationId = publicationIdInput?.trim()
-    if (publicationId && !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) throw new Error("The DevApp publication ID is invalid.")
-    if (!publicationId || !permissionSetHashInput || !this.isRuntimeTrusted(contentHash, publicationId, permissionSetHashInput)) {
+    const publicationId = options.publicationId.trim()
+    if (publicationId && !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId))
+      throw new Error("The DevApp publication ID is invalid.")
+    if (!publicationId || !this.isRuntimeTrusted(contentHash, publicationId, options.permissionSetHash)) {
       throw new Error("Approve this Service DevApp release before starting it.")
     }
     const runtimeKey = this.runtimeKey(contentHash, publicationId)
     const existing = this.activeServiceRuntimes.get(runtimeKey)
-    const leaseId = leaseIdInput?.trim()
+    const leaseId = options.leaseId.trim()
     if (!leaseId || !/^[A-Za-z0-9_-]{1,160}$/.test(leaseId)) throw new Error("The DevApp runtime lease is invalid.")
-    if (existing && existing.child.exitCode === null) {
+    if (existing && existing.state.status === "ready") {
       existing.leases.add(leaseId)
       if (existing.idleTimer) clearTimeout(existing.idleTimer)
       existing.idleTimer = null
@@ -1176,45 +1295,65 @@ export class OrgDevAppArtifactService {
     }
     const storedEnvironment = this.readTrust().configurations[publicationId] ?? {}
     const missingRequired = manifest.environment.filter((entry) => entry.required && !storedEnvironment[entry.name])
-    if (missingRequired.length > 0) throw new Error(`Configure ${missingRequired.map((entry) => entry.name).join(", ")} before starting this Service DevApp.`)
-    const dataDir = path.join(this.getCacheRoot(), "data", publicationId ?? contentHash)
-    fs.mkdirSync(dataDir, { recursive: true })
-    const child = spawn(process.execPath, [entrypoint, ...manifest.runtime.args], {
-      cwd: path.dirname(entrypoint),
-      detached: true,
-      env: {
-        PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
-        NODE_ENV: "production",
-        NODE_OPTIONS: "--max-old-space-size=1024",
-        ELECTRON_RUN_AS_NODE: "1",
-        [manifest.server.hostEnv]: "127.0.0.1",
-        [manifest.server.portEnv]: String(port),
-        COZEA_DEVAPP_DATA_DIR: dataDir,
-        ...Object.fromEntries(manifest.environment.flatMap((entry) => {
+    if (missingRequired.length > 0)
+      throw new Error(
+        `Configure ${missingRequired.map((entry) => entry.name).join(", ")} before starting this Service DevApp.`,
+      )
+    const active = await this.containedServiceAdapter.start({
+      ref: options.ref,
+      workspaceId: options.workspaceId,
+      workspaceRoot: options.workspaceRoot,
+      leaseId,
+      gatewayBaseUrl: options.gatewayBaseUrl,
+      accessToken: options.accessToken,
+      environment: Object.fromEntries(
+        manifest.environment.flatMap((entry) => {
           const value = storedEnvironment[entry.name]
           return value === undefined ? [] : [[entry.name, value]]
-        })),
-      },
-      stdio: ["ignore", "pipe", "pipe"],
+        }),
+      ),
+      folderGrants: options.folderGrants,
     })
-    child.stdout?.on("data", appendLog)
-    child.stderr?.on("data", appendLog)
-    const state: OrgDevAppRuntimeState = {
-      contentHash, status: "starting", originUrl: null, error: null, logs,
+    const privateServiceUrl =
+      active.serviceUrl ??
+      (active.state.guestAddress && active.state.servicePort
+        ? `http://${active.state.guestAddress}:${active.state.servicePort}`
+        : null)
+    if (!privateServiceUrl) {
+      await this.containedServiceAdapter.stop(active.key)
+      throw new Error("The contained Service DevApp exposed no private service endpoint.")
     }
-    this.activeServiceRuntimes.set(runtimeKey, { child, state, port, leases: new Set([leaseId]), idleTimer: null })
-    child.once("exit", (code) => {
-      const runtime = this.activeServiceRuntimes.get(runtimeKey)
-      if (!runtime || runtime.child !== child) return
-      runtime.state.status = code === 0 ? "stopped" : "failed"
-      runtime.state.error = code === 0 ? null : `Service exited with code ${code ?? "unknown"}.`
-      runtime.state.originUrl = null
+    const targetUrl = new URL(privateServiceUrl)
+    if (
+      (targetUrl.protocol !== "https:" && targetUrl.protocol !== "http:") ||
+      (targetUrl.protocol === "http:" &&
+        targetUrl.hostname !== "127.0.0.1" &&
+        targetUrl.hostname !== active.state.guestAddress)
+    ) {
+      await this.containedServiceAdapter.stop(active.key)
+      throw new Error("The contained Service DevApp exposed an invalid private service endpoint.")
+    }
+    const state: OrgDevAppRuntimeState = {
+      contentHash,
+      status: "starting",
+      originUrl: null,
+      error: null,
+      logs: active.logs,
+    }
+    this.activeServiceRuntimes.set(runtimeKey, {
+      runtimeId: active.key,
+      state,
+      targetUrl,
+      targetServiceToken: active.serviceToken,
+      leases: new Set([leaseId]),
+      idleTimer: null,
     })
     const deadline = Date.now() + manifest.server.startupTimeoutMs
     while (Date.now() < deadline) {
-      if (child.exitCode !== null) break
       try {
-        const response = await net.fetch(`http://127.0.0.1:${port}${manifest.server.healthPath}`)
+        const response = await net.fetch(new URL(manifest.server.healthPath, targetUrl).toString(), {
+          headers: active.serviceToken ? { [HOSTED_SERVICE_TOKEN_HEADER]: active.serviceToken } : undefined,
+        })
         if (response.status >= 100) {
           const gatewayPort = await this.ensureGateway()
           state.status = "ready"
@@ -1226,25 +1365,30 @@ export class OrgDevAppArtifactService {
       }
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
-    terminateChildProcess(child)
+    await this.containedServiceAdapter.stop(active.key)
     state.status = "failed"
     state.error = state.error ?? "The Service DevApp did not become ready in time."
     return state
   }
 
-  stopRuntime(contentHashInput: string, publicationIdInput?: string): OrgDevAppRuntimeState {
+  async stopRuntime(contentHashInput: string, publicationIdInput?: string): Promise<OrgDevAppRuntimeState> {
     const contentHash = normalizeContentHash(contentHashInput)
     const publicationId = publicationIdInput?.trim()
-    if (!publicationId || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId)) throw new Error("The DevApp publication ID is invalid.")
+    if (!publicationId || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId))
+      throw new Error("The DevApp publication ID is invalid.")
     const runtimeKey = this.runtimeKey(contentHash, publicationId)
     const runtime = this.activeServiceRuntimes.get(runtimeKey)
     if (runtime) {
       if (runtime.idleTimer) clearTimeout(runtime.idleTimer)
-      terminateChildProcess(runtime.child)
+      await this.containedServiceAdapter?.stop(runtime.runtimeId)
       this.activeServiceRuntimes.delete(runtimeKey)
     }
     return {
-      contentHash, status: "stopped", originUrl: null, error: null, logs: runtime?.state.logs ?? [],
+      contentHash,
+      status: "stopped",
+      originUrl: null,
+      error: null,
+      logs: runtime?.state.logs ?? [],
     }
   }
 
@@ -1252,7 +1396,12 @@ export class OrgDevAppArtifactService {
     const contentHash = normalizeContentHash(contentHashInput)
     const publicationId = publicationIdInput.trim()
     const leaseId = leaseIdInput.trim()
-    if (!isContentHash(contentHash) || !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId) || !/^[A-Za-z0-9_-]{1,160}$/.test(leaseId)) return false
+    if (
+      !isContentHash(contentHash) ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(publicationId) ||
+      !/^[A-Za-z0-9_-]{1,160}$/.test(leaseId)
+    )
+      return false
     const runtimeKey = this.runtimeKey(contentHash, publicationId)
     const runtime = this.activeServiceRuntimes.get(runtimeKey)
     if (!runtime) return false
@@ -1261,7 +1410,7 @@ export class OrgDevAppArtifactService {
       runtime.idleTimer = setTimeout(() => {
         const current = this.activeServiceRuntimes.get(runtimeKey)
         if (!current || current.leases.size > 0) return
-        terminateChildProcess(current.child)
+        void this.containedServiceAdapter?.stop(current.runtimeId)
         this.activeServiceRuntimes.delete(runtimeKey)
       }, DEVAPP_RUNTIME_IDLE_TIMEOUT_MS)
       runtime.idleTimer.unref()
@@ -1294,7 +1443,10 @@ export class OrgDevAppArtifactService {
       "content-security-policy",
       "default-src 'self' https: data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; connect-src https: wss:; script-src 'self'; style-src 'self' 'unsafe-inline'",
     )
-    headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), display-capture=(), usb=(), serial=(), hid=()")
+    headers.set(
+      "permissions-policy",
+      "camera=(), microphone=(), geolocation=(), display-capture=(), usb=(), serial=(), hid=()",
+    )
     headers.set("x-content-type-options", "nosniff")
     return new Response(fileResponse.body, {
       status: fileResponse.status,

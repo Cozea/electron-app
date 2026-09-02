@@ -4,10 +4,10 @@ import { parseServiceDevAppManifest, serviceDevAppPermissionSetHash } from "../.
 
 function manifest() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "service",
-    platform: "darwin",
-    arch: "arm64",
+    platform: "linux",
+    arch: "multi",
     framework: "nextjs",
     runtime: { kind: "node", entrypoint: "server/server.js", args: [] },
     server: { hostEnv: "HOSTNAME", portEnv: "PORT", healthPath: "/health", startupTimeoutMs: 30_000 },
@@ -24,6 +24,7 @@ describe("Service DevApp manifest", () => {
   it.each([
     ["path traversal", { runtime: { kind: "node", entrypoint: "../server.js", args: [] } }],
     ["reserved environment", { environment: [{ name: "NODE_OPTIONS", required: true, secret: true }] }],
+    ["internal environment", { environment: [{ name: "COZEA_DEVAPP_RELEASE_ID", required: true, secret: true }] }],
     ["unknown field", { surprise: true }],
   ])("rejects %s", (_label, patch) => {
     expect(() => parseServiceDevAppManifest({ ...manifest(), ...patch })).toThrow()

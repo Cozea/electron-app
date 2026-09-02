@@ -20,6 +20,10 @@ function getAuthBaseUrl(): string {
   return configured.replace(/\/+$/, "")
 }
 
+export function getDeviceGatewayBaseUrl(): string {
+  return getAuthBaseUrl()
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => null) as
     | T

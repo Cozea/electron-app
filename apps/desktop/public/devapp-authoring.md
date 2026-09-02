@@ -30,6 +30,35 @@ bun run devapp:check
 
 The generated file is `packages/devapp-api/schema/cozea-devapp.schema.json`. The manifest version and worker protocol version are independent. Unknown capabilities fail closed. A manifest requests capabilities; only an explicit development approval grants them.
 
+Manifest version 2 also requires every worker or Node service to declare runtime placement and
+state ownership:
+
+```json
+{
+  "manifestVersion": 2,
+  "runtime": { "location": "device", "state": "device" }
+}
+```
+
+Allowed combinations and filesystem behavior are defined in the
+[DevApp Runtime Contract](./devapp-runtime-contract.md). A local preview always remains a powerful,
+approval-gated development runtime on the device; the declaration describes the package's
+published execution and storage contract.
+
+Views run under a fixed Content Security Policy, in development previews and published
+artifacts alike:
+
+```
+default-src 'self' https: data: blob:; base-uri 'self'; object-src 'none';
+frame-ancestors 'none'; connect-src 'self' https: wss:;
+script-src 'self'; style-src 'self' 'unsafe-inline'
+```
+
+`script-src 'self'` means an inline `<script>` never runs. Put JavaScript in a file the build
+emits and load it with `<script src="...">`. Inline `<style>` is allowed, so a page whose script
+is inline renders exactly as designed and does nothing when clicked — check the guest console
+before assuming the view is at fault.
+
 Workers declare agent-facing operations explicitly rather than setting an exposure flag:
 
 ```json
@@ -56,23 +85,34 @@ Workers declare agent-facing operations explicitly rather than setting an exposu
 
 Tool names are package-local lowercase identifiers. Input schemas are bounded object JSON Schemas
 without `$ref`; a worker with no operations writes `"tools": []`. The authenticated agent MCP
-session exposes `devapp_tool_catalog`, which returns these declarations for an existing development
-preview. The catalog reports `toolInvocationAvailable: false` until Phase 8 supplies the contained
-runtime required for autonomous execution.
+session exposes the declarations for an existing development preview. Invocation is available only
+for an exact installed release running in the contained runtime; the catalog alone grants nothing.
+
+Published executable packages also require `package.json`, a deterministic `build` script, and a
+committed `bun.lock`. Cozea sends a bounded, secret-screened source snapshot to the central builder,
+which emits signed Linux ARM64 and AMD64 images. A Node service necessarily receives a network
+interface so Cozea can reach its private HTTP port. Worker-only outbound access still requires
+`net.outbound`.
+
+Native dependencies are supported in published executable packages when they build successfully
+for both Linux target architectures. Do not ship a publisher-machine `node_modules` tree: the
+release artifact never executes those bytes, and the central builder performs the authoritative
+locked install and build. A worker-only package still appears as a tile using Cozea's administrative
+view so its approval and lifecycle remain user-controlled.
 
 ## Typed view/worker client
 
 `@cozea/devapp-api` exports the manifest types and `createDevAppClient`. Define the private methods shared by the package view and worker:
 
 ```ts
-import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api";
+import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api"
 
 interface Methods {
-  search: DevAppMethodDefinition<{ query: string }, { paths: string[] }>;
+  search: DevAppMethodDefinition<{ query: string }, { paths: string[] }>
 }
 
-const worker = createDevAppClient<Methods>();
-const result = await worker.request("search", { query: "manifest" });
+const worker = createDevAppClient<Methods>()
+const result = await worker.request("search", { query: "manifest" })
 ```
 
 The client uses the MessagePort transferred only to that package's view. It supplies request correlation, bounded timeouts, structured errors, and typed results. The view does not receive host capabilities; the worker holds the approved grant and the main process enforces it.
@@ -85,7 +125,16 @@ The package is built as a self-contained browser ESM distribution with declarati
 
 ## Security boundary
 
-Development workers are trusted local developer code and run in Cozea's managed utility-process host with an approved capability grant. They are not consumer apps and are not represented as an OS sandbox. Published or externally sourced worker execution remains disabled until the Phase 8 container/VM runtime ships. Static and service publication behavior is unchanged.
+Development workers are trusted local developer code and run in Cozea's managed utility-process
+host with an approved capability grant. They are not consumer apps and are not represented as an OS
+sandbox. Published or externally sourced executable parts are a different tier and must run through
+the contained-runtime adapter; missing containment fails closed without falling back to the
+development host.
+
+Device placement can receive an explicit release-bound folder grant when native filesystem
+semantics are genuinely required. Hosted placement can never mount local files. See the
+[DevApp Runtime Contract](./devapp-runtime-contract.md) and
+[Published DevApp Contained Runtime](./devapp-contained-runtime.md).
 
 ## In-product agent documentation
 

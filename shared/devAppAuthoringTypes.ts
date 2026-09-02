@@ -31,6 +31,18 @@ export type DevAppAuthoringListResult =
   | { success: true; sources: DevAppDevelopmentSource[] }
   | { success: false; error: string };
 
+/** What the scaffold could not finish. A package still previews without these; it cannot publish. */
+export interface DevAppScaffoldPreparationResult {
+  lockfile: boolean;
+  committed: boolean;
+  warnings: string[];
+}
+
 export type DevAppAuthoringScaffoldResult =
-  | { success: true; source: DevAppDevelopmentSource; createdFiles: string[] }
+  | {
+      success: true;
+      source: DevAppDevelopmentSource;
+      createdFiles: string[];
+      preparation: DevAppScaffoldPreparationResult;
+    }
   | { success: false; error: string };

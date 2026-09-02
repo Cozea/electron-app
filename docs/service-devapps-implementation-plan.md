@@ -2,17 +2,18 @@
 
 ## Status
 
-Implemented for the private macOS Apple-silicon beta on 2026-08-29. The shipped slice includes the
-unchanged static lane, automatic Next.js standalone and Nuxt server adapters, an explicit portable
-Node output adapter, strict manifests, separate limits, verified cache preparation, publication-
+Implemented for the private macOS Apple-silicon beta on 2026-08-29 and graduated to the Phase 8
+contained runtime on 2026-09-01. The shipped slice includes the
+unchanged static lane, one framework-neutral v2 `service.entry` contract, strict manifests,
+separate limits, verified cache preparation, publication-
 scoped runtime leases, authenticated HTTP/WebSocket gatewaying, encrypted local environment
 configuration, release-bound trust approval, logs, Stop, Restart, and exact-origin navigation.
 
-SvelteKit and Remix/React Router are accepted through the explicit adapter when their build is
-self-contained. Automatic dependency tracing for those frameworks remains deferred rather than
-blindly packaging a source `node_modules`. OS-enforced filesystem and outbound-network isolation
-remains the documented post-beta container/VM milestone; the UI therefore calls these releases
-trusted organization code.
+Framework-specific artifact adapters were retired at the Phase 8 cutover. Next.js, Nuxt,
+SvelteKit, Remix/React Router, and generic Bun/Node packages use the same root entry contract and
+protected multi-platform build. Published executable packages run only in the device or hosted
+contained adapter. The historical direct Electron child-process supervisor and publisher-host
+output are no longer launch authority.
 
 ## Goal
 
@@ -20,8 +21,9 @@ An organization member can publish and another organization member can open a fu
 without receiving the source project, cloning a repository, installing dependencies, or running a
 mutable development command.
 
-The first complete vertical slice is a macOS Apple-silicon Next.js standalone application with
-SSR and API routes. Static DevApps must continue to publish and open exactly as they do now.
+The original vertical slice was a macOS Apple-silicon Next.js standalone application. The completed
+system targets Linux ARM64 and AMD64 images and treats framework choice as package code rather than
+host policy. Static DevApps continue to use immutable per-release files.
 
 ## Product model
 
@@ -29,47 +31,46 @@ Every organization DevApp release has one of two immutable runtime kinds:
 
 - `static`: the current HTML/CSS/JavaScript artifact served from the per-release
   `cozea-devapp://` origin.
-- `service`: a built server payload started locally by Cozea and exposed only through a
-  release-scoped loopback gateway origin.
+- `service`: a signed contained image started on the selected device/hosted adapter and exposed only
+  through a release-scoped authenticated gateway origin.
 
 The local project DevApp and Dev Server flows remain development tools. They are not publication
 formats and must not be used to launch an organization release on a consumer device.
 
-A service release runs separately on each Mac. Its writable files and local database are therefore
-device-local. Applications that need shared data must use an external HTTPS service. Cozea-hosted
-shared backends are a future third runtime kind, not part of this plan.
+A `device` service runs separately on each Mac and may own publication-scoped device state. A
+`hosted` service runs in Cloudflare Sandbox; `state: organization` mounts publication-scoped R2
+state, while `state: none` is ephemeral.
 
 ## Non-goals
 
 - Shipping the source repository or its `.env` files.
 - Running `dev`, `start`, package installation, or arbitrary shell commands on consumer devices.
 - Automatically deploying an application server to the public internet.
-- Claiming that a normal macOS child process is a strong arbitrary-code sandbox.
+- Falling back to a normal macOS child process when containment is unavailable.
 - Supporting Intel macOS, Windows, Linux, Docker, native mobile servers, or arbitrary language
   runtimes in the first vertical slice.
 - Making local SQLite or filesystem state shared between organization devices.
 
 ## Trust boundary
 
-Service DevApps execute code. Until Cozea has a hardened container or VM boundary, service releases
-are explicitly **trusted organization code**:
+Service DevApps execute code. Published releases now use an enforced VM/container boundary:
 
 - only organization administrators or project managers may publish them;
 - the first launch shows the publisher device, release version, runtime, and requested permissions;
 - an approval is bound to the release content hash and permission-set hash;
 - changed permissions require approval again;
-- Cozea does not pass project paths or workspace handles to the process, although the OS does not
-  enforce that boundary in the trusted-code phase;
-- Cozea marks the artifact directory read-only and gives the process one publication-scoped writable
-  data directory, but presents this as a convention and defense in depth rather than a sandbox;
-- the service binds to loopback only and receives a minimal, allowlisted environment;
+- Cozea passes no project path or workspace handle by default; device placement can receive only an
+  explicit canonical, expiring, release-bound folder grant, and hosted placement can never mount a
+  local path;
+- the exact signed image root is read-only and writable state follows the manifest's state scope;
+- the service binds inside its contained network and receives a minimal, allowlisted environment;
 - secrets are injected into the service process and never exposed to the renderer or artifact files;
 - Stop, logs, health, crash state, and resource use are visible to the user.
 
-The Store and launch confirmation must use that wording. Until a container or VM boundary exists,
-permission declarations are reviewable trust disclosures. They are not claims that Cozea can prevent
-the service from reading files available to the current macOS user, opening outbound connections, or
-spawning descendants. The service feature remains beta-gated to trusted organizations on that basis.
+Approval remains required because containment does not make arbitrary organization code benign.
+The UI must describe exact placement, state ownership, network authority, and any local folder
+grant. Implementation details are in
+[Published DevApp Contained Runtime](./devapp-contained-runtime.md).
 
 ## Release manifest
 
@@ -78,10 +79,10 @@ ZIP content hash.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "kind": "service",
-  "platform": "darwin",
-  "arch": "arm64",
+  "platform": "linux",
+  "arch": "multi",
   "framework": "nextjs",
   "runtime": {
     "kind": "node",
@@ -113,6 +114,9 @@ Validation rules:
 
 - reject unknown schema versions, runtime kinds, permission keys, absolute paths, traversal,
   control characters, shell metacharacter semantics, and oversized strings/arrays;
+- treat this artifact manifest as immutable configuration only. The artifact entry is an inert
+  marker; the signed multi-platform image is the only executable service authority;
+- allow native dependencies when the protected locked build succeeds for Linux ARM64 and AMD64;
 - entrypoint and arguments are data passed directly to a process API, never joined into a shell;
 - `healthPath` is an origin-relative HTTP path;
 - environment names are unique and match a strict identifier grammar;
@@ -140,32 +144,11 @@ The staging walker retains the current path, entry-count, compression-ratio, sym
 checks. Service releases receive separate, deliberately chosen compressed and expanded limits. Do
 not silently raise the static limits.
 
-Framework adapters implement a common interface:
-
-```ts
-interface ServiceDevAppAdapter {
-  id: string
-  detect(projectRoot: string): Promise<AdapterMatch | null>
-  build(context: BuildContext): Promise<ServiceArtifactDescriptor>
-  validate(stagingRoot: string, manifest: ServiceDevAppManifest): Promise<void>
-}
-```
-
-Implementation order:
-
-1. Next.js standalone output.
-2. Nuxt server output.
-3. SvelteKit adapter-node output.
-4. Remix/React Router production Node output.
-5. Explicit generic manifest for an already self-contained Node server bundle.
-
-An adapter must prove that its entrypoint and required static assets exist. If the framework is
-recognized but not configured for a portable server build, publishing stops with exact remediation
-instead of falling back to a raw project command or packaging `node_modules` blindly.
-
-Native executable files and native Node addons are rejected in the first slice. This keeps the
-runtime portable across supported Apple-silicon Macs and avoids silently executing unclassified
-payloads.
+The final contract has no framework-adapter interface. The root v2 manifest names one service
+entry, the publisher verifies it after the local build, and the protected builder verifies it again
+after its locked Linux build. A missing entry fails closed instead of falling back to a project
+command. Native dependencies are supported only when both Linux platform builds succeed; no
+publisher-host native bytes enter the artifact or runtime.
 
 ## Publisher flow
 
@@ -186,14 +169,13 @@ Cancellation must terminate the entire build process group and abandon the uploa
 the static publisher does today.
 
 For a self-contained server output not covered by an automatic adapter, publishers opt in through
-`package.json`:
+the authoritative root `cozea-devapp.json` `service.entry`. `package.json` carries only optional
+launch/configuration metadata that is not part of the workload identity:
 
 ```json
 {
   "cozeaDevApp": {
     "service": {
-      "outputDir": "service-output",
-      "entrypoint": "server.js",
       "healthPath": "/"
     },
     "environment": [
@@ -203,18 +185,15 @@ For a self-contained server output not covered by an automatic adapter, publishe
         "secret": true,
         "description": "Production database connection"
       }
-    ],
-    "permissions": {
-      "network": true,
-      "persistentData": true
-    }
+    ]
   }
 }
 ```
 
-`outputDir` and `entrypoint` are artifact-relative paths. Optional `args`, `hostEnv`, `portEnv`,
-`startupTimeoutMs`, and `healthPath` use the same manifest validator. The output must already contain
-every JavaScript dependency; consumers never run an install command.
+Optional `args`, `hostEnv`, `portEnv`, `startupTimeoutMs`, and `healthPath` use the same manifest
+validator. The declared root-manifest entry must exist after the build. Publisher-host output and
+dependencies are not copied into the release artifact; the protected central build performs the
+locked install and produces the only executable image.
 
 ## Convex model and authorization
 
@@ -318,7 +297,8 @@ Extend the `orgDevApp` navigation policy to allow only:
 Top-level external HTTPS navigation continues to open in the system browser. The embedded browser
 may reach HTTPS/WSS only when the release declares network permission. Browser storage partitions
 stay publication-scoped, and CSP/permissions policy remain restrictive by default. Server-process
-egress is disclosed but not enforceable until the sandbox milestone.
+egress follows the immutable network contract. Hosted egress is deny-by-default; device Node
+services necessarily receive networking so Cozea can reach their private listener.
 
 ## Environment and secret UX
 
@@ -345,7 +325,7 @@ base plus the manifest's approved entries.
 - Show build, packaging, upload, verification, and activation stages.
 - For a service release, show runtime compatibility, requested permissions, and required
   configuration names before publishing.
-- Give actionable adapter errors, such as enabling Next.js standalone output.
+- Give an actionable error when the declared service entry is absent after the build.
 
 ### Store and launcher
 
@@ -460,12 +440,10 @@ restart work without exposing the raw service port.
 Exit gate: missing secrets block before spawn; secrets never enter renderer state, logs, Convex,
 artifact files, or diagnostics.
 
-### Phase 7: Additional adapters
+### Phase 7: Framework-neutral entry contract — superseded adapters
 
-- Add Nuxt, SvelteKit adapter-node, Remix/React Router, then the explicit generic Node adapter.
-- Keep each adapter behind its own fixtures and compatibility checks.
-
-Exit gate: each adapter passes publish on one Mac and clean download/open on a second-device profile.
+The former adapter queue was removed. Every framework now uses the same explicit root entry and
+central build, eliminating divergent staging and portability rules.
 
 ### Phase 8: Hardening and release
 
@@ -475,17 +453,18 @@ Exit gate: each adapter passes publish on one Mac and clean download/open on a s
 
 Exit gate: the acceptance matrix below passes and the development stack is left running.
 
-### Post-beta graduation: enforced server sandbox
+### Post-beta graduation: enforced server sandbox — delivered 2026-09-01
 
-- Evaluate an app-owned container or Virtualization.framework runtime with signed, reproducible
-  images and no dependency on a user's Docker installation.
-- Enforce filesystem mounts, outbound-network policy, process/resource ceilings, and descendant
-  termination at that boundary.
-- Only after those controls pass adversarial tests may the UI replace trusted-code disclosures with
-  enforced permission language or broaden publishing beyond trusted organizations.
+- Device placement uses the bundled Apple Containerization VM and signed reproducible image without
+  depending on a user's Docker installation.
+- Hosted placement uses a Cloudflare Sandbox VM with rootless Docker-in-Docker, R2-backed
+  organization state, bounded renewable client leases, and no local-filesystem path.
+- Filesystem mounts, network selection, process/resource ceilings, image identity, and descendant
+  teardown are enforced by the selected adapter. Local development remains a separate intentionally
+  powerful trust tier.
 
-This milestone is not required for the private trusted-organization beta, but the beta gate and
-wording cannot be removed before it lands.
+The production activation checklist and residual operator dependencies are maintained in
+`docs/devapp-contained-runtime.md`.
 
 ## Test matrix
 

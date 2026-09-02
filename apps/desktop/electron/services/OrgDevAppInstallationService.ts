@@ -9,6 +9,10 @@ import type {
 import { formatDevAppRef, parseDevAppRef } from "../../../../shared/devAppRef"
 import { isContentHash, normalizeContentHash, normalizeEntryPath } from "../../../../shared/orgDevAppProtocol"
 import type { OrgDevAppArtifactService } from "./OrgDevAppArtifactService"
+import {
+  validateDevAppRuntimeReleaseImage,
+  type DevAppRuntimeReleaseImage,
+} from "../../../../shared/devAppContainedRuntime"
 
 interface InstallationRegistry {
   version: 1
@@ -73,6 +77,32 @@ function validateInstallation(
   if (!parts || typeof parts !== "object" || Array.isArray(parts)) {
     throw new Error("The DevApp release parts are invalid.")
   }
+  const executable = Boolean(parts.worker || parts.service?.runtimeKind === "node")
+  const runtimeSourceDigest = optionalString(raw.activeRelease.runtimeSourceDigest, "The runtime source digest", 64)
+  const packageManifestDigest = optionalString(
+    raw.activeRelease.packageManifestDigest,
+    "The package manifest digest",
+    71,
+  )
+  const runtimeImage = raw.activeRelease.runtimeImage as DevAppRuntimeReleaseImage | null
+  if (executable) {
+    if (
+      !runtimeSourceDigest ||
+      !/^[a-f0-9]{64}$/.test(runtimeSourceDigest) ||
+      !packageManifestDigest ||
+      !/^sha256:[a-f0-9]{64}$/.test(packageManifestDigest) ||
+      !runtimeImage
+    ) {
+      throw new Error("The executable DevApp release has no contained runtime image.")
+    }
+    const imageError = validateDevAppRuntimeReleaseImage(runtimeImage, {
+      sourceDigest: runtimeSourceDigest,
+      packageManifestDigest,
+    })
+    if (imageError) throw new Error(imageError)
+  } else if (runtimeSourceDigest || packageManifestDigest || runtimeImage) {
+    throw new Error("A static DevApp release cannot carry executable runtime authority.")
+  }
   return {
     ref: formatDevAppRef({ ...parsed, version: raw.activeRelease.version }),
     publicationId,
@@ -95,6 +125,9 @@ function validateInstallation(
       publisherIdentityKey: optionalString(raw.activeRelease.publisherIdentityKey, "The publisher identity", 256),
       publisherDeviceLabel: optionalString(raw.activeRelease.publisherDeviceLabel, "The publisher device", 200),
       parts,
+      runtimeSourceDigest,
+      packageManifestDigest,
+      runtimeImage: runtimeImage ?? null,
     },
   }
 }
@@ -104,14 +137,11 @@ export class OrgDevAppInstallationService {
   private readonly getRegistryPath: () => string
   private readonly artifacts: OrgDevAppArtifactService
 
-  constructor(
-    getRegistryPath: () => string,
-    artifacts: OrgDevAppArtifactService,
-  ) {
+  constructor(getRegistryPath: () => string, artifacts: OrgDevAppArtifactService) {
     this.getRegistryPath = getRegistryPath
     this.artifacts = artifacts
-    this.artifacts.setProtectedContentHashes(() =>
-      new Set(this.readRegistry().installations.map((entry) => entry.activeRelease.contentHash)),
+    this.artifacts.setProtectedContentHashes(
+      () => new Set(this.readRegistry().installations.map((entry) => entry.activeRelease.contentHash)),
     )
   }
 
@@ -122,21 +152,21 @@ export class OrgDevAppInstallationService {
         ...entry,
         active: registry.activeByPublication[entry.publicationId] === entry.ref,
       }))
-      .sort((left, right) => left.name.localeCompare(right.name) || right.activeRelease.version - left.activeRelease.version)
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name) || right.activeRelease.version - left.activeRelease.version,
+      )
   }
 
   resolve(ref: string): OrgDevAppInstallation | null {
     const parsed = parseDevAppRef(ref)
     if (parsed?.kind !== "publication") return null
     const registry = this.readRegistry()
-    const exactRef = parsed.version === "latest"
-      ? registry.activeByPublication[parsed.publicationId]
-      : formatDevAppRef(parsed)
+    const exactRef =
+      parsed.version === "latest" ? registry.activeByPublication[parsed.publicationId] : formatDevAppRef(parsed)
     if (!exactRef) return null
     const entry = registry.installations.find((candidate) => candidate.ref === exactRef)
-    return entry
-      ? { ...entry, active: registry.activeByPublication[entry.publicationId] === entry.ref }
-      : null
+    return entry ? { ...entry, active: registry.activeByPublication[entry.publicationId] === entry.ref } : null
   }
 
   async install(request: OrgDevAppInstallRequest): Promise<OrgDevAppInstallation> {
@@ -201,11 +231,6 @@ export class OrgDevAppInstallationService {
     const registry = this.readRegistry()
     const removed = registry.installations.filter((entry) => entry.publicationId === publicationId)
     if (removed.length === 0) return 0
-    for (const entry of removed) {
-      if (entry.activeRelease.runtimeKind === "service") {
-        this.artifacts.stopRuntime(entry.activeRelease.contentHash, publicationId)
-      }
-    }
     const installations = registry.installations.filter((entry) => entry.publicationId !== publicationId)
     const activeByPublication = { ...registry.activeByPublication }
     delete activeByPublication[publicationId]
@@ -235,9 +260,6 @@ export class OrgDevAppInstallationService {
     }
     this.writeRegistry({ version: 1, installations, activeByPublication })
     if (!installations.some((entry) => entry.activeRelease.contentHash === installation.activeRelease.contentHash)) {
-      if (installation.activeRelease.runtimeKind === "service") {
-        this.artifacts.stopRuntime(installation.activeRelease.contentHash, installation.publicationId)
-      }
       this.artifacts.removePreparedArtifact(installation.activeRelease.contentHash)
     }
     this.emit()
@@ -259,24 +281,30 @@ export class OrgDevAppInstallationService {
     if (!fs.existsSync(registryPath)) return { ...EMPTY_REGISTRY, activeByPublication: {}, installations: [] }
     try {
       const raw = JSON.parse(fs.readFileSync(registryPath, "utf8")) as Partial<InstallationRegistry>
-      if (raw.version !== 1 || !Array.isArray(raw.installations) || !raw.activeByPublication || typeof raw.activeByPublication !== "object") {
+      if (
+        raw.version !== 1 ||
+        !Array.isArray(raw.installations) ||
+        !raw.activeByPublication ||
+        typeof raw.activeByPublication !== "object"
+      ) {
         throw new Error("invalid registry")
       }
-      const installations = raw.installations
-        .slice(0, MAX_INSTALLATIONS)
-        .map((entry) => {
-          const validated = validateInstallation(entry)
-          const installedAt = Number.isFinite(entry.installedAt) ? entry.installedAt : Date.now()
-          const lastUsedAt = Number.isFinite(entry.lastUsedAt) ? entry.lastUsedAt : installedAt
-          const sizeBytes = Number.isFinite(entry.sizeBytes) && entry.sizeBytes >= 0 ? entry.sizeBytes : 0
-          return { ...validated, active: false, installedAt, lastUsedAt, sizeBytes }
-        })
+      const installations = raw.installations.slice(0, MAX_INSTALLATIONS).map((entry) => {
+        const validated = validateInstallation(entry)
+        const installedAt = Number.isFinite(entry.installedAt) ? entry.installedAt : Date.now()
+        const lastUsedAt = Number.isFinite(entry.lastUsedAt) ? entry.lastUsedAt : installedAt
+        const sizeBytes = Number.isFinite(entry.sizeBytes) && entry.sizeBytes >= 0 ? entry.sizeBytes : 0
+        return { ...validated, active: false, installedAt, lastUsedAt, sizeBytes }
+      })
       return {
         version: 1,
         installations,
         activeByPublication: Object.fromEntries(
-          Object.entries(raw.activeByPublication).filter((entry): entry is [string, string] =>
-            SEGMENT.test(entry[0]) && typeof entry[1] === "string" && installations.some((candidate) => candidate.ref === entry[1]),
+          Object.entries(raw.activeByPublication).filter(
+            (entry): entry is [string, string] =>
+              SEGMENT.test(entry[0]) &&
+              typeof entry[1] === "string" &&
+              installations.some((candidate) => candidate.ref === entry[1]),
           ),
         ),
       }

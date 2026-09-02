@@ -114,6 +114,7 @@ export function CreateProjectDialog({
   const [localFolderPath, setLocalFolderPath] = useState("")
   const [localGitState, setLocalGitState] = useState<LocalGitState | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [scaffoldWarnings, setScaffoldWarnings] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasEditedName, setHasEditedName] = useState(false)
   const [createGitHubRepo, setCreateGitHubRepo] = useState(false)
@@ -369,6 +370,12 @@ export function CreateProjectDialog({
         if (scaffold && !scaffold.success) {
           throw new Error(scaffold.error)
         }
+        // The package previews fine without these; it cannot publish. Say so now rather than
+        // letting the author discover it from the publish dialog later.
+        // Tolerate a main process that predates this field: a project that was created must
+        // not look like a failure because the renderer expected a newer reply shape.
+        const preparationWarnings = scaffold?.success ? (scaffold.preparation?.warnings ?? []) : []
+        if (preparationWarnings.length > 0) setScaffoldWarnings(preparationWarnings)
 
         // Optionally create a GitHub repo
         let gitHubRepoUrl: string | undefined
@@ -396,6 +403,11 @@ export function CreateProjectDialog({
           userId: convexUserId,
           status: "active",
         })
+
+        // Navigating away would close this dialog over the notice, so a package that cannot
+        // publish would report that to nobody. Hold here and let the author dismiss it; the
+        // project already exists and is in the sidebar either way.
+        if (preparationWarnings.length > 0) return
 
         navigateToProjectWorkbench(
           String(result.projectId),
@@ -672,6 +684,16 @@ export function CreateProjectDialog({
           ) : null}
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {scaffoldWarnings.length > 0 ? (
+            <div className="text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">
+                The DevApp was created, but it cannot be published yet.
+              </p>
+              {scaffoldWarnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {isLocalMode ? (

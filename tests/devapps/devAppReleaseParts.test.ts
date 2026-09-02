@@ -39,7 +39,7 @@ describe("immutable DevApp release parts", () => {
   })
 
   it("writes parts at publish and consumes those exact stored parts", () => {
-    expect(devApps).toContain("parts: partsForPublishedRuntimeKind(args.runtimeKind)")
+    expect(devApps).toContain("parts: reservation.runtimeParts ?? partsForPublishedRuntimeKind(args.runtimeKind)")
     expect(publishedManifest).toContain("parts: entry.activeRelease.parts")
     expect(publishedManifest).not.toContain("partsForLaunchSpec")
   })
@@ -50,7 +50,8 @@ describe("immutable DevApp release parts", () => {
     })
     expect(partsForPublishedRuntimeKind("service")).toEqual({
       view: { source: "package" },
-      service: { runtimeKind: "node", location: "device" },
+      service: { runtimeKind: "node", network: true },
+      runtime: { kind: "container", location: "device", state: "device" },
     })
     expect(partsForPublishedRuntimeKind("service").worker).toBeUndefined()
   })

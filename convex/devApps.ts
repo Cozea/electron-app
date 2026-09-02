@@ -1,23 +1,17 @@
 import { ConvexError, v } from "convex/values"
 
-import { partsForPublishedRuntimeKind } from "../shared/devAppParts"
+import { partsForPublishedRuntimeKind, type DevAppParts } from "../shared/devAppParts"
+import { validateDevAppRuntimeReleaseImage, type DevAppRuntimeReleaseImage } from "../shared/devAppContainedRuntime"
 
 import type { Doc, Id } from "./_generated/dataModel"
 import { type MutationCtx, type QueryCtx } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { canEditProject } from "./lib/projectAccess"
-import {
-  requireOrgAdmin,
-  requireOrgMember,
-  toConsumerDevApp,
-} from "./lib/orgAccess"
+import { isOrgMember, requireOrgAdmin, requireOrgMember, toConsumerDevApp } from "./lib/orgAccess"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import { resolvePublicationReferenceRecord } from "./lib/devAppReferenceResolution"
 import { normalizeStorageSha256 } from "./lib/storageHash"
-import {
-  orgDevAppArtifactLimits,
-  ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS,
-} from "../shared/orgDevAppLimits"
+import { orgDevAppArtifactLimits, ORG_DEVAPP_UPLOAD_RESERVATION_TTL_MS } from "../shared/orgDevAppLimits"
 
 const DEVAPP_NAME_MAX_LENGTH = 80
 const DEVAPP_DESCRIPTION_MAX_LENGTH = 500
@@ -48,6 +42,28 @@ function normalizeContentHash(value: string): string {
   const normalized = normalizeRequiredText(value, "contentHash").toLowerCase()
   if (!/^[a-f0-9]{64}$/.test(normalized)) {
     throw new ConvexError("contentHash must be a SHA-256 digest")
+  }
+  return normalized
+}
+
+function normalizeSha256Digest(value: string, fieldName: string): string {
+  const normalized = normalizeRequiredText(value, fieldName).toLowerCase()
+  if (!/^sha256:[a-f0-9]{64}$/.test(normalized)) {
+    throw new ConvexError(`${fieldName} must be a SHA-256 digest`)
+  }
+  return normalized
+}
+
+function assertServerSecret(value: string): void {
+  if (!process.env.AI_GATEWAY_SECRET || value !== process.env.AI_GATEWAY_SECRET) {
+    throw new ConvexError("Unauthorized")
+  }
+}
+
+function normalizeRuntimeBuildId(value: string): string {
+  const normalized = normalizeRequiredText(value, "buildId")
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(normalized)) {
+    throw new ConvexError("The DevApp runtime build ID is invalid")
   }
   return normalized
 }
@@ -151,7 +167,10 @@ export const registerUploadedArtifact = mutation({
       return { registered: false, error: "The uploaded DevApp artifact exceeds the size limit" }
     }
     if (metadata.contentType !== "application/zip") {
-      return { registered: false, error: "The uploaded DevApp artifact has an invalid content type" }
+      return {
+        registered: false,
+        error: "The uploaded DevApp artifact has an invalid content type",
+      }
     }
     if (normalizeStorageSha256(metadata.sha256) !== contentHash) {
       return { registered: false, error: "The uploaded DevApp artifact hash does not match" }
@@ -169,6 +188,227 @@ export const abandonUploadReservation = mutation({
     if (reservation.storageId) await ctx.storage.delete(reservation.storageId)
     await ctx.db.delete(args.reservationId)
     return { removed: true }
+  },
+})
+
+/** Cloudflare's authenticated build gateway rechecks reservation ownership before accepting bytes. */
+export const getRuntimeBuildAuthorizationForServer = query({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    projectId: v.id("projects"),
+    reservationId: v.id("devAppArtifactUploads"),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const [user, reservation] = await Promise.all([
+      ctx.db
+        .query("users")
+        .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+        .unique(),
+      ctx.db.get(args.reservationId),
+    ])
+    const allowed = Boolean(
+      user &&
+      user.status === "active" &&
+      reservation &&
+      reservation.projectId === args.projectId &&
+      reservation.createdBy === user._id &&
+      reservation.expiresAt > Date.now() &&
+      reservation.storageId &&
+      reservation.contentHash &&
+      reservation.runtimeKind,
+    )
+    return { allowed }
+  },
+})
+
+/** Grants a short-lived registry pull only for an exact executable release the device may use. */
+export const getRuntimePullAuthorizationForServer = query({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    organizationId: v.id("organizations"),
+    publicationId: v.id("devAppPublications"),
+    releaseId: v.id("devAppReleases"),
+    manifestDigest: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+      .unique()
+    const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
+    const member = user?.status === "active" ? await isOrgMember(ctx, args.organizationId, user._id) : false
+    const allowed = Boolean(
+      member &&
+      publication &&
+      publication.organizationId === args.organizationId &&
+      publication.status === "active" &&
+      release &&
+      release.publicationId === args.publicationId &&
+      release.runtimeImage?.manifestDigest === args.manifestDigest &&
+      release.parts?.runtime?.kind === "container",
+    )
+    return { allowed }
+  },
+})
+
+/** Cloudflare resolves hosted launch authority from current organization state. */
+export const getHostedRuntimeAuthorizationForServer = query({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    organizationId: v.id("organizations"),
+    publicationId: v.id("devAppPublications"),
+    releaseId: v.id("devAppReleases"),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+      .unique()
+    const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
+    const member = user?.status === "active" ? await isOrgMember(ctx, args.organizationId, user._id) : false
+    if (
+      !member ||
+      !publication ||
+      publication.organizationId !== args.organizationId ||
+      publication.status !== "active" ||
+      publication.activeReleaseId !== args.releaseId ||
+      !release ||
+      release.publicationId !== args.publicationId ||
+      release.parts?.runtime?.kind !== "container" ||
+      release.parts.runtime.location !== "hosted" ||
+      (release.parts.runtime.state !== "none" && release.parts.runtime.state !== "organization") ||
+      release.parts.worker?.capabilities.some((capability) => capability !== "net.outbound") ||
+      !release.runtimeImage ||
+      !release.runtimeSourceDigest ||
+      !release.packageManifestDigest
+    ) {
+      return { allowed: false as const }
+    }
+    return {
+      allowed: true as const,
+      release: {
+        id: release._id,
+        version: release.version,
+        contentHash: release.contentHash,
+        runtimeKind: release.runtimeKind,
+        parts: release.parts,
+        runtimeSourceDigest: release.runtimeSourceDigest,
+        packageManifestDigest: release.packageManifestDigest,
+        runtimeImage: release.runtimeImage,
+      },
+    }
+  },
+})
+
+/** Records the only build ID allowed to turn this upload reservation into executable release data. */
+export const registerRuntimeBuildFromServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    identityKey: v.string(),
+    projectId: v.id("projects"),
+    reservationId: v.id("devAppArtifactUploads"),
+    buildId: v.string(),
+    sourceDigest: v.string(),
+    packageManifestDigest: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
+      .unique()
+    const reservation = await ctx.db.get(args.reservationId)
+    if (
+      !user ||
+      user.status !== "active" ||
+      !reservation ||
+      reservation.projectId !== args.projectId ||
+      reservation.createdBy !== user._id ||
+      reservation.expiresAt <= Date.now() ||
+      !reservation.storageId ||
+      !reservation.contentHash ||
+      !reservation.runtimeKind
+    ) {
+      throw new ConvexError("The DevApp runtime build reservation is invalid")
+    }
+    if (reservation.runtimeBuildId) {
+      throw new ConvexError("The DevApp upload already has a runtime build")
+    }
+    const buildId = normalizeRuntimeBuildId(args.buildId)
+    const sourceDigest = normalizeContentHash(args.sourceDigest)
+    const packageManifestDigest = normalizeSha256Digest(args.packageManifestDigest, "packageManifestDigest")
+    await ctx.db.patch(args.reservationId, {
+      runtimeBuildId: buildId,
+      runtimeBuildStatus: "queued",
+      runtimeSourceDigest: sourceDigest,
+      packageManifestDigest,
+      runtimeBuildError: undefined,
+    })
+    return { registered: true }
+  },
+})
+
+/** Trusted builder callback; the desktop still verifies the detached signature before launch. */
+export const completeRuntimeBuildFromServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    buildId: v.string(),
+    status: v.union(v.literal("building"), v.literal("ready"), v.literal("failed")),
+    runtimeImage: v.optional(v.any()),
+    runtimeParts: v.optional(v.any()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertServerSecret(args.serverSecret)
+    const buildId = normalizeRuntimeBuildId(args.buildId)
+    const reservation = await ctx.db
+      .query("devAppArtifactUploads")
+      .withIndex("by_runtime_build_id", (q) => q.eq("runtimeBuildId", buildId))
+      .unique()
+    if (
+      !reservation ||
+      reservation.expiresAt <= Date.now() ||
+      !reservation.runtimeSourceDigest ||
+      !reservation.packageManifestDigest ||
+      reservation.runtimeBuildStatus === "ready" ||
+      reservation.runtimeBuildStatus === "failed"
+    ) {
+      throw new ConvexError("The DevApp runtime build is unavailable or already final")
+    }
+    if (args.status === "ready") {
+      if (!args.runtimeImage || !args.runtimeParts) {
+        throw new ConvexError("A successful DevApp runtime build is incomplete")
+      }
+      const runtimeImage = args.runtimeImage as DevAppRuntimeReleaseImage
+      const imageError = validateDevAppRuntimeReleaseImage(runtimeImage, {
+        sourceDigest: reservation.runtimeSourceDigest,
+        packageManifestDigest: reservation.packageManifestDigest,
+      })
+      const runtimeParts = args.runtimeParts as DevAppParts
+      if (imageError || !runtimeParts.runtime || runtimeParts.runtime.kind !== "container") {
+        throw new ConvexError(imageError ?? "The DevApp runtime parts are invalid")
+      }
+      await ctx.db.patch(reservation._id, {
+        runtimeBuildStatus: "ready",
+        runtimeImage,
+        runtimeParts,
+        runtimeBuildError: undefined,
+      })
+    } else if (args.status === "failed") {
+      await ctx.db.patch(reservation._id, {
+        runtimeBuildStatus: "failed",
+        runtimeBuildError: normalizeBoundedText(args.error ?? "The central build failed", "error", 1_000),
+      })
+    } else {
+      await ctx.db.patch(reservation._id, { runtimeBuildStatus: "building" })
+    }
+    return { updated: true }
   },
 })
 
@@ -229,9 +469,10 @@ export const publish = mutation({
     }
 
     const name = normalizeBoundedText(args.name, "name", DEVAPP_NAME_MAX_LENGTH)
-    const description = args.description === undefined
-      ? undefined
-      : normalizeBoundedText(args.description, "description", DEVAPP_DESCRIPTION_MAX_LENGTH)
+    const description =
+      args.description === undefined
+        ? undefined
+        : normalizeBoundedText(args.description, "description", DEVAPP_DESCRIPTION_MAX_LENGTH)
     const framework = normalizeBoundedText(args.framework, "framework", DEVAPP_FRAMEWORK_MAX_LENGTH)
     const entryPath = normalizeBoundedText(args.entryPath, "entryPath", DEVAPP_ENTRY_PATH_MAX_LENGTH)
     if (entryPath.includes("..") || entryPath.startsWith("/") || entryPath.includes("\\")) {
@@ -241,12 +482,26 @@ export const publish = mutation({
       throw new ConvexError("The DevApp logo exceeds the allowed size")
     }
     if (args.runtimeKind === "service") {
-      if (args.manifestVersion !== 1 || args.platform !== "darwin" || args.arch !== "arm64") {
-        throw new ConvexError("The Service DevApp runtime metadata is unsupported")
-      }
       if (!args.permissionSetHash || !/^[a-f0-9]{64}$/.test(args.permissionSetHash)) {
         throw new ConvexError("The Service DevApp permission hash is invalid")
       }
+    }
+    if (args.runtimeKind === "service" && !reservation.runtimeBuildId) {
+      throw new ConvexError("Published Service DevApps require a successful central runtime build")
+    }
+    if (
+      reservation.runtimeBuildId &&
+      (reservation.runtimeBuildStatus !== "ready" ||
+        !reservation.runtimeImage ||
+        !reservation.runtimeParts ||
+        !reservation.runtimeSourceDigest ||
+        !reservation.packageManifestDigest)
+    ) {
+      throw new ConvexError(
+        reservation.runtimeBuildStatus === "failed"
+          ? (reservation.runtimeBuildError ?? "The central DevApp build failed")
+          : "The central DevApp build is not ready",
+      )
     }
     const now = Date.now()
 
@@ -269,10 +524,7 @@ export const publish = mutation({
         })
 
     if (existingPublication) {
-      if (
-        existingPublication.organizationId &&
-        existingPublication.organizationId !== project.organizationId
-      ) {
+      if (existingPublication.organizationId && existingPublication.organizationId !== project.organizationId) {
         throw new ConvexError("This DevApp belongs to another organization")
       }
     }
@@ -293,7 +545,10 @@ export const publish = mutation({
       entryPath,
       contentHash: reservation.contentHash,
       runtimeKind: args.runtimeKind,
-      parts: partsForPublishedRuntimeKind(args.runtimeKind),
+      parts: reservation.runtimeParts ?? partsForPublishedRuntimeKind(args.runtimeKind),
+      ...(reservation.runtimeSourceDigest ? { runtimeSourceDigest: reservation.runtimeSourceDigest } : {}),
+      ...(reservation.packageManifestDigest ? { packageManifestDigest: reservation.packageManifestDigest } : {}),
+      ...(reservation.runtimeImage ? { runtimeImage: reservation.runtimeImage } : {}),
       ...(args.manifestVersion ? { manifestVersion: args.manifestVersion } : {}),
       ...(args.platform ? { platform: args.platform } : {}),
       ...(args.arch ? { arch: args.arch } : {}),
@@ -327,10 +582,7 @@ export const publish = mutation({
       await ctx.db.delete(staleRelease._id)
     }
 
-    const [publication, release] = await Promise.all([
-      ctx.db.get(publicationId),
-      ctx.db.get(releaseId),
-    ])
+    const [publication, release] = await Promise.all([ctx.db.get(publicationId), ctx.db.get(releaseId)])
     if (!publication || !release) {
       throw new ConvexError("The DevApp release could not be read after publishing")
     }
@@ -420,9 +672,7 @@ export const listForOrganization = query({
       }),
     )
 
-    return rows
-      .flatMap((row) => (row ? [row] : []))
-      .sort((left, right) => left.name.localeCompare(right.name))
+    return rows.flatMap((row) => (row ? [row] : [])).sort((left, right) => left.name.localeCompare(right.name))
   },
 })
 
@@ -552,6 +802,7 @@ export const getArtifactUrl = query({
       releaseId: resolved.release._id,
       version: resolved.release.version,
       runtimeKind: resolved.release.runtimeKind,
+      parts: resolved.release.parts,
       manifestVersion: resolved.release.manifestVersion ?? null,
       platform: resolved.release.platform ?? null,
       arch: resolved.release.arch ?? null,

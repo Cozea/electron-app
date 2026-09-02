@@ -73,9 +73,12 @@ class FakeWorker implements DevAppWorkerProcess {
 function makeHost(
   options: {
     capabilities?: DevAppCapability[]
+    agentInvocable?: boolean
+    declaredTools?: string[]
     handler?: (method: string) => Promise<unknown>
     now?: () => number
     authorizationExpiresAt?: number | null
+    timers?: ConstructorParameters<typeof DevAppWorkerHost>[3]
   } = {},
 ) {
   const spawned: FakeWorker[] = []
@@ -94,6 +97,7 @@ function makeHost(
     },
     handlers,
     options.now,
+    options.timers,
   )
 
   const state = host.start({
@@ -101,10 +105,14 @@ function makeHost(
     entrypoint: ENTRYPOINT,
     packageRoot: PACKAGE_ROOT,
     protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
-    grant: normalizeGrant({ capabilities: options.capabilities ?? ["project.read"] }),
+    grant: normalizeGrant({
+      capabilities: options.capabilities ?? ["project.read"],
+      agentInvocable: options.agentInvocable ?? false,
+    }),
     authorizationExpiresAt: options.authorizationExpiresAt ?? null,
     binding: BINDING,
     leaseId: "tile_1",
+    declaredToolNames: options.declaredTools,
   })
   return { host, spawned, state, current: () => spawned[spawned.length - 1]! }
 }
@@ -250,7 +258,138 @@ describe("Worker host — the gate runs on every request", () => {
   })
 })
 
+describe("Worker host — approved agent tools", () => {
+  it("invokes one exact declared tool and returns bounded JSON", async () => {
+    const { host, current } = makeHost({
+      capabilities: [],
+      agentInvocable: true,
+      declaredTools: ["search_records"],
+    })
+
+    const pending = host.invoke("pub_1", "search_records", { query: "Ada" })
+    const outbound = current().sent[0] as DevAppWorkerResponse & {
+      method: string
+      params: unknown
+    }
+    expect(outbound).toMatchObject({
+      kind: "request",
+      method: "search_records",
+      params: { query: "Ada" },
+    })
+    current().send({
+      kind: "response",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      id: outbound.id,
+      result: { records: [1, 2] },
+    })
+
+    await expect(pending).resolves.toEqual({ records: [1, 2] })
+  })
+
+  it("requires both explicit agent approval and an exact declaration", async () => {
+    const unapproved = makeHost({ declaredTools: ["search_records"] })
+    await expect(unapproved.host.invoke("pub_1", "search_records", {})).rejects.toThrow(
+      /not approved/,
+    )
+
+    const undeclared = makeHost({ agentInvocable: true, declaredTools: ["search_records"] })
+    await expect(undeclared.host.invoke("pub_1", "delete_records", {})).rejects.toThrow(
+      /did not declare/,
+    )
+    expect(undeclared.current().sent).toHaveLength(0)
+  })
+
+  it("rejects oversized and non-JSON tool results", async () => {
+    const { host, current } = makeHost({
+      agentInvocable: true,
+      declaredTools: ["search_records"],
+    })
+    const oversized = host.invoke("pub_1", "search_records", {})
+    const first = current().sent[0] as DevAppWorkerResponse
+    current().send({
+      kind: "response",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      id: first.id,
+      result: "x".repeat(1024 * 1024),
+    })
+    await expect(oversized).rejects.toThrow(/exceeds 1 MiB/)
+
+    const cyclicValue: Record<string, unknown> = {}
+    cyclicValue.self = cyclicValue
+    const invalid = host.invoke("pub_1", "search_records", {})
+    const second = current().sent[1] as DevAppWorkerResponse
+    current().send({
+      kind: "response",
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      id: second.id,
+      result: cyclicValue,
+    })
+    await expect(invalid).rejects.toThrow()
+  })
+
+  it("bounds concurrent invocations and rejects them when the worker stops", async () => {
+    const { host, current } = makeHost({
+      agentInvocable: true,
+      declaredTools: ["search_records"],
+    })
+    const pending = Array.from({ length: 16 }, () =>
+      host.invoke("pub_1", "search_records", {}),
+    )
+    await expect(host.invoke("pub_1", "search_records", {})).rejects.toThrow(/too many/)
+    host.stop("pub_1")
+    await Promise.all(
+      pending.map((invocation) =>
+        expect(invocation).rejects.toThrow(/stopped during the tool invocation/),
+      ),
+    )
+    expect(current().killed).toBe(true)
+  })
+
+  it("times out a tool call without stopping the otherwise healthy worker", async () => {
+    let expire: () => void = () => undefined
+    const { host, current } = makeHost({
+      agentInvocable: true,
+      declaredTools: ["search_records"],
+      timers: {
+        set: (callback) => {
+          expire = callback
+          return 1
+        },
+        clear: vi.fn(),
+      },
+    })
+    const pending = host.invoke("pub_1", "search_records", {}, 250)
+    expire()
+    await expect(pending).rejects.toThrow(/timed out/)
+    expect(host.getState("pub_1")?.status).toBe("ready")
+    expect(current().killed).toBe(false)
+  })
+})
+
 describe("Worker host — lifecycle", () => {
+  it("stays starting until an asynchronous contained adapter is ready", async () => {
+    let resolveReady = () => {}
+    class StartingWorker extends FakeWorker {
+      ready = new Promise<void>((resolve) => { resolveReady = resolve })
+    }
+    const worker = new StartingWorker()
+    const host = new DevAppWorkerHost(() => worker, {})
+    const initial = host.start({
+      publicationId: "pub_async",
+      entrypoint: ENTRYPOINT,
+      packageRoot: PACKAGE_ROOT,
+      protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+      grant: normalizeGrant({ capabilities: [] }),
+      authorizationExpiresAt: null,
+      binding: BINDING,
+      leaseId: "tile_1",
+    })
+    expect(initial.status).toBe("starting")
+    resolveReady()
+    await flush()
+    expect(host.getState("pub_async")?.status).toBe("ready")
+  })
+
   it("transfers a version-bound view port only to the live worker", () => {
     const { host, current } = makeHost()
     const port = {}

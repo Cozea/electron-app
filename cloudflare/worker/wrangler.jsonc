@@ -4,22 +4,57 @@
   "account_id": "c9081ef53a698d2ee92516a8a7752ebc",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-17",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "durable_objects": {
     "bindings": [
       {
         "name": "COLLAB_ROOM",
-        "class_name": "CollabRoom"
-      }
-    ]
+        "class_name": "CollabRoom",
+      },
+      {
+        "name": "DEVAPP_RUNTIME_BUILD",
+        "class_name": "DevAppRuntimeBuild",
+      },
+      {
+        "name": "DEVAPP_SANDBOX",
+        "class_name": "CozeaDevAppSandbox",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["CollabRoom"]
-    }
+      "new_sqlite_classes": ["CollabRoom"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["DevAppRuntimeBuild"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["CozeaDevAppSandbox"],
+    },
+  ],
+  "containers": [
+    {
+      "class_name": "CozeaDevAppSandbox",
+      "image": "./Dockerfile.devapp-sandbox",
+      "max_instances": 50,
+      "instance_type": "standard-1",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DEVAPP_BUILD_INPUTS",
+      "bucket_name": "cozea-devapp-build-inputs",
+    },
+    {
+      "binding": "DEVAPP_ORG_STATE",
+      "bucket_name": "cozea-devapp-organization-state",
+    },
   ],
   "vars": {
-    "COLLAB_PROTOCOL_VERSION": "2.0"
-  }
+    "COLLAB_PROTOCOL_VERSION": "2.0",
+  },
 }

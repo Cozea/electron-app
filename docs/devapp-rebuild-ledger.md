@@ -34,19 +34,21 @@ by building blind and hoping.
 What exists now is a different system underneath the same UI. A DevApp is described as
 composable parts rather than picked from a closed list. It has a durable name that survives
 storage and crosses projects. It can ask for capabilities from a settled vocabulary and run a
-local development worker behind a versioned gate after explicit approval. Published worker
-execution remains blocked until its container runtime exists.
+local development worker behind a versioned gate after explicit approval. Published workers now
+execute as well, inside a container whose image the host verifies before it starts.
 
-What does not exist yet is execution of published or autonomous worker tools. Concrete worker-tool
-declarations now flow through the authenticated ACP/MCP session as an inspectable catalog, while
-invocation stays unavailable until the contained runtime exists. Organization DevApps are real,
+Published and autonomous worker tools now execute. Concrete worker-tool declarations flow through
+the authenticated ACP/MCP session as an inspectable catalog, and an approved declaration can be
+invoked against a running contained worker under host-side rechecks. Organization DevApps are real,
 version-pinned device installations rather than cache entries. External authoring has a generated
 schema, self-contained typed client, first-class project workflow, public documentation, and
 in-product MCP references. Agents can create or attach a development preview and drive its living
 guest after the user grants the package's requested session capabilities.
 
-> **The honest headline: 8 phases delivered, 0 partial, 1 untouched.**
-> Phase 4 now includes the living view-to-worker bridge rather than stopping at the host.
+> **The honest headline: 9 phases delivered, 0 partial, 0 untouched.**
+> A container boots on this hardware, and the product loop runs from Store to live tile. The two
+> have not yet met: the only published DevApp to test with is static, so nothing has crossed from
+> the loop into the container.
 
 ---
 
@@ -154,7 +156,7 @@ This does not bypass the capability model. View/worker calls are package-private
 privileged Cozea request still travels over the worker's original host port and through the
 approved method-capability table and workspace binding. Ordinary Browser and published Org DevApp
 guests retain the picker-only preload and cannot receive a development worker port. Published
-workers remain separately blocked on Phase 8 containment.
+workers reach host authority the same way, but only from inside the Phase 8 container.
 
 ### Phase 5 — Development mode and preview tile — **Delivered**
 
@@ -168,7 +170,7 @@ reloads when generated output under `dist`, `build`, or `out` changes.
 
 The `Cozea/t3code` fork now owns `devapp_preview_ensure` and
 `devapp_preview_attach`; the generated parent contracts are synchronized from pinned fork
-revision `5725b2eb`. Ensure creates or reuses a project-confined package tile without granting
+revision `c1f224d9`. Ensure creates or reuses a project-confined package tile without granting
 capabilities. Attach binds an existing approved package to its exact runtime tab. Generic T3
 snapshot and interaction operations then target the same living guest the user sees.
 
@@ -210,17 +212,18 @@ publishing, and the development-versus-published security boundary. T3's authent
 registers a separate read-only `devapp_authoring_docs` tool, and runtime preparation fingerprints
 dirty fork source so a changed MCP tool cannot be silently omitted from local/package builds.
 
-Published or externally sourced worker execution remains blocked on Phase 8 containment; Phase 6
-does not weaken that boundary.
+Published or externally sourced worker execution now runs under Phase 8 containment; Phase 6 does
+not weaken that boundary.
 
 ### Phase 7 — Agent surface and installation semantics — **Delivered**
 
 **Shipped.** Worker manifests declare concrete operations as bounded `name`, `description`, and
 object `inputSchema` records. The former exposure boolean is rejected rather than retained as a
 compatibility alias. Preview status carries the exact declarations, and every authenticated T3 MCP
-session exposes `devapp_tool_catalog` for an already-open development preview. The catalog cannot
-start code, grant capabilities, or invoke an operation; it reports
-`toolInvocationAvailable: false` until Phase 8 provides containment.
+session exposes `devapp_tool_catalog` for an already-open development preview. The catalog still
+cannot start code or grant capabilities. It now reports `toolInvocationAvailable` as a computed
+fact — an approved declaration, a ready worker, and at least one declared tool — rather than the
+constant `false` it returned before Phase 8 supplied containment.
 
 Organization DevApps now install to an atomic device-local registry under exact immutable refs.
 Multiple versions may coexist, updates explicitly change the active pointer, Add Tile lists only
@@ -235,13 +238,95 @@ its storage section shows total/per-version usage with version removal controls.
 installed-but-unreferenced MCP dependencies — the Git, shell, filesystem, Playwright, and repository
 search servers — are absent from package manifests and the Bun lockfile.
 
-### Phase 8 — Container runtime, then hosted location — **Not started**
+### Phase 8 — Container runtime, then hosted location — **Delivered, unexercised**
 
-A container runtime adapter, which turns the native-code ban from a blanket rule into a
-runtime-scoped one; a central build path; hosted location as a manifest value; shared state
-semantics and the trust model for code Cozea executes on someone's behalf. This phase is now an
-explicit prerequisite for published workers and autonomous worker tools, not an optional later
-hardening pass.
+**Shipped.** Both halves landed together rather than in sequence. Published DevApps no longer run in
+a `utilityProcess`; they run in a container whose image the host verifies before start.
+
+The device path is an app-owned Swift 6 helper built against Apple Containerization. Main pins the
+gateway origin at build time, so renderer IPC can never choose where a device token is sent. The
+helper receives a digest-pinned kernel, mounts a read-only rootfs, accepts one to four CPUs and 256
+MiB–4 GiB of memory (the host asks for two and 1 GiB), and mounts release-bound folder grants as a
+bounded set of shares. `SignedDevAppRuntimeImageVerifier` checks an Ed25519 attestation before any
+of that happens: the reference must be digest-pinned, the attestation must name the same source and
+package-manifest digests as the installed release, the build must be reproducible and
+multi-platform, and the signature must verify against a bundled public key. Every branch fails
+closed.
+
+The hosted path is a Cloudflare Durable Object sandbox, authored as `runtime.location: "hosted"` in
+the manifest. The manifest validator refuses a hosted app any capability except `net.outbound` and
+refuses it device state; the host refuses it folder grants at start. Central builds screen `.env`,
+`.key`, `.pem`, `.p12`, and `.pfx` files out of the source bundle, run through BuildKit with
+`provenance: mode=max`, and are signed by `sign-devapp-image-attestation.ts`.
+
+Containment is structural rather than conditional. Main constructs two `DevAppWorkerHost` instances:
+the published one from `PublishedDevAppRuntimeService.createWorkerSpawn()`, which only ever returns
+the contained spawn, and the development one from the utility-process spawn. There is no fallback
+edge between them and no path that starts a published worker uncontained.
+
+The helper's own signature is checked before it is spawned, closing the last gap this phase
+carried. The SHA-256 comparison against `resource-manifest.json` remains, but it only ever
+established consistency: the manifest sits in the same directory as the files it describes, so
+anyone able to rewrite the binary could rewrite the manifest beside it. A packaged macOS build now
+also requires the helper to satisfy a code requirement pinned to the running application's Apple
+team. That team is read from the host's own signature rather than configured, so there is no
+build-time pin to keep current and no environment variable that turns the check off; an unsigned
+local build finds no team, and falls back to the hash it always had.
+
+**First real execution, 2026-09-02.** The helper was driven directly, outside Electron, on macOS
+27.0 with Containerization 0.43.0. It reports the adapter available, pulls a digest-pinned image
+from GHCR, boots the pinned Kata kernel, and reaches `status: "running"`. The containment substrate
+works.
+
+Getting there surfaced one fact no test could have: **the helper binary must carry
+`com.apple.security.virtualization`, or every container start fails** with
+`vmnet_return_t(rawValue: 1002)`. `prepare:devapp-runtime` produced an unentitled ad-hoc binary, and
+since a development build reads that same file, the device runtime could not start a container in
+local development at all — a gap invisible to CI, which never starts one. Adding
+`com.apple.vm.networking` is worse than useless: it is a restricted entitlement, and the process is
+SIGKILLed at launch. Virtualization alone is both necessary and sufficient.
+
+`prepare:devapp-runtime` now ad-hoc signs the helper with `build/entitlements.mac.plist` before
+recording its digest, and `prepare:devapp-runtime:check` fails when the entitlement is missing.
+Signing with the plist electron-builder inherits keeps a development helper and a packaged one
+carrying the same authority, rather than leaving development to test something the product does not
+do. The prepared helper now starts a container on this hardware.
+
+The packaged app satisfies this. `@electron/osx-sign` walks all of `Contents/`, including
+`Resources/`, and signs every Mach-O it finds; electron-builder hands every non-bundle file
+`entitlementsInherit`, which here is `build/entitlements.mac.plist` — and that file declares
+`com.apple.security.virtualization`. Nothing needs to change for release builds.
+
+`ensureManager` constructs `VmnetNetwork()` unconditionally, before any per-request branching, so a
+container declaring `network: false` still requires vmnet to start. That is broader than the
+request needs, and it is why the entitlement is load-bearing even for offline DevApps.
+
+**The product loop, walked 2026-09-02.** In the running app: the Store listed the organization's
+published `static-devapp-test`, Install wrote an exact version-pinned record to
+`org-devapp-installations.json` carrying the release's `parts` and a null `runtimeImage`, the app
+then appeared in Add DevApp, and launching it rendered a live interactive guest — clicks counted,
+timestamp updating. Store to running tile works.
+
+The same session found that a pre-Phase-8 package now fails closed, and says why in one pass:
+manifest version 2 required against a declared 1, `exposesTools` rejected as an unsupported field,
+`worker.tools` required to be an array, and `runtime.location`/`runtime.state` required of an
+executable DevApp. Four problems, each with its field path and its remedy, in a single render.
+Phase 0's diagnostic taxonomy and Phase 8's manifest break are both live in the product. Packages
+authored before this phase must be regenerated; there is no compatibility path, by design.
+
+`ContainedDevAppRuntimeService` now drives the prepared helper directly under test, rather than the
+fake process every other case substitutes: it reads the real resource manifest, checks the real
+digests, spawns the real binary, and agrees with it on the line protocol. The test activates
+wherever `prepare:devapp-runtime` has produced resources and skips silently elsewhere, and a second
+case proves the integrity gate refuses a helper the manifest does not describe. The attestation
+verifier was already exercised against real Ed25519 keys and signatures across four cases,
+including a tampered statement whose declared digest was corrected to match.
+
+**What is not finished.** The published DevApp available to test with is static — `runtimeKind:
+"static"`, `parts.view.source: "package"`, no runtime image — so the product loop never reached a
+container, and the central builder has never produced a signed image for the verifier to accept in
+anger. Every seam has code and coverage behind it; what is missing is one artifact that travels the
+whole path at once.
 
 ---
 
@@ -284,10 +369,11 @@ security policy is in `docs/devapp-worker-protocol.md`.
 
 The review found that Electron `utilityProcess` is a full Node process rather than a sandbox, that
 Electron 40's Node permission model does not gate network access, and that a zero-capability worker
-could therefore run with ambient authority without a prompt. Published worker execution is now
-architecturally disconnected until Phase 8, every development worker requires explicit approval,
-and the host has process-identity, expiry, symlink, approval-TOCTOU, error-redaction, message,
-resource, and multi-lease defenses with regression coverage.
+could therefore run with ambient authority without a prompt. Published worker execution was
+architecturally disconnected until Phase 8 reconnected it through a container instead of a
+`utilityProcess`. Every development worker requires explicit approval, and the host has
+process-identity, expiry, symlink, approval-TOCTOU, error-redaction, message, resource, and
+multi-lease defenses with regression coverage.
 
 Protocol v1 was also corrected to advertise exactly the six methods it implements; future methods
 require a new explicit protocol version. Residual local-development risks and phase ordering are in
@@ -491,7 +577,7 @@ In dependency order, not preference order.
    of parallel tile lists.
 
 5. **Adversarial capability/runtime review — complete 2026-09-01.** The development boundary is
-   hardened and honestly disclosed; published worker execution is blocked on Phase 8 containment.
+   hardened and honestly disclosed; published worker execution moved behind Phase 8 containment.
 
 6. **Put parts on immutable release records — complete 2026-09-01.** The final schema requires
    parts and has no compatibility fallback; current static/service behavior is unchanged.
@@ -507,13 +593,23 @@ In dependency order, not preference order.
 9. **Phase 6 authoring contract — complete 2026-09-01.** Project creation/opening, generated
    schema, publishable typed client, scaffold, immediate preview, cross-project development tiles,
    non-dialog publication API, public docs, and authenticated MCP documentation are delivered.
-   Published/external worker execution stays unavailable until Phase 8 lands.
+   Published/external worker execution became available when Phase 8 landed.
 
 10. **Phase 7 agent catalog and installation semantics — complete 2026-09-01.** Concrete tool
     declarations flow through authenticated preview sessions without becoming invocable; exact
     local versions, explicit updates/uninstall, offline launch, pruning protection, storage UI, and
     dependency cleanup replace cache-as-install behavior.
 
-11. **Phase 8 containment — next.** Implement the container runtime adapter before enabling
-    published workers or autonomous worker-tool invocation, then add the central build path,
-    hosted location, and shared-state trust semantics.
+11. **Phase 8 containment — complete 2026-09-02.** The device container runtime, signed central
+    build path, hosted location, and shared-state trust semantics all landed, and published
+    worker-tool invocation is enabled behind them.
+
+12. **Verify the helper's signature at spawn — complete 2026-09-02.** `ensureChild` now asks the
+    OS who signed the binary before spawning it, against a requirement derived from the host's own
+    Apple team. The manifest hash stays as tamper evidence rather than as authority.
+
+13. **Publish one executable DevApp — next.** As of 2026-09-02 the container substrate is proven
+    on device and the product loop is proven in the app, but only against a static release. One
+    executable release through the central builder joins them, exercising the attestation verifier,
+    the Electron-to-helper path, and the tool loop in a single pass. It is the only thing standing
+    between Phase 8 and done.

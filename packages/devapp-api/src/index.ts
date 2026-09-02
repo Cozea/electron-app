@@ -51,6 +51,236 @@ export interface DevAppClient<
   on: (topic: string, listener: (payload: unknown) => void) => () => void;
 }
 
+export type DevAppWorkerMethodHandler<Params = unknown, Result = unknown> = (
+  params: Params,
+) => Result | Promise<Result>;
+
+export type DevAppWorkerHandlers<
+  Methods extends { [Method in keyof Methods]: DevAppMethodDefinition },
+> = {
+  [Method in keyof Methods]: DevAppWorkerMethodHandler<
+    Methods[Method]["params"],
+    Methods[Method]["result"]
+  >;
+};
+
+export interface DevAppWorkerController {
+  requestHost: <Result = unknown>(method: string, params?: unknown) => Promise<Result>;
+  emit: (topic: string, payload?: unknown) => void;
+  close: () => void;
+}
+
+interface WorkerRuntimeTransport {
+  onHostMessage(listener: (message: unknown) => void): () => void;
+  onViewMessage(
+    listener: (connectionId: string, message: unknown, close: boolean) => void,
+  ): () => void;
+  sendHost(message: unknown): void;
+  sendView(connectionId: string, message: unknown): void;
+}
+
+interface PortableMessagePort {
+  postMessage(message: unknown): void;
+  start?(): void;
+  close?(): void;
+  on?(event: "message" | "close", listener: (event: { data?: unknown }) => void): void;
+  addEventListener?(
+    event: "message" | "close",
+    listener: (event: { data?: unknown }) => void,
+  ): void;
+}
+
+function listenPort(
+  port: PortableMessagePort,
+  listener: (message: unknown) => void,
+  onClose?: () => void,
+): void {
+  if (port.addEventListener) {
+    port.addEventListener("message", (event) => listener(event.data));
+    if (onClose) port.addEventListener("close", onClose);
+  } else if (port.on) {
+    port.on("message", (event) => listener(event.data));
+    if (onClose) port.on("close", onClose);
+  }
+  port.start?.();
+}
+
+function utilityProcessTransport(): WorkerRuntimeTransport | null {
+  const processLike = (globalThis as typeof globalThis & {
+    process?: {
+      parentPort?: {
+        on(
+          event: "message",
+          listener: (event: { data?: unknown; ports?: PortableMessagePort[] }) => void,
+        ): void;
+      };
+    };
+  }).process;
+  const parent = processLike?.parentPort;
+  if (!parent) return null;
+  const hostListeners = new Set<(message: unknown) => void>();
+  const viewListeners = new Set<(connectionId: string, message: unknown, close: boolean) => void>();
+  const views = new Map<string, PortableMessagePort>();
+  let host: PortableMessagePort | null = null;
+  parent.on("message", (event) => {
+    const bootstrap = event.data as { kind?: unknown; connectionId?: unknown };
+    const port = event.ports?.[0];
+    if (!port) return;
+    if (bootstrap?.kind === "cozea-devapp-port") {
+      host?.close?.();
+      host = port;
+      listenPort(port, (message) => {
+        for (const listener of hostListeners) listener(message);
+      });
+      return;
+    }
+    if (
+      bootstrap?.kind === "cozea-devapp-view-port" &&
+      typeof bootstrap.connectionId === "string"
+    ) {
+      views.get(bootstrap.connectionId)?.close?.();
+      views.set(bootstrap.connectionId, port);
+      listenPort(
+        port,
+        (message) => {
+          for (const listener of viewListeners) {
+            listener(bootstrap.connectionId as string, message, false);
+          }
+        },
+        () => {
+          views.delete(bootstrap.connectionId as string);
+          for (const listener of viewListeners) {
+            listener(bootstrap.connectionId as string, undefined, true);
+          }
+        },
+      );
+    }
+  });
+  return {
+    onHostMessage: (listener) => {
+      hostListeners.add(listener);
+      return () => hostListeners.delete(listener);
+    },
+    onViewMessage: (listener) => {
+      viewListeners.add(listener);
+      return () => viewListeners.delete(listener);
+    },
+    sendHost: (message) => {
+      if (!host) throw new Error("The Cozea host channel is unavailable.");
+      host.postMessage(message);
+    },
+    sendView: (connectionId, message) => {
+      const port = views.get(connectionId);
+      if (!port) throw new Error("The DevApp view channel is unavailable.");
+      port.postMessage(message);
+    },
+  };
+}
+
+function defaultWorkerTransport(): WorkerRuntimeTransport {
+  const existing = (globalThis as typeof globalThis & {
+    __cozeaDevAppWorkerTransport?: WorkerRuntimeTransport;
+  }).__cozeaDevAppWorkerTransport;
+  const transport = existing ?? utilityProcessTransport();
+  if (!transport) throw new Error("This worker is not running inside Cozea.");
+  return transport;
+}
+
+/**
+ * Starts one transport-neutral worker implementation.
+ *
+ * The same package code runs in the powerful local development utility process and the
+ * published Linux container. Only the transport adapter changes; host capability decisions
+ * remain in Cozea main.
+ */
+export function createDevAppWorker<
+  Methods extends { [Method in keyof Methods]: DevAppMethodDefinition },
+>(
+  handlers: DevAppWorkerHandlers<Methods>,
+  options: { transport?: WorkerRuntimeTransport; requestTimeoutMs?: number } = {},
+): DevAppWorkerController {
+  const transport = options.transport ?? defaultWorkerTransport();
+  const timeoutMs = Math.max(250, Math.min(options.requestTimeoutMs ?? 30_000, 60_000));
+  const pending = new Map<string, PendingRequest>();
+  const protocolVersion = 1;
+
+  const dispatch = async (
+    raw: unknown,
+    respond: (message: DevAppWorkerMessage) => void,
+  ): Promise<void> => {
+    if (!raw || typeof raw !== "object") return;
+    const message = raw as DevAppWorkerMessage;
+    if (message.protocolVersion !== protocolVersion) return;
+    if (message.kind === "response") {
+      const request = pending.get(message.id);
+      if (!request) return;
+      pending.delete(message.id);
+      clearTimeout(request.timer);
+      if (message.error) request.reject(new DevAppRequestError(message.error));
+      else request.resolve(message.result);
+      return;
+    }
+    if (message.kind !== "request" || typeof message.method !== "string") return;
+    const handler = handlers[message.method as keyof Methods] as
+      | DevAppWorkerMethodHandler
+      | undefined;
+    if (!handler) {
+      respond({
+        kind: "response",
+        protocolVersion,
+        id: message.id,
+        error: { code: "unknown-method", message: `${message.method} is not implemented.` },
+      });
+      return;
+    }
+    try {
+      const result = await handler(message.params);
+      respond({ kind: "response", protocolVersion, id: message.id, result: result ?? null });
+    } catch {
+      respond({
+        kind: "response",
+        protocolVersion,
+        id: message.id,
+        error: { code: "internal-error", message: "The DevApp operation failed." },
+      });
+    }
+  };
+  const removeHost = transport.onHostMessage((message) => {
+    void dispatch(message, (response) => transport.sendHost(response));
+  });
+  const removeView = transport.onViewMessage((connectionId, message, close) => {
+    if (!close) void dispatch(message, (response) => transport.sendView(connectionId, response));
+  });
+
+  return {
+    requestHost: async <Result>(method: string, params?: unknown): Promise<Result> => {
+      const id = globalThis.crypto.randomUUID();
+      const request: DevAppWorkerRequest = { kind: "request", protocolVersion, id, method, params };
+      return await new Promise<Result>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`DevApp host request ${method} timed out.`));
+        }, timeoutMs);
+        pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
+        transport.sendHost(request);
+      });
+    },
+    emit: (topic, payload) => {
+      const event: DevAppWorkerEvent = { kind: "event", protocolVersion, topic, payload };
+      transport.sendHost(event);
+    },
+    close: () => {
+      removeHost();
+      removeView();
+      for (const request of pending.values()) {
+        clearTimeout(request.timer);
+        request.reject(new Error("The DevApp worker closed."));
+      }
+      pending.clear();
+    },
+  };
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;

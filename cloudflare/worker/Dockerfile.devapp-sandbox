@@ -1,0 +1,13 @@
+FROM docker.io/library/docker:28.5.1-dind-rootless@sha256:87d03cfe51f2bf87eec6dda1922dc572da4d37a1d21c5ca8e8b22c8a1fa107cc
+
+USER root
+RUN apk add --no-cache ca-certificates fuse3 s3fs-fuse \
+  && printf 'user_allow_other\n' > /etc/fuse.conf
+COPY --from=docker.io/cloudflare/sandbox:0.12.9-musl@sha256:8764d654c1d17ab2e83030bfd51466813856224d7e929d4fa70777116a02cf10 /container-server/sandbox /sandbox
+COPY start-devapp-sandbox.sh /usr/local/bin/start-devapp-sandbox
+RUN chmod 0755 /sandbox /usr/local/bin/start-devapp-sandbox
+
+USER rootless
+EXPOSE 3000 8080 8787
+ENTRYPOINT ["/sandbox"]
+CMD ["/usr/local/bin/start-devapp-sandbox"]

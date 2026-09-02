@@ -22,7 +22,7 @@ afterEach(() => {
 describe("DevAppAuthoringService", () => {
   it("creates a valid view/worker project with generated authoring assets", () => {
     const root = temporaryWorkspace();
-    const service = new DevAppAuthoringService();
+    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
     const result = service.scaffold({
       projectId: "project_a",
       workspaceId: "workspace_a",
@@ -54,7 +54,7 @@ describe("DevAppAuthoringService", () => {
   it("never overwrites an existing package and reports invalid imports", () => {
     const root = temporaryWorkspace();
     writeFileSync(path.join(root, "cozea-devapp.json"), "not-json", "utf8");
-    const service = new DevAppAuthoringService();
+    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
 
     expect(service.inspectFolder(root).status).toBe("invalid");
     expect(() =>
@@ -70,7 +70,7 @@ describe("DevAppAuthoringService", () => {
 
   it("keeps package paths inside the authorized workspace", () => {
     const root = temporaryWorkspace();
-    const service = new DevAppAuthoringService();
+    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
     expect(() =>
       service.inspect({
         projectId: "project_a",
@@ -86,7 +86,7 @@ describe("DevAppAuthoringService", () => {
     const outside = temporaryWorkspace();
     mkdirSync(path.join(root, "packages"));
     symlinkSync(outside, path.join(root, "packages", "linked"), "dir");
-    const service = new DevAppAuthoringService();
+    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
 
     expect(() =>
       service.inspect({
@@ -100,7 +100,7 @@ describe("DevAppAuthoringService", () => {
 
   it("creates a buildable worker-only starter", () => {
     const root = temporaryWorkspace();
-    const service = new DevAppAuthoringService();
+    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
     const result = service.scaffold({
       projectId: "project_a",
       workspaceId: "workspace_a",

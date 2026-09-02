@@ -709,6 +709,7 @@ const es: Record<TranslationKey, string> = {
   "orgDevApp.publish.building": "Compilando y empaquetando la aplicación estática…",
   "orgDevApp.publish.uploading": "Subiendo el artefacto limitado…",
   "orgDevApp.publish.verifying": "Verificando el tamaño y la integridad…",
+  "orgDevApp.publish.runtimeBuild": "Compilando el entorno contenido firmado…",
   "orgDevApp.publish.activating": "Activando la versión de la organización…",
   "orgDevApp.publish.complete": "Publicada.",
   "orgDevApp.publish.cancelling": "Cancelando la publicación…",

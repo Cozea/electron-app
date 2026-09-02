@@ -1,5 +1,5 @@
 // @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ 5725b2eb0dab80aa00fc17a220955359b14d75fe — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
 import { Schema } from "effect";
 
 import { EnvironmentId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -50,6 +50,8 @@ export const PREVIEW_AUTOMATION_OPERATIONS = [
   "devServerAttach",
   "devAppPreviewEnsure",
   "devAppPreviewAttach",
+  "devAppToolCatalog",
+  "devAppToolInvoke",
 ] as const;
 
 export const PreviewAutomationOperation = Schema.Literals(PREVIEW_AUTOMATION_OPERATIONS);
@@ -258,6 +260,62 @@ export const DevAppPreviewDeclaredTool = Schema.Struct({
 });
 export type DevAppPreviewDeclaredTool = typeof DevAppPreviewDeclaredTool.Type;
 
+const DevAppToolTargetFields = {
+  ...PreviewAutomationTabTargetFields,
+  relativePath: Schema.optional(DevAppPreviewRelativePath).annotate({
+    description:
+      "Development package relative to the current project. Published DevApps must be targeted by exact tabId.",
+  }),
+};
+
+export const DevAppToolTargetInput = Schema.Struct(DevAppToolTargetFields)
+  .check(
+    Schema.makeFilter((input) =>
+      input.tabId !== undefined || input.relativePath !== undefined
+        ? input.relativePath === undefined
+          ? true
+          : validateDevAppPreviewRelativePath(input.relativePath)
+        : "Provide an exact DevApp tabId or a development package relativePath.",
+    ),
+  )
+  .annotate({
+    description:
+      "Targets one open published or development DevApp without creating, approving, or widening it.",
+  });
+export type DevAppToolTargetInput = typeof DevAppToolTargetInput.Type;
+
+export const DevAppToolCatalogStatus = Schema.Struct({
+  kind: Schema.Literals(["development", "published"]),
+  tabId: Schema.NullOr(PreviewTabId),
+  name: Schema.String.check(Schema.isMaxLength(512)),
+  reference: Schema.NullOr(Schema.String.check(Schema.isMaxLength(2048))),
+  sourceId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(128))),
+  agentInvocable: Schema.Boolean,
+  toolInvocationAvailable: Schema.Boolean,
+  declaredTools: Schema.Array(DevAppPreviewDeclaredTool).check(Schema.isMaxLength(32)),
+  worker: Schema.NullOr(DevAppPreviewAutomationWorker),
+});
+export type DevAppToolCatalogStatus = typeof DevAppToolCatalogStatus.Type;
+
+export const DevAppToolInvokeInput = Schema.Struct({
+  ...DevAppToolTargetFields,
+  name: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,63}$/)).annotate({
+    description: "Exact operation name returned by devapp_tool_catalog.",
+  }),
+  input: Schema.Json.annotate({
+    description: "JSON input that matches the operation's declared inputSchema.",
+  }),
+  timeoutMs: OptionalTimeoutMs,
+});
+export type DevAppToolInvokeInput = typeof DevAppToolInvokeInput.Type;
+
+export const DevAppToolInvocationResult = Schema.Struct({
+  target: DevAppToolCatalogStatus,
+  name: Schema.String.check(Schema.isMaxLength(64)),
+  result: Schema.Json,
+});
+export type DevAppToolInvocationResult = typeof DevAppToolInvocationResult.Type;
+
 export const DevAppPreviewAutomationStatus = Schema.Struct({
   phase: Schema.Literals(["opening", "invalid", "needsApproval", "running"]),
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(1024)),
@@ -270,7 +328,7 @@ export const DevAppPreviewAutomationStatus = Schema.Struct({
   ),
   agentInvocable: Schema.Boolean,
   declaredTools: Schema.Array(DevAppPreviewDeclaredTool).check(Schema.isMaxLength(32)),
-  /** False until the contained Phase 8 runtime can execute autonomous worker tools. */
+  /** True only for an already-running worker with a valid agent-invocation approval. */
   toolInvocationAvailable: Schema.Boolean,
   diagnostics: Schema.Array(DevAppPreviewAutomationDiagnostic).check(Schema.isMaxLength(64)),
   worker: Schema.NullOr(DevAppPreviewAutomationWorker),

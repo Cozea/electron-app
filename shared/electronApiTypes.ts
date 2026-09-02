@@ -42,12 +42,7 @@ import type {
   NativePreviewStopSessionResult,
 } from './nativePreviewTypes'
 
-export type {
-  PersonalWorkspaceMembership,
-  Session,
-  User,
-  WorkspaceMembership,
-} from './types'
+export type { PersonalWorkspaceMembership, Session, User, WorkspaceMembership } from './types'
 
 export interface AppSettings {
   projectsDirectory: string
@@ -63,14 +58,7 @@ export interface AppSettings {
   nativeThemeSource?: 'system' | 'light' | 'dark'
 }
 
-export type UpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'available'
-  | 'downloading'
-  | 'downloaded'
-  | 'not-available'
-  | 'error'
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
 
 export interface UpdateProgress {
   percent: number
@@ -162,16 +150,7 @@ export interface BuildContract {
   telemetryHints?: Record<string, unknown>
 }
 
-export type RuntimeKind =
-  | 'node'
-  | 'npm'
-  | 'corepack'
-  | 'pnpm'
-  | 'yarn'
-  | 'bun'
-  | 'python'
-  | 'rust'
-  | 'go'
+export type RuntimeKind = 'node' | 'npm' | 'corepack' | 'pnpm' | 'yarn' | 'bun' | 'python' | 'rust' | 'go'
 
 export type RuntimeSource = 'override' | 'system' | 'missing'
 export type RuntimeTarget = `${NodeJS.Platform}-${NodeJS.Architecture}` | string
@@ -1244,14 +1223,7 @@ export type ElectronWindowContext = 'main' | 'settings'
 
 export type AuthRefreshFailureReason = 'expired' | 'retryable' | 'missing_session'
 
-export type ExternalBrowserId =
-  | 'system'
-  | 'safari'
-  | 'chrome'
-  | 'arc'
-  | 'firefox'
-  | 'edge'
-  | 'brave'
+export type ExternalBrowserId = 'system' | 'safari' | 'chrome' | 'arc' | 'firefox' | 'edge' | 'brave'
 
 export interface AvailableExternalBrowser {
   id: ExternalBrowserId
@@ -1298,11 +1270,7 @@ export type AuthRefreshResult =
       statusCode?: number
     }
 
-export type WorkbenchSessionLifecycle =
-  | 'active'
-  | 'backgroundWarm'
-  | 'backgroundFrozen'
-  | 'closed'
+export type WorkbenchSessionLifecycle = 'active' | 'backgroundWarm' | 'backgroundFrozen' | 'closed'
 
 export interface WorkbenchSessionDevServerState {
   running: boolean
@@ -1345,17 +1313,23 @@ export interface ElectronAPI {
     deleteKey: (options: { keyId: string }) => Promise<{ success: boolean; error?: string }>
     keyExists: (options: { keyId: string }) => Promise<boolean>
     encrypt: (options: { credentials: Record<string, unknown>; keyId: string }) => Promise<IntegrationEncryptResult>
-    onOAuthSuccess: (callback: (data: {
-      provider: string
-      accessToken?: string
-      refreshToken?: string
-      tokenExpiresAt?: number
-      externalId?: string
-      externalAccountName?: string
-      scopes?: string[]
-    }) => void) => () => void
+    onOAuthSuccess: (
+      callback: (data: {
+        provider: string
+        accessToken?: string
+        refreshToken?: string
+        tokenExpiresAt?: number
+        externalId?: string
+        externalAccountName?: string
+        scopes?: string[]
+      }) => void,
+    ) => () => void
     onOAuthError: (callback: (data: { provider: string; error: string }) => void) => () => void
-    startOAuth: (options: { provider: string; orgId: string; metadata?: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
+    startOAuth: (options: {
+      provider: string
+      orgId: string
+      metadata?: Record<string, unknown>
+    }) => Promise<{ success: boolean; error?: string }>
     runTool: (options: {
       toolName: string
       args: string[]
@@ -1384,10 +1358,7 @@ export interface ElectronAPI {
       wrappedKey: string
       wrapAlgorithm?: string
     }) => Promise<{ roomKeyBase64: string }>
-    createRecoveryKit: (options: {
-      roomKeyBase64: string
-      recoveryCode?: string
-    }) => Promise<CollabRecoveryKitResult>
+    createRecoveryKit: (options: { roomKeyBase64: string; recoveryCode?: string }) => Promise<CollabRecoveryKitResult>
     unwrapRecoveryKit: (options: {
       recoveryCode: string
       wrappedKey: string
@@ -1400,7 +1371,10 @@ export interface ElectronAPI {
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
     listAvailableBrowsers: () => Promise<AvailableExternalBrowserResult>
-    openInBrowser: (options: { url: string; browserId?: ExternalBrowserId }) => Promise<{ success: boolean; error?: string }>
+    openInBrowser: (options: {
+      url: string
+      browserId?: ExternalBrowserId
+    }) => Promise<{ success: boolean; error?: string }>
   }
   editor: {
     listAvailableEditors: () => Promise<AvailableExternalEditor[]>
@@ -1453,25 +1427,30 @@ export interface ElectronAPI {
       | { success: false; error: string }
     >
     getInstallation: (options: { ref: string }) => Promise<
-      | { success: true; installation: import('./orgDevAppInstallation').OrgDevAppInstallation | null }
+      | {
+          success: true
+          installation: import('./orgDevAppInstallation').OrgDevAppInstallation | null
+        }
       | { success: false; error: string }
     >
-    install: (request: import('./orgDevAppInstallation').OrgDevAppInstallRequest) => Promise<
+    install: (
+      request: import('./orgDevAppInstallation').OrgDevAppInstallRequest,
+    ) => Promise<
       | { success: true; installation: import('./orgDevAppInstallation').OrgDevAppInstallation }
       | { success: false; error: string }
     >
-    prepareInstalled: (options: { ref: string }) => Promise<
+    prepareInstalled: (options: {
+      ref: string
+    }) => Promise<
       | { success: true; artifact: import('./orgDevAppInstallation').OrgDevAppInstalledArtifact }
       | { success: false; error: string }
     >
-    uninstallPublication: (options: { publicationId: string }) => Promise<
-      | { success: true; removed: number }
-      | { success: false; error: string }
-    >
-    removeInstalledVersion: (options: { ref: string }) => Promise<
-      | { success: true; removed: boolean }
-      | { success: false; error: string }
-    >
+    uninstallPublication: (options: {
+      publicationId: string
+    }) => Promise<{ success: true; removed: number } | { success: false; error: string }>
+    removeInstalledVersion: (options: {
+      ref: string
+    }) => Promise<{ success: true; removed: boolean } | { success: false; error: string }>
     onInstallationsChanged: (
       listener: (installations: import('./orgDevAppInstallation').OrgDevAppInstallation[]) => void,
     ) => () => void
@@ -1495,6 +1474,109 @@ export interface ElectronAPI {
         }
       | { success: false; error: string }
     >
+    startRuntimeBuild: (options: {
+      workspaceId: string
+      laneId?: string | null
+      projectId: string
+      uploadReservationId: string
+      accessToken: string
+    }) => Promise<
+      | { success: true; build: import('./devAppContainedRuntime').DevAppRuntimeBuildDescriptor }
+      | { success: false; error: string }
+    >
+    getRuntimeBuild: (options: {
+      buildId: string
+      accessToken: string
+    }) => Promise<
+      | { success: true; build: import('./devAppContainedRuntime').DevAppRuntimeBuildDescriptor }
+      | { success: false; error: string }
+    >
+    getPublishedWorkerApproval: (options: { ref: string; workspaceId: string }) => Promise<
+      | {
+          success: true
+          requestedCapabilities: import('./devAppCapabilities').DevAppCapability[]
+          approved: boolean
+          agentInvocable: boolean
+          expiresAt: number | null
+        }
+      | { success: false; error: string }
+    >
+    approvePublishedWorker: (options: {
+      ref: string
+      workspaceId: string
+      agentInvocable: boolean
+    }) => Promise<{ success: true; expiresAt: number } | { success: false; error: string }>
+    revokePublishedWorker: (options: {
+      ref: string
+      workspaceId: string
+    }) => Promise<{ success: true } | { success: false; error: string }>
+    listFolderGrants: (options: {
+      ref: string
+    }) => Promise<
+      | { success: true; grants: import('./devAppContainedRuntime').DevAppFolderGrant[] }
+      | { success: false; error: string }
+    >
+    grantFolder: (options: {
+      ref: string
+      access: import('./devAppContainedRuntime').DevAppFolderGrantAccess
+    }) => Promise<
+      | { success: true; grant: import('./devAppContainedRuntime').DevAppFolderGrant | null }
+      | { success: false; error: string }
+    >
+    revokeFolderGrant: (options: {
+      ref: string
+      grantId: string
+    }) => Promise<{ success: true; revoked: boolean } | { success: false; error: string }>
+    stopPublishedRuntime: (options: {
+      ref: string
+      workspaceId: string
+    }) => Promise<{ success: true; stopped: boolean } | { success: false; error: string }>
+    releasePublishedRuntime: (options: {
+      ref: string
+      workspaceId: string
+      leaseId: string
+    }) => Promise<{ success: true; released: boolean } | { success: false; error: string }>
+    getPublishedToolStatus: (options: { ref: string; workspaceId: string; laneId?: string | null }) => Promise<
+      | {
+          success: true
+          status: {
+            ref: string
+            name: string
+            declaredTools: import('./devAppPackage').DevAppPackageToolSpec[]
+            agentInvocable: boolean
+            toolInvocationAvailable: boolean
+            worker: null | {
+              status: 'starting' | 'ready' | 'stopped' | 'crashed'
+              restarts: number
+              lastError: string | null
+            }
+          }
+        }
+      | { success: false; error: string }
+    >
+    invokePublishedTool: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+      name: string
+      input: unknown
+      timeoutMs?: number
+    }) => Promise<{ success: true; result: unknown } | { success: false; error: string }>
+    ensurePublishedRuntime: (options: {
+      ref: string
+      workspaceId: string
+      laneId?: string | null
+      leaseId: string
+      accessToken: string
+    }) => Promise<
+      | {
+          success: true
+          runtimeId: string
+          workerStatus: 'none' | 'starting' | 'approvalRequired'
+          requestedCapabilities?: import('./devAppCapabilities').DevAppCapability[]
+        }
+      | { success: false; error: string }
+    >
     cancelBuild: (options: { operationId: string }) => Promise<{ cancelled: boolean }>
     prepareArtifact: (options: {
       downloadUrl: string
@@ -1502,37 +1584,69 @@ export interface ElectronAPI {
       entryPath?: string
       runtimeKind?: 'static' | 'service'
     }) => Promise<
-      | { success: true; originUrl: string; contentHash: string; entryPath: string; runtimeKind: 'static' | 'service'; servicePermissions?: { network: boolean; persistentData: boolean } }
+      | {
+          success: true
+          originUrl: string
+          contentHash: string
+          entryPath: string
+          runtimeKind: 'static' | 'service'
+          servicePermissions?: { network: boolean; persistentData: boolean }
+        }
       | { success: false; error: string }
     >
-    getRuntimeTrust: (options: { contentHash: string; publicationId: string; permissionSetHash: string }) => Promise<
-      | { success: true; trusted: boolean }
-      | { success: false; error: string }
-    >
-    approveRuntime: (options: { contentHash: string; publicationId: string; permissionSetHash: string }) => Promise<
-      | { success: true }
-      | { success: false; error: string }
-    >
-    getRuntimeEnvironment: (options: { contentHash: string; publicationId: string }) => Promise<
+    getRuntimeTrust: (options: {
+      contentHash: string
+      publicationId: string
+      permissionSetHash: string
+    }) => Promise<{ success: true; trusted: boolean } | { success: false; error: string }>
+    approveRuntime: (options: {
+      contentHash: string
+      publicationId: string
+      permissionSetHash: string
+    }) => Promise<{ success: true } | { success: false; error: string }>
+    getRuntimeEnvironment: (options: {
+      contentHash: string
+      publicationId: string
+    }) => Promise<
       | { success: true; status: import('./orgDevAppEnvironment').OrgDevAppEnvironmentStatus }
       | { success: false; error: string }
     >
-    setRuntimeEnvironment: (options: { contentHash: string; publicationId: string; values: Record<string, string | null> }) => Promise<
+    setRuntimeEnvironment: (options: {
+      contentHash: string
+      publicationId: string
+      values: Record<string, string | null>
+    }) => Promise<
       | { success: true; status: import('./orgDevAppEnvironment').OrgDevAppEnvironmentStatus }
       | { success: false; error: string }
     >
-    startRuntime: (options: { contentHash: string; publicationId?: string; permissionSetHash?: string; leaseId?: string }) => Promise<
-      | { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState }
-      | { success: false; error: string }
+    startRuntime: (options: {
+      ref: string
+      contentHash: string
+      publicationId: string
+      permissionSetHash: string
+      leaseId: string
+      workspaceId: string
+      laneId?: string | null
+      accessToken: string
+    }) => Promise<
+      { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState } | { success: false; error: string }
     >
-    releaseRuntime: (options: { contentHash: string; publicationId: string; leaseId: string }) => Promise<{ released: boolean }>
-    stopRuntime: (options: { contentHash: string; publicationId: string }) => Promise<
-      | { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState }
-      | { success: false; error: string }
+    releaseRuntime: (options: {
+      contentHash: string
+      publicationId: string
+      leaseId: string
+    }) => Promise<{ released: boolean }>
+    stopRuntime: (options: {
+      contentHash: string
+      publicationId: string
+    }) => Promise<
+      { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState } | { success: false; error: string }
     >
-    getRuntimeState: (options: { contentHash: string; publicationId: string }) => Promise<
-      | { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState }
-      | { success: false; error: string }
+    getRuntimeState: (options: {
+      contentHash: string
+      publicationId: string
+    }) => Promise<
+      { success: true; state: import('./orgDevAppRuntime').OrgDevAppRuntimeState } | { success: false; error: string }
     >
   }
   devAppPreview: {
@@ -1548,30 +1662,31 @@ export interface ElectronAPI {
       relativePath: string
       leaseId: string
     }) => Promise<import('./devAppPreviewTypes').DevAppPreviewOpenResult>
-    approve: (options: { sourceId: string; approvalFingerprint: string }) => Promise<
-      import('./devAppPreviewTypes').DevAppPreviewResult
-    >
-    status: (options: { sourceId: string }) => Promise<
-      import('./devAppPreviewTypes').DevAppPreviewResult
-    >
+    approve: (options: {
+      sourceId: string
+      approvalFingerprint: string
+    }) => Promise<import('./devAppPreviewTypes').DevAppPreviewResult>
+    status: (options: { sourceId: string }) => Promise<import('./devAppPreviewTypes').DevAppPreviewResult>
+    invokeTool: (options: {
+      sourceId: string
+      name: string
+      input: unknown
+      timeoutMs?: number
+    }) => Promise<{ success: true; result: unknown } | { success: false; error: string }>
     close: (options: { sourceId: string; leaseId: string }) => Promise<{ success: true }>
     onStatus: (
-      listener: (payload: {
-        sourceId: string
-        status: import('./devAppPreviewTypes').DevAppPreviewStatus
-      }) => void,
+      listener: (payload: { sourceId: string; status: import('./devAppPreviewTypes').DevAppPreviewStatus }) => void,
     ) => () => void
   }
   devAppAuthoring: {
-    inspectWorkspace: (options: { workspaceId: string; relativePath?: string }) => Promise<
-      import('./devAppAuthoringTypes').DevAppAuthoringInspectionResult
-    >
-    inspectFolder: (options: { folderPath: string }) => Promise<
-      import('./devAppAuthoringTypes').DevAppAuthoringInspectionResult
-    >
-    listDevelopmentSources: () => Promise<
-      import('./devAppAuthoringTypes').DevAppAuthoringListResult
-    >
+    inspectWorkspace: (options: {
+      workspaceId: string
+      relativePath?: string
+    }) => Promise<import('./devAppAuthoringTypes').DevAppAuthoringInspectionResult>
+    inspectFolder: (options: {
+      folderPath: string
+    }) => Promise<import('./devAppAuthoringTypes').DevAppAuthoringInspectionResult>
+    listDevelopmentSources: () => Promise<import('./devAppAuthoringTypes').DevAppAuthoringListResult>
     scaffold: (options: {
       workspaceId: string
       name: string
@@ -1649,15 +1764,26 @@ export interface ElectronAPI {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     probePort: (options: { port: number; timeoutMs?: number }) => Promise<PreviewProbePortResult>
     probeUrl: (options: { url: string; timeoutMs?: number }) => Promise<PreviewProbeUrlResult>
-    captureScreenshot: (options: { url: string; width?: number; height?: number }) => Promise<PreviewCaptureScreenshotResult>
-    captureVisibleRegion: (options: { x: number; y: number; width: number; height: number }) => Promise<PreviewCaptureScreenshotResult>
+    captureScreenshot: (options: {
+      url: string
+      width?: number
+      height?: number
+    }) => Promise<PreviewCaptureScreenshotResult>
+    captureVisibleRegion: (options: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }) => Promise<PreviewCaptureScreenshotResult>
     inspectSelection: (options: PreviewInspectorSelectionInput) => Promise<PreviewInspectorSelectionResult>
     updateSelectionStyles: (options: PreviewInspectorStyleMutationInput) => Promise<PreviewInspectorMutationResult>
     updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
   }
   nativePreview: {
     listIosSimulators: () => Promise<NativePreviewListIosSimulatorsResult>
-    resolveLaunchConfig: (options: NativePreviewResolveLaunchConfigRequest) => Promise<NativePreviewResolveLaunchConfigResult>
+    resolveLaunchConfig: (
+      options: NativePreviewResolveLaunchConfigRequest,
+    ) => Promise<NativePreviewResolveLaunchConfigResult>
     startSession: (options: NativePreviewStartSessionRequest) => Promise<NativePreviewStartSessionResult>
     stopSession: (options: NativePreviewStopSessionRequest) => Promise<NativePreviewStopSessionResult>
     getSessionState: (options: NativePreviewSessionLocator) => Promise<NativePreviewSessionState | null>
@@ -1697,10 +1823,7 @@ export interface ElectronAPI {
     }) => Promise<WriteFileResult>
     readFile: (options: { workspaceId: string; filePath: string }) => Promise<ReadFileResult>
     readFileBase64: (options: { workspaceId: string; filePath: string }) => Promise<ReadFileBase64Result>
-    listDirectory: (options: {
-      workspaceId: string
-      directory?: string | null
-    }) => Promise<ListProjectDirectoryResult>
+    listDirectory: (options: { workspaceId: string; directory?: string | null }) => Promise<ListProjectDirectoryResult>
     listFiles: (options: { workspaceId: string }) => Promise<ListFilesResult>
     getContextOptions: (options: {
       workspaceId: string
@@ -1717,28 +1840,51 @@ export interface ElectronAPI {
       targetPath: string
       origin?: 'agent' | 'remote' | 'sync' | FileChangeAttribution
     }) => Promise<{ success: boolean; error?: string }>
-    copyPath: (options: { workspaceId: string; sourcePath: string; destinationPath: string }) => Promise<{ success: boolean; error?: string }>
-    copyDirectorySnapshot: (options: { sourcePath: string; targetPath: string; mode?: 'relocation' | 'raw' }) => Promise<CopyDirectorySnapshotResult>
-    preflightImportSource: (options: { workspaceId: string; mode?: 'relocation' | 'raw' }) => Promise<ImportSourcePreflightResult>
+    copyPath: (options: {
+      workspaceId: string
+      sourcePath: string
+      destinationPath: string
+    }) => Promise<{ success: boolean; error?: string }>
+    copyDirectorySnapshot: (options: {
+      sourcePath: string
+      targetPath: string
+      mode?: 'relocation' | 'raw'
+    }) => Promise<CopyDirectorySnapshotResult>
+    preflightImportSource: (options: {
+      workspaceId: string
+      mode?: 'relocation' | 'raw'
+    }) => Promise<ImportSourcePreflightResult>
     watchStart: (options: { workspaceId: string }) => Promise<WatchProjectResult>
     watchStop: (options: { workspaceId: string }) => Promise<WatchProjectResult>
     getPathNativeIcon: (options: { workspaceId: string }) => Promise<ProjectPathNativeIconResult>
     checkGhCliStatus: () => Promise<GhCliStatus>
-    createGitHubRepo: (options: { workspaceId: string; name: string; visibility?: 'private' | 'public' }) => Promise<CreateGitHubRepoResult>
+    createGitHubRepo: (options: {
+      workspaceId: string
+      name: string
+      visibility?: 'private' | 'public'
+    }) => Promise<CreateGitHubRepoResult>
   }
   runtime: {
     getProjectCapabilities: (options: { workspaceId: string }) => Promise<ProjectRuntimeProfile>
     resolveCommand: (options: { workspaceId: string; command: string }) => Promise<RuntimeResolveCommandResult>
-    ensureCommandRuntime: (options: { workspaceId: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    ensureCommandRuntime: (options: {
+      workspaceId: string
+      command: string
+    }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
     detectProjectRuntime: (options: { workspaceId: string }) => Promise<ProjectRuntimeProfile>
-    ensureForCommand: (options: { workspaceId: string; command: string }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
+    ensureForCommand: (options: {
+      workspaceId: string
+      command: string
+    }) => Promise<RuntimeEnsureResult | { success: false; command: string; error: string }>
     ensureRuntime: (options: {
       runtime: RuntimeKind
       target?: string
       cleanBrokenLocalFiles?: boolean
       forceReinstall?: boolean
     }) => Promise<RuntimeEnsureResult>
-    getRuntimeStatus: (options?: { workspaceId?: string }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
+    getRuntimeStatus: (options?: {
+      workspaceId?: string
+    }) => Promise<{ target: RuntimeTarget; runtimes: RuntimeHealth[] }>
   }
   /**
    * System-level, read-only file APIs that rely on `approvedExternalReadRoots`.
@@ -1750,8 +1896,11 @@ export interface ElectronAPI {
     readFile: (path: string) => Promise<string | null>
   }
   workspaceSync: {
-    hashFile: (options: { workspaceId: string; laneId?: string | null; path: string }) =>
-      Promise<{ hash: string; size: number } | { success: false; error: string }>
+    hashFile: (options: {
+      workspaceId: string
+      laneId?: string | null
+      path: string
+    }) => Promise<{ hash: string; size: number } | { success: false; error: string }>
     writeFiles: (options: {
       workspaceId: string
       files: SyncWriteFile[]
@@ -1851,10 +2000,7 @@ export interface ElectronAPI {
       keyId?: string
       debug?: boolean
     }) => Promise<GitSyncSalvageResult>
-    gitReadConflictFile: (options: {
-      workspaceId: string
-      filePath: string
-    }) => Promise<GitConflictFileResult>
+    gitReadConflictFile: (options: { workspaceId: string; filePath: string }) => Promise<GitConflictFileResult>
     gitResolveConflictFile: (options: {
       workspaceId: string
       filePath: string
@@ -1878,11 +2024,7 @@ export interface ElectronAPI {
       repoUrl?: string
       debug?: boolean
     }) => Promise<GitSyncAdoptResult>
-    gitCommitAll: (options: {
-      workspaceId: string
-      message: string
-      addAll?: boolean
-    }) => Promise<GitSyncCommitResult>
+    gitCommitAll: (options: { workspaceId: string; message: string; addAll?: boolean }) => Promise<GitSyncCommitResult>
     gitPushMain: (options: {
       workspaceId: string
       remote?: string
@@ -1929,9 +2071,7 @@ export interface ElectronAPI {
       workspaceId: string
       checkpointIds: string[]
     }) => Promise<GitCheckpointDeleteResult>
-    gitDeleteAllCheckpointRefs: (options: {
-      workspaceId: string
-    }) => Promise<GitCheckpointDeleteResult>
+    gitDeleteAllCheckpointRefs: (options: { workspaceId: string }) => Promise<GitCheckpointDeleteResult>
     gitGetHeadDiffStats: (options: {
       workspaceId: string
       authorName?: string
@@ -1952,22 +2092,11 @@ export interface ElectronAPI {
       scope: GitChangesScope
       authorName?: string
     }) => Promise<GitChangesResult>
-    subscribeGitChanges: (options: {
-      workspaceId: string
-      scope: GitChangesScope
-    }) => Promise<GitChangesSnapshot>
-    unsubscribeGitChanges: (options: {
-      workspaceId: string
-      scope: GitChangesScope
-    }) => Promise<{ success: boolean }>
+    subscribeGitChanges: (options: { workspaceId: string; scope: GitChangesScope }) => Promise<GitChangesSnapshot>
+    unsubscribeGitChanges: (options: { workspaceId: string; scope: GitChangesScope }) => Promise<{ success: boolean }>
     onGitChangesUpdated: (callback: (snapshot: GitChangesSnapshot) => void) => () => void
-    subscribeGitDirtyState: (options: {
-      workspaceId: string
-      authorName?: string
-    }) => Promise<GitDirtyStateSnapshot>
-    unsubscribeGitDirtyState: (options: {
-      workspaceId: string
-    }) => Promise<{ success: boolean }>
+    subscribeGitDirtyState: (options: { workspaceId: string; authorName?: string }) => Promise<GitDirtyStateSnapshot>
+    unsubscribeGitDirtyState: (options: { workspaceId: string }) => Promise<{ success: boolean }>
     onGitDirtyStateChange: (callback: (snapshot: GitDirtyStateSnapshot) => void) => () => void
     mergePreview: (options: {
       baseContent: string
@@ -1983,40 +2112,52 @@ export interface ElectronAPI {
       maxPreviewFiles?: number
       maxPreviewBytes?: number
     }) => Promise<MergeTreePreviewResult>
-    enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
-      Promise<{ accepted: number; acceptedOpIds: string[]; rejected: number; journalState: SyncJournalState }>
-    ackOps: (options: { projectId: string; opIds: string[] }) =>
-      Promise<{ acked: number; journalState: SyncJournalState }>
+    enqueueOps: (options: { projectId: string; ops: SyncOp[] }) => Promise<{
+      accepted: number
+      acceptedOpIds: string[]
+      rejected: number
+      journalState: SyncJournalState
+    }>
+    ackOps: (options: {
+      projectId: string
+      opIds: string[]
+    }) => Promise<{ acked: number; journalState: SyncJournalState }>
     getJournalState: (options: { projectId: string }) => Promise<SyncJournalState>
   }
   yjs: {
     setInterestRoots: (options: { roots: string[] }) => Promise<{ success: true }>
-    onExternalFileChange: (callback: (data: {
-      filePath: string
-      workspaceId?: string
-      projectRootPath?: string
-      relativePath?: string
-      content: string
-      origin?: string | FileChangeAttribution
-    }) => void) => () => void
-    onExternalFileMetaChange: (callback: (data: {
-      filePath: string
-      workspaceId?: string
-      projectRootPath?: string
-      relativePath?: string
-      origin?: string | FileChangeAttribution
-      isBinary: boolean
-      isDirectory?: boolean
-      sizeBytes: number
-      content?: string
-    }) => void) => () => void
-    onExternalFileDelete: (callback: (data: {
-      filePath: string
-      workspaceId?: string
-      projectRootPath?: string
-      relativePath?: string
-      origin?: string | FileChangeAttribution
-    }) => void) => () => void
+    onExternalFileChange: (
+      callback: (data: {
+        filePath: string
+        workspaceId?: string
+        projectRootPath?: string
+        relativePath?: string
+        content: string
+        origin?: string | FileChangeAttribution
+      }) => void,
+    ) => () => void
+    onExternalFileMetaChange: (
+      callback: (data: {
+        filePath: string
+        workspaceId?: string
+        projectRootPath?: string
+        relativePath?: string
+        origin?: string | FileChangeAttribution
+        isBinary: boolean
+        isDirectory?: boolean
+        sizeBytes: number
+        content?: string
+      }) => void,
+    ) => () => void
+    onExternalFileDelete: (
+      callback: (data: {
+        filePath: string
+        workspaceId?: string
+        projectRootPath?: string
+        relativePath?: string
+        origin?: string | FileChangeAttribution
+      }) => void,
+    ) => () => void
   }
   devServer: {
     start: (options: DevServerStartOptions) => Promise<DevServerStartResult>
@@ -2032,7 +2173,12 @@ export interface ElectronAPI {
       terminalId: string
     }) => Promise<{ success: boolean; ownsRuntime: boolean; error?: string }>
     stop: (options: { workspaceId: string; laneId?: string | null }) => Promise<{ success: boolean; error?: string }>
-    resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) => Promise<{ success: boolean }>
+    resize: (options: {
+      workspaceId: string
+      laneId?: string | null
+      cols: number
+      rows: number
+    }) => Promise<{ success: boolean }>
     isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
     getState: (options: { workspaceId: string; laneId?: string | null }) => Promise<DevServerProcessState>
     onStateChange: (callback: (data: DevServerProcessStateEvent) => void) => () => void
@@ -2065,9 +2211,23 @@ export interface ElectronAPI {
     onLoginEvent: (callback: (event: AgentToolLoginEvent) => void) => () => void
   }
   contextMenu: {
-    showTerminalSelection: (options: { selectedText: string; x: number; y: number }) => Promise<{ action: string | null }>
-    showFileTreeMenu: (options: { targetPath: string; isDirectory: boolean; x: number; y: number }) => Promise<{ action: string | null }>
-    showVisualEditorMenu: (options: { hasReactSource: boolean; hasReactStack: boolean; x: number; y: number }) => Promise<{ action: string | null }>
+    showTerminalSelection: (options: {
+      selectedText: string
+      x: number
+      y: number
+    }) => Promise<{ action: string | null }>
+    showFileTreeMenu: (options: {
+      targetPath: string
+      isDirectory: boolean
+      x: number
+      y: number
+    }) => Promise<{ action: string | null }>
+    showVisualEditorMenu: (options: {
+      hasReactSource: boolean
+      hasReactStack: boolean
+      x: number
+      y: number
+    }) => Promise<{ action: string | null }>
     showNative: (options: {
       x: number
       y: number
@@ -2104,7 +2264,12 @@ export interface ElectronAPI {
     findByPath: (folderPath: string) => Promise<LocalWorkspaceDTO | null>
     trashManagedWorkspace: (workspaceId: string) => Promise<TrashManagedWorkspaceResult>
     forget: (workspaceId: string) => Promise<void>
-    listCandidates: (req: { projectId: string; slug: string; roots: string[]; expectedRepo?: unknown }) => Promise<WorkspaceCandidate[]>
+    listCandidates: (req: {
+      projectId: string
+      slug: string
+      roots: string[]
+      expectedRepo?: unknown
+    }) => Promise<WorkspaceCandidate[]>
     openInFinder: (folderPath: string) => Promise<void>
     getCatalogSnapshot: () => Promise<WorkspaceCatalogSnapshot>
     onCatalogSnapshotChanged: (callback: (snapshot: WorkspaceCatalogSnapshot) => void) => () => void

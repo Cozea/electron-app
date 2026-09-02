@@ -4,7 +4,7 @@
   "title": "Cozea DevApp package",
   "description": "Authoring manifest for a Cozea developer application.",
   "type": "object",
-  "additionalProperties": true,
+  "additionalProperties": false,
   "required": [
     "manifestVersion",
     "name"
@@ -29,7 +29,7 @@
   "properties": {
     "manifestVersion": {
       "type": "integer",
-      "const": 1
+      "const": 2
     },
     "name": {
       "type": "string",
@@ -153,8 +153,149 @@
           "$ref": "#/$defs/packagePath"
         }
       }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "location",
+        "state"
+      ],
+      "properties": {
+        "location": {
+          "type": "string",
+          "enum": [
+            "device",
+            "hosted"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "none",
+            "device",
+            "organization"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "location": {
+                "const": "device"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "none",
+                  "device"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "location": {
+                "const": "hosted"
+              }
+            },
+            "required": [
+              "location"
+            ]
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "none",
+                  "organization"
+                ]
+              }
+            }
+          }
+        }
+      ]
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "worker"
+            ]
+          },
+          {
+            "required": [
+              "service"
+            ],
+            "properties": {
+              "service": {
+                "type": "object",
+                "required": [
+                  "runtimeKind"
+                ],
+                "properties": {
+                  "runtimeKind": {
+                    "const": "node"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "runtime"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "worker"
+            ]
+          },
+          {
+            "required": [
+              "service"
+            ],
+            "properties": {
+              "service": {
+                "type": "object",
+                "required": [
+                  "runtimeKind"
+                ],
+                "properties": {
+                  "runtimeKind": {
+                    "const": "node"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
   "$defs": {
     "packagePath": {
       "type": "string",

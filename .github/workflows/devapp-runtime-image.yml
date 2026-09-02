@@ -1,0 +1,150 @@
+name: Build DevApp runtime image
+
+on:
+  repository_dispatch:
+    types: [devapp-image-build]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: devapp-runtime-${{ github.event.client_payload.buildId }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ github.event.client_payload.buildId != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      BUILD_ID: ${{ github.event.client_payload.buildId }}
+      BUILDER_GATEWAY: ${{ secrets.COZEA_DEVAPP_BUILDER_GATEWAY_URL }}
+      BUILDER_TOKEN: ${{ secrets.COZEA_DEVAPP_BUILDER_CALLBACK_TOKEN }}
+      IMAGE_REPOSITORY: ghcr.io/cozea/devapps
+    steps:
+      - name: Validate opaque build ID
+        shell: bash
+        run: |
+          [[ "$BUILD_ID" =~ ^[A-Za-z0-9_-]{1,128}$ ]]
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Mark build active
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $BUILDER_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"status":"building"}' \
+            "$BUILDER_GATEWAY/internal/devapps/runtime-builds/$BUILD_ID/complete"
+
+      - name: Download authorized immutable source
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $BUILDER_TOKEN" \
+            -D source.headers \
+            -o source.zip \
+            "$BUILDER_GATEWAY/internal/devapps/runtime-builds/$BUILD_ID/source"
+          SOURCE_DIGEST="$(awk 'BEGIN{IGNORECASE=1} /^x-cozea-source-digest:/ {gsub(/\r/, "", $2); print $2}' source.headers)"
+          PACKAGE_MANIFEST_DIGEST="$(awk 'BEGIN{IGNORECASE=1} /^x-cozea-package-manifest-digest:/ {gsub(/\r/, "", $2); print $2}' source.headers)"
+          [[ "$SOURCE_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$PACKAGE_MANIFEST_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "SOURCE_DIGEST=$SOURCE_DIGEST" >> "$GITHUB_ENV"
+          echo "PACKAGE_MANIFEST_DIGEST=$PACKAGE_MANIFEST_DIGEST" >> "$GITHUB_ENV"
+
+      - name: Prepare deterministic build context
+        shell: bash
+        run: |
+          bun run scripts/prepare-devapp-runtime-build.ts \
+            --source source.zip \
+            --context build/devapp-image-context \
+            --plan build/devapp-image-plan.json \
+            --source-digest "$SOURCE_DIGEST" \
+            --package-manifest-digest "$PACKAGE_MANIFEST_DIGEST"
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Build Linux arm64 image
+        id: arm64
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: build/devapp-image-context
+          file: build/devapp-image-context/Containerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_REPOSITORY }}:${{ env.BUILD_ID }}-arm64
+          provenance: mode=max
+          sbom: true
+          build-args: SOURCE_DATE_EPOCH=0
+
+      - name: Build Linux amd64 image
+        id: amd64
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: build/devapp-image-context
+          file: build/devapp-image-context/Containerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_REPOSITORY }}:${{ env.BUILD_ID }}-amd64
+          provenance: mode=max
+          sbom: true
+          build-args: SOURCE_DATE_EPOCH=0
+
+      - name: Assemble and sign exact multi-platform release
+        shell: bash
+        env:
+          ARM64_DIGEST: ${{ steps.arm64.outputs.digest }}
+          AMD64_DIGEST: ${{ steps.amd64.outputs.digest }}
+          COZEA_RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.COZEA_RUNTIME_SIGNING_PRIVATE_KEY }}
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE_REPOSITORY:$BUILD_ID" \
+            "$IMAGE_REPOSITORY@$ARM64_DIGEST" \
+            "$IMAGE_REPOSITORY@$AMD64_DIGEST"
+          MANIFEST_DIGEST="$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$BUILD_ID" | awk '/^Digest:/ {print $2; exit}')"
+          [[ "$MANIFEST_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          bun run scripts/finalize-devapp-runtime-build.ts \
+            --plan build/devapp-image-plan.json \
+            --repository "$IMAGE_REPOSITORY" \
+            --manifest-digest "$MANIFEST_DIGEST" \
+            --arm64-digest "$ARM64_DIGEST" \
+            --amd64-digest "$AMD64_DIGEST" \
+            --output build/unsigned-runtime-image.json
+          bun run scripts/sign-devapp-image-attestation.ts \
+            --input build/unsigned-runtime-image.json \
+            --output build/runtime-image.json \
+            --public-key-output build/runtime-public-key.pem
+          bun -e '
+            const image = await Bun.file("build/runtime-image.json").json();
+            const plan = await Bun.file("build/devapp-image-plan.json").json();
+            await Bun.write("build/callback.json", JSON.stringify({ status: "ready", runtimeImage: image, runtimeParts: plan.parts }));
+          '
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $BUILDER_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @build/callback.json \
+            "$BUILDER_GATEWAY/internal/devapps/runtime-builds/$BUILD_ID/complete"
+
+      - name: Report failure
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          curl --silent --show-error \
+            -H "Authorization: Bearer $BUILDER_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"status":"failed","error":"The trusted central image build failed. Inspect the protected builder logs."}' \
+            "$BUILDER_GATEWAY/internal/devapps/runtime-builds/$BUILD_ID/complete" || true

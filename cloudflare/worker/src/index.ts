@@ -1,18 +1,26 @@
 import type { Env } from './types'
+import { ContainerProxy, proxyToSandbox } from '@cloudflare/sandbox'
 import { handleHealth } from './routes/health'
 import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
+import { DevAppRuntimeBuild } from './durableObjects/DevAppRuntimeBuild'
+import { CozeaDevAppSandbox } from './durableObjects/CozeaDevAppSandbox'
 import {
-  handleDeviceAuthChallenge,
-  handleDeviceAuthComplete,
-  handleDeviceAuthJwks,
-} from './routes/deviceAuth'
+  handleCompleteDevAppRuntimeBuild,
+  handleCreateDevAppRuntimeBuild,
+  handleGetDevAppRuntimeBuild,
+  handleGetDevAppRuntimeBuildSource,
+} from './routes/devAppRuntimeBuilds'
+import { handleCreateDevAppRuntimePull } from './routes/devAppRuntimePull'
 import {
-  handleCreateRecoveryGrant,
-  handleRedeemRecoveryGrant,
-} from './routes/deviceRecovery'
+  handleRenewHostedDevAppRuntime,
+  handleStartHostedDevAppRuntime,
+  handleStopHostedDevAppRuntime,
+} from './routes/devAppHostedRuntimes'
+import { handleDeviceAuthChallenge, handleDeviceAuthComplete, handleDeviceAuthJwks } from './routes/deviceAuth'
+import { handleCreateRecoveryGrant, handleRedeemRecoveryGrant } from './routes/deviceRecovery'
 
 function getRoomStub(env: Env, roomId: string): DurableObjectStub {
   const id = env.COLLAB_ROOM.idFromName(roomId)
@@ -23,6 +31,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get('origin')
     try {
+      const sandboxProxy = await proxyToSandbox(request, { Sandbox: env.DEVAPP_SANDBOX })
+      if (sandboxProxy) return sandboxProxy
       const url = new URL(request.url)
 
       if (request.method === 'OPTIONS') {
@@ -73,7 +83,13 @@ export default {
         try {
           return await handleCreateRecoveryGrant(request, env)
         } catch (error) {
-          return protocolError('RECOVERY_GRANT_REJECTED', error instanceof Error ? error.message : 'Recovery grant failed', { status: 403 }, false, origin)
+          return protocolError(
+            'RECOVERY_GRANT_REJECTED',
+            error instanceof Error ? error.message : 'Recovery grant failed',
+            { status: 403 },
+            false,
+            origin,
+          )
         }
       }
 
@@ -81,7 +97,13 @@ export default {
         try {
           return await handleRedeemRecoveryGrant(request, env)
         } catch (error) {
-          return protocolError('RECOVERY_REJECTED', error instanceof Error ? error.message : 'Recovery failed', { status: 403 }, false, origin)
+          return protocolError(
+            'RECOVERY_REJECTED',
+            error instanceof Error ? error.message : 'Recovery failed',
+            { status: 403 },
+            false,
+            origin,
+          )
         }
       }
 
@@ -97,6 +119,43 @@ export default {
             origin,
           )
         }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/devapps/runtime-builds') {
+        return await handleCreateDevAppRuntimeBuild(request, env)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/devapps/runtime-pulls') {
+        return await handleCreateDevAppRuntimePull(request, env)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/devapps/hosted-runtimes/start') {
+        return await handleStartHostedDevAppRuntime(request, env)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/devapps/hosted-runtimes/stop') {
+        return await handleStopHostedDevAppRuntime(request, env)
+      }
+
+      if (request.method === 'POST' && url.pathname === '/devapps/hosted-runtimes/renew') {
+        return await handleRenewHostedDevAppRuntime(request, env)
+      }
+
+      const runtimeBuildMatch = url.pathname.match(/^\/devapps\/runtime-builds\/([A-Za-z0-9_-]+)$/)
+      if (request.method === 'GET' && runtimeBuildMatch) {
+        return await handleGetDevAppRuntimeBuild(request, env, runtimeBuildMatch[1])
+      }
+
+      const internalSourceMatch = url.pathname.match(/^\/internal\/devapps\/runtime-builds\/([A-Za-z0-9_-]+)\/source$/)
+      if (request.method === 'GET' && internalSourceMatch) {
+        return await handleGetDevAppRuntimeBuildSource(request, env, internalSourceMatch[1])
+      }
+
+      const internalCompleteMatch = url.pathname.match(
+        /^\/internal\/devapps\/runtime-builds\/([A-Za-z0-9_-]+)\/complete$/,
+      )
+      if (request.method === 'POST' && internalCompleteMatch) {
+        return await handleCompleteDevAppRuntimeBuild(request, env, internalCompleteMatch[1])
       }
 
       if (url.pathname === '/collab/ws') {
@@ -121,4 +180,4 @@ export default {
   },
 } satisfies ExportedHandler<Env>
 
-export { CollabRoom }
+export { CollabRoom, CozeaDevAppSandbox, ContainerProxy, DevAppRuntimeBuild }

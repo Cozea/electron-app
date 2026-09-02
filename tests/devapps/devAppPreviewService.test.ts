@@ -7,6 +7,7 @@ import type { Session } from "electron"
 import { DevAppPreviewService } from "../../apps/desktop/electron/services/DevAppPreviewService"
 import type { DevAppWatch } from "../../apps/desktop/electron/services/DevAppPreviewWatcher"
 import type { DevAppPreviewStatus } from "../../shared/devAppPreviewTypes"
+import { DEV_APP_MANIFEST_VERSION } from "../../shared/devAppPackage"
 import {
   DEV_APP_WORKER_PROTOCOL_VERSION,
   createDevAppWorkerViewPortBootstrap,
@@ -25,13 +26,23 @@ let root: string
 let workspaceRoot: string
 let sourcePath: string
 
-const manifest = (extra: Record<string, unknown> = {}) =>
-  JSON.stringify({
-    manifestVersion: 1,
+const manifest = (extra: Record<string, unknown> = {}) => {
+  const worker = extra.worker && typeof extra.worker === "object" && !Array.isArray(extra.worker)
+    ? extra.worker as Record<string, unknown>
+    : null
+  return JSON.stringify({
+    manifestVersion: DEV_APP_MANIFEST_VERSION,
     name: "Inventory",
     view: { entry: "dist/index.html" },
     ...extra,
+    ...(worker
+      ? {
+          worker: { protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION, ...worker },
+          runtime: { location: "device", state: "device" },
+        }
+      : {}),
   })
+}
 
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "devapp-preview-"))

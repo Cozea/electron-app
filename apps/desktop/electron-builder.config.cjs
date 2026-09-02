@@ -109,6 +109,17 @@ module.exports = {
         "DevCommandRanker.mlmodel",
       ],
     },
+    {
+      // App-owned Apple Containerization helper and its pinned Linux boot resources.
+      // `predist` verifies every upstream digest before this directory exists.
+      from: "../../build/devapp-container-runtime",
+      to: "devapp-container-runtime",
+      filter: [
+        "cozea-devapp-container-runtime",
+        "vmlinux",
+        "resource-manifest.json",
+      ],
+    },
   ],
   mac: {
     category: "public.app-category.developer-tools",

@@ -15,6 +15,11 @@ import {
 } from "../../../../shared/devAppPackage";
 import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../../../shared/devAppWorkerProtocol";
 import { formatDevAppRef } from "../../../../shared/devAppRef";
+import {
+  prepareScaffoldedDevAppProject,
+  type DevAppScaffoldPreparation,
+  type ScaffoldCommandRunner,
+} from "./devAppScaffoldPreparation";
 
 interface InspectOptions {
   projectId: string;
@@ -78,6 +83,12 @@ function missingInspection(): DevAppPackageInspection {
 }
 
 export class DevAppAuthoringService {
+  private readonly runScaffoldCommand: ScaffoldCommandRunner | undefined;
+
+  constructor(runScaffoldCommand?: ScaffoldCommandRunner) {
+    this.runScaffoldCommand = runScaffoldCommand;
+  }
+
   inspect(options: InspectOptions): DevAppPackageInspection {
     const relativePath = normalizedPackagePath(options.relativePath);
     const packageRoot = resolvePackageRoot(options.workspaceRoot, relativePath);
@@ -126,7 +137,11 @@ export class DevAppAuthoringService {
     return this.inspect({ projectId: "pending", workspaceId: sourceId, workspaceRoot: root });
   }
 
-  scaffold(options: ScaffoldOptions): { source: DevAppDevelopmentSource; createdFiles: string[] } {
+  scaffold(options: ScaffoldOptions): {
+    source: DevAppDevelopmentSource;
+    createdFiles: string[];
+    preparation: DevAppScaffoldPreparation;
+  } {
     const trimmedName = options.name.trim();
     if (!trimmedName || trimmedName.length > 120) throw new Error("Choose a DevApp name.");
     const relativePath = normalizedPackagePath(options.relativePath);
@@ -163,7 +178,10 @@ export class DevAppAuthoringService {
     const inspection = this.inspect({ ...options, relativePath });
     if (inspection.status !== "valid")
       throw new Error("The generated DevApp manifest failed validation.");
-    return { source: inspection.source, createdFiles };
+    // Publication requires a lockfile and a recorded tree. Producing them here keeps a new
+    // package publishable, instead of failing from the publish dialog much later.
+    const preparation = prepareScaffoldedDevAppProject(packageRoot, this.runScaffoldCommand);
+    return { source: inspection.source, createdFiles, preparation };
   }
 }
 
@@ -183,6 +201,7 @@ function scaffoldFiles(name: string, starter: DevAppScaffoldStarter): Record<str
             capabilities: ["project.metadata", "project.read"],
             tools: [],
           },
+          runtime: { location: "device", state: "device" },
         }
       : {}),
     service: { runtimeKind: "static" },
@@ -228,7 +247,7 @@ function scaffoldFiles(name: string, starter: DevAppScaffoldStarter): Record<str
     "scripts/build.ts": hasView
       ? `import { cp, mkdir } from "node:fs/promises"\n\nawait mkdir("dist", { recursive: true })\nawait cp("src/index.html", "dist/index.html")\nawait cp("src/styles.css", "dist/styles.css")\nconsole.log("Built ${name}")\n`
       : `console.log("${name} is a worker-only DevApp; its plain JavaScript worker needs no view build.")\n`,
-    "README.md": `# ${name}\n\nA native Cozea DevApp. Open this project in Cozea to preview it, or add its development tile to another project for integration testing.\n\n- \`bun run build\` refreshes the built view.\n- \`cozea-devapp.json\` declares the view, worker, and requested capabilities.\n- Development workers are trusted local code. Published worker execution remains unavailable until the isolated runtime ships.\n`,
+    "README.md": `# ${name}\n\nA native Cozea DevApp. Open this project in Cozea to preview it, or add its development tile to another project for integration testing.\n\n- \`bun run build\` refreshes the built view.\n- \`cozea-devapp.json\` declares the view, worker, requested capabilities, runtime placement, and state ownership.\n- Development workers are trusted local code and may use their approved project capabilities. Published executable parts run only inside Cozea's contained runtime.\n`,
   };
   if (hasView) {
     files["src/index.html"] =
@@ -240,9 +259,9 @@ function scaffoldFiles(name: string, starter: DevAppScaffoldStarter): Record<str
   }
   if (hasWorker) {
     files["worker/index.js"] =
-      `// Trusted local development worker. Published execution stays disabled until Phase 8.\nconst parent = process.parentPort\n\nparent?.on("message", (event) => {\n  const bootstrap = event.data\n  const port = event.ports?.[0]\n  if (!port) return\n\n  if (bootstrap?.kind === "cozea-devapp-port") {\n    // Host capability channel. Send project.* requests here when this worker needs them.\n    port.start()\n    return\n  }\n\n  if (bootstrap?.kind !== "cozea-devapp-view-port") {\n    port.close()\n    return\n  }\n\n  // Private channel for this package's own view. Replace the example response with\n  // methods shared by the view and worker; the host never sees these method names.\n  port.on("message", (messageEvent) => {\n    const message = messageEvent.data\n    if (message?.kind !== "request") return\n    port.postMessage({\n      kind: "response",\n      protocolVersion: bootstrap.protocolVersion,\n      id: message.id,\n      result: { ok: true, method: message.method },\n    })\n  })\n  port.start()\n})\n`;
+      `import { createDevAppWorker } from "@cozea/devapp-api"\n\n// This same worker runs as powerful, approval-gated local development code and inside\n// Cozea's contained runtime after publication. The SDK selects the correct transport.\ncreateDevAppWorker({\n  ping: async ({ message }) => ({ ok: true, method: "ping", message }),\n})\n`;
     files["src/cozea-devapp.ts"] =
-      `import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api"\n\ninterface Methods {\n  ping: DevAppMethodDefinition<{ message: string }, { ok: boolean; method: string }>\n}\n\nexport const worker = createDevAppClient<Methods>()\n`;
+      `import { createDevAppClient, type DevAppMethodDefinition } from "@cozea/devapp-api"\n\ninterface Methods {\n  ping: DevAppMethodDefinition<{ message: string }, { ok: boolean; method: string; message: string }>\n}\n\nexport const worker = createDevAppClient<Methods>()\n`;
   }
   return files;
 }

@@ -2,6 +2,8 @@ import { WS_METHODS } from "@cozea/contracts";
 import type {
   DevAppPreviewAutomationDiagnostic,
   DevAppPreviewAutomationStatus,
+  DevAppToolCatalogStatus,
+  DevAppToolInvocationResult,
   PreviewAutomationClickInput,
   PreviewAutomationEvaluateInput,
   PreviewAutomationNavigateInput,
@@ -62,6 +64,7 @@ import {
 import {
   useProjectWorkbenchStore,
   type WorkbenchDevAppPreviewTile,
+  type WorkbenchOrgDevAppTile,
 } from "@/stores/useProjectWorkbenchStore";
 
 const SUPPORTED_OPERATIONS = [
@@ -84,6 +87,8 @@ const SUPPORTED_OPERATIONS = [
   "devServerAttach",
   "devAppPreviewEnsure",
   "devAppPreviewAttach",
+  "devAppToolCatalog",
+  "devAppToolInvoke",
 ] as const satisfies readonly PreviewAutomationOperation[];
 
 const HOST_CLIENT_ID = "cozea-desktop-dev-server";
@@ -231,6 +236,24 @@ function findDevAppPreviewTile(
   for (const tileId of context.tileIds) {
     const tile = readDevAppPreviewTile(context, tileId);
     if (tile && normalizeDevAppPreviewRelativePath(tile.relativePath) === expected) return tile;
+  }
+  return null;
+}
+
+function readOrgDevAppTile(
+  context: ThreadWorkbenchContext,
+  tileId: string,
+): WorkbenchOrgDevAppTile | null {
+  for (const workbench of Object.values(useProjectWorkbenchStore.getState().workbenches)) {
+    if (
+      workbench.projectId !== context.projectId ||
+      workbench.laneId !== context.laneId ||
+      workbench.workspaceId !== context.workspaceId
+    ) {
+      continue;
+    }
+    const tile = workbench.tiles[tileId];
+    return tile?.type === "orgDevApp" ? tile : null;
   }
   return null;
 }
@@ -609,7 +632,11 @@ async function readDevAppPreviewAutomationStatus(
     requestedCapabilities: requestedCapabilities.slice(0, 64).map((value) => value.slice(0, 128)),
     agentInvocable,
     declaredTools,
-    toolInvocationAvailable: false,
+    toolInvocationAvailable:
+      phase === "running" &&
+      agentInvocable &&
+      worker?.status === "ready" &&
+      declaredTools.length > 0,
     diagnostics: readDevAppPreviewDiagnostics(snapshot),
     worker,
     surface,
@@ -644,6 +671,163 @@ async function resolveDevAppPreviewAutomationStatus(
     runtime.lastControlledSurfaceByThread.set(threadId, surface.runtimeTabId);
   }
   return await readDevAppPreviewAutomationStatus(context, tile, snapshot);
+}
+
+interface ResolvedDevAppToolTarget {
+  catalog: DevAppToolCatalogStatus;
+  invoke: (name: string, input: unknown, timeoutMs: number) => Promise<unknown>;
+}
+
+async function resolveDevAppToolTarget(
+  request: PreviewAutomationRequest,
+  input: Record<string, unknown>,
+): Promise<ResolvedDevAppToolTarget> {
+  const context = requireThreadWorkbenchContext(request.threadId);
+  const bridge = previewBridge();
+  const surfaces = bridge ? eligibleSurfaces(context, await bridge.listSurfaces()) : [];
+  const requestedSurface = request.tabId
+    ? resolveSurfaceTarget(context, surfaces, request.tabId, null)
+    : null;
+  if (
+    requestedSurface &&
+    requestedSurface.kind !== "devAppPreview" &&
+    requestedSurface.kind !== "orgDevApp"
+  ) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      `Preview tab ${request.tabId} is not a DevApp.`,
+    );
+  }
+
+  const requestedTileId = requestedSurface?.tileId ?? request.tabId ?? null;
+  const publishedTile = requestedTileId ? readOrgDevAppTile(context, requestedTileId) : null;
+  if (publishedTile) {
+    if (typeof input.relativePath === "string") {
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        "Published DevApps must be targeted only by their exact tabId.",
+      );
+    }
+    const result = await window.electronAPI.orgDevApp.getPublishedToolStatus({
+      ref: publishedTile.devAppRef,
+      workspaceId: context.workspaceId,
+      laneId: context.laneId,
+    });
+    if (!result.success) {
+      throw new PreviewHostError("PreviewAutomationExecutionError", result.error);
+    }
+    const status = result.status;
+    const catalog = {
+      kind: "published",
+      tabId: requestedSurface?.runtimeTabId ?? publishedTile.id,
+      name: status.name.slice(0, 512),
+      reference: status.ref.slice(0, 2_048),
+      sourceId: null,
+      agentInvocable: status.agentInvocable,
+      toolInvocationAvailable: status.toolInvocationAvailable,
+      declaredTools: status.declaredTools.slice(0, 32).map((tool) => ({
+        name: tool.name.slice(0, 64),
+        description: tool.description.slice(0, 500),
+        inputSchema: tool.inputSchema,
+      })),
+      worker: status.worker
+        ? {
+            status: status.worker.status,
+            restarts: Math.max(0, status.worker.restarts),
+            lastError: status.worker.lastError?.slice(0, 2_048) ?? null,
+          }
+        : null,
+    } satisfies DevAppToolCatalogStatus;
+    return {
+      catalog,
+      invoke: async (name, toolInput, timeoutMs) => {
+        const invocation = await window.electronAPI.orgDevApp.invokePublishedTool({
+          ref: publishedTile.devAppRef,
+          workspaceId: context.workspaceId,
+          laneId: context.laneId,
+          name,
+          input: toolInput,
+          timeoutMs,
+        });
+        if (!invocation.success) {
+          throw new PreviewHostError("PreviewAutomationExecutionError", invocation.error);
+        }
+        return invocation.result;
+      },
+    };
+  }
+
+  const requestedDevelopmentTile = requestedTileId
+    ? readDevAppPreviewTile(context, requestedTileId)
+    : null;
+  const inputRelativePath =
+    typeof input.relativePath === "string"
+      ? normalizeDevAppPreviewRelativePath(input.relativePath)
+      : null;
+  if (request.tabId && !requestedDevelopmentTile) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      `DevApp ${request.tabId} is not available in this workbench.`,
+    );
+  }
+  if (
+    requestedDevelopmentTile &&
+    inputRelativePath &&
+    normalizeDevAppPreviewRelativePath(requestedDevelopmentTile.relativePath) !== inputRelativePath
+  ) {
+    throw new PreviewHostError(
+      "PreviewAutomationExecutionError",
+      "The requested preview tab belongs to a different development package.",
+    );
+  }
+  const tile =
+    requestedDevelopmentTile ??
+    (inputRelativePath ? findDevAppPreviewTile(context, inputRelativePath) : null);
+  if (!tile) {
+    throw new PreviewHostError(
+      "PreviewAutomationTabNotFoundError",
+      "The requested development DevApp must already be open in this workbench.",
+    );
+  }
+  const snapshot = await waitForDevAppPreviewRuntime(tile.id, Math.min(request.timeoutMs, 5_000));
+  const previewStatus = await readDevAppPreviewAutomationStatus(context, tile, snapshot);
+  const approvedAgentInvocation =
+    previewStatus.phase === "running" && previewStatus.agentInvocable;
+  const catalog = {
+    kind: "development",
+    tabId: requestedSurface?.runtimeTabId ?? tile.id,
+    name: previewStatus.name ?? tile.title.slice(0, 512),
+    reference: null,
+    sourceId: previewStatus.sourceId,
+    agentInvocable: approvedAgentInvocation,
+    toolInvocationAvailable:
+      approvedAgentInvocation &&
+      previewStatus.worker?.status === "ready" &&
+      previewStatus.declaredTools.length > 0,
+    declaredTools: previewStatus.declaredTools,
+    worker: previewStatus.worker,
+  } satisfies DevAppToolCatalogStatus;
+  return {
+    catalog,
+    invoke: async (name, toolInput, timeoutMs) => {
+      if (!previewStatus.sourceId) {
+        throw new PreviewHostError(
+          "PreviewAutomationExecutionError",
+          "The development DevApp has no running worker source.",
+        );
+      }
+      const invocation = await window.electronAPI.devAppPreview.invokeTool({
+        sourceId: previewStatus.sourceId,
+        name,
+        input: toolInput,
+        timeoutMs,
+      });
+      if (!invocation.success) {
+        throw new PreviewHostError("PreviewAutomationExecutionError", invocation.error);
+      }
+      return invocation.result;
+    },
+  };
 }
 
 async function waitForDevServerLaunchContext(
@@ -840,6 +1024,41 @@ async function runRequestInternal(
 ): Promise<unknown> {
   const input = asRecord(request.input);
   const current = runtime.surfacesByThread.get(request.threadId);
+
+  if (request.operation === "devAppToolCatalog" || request.operation === "devAppToolInvoke") {
+    const target = await resolveDevAppToolTarget(request, input);
+    if (request.operation === "devAppToolCatalog") return target.catalog;
+
+    const name = typeof input.name === "string" ? input.name : "";
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(name)) {
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        "The DevApp tool name is invalid.",
+      );
+    }
+    if (!target.catalog.declaredTools.some((tool) => tool.name === name)) {
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        `The targeted DevApp did not declare the tool ${name}.`,
+      );
+    }
+    if (!target.catalog.toolInvocationAvailable) {
+      throw new PreviewHostError(
+        "PreviewAutomationExecutionError",
+        "The DevApp worker is not running with an active agent-invocation approval.",
+      );
+    }
+    const result = (await target.invoke(
+      name,
+      input.input,
+      request.timeoutMs,
+    )) as DevAppToolInvocationResult["result"];
+    return {
+      target: target.catalog,
+      name,
+      result,
+    } satisfies DevAppToolInvocationResult;
+  }
 
   if (request.operation === "devAppPreviewEnsure" || request.operation === "devAppPreviewAttach") {
     const initialContext = requireThreadWorkbenchContext(request.threadId);

@@ -699,6 +699,7 @@ const en = {
   "orgDevApp.publish.building": "Building and packaging the static app…",
   "orgDevApp.publish.uploading": "Uploading the bounded artifact…",
   "orgDevApp.publish.verifying": "Verifying size and integrity…",
+  "orgDevApp.publish.runtimeBuild": "Building the signed contained runtime…",
   "orgDevApp.publish.activating": "Activating the organization release…",
   "orgDevApp.publish.complete": "Published.",
   "orgDevApp.publish.cancelling": "Cancelling publishing…",

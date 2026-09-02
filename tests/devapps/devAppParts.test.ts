@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import { BUILTIN_DEV_APPS } from "@/features/devapps/registry"
-import {
-  derivableSurfaces,
-  partsForLaunchSpec,
-  type DevAppParts,
-} from "@/features/devapps/registry/parts"
+import { derivableSurfaces, partsForLaunchSpec, type DevAppParts } from "@/features/devapps/registry/parts"
 import { partsForPublishedRuntimeKind } from "@shared/devAppParts"
+import { DEV_APP_MANIFEST_VERSION } from "@shared/devAppPackage"
+import { DEV_APP_WORKER_PROTOCOL_VERSION } from "@shared/devAppWorkerProtocol"
 import type { DevAppLaunchSpec } from "@/features/devapps/registry/types"
 
 const PUBLISHED_STATIC: DevAppLaunchSpec = {
@@ -32,10 +30,9 @@ describe("DevApp parts — expressing what ships today", () => {
     for (const manifest of BUILTIN_DEV_APPS) {
       const parts = manifest.parts
       expect(parts, `${manifest.id} produced no parts`).toBeTruthy()
-      expect(
-        Boolean(parts.view || parts.worker || parts.service),
-        `${manifest.id} produced an empty composition`,
-      ).toBe(true)
+      expect(Boolean(parts.view || parts.worker || parts.service), `${manifest.id} produced an empty composition`).toBe(
+        true,
+      )
       expect(parts, `${manifest.id} drifted from its compatibility launch spec`).toEqual(
         partsForLaunchSpec(manifest.launch),
       )
@@ -75,7 +72,8 @@ describe("DevApp parts — published releases", () => {
   it("maps a service release to a view plus an unprivileged service", () => {
     const parts = partsForPublishedRuntimeKind("service")
     expect(parts.view).toEqual({ source: "package" })
-    expect(parts.service).toEqual({ runtimeKind: "node", location: "device" })
+    expect(parts.service).toEqual({ runtimeKind: "node", network: true })
+    expect(parts.runtime).toEqual({ kind: "container", location: "device", state: "device" })
     // A published service holds no capabilities; that is what separates it from a worker.
     expect(parts.worker).toBeUndefined()
   })
@@ -101,26 +99,35 @@ describe("DevApp surfaces — derived, never declared", () => {
 
   it("offers an agent surface only when a worker exposes tools", () => {
     const silent: DevAppParts = { worker: { capabilities: ["git.read"] } }
-    const speaking: DevAppParts = { worker: { capabilities: ["git.read"], tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }] } }
+    const speaking: DevAppParts = {
+      worker: {
+        capabilities: ["git.read"],
+        tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }],
+      },
+    }
     expect(derivableSurfaces(silent)).not.toContain("agentTool")
     expect(derivableSurfaces(speaking)).toContain("agentTool")
   })
 
   it("offers a background surface to anything with a long-lived process", () => {
-    expect(derivableSurfaces({ service: { runtimeKind: "node", location: "device" } }))
-      .toContain("backgroundService")
+    expect(derivableSurfaces({ service: { runtimeKind: "node" } })).toContain("backgroundService")
     expect(derivableSurfaces({ worker: { capabilities: [] } })).toContain("backgroundService")
   })
 
   it("offers no background surface to a static service, which is only files", () => {
-    expect(derivableSurfaces({ view: { source: "package" }, service: { runtimeKind: "static", location: "device" } }))
-      .toEqual(["tile"])
+    expect(derivableSurfaces({ view: { source: "package" }, service: { runtimeKind: "static" } })).toEqual(["tile"])
   })
 
   it("supports a headless worker with no tile at all", () => {
     // The shape today's closed union cannot express: an app with no view.
-    expect(derivableSurfaces({ worker: { capabilities: ["git.read"], tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }] } }))
-      .toEqual(["agentTool", "backgroundService"])
+    expect(
+      derivableSurfaces({
+        worker: {
+          capabilities: ["git.read"],
+          tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }],
+        },
+      }),
+    ).toEqual(["agentTool", "backgroundService"])
   })
 })
 
@@ -158,7 +165,11 @@ describe("Packages resolve through the same parts model as installed apps", () =
   it("gives a view-only package exactly the tile surface", async () => {
     const { partsForPackage } = await import("@/features/devapps/registry/parts")
     const parts = partsForPackage(
-      await parsePackage({ manifestVersion: 1, name: "A", view: { entry: "index.html" } }),
+      await parsePackage({
+        manifestVersion: DEV_APP_MANIFEST_VERSION,
+        name: "A",
+        view: { entry: "index.html" },
+      }),
     )
     expect(parts).toEqual({ view: { source: "package" } })
     expect(derivableSurfaces(parts)).toEqual(["tile"])
@@ -167,37 +178,48 @@ describe("Packages resolve through the same parts model as installed apps", () =
   it("never lets an authored package claim a native view", async () => {
     // `native` means a component compiled into Cozea. A package that could claim it
     // would be asking to be rendered as first-party chrome.
-    const { partsForPackage } = await import("@/features/devapps/registry/parts")
-    const parts = partsForPackage(
-      await parsePackage({
-        manifestVersion: 1,
+    const { parseDevAppPackage } = await import("@shared/devAppPackage")
+    const result = parseDevAppPackage(
+      JSON.stringify({
+        manifestVersion: DEV_APP_MANIFEST_VERSION,
         name: "A",
-        // `source` is not a manifest field. The point is that writing it changes nothing.
         view: { entry: "index.html", source: "native" },
       }),
     )
-    expect(parts.view?.source).toBe("package")
+    expect(result.manifest).toBeNull()
   })
 
   it("derives the agent surface from the package's declared tools", async () => {
     const { partsForPackage } = await import("@/features/devapps/registry/parts")
     const speaking = partsForPackage(
       await parsePackage({
-        manifestVersion: 1,
+        manifestVersion: DEV_APP_MANIFEST_VERSION,
         name: "A",
-        worker: { entry: "w.js", capabilities: ["project.read"], tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }] },
+        worker: {
+          entry: "w.js",
+          protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+          capabilities: ["project.read"],
+          tools: [{ name: "status", description: "Read status.", inputSchema: { type: "object" } }],
+        },
+        runtime: { location: "device", state: "device" },
       }),
     )
-    expect(derivableSurfaces(speaking)).toEqual(["agentTool", "backgroundService"])
+    expect(derivableSurfaces(speaking)).toEqual(["tile", "agentTool", "backgroundService"])
   })
 
   it("carries a package's capabilities through unchanged", async () => {
     const { partsForPackage } = await import("@/features/devapps/registry/parts")
     const parts = partsForPackage(
       await parsePackage({
-        manifestVersion: 1,
+        manifestVersion: DEV_APP_MANIFEST_VERSION,
         name: "A",
-        worker: { entry: "w.js", capabilities: ["project.read", "git.read"], tools: [] },
+        worker: {
+          entry: "w.js",
+          protocolVersion: DEV_APP_WORKER_PROTOCOL_VERSION,
+          capabilities: ["project.read", "git.read"],
+          tools: [],
+        },
+        runtime: { location: "device", state: "device" },
       }),
     )
     expect(parts.worker?.capabilities).toEqual(["project.read", "git.read"])
@@ -208,7 +230,7 @@ describe("Packages resolve through the same parts model as installed apps", () =
     const { partsForPackage } = await import("@/features/devapps/registry/parts")
     const parts = partsForPackage(
       await parsePackage({
-        manifestVersion: 1,
+        manifestVersion: DEV_APP_MANIFEST_VERSION,
         name: "A",
         view: { entry: "index.html" },
         service: { runtimeKind: "static" },

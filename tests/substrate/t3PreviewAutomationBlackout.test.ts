@@ -194,6 +194,32 @@ function installBridge(surface: BrowserSurfaceInventoryEntry) {
       terminal: {
         list: vi.fn(async () => ["terminal-1"]),
       },
+      devAppPreview: {
+        invokeTool: vi.fn(async () => ({ success: true as const, result: { ok: true } })),
+      },
+      orgDevApp: {
+        getPublishedToolStatus: vi.fn(async () => ({
+          success: true as const,
+          status: {
+            ref: "cozea-devapp:organization-1/publication-1@1",
+            name: "Published inventory",
+            declaredTools: [
+              {
+                name: "search_records",
+                description: "Search inventory records.",
+                inputSchema: { type: "object" },
+              },
+            ],
+            agentInvocable: true,
+            toolInvocationAvailable: true,
+            worker: { status: "ready" as const, restarts: 0, lastError: null },
+          },
+        })),
+        invokePublishedTool: vi.fn(async () => ({
+          success: true as const,
+          result: { records: [1] },
+        })),
+      },
     },
   });
   vi.stubGlobal("document", {
@@ -264,6 +290,8 @@ describe("T3 preview automation host", () => {
       "devServerAttach",
       "devAppPreviewEnsure",
       "devAppPreviewAttach",
+      "devAppToolCatalog",
+      "devAppToolInvoke",
     ]);
   });
 
@@ -606,6 +634,161 @@ describe("T3 preview automation host", () => {
       surface: { available: true, tabId: surface.runtimeTabId },
     });
     expect(bridge.automation.status).toHaveBeenCalledWith(surface.runtimeTabId);
+  });
+
+  it("catalogs and invokes an approved running development DevApp without creating it", async () => {
+    const surface = createWorkbenchSurface("devAppPreview");
+    installBridge(surface);
+    const owner = Symbol("preview-runtime-tools");
+    publishDevAppPreviewRuntime(owner, {
+      tileId: surface.tileId,
+      relativePath: "apps/inventory",
+      hotReload: true,
+      openError: null,
+      status: {
+        status: "running",
+        sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
+        name: "Inventory",
+        view: {
+          kind: "builtOutput",
+          entryPath: "dist/index.html",
+          url: "cozea-devapp://8a9f6d2f624cb5e73e4b6f5a67d21dc9.dev/dist/index.html",
+        },
+        grant: { capabilities: ["project.read"], agentInvocable: true },
+        declaredTools: [
+          {
+            name: "search_records",
+            description: "Search inventory records.",
+            inputSchema: { type: "object" },
+          },
+        ],
+        badge: { tone: "development", label: "Development", detail: "Approved." },
+        preflight: {
+          ok: true,
+          framework: "static",
+          expectedRuntimeKind: "static",
+          diagnostics: [],
+        },
+        worker: {
+          publicationId: "dev:8a9f6d2f624cb5e73e4b6f5a67d21dc9",
+          protocolVersion: 1,
+          status: "ready",
+          restarts: 0,
+          lastError: null,
+          logs: [],
+        },
+        reloadToken: 0,
+      },
+    });
+
+    const catalog = await __t3PreviewAutomationHostTestUtils.runRequest(
+      request("devAppToolCatalog", {}, surface.runtimeTabId),
+    );
+    expect(catalog).toMatchObject({
+      kind: "development",
+      tabId: surface.runtimeTabId,
+      sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
+      agentInvocable: true,
+      toolInvocationAvailable: true,
+      declaredTools: [{ name: "search_records" }],
+      worker: { status: "ready" },
+    });
+
+    const invocation = await __t3PreviewAutomationHostTestUtils.runRequest(
+      request(
+        "devAppToolInvoke",
+        { name: "search_records", input: { query: "Ada" } },
+        surface.runtimeTabId,
+      ),
+    );
+    expect(invocation).toMatchObject({
+      target: { kind: "development", tabId: surface.runtimeTabId },
+      name: "search_records",
+      result: { ok: true },
+    });
+    expect(window.electronAPI.devAppPreview.invokeTool).toHaveBeenCalledWith({
+      sourceId: "8a9f6d2f624cb5e73e4b6f5a67d21dc9",
+      name: "search_records",
+      input: { query: "Ada" },
+      timeoutMs: 1_000,
+    });
+    expect(surfaceControllerMocks.ensure).not.toHaveBeenCalled();
+  });
+
+  it("requires an exact open published tab and preserves main-process approval enforcement", async () => {
+    const surface = createWorkbenchSurface("orgDevApp");
+    installBridge(surface);
+
+    const catalog = await __t3PreviewAutomationHostTestUtils.runRequest(
+      request("devAppToolCatalog", {}, surface.runtimeTabId),
+    );
+    expect(catalog).toMatchObject({
+      kind: "published",
+      tabId: surface.runtimeTabId,
+      reference: "cozea-devapp:organization-1/publication-1@1",
+      agentInvocable: true,
+      toolInvocationAvailable: true,
+      declaredTools: [{ name: "search_records" }],
+    });
+
+    const invocation = await __t3PreviewAutomationHostTestUtils.runRequest(
+      request(
+        "devAppToolInvoke",
+        { name: "search_records", input: { query: "Ada" } },
+        surface.runtimeTabId,
+      ),
+    );
+    expect(invocation).toMatchObject({
+      target: { kind: "published", tabId: surface.runtimeTabId },
+      result: { records: [1] },
+    });
+    expect(window.electronAPI.orgDevApp.invokePublishedTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "workspace-1",
+        laneId: "collab",
+        name: "search_records",
+        input: { query: "Ada" },
+      }),
+    );
+
+    await expect(
+      __t3PreviewAutomationHostTestUtils.runRequest(
+        request("devAppToolCatalog", { relativePath: "apps/inventory" }),
+      ),
+    ).rejects.toThrow(/already be open/);
+  });
+
+  it("does not dispatch a tool when agent invocation is not currently approved", async () => {
+    const surface = createWorkbenchSurface("orgDevApp");
+    installBridge(surface);
+    vi.mocked(window.electronAPI.orgDevApp.getPublishedToolStatus).mockResolvedValueOnce({
+      success: true,
+      status: {
+        ref: "cozea-devapp:organization-1/publication-1@1",
+        name: "Published inventory",
+        declaredTools: [
+          {
+            name: "search_records",
+            description: "Search inventory records.",
+            inputSchema: { type: "object" },
+          },
+        ],
+        agentInvocable: false,
+        toolInvocationAvailable: false,
+        worker: { status: "ready", restarts: 0, lastError: null },
+      },
+    });
+
+    await expect(
+      __t3PreviewAutomationHostTestUtils.runRequest(
+        request(
+          "devAppToolInvoke",
+          { name: "search_records", input: {} },
+          surface.runtimeTabId,
+        ),
+      ),
+    ).rejects.toThrow(/active agent-invocation approval/);
+    expect(window.electronAPI.orgDevApp.invokePublishedTool).not.toHaveBeenCalled();
   });
 
   it("discovers a newly created inactive Dev Server surface in the same request", async () => {

@@ -15,6 +15,7 @@ const publicDocumentation = await readFile(documentationSourcePath, "utf8");
 const sharedContractFiles = [
   "devAppCapabilities.ts",
   "devAppPackage.ts",
+  "devAppToolInputValidation.ts",
   "devAppViewBridge.ts",
   "devAppWorkerProtocol.ts",
 ];
