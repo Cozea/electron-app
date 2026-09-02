@@ -17,6 +17,7 @@ import { createApplicationMenu } from './menu'
 import { TerminalService } from './services/TerminalService'
 import { IntegrationService } from './services/IntegrationService'
 import { AgentToolService } from './services/AgentToolService'
+import { AgentSkillService } from './services/AgentSkillService'
 import { CollabEncryptionService } from './services/CollabEncryptionService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
@@ -1705,6 +1706,7 @@ TerminalService.getInstance().registerIpcHandlers()
 IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
+AgentSkillService.getInstance().registerIpcHandlers()
 
 // Override terminal handlers to support workspaceId (UUID) → resolve to
 // real filesystem path before delegating to TerminalService.

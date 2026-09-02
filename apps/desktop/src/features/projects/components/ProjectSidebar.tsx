@@ -5,6 +5,7 @@ import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   FolderAddIcon as __FolderAddHugeIcon,
   Search01Icon as __SearchHugeIcon,
+  FolderLibraryIcon as __FolderLibraryHugeIcon,
   ShoppingBag01Icon as __ShoppingBagHugeIcon,
 } from '@hugeicons/core-free-icons'
 
@@ -549,6 +550,10 @@ export function ProjectSidebar({
   }, [navigate]);
 
   const isOnAppStore = pathname === "/projects/store";
+  const handleOpenAgentSkills = React.useCallback(() => {
+    navigate("/projects/skills");
+  }, [navigate]);
+  const isOnAgentSkills = pathname === "/projects/skills";
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, workspaceId: string | null) => {
@@ -964,6 +969,19 @@ export function ProjectSidebar({
               >
                 <HugeiconsIcon icon={__SearchHugeIcon} />
                 <span className="truncate">{t('nav.search')}</span>
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                  "px-1.5",
+                  isOnAgentSkills && SIDEBAR_PILL_ACTIVE_CLASS,
+                  "[&>svg]:text-current",
+                )}
+                onClick={handleOpenAgentSkills}
+              >
+                <HugeiconsIcon icon={__FolderLibraryHugeIcon} />
+                <span className="truncate">{t('nav.agentSkills')}</span>
               </button>
             </div>
           )}

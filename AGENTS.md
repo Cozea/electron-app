@@ -188,6 +188,12 @@ GH_TOKEN="$(gh auth token)" bun run release
 - Keep all other project markdown docs under `docs/`.
 - When release behavior changes, update both `AGENTS.md` and `docs/release-process.md` in the same change.
 
+### Documentation Layout
+
+- Keep `AGENTS.md` at the repo root for the short, canonical agent instructions.
+- Keep all other project markdown docs under `docs/`.
+- When release behavior changes, update both `AGENTS.md` and `docs/release-process.md` in the same change.
+
 ## Project Structure
 
 ```
@@ -313,7 +319,7 @@ See `docs/project-devapps.md` for the full lifecycle and operational notes.
 ## How Agent Browser and Dev Server Preview Works
 
 - `dev_server_status`, `dev_server_ensure`, and `dev_server_attach` use the built-in workbench **Dev Server** workflow for process management. Once a guest exists, page automation can target every live Browser, Dev Server, compatibility Project DevApp, and Org DevApp surface in the assistant's workbench.
-- There is one dev-server process per `(workspaceId, laneId)`. `dev_server_ensure` is idempotent: it reuses a ready process and joins a launch already in progress. Only an explicit user restart/stop replaces or stops it.
+- There is one managed Dev Server run per `(workspaceId, laneId)`. Its automatically detected frontend remains the default process; users may add device-local, workspace-scoped auxiliary commands from the tile for backends or workers. `dev_server_ensure` is idempotent: it reuses a ready run and joins a launch already in progress. Only an explicit user restart/stop replaces or stops the complete run.
 - Normal `dev_server_ensure` calls omit `command`. Cozea builds a bounded candidate set from project evidence and ranks it with a tiny macOS Core ML helper, falling back deterministically; the model never generates shell text. A successful ready command is cached by evidence fingerprint. Agents may pass a command only when the user explicitly supplied or confirmed it, with a brokered `{port}` placeholder where needed. If an agent already started a server itself, it attaches and navigates to that port instead of ensuring another process.
 - Static discovery includes root `index.html` plus `dist/`, `build/`, `out/`, and `public/` built outputs. When several safe candidates remain, the Dev Server tile shows a bounded command chooser and launches the selected candidate through the same authorized lifecycle.
 - A process may have zero or more Dev Server surfaces. Closing its last surface leaves the process headless; the sidebar then shows `Dev Server — Running` so the user can reattach it.
@@ -325,6 +331,16 @@ See `docs/project-devapps.md` for the full lifecycle and operational notes.
 - Development packages use `devapp_preview_ensure` and `devapp_preview_attach`. Ensure creates or reuses a project-confined preview but never grants requested capabilities; attach targets an existing approved preview. Once a living guest exists, ordinary preview operations can inspect and interact with it by exact runtime tab ID. `agentInvocable` governs worker exposure, not explicit user-directed control of the preview guest.
 
 See `docs/dev-server-agent-automation.md` for the lifecycle, tool semantics, and QA matrix.
+
+## How Agent Skills Work
+
+- `/projects/skills` is a first-class local skill library for Codex, Claude, Cursor, and OpenCode.
+- The testing release uses no hosted persistence: the editable canonical library lives under Electron `userData`, while provider-native skill folders remain execution authority.
+- Cozea-managed provider copies carry binding metadata. Never overwrite an unmarked provider folder; external skills must remain read-only until explicitly copied or moved to recoverable local trash by the user.
+- Portable `*.cozea-skills.json` setup packs provide the zero-cost read-only discovery/copy path. They must not include credentials, provider settings, or absolute local paths.
+- Provider changes refresh Cozea's own runtime. Restart notices apply to standalone provider apps according to their reload behavior.
+
+See `docs/agent-skills.md` for storage paths, safety boundaries, setup-pack behavior, and QA.
 
 ## How Collaborative Editing Works
 

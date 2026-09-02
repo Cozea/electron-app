@@ -56,6 +56,11 @@ const LazyAppStoreSidebar = lazy(() =>
     default: module.AppStoreSidebar,
   })),
 );
+const LazyAgentSkillsSidebar = lazy(() =>
+  import("@/features/projects/components/AgentSkillsSidebar").then((module) => ({
+    default: module.AgentSkillsSidebar,
+  })),
+);
 const LazyPresenceAvatarGroup = lazy(() =>
   import("@/components/presence/PresenceAvatarGroup").then((module) => ({
     default: module.PresenceAvatarGroup,
@@ -369,6 +374,7 @@ export function ProjectLayout({
   const isWorkbenchView = pathname.endsWith("/workbench");
   const isChangesView = pathname.endsWith("/changes");
   const isAppStoreRoute = pathname.startsWith("/projects/store");
+  const isAgentSkillsRoute = pathname.startsWith("/projects/skills");
   const isSettingsModeRoute =
     pathname.startsWith("/projects/settings/") ||
     pathname.startsWith("/projects/workspace/") ||
@@ -619,9 +625,21 @@ export function ProjectLayout({
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {/* Persistent shell: route-mode switches swap only the content. */}
           <AppSidebarShell
-            surface={isAppStoreRoute ? "appStore" : isSettingsModeRoute ? "settings" : "project"}
+            surface={
+              isAgentSkillsRoute
+                ? "skills"
+                : isAppStoreRoute
+                  ? "appStore"
+                  : isSettingsModeRoute
+                    ? "settings"
+                    : "project"
+            }
           >
-            {isAppStoreRoute ? (
+            {isAgentSkillsRoute ? (
+              <Suspense fallback={<SidebarModeFallback />}>
+                <LazyAgentSkillsSidebar user={user} />
+              </Suspense>
+            ) : isAppStoreRoute ? (
               <Suspense fallback={<SidebarModeFallback />}>
                 <LazyAppStoreSidebar user={user} />
               </Suspense>

@@ -20,7 +20,7 @@ import {
  * mode changes stop re-laying-out the boundary. The user-resized width is
  * shared across all surfaces — it's one sidebar.
  */
-export type AppSidebarSurface = "project" | "settings" | "appStore"
+export type AppSidebarSurface = "project" | "settings" | "appStore" | "skills"
 
 function ShellSidebarTrigger() {
   const { isMobile, state, openMobile } = useSidebar()

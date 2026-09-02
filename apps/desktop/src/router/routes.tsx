@@ -94,6 +94,13 @@ const AppStorePage = createLazyRouteComponent(
     })),
   "routeLoading.store",
 );
+const AgentSkillsPage = createLazyRouteComponent(
+  () =>
+    import("@/features/projects/pages/AgentSkillsPage").then((module) => ({
+      default: module.AgentSkillsPage,
+    })),
+  "routeLoading.agentSkills",
+);
 const NewProject = createLazyRouteComponent(
   () =>
     import("@/pages/NewProject").then((module) => ({
@@ -255,6 +262,12 @@ const projectsStoreRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "/store",
   component: AppStorePage,
+});
+
+const projectsAgentSkillsRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/skills",
+  component: AgentSkillsPage,
 });
 
 const projectNewRoute = createRoute({
@@ -624,6 +637,7 @@ export const routeTree = rootRoute.addChildren([
   projectsShellRoute.addChildren([
     projectsIndexRoute,
     projectsStoreRoute,
+    projectsAgentSkillsRoute,
     projectNewRoute,
     projectJoinRoute,
     projectInviteRoute,

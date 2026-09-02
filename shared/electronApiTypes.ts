@@ -1084,6 +1084,97 @@ export interface AgentToolLoginEvent {
   error?: string
 }
 
+export type AgentSkillProvider = 'codex' | 'claude' | 'cursor' | 'opencode'
+
+export type AgentSkillSource = 'managed' | 'external'
+
+export type AgentSkillRestartBehavior = 'live' | 'restart-external-app' | 'restart-recommended'
+
+export interface AgentSkillProviderInfo {
+  id: AgentSkillProvider
+  label: string
+  rootPath: string
+  restartBehavior: AgentSkillRestartBehavior
+}
+
+export interface AgentSkillProviderBinding {
+  provider: AgentSkillProvider
+  compatible: boolean
+  enabled: boolean
+  ownership: AgentSkillSource | 'none'
+  path: string | null
+  restartBehavior: AgentSkillRestartBehavior
+}
+
+export interface AgentSkillRecord {
+  id: string
+  slug: string
+  name: string
+  description: string
+  instructions: string
+  source: AgentSkillSource
+  editable: boolean
+  path: string
+  createdAt: number | null
+  updatedAt: number
+  originLabel?: string
+  bindings: AgentSkillProviderBinding[]
+}
+
+export interface AgentSkillsSnapshot {
+  skills: AgentSkillRecord[]
+  providers: AgentSkillProviderInfo[]
+  libraryPath: string
+  generatedAt: number
+}
+
+export interface AgentSkillMutationResult {
+  success: boolean
+  snapshot: AgentSkillsSnapshot
+  skillId?: string
+  changedProviders?: AgentSkillProvider[]
+  error?: string
+}
+
+export interface AgentSkillDraft {
+  skillId?: string
+  name: string
+  description: string
+  instructions: string
+  compatibleProviders: AgentSkillProvider[]
+}
+
+export interface AgentSkillSetupPackSkill {
+  packSkillId: string
+  name: string
+  slug: string
+  description: string
+  instructions: string
+  compatibleProviders: AgentSkillProvider[]
+  enabledProviders: AgentSkillProvider[]
+}
+
+export interface AgentSkillSetupPack {
+  version: 1
+  setupName: string
+  authorName: string
+  exportedAt: number
+  sourcePath: string
+  skills: AgentSkillSetupPackSkill[]
+}
+
+export interface AgentSkillSetupPackResult {
+  success: boolean
+  pack?: AgentSkillSetupPack
+  error?: string
+}
+
+export interface AgentSkillExportResult {
+  success: boolean
+  filePath?: string
+  error?: string
+}
+
 export interface DevServerAuxiliaryProcessConfig {
   id: string
   name: string
@@ -2226,6 +2317,27 @@ export interface ElectronAPI {
     loginInput: (options: { sessionId: string; value: string }) => Promise<{ success: boolean }>
     loginCancel: (options: { sessionId: string }) => Promise<{ success: boolean }>
     onLoginEvent: (callback: (event: AgentToolLoginEvent) => void) => () => void
+  }
+  agentSkills: {
+    list: () => Promise<AgentSkillsSnapshot>
+    save: (draft: AgentSkillDraft) => Promise<AgentSkillMutationResult>
+    setProviderEnabled: (options: {
+      skillId: string
+      provider: AgentSkillProvider
+      enabled: boolean
+    }) => Promise<AgentSkillMutationResult>
+    copyToLibrary: (options: { skillId: string }) => Promise<AgentSkillMutationResult>
+    remove: (options: { skillId: string }) => Promise<AgentSkillMutationResult>
+    importDirectory: () => Promise<AgentSkillMutationResult>
+    openSetupPack: () => Promise<AgentSkillSetupPackResult>
+    copyFromSetupPack: (options: {
+      pack: AgentSkillSetupPack
+      packSkillId: string
+    }) => Promise<AgentSkillMutationResult>
+    exportSetupPack: (options: {
+      setupName: string
+      authorName: string
+    }) => Promise<AgentSkillExportResult>
   }
   contextMenu: {
     showTerminalSelection: (options: {
