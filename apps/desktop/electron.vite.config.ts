@@ -69,6 +69,12 @@ const repoRoot = path.resolve(__dirname, '../..')
 const t3Root = path.resolve(repoRoot, 'vendor/t3code')
 const t3DesktopSource = path.resolve(t3Root, 'apps/desktop/src')
 const sharedAliases: Alias[] = [
+  // Temporary compatibility bridge while historical project-nested imports are
+  // migrated to the assistant feature root. Keep this before the generic `@` alias.
+  {
+    find: '@/features/projects/components/assistant',
+    replacement: path.resolve(__dirname, './src/features/assistant'),
+  },
   { find: '@', replacement: path.resolve(__dirname, './src') },
   { find: '@shared', replacement: path.resolve(repoRoot, './shared') },
   {
