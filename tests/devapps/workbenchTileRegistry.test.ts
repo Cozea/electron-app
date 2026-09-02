@@ -68,7 +68,7 @@ describe("Workbench tile registry — consumers do not compete", () => {
   it("drives Dockview, floating/popout, restoration, chrome, and component registration", () => {
     const dockview = read("apps/desktop/src/features/workbench/model/workbenchDockview.ts")
     const canvas = read("apps/desktop/src/features/workbench/WorkbenchDockviewCanvas.tsx")
-    const runtime = read("apps/desktop/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts")
+    const runtime = read("apps/desktop/src/features/workbench/hooks/useWorkbenchDockviewRuntime.ts")
     const panels = read("apps/desktop/src/features/workbench/WorkbenchDockPanels.tsx")
     const chrome = read("apps/desktop/src/features/workbench/WorkbenchTileChrome.tsx")
 
