@@ -9,12 +9,17 @@ apps/desktop/src/
   app/                  application composition target
   features/
     assistant/          assistant chat, timeline, artifacts, provider UI
-    devapps/            DevApp authoring, catalog, publication, installation
+    browser/            embedded browser, annotations, recording, viewport state
+    dev-server/         dev-server runs, commands, and preview coordination
+    devapps/            DevApp authoring, catalog, publication, installation, preview
+    native-preview/     native simulator preview presentation
     projects/           project identity, lifecycle, access, navigation
-    source-control/     changes, diffs, checkpoints, branch UI target
-    workbench/          tiles, layout, session UI and persisted model target
-  platform/desktop/     typed Electron bridge clients target
-  shared/               renderer-only shared UI and utilities target
+    terminal/           terminal views and workbench-session terminal binding
+    workbench/          tiles, layout, command palette, and persisted workbench model
+    workspace/          workspace identity, resolution, repair, and runtime hosting
+    source-control/     changes, diffs, checkpoints, branch UI migration target
+  platform/desktop/     typed Electron bridge clients migration target
+  shared/               renderer-only shared UI and utilities migration target
 ```
 
 The migration is intentionally incremental. Existing route URLs, persistence keys, IPC names, backend API names, and runtime behavior remain stable while ownership moves.

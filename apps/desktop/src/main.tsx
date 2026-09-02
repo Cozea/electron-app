@@ -17,7 +17,7 @@ import { applyStoredLanguage } from './lib/i18n'
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
-import { ElectronBrowserHost } from './features/projects/browser/ElectronBrowserHost'
+import { ElectronBrowserHost } from './features/browser/ElectronBrowserHost'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
