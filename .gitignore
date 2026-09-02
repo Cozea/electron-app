@@ -16,6 +16,10 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+# Any other .env variant (.env.production, .env.staging, ...) — the example is
+# the only one that belongs in the repo.
+.env.*
+!.env.example
 
 # Build artifacts
 dist-electron
@@ -82,3 +86,16 @@ scratch/marketplace/*.vsix
 .agent/
 research/
 scratch/
+
+# Agent/skill tool output. Regenerated on demand, large, and never source:
+# graphify knowledge graphs run to megabytes and are written wherever the tool
+# is invoked, so match at any depth.
+graphify-out/
+**/graphify-out/
+.impeccable/
+**/.impeccable/
+
+# Presentation decks. Investor material is drafted in .agent/ but exports land
+# at the repo root, outside that rule — and this repository is public.
+*.pptx
+*.pptx.inspect.ndjson
