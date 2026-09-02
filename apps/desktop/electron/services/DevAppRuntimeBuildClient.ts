@@ -40,6 +40,27 @@ function parseDescriptor(value: unknown): DevAppRuntimeBuildDescriptor {
   return descriptor as DevAppRuntimeBuildDescriptor
 }
 
+/**
+ * Reads the reason out of a gateway error body.
+ *
+ * The Worker answers with `{ type, payload: { code, message } }`, so a reader that only
+ * checks the top level discards the one sentence that explains the failure and reports the
+ * status code instead.
+ */
+function gatewayErrorMessage(body: unknown, status: number): string {
+  const fallback = `Central DevApp build request failed (${status}).`
+  if (!body || typeof body !== "object") return fallback
+  const record = body as Record<string, unknown>
+  const payload =
+    record.payload && typeof record.payload === "object"
+      ? (record.payload as Record<string, unknown>)
+      : {}
+  for (const candidate of [record.error, record.message, payload.message, payload.error]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim()
+  }
+  return fallback
+}
+
 async function gatewayRequest(
   url: string,
   accessToken: string,
@@ -59,15 +80,7 @@ async function gatewayRequest(
   )
   const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {
-    const message =
-      body && typeof body === "object"
-        ? "error" in body
-          ? String((body as { error: unknown }).error)
-          : "message" in body
-            ? String((body as { message: unknown }).message)
-            : `Central DevApp build request failed (${response.status}).`
-        : `Central DevApp build request failed (${response.status}).`
-    throw new Error(message.slice(0, 1_000))
+    throw new Error(gatewayErrorMessage(body, response.status).slice(0, 1_000))
   }
   return parseDescriptor(body)
 }

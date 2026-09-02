@@ -22,7 +22,9 @@ export const DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS: ReadonlyArray<number> =
 /** Missing pre-Phase-6 version fields always mean v1, even after newer versions ship. */
 export const DEV_APP_WORKER_LEGACY_PROTOCOL_VERSION = 1
 export const DEV_APP_WORKER_PROTOCOL_MIN_VERSION = DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS[0]!
-export const DEV_APP_WORKER_PROTOCOL_VERSION = DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS.at(-1)!
+// Indexed rather than `.at(-1)`: Convex compiles this shared module under an ES2021 lib.
+export const DEV_APP_WORKER_PROTOCOL_VERSION =
+  DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS[DEV_APP_WORKER_SUPPORTED_PROTOCOL_VERSIONS.length - 1]!
 
 export function supportsDevAppWorkerProtocolVersion(value: unknown): value is number {
   return (
