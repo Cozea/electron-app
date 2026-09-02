@@ -6,34 +6,34 @@ import { describe, expect, it } from "vitest";
 import {
   browserAddressDisplayValue,
   resolveBrowserAddressSubmission,
-} from "@/features/projects/browser/browserAddressState";
-import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput";
+} from "@/features/browser/browserAddressState";
+import { isExternallyOpenableBrowserUrl } from "@/features/browser/urlInput";
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
 const browserTileSource = fs.readFileSync(
   path.join(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
+    "apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx",
   ),
   "utf8",
 );
 const browserControlsSource = fs.readFileSync(
   path.join(
     process.cwd(),
-    "apps/desktop/src/features/projects/browser/BrowserNavigationControls.tsx",
+    "apps/desktop/src/features/browser/BrowserNavigationControls.tsx",
   ),
   "utf8",
 );
 const hostedWebviewSource = fs.readFileSync(
-  path.join(process.cwd(), "apps/desktop/src/features/projects/browser/HostedBrowserWebview.tsx"),
+  path.join(process.cwd(), "apps/desktop/src/features/browser/HostedBrowserWebview.tsx"),
   "utf8",
 );
 const browserPreviewActionsSource = fs.readFileSync(
-  path.join(process.cwd(), "apps/desktop/src/features/projects/browser/BrowserPreviewActions.tsx"),
+  path.join(process.cwd(), "apps/desktop/src/features/browser/BrowserPreviewActions.tsx"),
   "utf8",
 );
 const workbenchCssSource = fs.readFileSync(
-  path.join(process.cwd(), "apps/desktop/src/features/projects/components/workbench/workbench.css"),
+  path.join(process.cwd(), "apps/desktop/src/features/workbench/workbench.css"),
   "utf8",
 );
 

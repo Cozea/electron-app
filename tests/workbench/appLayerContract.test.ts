@@ -7,7 +7,7 @@ import { APP_LAYERS } from "@/lib/appLayers";
 import {
   resolveDockviewBrowserSurfaceBorderRadius,
   resolveDockviewBrowserSurfaceLayer,
-} from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
+} from "@/features/browser/useDockviewBrowserSurfaceLayer";
 
 const root = process.cwd();
 
@@ -53,11 +53,11 @@ describe("application layer contract", () => {
       "apps/desktop/src/components/ui/select.tsx",
       "apps/desktop/src/components/ui/sheet.tsx",
       "apps/desktop/src/components/ui/tooltip.tsx",
-      "apps/desktop/src/features/projects/components/assistant/ui/dialog.tsx",
-      "apps/desktop/src/features/projects/components/assistant/ui/menu.tsx",
-      "apps/desktop/src/features/projects/components/assistant/ui/popover.tsx",
-      "apps/desktop/src/features/projects/components/assistant/ui/toast.tsx",
-      "apps/desktop/src/features/projects/components/assistant/ui/tooltip.tsx",
+      "apps/desktop/src/features/assistant/ui/dialog.tsx",
+      "apps/desktop/src/features/assistant/ui/menu.tsx",
+      "apps/desktop/src/features/assistant/ui/popover.tsx",
+      "apps/desktop/src/features/assistant/ui/toast.tsx",
+      "apps/desktop/src/features/assistant/ui/tooltip.tsx",
     ].map(read);
 
     expect(sharedSources.join("\n")).not.toContain("z-50");
@@ -84,17 +84,13 @@ describe("application layer contract", () => {
   });
 
   it("removes the workbench stacking trap and publishes a layer from every browser slot", () => {
-    const keepAlive = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchKeepAliveHost.tsx",
-    );
-    const activity = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchActivity.tsx",
-    );
+    const keepAlive = read("apps/desktop/src/features/workbench/WorkbenchKeepAliveHost.tsx");
+    const activity = read("apps/desktop/src/features/workbench/WorkbenchActivity.tsx");
     const browserTiles = [
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchDevAppPreviewTile.tsx",
     ].map(read);
 
     expect(keepAlive).not.toContain("relative isolate");
@@ -111,10 +107,8 @@ describe("application layer contract", () => {
 
   it("keeps renderer-hosted guests synchronized with live floating-group movement", () => {
     const dockviewPatch = read("patches/dockview-core@7.0.4.patch");
-    const presentation = read(
-      "apps/desktop/src/features/projects/browser/useDockviewBrowserSurfaceLayer.ts",
-    );
-    const slot = read("apps/desktop/src/features/projects/browser/BrowserSurfaceSlot.tsx");
+    const presentation = read("apps/desktop/src/features/browser/useDockviewBrowserSurfaceLayer.ts");
+    const slot = read("apps/desktop/src/features/browser/BrowserSurfaceSlot.tsx");
 
     expect(dockviewPatch).toContain("onDidFloatingGroupBoundsChange");
     expect(dockviewPatch).toContain("fireFloatingGroupBoundsChange(group, overlay.element)");
@@ -126,11 +120,11 @@ describe("application layer contract", () => {
   });
 
   it("keeps browser-owned overlays beside the living guest in the global host", () => {
-    const host = read("apps/desktop/src/features/projects/browser/HostedBrowserWebview.tsx");
+    const host = read("apps/desktop/src/features/browser/HostedBrowserWebview.tsx");
     const localTiles = [
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx",
     ].map(read);
 
     expect(host).toContain("<BrowserSurfaceOverlays runtimeTabId={runtimeTabId} />");
@@ -144,16 +138,10 @@ describe("application layer contract", () => {
 
   it("routes custom application overlays through the shared body portal", () => {
     const portal = read("apps/desktop/src/components/ui/app-overlay-portal.tsx");
-    const tileChrome = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchTileChrome.tsx",
-    );
+    const tileChrome = read("apps/desktop/src/features/workbench/WorkbenchTileChrome.tsx");
     const workbench = read("apps/desktop/src/features/projects/pages/ProjectWorkbenchSurface.tsx");
-    const orgDevApp = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
-    );
-    const chat = read(
-      "apps/desktop/src/features/projects/components/assistant/chat/CozeaChatSurface.tsx",
-    );
+    const orgDevApp = read("apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx");
+    const chat = read("apps/desktop/src/features/assistant/chat/CozeaChatSurface.tsx");
     const tasks = read("apps/desktop/src/features/projects/pages/TasksPage.tsx");
 
     expect(portal).toContain("createPortal(children, document.body)");
@@ -170,9 +158,7 @@ describe("application layer contract", () => {
   });
 
   it("uses the shared panel activity subscription for every browser-backed tile", () => {
-    const browser = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
-    );
+    const browser = read("apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx");
     expect(browser).toContain("useWorkbenchPanelActivityMode(panelApi)");
     expect(browser).not.toContain("usePanelSurfaceVisibility");
   });

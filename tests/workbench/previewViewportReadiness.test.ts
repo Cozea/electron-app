@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { browserViewportSettingKey } from "../../apps/desktop/src/features/projects/browser/browserViewportLayout";
-import { isPreviewViewportReady } from "../../apps/desktop/src/features/projects/browser/previewViewportReadiness";
+import { browserViewportSettingKey } from "../../apps/desktop/src/features/browser/browserViewportLayout";
+import { isPreviewViewportReady } from "../../apps/desktop/src/features/browser/previewViewportReadiness";
 
 describe("isPreviewViewportReady", () => {
   const landscape = {

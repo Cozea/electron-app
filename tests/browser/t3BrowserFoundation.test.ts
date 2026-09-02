@@ -6,21 +6,21 @@ import {
   acquireBrowserSurface,
   resolveBrowserSurfacePanelRect,
   useBrowserSurfaceStore,
-} from "@/features/projects/browser/browserSurfaceStore";
+} from "@/features/browser/browserSurfaceStore";
 import {
   HIDDEN_BROWSER_WEBVIEW_OFFSET,
   resolveHostedBrowserWebviewWrapperStyle,
-} from "@/features/projects/browser/hostedBrowserWebviewStyle";
+} from "@/features/browser/hostedBrowserWebviewStyle";
 import {
   INITIAL_WEBVIEW_CRASH_RECOVERY_STATE,
   planWebviewCrashRecovery,
   WEBVIEW_CRASH_RECOVERY_WINDOW_MS,
-} from "@/features/projects/browser/webviewCrashRecovery";
+} from "@/features/browser/webviewCrashRecovery";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
-} from "@/features/projects/browser/browserSurfaceIdentity";
-import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore";
+} from "@/features/browser/browserSurfaceIdentity";
+import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore";
 
 describe("pinned T3 browser host foundation", () => {
   beforeEach(() => {
@@ -68,7 +68,7 @@ describe("pinned T3 browser host foundation", () => {
     const hostSource = fs.readFileSync(
       path.join(
         process.cwd(),
-        "apps/desktop/src/features/projects/browser/ElectronBrowserHost.tsx",
+        "apps/desktop/src/features/browser/ElectronBrowserHost.tsx",
       ),
       "utf8",
     );
