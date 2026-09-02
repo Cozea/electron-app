@@ -14,10 +14,10 @@ apps/desktop/src/
     devapps/            DevApp authoring, catalog, publication, installation, preview
     native-preview/     native simulator preview presentation
     projects/           project identity, lifecycle, access, navigation
+    source-control/     changes, diffs, checkpoints, branch state and sidebar model
     terminal/           terminal views and workbench-session terminal binding
     workbench/          tiles, layout, command palette, and persisted workbench model
     workspace/          workspace identity, resolution, repair, and runtime hosting
-    source-control/     changes, diffs, checkpoints, branch UI migration target
   platform/desktop/     typed Electron bridge clients migration target
   shared/               renderer-only shared UI and utilities migration target
 ```

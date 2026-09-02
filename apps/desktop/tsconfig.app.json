@@ -39,6 +39,8 @@
       "@/features/projects/components/workbench/*": ["./src/features/workbench/*"],
       "@/features/projects/components/command-palette": ["./src/features/workbench/command-palette"],
       "@/features/projects/components/command-palette/*": ["./src/features/workbench/command-palette/*"],
+      "@/features/projects/components/changes": ["./src/features/source-control/components/changes"],
+      "@/features/projects/components/changes/*": ["./src/features/source-control/components/changes/*"],
       "@/features/projects/browser": ["./src/features/browser"],
       "@/features/projects/browser/*": ["./src/features/browser/*"],
       "@/features/projects/devserver": ["./src/features/dev-server"],
