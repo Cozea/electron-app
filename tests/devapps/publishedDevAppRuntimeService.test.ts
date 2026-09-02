@@ -397,4 +397,34 @@ describe("published DevApp runtime coordination", () => {
       await service.dispose()
     },
   )
+
+  it.runIf(process.platform === "darwin" && process.arch === "arm64")(
+    "keeps container cleanup failures from aborting the uninstall",
+    async () => {
+      // The device runtime throws when its signed resources are absent, which is
+      // every unpackaged build. That rejection must not reach the caller: the
+      // uninstall handler removes the installation only after this resolves.
+      const cleanup = vi.fn(async () => {
+        throw new Error("The signed DevApp container runtime resources are missing.")
+      })
+      const runtime = {
+        cleanup,
+        stop: vi.fn(),
+        delete: vi.fn(),
+        sendMessage: vi.fn(),
+        on: vi.fn(() => () => undefined),
+      } as unknown as DeviceContainedDevAppRuntimeService
+      const release = installation()
+      const service = new PublishedDevAppRuntimeService(installedService(release), runtime)
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+
+      await expect(service.prepareInstallationRemoval([release], true)).resolves.toBeUndefined()
+
+      // A failed image cleanup must not skip the publication cleanup behind it.
+      expect(cleanup).toHaveBeenCalledTimes(2)
+      expect(warn).toHaveBeenCalled()
+      warn.mockRestore()
+      await service.dispose()
+    },
+  )
 })

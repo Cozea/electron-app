@@ -4,6 +4,7 @@ import {
   selectDevAppRuntimeImage,
   type DevAppContainedRuntimeStartRequest,
   type DevAppContainedRuntimeState,
+  type DevAppContainerCleanupRequest,
   type DevAppFolderGrant,
 } from "../../../../shared/devAppContainedRuntime"
 import { normalizeGrant, type DevAppGrant } from "../../../../shared/devAppCapabilities"
@@ -449,15 +450,28 @@ export class PublishedDevAppRuntimeService {
           : [],
       ),
     )
+    // Reclaiming container state is best effort and must never strand the removal
+    // that asked for it. The device runtime throws when its signed resources are
+    // absent — true of every unpackaged build — and that rejection used to escape
+    // to the uninstall handler before the installation was taken out of the
+    // registry, so Uninstall could not remove anything at all. Each request is
+    // isolated so one failure does not skip the rest.
+    const cleanup = async (request: DevAppContainerCleanupRequest): Promise<void> => {
+      try {
+        await this.deviceRuntime.cleanup(request)
+      } catch (error) {
+        console.warn(`[DevApp] Container cleanup failed for publication ${publicationId}:`, error)
+      }
+    }
     for (const imageReference of imageReferences) {
       const usedByRemainingRuntime = [...this.active.values()].some(
         (entry) => entry.installation.activeRelease.runtimeImage?.reference === imageReference,
       )
       if (usedByRemainingRuntime) continue
-      await this.deviceRuntime.cleanup({ imageReference })
+      await cleanup({ imageReference })
     }
     if (removePublicationState) {
-      await this.deviceRuntime.cleanup({ publicationId })
+      await cleanup({ publicationId })
     }
   }
 
