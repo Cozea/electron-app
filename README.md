@@ -35,19 +35,16 @@ unavailable rather than degraded — development DevApps still work.
 
 ## Getting started
 
-The build depends on a vendored submodule, so clone recursively:
+The build depends on a vendored submodule, which must be initialised
+**non-recursively** — `vendor/t3code` has nested submodules of its own that it does not
+declare, so `git clone --recurse-submodules` fails:
 
 ```bash
-git clone --recurse-submodules https://github.com/Cozea/electron-app.git
+git clone https://github.com/Cozea/electron-app.git
 cd electron-app
+git submodule update --init vendor/t3code
 bun install
 bun run dev
-```
-
-If you already cloned without `--recurse-submodules`:
-
-```bash
-git submodule update --init vendor/t3code
 ```
 
 `bun run dev` prepares the vendored runtime and the native helpers before starting the
