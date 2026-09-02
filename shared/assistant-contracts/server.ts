@@ -132,6 +132,7 @@ export const ServerProvider = Schema.Struct({
   auth: ServerProviderAuth,
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  accountRateLimits: Schema.optional(Schema.Unknown),
   versionAdvisory: Schema.optional(
     Schema.Struct({
       status: Schema.Literals(["unknown", "current", "behind_latest"]),
@@ -175,6 +176,7 @@ export interface ServerProvider {
   auth: ServerProviderAuth;
   checkedAt: string;
   message?: string;
+  accountRateLimits?: unknown;
   versionAdvisory?: {
     status: "unknown" | "current" | "behind_latest";
     currentVersion: string | null;

@@ -97,6 +97,42 @@ export function getProviderSnapshot(
   )
 }
 
+function isProviderKind(value: unknown): value is ProviderKind {
+  return (
+    value === "codex" ||
+    value === "claudeAgent" ||
+    value === "cursor" ||
+    value === "opencode"
+  )
+}
+
+export function resolveModelSelectionProvider(input: {
+  config: ServerConfig | null
+  selection: {
+    readonly provider?: unknown
+    readonly instanceId?: ProviderInstanceId
+  }
+  fallbackProvider?: ProviderKind | null
+}): ProviderKind {
+  if (isProviderKind(input.selection.provider)) {
+    return input.selection.provider
+  }
+
+  const providerSnapshot = input.config?.providers.find(
+    (provider) => provider.instanceId === input.selection.instanceId,
+  )
+  const snapshotProvider = providerSnapshot?.provider ?? providerSnapshot?.driver
+  if (isProviderKind(snapshotProvider)) {
+    return snapshotProvider
+  }
+
+  if (isProviderKind(input.selection.instanceId)) {
+    return input.selection.instanceId
+  }
+
+  return input.fallbackProvider ?? "codex"
+}
+
 export function getProviderModelOptions(
   config: ServerConfig | null,
   provider: ProviderKind,

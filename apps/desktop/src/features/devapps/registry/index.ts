@@ -128,9 +128,9 @@ export function getDevAppForSurfaceTileType(
 
 export function listLauncherApps(options: ListLauncherAppsOptions = {}): DevAppManifest[] {
   const enabledAssistantProviders =
-    options.enabledAssistantProviders && options.enabledAssistantProviders.length > 0
-      ? new Set(options.enabledAssistantProviders)
-      : null
+    options.enabledAssistantProviders === null || options.enabledAssistantProviders === undefined
+      ? null
+      : new Set(options.enabledAssistantProviders)
 
   return [...(options.additionalApps ?? []), ...BUILTIN_DEV_APPS]
     .filter((manifest) => manifest.launcher.enabled)

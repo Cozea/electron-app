@@ -14,8 +14,66 @@ export const serverBundle = path.join(serverRoot, "dist", "bin.mjs");
 export const bundlePinStamp = path.join(serverRoot, "dist", ".cozea-runtime-pin");
 export const packagedRuntimeRoot = path.join(repositoryRoot, "build", "t3-runtime");
 
+const COZEA_PROVIDER_DEFAULT_PATCHES = [
+  {
+    label: "Cursor default enablement",
+    original:
+      'const CursorSettings = makeProviderSettingsSchema({\n\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(false)), annotateKey({ providerSettingsForm: { hidden: true } })),',
+    patched:
+      'const CursorSettings = makeProviderSettingsSchema({\n\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(true)), annotateKey({ providerSettingsForm: { hidden: true } })),',
+  },
+  {
+    label: "OpenCode default enablement",
+    original:
+      'const OpenCodeSettings = makeProviderSettingsSchema({\n\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(false)), annotateKey({ providerSettingsForm: { hidden: true } })),',
+    patched:
+      'const OpenCodeSettings = makeProviderSettingsSchema({\n\tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(true)), annotateKey({ providerSettingsForm: { hidden: true } })),',
+  },
+  {
+    label: "Cursor sparse-settings default",
+    original: 'enabled: persisted.providers?.cursor?.enabled ?? usedProviders.has("cursor")',
+    patched: 'enabled: persisted.providers?.cursor?.enabled ?? settings.providers.cursor.enabled',
+  },
+  {
+    label: "OpenCode sparse-settings default",
+    original: 'enabled: persisted.providers?.opencode?.enabled ?? usedProviders.has("opencode")',
+    patched:
+      'enabled: persisted.providers?.opencode?.enabled ?? settings.providers.opencode.enabled',
+  },
+];
+
 function fail(message) {
   throw new Error(`[prepare-t3-runtime] ${message}`);
+}
+
+export function patchT3ServerBundleProviderDefaults(source) {
+  let patchedSource = source;
+  let changed = false;
+
+  for (const patch of COZEA_PROVIDER_DEFAULT_PATCHES) {
+    if (patchedSource.includes(patch.patched)) {
+      continue;
+    }
+    if (!patchedSource.includes(patch.original)) {
+      fail(`${patch.label} patch anchor is missing; refresh the Cozea T3 runtime patch.`);
+    }
+    patchedSource = patchedSource.replace(patch.original, patch.patched);
+    changed = true;
+  }
+
+  return { source: patchedSource, changed };
+}
+
+function applyCozeaT3RuntimePatches({ checkOnly }) {
+  const source = fs.readFileSync(serverBundle, "utf8");
+  const patched = patchT3ServerBundleProviderDefaults(source);
+  if (checkOnly && patched.changed) {
+    fail("T3 server bundle is missing the Cozea provider-default patch.");
+  }
+  if (!checkOnly && patched.changed) {
+    fs.writeFileSync(serverBundle, patched.source);
+    console.log("[prepare-t3-runtime] Applied Cozea provider defaults to the T3 bundle.");
+  }
 }
 
 const removableDeploySelfLink = path.join("node_modules", "pnpm-store", "node_modules", "t3");
@@ -207,6 +265,7 @@ function prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, { checkOnly
   if (checkOnly) {
     if (!current)
       fail(`T3 server bundle is missing, unloadable, or stale for ${expectedPin.slice(0, 8)}.`);
+    applyCozeaT3RuntimePatches({ checkOnly: true });
     return;
   }
 
@@ -214,6 +273,7 @@ function prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, { checkOnly
     if (mayAdoptExistingBundle) {
       fs.writeFileSync(bundlePinStamp, `${sourceStamp}\n`);
     }
+    applyCozeaT3RuntimePatches({ checkOnly: false });
     console.log(`[prepare-t3-runtime] T3 server bundle is ready at ${expectedPin.slice(0, 8)}.`);
     return;
   }
@@ -223,6 +283,7 @@ function prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, { checkOnly
   console.log("[prepare-t3-runtime] Building the T3 server bundle…");
   runPnpm(pnpmVersion, ["--filter", "t3", "build:bundle"]);
   if (!bundleLoads()) fail("The T3 server bundle was built but cannot be loaded by Node.");
+  applyCozeaT3RuntimePatches({ checkOnly: false });
   fs.writeFileSync(bundlePinStamp, `${sourceStamp}\n`);
 }
 

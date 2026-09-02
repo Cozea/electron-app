@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   deriveAssistantTurnRunning,
   deriveTitleSeed,
+  resolveModelSelectionProvider,
   resolveRememberedModelSelection,
 } from "../../apps/desktop/src/features/projects/components/workbench/assistant/workbenchAssistantShared";
 import { flushWorkbenchStorage } from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
-import { ProviderInstanceId } from "@cozea/assistant-contracts"
+import { ProviderInstanceId, type ServerConfig } from "@cozea/assistant-contracts"
 
 describe("assistantTileBootstrap", () => {
   it("derives clean thread titles from initial user prompts", () => {
@@ -51,6 +52,25 @@ describe("assistantTileBootstrap", () => {
         streamIsStreaming: false,
       }),
     ).toBe(false);
+  });
+
+  it("recovers the provider from T3 instance identity when the legacy field is absent", () => {
+    const config = {
+      providers: [
+        {
+          instanceId: ProviderInstanceId.make("codex-work"),
+          driver: "codex",
+        },
+      ],
+    } as unknown as ServerConfig;
+
+    expect(
+      resolveModelSelectionProvider({
+        config,
+        selection: { instanceId: ProviderInstanceId.make("codex-work") },
+        fallbackProvider: "claudeAgent",
+      }),
+    ).toBe("codex");
   });
 
   it("uses the last selected model when a fresh provider tile opens", () => {

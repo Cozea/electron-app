@@ -525,8 +525,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           durationStartByMessageId.get(timelineEntry.message.id) ?? timelineEntry.message.createdAt,
       });
     }
-    appendTurnStatusRows(timelineEntries.length);
-
     if (isWorkActive && generationStatusPhase === "thinking") {
       nextRows.push({
         kind: "thinking",
@@ -534,6 +532,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         createdAt: activeWorkStartedAt ?? "",
       });
     }
+    appendTurnStatusRows(timelineEntries.length);
 
     return nextRows;
   }, [
