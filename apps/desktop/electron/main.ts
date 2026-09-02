@@ -48,7 +48,7 @@ import {
 import { PublishedDevAppRuntimeService } from './services/PublishedDevAppRuntimeService'
 import { PublishedDevAppApprovalService } from './services/PublishedDevAppApprovalService'
 import { PublishedDevAppFolderGrantService } from './services/PublishedDevAppFolderGrantService'
-import { getBundledRuntimePublicKeyPath } from './runtime/runtimeManifest'
+import { getBundledRuntimePublicKeyPath, resolveUnpackagedBuildDir } from './runtime/runtimeManifest'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
@@ -1090,7 +1090,7 @@ const orgDevAppInstallationService = new OrgDevAppInstallationService(
 const containedRuntimeResources = () => {
   const resourceRoot = app.isPackaged
     ? path.join(process.resourcesPath, 'devapp-container-runtime')
-    : path.join(process.env.APP_ROOT ?? process.cwd(), 'build', 'devapp-container-runtime')
+    : resolveUnpackagedBuildDir('devapp-container-runtime')
   return {
     helperPath: path.join(resourceRoot, 'cozea-devapp-container-runtime'),
     rootPath: path.join(app.getPath('userData'), 'devapp-contained-runtime'),
@@ -1101,8 +1101,10 @@ const containedRuntimeResources = () => {
 const deviceContainedDevAppRuntimeService = new DeviceContainedDevAppRuntimeService({
   paths: containedRuntimeResources,
   imageVerifier: new SignedDevAppRuntimeImageVerifier(getBundledRuntimePublicKeyPath),
-  // Only a packaged macOS build has an OS signature to appeal to; elsewhere the device
-  // runtime cannot start at all, so there is nothing to gate.
+  // Only a packaged macOS build has an OS signature to appeal to. An unpackaged run
+  // uses a helper the developer just compiled from this checkout, so codesign has
+  // nothing to say about it; integrity there rests on the sha256 pins that
+  // ensureChild checks against resource-manifest.json, and on image verification.
   signatureVerifier:
     app.isPackaged && process.platform === 'darwin'
       ? createCodesignHelperVerifier(() => process.execPath)
