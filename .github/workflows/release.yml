@@ -156,7 +156,13 @@ jobs:
           ref: ${{ needs.plan.outputs.checkout_ref }}
           # typecheck:electron resolves imports out of vendor/t3code, so the
           # substrate must be present here too, not only in the build job.
-          submodules: true
+          # Submodule init is done manually below (see next step) rather than
+          # via this input's built-in submodule handling.
+          submodules: false
+
+      - name: Checkout vendored substrate
+        shell: bash
+        run: git submodule update --init vendor/t3code
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -285,7 +291,13 @@ jobs:
         with:
           fetch-depth: 1
           ref: ${{ needs.plan.outputs.checkout_ref }}
-          submodules: true
+          # Submodule init is done manually below (see next step) rather than
+          # via this input's built-in submodule handling.
+          submodules: false
+
+      - name: Checkout vendored substrate
+        shell: bash
+        run: git submodule update --init vendor/t3code
 
       - name: Setup Node
         uses: actions/setup-node@v4
