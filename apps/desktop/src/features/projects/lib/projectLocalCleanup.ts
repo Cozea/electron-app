@@ -4,6 +4,7 @@ import { removeLocalProjectDevApp } from "@/features/devapps/localProjectDevAppS
 import { useAssistantComposerDraftStore } from "@/features/projects/components/assistant/chat/composerDraftStore"
 import { clearPersistedProjectSidebarEntry } from "@/features/projects/components/sidebar/projectSidebarState"
 import { clearDevServerRunsForWorkspace } from "@/features/projects/devserver/devServerRunStore"
+import { clearDevServerProcessConfigForWorkspace } from "@/features/projects/devserver/devServerProcessConfigStore"
 import { releaseDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
 import { clearCachedProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import {
@@ -290,6 +291,7 @@ function clearProjectRendererState(
   runBestEffort("workspace runtime mirrors", () => {
     for (const workspaceId of snapshot.workspaceIds) {
       clearDevServerRunsForWorkspace(workspaceId)
+      clearDevServerProcessConfigForWorkspace(workspaceId)
       useTerminalStore.getState().actions.resetProject(workspaceId)
       window.localStorage.removeItem(`dev-command:${encodeURIComponent(workspaceId)}`)
     }

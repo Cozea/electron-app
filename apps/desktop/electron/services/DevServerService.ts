@@ -6,12 +6,23 @@ import {
   applyDevServerPortOverride,
   applyDevServerPortPlaceholder,
 } from './devServerCommandPortOverride'
+import type { DevServerManagedProcessState } from '../../../../shared/electronApiTypes'
+
+export interface DevServerAuxiliaryProcessOptions {
+  id: string
+  name: string
+  command: string
+  cwd: string
+  projectRootPath: string
+  gitCwd: string
+}
 
 export interface DevServerStartOptions {
   workspaceId: string
   laneId?: string | null
   command: string
   bootstrapCommand?: string | null
+  auxiliaryProcesses?: DevServerAuxiliaryProcessOptions[]
   preferredPort: number
   sessionKey?: string | null
   framework?: string | null
@@ -19,6 +30,7 @@ export interface DevServerStartOptions {
   terminalId: string
   onOutput: (output: string, stream: 'stdout' | 'stderr') => void
   onExit: (code: number | null) => void
+  onStateChange?: () => void
 }
 
 export interface DevServerStartResult {
@@ -37,6 +49,19 @@ export interface DevServerProcessState {
   phase: 'bootstrapping' | 'launching' | 'running' | null
   headless: boolean
   terminalId: string | null
+  processes: DevServerManagedProcessState[]
+}
+
+interface ManagedAuxiliaryProcess {
+  id: string
+  name: string
+  command: string
+  terminalId: string
+  running: boolean
+  sawRunningSubprocess: boolean
+  failureHandled: boolean
+  terminalExited: boolean
+  unsubscribeTerminal: (() => void) | null
 }
 
 interface ManagedDevServerRun {
@@ -58,14 +83,18 @@ interface ManagedDevServerRun {
   terminalDetached: boolean
   phase: 'bootstrapping' | 'launching' | 'running'
   bootstrapOutput: string
+  auxiliaryProcesses: ManagedAuxiliaryProcess[]
   unsubscribeTerminal: (() => void) | null
   onOutput: (output: string, stream: 'stdout' | 'stderr') => void
   onExit: (code: number | null) => void
+  onStateChange: () => void
 }
 
 const MAX_BOOTSTRAP_OUTPUT_LENGTH = 48_000
 const BOOTSTRAP_TIMEOUT_MS = 15 * 60 * 1000
 const BOOTSTRAP_SETTLE_DELAY_MS = 1200
+const SHELL_PROMPT_QUIET_MS = 250
+const SHELL_PROMPT_TIMEOUT_MS = 5000
 const DEFAULT_LANE_ID = 'collab'
 
 function normalizeLaneId(laneId?: string | null): string {
@@ -153,6 +182,7 @@ export class DevServerService {
       laneId,
       command,
       bootstrapCommand,
+      auxiliaryProcesses = [],
       preferredPort,
       sessionKey,
       framework,
@@ -160,6 +190,7 @@ export class DevServerService {
       terminalId,
       onOutput,
       onExit,
+      onStateChange = () => {},
     } = options
     const normalizedLaneId = normalizeLaneId(laneId)
     const runKey = buildRunKey(workspaceId, normalizedLaneId)
@@ -225,9 +256,11 @@ export class DevServerService {
         terminalDetached: false,
         phase: bootstrapCommand?.trim() ? 'bootstrapping' : 'launching',
         bootstrapOutput: '',
+        auxiliaryProcesses: [],
         unsubscribeTerminal: null,
         onOutput,
         onExit,
+        onStateChange,
       }
 
       run.unsubscribeTerminal = this.terminalService.subscribe(terminalId, {
@@ -315,6 +348,20 @@ export class DevServerService {
         onOutput('[DevServer] Dependency bootstrap finished. Launching dev server.\n', 'stdout')
       }
 
+      const auxiliaryLaunchError = await this.launchAuxiliaryProcesses(
+        run,
+        auxiliaryProcesses,
+        profileId,
+      )
+      if (auxiliaryLaunchError) {
+        await this.stop(workspaceId, normalizedLaneId)
+        return {
+          success: false,
+          runId,
+          error: auxiliaryLaunchError,
+        }
+      }
+
       const launchCommand = buildTerminalLaunchCommand({
         command: effectiveCommand,
         port: actualPort,
@@ -369,7 +416,108 @@ export class DevServerService {
     }
   }
 
-  public async stop(workspaceId: string, laneId?: string | null): Promise<{ success: boolean; error?: string }> {
+  private async launchAuxiliaryProcesses(
+    run: ManagedDevServerRun,
+    processes: DevServerAuxiliaryProcessOptions[],
+    profileId: string | null,
+  ): Promise<string | null> {
+    for (const process of processes) {
+      const created = await this.terminalService.createResolvedTerminal({
+        workspaceId: run.workspaceId,
+        profileId: profileId ?? undefined,
+        projectRootPath: process.projectRootPath,
+        cwd: process.cwd,
+        gitCwd: process.gitCwd,
+        cols: 120,
+        rows: 32,
+        runId: run.runId,
+        sessionKey: run.sessionKey,
+        laneId: run.laneId,
+        terminalKind: 'dev-server',
+        activityTracking: 'subprocess',
+        // Additional processes are user-authored, so they routinely contain
+        // shell syntax (`cd api && npm start`, `VAR=1 ...`, pipes). Carrying
+        // BROWSER in the PTY environment lets us type the command verbatim
+        // instead of exec-prefixing it, which only works for a bare argv.
+        env: { BROWSER: 'none' },
+      })
+      const terminalId = created.terminalId ?? created.snapshot?.id
+      if (!created.success || !terminalId) {
+        return `Failed to create the ${process.name} terminal${created.error ? `: ${created.error}` : '.'}`
+      }
+
+      // The PTY was spawned milliseconds ago and its login shell is still
+      // sourcing rc files. Typeahead delivered before the line editor is up is
+      // discarded, so the command would silently never run. Every other
+      // terminal in the app is typed into by a human long after it opens; this
+      // is the one create-then-type path, so it waits for the prompt itself.
+      await this.waitForShellPrompt(terminalId)
+
+      const managed: ManagedAuxiliaryProcess = {
+        id: process.id,
+        name: process.name,
+        command: process.command,
+        terminalId,
+        running: true,
+        sawRunningSubprocess: false,
+        failureHandled: false,
+        terminalExited: false,
+        unsubscribeTerminal: null,
+      }
+      run.auxiliaryProcesses.push(managed)
+      managed.unsubscribeTerminal = this.terminalService.subscribe(terminalId, {
+        onOutput: ({ data }) => {
+          if (!run.disposed) {
+            run.onOutput(data, 'stdout')
+          }
+        },
+        onExit: ({ exitCode }) => {
+          if (run.disposed || run.stopping || managed.failureHandled) return
+          managed.failureHandled = true
+          managed.running = false
+          managed.terminalExited = true
+          run.onStateChange()
+          this.reportAuxiliaryStop(run, managed, exitCode)
+        },
+        onActivity: ({ hasRunningSubprocess }) => {
+          if (run.disposed || run.stopping) return
+          if (hasRunningSubprocess) {
+            managed.sawRunningSubprocess = true
+            if (!managed.running) {
+              managed.running = true
+              // A process the user restarted from its own terminal is live
+              // again, so a later stop is worth reporting once more.
+              managed.failureHandled = false
+              run.onStateChange()
+            }
+            return
+          }
+          if (!managed.sawRunningSubprocess) return
+          if (managed.failureHandled) return
+          managed.failureHandled = true
+          managed.running = false
+          run.onStateChange()
+          this.reportAuxiliaryStop(run, managed, null)
+        },
+      })
+
+      run.onOutput(`[DevServer] Starting ${process.name}: ${process.command}\n`, 'stdout')
+      const accepted = await this.terminalService.sendInput(terminalId, `${process.command}\r`)
+      if (!accepted) {
+        managed.running = false
+        return `Failed to send the ${process.name} command to its terminal.`
+      }
+      run.onStateChange()
+    }
+
+    return null
+  }
+
+  public async stop(
+    workspaceId: string,
+    laneId?: string | null,
+    exitCode = 0,
+  ): Promise<{ success: boolean; error?: string }> {
     const runKey = buildRunKey(workspaceId, laneId)
     const entry = this.processes.get(runKey)
     if (!entry) {
@@ -379,7 +527,12 @@ export class DevServerService {
     entry.stopping = true
 
     try {
-      await this.terminalService.sendInput(entry.terminalId, '\u0003')
+      await Promise.all([
+        this.terminalService.sendInput(entry.terminalId, '\u0003'),
+        ...(entry.auxiliaryProcesses ?? [])
+          .filter((process) => !process.terminalExited)
+          .map((process) => this.terminalService.sendInput(process.terminalId, '\u0003')),
+      ])
       if (entry.activePort !== null) {
         const released = await this.waitForPortState(entry.activePort, false, 5000)
         if (!released) {
@@ -401,7 +554,7 @@ export class DevServerService {
         await new Promise((resolve) => setTimeout(resolve, 300))
       }
 
-      this.disposeRun(runKey, 0)
+      this.disposeRun(runKey, exitCode)
       return { success: true }
     } catch (error) {
       entry.stopping = false
@@ -454,6 +607,24 @@ export class DevServerService {
       phase: entry?.phase ?? null,
       headless: Boolean(entry?.terminalDetached),
       terminalId: entry?.terminalId ?? null,
+      processes: entry
+        ? [
+            {
+              id: 'primary',
+              name: 'Frontend',
+              terminalId: entry.terminalId,
+              kind: 'primary' as const,
+              running: true,
+            },
+            ...(entry.auxiliaryProcesses ?? []).map((process) => ({
+              id: process.id,
+              name: process.name,
+              terminalId: process.terminalId,
+              kind: 'auxiliary' as const,
+              running: process.running,
+            })),
+          ]
+        : [],
     }
   }
 
@@ -475,6 +646,25 @@ export class DevServerService {
     }
 
     this.disposeRun(runKey, null)
+  }
+
+  /**
+   * Additional processes stop *with* the frontend, never the other way round.
+   * A backend that exits — because its command was wrong, or because the user
+   * stopped it themselves — leaves the preview running and keeps its terminal
+   * alive so the failure is readable in the tile's process switcher.
+   */
+  private reportAuxiliaryStop(
+    run: ManagedDevServerRun,
+    process: ManagedAuxiliaryProcess,
+    exitCode: number | null,
+  ): void {
+    if (run.disposed || run.stopping) return
+
+    run.onOutput(
+      `[DevServer] ${process.name} stopped${exitCode === null ? '' : ` with code ${exitCode}`}. The frontend keeps running; open the ${process.name} terminal for details.\n`,
+      'stderr',
+    )
   }
 
   private async waitForExistingRun(entry: ManagedDevServerRun): Promise<DevServerStartResult> {
@@ -526,6 +716,7 @@ export class DevServerService {
     entry.disposed = true
     entry.unsubscribeTerminal?.()
     entry.unsubscribeTerminal = null
+    this.disposeAuxiliaryTerminals(entry)
     this.terminalService.setActivityTracking(entry.terminalId, 'off')
     this.processes.delete(runKey)
     this.portBroker.releasePort(entry.sessionKey, entry.workspaceId)
@@ -543,6 +734,7 @@ export class DevServerService {
     entry.disposed = true
     entry.unsubscribeTerminal?.()
     entry.unsubscribeTerminal = null
+    this.disposeAuxiliaryTerminals(entry)
     this.terminalService.setActivityTracking(entry.terminalId, 'off')
     this.processes.delete(runKey)
     this.portBroker.releasePort(entry.sessionKey, entry.workspaceId)
@@ -550,6 +742,60 @@ export class DevServerService {
     if (entry.terminalDetached) {
       this.terminalService.killTerminal(entry.terminalId)
     }
+  }
+
+  private disposeAuxiliaryTerminals(entry: ManagedDevServerRun): void {
+    for (const process of entry.auxiliaryProcesses ?? []) {
+      process.unsubscribeTerminal?.()
+      process.unsubscribeTerminal = null
+      process.running = false
+      this.terminalService.setActivityTracking(process.terminalId, 'off')
+      this.terminalService.killTerminal(process.terminalId)
+    }
+    entry.auxiliaryProcesses = []
+  }
+
+  /**
+   * Resolve once a newly spawned terminal has drawn its first prompt — first
+   * output followed by a short quiet window — or once the cap expires, in
+   * which case we send anyway rather than stranding the process.
+   */
+  private waitForShellPrompt(
+    terminalId: string,
+    timeoutMs = SHELL_PROMPT_TIMEOUT_MS,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      let settled = false
+      let quietTimer: NodeJS.Timeout | null = null
+      let timeoutHandle: NodeJS.Timeout | null = null
+      let unsubscribe: (() => void) | null = null
+
+      const finish = () => {
+        if (settled) return
+        settled = true
+        if (quietTimer) clearTimeout(quietTimer)
+        if (timeoutHandle) clearTimeout(timeoutHandle)
+        unsubscribe?.()
+        resolve()
+      }
+
+      const scheduleQuiet = () => {
+        if (quietTimer) clearTimeout(quietTimer)
+        quietTimer = setTimeout(finish, SHELL_PROMPT_QUIET_MS)
+      }
+
+      unsubscribe = this.terminalService.subscribe(terminalId, {
+        onOutput: scheduleQuiet,
+        onExit: finish,
+      })
+
+      timeoutHandle = setTimeout(finish, timeoutMs)
+
+      // The prompt can land between create() resolving and this subscription.
+      if ((this.terminalService.getTerminalSnapshot(terminalId)?.stdout ?? '').length > 0) {
+        scheduleQuiet()
+      }
+    })
   }
 
   private waitForTerminalCommandToSettle(
@@ -724,3 +970,4 @@ function buildTerminalLaunchCommand(input: {
 
   return `env PORT=${port} BROWSER=none ${command}`
 }
+

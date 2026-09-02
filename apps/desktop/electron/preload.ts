@@ -1023,6 +1023,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       command: string
       bootstrapCommand?: string | null
+      auxiliaryProcesses?: import('../../../shared/electronApiTypes').DevServerAuxiliaryProcessConfig[]
       port: number
       sessionKey?: string | null
       framework?: string | null
@@ -1036,6 +1037,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       command: string
       bootstrapCommand?: string | null
+      auxiliaryProcesses?: import('../../../shared/electronApiTypes').DevServerAuxiliaryProcessConfig[]
       port: number
       sessionKey?: string | null
       framework?: string | null

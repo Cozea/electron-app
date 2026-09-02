@@ -1084,11 +1084,26 @@ export interface AgentToolLoginEvent {
   error?: string
 }
 
+export interface DevServerAuxiliaryProcessConfig {
+  id: string
+  name: string
+  command: string
+}
+
+export interface DevServerManagedProcessState {
+  id: string
+  name: string
+  terminalId: string
+  kind: 'primary' | 'auxiliary'
+  running: boolean
+}
+
 export interface DevServerStartOptions {
   workspaceId: string
   laneId?: string | null
   command: string
   bootstrapCommand?: string | null
+  auxiliaryProcesses?: DevServerAuxiliaryProcessConfig[]
   port: number
   sessionKey?: string | null
   framework?: string | null
@@ -1132,6 +1147,8 @@ export interface DevServerProcessState {
   headless: boolean
   /** Owning PTY for restoring logs when a headless surface is reopened. */
   terminalId: string | null
+  /** The primary frontend plus any project-local user-configured processes. */
+  processes: DevServerManagedProcessState[]
 }
 
 /** Authoritative main-process state pushed after a run lifecycle change. */

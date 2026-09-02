@@ -52,6 +52,7 @@ import {
 } from "@/features/devapps/registry"
 import type { DevAppWorkbenchTileTarget } from "@/features/devapps/registry/types"
 import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
+import { DevServerProcessesDialog } from "@/features/projects/components/workbench/DevServerProcessesDialog"
 import { useWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
 import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
 import {
@@ -97,6 +98,7 @@ import {
   Layout04Icon as __Layout04HugeIcon,
   PlayIcon as __PlayHugeIcon,
   Refresh01Icon as __RefreshCcwHugeIcon,
+  Settings02Icon as __SettingsHugeIcon,
   StopIcon as __SquareHugeIcon,
 } from "@hugeicons/core-free-icons"
 
@@ -516,7 +518,9 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
   tileId: string
   surface: "devServer" | "mobileSimulator"
 }) {
+  const { t } = useTranslation()
   const runtime = useWorkbenchDockRuntime()
+  const [processesOpen, setProcessesOpen] = useState(false)
   const tile = useWorkbenchTile(runtime.projectId, runtime.laneId, runtime.workspaceId, tileId)
   const runtimeTarget =
     tile?.type === "devServer" ? resolveProjectDevAppRuntimeTarget(tile, runtime) : runtime
@@ -544,9 +548,35 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
     return null
   }
 
+  const canConfigureProcesses =
+    surface === "devServer" && tile?.type === "devServer" && !tile.devAppId
+  const processSettings = canConfigureProcesses ? (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        onClick={() => setProcessesOpen(true)}
+        aria-label={t("workbench.devserver.processes.configure")}
+        title={t("workbench.devserver.processes.configure")}
+      >
+        <HugeiconsIcon icon={__SettingsHugeIcon} className="h-3.5 w-3.5" />
+      </Button>
+      <DevServerProcessesDialog
+        open={processesOpen}
+        onOpenChange={setProcessesOpen}
+        workspaceId={runtimeTarget.workspaceId}
+        runKey={runKey}
+        running={isDevServerRunActive(run.status)}
+      />
+    </>
+  ) : null
+
   if (isDevServerRunActive(run.status)) {
     return (
       <>
+        {processSettings}
         <Button
           type="button"
           variant="ghost"
@@ -584,20 +614,23 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
   }
 
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="h-7 w-7"
-      disabled={!hasLaunchTerminal}
-      title={hasLaunchTerminal ? undefined : "Preparing the dev server"}
-      onClick={() => {
-        void startDevServerRun(runKey)
-      }}
-      aria-label="Start dev server"
-    >
-      <HugeiconsIcon icon={__PlayHugeIcon} className="h-3.5 w-3.5 fill-current" />
-    </Button>
+    <>
+      {processSettings}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        disabled={!hasLaunchTerminal}
+        title={hasLaunchTerminal ? undefined : "Preparing the dev server"}
+        onClick={() => {
+          void startDevServerRun(runKey)
+        }}
+        aria-label="Start dev server"
+      >
+        <HugeiconsIcon icon={__PlayHugeIcon} className="h-3.5 w-3.5 fill-current" />
+      </Button>
+    </>
   )
 })
 
