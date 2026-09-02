@@ -8,7 +8,7 @@ const ROOT = path.resolve(import.meta.dirname, "../..")
 describe("project sidebar search", () => {
   it("opens the shared command palette directly below DevApps Store", () => {
     const source = fs.readFileSync(
-      path.join(ROOT, "apps/desktop/src/features/projects/components/ProjectSidebar.tsx"),
+      path.join(ROOT, "apps/desktop/src/features/projects/ui/ProjectSidebar.tsx"),
       "utf8",
     )
     const storeIndex = source.indexOf("t('nav.devAppsStore')")
