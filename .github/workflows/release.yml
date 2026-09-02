@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       publish:
-        description: "Publish installers and runtime assets to Cozea/cozea-prod"
+        description: "Publish installers and runtime assets to the release repository"
         required: true
         type: boolean
         default: false
@@ -26,8 +26,9 @@ concurrency:
 env:
   CI: true
   NODE_OPTIONS: --max-old-space-size=4096
-  COZEA_RUNTIME_RELEASE_REPO: Cozea/cozea-prod
-  COZEA_GIT_BUNDLE_RELEASE_REPO: Cozea/cozea-prod
+  COZEA_RELEASE_REPO: ${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
+  COZEA_RUNTIME_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
+  COZEA_GIT_BUNDLE_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
   COZEA_GIT_BUNDLE_URL_DARWIN_ARM64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_ARM64 }}
   COZEA_GIT_BUNDLE_URL_DARWIN_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_DARWIN_X64 }}
   COZEA_GIT_BUNDLE_URL_WIN32_X64: ${{ secrets.COZEA_GIT_BUNDLE_URL_WIN32_X64 }}
@@ -340,7 +341,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "::error::Missing GH_TOKEN for publishing to Cozea/cozea-prod."
+            echo "::error::Missing GH_TOKEN for publishing to ${COZEA_RUNTIME_RELEASE_REPO}."
             exit 1
           fi
 
@@ -570,7 +571,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          repo="Cozea/cozea-prod"
+          repo="${{ env.COZEA_RUNTIME_RELEASE_REPO }}"
           tag="${{ needs.plan.outputs.release_tag }}"
           target="${{ matrix.git_bundle_targets }}"
           tmp_dir="$(mktemp -d)"
