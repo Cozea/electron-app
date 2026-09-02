@@ -372,9 +372,10 @@ export function CreateProjectDialog({
         }
         // The package previews fine without these; it cannot publish. Say so now rather than
         // letting the author discover it from the publish dialog later.
-        if (scaffold?.success && scaffold.preparation.warnings.length > 0) {
-          setScaffoldWarnings(scaffold.preparation.warnings)
-        }
+        // Tolerate a main process that predates this field: a project that was created must
+        // not look like a failure because the renderer expected a newer reply shape.
+        const preparationWarnings = scaffold?.success ? (scaffold.preparation?.warnings ?? []) : []
+        if (preparationWarnings.length > 0) setScaffoldWarnings(preparationWarnings)
 
         // Optionally create a GitHub repo
         let gitHubRepoUrl: string | undefined
@@ -402,6 +403,11 @@ export function CreateProjectDialog({
           userId: convexUserId,
           status: "active",
         })
+
+        // Navigating away would close this dialog over the notice, so a package that cannot
+        // publish would report that to nobody. Hold here and let the author dismiss it; the
+        // project already exists and is in the sidebar either way.
+        if (preparationWarnings.length > 0) return
 
         navigateToProjectWorkbench(
           String(result.projectId),
