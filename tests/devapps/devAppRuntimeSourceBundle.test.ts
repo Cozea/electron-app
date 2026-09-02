@@ -70,9 +70,11 @@ describe("DevApp central-build source bundle", () => {
     expect(() => createDevAppRuntimeSourceBundle(linkRoot)).toThrow("cannot contain symbolic links")
   })
 
-  it("requires a committed Bun lock and deterministic build script", () => {
+  it("requires a Bun lockfile and deterministic build script", () => {
     const root = project()
     fs.rmSync(path.join(root, "bun.lock"))
-    expect(() => createDevAppRuntimeSourceBundle(root)).toThrow("committed bun.lock")
+    // The check tests for the lockfile on disk; it never consults git, so the message must
+    // not claim a commit was verified.
+    expect(() => createDevAppRuntimeSourceBundle(root)).toThrow("require package.json and bun.lock")
   })
 })

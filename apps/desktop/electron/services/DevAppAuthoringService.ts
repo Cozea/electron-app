@@ -15,6 +15,11 @@ import {
 } from "../../../../shared/devAppPackage";
 import { DEV_APP_WORKER_PROTOCOL_VERSION } from "../../../../shared/devAppWorkerProtocol";
 import { formatDevAppRef } from "../../../../shared/devAppRef";
+import {
+  prepareScaffoldedDevAppProject,
+  type DevAppScaffoldPreparation,
+  type ScaffoldCommandRunner,
+} from "./devAppScaffoldPreparation";
 
 interface InspectOptions {
   projectId: string;
@@ -78,6 +83,12 @@ function missingInspection(): DevAppPackageInspection {
 }
 
 export class DevAppAuthoringService {
+  private readonly runScaffoldCommand: ScaffoldCommandRunner | undefined;
+
+  constructor(runScaffoldCommand?: ScaffoldCommandRunner) {
+    this.runScaffoldCommand = runScaffoldCommand;
+  }
+
   inspect(options: InspectOptions): DevAppPackageInspection {
     const relativePath = normalizedPackagePath(options.relativePath);
     const packageRoot = resolvePackageRoot(options.workspaceRoot, relativePath);
@@ -126,7 +137,11 @@ export class DevAppAuthoringService {
     return this.inspect({ projectId: "pending", workspaceId: sourceId, workspaceRoot: root });
   }
 
-  scaffold(options: ScaffoldOptions): { source: DevAppDevelopmentSource; createdFiles: string[] } {
+  scaffold(options: ScaffoldOptions): {
+    source: DevAppDevelopmentSource;
+    createdFiles: string[];
+    preparation: DevAppScaffoldPreparation;
+  } {
     const trimmedName = options.name.trim();
     if (!trimmedName || trimmedName.length > 120) throw new Error("Choose a DevApp name.");
     const relativePath = normalizedPackagePath(options.relativePath);
@@ -163,7 +178,10 @@ export class DevAppAuthoringService {
     const inspection = this.inspect({ ...options, relativePath });
     if (inspection.status !== "valid")
       throw new Error("The generated DevApp manifest failed validation.");
-    return { source: inspection.source, createdFiles };
+    // Publication requires a lockfile and a recorded tree. Producing them here keeps a new
+    // package publishable, instead of failing from the publish dialog much later.
+    const preparation = prepareScaffoldedDevAppProject(packageRoot, this.runScaffoldCommand);
+    return { source: inspection.source, createdFiles, preparation };
   }
 }
 

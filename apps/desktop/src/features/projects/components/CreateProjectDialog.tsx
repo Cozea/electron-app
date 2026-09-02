@@ -114,6 +114,7 @@ export function CreateProjectDialog({
   const [localFolderPath, setLocalFolderPath] = useState("")
   const [localGitState, setLocalGitState] = useState<LocalGitState | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [scaffoldWarnings, setScaffoldWarnings] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasEditedName, setHasEditedName] = useState(false)
   const [createGitHubRepo, setCreateGitHubRepo] = useState(false)
@@ -368,6 +369,11 @@ export function CreateProjectDialog({
           : null
         if (scaffold && !scaffold.success) {
           throw new Error(scaffold.error)
+        }
+        // The package previews fine without these; it cannot publish. Say so now rather than
+        // letting the author discover it from the publish dialog later.
+        if (scaffold?.success && scaffold.preparation.warnings.length > 0) {
+          setScaffoldWarnings(scaffold.preparation.warnings)
         }
 
         // Optionally create a GitHub repo
@@ -672,6 +678,16 @@ export function CreateProjectDialog({
           ) : null}
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {scaffoldWarnings.length > 0 ? (
+            <div className="text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">
+                The DevApp was created, but it cannot be published yet.
+              </p>
+              {scaffoldWarnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {isLocalMode ? (

@@ -62,7 +62,9 @@ function assertReproducibleBunProject(projectRoot: string): void {
   const packagePath = path.join(projectRoot, "package.json");
   const lockPath = path.join(projectRoot, "bun.lock");
   if (!fs.existsSync(packagePath) || !fs.existsSync(lockPath)) {
-    throw new Error("Contained DevApps require package.json and a committed bun.lock.");
+    throw new Error(
+      "Contained DevApps require package.json and bun.lock. Run `bun install` in the project, then commit the lockfile.",
+    );
   }
   const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8")) as {
     scripts?: Record<string, unknown>;

@@ -45,6 +45,20 @@ Allowed combinations and filesystem behavior are defined in the
 approval-gated development runtime on the device; the declaration describes the package's
 published execution and storage contract.
 
+Views run under a fixed Content Security Policy, in development previews and published
+artifacts alike:
+
+```
+default-src 'self' https: data: blob:; base-uri 'self'; object-src 'none';
+frame-ancestors 'none'; connect-src 'self' https: wss:;
+script-src 'self'; style-src 'self' 'unsafe-inline'
+```
+
+`script-src 'self'` means an inline `<script>` never runs. Put JavaScript in a file the build
+emits and load it with `<script src="...">`. Inline `<style>` is allowed, so a page whose script
+is inline renders exactly as designed and does nothing when clicked — check the guest console
+before assuming the view is at fault.
+
 Workers declare agent-facing operations explicitly rather than setting an exposure flag:
 
 ```json
