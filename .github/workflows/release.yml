@@ -477,6 +477,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # electron-builder copies the t3 runtime's pnpm-store node_modules
+          # (many thousands of small files) into the app bundle; macOS's
+          # default open-file limit (256) is nowhere near enough for that
+          # and the copy fails with EMFILE partway through.
+          ulimit -n "$(ulimit -Hn)" 2>/dev/null || ulimit -n 65536 2>/dev/null || true
+
           max_attempts=2
           success=0
 
