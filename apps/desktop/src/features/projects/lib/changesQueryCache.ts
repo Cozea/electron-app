@@ -1,5 +1,2 @@
-import type { Id } from "../../../../../../convex/_generated/dataModel"
-
-export function getProjectChangesActivityCacheKey(projectId: Id<"projects"> | string): string {
-  return `project-changes-activity:${String(projectId)}`
-}
+/** Compatibility facade. Changes query caching belongs in source control. */
+export * from "@/features/source-control/model/changesQueryCache"

@@ -1,2 +1,2 @@
-export const CHANGES_TILE_MIN_WIDTH_COLLAPSED = 340
-export const CHANGES_TILE_MIN_WIDTH_EXPANDED = 700
+/** Compatibility facade. Changes tile sizing belongs in source control. */
+export * from "@/features/source-control/model/changesTileSizing"
