@@ -12,10 +12,10 @@ apps/desktop/src/
     browser/            embedded browser, annotations, recording, viewport state
     dev-server/         dev-server runs, commands, and preview coordination
     devapps/            DevApp authoring, catalog, publication, installation, preview
-    native-preview/     native simulator preview presentation
+    native-preview/     simulator preview presentation, selection and session state
     projects/           project identity, lifecycle, access, navigation
     source-control/     changes, diffs, checkpoints, branch state and sidebar model
-    terminal/           terminal views and workbench-session terminal binding
+    terminal/           views, session binding, groups, output buffers and panel state
     workbench/          tiles, layout, command palette, and persisted workbench model
     workspace/          workspace identity, resolution, repair, and runtime hosting
   platform/desktop/     typed Electron bridge clients migration target
