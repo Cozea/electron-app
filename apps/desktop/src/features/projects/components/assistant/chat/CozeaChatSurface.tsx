@@ -67,6 +67,7 @@ import {
   getVscodeIconUrlForEntry,
 } from "@/features/projects/components/assistant/vscode-icons"
 import type { ContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
+import type { AccountUsageLimitSnapshot } from "@/features/projects/components/assistant/lib/usageLimits"
 import {
   buildPendingUserInputAnswers,
   derivePendingUserInputProgress,
@@ -260,6 +261,7 @@ interface CozeaChatSurfaceProps {
   activeRequestKey: string | null
   userInputDrafts: UserInputAnswerDrafts
   activeContextWindow: ContextWindowSnapshot | null
+  activeAccountUsage: AccountUsageLimitSnapshot | null
   composerStatus: ReactNode
   composer: string
   composerCursor: number
@@ -1641,6 +1643,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               {!activePendingProgress && props.activeContextWindow ? (
                 <ContextWindowMeter
                   usage={props.activeContextWindow}
+                  accountUsage={props.activeAccountUsage}
                   hidePercentage
                   className="px-0.5"
                 />

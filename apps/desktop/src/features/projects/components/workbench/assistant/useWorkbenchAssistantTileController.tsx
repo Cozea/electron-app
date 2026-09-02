@@ -56,6 +56,7 @@ import {
   type ThreadArtifactMediaState,
 } from "@/features/projects/components/assistant/artifacts/useThreadArtifactMedia"
 import { deriveLatestContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
+import { deriveLatestAccountUsageLimitSnapshot } from "@/features/projects/components/assistant/lib/usageLimits"
 import {
   newCommandId,
   newMessageId,
@@ -115,6 +116,7 @@ import {
   getProviderModelOptions,
   getProviderSnapshot,
   normalizeModelSelection,
+  resolveModelSelectionProvider,
   resolveInteractionMode,
   resolvePreferredModelSelection,
   resolveRememberedModelSelection,
@@ -370,17 +372,27 @@ export function useWorkbenchAssistantTileController(
   ])
   const selectedModelSelection =
     composerDraft?.modelSelection ?? thread?.modelSelection ?? fallbackModelSelection
+  const selectedProvider = resolveModelSelectionProvider({
+    config,
+    selection: selectedModelSelection,
+    fallbackProvider: input.tile.provider,
+  })
+  const selectedProviderInstanceId = selectedModelSelection.instanceId
   const selectedDispatchModelSelection = useMemo(
-    () => withModelSelectionModel(selectedModelSelection, selectedModelSelection.model),
-    [selectedModelSelection],
+    () =>
+      normalizeModelSelection({
+        provider: selectedProvider,
+        instanceId: selectedProviderInstanceId,
+        model: selectedModelSelection.model,
+        options: selectedModelSelection.options,
+      }),
+    [selectedModelSelection, selectedProvider, selectedProviderInstanceId],
   )
 
   const selectedRuntimeMode =
     composerDraft?.runtimeMode ?? thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
   const selectedInteractionMode =
     composerDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
-  const selectedProvider = selectedModelSelection.provider
-  const selectedProviderInstanceId = selectedModelSelection.instanceId
   const providerSnapshot = getProviderSnapshot(config, selectedProvider, selectedProviderInstanceId)
   const modelOptionsByProvider = useMemo<ProviderModelOptionsByProvider>(
     () => ({
@@ -507,6 +519,25 @@ export function useWorkbenchAssistantTileController(
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(visibleThread?.activities ?? []),
     [visibleThread?.activities],
+  )
+  const activeAccountUsage = useMemo(
+    () =>
+      deriveLatestAccountUsageLimitSnapshot(
+        visibleThread?.activities ?? [],
+        selectedProvider === "codex" && providerSnapshot?.accountRateLimits !== undefined
+          ? {
+              provider: "codex",
+              rateLimits: providerSnapshot.accountRateLimits,
+              updatedAt: providerSnapshot.checkedAt,
+            }
+          : null,
+      ),
+    [
+      providerSnapshot?.accountRateLimits,
+      providerSnapshot?.checkedAt,
+      selectedProvider,
+      visibleThread?.activities,
+    ],
   )
   const turnCountByTurnId = useMemo(
     () => inferCheckpointTurnCountByTurnId(visibleThread?.turnDiffSummaries ?? []),
@@ -2052,6 +2083,7 @@ export function useWorkbenchAssistantTileController(
       activeRequestKey,
       userInputDrafts,
       activeContextWindow,
+      activeAccountUsage,
       composerStatus,
       composer,
       composerCursor,

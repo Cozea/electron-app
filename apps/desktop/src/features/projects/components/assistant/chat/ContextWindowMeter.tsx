@@ -1,5 +1,10 @@
 import { cn } from "@/lib/utils";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
+import {
+  type AccountUsageLimitSnapshot,
+  type AccountUsageLimitWindow,
+  formatUsageLimitReset,
+} from "../lib/usageLimits";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 
 function formatPercentage(value: number | null): string | null {
@@ -14,10 +19,11 @@ function formatPercentage(value: number | null): string | null {
 
 export function ContextWindowMeter(props: {
   usage: ContextWindowSnapshot;
+  accountUsage?: AccountUsageLimitSnapshot | null;
   hidePercentage?: boolean;
   className?: string;
 }) {
-  const { usage, hidePercentage = false, className } = props;
+  const { usage, accountUsage = null, hidePercentage = false, className } = props;
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 8.25;
@@ -30,6 +36,21 @@ export function ContextWindowMeter(props: {
       : normalizedPercentage >= 75
         ? "text-amber-500"
         : "text-foreground/80";
+  const contextValue =
+    usage.maxTokens !== null && usedPercentage
+      ? `${usedPercentage} used · ${formatContextWindowTokens(usage.usedTokens)}/${formatContextWindowTokens(usage.maxTokens ?? null)}`
+      : `${formatContextWindowTokens(usage.usedTokens)} tokens used`;
+  const accountUsageWindows = accountUsage?.windows ?? [];
+  const hasAccountUsage = accountUsageWindows.length > 0;
+  const accountUsageValue = hasAccountUsage
+    ? accountUsageWindows
+        .map((window) => `${window.label} ${formatRemainingUsage(window)}`)
+        .join(" · ")
+    : "Not reported";
+  const nextResetWindow = accountUsageWindows
+    .filter((window) => window.resetsAt !== null)
+    .toSorted((left, right) => String(left.resetsAt).localeCompare(String(right.resetsAt)))[0];
+  const nextReset = nextResetWindow ? formatUsageLimitReset(nextResetWindow.resetsAt) : null;
 
   return (
     <Popover>
@@ -44,11 +65,7 @@ export function ContextWindowMeter(props: {
               "group inline-flex items-center gap-1.5 rounded-full transition-opacity hover:opacity-85 cursor-pointer",
               className,
             )}
-            aria-label={
-              usage.maxTokens !== null && usedPercentage
-                ? `Context window ${usedPercentage} used`
-                : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
-            }
+            aria-label={`Context window ${contextValue}. AI usage left ${accountUsageValue}`}
           >
             <span className="relative flex h-5 w-5 items-center justify-center shrink-0">
               <svg
@@ -97,40 +114,54 @@ export function ContextWindowMeter(props: {
           </button>
         }
       />
-      <PopoverPopup tooltipStyle side="top" align="end" className="w-max max-w-none px-3 py-2">
-        <div className="space-y-1.5 leading-tight">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            Context window
+      <PopoverPopup
+        tooltipStyle
+        side="top"
+        align="end"
+        className="w-[16.5rem] max-w-[calc(100vw-1rem)] px-3 py-2.5"
+      >
+        <div className="space-y-2 text-xs leading-tight">
+          <div
+            data-usage-row="context"
+            className="flex items-start justify-between gap-4"
+          >
+            <span className="shrink-0 text-muted-foreground">Context</span>
+            <span className="min-w-0 text-right font-medium tabular-nums text-foreground">
+              {contextValue}
+            </span>
           </div>
-          {usage.maxTokens !== null && usedPercentage ? (
-            <div className="whitespace-nowrap text-xs font-medium text-foreground">
-              <span>{usedPercentage}</span>
-              <span className="mx-1">⋅</span>
-              <span>{formatContextWindowTokens(usage.usedTokens)}</span>
-              <span>/</span>
-              <span>{formatContextWindowTokens(usage.maxTokens ?? null)} context used</span>
-            </div>
-          ) : (
-            <div className="text-sm text-foreground">
-              {formatContextWindowTokens(usage.usedTokens)} tokens used so far
-            </div>
-          )}
-          {(usage.totalProcessedTokens ?? null) !== null &&
-          (usage.totalProcessedTokens ?? 0) > usage.usedTokens ? (
-            <div className="text-xs text-muted-foreground">
-              Total processed: {formatContextWindowTokens(usage.totalProcessedTokens ?? null)}{" "}
-              tokens
-            </div>
-          ) : null}
-          {usage.compactsAutomatically ? (
-            <div className="text-xs text-muted-foreground">
-              {usage.autoCompactThreshold !== null
-                ? `Automatically compacts at ${formatContextWindowTokens(usage.autoCompactThreshold ?? null)} tokens.`
-                : "Automatically compacts its context when needed."}
-            </div>
-          ) : null}
+          <div
+            data-usage-row="account"
+            className="flex items-start justify-between gap-4 border-t border-border/60 pt-2"
+          >
+            <span className="shrink-0 text-muted-foreground">AI usage left</span>
+            <span className="min-w-0 text-right tabular-nums">
+              <span
+                className={cn(
+                  "font-medium",
+                  hasAccountUsage ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {accountUsageValue}
+              </span>
+              {nextReset ? (
+                <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                  {nextResetWindow?.label} {nextReset.toLowerCase()}
+                </span>
+              ) : null}
+            </span>
+          </div>
         </div>
       </PopoverPopup>
     </Popover>
   );
+}
+
+function formatRemainingUsage(window: AccountUsageLimitWindow): string {
+  if (window.remainingPercentage !== null) {
+    return `${Math.round(window.remainingPercentage)}% left`;
+  }
+  if (window.status === "exhausted") return "limit reached";
+  if (window.status === "warning") return "low";
+  return "available";
 }

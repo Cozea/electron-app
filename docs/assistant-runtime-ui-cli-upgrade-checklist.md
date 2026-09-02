@@ -19,6 +19,7 @@ Completed in repo:
 - Slice 6 provider architecture cleanup via `CodexSessionRuntime.ts` and `builtInProviderCatalog.ts`
 - Slice 7 descriptor-based model options, draft state, searchable picker UX, and UI controls in `shared/assistant-contracts/model.ts`, `shared/assistant-shared/model.ts`, `composerDraftStore.ts`, `ProviderOptionControls.tsx`, `ProviderModelPicker.tsx`, and `useWorkbenchAssistantTileController.tsx`
 - Slice 8 coverage for ingestion/session-logic/thread-session/ACP runtime event mapping, shared model helpers, server settings merging, Codex session runtime input building, and provider service/registry behavior
+- The composer meter keeps context consumption and provider-reported AI allowance in separate compact rows. Codex uses its account rate-limit snapshot plus sparse live updates; Claude uses its account-wide unified windows. Missing provider data is labeled `Not reported` rather than estimated from context tokens.
 - Local `@effect/sql` compatibility package in `packages/effect-sql` so the assistant-runtime test stack resolves the SQL client modules it already imports
 
 Still open:
