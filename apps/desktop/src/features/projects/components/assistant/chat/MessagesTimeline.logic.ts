@@ -72,38 +72,17 @@ export function deriveTurnHeaderIndex(
 
   const triggeringUserMessageIndex = timelineEntries.findLastIndex(
     (entry, index) =>
-      index < firstOwnedEntryIndex &&
-      entry.kind === "message" &&
-      entry.message.role === "user",
+      index < firstOwnedEntryIndex && entry.kind === "message" && entry.message.role === "user",
   );
   return triggeringUserMessageIndex >= 0 ? triggeringUserMessageIndex + 1 : firstOwnedEntryIndex;
 }
 
-/**
- * Keep the active turn header attached to the newest user prompt.
- *
- * During submit handoff, the projected turn id can briefly remain on the
- * previous completed turn. Only trust owned entries that occur after the
- * newest user message; otherwise the turn is still pending projection and the
- * header belongs immediately after that prompt.
- */
+/** Keep the active turn status after every currently visible timeline entry. */
 export function deriveActiveTurnHeaderIndex(
   timelineEntries: ReadonlyArray<TimelineEntry>,
-  turnId: TurnId | null | undefined,
+  _turnId: TurnId | null | undefined,
 ): number {
-  const latestUserMessageIndex = timelineEntries.findLastIndex(
-    (entry) => entry.kind === "message" && entry.message.role === "user",
-  );
-  const firstOwnedEntryAfterLatestUser = turnId
-    ? timelineEntries.findIndex(
-        (entry, index) =>
-          index > latestUserMessageIndex && timelineEntryTurnId(entry) === turnId,
-      )
-    : -1;
-
-  return firstOwnedEntryAfterLatestUser >= 0
-    ? firstOwnedEntryAfterLatestUser
-    : latestUserMessageIndex + 1;
+  return timelineEntries.length;
 }
 
 /**

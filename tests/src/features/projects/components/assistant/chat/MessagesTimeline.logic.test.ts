@@ -16,16 +16,16 @@ describe("deriveActiveTurnHeaderIndex", () => {
     message: { id, role, turnId, text: "", createdAt: "2026-01-01T00:00:00.000Z" },
   });
 
-  it("pins the header between the triggering user message and streamed text", () => {
+  it("places the active status after streamed text", () => {
     const entries = [
       message("old", "assistant", "turn-old"),
       message("user", "user"),
       message("live", "assistant", "turn-live"),
     ];
-    expect(deriveActiveTurnHeaderIndex(entries, "turn-live")).toBe(2);
+    expect(deriveActiveTurnHeaderIndex(entries, "turn-live")).toBe(3);
   });
 
-  it("pins the header before the active turn's first tool", () => {
+  it("places the active status after the active turn's latest tool", () => {
     const entries = [
       message("user", "user"),
       {
@@ -35,26 +35,44 @@ describe("deriveActiveTurnHeaderIndex", () => {
         entry: { id: "tool", turnId: "turn-live" },
       },
     ];
-    expect(deriveActiveTurnHeaderIndex(entries, "turn-live")).toBe(1);
+    expect(deriveActiveTurnHeaderIndex(entries, "turn-live")).toBe(2);
   });
 
-  it("places a pending turn header immediately after the latest user message", () => {
+  it("keeps the active status at the bottom as narration and work accumulate", () => {
+    const entries = [
+      message("user", "user"),
+      message("narration-1", "assistant", "turn-live"),
+      {
+        id: "entry:tool",
+        kind: "work",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        entry: { id: "tool", turnId: "turn-live" },
+      },
+      message("narration-2", "assistant", "turn-live"),
+    ];
+
+    expect(deriveActiveTurnHeaderIndex(entries, "turn-live")).toBe(entries.length);
+  });
+
+  it("places a pending turn status at the timeline bottom", () => {
     const entries = [
       message("old-user", "user"),
       message("old", "assistant", "turn-old"),
       message("new-user", "user"),
+      message("projected-answer", "assistant", "turn-live"),
     ];
-    expect(deriveActiveTurnHeaderIndex(entries, null)).toBe(3);
+    expect(deriveActiveTurnHeaderIndex(entries, null)).toBe(4);
   });
 
-  it("ignores a stale previous-turn id during the next prompt handoff", () => {
+  it("keeps a stale previous-turn id from pulling the status above new activity", () => {
     const entries = [
       message("old-user", "user"),
       message("old-answer", "assistant", "turn-old"),
       message("new-user", "user"),
+      message("new-answer", "assistant", "turn-live"),
     ];
 
-    expect(deriveActiveTurnHeaderIndex(entries, "turn-old")).toBe(3);
+    expect(deriveActiveTurnHeaderIndex(entries, "turn-old")).toBe(4);
   });
 
   it("keeps a completed historical turn pinned after its own user message", () => {
