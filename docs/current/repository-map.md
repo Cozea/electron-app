@@ -8,7 +8,7 @@ Status: current
 apps/desktop/src/
   app/                  application composition target
   features/
-    assistant/          assistant chat, timeline, artifacts, provider UI
+    assistant/          chat, timeline, artifacts, transport, orchestration and state
     browser/            embedded browser, annotations, recording, viewport state
     dev-server/         dev-server runs, commands, and preview coordination
     devapps/            DevApp authoring, catalog, publication, installation, preview
@@ -20,6 +20,7 @@ apps/desktop/src/
     workspace/          workspace identity, resolution, repair, and runtime hosting
   platform/desktop/     typed Electron bridge clients migration target
   shared/               renderer-only shared UI and utilities migration target
+  stores/               compatibility facades plus genuinely app-global state only
 ```
 
 The migration is intentionally incremental. Existing route URLs, persistence keys, IPC names, backend API names, and runtime behavior remain stable while ownership moves.
@@ -43,4 +44,4 @@ Do not add feature-specific code to these historical dumping grounds:
 - `apps/desktop/src/features/projects/lib`
 - `apps/desktop/src/features/projects/components`
 
-Existing code is moved from those locations in bounded stages.
+Existing code is moved from those locations in bounded stages. Files left in `src/stores` after a move are explicitly marked compatibility facades.
