@@ -194,6 +194,10 @@ export interface WorkbenchLlamaTile extends WorkbenchBaseTile {
   type: "llama"
 }
 
+export interface WorkbenchMemoryTile extends WorkbenchBaseTile {
+  type: "memory"
+}
+
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
   type: "selection"
   mode: WorkbenchSelectionTileMode
@@ -228,6 +232,7 @@ export type WorkbenchTile =
   | WorkbenchTerminalTile
   | WorkbenchDevServerTile
   | WorkbenchLlamaTile
+  | WorkbenchMemoryTile
   | WorkbenchMobileSimulatorTile
   | WorkbenchOrgDevAppTile
   | WorkbenchDevAppPreviewTile
@@ -349,7 +354,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
     openSingletonTile: (
       projectId: string,
       laneId: string,
-      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "llama">,
+      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "llama" | "memory">,
       options?: CreateTileOptions,
       workspaceId?: string | null,
     ) => string
@@ -685,6 +690,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     }
     case "mobileSimulator":
     case "llama":
+    case "memory":
       return { id, type, title, createdAt }
     case "devAppPreview":
       return {

@@ -42,7 +42,7 @@ import { getWorkbenchTileDefinition } from "@/features/projects/lib/workbenchTil
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
+import { BrainCircuitIcon as __BrainCircuitHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
 const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[4px]"
 const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
@@ -127,6 +127,15 @@ function SurfaceTileGlyph(props: {
         )
       }
       return <SiOllama className={className} aria-hidden />
+    case "memory":
+      if (devApp) {
+        return (
+          <span className={SIDEBAR_APP_ICON_CLASS}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
+      return <HugeiconsIcon icon={__BrainCircuitHugeIcon} className={className} aria-hidden />
     case "terminal":
     default:
       if (devApp) {
