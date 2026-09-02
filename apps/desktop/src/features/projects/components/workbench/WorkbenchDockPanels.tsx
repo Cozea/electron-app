@@ -101,6 +101,8 @@ import {
   Settings02Icon as __SettingsHugeIcon,
   StopIcon as __SquareHugeIcon,
 } from "@hugeicons/core-free-icons"
+import { WorkbenchMemoryTileHeaderActions } from "@/features/projects/components/workbench/WorkbenchMemoryTileHeaderActions"
+import { WorkbenchMemoryTileInfo } from "@/features/projects/components/workbench/WorkbenchMemoryTileInfo"
 
 const changesSuspenseFallback = <div className="h-full bg-content-surface" aria-hidden="true" />
 
@@ -119,6 +121,11 @@ const loadWorkbenchDevServerTile = () =>
 const loadWorkbenchMobileSimulatorTile = () =>
   import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchMobileSimulatorTile,
+  }))
+
+const loadWorkbenchMemoryTile = () =>
+  import("@/features/projects/components/workbench/WorkbenchMemoryTile").then((m) => ({
+    default: m.WorkbenchMemoryTile,
   }))
 const loadWorkbenchLlamaTile = () =>
   import("@/features/projects/components/workbench/WorkbenchLlamaTile").then((m) => ({
@@ -145,6 +152,7 @@ const LazyWorkbenchAssistantChatTile = lazy(loadWorkbenchAssistantChatTile)
 const LazyWorkbenchBrowserTile = lazy(loadWorkbenchBrowserTile)
 const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
 const LazyWorkbenchLlamaTile = lazy(loadWorkbenchLlamaTile)
+const LazyWorkbenchMemoryTile = lazy(loadWorkbenchMemoryTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchOrgDevAppTile = lazy(loadWorkbenchOrgDevAppTile)
 const LazyWorkbenchDevAppPreviewTile = lazy(loadWorkbenchDevAppPreviewTile)
@@ -1305,6 +1313,56 @@ const ChangesPanel = memo(function ChangesPanel(
   )
 })
 
+const MemoryPanel: FunctionComponent<IDockviewPanelProps> = memo(function MemoryPanel(props) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.workspaceId,
+    props.params.tileId,
+  )
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "memory") {
+    return (
+      <WorkbenchTileChrome title="Memory" panelApi={props.api} containerApi={props.containerApi}>
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <WorkbenchTileChrome
+      title={tile.title}
+      panelApi={props.api}
+      containerApi={props.containerApi}
+      tileType="memory"
+      controls={
+        <WorkbenchMemoryTileInfo
+          workspaceId={runtime.workspaceId ?? null}
+          laneId={props.params.laneId ?? null}
+        />
+      }
+      actions={
+        <WorkbenchMemoryTileHeaderActions
+          projectId={props.params.projectId}
+          workspaceId={runtime.workspaceId ?? null}
+          laneId={props.params.laneId ?? null}
+        />
+      }
+    >
+      <Suspense fallback={changesSuspenseFallback}>
+        <LazyWorkbenchMemoryTile
+          projectId={props.params.projectId}
+          workspaceId={runtime.workspaceId ?? null}
+          laneId={props.params.laneId ?? null}
+        />
+      </Suspense>
+    </WorkbenchTileChrome>
+  )
+})
+
 type WorkbenchDockPanelComponent = FunctionComponent<IDockviewPanelProps>
 
 const WORKBENCH_PANEL_RENDERERS = {
@@ -1313,6 +1371,7 @@ const WORKBENCH_PANEL_RENDERERS = {
   terminal: TerminalPanel,
   devServer: DevServerPanel,
   llama: LlamaPanel,
+  memory: MemoryPanel,
   mobileSimulator: MobileSimulatorPanel,
   orgDevApp: OrgDevAppPanel,
   devAppPreview: DevAppPreviewPanel,

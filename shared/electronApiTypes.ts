@@ -1175,6 +1175,78 @@ export interface AgentSkillExportResult {
   error?: string
 }
 
+export type ProjectMemoryNodeState = 'new' | 'changed' | 'unchanged'
+
+/** One remembered thing in the project graph an agent built. */
+export interface ProjectMemoryNode {
+  id: string
+  label: string
+  community: number | null
+  communityName: string | null
+  fileType: string | null
+  sourceFile: string | null
+  sourceLocation: string | null
+  state: ProjectMemoryNodeState
+  degree: number
+}
+
+export interface ProjectMemoryLink {
+  source: string
+  target: string
+  relation: string
+  weight: number
+  state: ProjectMemoryNodeState
+}
+
+export interface ProjectMemoryCommunity {
+  id: number
+  name: string
+  nodeCount: number
+}
+
+export interface ProjectMemoryGraph {
+  workspaceId: string
+  builtAtCommit: string | null
+  generatedAt: number
+  nodes: ProjectMemoryNode[]
+  links: ProjectMemoryLink[]
+  communities: ProjectMemoryCommunity[]
+  counts: {
+    total: number
+    new: number
+    changed: number
+    unchanged: number
+    /** Nodes whose file_type is not code: docs, decks, notes. */
+    nonCode: number
+  }
+}
+
+/** Absence of a graph is a setup state, not a failure: agents build it, not Cozea. */
+export interface ProjectMemoryStatus {
+  available: boolean
+  graphifyInstalled: boolean
+  /** False when the project has no source yet, which is not the same as no map. */
+  projectHasSource: boolean
+  graphPath: string | null
+  builtAtCommit: string | null
+  generatedAt: number | null
+  nodeCount: number
+  linkCount: number
+  error?: string
+}
+
+export interface ProjectMemoryNodeChange {
+  field: string
+  before: string | null
+  after: string | null
+}
+
+export interface ProjectMemoryNodeDetail {
+  node: ProjectMemoryNode
+  neighbors: Array<{ id: string; label: string; relation: string; direction: 'in' | 'out' }>
+  changes: ProjectMemoryNodeChange[]
+}
+
 export interface DevServerAuxiliaryProcessConfig {
   id: string
   name: string
@@ -2317,6 +2389,18 @@ export interface ElectronAPI {
     loginInput: (options: { sessionId: string; value: string }) => Promise<{ success: boolean }>
     loginCancel: (options: { sessionId: string }) => Promise<{ success: boolean }>
     onLoginEvent: (callback: (event: AgentToolLoginEvent) => void) => () => void
+  }
+  projectMemory: {
+    getStatus: (options: { workspaceId: string; laneId?: string | null }) => Promise<ProjectMemoryStatus>
+    getGraph: (options: {
+      workspaceId: string
+      laneId?: string | null
+    }) => Promise<ProjectMemoryGraph | null>
+    getNodeDetail: (options: {
+      workspaceId: string
+      laneId?: string | null
+      nodeId: string
+    }) => Promise<ProjectMemoryNodeDetail | null>
   }
   agentSkills: {
     list: () => Promise<AgentSkillsSnapshot>

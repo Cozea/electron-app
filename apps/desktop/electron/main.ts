@@ -21,6 +21,7 @@ import { AgentSkillService } from './services/AgentSkillService'
 import { CollabEncryptionService } from './services/CollabEncryptionService'
 import { forwardIntegrationOAuthCallback } from './integrationOAuthCallback'
 import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
+import { registerProjectMemoryHandlers } from './ipc/registerProjectMemoryHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
 import { registerNativePreviewHandlers } from './ipc/registerNativePreviewHandlers'
@@ -1707,6 +1708,9 @@ IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
 AgentSkillService.getInstance().registerIpcHandlers()
+// Ships project memory to every agent surface on first launch.
+void AgentSkillService.getInstance().ensureBuiltInSkills()
+registerProjectMemoryHandlers(ipcMain)
 
 // Override terminal handlers to support workspaceId (UUID) → resolve to
 // real filesystem path before delegating to TerminalService.

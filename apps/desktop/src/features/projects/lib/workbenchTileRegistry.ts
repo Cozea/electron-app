@@ -9,6 +9,7 @@
 
 export type WorkbenchTileType =
   | "browser"
+  | "memory"
   | "terminal"
   | "devServer"
   | "llama"
@@ -29,6 +30,7 @@ export type WorkbenchPanelRenderer = "always" | "onlyWhenVisible"
  */
 export type WorkbenchPanelRendererKey =
   | "assistantChat"
+  | "memory"
   | "browser"
   | "devAppPreview"
   | "devServer"
@@ -41,6 +43,7 @@ export type WorkbenchHeaderControlsKind = "browser" | "runtimePreview" | "regist
 export type WorkbenchManifestSource = "assistant" | "surface" | "published" | "none"
 export type WorkbenchFallbackIcon =
   | "messages"
+  | "memory"
   | "terminal"
   | "browser"
   | "add"
@@ -158,6 +161,17 @@ export const WORKBENCH_TILE_REGISTRY = {
     fallbackIcon: "devServer",
     panelRenderer: "devServer",
     dock: dockDefinition({ browserBacked: true, headerControls: "runtimePreview" }),
+  },
+  memory: {
+    defaultTitle: "Memory",
+    tabLabel: "Memory",
+    manifestSource: "surface",
+    fallbackIcon: "memory",
+    panelRenderer: "memory",
+    dock: dockDefinition({
+      constraints: ASSISTANT_CONSTRAINTS,
+      tabGroup: AGENT_GROUP,
+    }),
   },
   llama: {
     defaultTitle: "Llama",

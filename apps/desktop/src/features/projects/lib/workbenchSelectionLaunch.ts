@@ -34,7 +34,7 @@ export interface ResolvedWorkbenchSelectionAddTileAction {
 
 export interface ResolvedWorkbenchSelectionSingletonAction {
   action: "openSingletonTile"
-  tileType: "devServer" | "mobileSimulator" | "llama"
+  tileType: "devServer" | "mobileSimulator" | "llama" | "memory"
   options?: WorkbenchSelectionCreateOptions
 }
 
@@ -140,6 +140,12 @@ export function resolveWorkbenchSelectionLaunchRequest(
       return {
         action: "openSingletonTile",
         tileType: "llama",
+        options: commonOptions,
+      }
+    case "memory":
+      return {
+        action: "openSingletonTile",
+        tileType: "memory",
         options: commonOptions,
       }
     case "publishedDevApp":

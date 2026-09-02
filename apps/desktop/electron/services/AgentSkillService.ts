@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { BUILT_IN_SKILLS } from "./agentSkills/builtInSkills";
+
 import type {
   AgentSkillDraft,
   AgentSkillExportResult,
@@ -65,6 +67,8 @@ interface DisabledExternalBinding {
 interface AgentSkillStateFile {
   schemaVersion: 1;
   disabledExternalBindings: DisabledExternalBinding[];
+  /** Built-in skill keys already seeded, so deleting one keeps it deleted. */
+  seededBuiltInSkills?: string[];
 }
 
 interface ProviderDefinition extends AgentSkillProviderInfo {
@@ -344,9 +348,9 @@ export class AgentSkillService {
       state.schemaVersion !== STATE_VERSION ||
       !Array.isArray(state.disabledExternalBindings)
     ) {
-      return { schemaVersion: STATE_VERSION, disabledExternalBindings: [] };
+      return { schemaVersion: STATE_VERSION, disabledExternalBindings: [], seededBuiltInSkills: [] };
     }
-    return state;
+    return { ...state, seededBuiltInSkills: state.seededBuiltInSkills ?? [] };
   }
 
   private saveState(state: AgentSkillStateFile): void {
@@ -949,6 +953,47 @@ export class AgentSkillService {
         success: false,
         error: error instanceof Error ? error.message : "Unable to export the setup.",
       };
+    }
+  }
+
+  /**
+   * Install the skills Cozea ships, once, and enable them everywhere they are
+   * compatible so every agent tile inherits project memory as default context.
+   *
+   * Seeding is recorded per key rather than inferred from presence: a user who
+   * deletes a built-in means it, and a later launch must not bring it back.
+   */
+  async ensureBuiltInSkills(): Promise<void> {
+    for (const definition of BUILT_IN_SKILLS) {
+      const state = this.loadState();
+      if (state.seededBuiltInSkills?.includes(definition.key)) continue;
+
+      try {
+        const created = await this.save({
+          name: definition.name,
+          description: definition.description,
+          instructions: definition.instructions,
+          compatibleProviders: definition.compatibleProviders,
+        });
+        if (created.success && created.skillId) {
+          for (const provider of definition.compatibleProviders) {
+            await this.setProviderEnabled({
+              skillId: created.skillId,
+              provider,
+              enabled: true,
+            });
+          }
+        }
+      } catch {
+        // A failed seed must never block startup; the next launch retries.
+        continue;
+      }
+
+      const next = this.loadState();
+      this.saveState({
+        ...next,
+        seededBuiltInSkills: [...(next.seededBuiltInSkills ?? []), definition.key],
+      });
     }
   }
 

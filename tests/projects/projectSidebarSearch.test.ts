@@ -6,17 +6,20 @@ import { describe, expect, it } from "vitest"
 const ROOT = path.resolve(import.meta.dirname, "../..")
 
 describe("project sidebar search", () => {
-  it("opens the shared command palette directly below DevApps Store", () => {
+  it("opens the shared command palette directly below New project", () => {
     const source = fs.readFileSync(
       path.join(ROOT, "apps/desktop/src/features/projects/components/ProjectSidebar.tsx"),
       "utf8",
     )
-    const storeIndex = source.indexOf("t('nav.devAppsStore')")
+    const newProjectIndex = source.indexOf("t('nav.newProject')")
     const searchIndex = source.indexOf("t('nav.search')")
+    const storeIndex = source.indexOf("t('nav.devAppsStore')")
 
-    expect(storeIndex).toBeGreaterThan(-1)
-    expect(searchIndex).toBeGreaterThan(storeIndex)
-    expect(source.slice(storeIndex, searchIndex)).toContain("openCommandPalette")
+    expect(newProjectIndex).toBeGreaterThan(-1)
+    expect(searchIndex).toBeGreaterThan(newProjectIndex)
+    // Directly below: nothing else sits between them, and the store now follows.
+    expect(storeIndex).toBeGreaterThan(searchIndex)
+    expect(source.slice(newProjectIndex, searchIndex)).toContain("openCommandPalette")
   })
 
   it("localizes the search label", () => {

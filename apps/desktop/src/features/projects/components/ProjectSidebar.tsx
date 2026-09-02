@@ -950,6 +950,18 @@ export function ProjectSidebar({
                 className={cn(
                   SIDEBAR_NAV_ROW_BUTTON_CLASS,
                   "px-1.5",
+                  "[&>svg]:text-current",
+                )}
+                onClick={() => openCommandPalette()}
+              >
+                <HugeiconsIcon icon={__SearchHugeIcon} />
+                <span className="truncate">{t('nav.search')}</span>
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                  "px-1.5",
                   isOnAppStore && SIDEBAR_PILL_ACTIVE_CLASS,
                   "[&>svg]:text-current",
                 )}
@@ -957,18 +969,6 @@ export function ProjectSidebar({
               >
                 <HugeiconsIcon icon={__ShoppingBagHugeIcon} />
                 <span className="truncate">{t('nav.devAppsStore')}</span>
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                  "px-1.5",
-                  "[&>svg]:text-current",
-                )}
-                onClick={() => openCommandPalette()}
-              >
-                <HugeiconsIcon icon={__SearchHugeIcon} />
-                <span className="truncate">{t('nav.search')}</span>
               </button>
               <button
                 type="button"

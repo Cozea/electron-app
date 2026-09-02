@@ -113,6 +113,12 @@ export interface DevAppMobileSimulatorLaunchSpec extends DevAppLaunchBase {
   singleton: true
 }
 
+export interface DevAppMemoryLaunchSpec extends DevAppLaunchBase {
+  kind: "memory"
+  tileType: "memory"
+  singleton: true
+}
+
 export interface DevAppLlamaLaunchSpec extends DevAppLaunchBase {
   kind: "llama"
   tileType: "llama"
@@ -131,6 +137,7 @@ export type DevAppLaunchSpec =
   | DevAppDevServerLaunchSpec
   | DevelopmentDevAppLaunchSpec
   | DevAppLlamaLaunchSpec
+  | DevAppMemoryLaunchSpec
   | DevAppMobileSimulatorLaunchSpec
   | PublishedDevAppLaunchSpec
   | ProjectDevAppLaunchSpec

@@ -1139,6 +1139,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('agentTools:login-event', handler)
     },
   },
+  projectMemory: {
+    getStatus: (options: { workspaceId: string; laneId?: string | null }) =>
+      ipcRenderer.invoke('projectMemory:getStatus', options),
+    getGraph: (options: { workspaceId: string; laneId?: string | null }) =>
+      ipcRenderer.invoke('projectMemory:getGraph', options),
+    getNodeDetail: (options: { workspaceId: string; laneId?: string | null; nodeId: string }) =>
+      ipcRenderer.invoke('projectMemory:getNodeDetail', options),
+  },
   agentSkills: {
     list: () => ipcRenderer.invoke('agentSkills:list'),
     save: (draft: import('../../../shared/electronApiTypes').AgentSkillDraft) =>
