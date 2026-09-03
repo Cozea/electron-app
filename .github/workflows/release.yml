@@ -718,6 +718,19 @@ jobs:
             echo "::warning::No runtime assets found to upload."
           fi
 
+      - name: Upload this architecture's updater feed
+        # electron-builder writes a feed listing only what this job built, and every
+        # job uploads it to the same release under the same name, so the last upload
+        # wins and the release ends up describing one architecture. Keep each job's
+        # feed so they can be merged back together once both have finished.
+        if: matrix.electron_target == 'mac' && needs.plan.outputs.publish_mode == 'always'
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-feed-${{ matrix.artifact_name }}
+          path: dist/*-mac.yml
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -726,3 +739,70 @@ jobs:
           path: dist/**
           if-no-files-found: warn
           retention-days: 14
+
+  updates:
+    name: Merge updater feed
+    needs:
+      - plan
+      - build
+    if: needs.plan.outputs.publish_mode == 'always'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.plan.outputs.checkout_ref }}
+          # Only the merge script runs here; the substrate is not needed.
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Cache bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Download each architecture's updater feed
+        uses: actions/download-artifact@v4
+        with:
+          pattern: updater-feed-*
+          path: updater-feeds
+
+      - name: Merge the feeds and replace the published one
+        # This runs after every build job, so its upload is the one that survives.
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bun scripts/merge-updater-feed.mjs updater-feeds merged-updater-feeds
+
+          gh release upload "${{ needs.plan.outputs.release_tag }}" \
+            merged-updater-feeds/*.yml \
+            --repo "${COZEA_RUNTIME_RELEASE_REPO}" \
+            --clobber
+
+      - name: Merged feed summary
+        shell: bash
+        run: |
+          {
+            echo "## Updater feed"
+            echo
+            for feed in merged-updater-feeds/*.yml; do
+              echo "### $(basename "${feed}")"
+              echo
+              echo '```yaml'
+              cat "${feed}"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
