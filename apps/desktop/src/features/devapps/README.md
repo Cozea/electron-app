@@ -1,11 +1,11 @@
 # DevApps feature
 
-Owns DevApp manifests, authoring, local project identity, publication, organization catalog integration, installation, store navigation, runtime targeting, and preview lifecycle.
+This feature owns DevApp manifests, authoring, publication, installation, the unified DevApps Store, runtime targeting, and development previews.
 
 - `apps/`: built-in DevApp manifests and artwork.
-- `components/`: shared DevApp presentation.
-- `model/`: store catalog, preview selection, and project-source runtime targeting.
-- `preview/`: project DevApp preview runtime state and browser-surface coordination.
-- `ui/`: DevApp-store and authoring presentation.
+- `components/`: DevApp rows, icons, logos, and authoring presentation.
+- `model/`: store sections, preview selection, and project-source runtime targeting.
+- `pages/AppStorePage.tsx`: the unified store surface shown inside the persistent project shell.
+- `preview/`: development preview runtime state and browser-surface coordination.
 
-Workbench code embeds DevApps through adapters. New DevApp behavior belongs here rather than under `features/projects`.
+The former dedicated store sidebar and seven-category catalog were removed on the upstream 0.2.1 line. Workbench code embeds DevApps through adapters; it does not own DevApp behavior.
