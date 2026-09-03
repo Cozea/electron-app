@@ -332,6 +332,7 @@ const es: Record<TranslationKey, string> = {
   "projectDevApp.logo.replace": "Elige una imagen diferente",
   "projectDevApp.logo.processing": "Preparando logotipo…",
   "projectDevApp.logo.formats": "PNG, JPEG o WebP · hasta 8 MB · recorte cuadrado centrado",
+  "projectDevApp.logo.required": "Se requiere un logotipo antes de publicar.",
   "projectDevApp.logo.scope": "Publicado en la Tienda de la organización",
   "projectDevApp.logo.launchAction": "Publicar DevApp",
   "projectDevApp.logo.updateAction": "Actualizar DevApp",

@@ -322,6 +322,7 @@ const en = {
   "projectDevApp.logo.replace": "Choose a different image",
   "projectDevApp.logo.processing": "Preparing logo…",
   "projectDevApp.logo.formats": "PNG, JPEG, or WebP · up to 8 MB · centered square crop",
+  "projectDevApp.logo.required": "A logo is required before publishing.",
   "projectDevApp.logo.scope": "Published to the organization Store",
   "projectDevApp.logo.launchAction": "Publish DevApp",
   "projectDevApp.logo.updateAction": "Update DevApp",
