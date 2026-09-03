@@ -1,0 +1,1 @@
+Temporary trigger for the corrected project-memory integration workflow. This file is removed before promotion to the managed refactor branch.
