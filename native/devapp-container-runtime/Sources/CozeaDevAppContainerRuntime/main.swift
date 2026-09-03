@@ -425,6 +425,7 @@ private actor RuntimeCoordinator {
         try await RegistryPull.fetchOCILayout(
             reference: spec.image.reference,
             platformDigest: spec.image.platformDigest,
+            platform: spec.image.platform,
             token: spec.registryAuth.token,
             into: layout
         )

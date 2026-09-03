@@ -20,6 +20,7 @@ enum RegistryPull {
     static func fetchOCILayout(
         reference: String,
         platformDigest: String,
+        platform: String,
         token: String,
         into directory: URL
     ) async throws {
@@ -34,16 +35,41 @@ enum RegistryPull {
         let blobs = directory.appendingPathComponent("blobs/sha256", isDirectory: true)
         try FileManager.default.createDirectory(at: blobs, withIntermediateDirectories: true)
 
-        let manifestBody = try await get(
+        var imageDigest = platformDigest
+        var imageBody = try await get(
             session: session,
             url: target.manifestURL(platformDigest),
             token: token,
             accept: manifestAcceptTypes
         )
-        try verify(manifestBody, matches: platformDigest, what: "image manifest")
-        try write(manifestBody, to: blobs, digest: platformDigest)
+        try verify(imageBody, matches: platformDigest, what: "image manifest")
+        try write(imageBody, to: blobs, digest: platformDigest)
 
-        let manifest = try JSONDecoder().decode(Manifest.self, from: manifestBody)
+        // A release names the digest the builder reported for its platform, and with
+        // provenance enabled that is an index holding the image alongside its
+        // attestations rather than the image manifest itself. Resolve through it when
+        // so. Choosing from this index is not the registry choosing for us: its digest
+        // came from the signed release and was checked above, so only its own contents
+        // are on offer here.
+        if isIndex(imageBody) {
+            let index = try JSONDecoder().decode(Index.self, from: imageBody)
+            guard let entry = index.manifests.first(where: { matchesPlatform($0, platform) }) else {
+                throw RegistryPullError.transport(
+                    "The DevApp image index has no \(platform) manifest."
+                )
+            }
+            imageDigest = entry.digest
+            imageBody = try await get(
+                session: session,
+                url: target.manifestURL(entry.digest),
+                token: token,
+                accept: manifestAcceptTypes
+            )
+            try verify(imageBody, matches: entry.digest, what: "platform image manifest")
+            try write(imageBody, to: blobs, digest: entry.digest)
+        }
+
+        let manifest = try JSONDecoder().decode(Manifest.self, from: imageBody)
         // The config and every layer, each verified against the digest that named it.
         for descriptor in [manifest.config] + manifest.layers {
             let body = try await get(
@@ -56,7 +82,7 @@ enum RegistryPull {
             try write(body, to: blobs, digest: descriptor.digest)
         }
 
-        try writeLayout(directory: directory, reference: reference, manifest: manifestBody, digest: platformDigest)
+        try writeLayout(directory: directory, reference: reference, manifest: imageBody, digest: imageDigest)
     }
 
     // MARK: - Layout
@@ -100,11 +126,33 @@ enum RegistryPull {
         try body.write(to: blobs.appendingPathComponent(name), options: .atomic)
     }
 
+    /// An index carries `manifests`; an image manifest carries `config`.
+    private static func isIndex(_ body: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return false
+        }
+        return object["manifests"] != nil && object["config"] == nil
+    }
+
+    /// Attestation entries sit in the same index under an "unknown" platform, so match
+    /// the os and architecture the release asked for rather than taking the first entry.
+    private static func matchesPlatform(_ descriptor: Descriptor, _ platform: String) -> Bool {
+        let parts = platform.split(separator: "/").map(String.init)
+        guard parts.count >= 2, let entry = descriptor.platform else { return false }
+        return entry.os == parts[0] && entry.architecture == parts[1]
+    }
+
     // MARK: - Transport
 
+    /// GHCR answers with 404, not 406, when the stored manifest's media type is absent
+    /// from Accept, so an incomplete list looks exactly like a missing image. Buildx
+    /// writes Docker types by default and OCI types when asked, and a release may name
+    /// either a single manifest or an index, so offer all four.
     private static let manifestAcceptTypes = [
         MediaTypes.imageManifest,
         MediaTypes.dockerManifest,
+        MediaTypes.index,
+        MediaTypes.dockerManifestList,
     ]
 
     private static func get(
