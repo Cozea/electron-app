@@ -21,7 +21,6 @@ jobs:
       BUILD_ID: ${{ github.event.client_payload.buildId }}
       BUILDER_GATEWAY: ${{ secrets.COZEA_DEVAPP_BUILDER_GATEWAY_URL }}
       BUILDER_TOKEN: ${{ secrets.COZEA_DEVAPP_BUILDER_CALLBACK_TOKEN }}
-      IMAGE_REPOSITORY: ghcr.io/cozea/devapps
     steps:
       - name: Validate opaque build ID
         shell: bash
@@ -55,10 +54,16 @@ jobs:
             "$BUILDER_GATEWAY/internal/devapps/runtime-builds/$BUILD_ID/source"
           SOURCE_DIGEST="$(awk 'BEGIN{IGNORECASE=1} /^x-cozea-source-digest:/ {gsub(/\r/, "", $2); print $2}' source.headers)"
           PACKAGE_MANIFEST_DIGEST="$(awk 'BEGIN{IGNORECASE=1} /^x-cozea-package-manifest-digest:/ {gsub(/\r/, "", $2); print $2}' source.headers)"
+          # Each organization publishes to its own repository, so the gateway names the
+          # one this build may push to. The builder must not invent it: a wrong value
+          # would push one organization's image into another's namespace.
+          IMAGE_REPOSITORY="$(awk 'BEGIN{IGNORECASE=1} /^x-cozea-image-repository:/ {gsub(/\r/, "", $2); print $2}' source.headers)"
           [[ "$SOURCE_DIGEST" =~ ^[a-f0-9]{64}$ ]]
           [[ "$PACKAGE_MANIFEST_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$IMAGE_REPOSITORY" =~ ^ghcr\.io/[a-z0-9]([a-z0-9._-]*[a-z0-9])?(/[a-z0-9]([a-z0-9._-]*[a-z0-9])?){1,4}$ ]]
           echo "SOURCE_DIGEST=$SOURCE_DIGEST" >> "$GITHUB_ENV"
           echo "PACKAGE_MANIFEST_DIGEST=$PACKAGE_MANIFEST_DIGEST" >> "$GITHUB_ENV"
+          echo "IMAGE_REPOSITORY=$IMAGE_REPOSITORY" >> "$GITHUB_ENV"
 
       - name: Prepare deterministic build context
         shell: bash

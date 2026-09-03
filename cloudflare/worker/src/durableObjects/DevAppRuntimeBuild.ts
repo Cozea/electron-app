@@ -4,12 +4,19 @@ import type { Env } from '../types'
 interface StoredBuild extends DevAppRuntimeBuildDescriptor {
   identityKey: string
   sourceObjectKey: string
+  /** Chooses the image repository the builder pushes to. Internal to the gateway. */
+  organizationId: string
 }
 
 const STATE_KEY = 'build'
 
 function publicDescriptor(build: StoredBuild): DevAppRuntimeBuildDescriptor {
-  const { identityKey: _identityKey, sourceObjectKey: _sourceObjectKey, ...descriptor } = build
+  const {
+    identityKey: _identityKey,
+    sourceObjectKey: _sourceObjectKey,
+    organizationId: _organizationId,
+    ...descriptor
+  } = build
   return descriptor
 }
 

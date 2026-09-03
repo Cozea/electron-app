@@ -219,7 +219,13 @@ export const getRuntimeBuildAuthorizationForServer = query({
       reservation.contentHash &&
       reservation.runtimeKind,
     )
-    return { allowed }
+    // The builder pushes each organization to its own image repository, so the
+    // owning organization has to travel with the authorization rather than be
+    // re-derived later from data the builder does not hold. Publishing already
+    // requires an organization, so an absent one means the caller cannot publish
+    // this project either; the gateway fails closed on it.
+    const project = allowed ? await ctx.db.get(args.projectId) : null
+    return { allowed, organizationId: project?.organizationId ?? null }
   },
 })
 

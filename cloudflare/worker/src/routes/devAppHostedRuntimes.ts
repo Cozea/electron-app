@@ -443,7 +443,7 @@ async function ensureHostedRuntime(
         readOnly: false,
       })
     }
-    const registry = await createDevAppRegistryPullToken(env)
+    const registry = await createDevAppRegistryPullToken(env, request.identity.organizationId)
     const configDir = '/workspace/.cozea-docker'
     await target.mkdir(configDir, { recursive: true })
     await target.writeFile(
