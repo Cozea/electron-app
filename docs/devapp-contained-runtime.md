@@ -114,6 +114,46 @@ storage mechanism, and custom wildcard hostnames as the production mechanism for
    active release before every hosted start. The main process uses a build-pinned gateway origin;
    renderer IPC cannot choose where a device bearer token is sent.
 
+## Known gap: registry credentials and image tenancy
+
+Published DevApps that need the device runtime cannot currently start. Publishing, signing,
+cataloguing and installing all succeed; the image pull is what fails, so the failure surfaces only
+when the DevApp is first opened.
+
+**Confirmed cause.** The Worker completes the GHCR token exchange itself, using Basic credentials,
+and returns the resulting bearer token to the device. The device treats that finished token as a
+*credential* and replays it at `https://ghcr.io/token`, which expects Basic. GHCR answers `401`
+with its own `WWW-Authenticate` header, and Containerization refuses the exchange:
+
+```
+refusing insecure credential exchange:
+authorization server https://ghcr.io/token issued its own authentication challenge
+```
+
+The token is spent at the wrong step. It is not a scope, expiry, or visibility problem.
+
+**Why the device cannot simply skip the exchange.** `ImageStore.pull` exposes only
+`auth: Authentication`, and that value is consumed exclusively inside `fetchToken`; it is never
+applied to the `/v2/` request. `RegistryClient.request` does accept arbitrary headers, but it is
+`internal`. Handing the client a pre-exchanged token would require forking Containerization.
+
+**Why the package cannot simply be made public.** Every organization publishes into one shared
+repository, `ghcr.io/cozea/devapps`. Making it public would expose every organization's DevApp
+images, not just this project's own.
+
+**Related: the pull grant is broader than the pull decision.** `handleCreateDevAppRuntimePull`
+authorizes a specific organization, publication, release and digest, then returns a token scoped to
+`repository:cozea/devapps:pull` — the entire shared repository. For that token's lifetime a device
+authorized for one DevApp holds a credential able to pull any organization's image, given a digest.
+
+**Planned direction.** Publish each organization to its own repository under
+`ghcr.io/cozea/devapps/<organizationId>`, so a pull token can be scoped to exactly what was
+authorized. `isDigestPinnedImageReference` does not constrain the repository path and
+`finalize-devapp-runtime-build.ts` already takes `--repository`, so the reference plumbing carries
+this unchanged. Once the scope is per-organization, the device can hold a short-lived Basic
+credential — the form GHCR's token endpoint actually accepts — without that credential reaching
+beyond a single organization's images.
+
 ## Filesystem and developer power
 
 Published hosted code cannot access local files. Use a normal HTTPS service or an explicit upload
