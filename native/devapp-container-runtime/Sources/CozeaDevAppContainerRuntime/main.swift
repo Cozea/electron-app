@@ -107,11 +107,6 @@ private struct RegistryAuth: Codable, Sendable {
     let expiresAt: Double
 }
 
-private struct BearerAuthentication: Authentication {
-    let value: String
-    func token() async throws -> String { "Bearer \(value)" }
-}
-
 private struct FolderGrant: Codable, Sendable {
     let grantId: String
     let publicationId: String
@@ -419,11 +414,23 @@ private actor RuntimeCoordinator {
         let stderr = RuntimeLogWriter(emitter: emitter, runtimeId: spec.runtimeId, stream: "stderr")
         let stateMount = try stateMount(for: spec)
         let grants = try spec.folderGrants.map { try folderMount($0, spec: spec) }
-        let image = try await currentManager.imageStore.pull(
+        // The gateway completed the registry token exchange already, and GHCR will not
+        // accept its own issued token replayed as a credential, which is all
+        // ImageStore.pull knows how to do with an Authentication. Fetch the exact
+        // platform manifest and its blobs directly, then let the store do the rest.
+        let layout = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cozea-devapp-image-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: layout, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: layout) }
+        try await RegistryPull.fetchOCILayout(
             reference: spec.image.reference,
-            platform: Platform(arch: "arm64", os: "linux"),
-            auth: BearerAuthentication(value: spec.registryAuth.token)
+            platformDigest: spec.image.platformDigest,
+            token: spec.registryAuth.token,
+            into: layout
         )
+        guard let image = try await currentManager.imageStore.load(from: layout).first else {
+            throw RuntimeError.invalid("The DevApp runtime image could not be loaded.")
+        }
         let container = try await currentManager.create(
             spec.runtimeId,
             image: image,
