@@ -63,6 +63,40 @@ replacements_by_file = {
         ('from "../../../../../../convex/_generated/dataModel"', 'from "../../../../../convex/_generated/dataModel"'),
         ('from "@/features/projects/workspaces/workspaceIdentity"', 'from "@/features/workspace/workspaceIdentity"'),
     ],
+    "tests/assistant/chat/composerDraftStore.test.ts": [
+        (
+            "../../../apps/desktop/src/features/projects/components/assistant/chat/composerDraftStore",
+            "../../../apps/desktop/src/features/assistant/chat/composerDraftStore",
+        ),
+    ],
+    "tests/assistant/chat/modelPickerDismissal.test.ts": [
+        (
+            "../../../apps/desktop/src/features/projects/components/assistant/chat/modelPickerDismissal",
+            "../../../apps/desktop/src/features/assistant/chat/modelPickerDismissal",
+        ),
+    ],
+    "tests/assistant/composerSlashCommands.test.ts": [
+        (
+            "../../apps/desktop/src/features/projects/components/assistant/composer-logic",
+            "../../apps/desktop/src/features/assistant/composer-logic",
+        ),
+        (
+            "../../apps/desktop/src/features/projects/components/assistant/composer-editor-mentions",
+            "../../apps/desktop/src/features/assistant/composer-editor-mentions",
+        ),
+    ],
+    "tests/substrate/assistantTileBootstrap.test.ts": [
+        (
+            "../../apps/desktop/src/features/projects/components/workbench/assistant/workbenchAssistantShared",
+            "../../apps/desktop/src/features/workbench/assistant/workbenchAssistantShared",
+        ),
+    ],
+    "tests/substrate/threadDetailStore.test.ts": [
+        (
+            "../../apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.logic",
+            "../../apps/desktop/src/features/assistant/chat/MessagesTimeline.logic",
+        ),
+    ],
 }
 
 for relative, replacements in replacements_by_file.items():
