@@ -28,13 +28,13 @@ jobs:
         with:
           bun-version: 1.4.0
 
-      - name: Initialize substrate
-        shell: bash
-        run: git submodule update --init vendor/t3code
-
-      - name: Install dependencies
+      - name: Install repository dependencies
         shell: bash
         run: bun install --frozen-lockfile
+
+      - name: Prepare pinned T3 runtime
+        shell: bash
+        run: bun run prepare:t3-runtime
 
       - name: Validate integrated architecture
         shell: bash
