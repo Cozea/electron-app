@@ -1,6 +1,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cozea-collab",
+  // Two accounts are reachable from the same login, and an unpinned deploy picks
+  // one interactively -- which on a non-interactive run, or a distracted one, can
+  // publish this worker into the wrong account under a different workers.dev
+  // subdomain. The desktop app pins its gateway origin at build time, so a worker
+  // that lands anywhere else is simply unreachable. This is the account that
+  // serves cozea-collab.kelyan-engone.workers.dev today.
+  "account_id": "c9081ef53a698d2ee92516a8a7752ebc",
   // Account is resolved from the authenticated wrangler session, or set
   // CLOUDFLARE_ACCOUNT_ID in the environment. Not hardcoded so the public
   // repository does not name the deploying account.
