@@ -9,6 +9,7 @@ import {
   registerDevAppRuntimeBuildInConvex,
   requireActiveDeviceAccessInConvex,
 } from '../lib/convex'
+import { devAppImageRepository } from '../lib/devAppRegistry'
 import { verifyDeviceAccessToken } from '../lib/jwt'
 import type { DeviceAccessClaims, Env } from '../types'
 
@@ -88,7 +89,7 @@ export async function handleCreateDevAppRuntimeBuild(
   if (!SOURCE_DIGEST.test(sourceDigest) || !SHA256_DIGEST.test(packageManifestDigest)) {
     throw new Error('The DevApp build source identity is invalid')
   }
-  await authorizeDevAppRuntimeBuildInConvex(env, auth, { projectId, reservationId })
+  const { organizationId } = await authorizeDevAppRuntimeBuildInConvex(env, auth, { projectId, reservationId })
 
   const buildId = crypto.randomUUID()
   const sourceObjectKey = `runtime-builds/${buildId}/source.zip`
@@ -120,7 +121,7 @@ export async function handleCreateDevAppRuntimeBuild(
     const stub = buildStub(env, buildId)
     const initialized = await stub.fetch(new Request('https://build/initialize', {
       method: 'POST',
-      body: JSON.stringify({ ...descriptor, identityKey: auth.sub, sourceObjectKey }),
+      body: JSON.stringify({ ...descriptor, identityKey: auth.sub, sourceObjectKey, organizationId }),
     }))
     if (!initialized.ok) throw new Error('The DevApp build coordinator rejected initialization')
     await dispatchBuild(env, buildId)
@@ -165,6 +166,7 @@ export async function handleGetDevAppRuntimeBuildSource(
     sourceObjectKey: string
     sourceDigest: string
     packageManifestDigest: string
+    organizationId: string
   }
   const source = await env.DEVAPP_BUILD_INPUTS.get(build.sourceObjectKey)
   if (!source) return new Response('Build source not found', { status: 404 })
@@ -174,6 +176,9 @@ export async function handleGetDevAppRuntimeBuildSource(
       'content-length': String(source.size),
       'x-cozea-source-digest': build.sourceDigest,
       'x-cozea-package-manifest-digest': build.packageManifestDigest,
+      // The builder holds no organization of its own; this is the only thing that
+      // tells it which repository this build may be pushed to.
+      'x-cozea-image-repository': devAppImageRepository(build.organizationId),
     },
   })
 }

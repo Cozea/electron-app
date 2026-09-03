@@ -28,6 +28,7 @@ import {
 } from "@/features/projects/lib/workbenchTileRegistry"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
@@ -399,24 +400,29 @@ export function WorkbenchTileChrome({
                     {
                       id: isMaximized ? "restore" : "maximize",
                       label: isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize'),
+                      icon: getNativeMenuIcon("maximize"),
                     },
                     { type: "separator", id: "sep1" as any },
                     {
                       id: "splitRight",
                       label: t('workbench.layout.splitRight'),
+                      icon: getNativeMenuIcon("split-right"),
                     },
                     {
                       id: "splitLeft",
                       label: t('workbench.layout.splitLeft'),
+                      icon: getNativeMenuIcon("split-right"),
                     },
                     { type: "separator", id: "sep2" as any },
                     {
                       id: "splitDown",
                       label: t('workbench.layout.splitDown'),
+                      icon: getNativeMenuIcon("split-down"),
                     },
                     {
                       id: "splitUp",
                       label: t('workbench.layout.splitUp'),
+                      icon: getNativeMenuIcon("split-down"),
                     },
                   ]
 

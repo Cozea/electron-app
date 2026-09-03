@@ -6,6 +6,7 @@ import type {
 
 import { getStatusSummary } from "@/features/projects/components/workbench/branch-control/workbenchBranchDisplay"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
 import type { ProjectLaneDescriptor } from "@shared/electronApiTypes"
 
@@ -130,6 +131,7 @@ export function buildWorkbenchBranchMenuItems(input: {
     items.push({
       id: WB_BRANCH_MENU.switchCollab,
       label: "Switch To Collab Lane",
+      icon: getNativeMenuIcon("branch"),
     })
   }
 
@@ -137,6 +139,7 @@ export function buildWorkbenchBranchMenuItems(input: {
     items.push({
       id: WB_BRANCH_MENU.lane(lane.id),
       label: lane.branch,
+      icon: getNativeMenuIcon("branch"),
     })
   }
 
@@ -144,6 +147,7 @@ export function buildWorkbenchBranchMenuItems(input: {
     id: WB_BRANCH_MENU.newPersonalLane,
     label: "New Personal Lane",
     enabled: !newLaneDisabled,
+    icon: getNativeMenuIcon("plus"),
   })
 
   const showLaneActionSeparator =
@@ -157,11 +161,13 @@ export function buildWorkbenchBranchMenuItems(input: {
       id: WB_BRANCH_MENU.pull,
       label: "Pull Active Lane",
       enabled: !laneActionsLocked,
+      icon: getNativeMenuIcon("sync"),
     },
     {
       id: WB_BRANCH_MENU.push,
       label: "Push Active Lane",
       enabled: !laneActionsLocked,
+      icon: getNativeMenuIcon("move-up"),
     },
   )
 
@@ -170,6 +176,7 @@ export function buildWorkbenchBranchMenuItems(input: {
       id: WB_BRANCH_MENU.updateFromCollab,
       label: "Merge Collab Into Lane",
       enabled: !laneActionsLocked,
+      icon: getNativeMenuIcon("git-fork"),
     })
   }
 
@@ -178,11 +185,13 @@ export function buildWorkbenchBranchMenuItems(input: {
       id: WB_BRANCH_MENU.mergeIntoCollab,
       label: "Merge Lane Into Collab",
       enabled: !laneActionsLocked,
+      icon: getNativeMenuIcon("git-fork"),
     })
     items.push({
       id: WB_BRANCH_MENU.openPr,
       label: snapshot.gitStatus?.pr?.url ? "Open Current PR" : "Start Pull Request",
       enabled: !laneActionsLocked,
+      icon: getNativeMenuIcon("git-fork"),
     })
   }
 
@@ -215,6 +224,7 @@ export function buildWorkbenchBranchMenuItems(input: {
         type: "radio",
         label: `${branch.name}${collabExtra}${worktreeExtra}`,
         checked: isActive,
+        icon: getNativeMenuIcon("branch"),
       })
     }
   }

@@ -18,6 +18,7 @@ import {
 import {
   AntigravityIcon,
   CursorIcon,
+  FinderIcon,
   VisualStudioCodeIcon,
   ZedIcon,
 } from "@/features/projects/components/workbench/WorkbenchEditorIcons"
@@ -55,6 +56,7 @@ const T3_STYLE_EDITOR_ORDER: ReadonlyArray<ExternalEditorId> = [
   "rubymine",
   "clion",
   "datagrip",
+  "finder",
 ]
 
 function getWorkbenchEditorIcon(editorId: ExternalEditorId): ComponentType<SVGProps<SVGSVGElement>> {
@@ -90,6 +92,8 @@ function getWorkbenchEditorIcon(editorId: ExternalEditorId): ComponentType<SVGPr
       return Code2
     case "antigravity":
       return AntigravityIcon
+    case "finder":
+      return FinderIcon
     default:
       return Code2
   }

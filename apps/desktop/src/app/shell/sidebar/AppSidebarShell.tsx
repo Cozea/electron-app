@@ -15,12 +15,11 @@ import {
 
 /**
  * Single persistent sidebar chrome for the app shell. Route-mode switches
- * (project / settings / dev-app store) swap only the content inside; the
- * container, vibrancy surface, rail, and collapse state never remount, so
- * mode changes stop re-laying-out the boundary. The user-resized width is
- * shared across all surfaces — it's one sidebar.
+ * (project / settings) swap only the content inside; the container, vibrancy
+ * surface, rail, and collapse state never remount, so mode changes stop
+ * re-laying-out the boundary. The user-resized width is shared across all
+ * modes — it's one sidebar.
  */
-export type AppSidebarSurface = "project" | "settings" | "appStore"
 
 function ShellSidebarTrigger() {
   const { isMobile, state, openMobile } = useSidebar()
@@ -154,8 +153,6 @@ export function AppSidebarShell({
   className,
   children,
 }: {
-  /** Reserved for per-surface policy (e.g. collapsible mode) if it diverges. */
-  surface: AppSidebarSurface
   className?: string
   children: React.ReactNode
 }) {

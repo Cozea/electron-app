@@ -26,6 +26,9 @@ concurrency:
 env:
   CI: true
   NODE_OPTIONS: --max-old-space-size=4096
+  # Set to "1" to build unsigned even when signing secrets exist, without having to
+  # delete a certificate that may still be wanted later.
+  COZEA_FORCE_UNSIGNED_MAC: ${{ vars.COZEA_FORCE_UNSIGNED_MAC }}
   COZEA_RELEASE_REPO: ${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
   COZEA_RUNTIME_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
   COZEA_GIT_BUNDLE_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
@@ -363,7 +366,13 @@ jobs:
           # produce usable artifacts without one: fall back to an unsigned build
           # instead of failing the job, and let the later signing, verification
           # and notarization steps opt out on this flag.
-          if [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" ]]; then
+          if [[ "${COZEA_FORCE_UNSIGNED_MAC:-}" == "1" ]]; then
+            echo "COZEA_MAC_SIGNING=0" >> "$GITHUB_ENV"
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "COZEA_SKIP_NOTARIZE=1" >> "$GITHUB_ENV"
+            echo "COZEA_ALLOW_UNSIGNED_GIT_BUNDLES=1" >> "$GITHUB_ENV"
+            echo "::warning::COZEA_FORCE_UNSIGNED_MAC is set; ignoring any signing certificate and producing an unsigned build."
+          elif [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" ]]; then
             echo "COZEA_MAC_SIGNING=1" >> "$GITHUB_ENV"
             echo "Signing certificate configured; producing a signed build."
           else

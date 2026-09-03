@@ -109,7 +109,7 @@ publication status, and selects either the active release or an exact retained i
 Malformed, mismatched, inaccessible, archived, and unavailable-release refs all fail closed.
 
 The Store exposes a copyable latest-release ref. Pasting a built-in or publication ref into the
-workbench launcher resolves it independently of the current project and category. Launched Org
+workbench launcher resolves it independently of the current project. Launched Org
 DevApp tiles persist the originating ref, and artifact retrieval resolves that ref again, so
 `latest` follows the active release while `@N` remains pinned across restoration. A new built-in
 using an existing surface adds one manifest module; a new persisted tile identity adds one shell
@@ -233,10 +233,24 @@ Uninstall removes every installed version for a publication and version removal 
 artifact until its final installation reference disappears.
 
 The Store remains the online catalog and now provides explicit Install, Update, and Uninstall
-states. Its Updates category compares the catalog release to the locally active exact version, and
-its storage section shows total/per-version usage with version removal controls. The five
+states. Update availability is compared per publication between the catalog release and the locally
+active exact version, and is surfaced on that publication's own row; since 2026-09-03 the storefront
+has no Updates category and no category navigation at all. Its storage section still shows
+total/per-version usage with version removal controls. The five
 installed-but-unreferenced MCP dependencies — the Git, shell, filesystem, Playwright, and repository
 search servers — are absent from package manifests and the Bun lockfile.
+
+**Storefront shell unified — 2026-09-03.** `/projects/store` no longer swaps in a dedicated store
+sidebar. `ProjectSidebar` stays mounted with **DevApps Store** highlighted and only the central
+content changes. `AppStoreSidebar.tsx` and `features/projects/lib/appStoreCatalog.ts` were deleted
+along with the seven-category storefront taxonomy and 71 i18n keys per language. The page is now an
+Installed rail, `Built in | Your organization` scope tabs, and compact rows grouped as Popular and
+Assistants, split on `launcher.group`; search lives in the page and collapses the active scope into
+one flat result list. This supersedes the category-navigation portions of the 2026-09-01
+installation-UI and authoring-entry-point observations below; the Install/Update/Uninstall states,
+the storage section, and the Create/Open authoring entry points they recorded are unchanged.
+Registry `DevAppCategoryId`, per-manifest `categories`, and `listStoreApps({ category })` are
+retained and still unit-tested.
 
 ### Phase 8 — Container runtime, then hosted location — **Delivered, unexercised**
 

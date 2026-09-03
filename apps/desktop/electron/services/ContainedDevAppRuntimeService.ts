@@ -270,6 +270,7 @@ export class DeviceContainedDevAppRuntimeService {
   private child: ContainedRuntimeHelperProcess | null = null
   private stdoutBuffer = ""
   private stderrBuffer = ""
+  private stderrPending = ""
   private disposed = false
 
   constructor(options: ContainedRuntimeServiceOptions) {
@@ -419,6 +420,7 @@ export class DeviceContainedDevAppRuntimeService {
     this.child = child
     this.stdoutBuffer = ""
     this.stderrBuffer = ""
+    this.stderrPending = ""
     child.stdout.setEncoding("utf8")
     child.stderr.setEncoding("utf8")
     child.stdout.on("data", (chunk: string | Buffer) => this.consumeStdout(String(chunk)))
@@ -483,6 +485,21 @@ export class DeviceContainedDevAppRuntimeService {
 
   private consumeStderr(chunk: string): void {
     this.stderrBuffer = `${this.stderrBuffer}${chunk}`.slice(-64 * 1024)
+    // The buffer above only reaches anyone through failProtocol, which fires on a
+    // malformed protocol message. A container that fails to start or pull answers
+    // with a well-formed rejection instead, so its stderr -- the one place the
+    // cause is spelled out -- was being dropped. Mirror it to the main log a line
+    // at a time as it arrives.
+    this.stderrPending += chunk
+    for (;;) {
+      const newline = this.stderrPending.indexOf("\n")
+      if (newline < 0) break
+      const line = this.stderrPending.slice(0, newline).trimEnd()
+      this.stderrPending = this.stderrPending.slice(newline + 1)
+      if (line) console.warn(`[DevAppContainer] ${line}`)
+    }
+    // A helper that never emits a newline must not grow this unbounded.
+    if (this.stderrPending.length > 64 * 1024) this.stderrPending = ""
   }
 
   private handleLine(line: string): void {

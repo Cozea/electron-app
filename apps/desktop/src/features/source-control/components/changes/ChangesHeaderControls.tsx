@@ -14,6 +14,7 @@ import {
   HierarchyFilesIcon as __SidebarHugeIcon,
 } from '@hugeicons/core-free-icons'
 import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
+import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 import type { ContextMenuItem } from '@cozea/assistant-contracts'
 import { useTranslation } from '@/lib/i18n'
 import type { ChangesDiffStyle, ChangesViewMode } from './ChangesTypes'
@@ -113,16 +114,16 @@ export const ChangesHeaderControls = memo(function ChangesHeaderControls({
           event.stopPropagation();
           const rect = event.currentTarget.getBoundingClientRect();
           const items: ContextMenuItem[] = [
-            { id: 'refresh', label: 'Refresh' },
-            { id: 'toggleWordWrap', label: 'Enable word wrap' },
-            { id: 'collapseAll', label: 'Collapse all diffs' },
+            { id: 'refresh', label: 'Refresh', icon: getNativeMenuIcon('sync') },
+            { id: 'toggleWordWrap', label: 'Enable word wrap', icon: getNativeMenuIcon('tools') },
+            { id: 'collapseAll', label: 'Collapse all diffs', icon: getNativeMenuIcon('close') },
             { id: 'sep1', type: 'separator' },
-            { id: 'toggleFullFiles', label: "Don't load full files" },
-            { id: 'toggleRichPreview', label: 'Enable rich preview' },
-            { id: 'toggleWordDiffs', label: 'Enable word diffs' },
-            { id: 'toggleWhiteSpace', label: 'Hide white space' },
+            { id: 'toggleFullFiles', label: "Don't load full files", icon: getNativeMenuIcon('package') },
+            { id: 'toggleRichPreview', label: 'Enable rich preview', icon: getNativeMenuIcon('search') },
+            { id: 'toggleWordDiffs', label: 'Enable word diffs', icon: getNativeMenuIcon('edit') },
+            { id: 'toggleWhiteSpace', label: 'Hide white space', icon: getNativeMenuIcon('tools') },
             { id: 'sep2', type: 'separator' },
-            { id: 'copyGitApply', label: 'Copy git apply command' },
+            { id: 'copyGitApply', label: 'Copy git apply command', icon: getNativeMenuIcon('copy') },
           ];
           const action = await showDesktopContextMenu(items, {
             x: Math.round(rect.left),

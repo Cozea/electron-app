@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { useQuery } from "convex/react"
 
-import { api } from "../../../../../../../convex/_generated/api"
+import { api } from "../../../../../convex/_generated/api"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { buildInstalledDevAppManifest, buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
 import { useOrgDevAppInstallations } from "@/features/devapps/useOrgDevAppInstallations"

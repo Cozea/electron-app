@@ -49,14 +49,17 @@ function resolvePublishConfig() {
   }
 }
 
+// Release builds must be signed, so producing an unsigned one is always explicit:
+// `dist:local` for a developer without the release certificate, COZEA_MAC_SIGNING=0
+// for a release job that has none configured because Cozea ships free.
+const unsignedDist =
+  process.env.COZEA_LOCAL_UNSIGNED_DIST === "1" || process.env.COZEA_MAC_SIGNING === "0"
+
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: "com.cozea.app",
   productName: "Cozea",
-  // Release builds must be signed. `dist:local` opts into an unsigned package
-  // explicitly so a developer without the release certificate can still smoke
-  // the assembled application bundle.
-  forceCodeSigning: process.env.COZEA_LOCAL_UNSIGNED_DIST !== "1",
+  forceCodeSigning: !unsignedDist,
   generateUpdatesFilesForAllChannels: true,
   // Pack archive rewriting must happen before app signing/notarization.
   // Running it after notarization invalidates Gatekeeper trust for the final app.
@@ -128,6 +131,10 @@ module.exports = {
     entitlements: "../../build/entitlements.mac.plist",
     entitlementsInherit: "../../build/entitlements.mac.plist",
     x64ArchFiles: macUniversalX64ArchFiles,
+    // Naming the absence of an identity keeps electron-builder from hunting for one
+    // and reporting the miss as a build failure. It must agree with forceCodeSigning
+    // above, which is why both read the same flag. Notarization is moot unsigned.
+    ...(unsignedDist ? { identity: null, notarize: false } : {}),
     ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
     target: ["dmg", "zip"],
   },

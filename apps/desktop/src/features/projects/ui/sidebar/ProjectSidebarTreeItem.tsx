@@ -3,6 +3,7 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { cn } from "@/lib/utils"
 import { featureFlags } from "@/lib/featureFlags"
 import { useAuth } from "@/contexts/AuthContext"
@@ -11,7 +12,7 @@ import { prefetchProjectSwitch } from "@/features/projects/lib/projectSwitchPref
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { useWorkspaceSnapshotEntry } from "@/features/projects/workspaces/useWorkspaceCatalogSnapshot"
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
-import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
+import { ProjectPixelInvaderIcon } from "@/features/projects/components/ProjectPixelInvaderIcon"
 import { SidebarLaneTiles } from "@/features/projects/components/sidebar/SidebarLaneTiles"
 import {
   buildDevServerRunKey,
@@ -34,7 +35,11 @@ import {
 } from "@/stores/useProjectWorkbenchStore"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { MoreVerticalIcon as __EllipsisVerticalHugeIcon } from '@hugeicons/core-free-icons'
+import {
+  ArrowDown01Icon as __ChevronDownHugeIcon,
+  ArrowRight01Icon as __ChevronRightHugeIcon,
+  MoreVerticalIcon as __EllipsisVerticalHugeIcon,
+} from '@hugeicons/core-free-icons'
 
 const SIDEBAR_PROJECT_LABEL_FONT = "13px Inter"
 
@@ -49,11 +54,16 @@ async function showNativeSidebarMenu<T extends string>(
     return null
   }
 
-  const rect = event.currentTarget.getBoundingClientRect()
-  const position = {
-    x: Math.round(rect.left + rect.width / 2),
-    y: Math.round(rect.bottom),
-  }
+  const isContextMenu = event.type === "contextmenu" || event.button === 2
+  const position = isContextMenu
+    ? {
+        x: Math.round(event.clientX),
+        y: Math.round(event.clientY),
+      }
+    : {
+        x: Math.round(event.currentTarget.getBoundingClientRect().left + event.currentTarget.getBoundingClientRect().width / 2),
+        y: Math.round(event.currentTarget.getBoundingClientRect().bottom),
+      }
 
   return showDesktopContextMenu(items, position)
 }
@@ -162,7 +172,7 @@ export const ProjectSidebarTreeItem = React.memo(
     }, [actions, project.id]);
 
     const handleProjectMenuClick = React.useCallback(
-      async (event: React.MouseEvent<HTMLButtonElement>) => {
+      async (event: React.MouseEvent<HTMLElement>) => {
         const devAppAction = resolveSidebarDevAppMenuAction(context)
         const items: ContextMenuItem<
           | "open-project"
@@ -181,10 +191,10 @@ export const ProjectSidebarTreeItem = React.memo(
           | "divider-primary"
           | "divider-secondary"
         >[] = [
-          { id: "open-project", label: "Open Project" },
-          { id: "relink-project", label: "Relink Local Folder" },
-          { id: "open-folder", label: "Open Folder" },
-          { id: "settings", label: "Settings" },
+          { id: "open-project", label: "Open Project", icon: getNativeMenuIcon("open-project") },
+          { id: "relink-project", label: "Relink Local Folder", icon: getNativeMenuIcon("relink") },
+          { id: "open-folder", label: "Open Folder", icon: getNativeMenuIcon("open-folder") },
+          { id: "settings", label: "Settings", icon: getNativeMenuIcon("settings") },
         ]
 
         if (featureFlags.projectDevApps) {
@@ -192,17 +202,19 @@ export const ProjectSidebarTreeItem = React.memo(
             id: "publish-dev-app",
             label: devAppAction.label,
             enabled: devAppAction.enabled,
+            icon: getNativeMenuIcon("package"),
           })
         }
 
         items.push(
           { id: "divider-primary", label: "", type: "separator" },
-          { id: "rename", label: "Rename" },
+          { id: "rename", label: "Rename", icon: getNativeMenuIcon("rename") },
           {
             id: project.status === "archived" ? "restore" : "archive",
             label: project.status === "archived" ? "Restore" : "Archive",
+            icon: project.status === "archived" ? getNativeMenuIcon("restore") : getNativeMenuIcon("archive"),
           },
-          { id: "delete", label: "Delete" },
+          { id: "delete", label: "Delete", destructive: true, icon: getNativeMenuIcon("delete") },
         )
 
         const hasSidebarActions =
@@ -215,16 +227,16 @@ export const ProjectSidebarTreeItem = React.memo(
         }
 
         if (projectIndex > 0) {
-          items.push({ id: "move-up", label: "Move up" })
+          items.push({ id: "move-up", label: "Move up", icon: getNativeMenuIcon("move-up") })
         }
 
         if (projectIndex < projectCount - 1) {
-          items.push({ id: "move-down", label: "Move down" })
+          items.push({ id: "move-down", label: "Move down", icon: getNativeMenuIcon("move-down") })
         }
 
         if (context.isCurrentProject && context.currentWorkspaceId && !context.isSyncingProject) {
-          items.push({ id: "close-workspace", label: "Close Workspace" })
-          items.push({ id: "sync", label: "Sync" })
+          items.push({ id: "close-workspace", label: "Close Workspace", icon: getNativeMenuIcon("close") })
+          items.push({ id: "sync", label: "Sync", icon: getNativeMenuIcon("sync") })
         }
 
         const action = await showNativeSidebarMenu(event, items)
@@ -291,54 +303,106 @@ export const ProjectSidebarTreeItem = React.memo(
       ],
     )
 
+    const [isDragging, setIsDragging] = React.useState(false)
+    const [dropPosition, setDropPosition] = React.useState<"before" | "after" | null>(null)
+
+    const handleDragStart = React.useCallback(
+      (e: React.DragEvent<HTMLDivElement>) => {
+        e.dataTransfer.setData("application/x-cozea-project-id", project.id)
+        e.dataTransfer.effectAllowed = "move"
+        setIsDragging(true)
+      },
+      [project.id],
+    )
+
+    const handleDragEnd = React.useCallback(() => {
+      setIsDragging(false)
+      setDropPosition(null)
+    }, [])
+
+    const handleDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes("application/x-cozea-project-id")) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "move"
+
+      if (!projectRowRef.current) return
+      const rect = projectRowRef.current.getBoundingClientRect()
+      const midpoint = rect.top + rect.height / 2
+      setDropPosition(e.clientY < midpoint ? "before" : "after")
+    }, [])
+
+    const handleDragLeave = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+      if (projectRowRef.current?.contains(e.relatedTarget as Node)) return
+      setDropPosition(null)
+    }, [])
+
+    const handleDrop = React.useCallback(
+      (e: React.DragEvent<HTMLDivElement>) => {
+        const sourceId = e.dataTransfer.getData("application/x-cozea-project-id")
+        if (sourceId && sourceId !== project.id && dropPosition) {
+          e.preventDefault()
+          e.stopPropagation()
+          actions.reorderProject?.(sourceId, project.id, dropPosition)
+        }
+        setDropPosition(null)
+        setIsDragging(false)
+      },
+      [actions, dropPosition, project.id],
+    )
+
     return (
       <Collapsible open={isLanesOpen}>
         <div
           ref={projectRowRef}
+          draggable
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onContextMenu={handleProjectMenuClick}
           className={cn(
-            "group/project-item flex min-h-7 items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70",
+            "group/project-item relative flex min-h-7 items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70 select-none",
             SIDEBAR_PILL_HOVER_CLASS,
             (selection.activeSelectionLevel === "project" ||
               (!isLanesOpen && context.isCurrentProject)) &&
               SIDEBAR_PILL_ACTIVE_CLASS,
+            isDragging && "opacity-40",
+            dropPosition === "before" && "before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-0.5 before:rounded-full before:bg-primary before:z-20",
+            dropPosition === "after" && "after:pointer-events-none after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary after:z-20",
           )}
           onPointerEnter={handlePrefetchProject}
           onFocus={handlePrefetchProject}
         >
           <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
-            {canToggleLanes ? (
-              <button
-                type="button"
-                className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-[2px] hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={handleProjectToggleClick}
-                aria-label={isLanesOpen ? "Collapse" : "Expand"}
-              >
-                <NativeProjectFolderIcon
-                  folderPath={snapshotEntry?.status === "ready" ? snapshotEntry.workspace.projectRootPath : null}
-                  isOpen={isLanesOpen}
-                />
-              </button>
-            ) : (
-              <span className="flex shrink-0 items-center justify-center p-[2px]" aria-hidden>
-                <NativeProjectFolderIcon
-                  folderPath={snapshotEntry?.status === "ready" ? snapshotEntry.workspace.projectRootPath : null}
-                />
-              </span>
-            )}
             <button
               type="button"
-              className="group flex min-h-7 min-w-0 flex-1 cursor-pointer items-center text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
+              className="group flex min-h-7 min-w-0 max-w-full shrink cursor-pointer items-center gap-2 text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
               onClick={handleProjectOpenClick}
               aria-label={`Open ${project.name}`}
             >
-              <span className="min-w-0 flex-1 truncate font-normal" title={projectNameTitle}>
+              <ProjectPixelInvaderIcon name={project.name || project.id} className="size-4.5 shrink-0" />
+              <span className="truncate font-normal" title={projectNameTitle}>
                 {project.name}
               </span>
             </button>
+            {canToggleLanes ? (
+              <button
+                type="button"
+                className="flex size-4 shrink-0 cursor-pointer items-center justify-center p-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none"
+                onClick={handleProjectToggleClick}
+                aria-label={isLanesOpen ? "Collapse" : "Expand"}
+              >
+                <HugeiconsIcon
+                  icon={isLanesOpen ? __ChevronDownHugeIcon : __ChevronRightHugeIcon}
+                  className="size-3"
+                />
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
-            className="flex size-4.5 shrink-0 cursor-pointer items-center justify-center rounded-[3.5px] p-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex size-4.5 shrink-0 cursor-pointer items-center justify-center p-0 text-muted-foreground/60 opacity-0 transition-colors group-hover/project-item:opacity-100 group-focus-within/project-item:opacity-100 hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
             onClick={handleProjectMenuClick}
             aria-label={`${project.name} options`}
           >

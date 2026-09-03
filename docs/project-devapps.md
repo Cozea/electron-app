@@ -94,16 +94,18 @@ If the project has no linked local folder, no `build` script, or no static `inde
 
 ## Open lifecycle
 
-1. Store **Your org** loads `devApps.listMine`; Add Tile reads the device-local installation
-   registry and offers only each publication's active installed exact release. A pasted durable ref
+1. The Store's **Your organization** scope loads `devApps.listMine` and lists every accessible
+   organization release in one ungrouped catalog, with any release that has an update pending
+   surfaced first; Add Tile reads the device-local installation registry and offers only each
+   publication's active installed exact release. A pasted durable ref
    still uses `devApps.resolveReference`; malformed, inaccessible, mismatched, archived, or
    unavailable versions return no consumer record.
 2. **Install** resolves the current release to `@N`, downloads the ref-bound artifact, verifies its
    ZIP/hash, and atomically records that immutable version locally. **Update** installs another
    exact version and changes the active local pointer only after the user asks; it never silently
    follows `activeReleaseId`.
-3. Older installed versions remain pinned until removed in the Store's storage section. Per-version
-   and total disk usage are visible there, and installed hashes are protected from cache age,
+3. Older installed versions remain pinned until removed from the storage disclosure under the
+   Store's Installed rail. Per-version and total disk usage are visible there, and installed hashes are protected from cache age,
    count, and byte pruning.
 4. Choosing an installed org DevApp resolves to `addTile` + `tileType: "orgDevApp"`
    (`publishedDevApp` launch kind) and persists the exact ref. The tile prepares that verified local

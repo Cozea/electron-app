@@ -171,14 +171,22 @@ export async function authorizeDevAppRuntimeBuildInConvex(
   env: Env,
   auth: DeviceAccessClaims,
   args: { projectId: string; reservationId: string },
-): Promise<void> {
+): Promise<{ organizationId: string }> {
   await requireActiveDeviceAccessInConvex(env, auth)
-  const result = await runServerQuery<{ allowed: boolean }>(env, 'devApps:getRuntimeBuildAuthorizationForServer', {
-    identityKey: auth.sub,
-    projectId: args.projectId,
-    reservationId: args.reservationId,
-  })
+  const result = await runServerQuery<{ allowed: boolean; organizationId: string | null }>(
+    env,
+    'devApps:getRuntimeBuildAuthorizationForServer',
+    {
+      identityKey: auth.sub,
+      projectId: args.projectId,
+      reservationId: args.reservationId,
+    },
+  )
   if (!result.allowed) throw new Error('The DevApp runtime build is not authorized')
+  // The image repository is derived from the owning organization, so a build that
+  // cannot name one has nowhere it may be pushed.
+  if (!result.organizationId) throw new Error('The DevApp runtime build has no owning organization')
+  return { organizationId: result.organizationId }
 }
 
 export async function authorizeDevAppRuntimePullInConvex(

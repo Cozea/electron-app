@@ -47,7 +47,11 @@ macOS remembers the decision. If you would rather clear the quarantine flag dire
 xattr -d com.apple.quarantine /Applications/Cozea.app
 ```
 
-Building from source, as below, avoids this entirely — locally produced apps are never
+An unsigned build also cannot update itself. macOS validates a signature before applying
+an update, so the in-app updater will fail to install what it downloads; new versions have
+to be fetched from the releases page by hand.
+
+Building from source, as below, avoids both problems — locally produced apps are never
 quarantined.
 
 ## Getting started

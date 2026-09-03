@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import { useQuery } from "convex/react"
 
-import { api } from "../../../../../../../convex/_generated/api"
+import { api } from "../../../../../convex/_generated/api"
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
 import {
   browserSurfaceRuntimeTabId,

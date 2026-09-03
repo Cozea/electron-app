@@ -28,6 +28,9 @@ import {
 import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
 import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { cn } from "@/lib/utils"
+import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 
 const WORKBENCH_TAB_GROUP_COLORS = [
   { id: "agent", value: "var(--primary)", label: "Agent" },
@@ -114,6 +117,9 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
 
   const getTabContextMenuItems = useCallback(
     (params: GetTabContextMenuItemsParams) => {
+      params.event.preventDefault()
+      params.event.stopPropagation()
+
       const panel = params.panel
       const preset = resolveTabGroupPreset(panel.api.component)
       const workbench = selectProjectWorkbench(
@@ -154,94 +160,139 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
           })
       }
 
-      const maximizeItems = isDetached
-        ? []
-        : [
-            {
-              label: panel.api.isMaximized() ? "Restore" : "Maximize",
-              action: () => {
-                if (panel.api.isMaximized()) {
-                  panel.api.exitMaximized()
-                } else {
-                  panel.api.maximize()
-                }
-              },
-            },
-          ]
-
-      const detachItems = isDetached
-        ? [
-            {
-              // `moveTo` without a target group creates a fresh grid group and
-              // moves the whole overlay into it — dockview's own redock path,
-              // the same one shift+drag uses.
-              label: groupLocation === "popout" ? "Return to main window" : "Dock",
-              action: () => params.group.api.moveTo({ position: "right" }),
-            },
-          ]
-        : [
-            {
-              label: hasSiblingTabs ? "Float tab" : "Float",
-              action: () =>
-                params.api.addFloatingGroup(panel, getFloatingBoxForComponent(panel.api.component)),
-            },
-            ...(hasSiblingTabs
-              ? [
-                  {
-                    label: `Float all ${tabCount} tabs`,
-                    action: () =>
-                      params.api.addFloatingGroup(
-                        params.group,
-                        getFloatingBoxForComponent(panel.api.component),
-                      ),
-                  },
-                ]
-              : []),
-            ...(!browserBackedPanel
-              ? [
-                  {
-                    label: hasSiblingTabs ? "Pop out tab" : "Pop out",
-                    action: () => popOut(panel),
-                  },
-                ]
-              : []),
-            ...(hasSiblingTabs && !groupContainsBrowserBackedPanel
-              ? [
-                  {
-                    label: `Pop out all ${tabCount} tabs`,
-                    action: () => popOut(params.group),
-                  },
-                ]
-              : []),
-          ]
-
       const isSoleSelection = tile?.type === "selection" && (workbench?.order.length ?? 0) <= 1
-      if (isSoleSelection) {
-        // Deliberately no detach actions: floating the only tile would empty
-        // the grid. The dock action still shows if it got detached by drag.
-        return [...maximizeItems, ...(isDetached ? detachItems : [])]
+      const items: ContextMenuItem<string>[] = []
+
+      if (!isDetached) {
+        items.push({
+          id: panel.api.isMaximized() ? "restore" : "maximize",
+          label: panel.api.isMaximized() ? "Restore" : "Maximize",
+          icon: getNativeMenuIcon("maximize"),
+        })
       }
 
-      return [
-        ...maximizeItems,
-        ...detachItems,
-        "separator" as const,
-        ...(currentTabGroup
-          ? [
-              {
-                label: `Remove from ${currentTabGroup.label}`,
-                action: () => {
-                  params.api.removePanelFromTabGroup({
-                    groupId: params.group.id,
-                    panelId: panel.id,
-                  })
-                },
-              },
-            ]
-          : []),
-        {
+      if (isDetached) {
+        items.push({
+          id: "dock",
+          label: groupLocation === "popout" ? "Return to main window" : "Dock",
+          icon: getNativeMenuIcon("dock"),
+        })
+      } else if (!isSoleSelection) {
+        items.push({
+          id: "float-tab",
+          label: hasSiblingTabs ? "Float tab" : "Float",
+          icon: getNativeMenuIcon("float"),
+        })
+        if (hasSiblingTabs) {
+          items.push({
+            id: "float-all",
+            label: `Float all ${tabCount} tabs`,
+            icon: getNativeMenuIcon("float"),
+          })
+        }
+        if (!browserBackedPanel) {
+          items.push({
+            id: "popout-tab",
+            label: hasSiblingTabs ? "Pop out tab" : "Pop out",
+            icon: getNativeMenuIcon("popout"),
+          })
+        }
+        if (hasSiblingTabs && !groupContainsBrowserBackedPanel) {
+          items.push({
+            id: "popout-all",
+            label: `Pop out all ${tabCount} tabs`,
+            icon: getNativeMenuIcon("popout"),
+          })
+        }
+      }
+
+      if (!isSoleSelection) {
+        items.push({ id: "sep-grouping", type: "separator" })
+
+        if (currentTabGroup) {
+          items.push({
+            id: "remove-from-group",
+            label: `Remove from ${currentTabGroup.label}`,
+          })
+        }
+        items.push({
+          id: "group-as-preset",
           label: `Group as ${preset.label}`,
-          action: () => {
+        })
+        items.push({
+          id: "new-group-from-panel",
+          label: "New group from panel",
+        })
+
+        items.push({ id: "sep-closing", type: "separator" })
+
+        if (tile?.type === "assistantChat") {
+          items.push({
+            id: "duplicate-agent",
+            label: "Duplicate agent",
+            icon: getNativeMenuIcon("copy"),
+          })
+        }
+
+        items.push({
+          id: "close",
+          label: "Close",
+          icon: getNativeMenuIcon("close"),
+        })
+        if (hasSiblingTabs) {
+          items.push({
+            id: "close-others",
+            label: "Close Others",
+            icon: getNativeMenuIcon("close"),
+          })
+          items.push({
+            id: "close-all",
+            label: "Close All",
+            icon: getNativeMenuIcon("delete"),
+          })
+        }
+      }
+
+      const position = {
+        x: Math.round(params.event.clientX),
+        y: Math.round(params.event.clientY),
+      }
+
+      void showDesktopContextMenu(items, position).then((action) => {
+        if (!action) return
+
+        switch (action) {
+          case "maximize":
+            panel.api.maximize()
+            break
+          case "restore":
+            panel.api.exitMaximized()
+            break
+          case "dock":
+            params.group.api.moveTo({ position: "right" })
+            break
+          case "float-tab":
+            params.api.addFloatingGroup(panel, getFloatingBoxForComponent(panel.api.component))
+            break
+          case "float-all":
+            params.api.addFloatingGroup(
+              params.group,
+              getFloatingBoxForComponent(panel.api.component),
+            )
+            break
+          case "popout-tab":
+            popOut(panel)
+            break
+          case "popout-all":
+            popOut(params.group)
+            break
+          case "remove-from-group":
+            params.api.removePanelFromTabGroup({
+              groupId: params.group.id,
+              panelId: panel.id,
+            })
+            break
+          case "group-as-preset": {
             const existingGroup = params.api
               .getTabGroups({ groupId: params.group.id })
               .find((group) => group.label === preset.label)
@@ -257,11 +308,9 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
               tabGroupId: tabGroup.id,
               panelId: panel.id,
             })
-          },
-        },
-        {
-          label: "New group from panel",
-          action: () => {
+            break
+          }
+          case "new-group-from-panel": {
             const tabGroup = params.api.createTabGroup({
               groupId: params.group.id,
               label: tile?.title ?? panel.api.title ?? preset.label,
@@ -272,21 +321,24 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
               tabGroupId: tabGroup.id,
               panelId: panel.id,
             })
-          },
-        },
-        "separator" as const,
-        ...(tile?.type === "assistantChat"
-          ? [
-              {
-                label: "Duplicate agent",
-                action: () => runtime.onDuplicateAssistantTile(panel.id),
-              },
-            ]
-          : []),
-        "close" as const,
-        "closeOthers" as const,
-        "closeAll" as const,
-      ]
+            break
+          }
+          case "duplicate-agent":
+            runtime.onDuplicateAssistantTile(panel.id)
+            break
+          case "close":
+            panel.api.close()
+            break
+          case "close-others":
+            params.group.panels.filter((p) => p !== panel).forEach((p) => p.api.close())
+            break
+          case "close-all":
+            [...params.group.panels].forEach((p) => p.api.close())
+            break
+        }
+      })
+
+      return []
     },
     [runtime],
   )
