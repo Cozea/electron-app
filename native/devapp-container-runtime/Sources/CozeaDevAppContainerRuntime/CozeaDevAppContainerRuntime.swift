@@ -775,6 +775,10 @@ private func option(_ name: String, arguments: [String]) -> String? {
     return arguments[index + 1]
 }
 
+// Deliberately not in a file called main.swift. Swift treats that filename as
+// top-level code, which makes @main a compile error in the same module -- but only
+// on some toolchains: 6.4 accepts what the CI runner's compiler rejects, so a local
+// build cannot be trusted to catch a rename back.
 @main
 private struct CozeaDevAppContainerRuntime {
     static func main() async {
