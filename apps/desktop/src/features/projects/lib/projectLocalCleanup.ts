@@ -3,8 +3,9 @@ import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 import { removeLocalProjectDevApp } from "@/features/devapps/localProjectDevAppStore"
 import { useAssistantComposerDraftStore } from "@/features/projects/components/assistant/chat/composerDraftStore"
 import { clearPersistedProjectSidebarEntry } from "@/features/projects/components/sidebar/projectSidebarState"
-import { clearDevServerRunsForWorkspace } from "@/features/projects/devserver/devServerRunStore"
-import { releaseDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
+import { clearDevServerRunsForWorkspace } from "@/features/dev-server/devServerRunStore"
+import { clearDevServerProcessConfigForWorkspace } from "@/features/dev-server/devServerProcessConfigStore"
+import { releaseDevServerSurfaceLease } from "@/features/dev-server/devServerSurfaceController"
 import { clearCachedProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
 import {
   collectAssistantProjectIdsForDeletion,
@@ -16,7 +17,7 @@ import { clearRecentProjectOpenSync } from "@/features/projects/lib/recentProjec
 import { clearPersistedWorkbenchLayoutsForProject } from "@/features/projects/lib/workbenchLayoutPersistence"
 import { clearSyncFeedSeen } from "@/features/projects/syncFeedSeen"
 import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
-import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
 import { useQueryCache } from "@/stores/useQueryCache"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { useThreadDetailStore } from "@/stores/threadDetailStore"
@@ -290,6 +291,7 @@ function clearProjectRendererState(
   runBestEffort("workspace runtime mirrors", () => {
     for (const workspaceId of snapshot.workspaceIds) {
       clearDevServerRunsForWorkspace(workspaceId)
+      clearDevServerProcessConfigForWorkspace(workspaceId)
       useTerminalStore.getState().actions.resetProject(workspaceId)
       window.localStorage.removeItem(`dev-command:${encodeURIComponent(workspaceId)}`)
     }

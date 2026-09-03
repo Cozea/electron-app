@@ -1,7 +1,7 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
 import type { DevAppParts } from "@shared/devAppParts"
 
-import type { RenderableWorkbenchTileType } from "@/features/projects/lib/workbenchTileRegistry"
+import type { RenderableWorkbenchTileType } from "@/features/workbench/model/workbenchTileRegistry"
 
 export type DevAppCategoryId =
   | "discover"
@@ -113,6 +113,12 @@ export interface DevAppMobileSimulatorLaunchSpec extends DevAppLaunchBase {
   singleton: true
 }
 
+export interface DevAppMemoryLaunchSpec extends DevAppLaunchBase {
+  kind: "memory"
+  tileType: "memory"
+  singleton: true
+}
+
 export interface DevAppLlamaLaunchSpec extends DevAppLaunchBase {
   kind: "llama"
   tileType: "llama"
@@ -131,6 +137,7 @@ export type DevAppLaunchSpec =
   | DevAppDevServerLaunchSpec
   | DevelopmentDevAppLaunchSpec
   | DevAppLlamaLaunchSpec
+  | DevAppMemoryLaunchSpec
   | DevAppMobileSimulatorLaunchSpec
   | PublishedDevAppLaunchSpec
   | ProjectDevAppLaunchSpec

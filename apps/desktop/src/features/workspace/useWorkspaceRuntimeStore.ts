@@ -1,12 +1,12 @@
 import { create } from "zustand"
 
-import type { Id } from "../../../../../../convex/_generated/dataModel"
+import type { Id } from "../../../../../convex/_generated/dataModel"
 import {
   EMPTY_YJS_PROJECT_CONTEXT_VALUE,
   type YjsProjectContextValue,
 } from "@/contexts/YjsProjectContextValue"
 import type { ProjectSyncContextValue } from "@/features/projects/contexts/projectSyncShared"
-import { buildWorkspaceIdentityKey, normalizeWorkspaceLaneId } from "@/features/projects/workspaces/workspaceIdentity"
+import { buildWorkspaceIdentityKey, normalizeWorkspaceLaneId } from "@/features/workspace/workspaceIdentity"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 export type WorkspaceRuntimeLifecycle =

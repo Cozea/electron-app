@@ -20,12 +20,12 @@ import {
   OpenAI,
   OpenCodeIcon,
 } from "@/features/projects/components/assistant/Icons"
-import { useRegisterWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
-import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { useRegisterWorkbenchDockHeaderControls } from "@/features/workbench/workbenchDockHeaderControls"
+import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import {
   getWorkbenchTileDefinition,
   type RenderableWorkbenchTileType,
-} from "@/features/projects/lib/workbenchTileRegistry"
+} from "@/features/workbench/model/workbenchTileRegistry"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
@@ -33,7 +33,7 @@ import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, Layout04Icon as __Layout04HugeIcon, ArrowUp01Icon as __ArrowUpHugeIcon, ArrowDown01Icon as __ArrowDownHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon } from '@hugeicons/core-free-icons'
+import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, Layout04Icon as __Layout04HugeIcon, ArrowUp01Icon as __ArrowUpHugeIcon, ArrowDown01Icon as __ArrowDownHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, BrainCircuitIcon as __BrainCircuitHugeIcon } from '@hugeicons/core-free-icons'
 
 const DevServer = (props: any) => <HugeiconsIcon icon={__DevServerHugeIcon} {...props} />
 const Messages = (props: any) => <HugeiconsIcon icon={__MessagesHugeIcon} {...props} />
@@ -41,6 +41,7 @@ const ComputerTerminal = (props: any) => <HugeiconsIcon icon={__ComputerTerminal
 const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} />
 const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
 const AddCircle = (props: any) => <HugeiconsIcon icon={__AddCircleHugeIcon} {...props} />
+const BrainCircuit = (props: any) => <HugeiconsIcon icon={__BrainCircuitHugeIcon} {...props} />
 const WORKBENCH_PILL_APP_ICON_CLASS = "size-5 shrink-0 overflow-hidden rounded-[4.5px]"
 const WORKBENCH_OVERLAY_APP_ICON_CLASS = "size-6 shrink-0 overflow-hidden rounded-[5.3px]"
 
@@ -135,6 +136,8 @@ function resolveTileFallbackIcon(
       return DevServer
     case "llama":
       return SiOllama
+    case "memory":
+      return BrainCircuit
     case "published":
       return Globe
     case "mobileSimulator":
@@ -218,7 +221,7 @@ export function WorkbenchTileChrome({
   const [splitOverlayActive, setSplitOverlayActive] = useState(false)
   const [splitDirection, setSplitDirection] = useState<"top" | "bottom" | "left" | "right" | null>(null)
   const [tileElement, setTileElement] = useState<HTMLDivElement | null>(null)
-  
+
   const runtime = useWorkbenchDockRuntime()
   const tileHover = useElementPointerHover<HTMLDivElement>()
   const isHovered = tileHover.isHovered
@@ -279,7 +282,7 @@ export function WorkbenchTileChrome({
         if (e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); dir = "bottom" }
         if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); dir = "left" }
         if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); dir = "right" }
-        
+
         if (dir !== splitStateRef.current.direction) {
           splitStateRef.current.direction = dir
           setSplitDirection(dir)
@@ -307,7 +310,7 @@ export function WorkbenchTileChrome({
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true })
       window.removeEventListener("keyup", handleKeyUp, { capture: true })
-      
+
       // Cleanup if component unmounts while active
       if (splitStateRef.current.active) {
         splitStateRef.current = { active: false, direction: null }
@@ -318,7 +321,7 @@ export function WorkbenchTileChrome({
   }, [isHovered, panelApi.id, runtime])
 
   return (
-    <div 
+    <div
       className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-transparent relative", className)}
       ref={setTileRef}
       onPointerEnter={tileHover.onPointerEnter}

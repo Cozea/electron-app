@@ -1023,6 +1023,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       command: string
       bootstrapCommand?: string | null
+      auxiliaryProcesses?: import('../../../shared/electronApiTypes').DevServerAuxiliaryProcessConfig[]
       port: number
       sessionKey?: string | null
       framework?: string | null
@@ -1036,6 +1037,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       command: string
       bootstrapCommand?: string | null
+      auxiliaryProcesses?: import('../../../shared/electronApiTypes').DevServerAuxiliaryProcessConfig[]
       port: number
       sessionKey?: string | null
       framework?: string | null
@@ -1136,6 +1138,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('agentTools:login-event', handler)
       return () => ipcRenderer.removeListener('agentTools:login-event', handler)
     },
+  },
+  projectMemory: {
+    getStatus: (options: { workspaceId: string; laneId?: string | null }) =>
+      ipcRenderer.invoke('projectMemory:getStatus', options),
+    getGraph: (options: { workspaceId: string; laneId?: string | null }) =>
+      ipcRenderer.invoke('projectMemory:getGraph', options),
+    getNodeDetail: (options: { workspaceId: string; laneId?: string | null; nodeId: string }) =>
+      ipcRenderer.invoke('projectMemory:getNodeDetail', options),
+  },
+  agentSkills: {
+    list: () => ipcRenderer.invoke('agentSkills:list'),
+    save: (draft: import('../../../shared/electronApiTypes').AgentSkillDraft) =>
+      ipcRenderer.invoke('agentSkills:save', draft),
+    setProviderEnabled: (options: {
+      skillId: string
+      provider: import('../../../shared/electronApiTypes').AgentSkillProvider
+      enabled: boolean
+    }) => ipcRenderer.invoke('agentSkills:setProviderEnabled', options),
+    copyToLibrary: (options: { skillId: string }) =>
+      ipcRenderer.invoke('agentSkills:copyToLibrary', options),
+    remove: (options: { skillId: string }) =>
+      ipcRenderer.invoke('agentSkills:remove', options),
+    importDirectory: () => ipcRenderer.invoke('agentSkills:importDirectory'),
+    openSetupPack: () => ipcRenderer.invoke('agentSkills:openSetupPack'),
+    copyFromSetupPack: (options: {
+      pack: import('../../../shared/electronApiTypes').AgentSkillSetupPack
+      packSkillId: string
+    }) => ipcRenderer.invoke('agentSkills:copyFromSetupPack', options),
+    exportSetupPack: (options: { setupName: string; authorName: string }) =>
+      ipcRenderer.invoke('agentSkills:exportSetupPack', options),
   },
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) =>

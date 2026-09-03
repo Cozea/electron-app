@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { DevServerLaunchContext } from '@/utils/projectDetector'
+import type { DevServerAuxiliaryProcessConfig } from '@shared/electronApiTypes'
 import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,
@@ -13,7 +14,7 @@ import {
   stopDevServerRun,
   useDevServerRunStore,
   type DevServerStatus,
-} from '@/features/projects/devserver/devServerRunStore'
+} from '@/features/dev-server/devServerRunStore'
 
 export type { DevServerStatus }
 
@@ -35,6 +36,7 @@ interface UseDevServerManagerOptions {
   storedCommandSource?: DevServerLaunchContext['storedCommandSource']
   previewMode?: DevServerLaunchContext['previewMode']
   nativePlatform?: DevServerLaunchContext['nativePlatform']
+  auxiliaryProcesses?: DevServerAuxiliaryProcessConfig[]
 }
 
 /**
@@ -57,6 +59,7 @@ export function useDevServerManager({
   storedCommandSource = 'detected',
   previewMode = 'web',
   nativePlatform = null,
+  auxiliaryProcesses = [],
 }: UseDevServerManagerOptions) {
   const runKey = workspaceId ? buildDevServerRunKey(workspaceId, laneId) : null
   const autoStartAttemptedRunKeyRef = useRef<string | null>(null)
@@ -80,6 +83,7 @@ export function useDevServerManager({
       storedCommandSource,
       previewMode,
       nativePlatform,
+      auxiliaryProcesses,
     })
   }, [
     runKey,
@@ -93,6 +97,7 @@ export function useDevServerManager({
     storedCommandSource,
     previewMode,
     nativePlatform,
+    auxiliaryProcesses,
   ])
 
   // The context registration above must land before the first reconcile —

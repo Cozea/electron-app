@@ -10,11 +10,14 @@ Cozea exposes project previews to the vendored T3 agent runtime through the work
 
 ## Product contract
 
-- One process exists at most per `(workspaceId, laneId)`.
-- A process can have zero, one, or several Dev Server surfaces.
-- `ensure` reuses a ready process, waits for a process already launching, and coalesces concurrent ensure requests. Manual Restart remains the explicit replace-process action.
-- Closing a built-in Dev Server surface detaches its terminal presentation but does not stop the owning process. The process terminal is reaped when the runtime is explicitly stopped or disposed.
-- A running process with no built-in surface appears as `Dev Server — Running` in the project's existing sidebar surface list. Selecting it reattaches the singleton surface.
+- One managed run exists at most per `(workspaceId, laneId)`. Its default process is the automatically detected frontend.
+- Users may add up to six auxiliary processes (for example a backend or worker) from the Dev Server tile. The command and label are stored only on the current device and keyed by the concrete workspace; they are not cloud or collaboration state. Every configured process automatically runs from that workspace's authorized project root.
+- Start, Stop, and Restart own the complete run. Auxiliary processes receive separate PTYs and are stopped and reaped with the frontend, so the run cannot leave project services orphaned.
+- That coupling is one-directional. An auxiliary process that exits — a wrong command, a crash, or a stop the user issued in its own terminal — is marked stopped in the Logs selector and leaves the frontend and its preview running. Its PTY stays alive so the failure output remains readable.
+- A run can have zero, one, or several Dev Server surfaces.
+- `ensure` reuses a ready run, waits for a run already launching, and coalesces concurrent ensure requests. Manual Restart remains the explicit replace-run action.
+- Closing a built-in Dev Server surface detaches its frontend terminal presentation but does not stop the owning run. The frontend terminal is reaped when the runtime is explicitly stopped or disposed; auxiliary terminals remain owned by the run.
+- A managed run with no built-in surface appears as `Dev Server — Running` in the project's existing sidebar surface list. Selecting it reattaches the singleton surface.
 - Browser, Org DevApp, and Project DevApp tiles are outside the Dev Server _process-management_
   path, but their living guests are eligible for the same page-automation operations. Mobile
   Simulator tiles remain outside browser automation.
@@ -52,6 +55,18 @@ view without starting another process.
 When these tools are present, every supported provider routes ordinary requests such as “start the dev server” through `dev_server_ensure` before any shell inspection or terminal launch. This keeps natural-language starts inside the same singleton and discovery path as the Play button. Codex receives the policy as developer instructions, Claude as an append to its system preset, and OpenCode as its per-turn system prompt. The pinned Cursor ACP v0.11.3 schema has no system/developer field, so Cursor receives the same policy in a delimited first prompt block. The policy is omitted when the T3 MCP session is absent; terminal startup remains a fallback only when the Dev Server tools are absent or explicitly report that the operation is unsupported.
 
 Normal `dev_server_ensure` calls omit `command`. Cozea extracts a bounded candidate set from project manifests, its capability catalog, safe README launch lines, and static-site evidence, then ranks those candidates through its tiny macOS Core ML helper. The model scores candidates only; it cannot generate or execute arbitrary shell text. If the helper or model is unavailable, the same feature contract has a deterministic fallback. A command is cached only after readiness succeeds, keyed by the project-evidence fingerprint.
+
+Project-local auxiliary processes do not participate in automatic discovery. The user adds them
+explicitly in the tile's process settings, and authoring a command there is the approval for it:
+the runtime catalog that gates automatically detected commands does not constrain which binary an
+auxiliary process may invoke. The main process still blocks the native-platform command patterns
+and supplies the already-authorized project root before the run creates its PTYs. Each auxiliary
+PTY carries `BROWSER=none` in its environment and receives the command exactly as typed, so shell
+syntax (`cd apps/api && uvicorn main:app`, `source .venv/bin/activate && npm run api`, inline
+variable assignments, pipes) behaves as it would in a normal terminal. Because this is the only
+path in the app that types into a terminal it just created, the run waits for the login shell to
+draw its first prompt before sending the command; input delivered while rc files are still being
+sourced is discarded by the shell. The Logs view exposes one selector per process.
 
 Static projects participate in the same discovery path. Cozea recognizes an `index.html` at the
 workspace root and the conventional built-output locations `dist/`, `build/`, `out/`, and
@@ -154,3 +169,7 @@ Verify all of the following before release:
 18. Hidden development guests capture through CDP and selector automation uses the bundled injected
     runtime; neither path depends on window visibility or runtime Node resolution from the packaged
     Electron output.
+19. A project with one configured backend starts one automatic frontend and one backend PTY; Logs
+    can select both, and Stop/Restart tears down both.
+20. Auxiliary process configuration survives an app restart for that workspace, does not appear in
+    another workspace, and is cleared when the local project is deleted.

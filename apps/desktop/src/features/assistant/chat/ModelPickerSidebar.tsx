@@ -6,7 +6,7 @@ import { Gemini, OpenCodeIcon } from "../Icons";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { ProviderInstanceEntry } from "../../providerInstances";
+import type { ProviderInstanceEntry } from "@/features/assistant/providerInstances";
 
 function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
   if (entry.status === "ready") {

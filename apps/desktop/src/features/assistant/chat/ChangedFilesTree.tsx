@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
-import { NativeProjectFolderIcon } from "../../NativeProjectFolderIcon";
+import { NativeProjectFolderIcon } from "@/features/projects/ui/NativeProjectFolderIcon";
 
 export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   turnId: TurnId;

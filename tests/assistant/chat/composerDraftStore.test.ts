@@ -10,7 +10,7 @@ vi.stubGlobal("localStorage", {
 })
 
 const { useAssistantComposerDraftStore } = await import(
-  "../../../apps/desktop/src/features/projects/components/assistant/chat/composerDraftStore"
+  "../../../apps/desktop/src/features/assistant/chat/composerDraftStore"
 )
 
 describe("assistant composer model preference", () => {

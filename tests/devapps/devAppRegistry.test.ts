@@ -28,6 +28,7 @@ describe("DevApps registry", () => {
       "dev-server",
       "terminal",
       "mobile-simulator",
+      "memory",
       "llama",
       "codex",
       "claude",
@@ -44,6 +45,7 @@ describe("DevApps registry", () => {
       "dev-server",
       "terminal",
       "mobile-simulator",
+      "memory",
       "llama",
       "codex",
       "cursor",
@@ -53,7 +55,7 @@ describe("DevApps registry", () => {
       listLauncherApps({
         enabledAssistantProviders: [],
       }).map((app) => app.id),
-    ).toEqual(["browser", "dev-server", "terminal", "mobile-simulator", "llama"])
+    ).toEqual(["browser", "dev-server", "terminal", "mobile-simulator", "memory", "llama"])
   })
 
   it("filters store apps by category and query", () => {
