@@ -331,6 +331,8 @@ base plus the manifest's approved entries.
 
 - Add a small `Static` or `Service` label.
 - Keep the organization badge and existing logo behavior.
+- The storefront has no category navigation; these are row-level affordances in one ungrouped
+  catalog reached through the `Built in | Your organization` scope tabs.
 - Opening a service app moves through Downloading, Configuration required, Starting, Ready, Failed,
   and Stopped states without rendering an empty tile.
 - The first launch includes a trusted-code approval sheet with publisher identity and permissions.

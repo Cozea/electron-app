@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -25,13 +26,11 @@ import { PublicIdDisclosure } from "@/components/settings/PublicIdDisclosure"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useTranslation } from "@/lib/i18n"
+import { useSearchParams } from "@/lib/router"
 import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import { formatDevAppRef } from "@shared/devAppRef"
@@ -211,7 +210,20 @@ export function Organizations({ surface = "page", route: _route }: Organizations
   const [busy, setBusy] = useState(false)
   const [recoveryCode, setRecoveryCode] = useState("")
   const [generatedRecoveryCode, setGeneratedRecoveryCode] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<OrganizationSettingsTab>("details")
+  // `?tab=` so the DevApps Store (and any other deep link) can land on a
+  // specific tab instead of always opening on Details.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab: OrganizationSettingsTab =
+    ORGANIZATION_SETTINGS_TABS.find((tab) => tab.id === searchParams.get("tab"))?.id ?? "details"
+  const setActiveTab = useCallback(
+    (tab: OrganizationSettingsTab) => {
+      const next = new URLSearchParams(searchParams)
+      if (tab === "details") next.delete("tab")
+      else next.set("tab", tab)
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   const orgs = useQuery(
     api.organizations.listMine,
@@ -703,43 +715,55 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                                 <option value="admin">{t("settings.organizations.role.admin")}</option>
                               </select>
 
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="size-7 rounded-lg p-0 text-muted-foreground hover:text-foreground"
-                                    disabled={busy}
-                                  >
-                                    <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48">
-                                  {activeOrgDetails?.isCreator ? (
-                                    <DropdownMenuItem
-                                      onClick={() => void run(async () => {
-                                        await transferAdministration({
-                                          organizationId: activeOrg.organizationId,
-                                          memberUserId: member.userId,
-                                        })
-                                      })}
-                                    >
-                                      Transfer ownership
-                                    </DropdownMenuItem>
-                                  ) : null}
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => void run(async () => {
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="size-7 rounded-lg p-0 text-muted-foreground hover:text-foreground"
+                                disabled={busy}
+                                aria-label="Member options"
+                                onClick={async (event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  const rect = event.currentTarget.getBoundingClientRect()
+                                  const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+
+                                  const items: ContextMenuItem<string>[] = []
+                                  if (activeOrgDetails?.isCreator) {
+                                    items.push({
+                                      id: "transfer",
+                                      label: "Transfer ownership",
+                                      icon: getNativeMenuIcon("crown"),
+                                    })
+                                  }
+                                  items.push({
+                                    id: "remove",
+                                    label: t("settings.organizations.remove"),
+                                    destructive: true,
+                                    icon: getNativeMenuIcon("delete"),
+                                  })
+
+                                  const action = await showDesktopContextMenu(items, position)
+                                  if (!action) return
+
+                                  if (action === "transfer") {
+                                    void run(async () => {
+                                      await transferAdministration({
+                                        organizationId: activeOrg.organizationId,
+                                        memberUserId: member.userId,
+                                      })
+                                    })
+                                  } else if (action === "remove") {
+                                    void run(async () => {
                                       await removeMember({
                                         organizationId: activeOrg.organizationId,
                                         memberUserId: member.userId,
                                       })
-                                    })}
-                                  >
-                                    {t("settings.organizations.remove")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                    })
+                                  }
+                                }}
+                              >
+                                <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
+                              </Button>
                             </>
                           ) : (
                             <Badge variant="secondary" className="h-6 rounded-lg px-2.5 text-xs font-normal">

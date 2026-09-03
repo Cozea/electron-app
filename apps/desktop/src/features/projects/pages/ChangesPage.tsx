@@ -28,6 +28,7 @@ import { useChangesSidebarStore } from '@/stores/useChangesSidebarStore'
 import { formatActorDisplayName } from '@/lib/userDisplay'
 import { useTheme } from '@/contexts/ThemeContext'
 import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
+import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 import {
   buildPatchCacheKey,
   resolveDiffThemeName,
@@ -263,6 +264,13 @@ function ChangesScopeMenu(props: {
           type: 'radio',
           label: option.label,
           checked: option.value === scope,
+          icon: getNativeMenuIcon(
+            option.value === 'branch'
+              ? 'branch'
+              : option.value === 'history' || option.value === 'lastTurn'
+                ? 'restore'
+                : 'edit',
+          ),
         }
 
         if (index === options.length - 1) {

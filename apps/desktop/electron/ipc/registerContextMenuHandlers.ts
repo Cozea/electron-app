@@ -1,6 +1,7 @@
-import { BrowserWindow, clipboard, Menu, shell, type IpcMain } from 'electron'
+import { BrowserWindow, clipboard, Menu, nativeImage, shell, type IpcMain } from 'electron'
 import path from 'node:path'
 import type { ContextMenuItem } from '../../../../shared/assistant-contracts/ipc'
+import { getEditorAppIcon } from '../lib/externalEditor'
 
 interface RegisterContextMenuHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -19,6 +20,21 @@ function buildGenericContextMenuTemplate(
     const hasSubmenu = Array.isArray(item.submenu) && item.submenu.length > 0
     const itemType = item.type === 'checkbox' || item.type === 'radio' ? item.type : 'normal'
 
+    let icon: Electron.NativeImage | undefined
+    if (item.icon) {
+      try {
+        const parsed = nativeImage.createFromDataURL(item.icon)
+        if (!parsed.isEmpty()) {
+          const buffer = parsed.toPNG()
+          const retinaImg = nativeImage.createFromBuffer(buffer, { scaleFactor: 2.0 })
+          retinaImg.setTemplateImage(true)
+          icon = retinaImg
+        }
+      } catch {
+        // ignore icon parsing error
+      }
+    }
+
     return [
       {
         type: hasSubmenu ? 'submenu' : itemType,
@@ -27,6 +43,7 @@ function buildGenericContextMenuTemplate(
         accelerator: item.accelerator,
         enabled: item.enabled ?? true,
         checked: itemType === 'checkbox' || itemType === 'radio' ? Boolean(item.checked) : undefined,
+        icon,
         submenu: hasSubmenu
           ? buildGenericContextMenuTemplate(item.submenu ?? [], resolve, state)
           : undefined,
@@ -393,6 +410,17 @@ export function registerContextMenuHandlers(
         return { editorId: null }
       }
 
+      const editorItems = await Promise.all(
+        editors.map(async (editor) => {
+          const icon = await getEditorAppIcon(editor.id as any)
+          return {
+            id: editor.id,
+            name: editor.name,
+            icon,
+          }
+        }),
+      )
+
       return new Promise((resolve) => {
         let resolved = false
         const window = BrowserWindow.fromWebContents(event.sender) ?? deps.getMainWindow()
@@ -403,10 +431,11 @@ export function registerContextMenuHandlers(
             enabled: false,
           },
           { type: 'separator' },
-          ...editors.map((editor) => ({
+          ...editorItems.map((editor) => ({
             type: 'radio' as const,
             label: editor.name,
             checked: editor.id === selectedEditorId,
+            icon: editor.icon,
             click: () => {
               resolved = true
               resolve({ editorId: editor.id })

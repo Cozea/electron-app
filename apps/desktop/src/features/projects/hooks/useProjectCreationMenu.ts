@@ -5,6 +5,7 @@ import {
   canShowDesktopContextMenu,
   showDesktopContextMenu,
 } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
@@ -62,10 +63,10 @@ export function useProjectCreationMenu() {
 
       const selection = await showDesktopContextMenu<ProjectCreationMenuAction>(
         [
-          { id: "empty", label: t("menu.emptyProject") },
-          { id: "local", label: t("menu.importLocalFolder") },
-          { id: "devapp", label: t("menu.createNativeDevApp") },
-          { id: "devapp-local", label: t("menu.openExistingDevApp") },
+          { id: "empty", label: t("menu.emptyProject"), icon: getNativeMenuIcon("new-project") },
+          { id: "local", label: t("menu.importLocalFolder"), icon: getNativeMenuIcon("open-folder") },
+          { id: "devapp", label: t("menu.createNativeDevApp"), icon: getNativeMenuIcon("package") },
+          { id: "devapp-local", label: t("menu.openExistingDevApp"), icon: getNativeMenuIcon("open-project") },
         ],
         resolveMenuPosition(event),
       )

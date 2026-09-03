@@ -7,13 +7,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -106,10 +103,10 @@ export function HeaderInboxButton() {
   }
 
   return (
-    <DropdownMenu>
+    <Popover>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
+          <PopoverTrigger asChild>
             <Button
               variant="ghost"
               className="h-7 sm:h-7 gap-1 shrink-0 rounded-md border border-border/60 bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
@@ -122,15 +119,15 @@ export function HeaderInboxButton() {
               </span>
               <span className="text-[10px] leading-none">Inbox</span>
             </Button>
-          </DropdownMenuTrigger>
+          </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom">Inbox</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-80 rounded-lg p-0 shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_0_20px_rgba(0,0,0,0.06)]">
-        <DropdownMenuLabel id={inboxHeadingId} className="px-3 py-2">
+      <PopoverContent align="end" className="w-80 rounded-lg p-0 shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_0_20px_rgba(0,0,0,0.06)]">
+        <div id={inboxHeadingId} className="px-3 py-2 text-xs font-semibold">
           Inbox
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+        </div>
+        <div className="h-px bg-border/60" />
         <div className="max-h-[30rem] overflow-y-auto" aria-labelledby={inboxHeadingId}>
           {incomingInvites === undefined ? (
             <div className="px-3 py-4 text-center text-xs text-muted-foreground">Loading...</div>
@@ -212,7 +209,7 @@ export function HeaderInboxButton() {
             </div>
           )}
         </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }

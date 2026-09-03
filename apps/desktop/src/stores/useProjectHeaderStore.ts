@@ -4,6 +4,10 @@ import type { ReactNode } from "react"
 export interface ProjectHeaderChrome {
   header: ReactNode | null
   centerAddon: ReactNode | null
+  /** Pinned to the right of the title bar, after the collaboration strip. */
+  rightAddon: ReactNode | null
+  /** Lets a page drop the share control when its route has nothing to share. */
+  hideShare: boolean
   insetLeft: number
   insetRight: number
 }
@@ -21,6 +25,8 @@ interface ProjectHeaderState extends ProjectHeaderChrome {
 const INITIAL_CHROME: ProjectHeaderChrome = {
   header: null,
   centerAddon: null,
+  rightAddon: null,
+  hideShare: false,
   insetLeft: 0,
   insetRight: 0,
 }
@@ -29,6 +35,8 @@ function chromeEqual(state: ProjectHeaderChrome, next: ProjectHeaderChrome): boo
   return (
     state.header === next.header &&
     state.centerAddon === next.centerAddon &&
+    state.rightAddon === next.rightAddon &&
+    state.hideShare === next.hideShare &&
     state.insetLeft === next.insetLeft &&
     state.insetRight === next.insetRight
   )

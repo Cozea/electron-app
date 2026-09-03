@@ -133,3 +133,62 @@ export const AntigravityIcon: WorkbenchEditorIcon = (props) => (
     <image href={ANTIGRAVITY_ICON_DATA_URL} width="128" height="128" />
   </svg>
 )
+
+export const FinderIcon: WorkbenchEditorIcon = (props) => {
+  const id = useId()
+  const clipId = `${id}-finder-clip`
+  const leftGradientId = `${id}-finder-left`
+  const rightGradientId = `${id}-finder-right`
+
+  return (
+    <svg {...props} viewBox="0 0 100 100" fill="none">
+      <defs>
+        <clipPath id={clipId}>
+          <rect width="100" height="100" rx="22" />
+        </clipPath>
+        <linearGradient id={leftGradientId} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#45CEFD" />
+          <stop offset="100%" stopColor="#1B9BF2" />
+        </linearGradient>
+        <linearGradient id={rightGradientId} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#1D7BF6" />
+          <stop offset="100%" stopColor="#084EBE" />
+        </linearGradient>
+      </defs>
+      <g clipPath={`url(#${clipId})`}>
+        {/* Right side base */}
+        <rect width="100" height="100" fill={`url(#${rightGradientId})`} />
+        {/* Left side face bounded by nose profile */}
+        <path
+          d="M0 0 H50 C49 14 43 28 42 42 C42 45 44 48 48 50 C54 52 54 57 48 58 C45 58.5 44 60 44 63 C44 75 49 88 50 100 H0 Z"
+          fill={`url(#${leftGradientId})`}
+        />
+        {/* Dividing nose profile */}
+        <path
+          d="M50 0 C49 14 43 28 42 42 C42 45 44 48 48 50 C54 52 54 57 48 58 C45 58.5 44 60 44 63 C44 75 49 88 50 100"
+          stroke="#132B4F"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Left eye */}
+        <rect x="23" y="28" width="7" height="15" rx="3.5" fill="#132B4F" />
+        {/* Right eye */}
+        <rect x="70" y="28" width="7" height="15" rx="3.5" fill="#132B4F" />
+        {/* Smile */}
+        <path
+          d="M20 64 C20 64 22 69 25 70 C33 78 67 78 75 70 C78 69 80 64 80 64"
+          stroke="#132B4F"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Smile dimples */}
+        <path d="M19 63 L21 67" stroke="#132B4F" strokeWidth="3" strokeLinecap="round" />
+        <path d="M81 63 L79 67" stroke="#132B4F" strokeWidth="3" strokeLinecap="round" />
+        {/* Inner border */}
+        <rect width="100" height="100" rx="22" stroke="rgba(255,255,255,0.25)" strokeWidth="2" fill="none" />
+      </g>
+    </svg>
+  )
+}

@@ -116,12 +116,10 @@ describe("ported T3 Browser tile", () => {
     expect(browserPreviewActionsSource).toContain("Annotate preview");
     expect(browserPreviewActionsSource).toContain("Capture screenshot");
     expect(browserPreviewActionsSource).toContain("Open separate preview window");
-    expect(browserPreviewActionsSource.match(/<DropdownMenu>/g)).toHaveLength(1);
+    expect(browserPreviewActionsSource).toContain("showDesktopContextMenu");
     expect(browserPreviewActionsSource).toContain("Capture and recording");
-    expect(browserPreviewActionsSource).toContain("Zoom {Math.round");
+    expect(browserPreviewActionsSource).toContain("Zoom");
     expect(browserPreviewActionsSource).toContain("Advanced");
-    expect(browserPreviewActionsSource.match(/<DropdownMenuSubTrigger inset/g)).toHaveLength(4);
-    expect(browserPreviewActionsSource).toContain("<DropdownMenuItem\n            inset");
   });
 
   it.each([

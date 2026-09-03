@@ -2,8 +2,8 @@
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  Add01Icon as __Add01HugeIcon,
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
-  FolderAddIcon as __FolderAddHugeIcon,
   Search01Icon as __SearchHugeIcon,
   ShoppingBag01Icon as __ShoppingBagHugeIcon,
 } from '@hugeicons/core-free-icons'
@@ -22,6 +22,7 @@ import {
   type OrgDevAppPublishStage,
 } from "@/features/devapps/orgDevAppPublishing";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
+import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
 import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu";
@@ -140,6 +141,7 @@ export function ProjectSidebar({
   presenceCount: _presenceCount,
 }: ProjectSidebarProps) {
   const { t } = useTranslation();
+  const { isMac } = useWindowChrome();
   const navigate = useViewTransitionNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { openProjectCreationMenu } = useProjectCreationMenu();
@@ -365,6 +367,30 @@ export function ProjectSidebar({
         const next = [...ensuredOrder];
         const [moved] = next.splice(index, 1);
         next.splice(targetIndex, 0, moved);
+        return next;
+      });
+    },
+    [projectItems],
+  );
+
+  const handleReorderProject = React.useCallback(
+    (sourceProjectId: string, targetProjectId: string, position: "before" | "after") => {
+      if (sourceProjectId === targetProjectId) return;
+      setProjectOrderIds((current) => {
+        const ensuredOrder = buildOrderedProjects(projectItems, current).map(
+          (project) => project.id,
+        );
+        const sourceIndex = ensuredOrder.indexOf(sourceProjectId);
+        if (sourceIndex === -1) return ensuredOrder;
+
+        const next = [...ensuredOrder];
+        next.splice(sourceIndex, 1);
+
+        const targetIndex = next.indexOf(targetProjectId);
+        if (targetIndex === -1) return ensuredOrder;
+
+        const insertIndex = position === "before" ? targetIndex : targetIndex + 1;
+        next.splice(insertIndex, 0, sourceProjectId);
         return next;
       });
     },
@@ -916,30 +942,30 @@ export function ProjectSidebar({
 
   return (
     <>
-      <SidebarHeader className="px-2 pt-2 pb-1">
+      <SidebarHeader className="gap-2 px-2 pt-2.5 pb-1.5">
         <div className="flex items-center justify-between px-1.5">
           <div className="flex items-baseline gap-1.5 select-none">
             <span className="text-lg font-semibold tracking-tight text-foreground">Cozea</span>
             <span className="text-lg font-normal tracking-tight text-muted-foreground/50">Alpha</span>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => openCommandPalette()}
+          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-border/50 bg-background/25 px-2.5 text-xs text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label={t('nav.search')}
+        >
+          <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground" />
+          <span className="font-normal">{t('nav.search')}</span>
+          <kbd className="ml-auto pointer-events-none inline-flex select-none items-center font-mono text-[11px] font-normal text-muted-foreground/50 tracking-wider">
+            {isMac ? "⌘K" : "Ctrl K"}
+          </kbd>
+        </button>
       </SidebarHeader>
 
       <SidebarContent className="gap-0 px-2 py-2">
           {!isOnCurrentProjectSubMenu && (
             <div className="mb-4 space-y-1">
-              <button
-                type="button"
-                className={cn(
-                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                  "px-1.5",
-                  "[&>svg]:text-current",
-                )}
-                onClick={(event) => void openProjectCreationMenu(event)}
-              >
-                <HugeiconsIcon icon={__FolderAddHugeIcon} />
-                <span className="truncate">{t('nav.newProject')}</span>
-              </button>
               <button
                 type="button"
                 className={cn(
@@ -953,25 +979,35 @@ export function ProjectSidebar({
                 <HugeiconsIcon icon={__ShoppingBagHugeIcon} />
                 <span className="truncate">{t('nav.devAppsStore')}</span>
               </button>
-              <button
-                type="button"
-                className={cn(
-                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                  "px-1.5",
-                  "[&>svg]:text-current",
-                )}
-                onClick={() => openCommandPalette()}
-              >
-                <HugeiconsIcon icon={__SearchHugeIcon} />
-                <span className="truncate">{t('nav.search')}</span>
-              </button>
             </div>
           )}
 
-          <div className="mb-3">
+          <div className="mb-2.5 flex items-center justify-between pr-1.5">
             <div className={SIDEBAR_GROUP_LABEL_CLASS}>
               {isOnCurrentProjectSettings ? t('projects.projectSettings') : t('projects.projects')}
             </div>
+            {!isOnCurrentProjectSettings ? (
+              <button
+                type="button"
+                className="flex size-6 shrink-0 cursor-pointer items-center justify-center p-0 text-muted-foreground/75 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
+                onClick={(event) => void openProjectCreationMenu(event)}
+                aria-label={t('nav.newProject')}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-4"
+                >
+                  <path d="M8 2.5v11" />
+                  <path d="M2.5 8h11" />
+                </svg>
+              </button>
+            ) : null}
           </div>
 
           <div className="space-y-1">
@@ -1050,6 +1086,7 @@ export function ProjectSidebar({
                       closeProjectWorkspace: handleCloseProjectWorkspace,
                       syncProject: handleSyncProject,
                       moveProject,
+                      reorderProject: handleReorderProject,
                       openLaneWorkbench,
                     }}
                   />

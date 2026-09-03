@@ -1,14 +1,15 @@
-import { accessSync, constants } from 'node:fs'
+import { accessSync, constants, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { app, shell } from 'electron'
 
 import type { AvailableExternalEditor, ExternalEditorId } from '../../../../shared/electronApiTypes'
 
 interface EditorSpec {
   id: Exclude<ExternalEditorId, 'cozea'>
   name: string
-  strategy: 'goto' | 'zed' | 'jetbrains' | 'path'
+  strategy: 'goto' | 'zed' | 'jetbrains' | 'path' | 'finder'
   macCommandPaths?: string[]
   macAppPaths?: string[]
   windowsPaths?: string[]
@@ -197,6 +198,14 @@ const EDITOR_SPECS: EditorSpec[] = [
     id: 'datagrip',
     name: 'DataGrip',
     strategy: 'jetbrains',
+  },
+  {
+    id: 'finder',
+    name: 'Finder',
+    strategy: 'finder',
+    macAppPaths: [
+      '/System/Library/CoreServices/Finder.app',
+    ],
   },
 ]
 
@@ -422,6 +431,21 @@ export function listAvailableEditors(): AvailableExternalEditor[] {
   return getDetectionResult().editors
 }
 
+export async function getEditorAppIcon(editorId: ExternalEditorId): Promise<Electron.NativeImage | undefined> {
+  const resolved = getDetectionResult().targets.get(editorId as Exclude<ExternalEditorId, 'cozea'>)
+  if (!resolved) return undefined
+
+  try {
+    if (resolved.target.kind === 'macos-app') {
+      const icon = await app.getFileIcon(resolved.target.value, { size: 'small' })
+      if (!icon.isEmpty()) return icon
+    }
+  } catch {
+    // ignore icon retrieval error
+  }
+  return undefined
+}
+
 export async function openFileInExternalEditor(options: {
   editorId: Exclude<ExternalEditorId, 'cozea'>
   filePath: string
@@ -431,6 +455,23 @@ export async function openFileInExternalEditor(options: {
   const resolved = getDetectionResult().targets.get(options.editorId)
   if (!resolved) {
     throw new Error(`Editor not available: ${options.editorId}`)
+  }
+
+  if (resolved.strategy === 'finder') {
+    try {
+      const stats = statSync(options.filePath)
+      if (stats.isDirectory()) {
+        const error = await shell.openPath(options.filePath)
+        if (error) throw new Error(error)
+      } else {
+        shell.showItemInFolder(options.filePath)
+      }
+      return
+    } catch {
+      const error = await shell.openPath(options.filePath)
+      if (error) throw new Error(error)
+      return
+    }
   }
 
   const args = buildEditorArgs(resolved.strategy, options.filePath, options.line, options.column)

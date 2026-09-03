@@ -19,16 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import type { ContextMenuItem } from '@shared/assistant-contracts/ipc'
+import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
+import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
@@ -323,54 +316,184 @@ export function ProjectTeamPage() {
     [canManageTeam, convexUserId, resendInvite, project]
   )
 
+  const handleOpenRoleFilterMenu = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+      const items: ContextMenuItem<string>[] = [
+        {
+          id: 'all',
+          label: t('team.filter.allRoles'),
+          type: 'radio',
+          checked: roleFilter === 'all',
+          icon: getNativeMenuIcon('filter'),
+        },
+        ...ROLE_OPTIONS.map((option) => ({
+          id: option.value,
+          label: t(option.labelKey),
+          type: 'radio' as const,
+          checked: roleFilter === option.value,
+          icon: getNativeMenuIcon('shield'),
+        })),
+      ]
+      const action = await showDesktopContextMenu(items, position)
+      if (action) setRoleFilter(action as 'all' | ProjectRole)
+    },
+    [roleFilter, t]
+  )
+
+  const handleOpenSortFieldMenu = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+      const items: ContextMenuItem<string>[] = [
+        { id: 'date', label: t('team.sort.date'), type: 'radio', checked: sortField === 'date', icon: getNativeMenuIcon('sort') },
+        { id: 'name', label: t('team.sort.name'), type: 'radio', checked: sortField === 'name', icon: getNativeMenuIcon('sort') },
+        { id: 'role', label: t('team.sort.role'), type: 'radio', checked: sortField === 'role', icon: getNativeMenuIcon('sort') },
+      ]
+      const action = await showDesktopContextMenu(items, position)
+      if (action) setSortField(action as SortField)
+    },
+    [sortField, t]
+  )
+
+  const handleOpenSortDirectionMenu = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+      const items: ContextMenuItem<string>[] = [
+        { id: 'asc', label: t('team.sort.ascending'), type: 'radio', checked: sortDirection === 'asc', icon: getNativeMenuIcon('move-up') },
+        { id: 'desc', label: t('team.sort.descending'), type: 'radio', checked: sortDirection === 'desc', icon: getNativeMenuIcon('move-down') },
+      ]
+      const action = await showDesktopContextMenu(items, position)
+      if (action) setSortDirection(action as SortDirection)
+    },
+    [sortDirection, t]
+  )
+
   const headerActions = useMemo(() => {
     return (
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
-              <HugeiconsIcon icon={__FilterHugeIcon} className="h-3.5 w-3.5" />
-              {roleFilter === 'all' ? t('team.filter.allRoles') : getRoleLabel(roleFilter, t)}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setRoleFilter('all')}>{t('team.filter.allRoles')}</DropdownMenuItem>
-            {ROLE_OPTIONS.map((option) => (
-              <DropdownMenuItem key={option.value} onClick={() => setRoleFilter(option.value)}>
-                {t(option.labelKey)}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          variant="secondary"
+          className="h-7 gap-2 rounded-full px-2 text-[11px]"
+          onClick={handleOpenRoleFilterMenu}
+        >
+          <HugeiconsIcon icon={__FilterHugeIcon} className="h-3.5 w-3.5" />
+          {roleFilter === 'all' ? t('team.filter.allRoles') : getRoleLabel(roleFilter, t)}
+        </Button>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
-              <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
-              {sortField === 'date' ? t('team.sort.date') : sortField === 'name' ? t('team.sort.name') : t('team.sort.role')}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSortField('date')}>{t('team.sort.date')}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortField('name')}>{t('team.sort.name')}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortField('role')}>{t('team.sort.role')}</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          variant="secondary"
+          className="h-7 gap-2 rounded-full px-2 text-[11px]"
+          onClick={handleOpenSortFieldMenu}
+        >
+          <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
+          {sortField === 'date' ? t('team.sort.date') : sortField === 'name' ? t('team.sort.name') : t('team.sort.role')}
+        </Button>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" className="h-7 gap-2 rounded-full px-2 text-[11px]">
-              {sortDirection === 'asc' ? t('team.sort.asc') : t('team.sort.desc')}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSortDirection('asc')}>{t('team.sort.ascending')}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortDirection('desc')}>{t('team.sort.descending')}</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          variant="secondary"
+          className="h-7 gap-2 rounded-full px-2 text-[11px]"
+          onClick={handleOpenSortDirectionMenu}
+        >
+          {sortDirection === 'asc' ? t('team.sort.asc') : t('team.sort.desc')}
+        </Button>
       </div>
     )
-  }, [roleFilter, sortDirection, sortField])
+  }, [
+    handleOpenRoleFilterMenu,
+    handleOpenSortDirectionMenu,
+    handleOpenSortFieldMenu,
+    roleFilter,
+    sortDirection,
+    sortField,
+    t,
+  ])
+
+  const handleOpenRowMenu = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>, row: TeamTableRow) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+
+      const items: ContextMenuItem<string>[] = []
+      const roleActionKey = row.userId ? `role:${row.userId}` : null
+      const removeActionKey = row.userId ? `remove:${row.userId}` : null
+      const resendActionKey = row.inviteId ? `resend:${row.inviteId}` : null
+      const cancelActionKey = row.inviteId ? `cancel:${row.inviteId}` : null
+
+      if (row.type === 'member') {
+        const roleSubmenu: ContextMenuItem<string>[] = ROLE_OPTIONS.map((option) => ({
+          id: `role:${option.value}`,
+          label: `${t(option.labelKey)}${row.role === option.value ? ` (${t('team.action.current')})` : ''}`,
+          type: 'radio' as const,
+          checked: row.role === option.value,
+          enabled: Boolean(
+            canManageTeam &&
+              !row.isSelf &&
+              row.userId &&
+              row.role !== option.value &&
+              teamActionKey !== roleActionKey
+          ),
+        }))
+
+        items.push({
+          id: 'change-role',
+          label: t('team.action.changeRole'),
+          enabled: Boolean(canManageTeam && !row.isSelf && row.userId),
+          icon: getNativeMenuIcon('shield'),
+          submenu: roleSubmenu,
+        })
+        items.push({ id: 'sep', type: 'separator' })
+        items.push({
+          id: 'remove',
+          label: row.isSelf ? t('team.action.cantRemove') : t('team.action.remove'),
+          destructive: true,
+          icon: getNativeMenuIcon('user-minus'),
+          enabled: Boolean(
+            canManageTeam &&
+              !row.isSelf &&
+              row.userId &&
+              teamActionKey !== removeActionKey
+          ),
+        })
+      } else {
+        items.push({
+          id: 'resend',
+          label: t('team.action.resend'),
+          enabled: Boolean(canManageTeam && row.inviteId && teamActionKey !== resendActionKey),
+          icon: getNativeMenuIcon('restore'),
+        })
+        items.push({
+          id: 'cancel',
+          label: t('team.action.cancel'),
+          destructive: true,
+          enabled: Boolean(canManageTeam && row.inviteId && teamActionKey !== cancelActionKey),
+          icon: getNativeMenuIcon('close'),
+        })
+      }
+
+      const action = await showDesktopContextMenu(items, position)
+      if (!action) return
+
+      if (action.startsWith('role:')) {
+        const newRole = action.replace('role:', '') as ProjectRole
+        if (row.userId) void handleRoleChange(row.userId, newRole)
+      } else if (action === 'remove') {
+        if (row.userId) void handleRemoveMember(row.userId)
+      } else if (action === 'resend') {
+        if (row.inviteId) void handleResendInvite(row.inviteId)
+      } else if (action === 'cancel') {
+        if (row.inviteId) void handleCancelInvite(row.inviteId)
+      }
+    },
+    [canManageTeam, handleCancelInvite, handleRemoveMember, handleResendInvite, handleRoleChange, t, teamActionKey]
+  )
 
   useProjectHeader(headerActions)
 
@@ -413,15 +536,6 @@ export function ProjectTeamPage() {
           <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
             {filteredRows.length > 0 ? (
               filteredRows.map((row) => {
-                const roleActionKey =
-                  row.type === 'member' && row.userId ? `role:${String(row.userId)}` : null
-                const removeActionKey =
-                  row.type === 'member' && row.userId ? `remove:${String(row.userId)}` : null
-                const resendActionKey =
-                  row.type === 'invite' && row.inviteId ? `resend:${String(row.inviteId)}` : null
-                const cancelActionKey =
-                  row.type === 'invite' && row.inviteId ? `cancel:${String(row.inviteId)}` : null
-
                 return (
                   <TableRow key={row.key}>
                     <TableCell className="overflow-hidden">
@@ -478,104 +592,23 @@ export function ProjectTeamPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(row.date)}</TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {row.type === 'member' ? (
-                            <>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger
-                                  disabled={!canManageTeam || row.isSelf || !row.userId}
-                                >
-                                  <HugeiconsIcon icon={__ShieldHugeIcon} className="mr-2 h-4 w-4" />
-                                  {t('team.action.changeRole')}
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                  {ROLE_OPTIONS.map((option) => (
-                                    <DropdownMenuItem
-                                      key={option.value}
-                                      disabled={
-                                        !row.userId ||
-                                        row.role === option.value ||
-                                        teamActionKey === roleActionKey
-                                      }
-                                      onClick={() => {
-                                        if (!row.userId) return
-                                        void handleRoleChange(row.userId, option.value)
-                                      }}
-                                    >
-                                      {teamActionKey === roleActionKey && row.role !== option.value ? (
-                                        <div className="loader mr-2" />
-                                      ) : null}
-                                      {t(option.labelKey)}
-                                      {row.role === option.value ? (
-                                        <span className="ml-2 text-muted-foreground">{t('team.action.current')}</span>
-                                      ) : null}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                disabled={
-                                  !canManageTeam ||
-                                  row.isSelf ||
-                                  !row.userId ||
-                                  teamActionKey === removeActionKey
-                                }
-                                onClick={() => {
-                                  if (!row.userId) return
-                                  void handleRemoveMember(row.userId)
-                                }}
-                              >
-                                {teamActionKey === removeActionKey ? (
-                                  <div className="loader mr-2" />
-                                ) : (
-                                  <HugeiconsIcon icon={__UserMinusHugeIcon} className="mr-2 h-3.5 w-3.5" />
-                                )}
-                                {row.isSelf ? t('team.action.cantRemove') : t('team.action.remove')}
-                              </DropdownMenuItem>
-                            </>
-                          ) : (
-                            <>
-                              <DropdownMenuItem
-                                disabled={!canManageTeam || !row.inviteId || teamActionKey === resendActionKey}
-                                onClick={() => {
-                                  if (!row.inviteId) return
-                                  void handleResendInvite(row.inviteId)
-                                }}
-                              >
-                                {teamActionKey === resendActionKey ? (
-                                  <div className="loader mr-2" />
-                                ) : (
-                                  <HugeiconsIcon icon={__RotateCcwHugeIcon} className="mr-2 h-3.5 w-3.5" />
-                                )}
-                                {t('team.action.resend')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                disabled={!canManageTeam || !row.inviteId || teamActionKey === cancelActionKey}
-                                onClick={() => {
-                                  if (!row.inviteId) return
-                                  void handleCancelInvite(row.inviteId)
-                                }}
-                              >
-                                {teamActionKey === cancelActionKey ? (
-                                  <div className="loader mr-2" />
-                                ) : (
-                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-2 h-3.5 w-3.5" />
-                                )}
-                                {t('team.action.cancel')}
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label="Member options"
+                        onClick={(e) => void handleOpenRowMenu(e, row)}
+                      >
+                        {teamActionKey &&
+                        (teamActionKey === `role:${row.userId}` ||
+                          teamActionKey === `remove:${row.userId}` ||
+                          teamActionKey === `resend:${row.inviteId}` ||
+                          teamActionKey === `cancel:${row.inviteId}`) ? (
+                          <div className="loader" />
+                        ) : (
+                          <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-4 w-4" />
+                        )}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 )

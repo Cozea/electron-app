@@ -38,12 +38,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import type { ContextMenuItem } from '@shared/assistant-contracts/ipc'
+import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
+import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -1087,32 +1084,39 @@ export function ProjectSettingsPage({
                               </p>
                             </div>
                             {canManageCollabSecurity ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="size-7 rounded-lg p-0 text-muted-foreground hover:text-foreground"
-                                    disabled={
-                                      Boolean(device.revokedAt) ||
-                                      device.deviceId === currentDeviceId ||
-                                      collabAction === `revoke:${device.deviceId}`
-                                    }
-                                  >
-                                    <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-40">
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => {
-                                      void handleRevokeDevice(device.deviceId)
-                                    }}
-                                  >
-                                    {device.revokedAt ? t('settings.collab.actionRevoked') : t('settings.collab.revoke')}
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="size-7 rounded-lg p-0 text-muted-foreground hover:text-foreground"
+                                aria-label="Device options"
+                                disabled={
+                                  Boolean(device.revokedAt) ||
+                                  device.deviceId === currentDeviceId ||
+                                  collabAction === `revoke:${device.deviceId}`
+                                }
+                                onClick={async (event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  const rect = event.currentTarget.getBoundingClientRect()
+                                  const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+
+                                  const items: ContextMenuItem<string>[] = [
+                                    {
+                                      id: "revoke",
+                                      label: device.revokedAt ? t('settings.collab.actionRevoked') : t('settings.collab.revoke'),
+                                      destructive: true,
+                                      icon: getNativeMenuIcon("shield"),
+                                    },
+                                  ]
+
+                                  const action = await showDesktopContextMenu(items, position)
+                                  if (action === "revoke") {
+                                    void handleRevokeDevice(device.deviceId)
+                                  }
+                                }}
+                              >
+                                <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
+                              </Button>
                             ) : null}
                           </div>
                         ))}

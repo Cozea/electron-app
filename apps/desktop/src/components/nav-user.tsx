@@ -9,6 +9,7 @@ import {
 import { useTheme } from "@/contexts/ThemeContext"
 import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useTranslation } from "@/lib/i18n"
 import { formatLocalDeviceLabel, isLocalDeviceEmail } from "@/lib/userDisplay"
@@ -103,10 +104,12 @@ export function NavUser({
       items.push({
         id: "account-settings",
         label: t("nav.userSettings"),
+        icon: getNativeMenuIcon("settings"),
       })
       items.push({
         id: "theme-group",
         label: t("nav.theme"),
+        icon: getNativeMenuIcon("theme"),
         submenu: NAV_USER_THEME_OPTIONS.map((option) => ({
           id: option.id,
           label: t(option.labelKey),

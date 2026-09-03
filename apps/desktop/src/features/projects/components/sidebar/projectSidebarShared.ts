@@ -121,6 +121,11 @@ export interface SidebarProjectTreeItemActions {
   deleteProject: (project: SidebarProjectItem) => void
   syncProject: (project: SidebarProjectItem) => Promise<void>
   moveProject: (projectId: string, direction: "up" | "down") => void
+  reorderProject?: (
+    sourceProjectId: string,
+    targetProjectId: string,
+    position: "before" | "after",
+  ) => void
   openLaneWorkbench: (
     project: SidebarProjectItem,
     laneId: string,

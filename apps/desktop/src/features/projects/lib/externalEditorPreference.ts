@@ -21,6 +21,7 @@ const SUPPORTED_EXTERNAL_EDITOR_IDS: ExternalEditorId[] = [
   'rubymine',
   'clion',
   'datagrip',
+  'finder',
 ]
 
 export function readStoredExternalEditorPreference(): ExternalEditorId | null {
