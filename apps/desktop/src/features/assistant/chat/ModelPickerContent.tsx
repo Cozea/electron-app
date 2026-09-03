@@ -30,7 +30,7 @@ import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
   type ProviderInstanceEntry,
-} from "../../providerInstances";
+} from "@/features/assistant/providerInstances";
 
 type ModelPickerItem = {
   slug: string;

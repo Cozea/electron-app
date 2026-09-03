@@ -20,6 +20,7 @@ import type {
   WorkbenchRuntimeTerminalOutputPayload,
   WorkbenchRuntimeTerminalProvenancePayload,
 } from '../workbench-runtime/protocol'
+import type { TerminalRuntimeCreateOptions } from '../workbench-runtime/terminalHost'
 import { WorkbenchRuntimeClient } from './WorkbenchRuntimeClient'
 
 /**
@@ -451,6 +452,12 @@ export class TerminalService {
   }
 
   async createTerminal(options: TerminalCreateOptions): Promise<WorkbenchRuntimeTerminalCreateResult> {
+    return await this.createResolvedTerminal(options)
+  }
+
+  async createResolvedTerminal(
+    options: TerminalRuntimeCreateOptions,
+  ): Promise<WorkbenchRuntimeTerminalCreateResult> {
     const result = await this.runtimeClient.request<WorkbenchRuntimeTerminalCreateResult>('terminal.create', options)
     if (result.success && result.snapshot) {
       this.syncCacheFromSnapshot(result.snapshot, result.info)

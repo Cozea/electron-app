@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { useThreadDetailStore } from "../../apps/desktop/src/stores/threadDetailStore";
-import { deriveGenerationStatusPhase } from "../../apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.logic";
+import { deriveGenerationStatusPhase } from "../../apps/desktop/src/features/assistant/chat/MessagesTimeline.logic";
 
 describe("threadDetailStore", () => {
   beforeEach(() => {
