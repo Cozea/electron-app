@@ -14,6 +14,7 @@ private let maximumWritableBytes: UInt64 = 2 * 1024 * 1024 * 1024
 private let maximumMounts = 8
 private let maximumEnvironment = 64
 private let maximumLogBytes = 64 * 1024
+private let maximumErrorBytes = 4 * 1024
 
 private enum JSONValue: Codable, Sendable {
     case string(String)
@@ -51,6 +52,25 @@ private struct TransportEnvelope: Codable, Sendable {
     let connectionId: String?
     let message: JSONValue?
     let close: Bool?
+}
+
+/// `localizedDescription` on a plain Swift error enum yields only the NSError
+/// bridge -- "The operation couldn't be completed. (Module.Error error 1.)" --
+/// which names no cause. Registry and runtime failures arrive as exactly such
+/// enums, and several of them carry the reason in their own `description`, so
+/// prefer what the type says about itself and keep the bridge as a last resort.
+private func diagnosticMessage(for error: Swift.Error) -> String {
+    let candidate: String
+    if let localized = error as? LocalizedError, let described = localized.errorDescription, !described.isEmpty {
+        candidate = described
+    } else {
+        // Every error is describable, and for the registry and runtime enums that
+        // description is where the reason actually lives.
+        candidate = String(describing: error)
+    }
+    let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return error.localizedDescription }
+    return String(decoding: trimmed.utf8.prefix(maximumErrorBytes), as: UTF8.self)
 }
 
 private func matches(_ value: String, _ pattern: String) -> Bool {
@@ -908,7 +928,7 @@ private struct CozeaDevAppContainerRuntime {
                     success: false,
                     availability: nil,
                     state: nil,
-                    error: error.localizedDescription
+                    error: diagnosticMessage(for: error)
                 ))
             }
         }
