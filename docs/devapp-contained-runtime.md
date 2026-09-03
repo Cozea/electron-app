@@ -146,6 +146,18 @@ authorizes a specific organization, publication, release and digest, then return
 `repository:cozea/devapps:pull` — the entire shared repository. For that token's lifetime a device
 authorized for one DevApp holds a credential able to pull any organization's image, given a digest.
 
+**A pre-exchanged token cannot be replayed as a credential.** GHCR will not accept a registry token
+it previously issued as the password in a Basic credential; replaying one at the token endpoint
+answers `403`. So the device cannot reuse what the Worker already exchanged, and the exchange has to
+happen with a real credential or not at all.
+
+**Note on scope.** Per-organization repositories narrow the token the *Worker* mints. They do not
+narrow a Basic credential handed to a device: such a credential can request any scope its underlying
+account can reach, so it stays as broad as the account regardless of how the repositories are laid
+out. Giving devices a Basic credential is therefore not made safe by the repository split, and the
+remaining options are to pull through a gateway that holds the credential itself, or to fetch the
+image outside `ImageStore.pull` and import it through a local OCI layout.
+
 **Planned direction.** Publish each organization to its own repository under
 `ghcr.io/cozea/devapps/<organizationId>`, so a pull token can be scoped to exactly what was
 authorized. `isDigestPinnedImageReference` does not constrain the repository path and
