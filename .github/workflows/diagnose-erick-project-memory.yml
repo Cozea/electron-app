@@ -1,0 +1,34 @@
+name: Diagnose Erick project-memory integration
+
+on:
+  push:
+    branches:
+      - integration/erick-project-memory-on-refactor
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Attempt merge and report conflicts
+        shell: bash
+        run: |
+          set +e
+          git fetch origin feat/project-memory
+          git config user.name "Cozea Integration Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git merge --no-commit --no-ff origin/feat/project-memory
+          merge_code=$?
+          echo "MERGE_EXIT_CODE=$merge_code"
+          echo "--- unresolved paths ---"
+          git diff --name-only --diff-filter=U
+          echo "--- working tree ---"
+          git status --short
+          exit 0
