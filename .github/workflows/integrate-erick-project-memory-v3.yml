@@ -1,0 +1,62 @@
+name: Integrate Erick project-memory branch v3
+
+on:
+  push:
+    branches:
+      - integration/erick-project-memory-on-refactor
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Merge into canonical feature paths
+        shell: bash
+        run: bash scripts/integrate-erick-project-memory.sh
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Initialize substrate
+        shell: bash
+        run: git submodule update --init vendor/t3code
+
+      - name: Install dependencies
+        shell: bash
+        run: bun install --frozen-lockfile
+
+      - name: Validate integrated architecture
+        shell: bash
+        run: |
+          bun run check:boundaries
+          bun run typecheck
+          bun run typecheck:electron
+          bun run typecheck:tests
+          bun run lint
+
+      - name: Run focused integration tests
+        shell: bash
+        run: |
+          bunx vitest run \
+            tests/agent-skills \
+            tests/project-memory \
+            tests/dev-server \
+            tests/devapps/workbenchTileRegistry.test.ts \
+            tests/src/stores/workbenchPersistedMigration.test.ts
+
+      - name: Build renderer and Electron bundles
+        shell: bash
+        run: bun run build
+
+      - name: Push validated merge
+        shell: bash
+        run: git push origin HEAD:integration/erick-project-memory-on-refactor
