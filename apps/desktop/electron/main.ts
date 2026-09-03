@@ -1708,8 +1708,6 @@ IntegrationService.getInstance().registerIpcHandlers()
 CollabEncryptionService.getInstance().registerIpcHandlers()
 AgentToolService.getInstance().registerIpcHandlers()
 AgentSkillService.getInstance().registerIpcHandlers()
-// Ships project memory to every agent surface on first launch.
-void AgentSkillService.getInstance().ensureBuiltInSkills()
 registerProjectMemoryHandlers(ipcMain)
 
 // Override terminal handlers to support workspaceId (UUID) → resolve to
@@ -1881,6 +1879,13 @@ app.on('web-contents-created', (_event, contents) => {
 
 app.whenReady().then(() => {
   logBootTiming('app-ready')
+  /*
+   * Seeding must wait for app-ready. AgentSkillService resolves its data root
+   * from app.getPath('userData') once ready and falls back to a home directory
+   * before that, so seeding at module scope wrote the skill and its seed marker
+   * into a root the running app never reads back.
+   */
+  void AgentSkillService.getInstance().ensureBuiltInSkills()
   orgDevAppArtifactService.registerProtocol()
   t3BrowserSurfaceService = new T3BrowserSurfaceService({
     getMainWindow: () => win,

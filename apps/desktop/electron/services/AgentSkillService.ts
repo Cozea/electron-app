@@ -4,7 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { BUILT_IN_SKILLS } from "./agentSkills/builtInSkills";
+import { BUILT_IN_SKILLS, MEMORY_SKILL_KEY } from "./agentSkills/builtInSkills";
+import {
+  removeMemoryInstructions,
+  writeMemoryInstructions,
+} from "./agentSkills/memoryInstructions";
 
 import type {
   AgentSkillDraft,
@@ -73,6 +77,13 @@ interface AgentSkillStateFile {
 
 interface ProviderDefinition extends AgentSkillProviderInfo {
   relativeRoot: string;
+  /**
+   * The file this provider always loads, relative to home. A skill folder is
+   * only *offered* to the model; whether it gets used is the model's choice.
+   * A managed section here is read every session, which is what makes project
+   * memory actually reach the agent rather than hoping it opts in.
+   */
+  instructionsFile: string;
 }
 
 interface CopyEntry {
@@ -87,6 +98,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     label: "Codex",
     relativeRoot: path.join(".agents", "skills"),
     rootPath: "",
+    instructionsFile: path.join(".agents", "AGENTS.md"),
     restartBehavior: "restart-external-app",
   },
   {
@@ -94,6 +106,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     label: "Claude",
     relativeRoot: path.join(".claude", "skills"),
     rootPath: "",
+    instructionsFile: path.join(".claude", "CLAUDE.md"),
     restartBehavior: "live",
   },
   {
@@ -101,6 +114,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     label: "Cursor",
     relativeRoot: path.join(".cursor", "skills"),
     rootPath: "",
+    instructionsFile: path.join(".cursor", "rules", "cozea-project-memory.mdc"),
     restartBehavior: "restart-recommended",
   },
   {
@@ -108,6 +122,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     label: "OpenCode",
     relativeRoot: path.join(".config", "opencode", "skills"),
     rootPath: "",
+    instructionsFile: path.join(".config", "opencode", "AGENTS.md"),
     restartBehavior: "restart-recommended",
   },
 ];
@@ -984,6 +999,13 @@ export class AgentSkillService {
             });
           }
         }
+
+        // The skill folder only offers itself. Project memory has to be
+        // consulted before an agent starts reading files, so every provider
+        // also gets a managed block in the file it always loads.
+        if (definition.key === MEMORY_SKILL_KEY) {
+          this.syncMemoryInstructions(definition.name);
+        }
       } catch {
         // A failed seed must never block startup; the next launch retries.
         continue;
@@ -994,6 +1016,34 @@ export class AgentSkillService {
         ...next,
         seededBuiltInSkills: [...(next.seededBuiltInSkills ?? []), definition.key],
       });
+    }
+  }
+
+  /**
+   * Mirror the memory instruction block across every provider Cozea knows,
+   * whether or not that provider is installed: the file is cheap, and it means
+   * the agent behaves correctly the moment the user does install one.
+   */
+  syncMemoryInstructions(skillName: string): void {
+    for (const provider of PROVIDER_DEFINITIONS) {
+      const target = path.join(this.homeRoot, provider.instructionsFile);
+      try {
+        writeMemoryInstructions(target, skillName);
+      } catch {
+        // A provider directory we cannot write is not worth failing startup for.
+        continue;
+      }
+    }
+  }
+
+  /** Used when the user turns project memory off for a provider. */
+  clearMemoryInstructions(): void {
+    for (const provider of PROVIDER_DEFINITIONS) {
+      try {
+        removeMemoryInstructions(path.join(this.homeRoot, provider.instructionsFile));
+      } catch {
+        continue;
+      }
     }
   }
 
