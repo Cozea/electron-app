@@ -20,7 +20,9 @@ jobs:
 
       - name: Merge into canonical feature paths
         shell: bash
-        run: bash scripts/integrate-erick-project-memory.sh
+        run: |
+          bash scripts/integrate-erick-project-memory.sh
+          bash scripts/repair-erick-integration.sh
 
       - uses: oven-sh/setup-bun@v2
         with:
