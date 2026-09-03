@@ -114,57 +114,53 @@ storage mechanism, and custom wildcard hostnames as the production mechanism for
    active release before every hosted start. The main process uses a build-pinned gateway origin;
    renderer IPC cannot choose where a device bearer token is sent.
 
-## Known gap: registry credentials and image tenancy
+## Registry credentials and image tenancy
 
-Published DevApps that need the device runtime cannot currently start. Publishing, signing,
-cataloguing and installing all succeed; the image pull is what fails, so the failure surfaces only
-when the DevApp is first opened.
+Each organization publishes into its own repository, `ghcr.io/cozea/devapps/<organizationId>`.
+`handleCreateDevAppRuntimePull` authorizes a specific organization, publication, release and digest,
+then mints a pull token scoped to `repository:cozea/devapps/<organizationId>:pull`. A device
+authorized for one DevApp therefore holds a credential that cannot reach another organization's
+images, even given a digest.
 
-**Confirmed cause.** The Worker completes the GHCR token exchange itself, using Basic credentials,
-and returns the resulting bearer token to the device. The device treats that finished token as a
-*credential* and replays it at `https://ghcr.io/token`, which expects Basic. GHCR answers `401`
-with its own `WWW-Authenticate` header, and Containerization refuses the exchange:
+These packages are private and inherit access from the source repository, so a new organization's
+first publish creates its repository with the right access already attached. Nothing has to be
+granted by hand in GitHub for a new organization.
+
+**Why the device does not call `ImageStore.pull`.** That API accepts only an `Authentication`, and
+spends it inside `fetchToken` against `https://ghcr.io/token`, which expects Basic credentials. The
+Worker has already completed that exchange, so replaying the registry token it returned makes GHCR
+answer with its own `WWW-Authenticate` challenge, and Containerization refuses:
 
 ```
 refusing insecure credential exchange:
 authorization server https://ghcr.io/token issued its own authentication challenge
 ```
 
-The token is spent at the wrong step. It is not a scope, expiry, or visibility problem.
+The token is not weak or misscoped; it is being spent at the wrong step. `RegistryClient.request`
+does accept arbitrary headers, but it is `internal`, so using it would mean forking Containerization.
 
-**Why the device cannot simply skip the exchange.** `ImageStore.pull` exposes only
-`auth: Authentication`, and that value is consumed exclusively inside `fetchToken`; it is never
-applied to the `/v2/` request. `RegistryClient.request` does accept arbitrary headers, but it is
-`internal`. Handing the client a pre-exchanged token would require forking Containerization.
+**What the device does instead.** `RegistryPull.fetchOCILayout` fetches the image itself, using the
+token the only way it is valid — as a bearer on the `/v2/` requests — writes an OCI layout, and hands
+that to `ImageStore.load`, which keeps unpacking and storage with the library.
 
-**Why the package cannot simply be made public.** Every organization publishes into one shared
-repository, `ghcr.io/cozea/devapps`. Making it public would expose every organization's DevApp
-images, not just this project's own.
+**Why devices are not given a Basic credential instead.** A Basic credential can request any scope
+the underlying account can reach, so splitting repositories per organization does not narrow one.
+Only the token exchange narrows it, and that has to stay on the Worker, which holds the credential.
 
-**Related: the pull grant is broader than the pull decision.** `handleCreateDevAppRuntimePull`
-authorizes a specific organization, publication, release and digest, then returns a token scoped to
-`repository:cozea/devapps:pull` — the entire shared repository. For that token's lifetime a device
-authorized for one DevApp holds a credential able to pull any organization's image, given a digest.
+**What the fetch verifies.** The release names the platform digest, and every manifest and blob is
+checked against the digest that referenced it. With `provenance: mode=max` the builder reports an
+index per platform, holding the image manifest alongside its attestations, so the named digest is
+often an index rather than a manifest; the runtime resolves through it to the entry matching the
+requested os and architecture, which also steps past the attestation entries filed there under an
+`unknown` platform. Choosing from that index is not the registry choosing for us — its digest came
+from the signed release and was verified before it was read. Registries redirect blob reads to
+storage on another host, so `Authorization` is dropped whenever a redirect changes host.
 
-**A pre-exchanged token cannot be replayed as a credential.** GHCR will not accept a registry token
-it previously issued as the password in a Basic credential; replaying one at the token endpoint
-answers `403`. So the device cannot reuse what the Worker already exchanged, and the exchange has to
-happen with a real credential or not at all.
+**One registry quirk worth keeping in mind.** GHCR answers `404`, not `406`, when the stored
+manifest's media type is absent from the request's `Accept` header, which makes an incomplete list
+indistinguishable from a missing image. `RegistryPull` therefore offers the OCI and Docker forms of
+both the image manifest and the index.
 
-**Note on scope.** Per-organization repositories narrow the token the *Worker* mints. They do not
-narrow a Basic credential handed to a device: such a credential can request any scope its underlying
-account can reach, so it stays as broad as the account regardless of how the repositories are laid
-out. Giving devices a Basic credential is therefore not made safe by the repository split, and the
-remaining options are to pull through a gateway that holds the credential itself, or to fetch the
-image outside `ImageStore.pull` and import it through a local OCI layout.
-
-**Planned direction.** Publish each organization to its own repository under
-`ghcr.io/cozea/devapps/<organizationId>`, so a pull token can be scoped to exactly what was
-authorized. `isDigestPinnedImageReference` does not constrain the repository path and
-`finalize-devapp-runtime-build.ts` already takes `--repository`, so the reference plumbing carries
-this unchanged. Once the scope is per-organization, the device can hold a short-lived Basic
-credential — the form GHCR's token endpoint actually accepts — without that credential reaching
-beyond a single organization's images.
 
 ## Filesystem and developer power
 
