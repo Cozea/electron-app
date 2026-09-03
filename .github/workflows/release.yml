@@ -26,6 +26,13 @@ concurrency:
 env:
   CI: true
   NODE_OPTIONS: --max-old-space-size=4096
+  # The release now exists before any build job starts, so electron-builder always
+  # finds one rather than creating it. Its guard against uploading into a release
+  # published more than two hours ago would turn that into a silent skip on any
+  # re-run of an older tag, which is exactly the recovery path this workflow needs
+  # to keep working. Uploading into the release that carries this build's own tag
+  # is never the accident the guard exists to prevent.
+  EP_GH_IGNORE_TIME: "true"
   # Set to "1" to build unsigned even when signing secrets exist, without having to
   # delete a certificate that may still be wanted later.
   COZEA_FORCE_UNSIGNED_MAC: ${{ vars.COZEA_FORCE_UNSIGNED_MAC }}
@@ -253,11 +260,64 @@ jobs:
         run: bun run lint
 
 
+  stage:
+    name: Create release
+    needs:
+      - plan
+      - verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Every build job publishes into one release, and electron-builder creates it
+      # on demand when it is absent. Run in parallel they both find it missing and
+      # both post it; GitHub gives the tag to whichever lands first and rejects the
+      # loser with 422 "Published releases must have a valid tag". electron-builder
+      # only recovers from a 422 that says "already_exists", so the loser's job
+      # fails and that architecture ships nothing until someone re-runs it. Creating
+      # the release once here, from a job that cannot race itself, leaves every
+      # build job on the path that reuses an existing release.
+      #
+      # This runs after verify so a release is never created for a tag that could
+      # not even typecheck.
+      - name: Create the release the build jobs publish into
+        if: needs.plan.outputs.publish_mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # This is now the first step that writes to the release repository, so it
+          # is also the first that can fail for a missing token. Say so plainly
+          # rather than letting gh fall back to the workflow token and report an
+          # opaque permission error against a repository it was never issued for.
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing GH_TOKEN for publishing to ${COZEA_RUNTIME_RELEASE_REPO}."
+            exit 1
+          fi
+
+          tag="${{ needs.plan.outputs.release_tag }}"
+          repo="${COZEA_RUNTIME_RELEASE_REPO}"
+
+          if gh release view "${tag}" --repo "${repo}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists in ${repo}; reusing it."
+            exit 0
+          fi
+
+          # Title matches the name electron-builder gave the releases it created
+          # here before, so nothing downstream sees a change in naming.
+          create=(gh release create "${tag}" --repo "${repo}" --title "${tag#v}" --notes "")
+          if [[ "${{ needs.plan.outputs.github_release_type }}" == "prerelease" ]]; then
+            create+=(--prerelease)
+          fi
+
+          "${create[@]}"
+          echo "Created release ${tag} in ${repo}."
+
   build:
     name: ${{ matrix.name }}
     needs:
       - plan
       - verify
+      - stage
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 60
     strategy:
