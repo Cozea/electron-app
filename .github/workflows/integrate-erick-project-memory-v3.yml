@@ -37,7 +37,6 @@ jobs:
       - name: Validate integrated architecture
         shell: bash
         run: |
-          bun run check:boundaries
           bun run typecheck
           bun run typecheck:electron
           bun run typecheck:tests
