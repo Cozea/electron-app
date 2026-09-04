@@ -52,8 +52,8 @@ jobs:
       - name: Full test suite
         run: bun run test
 
-      - name: Architecture boundary check
-        run: bun run check:boundaries
+      - name: Architecture tests
+        run: bunx vitest run tests/architecture
 
       - name: Production build
         run: bun run build
