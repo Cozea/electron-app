@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ e6fd2165c7c1e8a1a0563c993d5205d53480130b; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import { PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { VcsDriverKind } from "./vcs.ts";
@@ -31,6 +30,8 @@ export const ChangeRequest = Schema.Struct({
   baseRefName: TrimmedNonEmptyString,
   headRefName: TrimmedNonEmptyString,
   state: ChangeRequestState,
+  /** Present when the provider can tell that an open change request is still a draft. */
+  isDraft: Schema.optional(Schema.Boolean),
   updatedAt: Schema.Option(Schema.DateTimeUtc),
   isCrossRepository: Schema.optional(Schema.Boolean),
   headRepositoryNameWithOwner: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -162,7 +163,7 @@ export class SourceControlProviderError extends Schema.TaggedErrorClass<SourceCo
     repository: Schema.optional(Schema.String),
     reference: Schema.optional(Schema.String),
     detail: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   override get message(): string {
@@ -176,7 +177,7 @@ export class SourceControlRepositoryError extends Schema.TaggedErrorClass<Source
     provider: SourceControlProviderKind,
     operation: Schema.String,
     detail: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   override get message(): string {

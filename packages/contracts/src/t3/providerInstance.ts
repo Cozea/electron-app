@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ e6fd2165c7c1e8a1a0563c993d5205d53480130b; run scripts/vendor/sync-t3-contracts.mjs */
 /**
  * Provider-instance contracts.
  *
@@ -35,7 +34,6 @@
  *
  * @module providerInstance
  */
-import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
@@ -105,8 +103,8 @@ export type ProviderInstanceEnvironmentVariableName =
 
 export const ProviderInstanceEnvironmentVariable = Schema.Struct({
   name: ProviderInstanceEnvironmentVariableName,
-  value: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  sensitive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  value: Schema.String.pipe(Schema.withDecodingDefault(() => (""))),
+  sensitive: Schema.Boolean.pipe(Schema.withDecodingDefault(() => (false))),
   valueRedacted: Schema.optionalKey(Schema.Boolean),
 });
 export type ProviderInstanceEnvironmentVariable = typeof ProviderInstanceEnvironmentVariable.Type;
@@ -148,4 +146,4 @@ export type ProviderInstanceConfigMap = typeof ProviderInstanceConfigMap.Type;
  * migration without rewriting their stored selection payloads.
  */
 export const defaultInstanceIdForDriver = (driver: ProviderDriverKind): ProviderInstanceId =>
-  ProviderInstanceId.make(driver);
+  ProviderInstanceId.makeUnsafe(driver);

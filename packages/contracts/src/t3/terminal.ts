@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ e6fd2165c7c1e8a1a0563c993d5205d53480130b; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
@@ -260,7 +259,7 @@ export class TerminalCwdStatError extends Schema.TaggedErrorClass<TerminalCwdSta
   "TerminalCwdStatError",
   {
     cwd: Schema.String,
-    cause: Schema.Defect(),
+    cause: Schema.Defect,
   },
 ) {
   override get message() {
@@ -281,7 +280,7 @@ export class TerminalHistoryError extends Schema.TaggedErrorClass<TerminalHistor
     operation: Schema.Literals(["read", "truncate", "migrate"]),
     threadId: Schema.String,
     terminalId: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   override get message() {
@@ -319,7 +318,7 @@ export class TerminalWriteError extends Schema.TaggedErrorClass<TerminalWriteErr
     threadId: Schema.String,
     terminalId: Schema.String,
     terminalPid: Schema.Number,
-    cause: Schema.Defect(),
+    cause: Schema.Defect,
   },
 ) {
   override get message() {
@@ -335,7 +334,7 @@ export class TerminalResizeError extends Schema.TaggedErrorClass<TerminalResizeE
     terminalPid: Schema.Number,
     cols: TerminalColsSchema,
     rows: TerminalRowsSchema,
-    cause: Schema.Defect(),
+    cause: Schema.Defect,
   },
 ) {
   override get message() {

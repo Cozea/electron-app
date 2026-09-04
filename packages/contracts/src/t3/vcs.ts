@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ e6fd2165c7c1e8a1a0563c993d5205d53480130b; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
@@ -96,7 +95,7 @@ export class VcsProcessSpawnError extends Schema.TaggedErrorClass<VcsProcessSpaw
     command: Schema.String,
     cwd: Schema.String,
     argumentCount: Schema.optional(NonNegativeInt),
-    cause: Schema.Defect(),
+    cause: Schema.Defect,
   },
 ) {
   override get message(): string {
@@ -192,7 +191,7 @@ export class VcsProcessStdinWriteError extends Schema.TaggedErrorClass<VcsProces
   {
     ...VcsProcessBoundaryErrorFields,
     stdinBytes: NonNegativeInt,
-    cause: Schema.Defect(),
+    cause: Schema.Defect,
   },
 ) {
   override get message(): string {
@@ -205,7 +204,7 @@ export class VcsProcessOutputReadError extends Schema.TaggedErrorClass<VcsProces
   {
     ...VcsProcessBoundaryErrorFields,
     stream: Schema.Literals(["stdout", "stderr", "exitCode"]),
-    cause: Schema.Defect(),
+    cause: Schema.Defect,
   },
 ) {
   override get message(): string {
@@ -250,7 +249,7 @@ export class VcsRepositoryDetectionError extends Schema.TaggedErrorClass<VcsRepo
     operation: Schema.String,
     cwd: Schema.String,
     detail: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   override get message(): string {

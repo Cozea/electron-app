@@ -10,6 +10,7 @@ import {
   VENDOR_T3_SERVER_BIN,
   VENDOR_T3_SERVER_PKG,
   assertNodeVersionForT3Server,
+  assertT3RuntimeIdentity,
   vendorT3ServerBinExists,
 } from "./paths.ts";
 import { extractPairingToken } from "@cozea/client-runtime";
@@ -172,6 +173,8 @@ export async function startT3ServerProcess(
       `Missing T3 server bundle at ${VENDOR_T3_SERVER_BIN}. Run bun run prepare:t3-runtime from the Cozea repository.`,
     );
   }
+
+  assertT3RuntimeIdentity();
 
   const host = options.host?.trim() || process.env.COZEA_T3_SERVER_HOST?.trim() || DEFAULT_T3_SERVER_HOST;
   const port =

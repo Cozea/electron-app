@@ -1,25 +1,27 @@
 #!/usr/bin/env node
-/**
- * Sync upstream T3 contract groups from vendor/t3code into @cozea/contracts/src/t3/.
- * Run after vendor pin updates: node scripts/vendor/sync-t3-contracts.mjs
- */
+/** Synchronize reviewed T3 wire contracts without suppressing type checking. */
 import fs from "node:fs";
+import { adaptT3Contract } from "./t3-contract-compat.mjs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const vendorSrc = path.join(root, "vendor/t3code/packages/contracts/src");
+const vendorRoot = path.join(root, "vendor/t3code");
+const vendorSrc = path.join(vendorRoot, "packages/contracts/src");
 const destRoot = path.join(root, "packages/contracts/src/t3");
-const pinFile = path.join(root, "docs/substrate-t3-pin.md");
-const SKIP_COPY = new Set(["index.ts"]);
-
-function readPinSha() {
-  const doc = fs.readFileSync(pinFile, "utf8");
-  const match = doc.match(/`([0-9a-f]{40})`/);
-  if (!match) {
-    throw new Error(`Pin SHA not found in ${pinFile}`);
-  }
-  return match[1];
+const check = process.argv.includes("--check");
+const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+const pin = git(vendorRoot, "rev-parse", "HEAD");
+const documented = fs.readFileSync(path.join(root, "docs/substrate-t3-pin.md"), "utf8").match(/`([0-9a-f]{40})`/)?.[1];
+const constant = fs.readFileSync(path.join(root, "apps/desktop/electron/substrate/constants.ts"), "utf8").match(/SUBSTRATE_T3_PIN_SHA = "([0-9a-f]{40})"/)?.[1];
+const gitlink = git(root, "ls-files", "--stage", "vendor/t3code").split(/\s+/)[1];
+if (pin !== documented || pin !== constant || pin !== gitlink) {
+  throw new Error("T3 HEAD, staged gitlink, documented pin, and runtime constant must agree before contract sync.");
+}
+if (git(vendorRoot, "status", "--porcelain", "--", "packages/contracts/src")) {
+  throw new Error("Commit reviewed vendor contracts before synchronizing them.");
 }
 
 function extractConstBlock(source, exportName) {
@@ -45,97 +47,33 @@ function extractConstBlock(source, exportName) {
   return `${source.slice(start, end)}${asConst}`;
 }
 
-function writeMethodTags(pin) {
-  const orchestration = fs.readFileSync(path.join(vendorSrc, "orchestration.ts"), "utf8");
-  const rpc = fs.readFileSync(path.join(vendorSrc, "rpc.ts"), "utf8");
-  const body = `/** @generated from vendor/t3code/packages/contracts @ ${pin} */
-${extractConstBlock(orchestration, "ORCHESTRATION_WS_METHODS")}
 
-${extractConstBlock(rpc, "WS_METHODS")}
-`;
-  fs.writeFileSync(path.join(destRoot, "methodTags.ts"), body, "utf8");
+// Cozea owns device authentication and talks to T3 over RPC. Server-side T3
+// HTTP/relay middleware is not a client contract and cannot use our older
+// Effect HTTP security implementation (in particular its DPoP scheme).
+const excluded = new Set(["index.ts", "environmentHttp.ts", "relay.ts"]);
+const files = new Map();
+const copied = fs.readdirSync(vendorSrc).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !excluded.has(name)).sort();
+const sourceHashes = {};
+const banner = `/** @generated from vendor/t3code/packages/contracts @ ${pin}; run scripts/vendor/sync-t3-contracts.mjs */\n`;
+for (const name of copied) {
+  const source = fs.readFileSync(path.join(vendorSrc, name), "utf8");
+  if (source.includes("@ts-nocheck")) throw new Error(`Unreviewed type suppression in ${name}`);
+  sourceHashes[name] = createHash("sha256").update(source).digest("hex");
+  files.set(name, banner + adaptT3Contract(name, source));
 }
-
-function writeT3Index() {
-  const body = `/** @generated — re-export synced upstream T3 contract groups (see SYNC_MANIFEST.json). */
-export * from "./baseSchemas.ts";
-export * from "./background.ts";
-export * from "./auth.ts";
-export * from "./environment.ts";
-export * from "./environmentHttp.ts";
-export * from "./relayClient.ts";
-export * from "./desktopBootstrap.ts";
-export * from "./remoteAccess.ts";
-export * from "./ipc.ts";
-export * from "./terminal.ts";
-export * from "./provider.ts";
-export * from "./providerInstance.ts";
-export * from "./providerRuntime.ts";
-export * from "./model.ts";
-export * from "./keybindings.ts";
-export * from "./server.ts";
-export * from "./settings.ts";
-export * from "./git.ts";
-export * from "./vcs.ts";
-export * from "./sourceControl.ts";
-export * from "./pullRequest.ts";
-export * from "./orchestration.ts";
-export * from "./t3ProjectFile.ts";
-export * from "./editor.ts";
-export * from "./project.ts";
-export * from "./filesystem.ts";
-export * from "./assets.ts";
-export * from "./review.ts";
-export * from "./preview.ts";
-export * from "./previewAutomation.ts";
-export * from "./resourceTelemetry.ts";
-export * from "./usage.ts";
-export * from "./rpc.ts";
-export * from "./methodTags.ts";
-`;
-  fs.writeFileSync(path.join(destRoot, "index.ts"), `// @ts-nocheck\n${body}`, "utf8");
-}
-
-function copyContractSources() {
-  if (!fs.existsSync(vendorSrc)) {
-    throw new Error(`Missing vendor contracts at ${vendorSrc}`);
-  }
-
-  fs.rmSync(destRoot, { recursive: true, force: true });
+const index = fs.readFileSync(path.join(vendorSrc, "index.ts"), "utf8").split("\n").filter((line) => !line.includes('"./environmentHttp.ts"')).join("\n");
+files.set("index.ts", banner + index);
+files.set("methodTags.ts", banner + extractConstBlock(files.get("orchestration.ts"), "ORCHESTRATION_WS_METHODS") + "\n\n" + extractConstBlock(files.get("rpc.ts"), "WS_METHODS") + "\n");
+files.set("SYNC_MANIFEST.json", JSON.stringify({ pin, copied, excluded: [...excluded].sort(), adaptation: "cozea-effect-8881a9b-v1", sourceHashes }, null, 2) + "\n");
+const existing = fs.existsSync(destRoot) ? fs.readdirSync(destRoot) : [];
+const changed = [...files].filter(([name, body]) => !fs.existsSync(path.join(destRoot, name)) || fs.readFileSync(path.join(destRoot, name), "utf8") !== body).map(([name]) => name);
+const removed = existing.filter((name) => !files.has(name));
+if (check) {
+  if (changed.length || removed.length) throw new Error(`T3 contracts differ: ${[...changed, ...removed.map((name) => "removed:" + name)].join(", ")}. Run bun scripts/vendor/sync-t3-contracts.mjs and review the diff.`);
+} else {
   fs.mkdirSync(destRoot, { recursive: true });
-
-  const copied = [];
-  for (const entry of fs.readdirSync(vendorSrc, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    if (!entry.name.endsWith(".ts")) continue;
-    if (entry.name.endsWith(".test.ts")) continue;
-    if (SKIP_COPY.has(entry.name)) continue;
-    const src = path.join(vendorSrc, entry.name);
-    const dest = path.join(destRoot, entry.name);
-    fs.copyFileSync(src, dest);
-    copied.push(entry.name);
-  }
-
-  const pin = readPinSha();
-  const banner = `// @ts-nocheck\n/** @generated from vendor/t3code/packages/contracts @ ${pin} — do not edit; run scripts/vendor/sync-t3-contracts.mjs */\n`;
-  for (const name of copied) {
-    const filePath = path.join(destRoot, name);
-    const body = fs.readFileSync(filePath, "utf8");
-    if (!body.includes("@generated from vendor/t3code")) {
-      fs.writeFileSync(filePath, banner + body, "utf8");
-    }
-  }
-
-  writeMethodTags(pin);
-  writeT3Index();
-
-  fs.writeFileSync(
-    path.join(destRoot, "SYNC_MANIFEST.json"),
-    JSON.stringify({ pin, copied: copied.sort(), syncedAt: new Date().toISOString() }, null, 2) + "\n",
-    "utf8",
-  );
-
-  console.log(`[sync-t3-contracts] synced ${copied.length} files from pin ${pin.slice(0, 8)}`);
+  for (const name of changed) fs.writeFileSync(path.join(destRoot, name), files.get(name));
+  for (const name of removed) fs.unlinkSync(path.join(destRoot, name));
 }
-
-copyContractSources();
+console.log(`[sync-t3-contracts] ${check ? "verified" : "synced"} ${copied.length} files at ${pin}; ${changed.length} changed, ${removed.length} removed`);

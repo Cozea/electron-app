@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import contractManifest from "../../../../packages/contracts/src/t3/SYNC_MANIFEST.json";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,12 +47,36 @@ export function assertNodeVersionForT3Server(nodeVersion: string = process.versi
   const major = Number(match[1]);
   const minor = Number(match[2]);
   const ok =
-    major > 22 ||
-    (major === 22 && minor >= 16) ||
-    major >= 23;
+    major > 24 ||
+    (major === 24 && minor >= 10) ||
+    (major === 23 && minor >= 11) ||
+    (major === 22 && minor >= 16);
   if (!ok) {
     throw new Error(
-      `Node ${nodeVersion} cannot run T3 server (need >= 22.16, >= 23.11, or >= 24)`,
+      `Node ${nodeVersion} cannot run T3 server (need ^22.16, ^23.11, or >=24.10)`,
     );
+  }
+}
+
+/** Refuse mixed client/runtime installations before opening persisted state. */
+export function assertT3RuntimeIdentity(
+  runtimeRoot: string = VENDOR_T3_SERVER_PKG,
+  expectedPin: string = contractManifest.pin,
+): void {
+  const metadataPath = path.join(runtimeRoot, "cozea-runtime.json");
+  let actual: unknown;
+  try {
+    if (fs.existsSync(metadataPath)) {
+      const metadata: unknown = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+      actual = metadata && typeof metadata === "object" && "t3Pin" in metadata
+        ? metadata.t3Pin : undefined;
+    } else {
+      actual = fs.readFileSync(path.join(runtimeRoot, "dist", ".cozea-runtime-pin"), "utf8").trim().split(":")[0];
+    }
+  } catch {
+    actual = undefined;
+  }
+  if (actual !== expectedPin) {
+    throw new Error("Cozea's provider runtime does not match this app. Reinstall the matching app build, or run bun run prepare:t3-runtime in this checkout. Conversation data has not been opened.");
   }
 }

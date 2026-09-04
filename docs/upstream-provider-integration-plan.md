@@ -1,6 +1,6 @@
 # Upstream provider integration plan
 
-Status: proposed implementation plan; no runtime changes implemented.
+Status: implementation active in the isolated `codex/provider-upstream-integration` worktree.
 Prepared: 2026-09-05T04:47:58+08:00.
 
 ## Objective and acceptance
@@ -269,3 +269,25 @@ Document user-visible question, compaction, continuation, and Antigravity behavi
 Suggested review units: (1) Codex compatibility repair, (2) coherent fork merge and extension preservation, (3) parent contracts/preparation/data compatibility, (4) async questions, (5) compaction, (6) controlled-update continuation, (7) OpenCode UI/lifecycle verification, (8) Antigravity setup, and (9) compatibility CI/docs/final qualification. Units 4–8 depend on units 2–3; the small repair can ship first. No sub-agent delegation is implied by this breakdown.
 
 No reliable calendar estimate is assigned before the contract/Effect boundary, migration tests, and Antigravity setup surface are assessed. Those are the largest unresolved implementation costs. The merge preview establishes conflict locations, not implementation completion or test success.
+
+## Execution record (2026-09-05)
+
+- Isolated baseline preserves the local UI changes in parent commit `4aa413be`.
+  App typecheck/lint/build and 2079 tests passed (7 skipped).
+- Independent repair branches retain fork `7df4f7903` and parent `0366aeba`.
+  Regression reproduced before repair. Schema/adapter checks, isolated Cozea RPC
+  smoke and portable packaging passed. The friend's private history was not supplied.
+- Fork merge `e6fd2165c7c1e8a1a0563c993d5205d53480130b` preserves upstream ancestry
+  at frozen target `0a590fa01af66ec135d2ebf2d5542b08a37dc275`. All ten Cozea fork
+  changes were reviewed against that target, including clean merges. The final
+  server/schema/contracts suite passed 4110 tests (9 skipped); added Antigravity
+  preview scoping plus Claude tests passed 115 tests. Server typecheck, lint and
+  bundle build passed. Reasoning events were consolidated; normalized usage and
+  Cozea native usage history share one event. macOS nested-file canonicalization
+  and outside-workspace leaf symlinks have regression coverage.
+- Parent contract adaptation removes generated type suppressions and translates
+  schema-construction APIs for the existing root Effect pin. Runtime identity is
+  checked before database startup. Five new contract/bootstrap tests pass; app
+  typecheck, Electron typecheck, lint, build and the 2079 existing tests pass.
+- Phase 3 bootstrap smoke/packaging and phases 4–5 remain in progress. No release,
+  main-branch push, real provider login, or private-history recovery is claimed.

@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ e6fd2165c7c1e8a1a0563c993d5205d53480130b; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import {
   NonNegativeInt,
@@ -118,7 +117,7 @@ export class ProjectSearchEntriesError extends Schema.TaggedErrorClass<ProjectSe
     timeout: Schema.optional(TrimmedNonEmptyString),
     detail: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   // The structured fields are optional on the wire so newer peers can decode legacy message-only
@@ -151,7 +150,7 @@ export class ProjectSearchContentsError extends Schema.TaggedErrorClass<ProjectS
     timeout: Schema.optional(TrimmedNonEmptyString),
     detail: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off
@@ -180,7 +179,7 @@ export class ProjectListEntriesError extends Schema.TaggedErrorClass<ProjectList
     timeout: Schema.optional(TrimmedNonEmptyString),
     detail: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off
@@ -195,6 +194,8 @@ export class ProjectListEntriesError extends Schema.TaggedErrorClass<ProjectList
 
 export const ProjectReadFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
+  // Workspace-relative, or an absolute host path for a file outside the
+  // workspace. Only workspace-relative paths can be written back.
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
 });
 export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
@@ -250,7 +251,7 @@ export class ProjectReadFileError extends Schema.TaggedErrorClass<ProjectReadFil
     operation: Schema.optional(ProjectFileOperation),
     operationPath: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off
@@ -287,7 +288,7 @@ export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteF
     operation: Schema.optional(ProjectFileOperation),
     operationPath: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off
