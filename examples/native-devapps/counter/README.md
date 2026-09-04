@@ -9,5 +9,18 @@ runtime, host context, settings, app storage, theme and lifecycle.
 The optional extension entry registers a command through the extension-host contract. It receives
 no raw Electron or Node API.
 
-This fixture is initially used to validate the manifest, public SDK and builder contract. A later
-runtime slice loads its compiled ESM output into Dockview with generation-based development reload.
+Validate the package:
+
+```bash
+bun run scripts/devapps/native-builder-cli.ts validate examples/native-devapps/counter
+```
+
+Build a host-loadable ESM release:
+
+```bash
+bun run scripts/devapps/native-builder-cli.ts build examples/native-devapps/counter
+```
+
+The compiler externalizes React and the native SDK to the `cozea-native-runtime://` host protocol,
+rejects Electron, Node and private Cozea imports, validates app-scoped CSS, and emits `release.json`
+and `integrity.json`. The native module loader and Dockview preview are the next runtime slice.
