@@ -51,14 +51,16 @@ async function readSeedBatch(
 ): Promise<Array<{ path: string; content: string } | null>> {
   return await Promise.all(
     files.map(async (file) => {
-      const result = await window.electronAPI.project.readFile({
-        workspaceId,
-        filePath: file.path,
-      })
-      if (!result.success || typeof result.content !== "string") {
+      try {
+        const result = await window.electronAPI.project.readFile({
+          workspaceId,
+          filePath: file.path,
+        })
+        if (!result.success || typeof result.content !== "string") return null
+        return { path: file.path, content: result.content }
+      } catch {
         return null
       }
-      return { path: file.path, content: result.content }
     }),
   )
 }

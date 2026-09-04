@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { validateDeviceGatewayUrl } from "@shared/gatewayUrl"
 import { getDeviceSession } from "@/lib/deviceSession"
 
 const COLLAB_SESSION_INVALIDATION_EVENT = "cozea:collab-session-invalidate"
@@ -88,6 +89,8 @@ export function useCollabSession({
   sessionId = null,
   enabled = true,
 }: UseCollabSessionOptions): UseCollabSessionResult {
+  const currentSessionRef = useRef<CollabSession | null>(null)
+  const requestGenerationRef = useRef(0)
   const [status, setStatus] = useState<UseCollabSessionResult["status"]>("idle")
   const [session, setSession] = useState<CollabSession | null>(null)
   const [capabilities, setCapabilities] = useState<CollabCapabilities | null>(null)
@@ -100,7 +103,9 @@ export function useCollabSession({
   )
 
   const refresh = useCallback(async () => {
+    const generation = ++requestGenerationRef.current
     if (!enabled || !projectId) {
+      currentSessionRef.current = null
       setStatus("idle")
       setSession(null)
       setCapabilities(null)
@@ -115,15 +120,22 @@ export function useCollabSession({
       return null
     }
 
-    setStatus("loading")
+    const current = currentSessionRef.current
+    if (!current || current.projectId !== projectId || (current.sessionId ?? null) !== sessionId) {
+      setStatus("loading")
+      setSession(null)
+    }
     setError(null)
     try {
+      const validatedGatewayUrl = validateDeviceGatewayUrl(gatewayBaseUrl)
       const [deviceIdentity, deviceSession] = await Promise.all([
         window.electronAPI.collab.ensureDeviceIdentity(),
         getDeviceSession(),
       ])
       const path = sessionId ? "/collab/v2/session" : "/collab/session"
-      const response = await fetch(`${gatewayBaseUrl}${path}`, {
+      const response = await fetch(`${validatedGatewayUrl}${path}`, {
+        redirect: "error",
+        cache: "no-store",
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -165,11 +177,14 @@ export function useCollabSession({
         deviceFingerprint: deviceIdentity.fingerprint,
         devicePublicKeyJwk: deviceIdentity.publicKeyJwk,
       }
+      if (generation !== requestGenerationRef.current) return null
+      currentSessionRef.current = next
       setCapabilities(next.capabilities)
       setSession(next)
       setStatus("ready")
       return next
     } catch (requestError) {
+      if (generation !== requestGenerationRef.current) return null
       const message = requestError instanceof Error
         ? requestError.message
         : "Failed to initialize WebSocket collaboration session"
@@ -195,5 +210,12 @@ export function useCollabSession({
     return () => window.removeEventListener(COLLAB_SESSION_INVALIDATION_EVENT, handleInvalidation as EventListener)
   }, [projectId, refresh])
 
-  return { status, session, capabilities, error, refresh }
+  const matches = !session || (session.projectId === projectId && (session.sessionId ?? null) === sessionId)
+  return {
+    status: matches ? status : "loading",
+    session: matches ? session : null,
+    capabilities: matches ? capabilities : null,
+    error,
+    refresh,
+  }
 }

@@ -12,6 +12,7 @@ import {
 import { assertGitCommitSha } from "../shared/collaborationSession"
 import {
   buildCollaborationRepositoryId,
+  parseGitHubNumericId,
   normalizeGitHubCloneUrl,
   type CollaborationRepositoryBindingDescriptor,
   type CollaborationRepositoryCredentialOperation,
@@ -36,7 +37,7 @@ function required(value: string, label: string, maxLength = 512): string {
 
 function numericId(value: string, label: string): string {
   const normalized = required(value, label, 64)
-  if (!/^\d+$/.test(normalized)) throw new ConvexError(`${label} must contain digits only`)
+  parseGitHubNumericId(normalized)
   return normalized
 }
 
@@ -243,7 +244,7 @@ export const getAuthorizationForServer = query({
     assertGatewaySecret(args.serverSecret)
     const user = await getUserByIdentityKey(ctx, required(args.identityKey, "Identity key", 256))
     const binding = await getBindingByProject(ctx, args.projectId)
-    if (!user || !binding || !(await canUseBinding(ctx, binding, user._id, args.operation))) {
+    if (!user || user.status === "revoked" || !binding || !(await canUseBinding(ctx, binding, user._id, args.operation))) {
       return { allowed: false as const }
     }
     return {
@@ -264,7 +265,7 @@ export const getPushVerificationContextForServer = query({
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
     const user = await getUserByIdentityKey(ctx, required(args.identityKey, "Identity key", 256))
-    if (!user) return { allowed: false as const }
+    if (!user || user.status === "revoked") return { allowed: false as const }
 
     const session = await ctx.db
       .query("collaborationSessions")
@@ -272,7 +273,10 @@ export const getPushVerificationContextForServer = query({
         index.eq("sessionId", required(args.sessionId, "Collaboration session ID", 128)),
       )
       .unique()
-    if (!session || session.status !== "pushing" || session.commitLeaseUserId !== user._id) {
+    if (
+      !session || session.status !== "pushing" || session.commitLeaseUserId !== user._id ||
+      !Number.isFinite(session.commitLeaseExpiresAt) || (session.commitLeaseExpiresAt ?? 0) <= Date.now()
+    ) {
       return { allowed: false as const }
     }
     if (!session.pendingCommitSha || session.pendingCommitThroughSequence === undefined) {

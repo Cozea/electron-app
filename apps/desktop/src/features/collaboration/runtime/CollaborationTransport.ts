@@ -9,6 +9,7 @@ import {
 import {
   bytesToEnvelope,
   decryptPayload,
+  decryptPayloadMetadata,
   encryptPayload,
   envelopeToBytes,
 } from "@/lib/collab/cipherEnvelope"
@@ -138,6 +139,7 @@ export class CollabWsProvider {
   private targetHeadSeq: number
   private destroyed = false
   private handshakeReady = false
+  private mediaClientId: string | null = null
   private pendingAwareness = false
   private pendingUpdates = new Map<string, PendingUpdate>()
   private incomingQueue: Promise<void> = Promise.resolve()
@@ -183,7 +185,7 @@ export class CollabWsProvider {
   start(): void {
     this.doc.on("update", this.handleLocalUpdate)
     this.awareness.on("update", this.handleAwarenessUpdate)
-    void this.restoreOutboxAndConnect()
+    void this.restoreOutboxAndConnect().catch((error) => this.failFrame(error))
   }
 
   destroy(): void {
@@ -198,7 +200,15 @@ export class CollabWsProvider {
     this.barrierWaiters.clear()
     const socket = this.socket
     this.socket = null
-    if (socket?.readyState === WebSocket.OPEN) socket.close(1000, "Provider destroyed")
+    if (socket) {
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onclose = null
+      socket.onerror = null
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close(1000, "Provider destroyed")
+      }
+    }
     this.outbox.close()
   }
 
@@ -243,7 +253,7 @@ export class CollabWsProvider {
       payload: {
         roomId: this.session.roomId,
         targetClientId,
-        sourceClientId: this.clientId,
+        sourceClientId: this.mediaClientId ?? "",
         signal,
       },
     }))
@@ -253,7 +263,7 @@ export class CollabWsProvider {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || !this.handshakeReady) return
     this.socket.send(JSON.stringify({
       type: "media.state",
-      payload: { roomId: this.session.roomId, clientId: this.clientId, ...state },
+      payload: { roomId: this.session.roomId, clientId: this.mediaClientId ?? "", ...state },
     }))
   }
 
@@ -281,12 +291,14 @@ export class CollabWsProvider {
       if (refreshed) this.session = refreshed
     }
 
+    if (this.destroyed) return
     this.onStateChange?.("connecting", null)
     this.handshakeReady = false
     const socket = new WebSocket(resolveWsUrl(this.session.collabWsUrl))
     this.socket = socket
 
     socket.onopen = () => {
+      if (this.destroyed || this.socket !== socket) return
       socket.send(JSON.stringify({
         type: "hello",
         payload: {
@@ -331,11 +343,12 @@ export class CollabWsProvider {
   }
 
   private async handleIncoming(raw: unknown): Promise<void> {
-    if (typeof raw !== "string") return
+    if (this.destroyed || typeof raw !== "string") return
     const message = JSON.parse(raw) as IncomingMessage
     const payload = message.payload ?? {}
 
     if (message.type === "ready") {
+      this.mediaClientId = typeof payload.mediaClientId === "string" ? payload.mediaClientId : null
       this.handshakeReady = true
       this.reconnectAttempt = 0
       this.targetHeadSeq = Math.max(this.knownSeq, finiteSequence(payload.headSeq) ?? this.knownSeq)
@@ -372,8 +385,8 @@ export class CollabWsProvider {
     if (message.type === "update.ack") {
       const id = typeof payload.idempotencyKey === "string" ? payload.idempotencyKey : null
       if (id && this.pendingUpdates.has(id)) {
-        this.pendingUpdates.delete(id)
         await this.outbox.acknowledge(id)
+        this.pendingUpdates.delete(id)
 
         // An acknowledgement proves only that this local update was assigned a
         // server sequence. It does not prove that every earlier remote update
@@ -512,9 +525,11 @@ export class CollabWsProvider {
           roomId: this.session.roomId,
           clientId: this.clientId,
           idempotencyKey,
+        },
+        privateMetadata: {
+          ...attribution,
           checkpointGroupId,
           origin: attribution?.origin ?? (typeof origin === "string" ? origin : "user"),
-          ...attribution,
         },
       })
       const pending: PendingUpdate = {
@@ -577,14 +592,24 @@ export class CollabWsProvider {
   ): Promise<{ bytes: Uint8Array; metadata: Record<string, unknown> }> {
     if (!this.encryption) throw new Error("Encrypted collaboration transport requires a room key")
     const envelope = bytesToEnvelope(fromBase64(encoded))
-    return {
-      bytes: await decryptPayload({
-        roomKeyBase64: this.encryption.roomKeyBase64,
-        envelope,
-        expectedKind: kind,
-      }),
-      metadata: envelopeMetadata(envelope),
+    const bytes = await decryptPayload({
+      roomKeyBase64: this.encryption.roomKeyBase64,
+      envelope,
+      expectedKind: kind,
+    })
+    const metadata = envelopeMetadata(envelope)
+    if (
+      metadata.roomId !== this.session.roomId ||
+      metadata.projectId !== this.session.projectId ||
+      envelope.keyVersion !== this.encryption.keyVersion
+    ) {
+      throw new Error("Encrypted update does not belong to this room or key version")
     }
+    const privateMetadata = await decryptPayloadMetadata({
+      roomKeyBase64: this.encryption.roomKeyBase64,
+      envelope,
+    })
+    return { bytes, metadata: { ...privateMetadata, ...metadata } }
   }
 
   private applyRemoteUpdate(bytes: Uint8Array, metadata: Record<string, unknown>, timestamp: number | null): void {

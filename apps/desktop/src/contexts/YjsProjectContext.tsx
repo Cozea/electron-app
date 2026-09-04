@@ -135,6 +135,7 @@ export function YjsProjectProvider({
     if (!collabSession || !collaborationEnabled) return null
     return {
       projectId: collabSession.projectId,
+      sessionId: collabSession.sessionId,
       roomId: collabSession.roomId,
       collabWsUrl: collabSession.collabWsUrl,
       token: collabSession.token,
@@ -149,6 +150,7 @@ export function YjsProjectProvider({
 
   useEffect(() => {
     wsSessionRef.current = wsSession
+    if (wsSession) wsProviderRef.current?.updateSession(wsSession)
   }, [wsSession])
 
   const destroyTransportProvider = useCallback(() => {
@@ -500,7 +502,6 @@ export function YjsProjectProvider({
     wsSession?.encryption.status,
     wsSession?.encryption.activeKeyVersion,
     wsSession?.encryption.wrappedRoomKey,
-    wsSession?.token,
   ])
 
   useEffect(() => {
@@ -583,7 +584,6 @@ export function YjsProjectProvider({
     wsSession?.roomId,
     wsSession?.collabWsUrl,
     wsSession?.protocolVersion,
-    wsSession?.token,
     wsSession?.encryption.encryptionRequired,
   ])
 

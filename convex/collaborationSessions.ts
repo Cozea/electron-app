@@ -553,7 +553,7 @@ export const leaveSession = mutation({
     await ctx.db.patch(participant._id, { lastSeenAt: now, leftAt: now })
 
     let updatedSession = session
-    if (session.commitLeaseUserId === user._id) {
+    if (session.commitLeaseUserId === user._id && session.status !== "pushing") {
       await ctx.db.patch(session._id, {
         commitLeaseUserId: undefined,
         commitLeaseExpiresAt: undefined,
@@ -935,6 +935,9 @@ export const closeSession = mutation({
       (await canManageProject(ctx, session.projectId, user._id))
     if (!canClose) {
       throw new ConvexError("Only the session creator or a project manager may close this session")
+    }
+    if (session.status === "pushing") {
+      throw new ConvexError("Push verification must finish before closing the session")
     }
     if (session.status === "closed") return toSessionDescriptor(session)
     if (session.status === "failed") {

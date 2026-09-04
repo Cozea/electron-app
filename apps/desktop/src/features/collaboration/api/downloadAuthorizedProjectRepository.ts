@@ -35,6 +35,17 @@ export async function downloadAuthorizedProjectRepository(args: {
     projectId: args.projectId,
     operation: "read",
   })
+  if (
+    credential.repositoryId !== binding.repositoryId ||
+    credential.repositoryNumericId !== binding.repositoryNumericId ||
+    credential.defaultBranch !== binding.defaultBranch ||
+    credential.fullName !== binding.fullName ||
+    credential.cloneUrl !== binding.cloneUrl
+  ) {
+    throw new Error("Repository binding changed; retry the download")
+  }
+  const repoUrl = credential.cloneUrl
+  const branch = credential.defaultBranch
   const auth = repositoryGitAuthOptions(credential)
 
   const created = await workspace.createForProject({
@@ -51,8 +62,8 @@ export async function downloadAuthorizedProjectRepository(args: {
   try {
     const ensured = await window.electronAPI.workspaceSync.gitEnsureRepo({
       workspaceId,
-      branch: binding.defaultBranch,
-      repoUrl: binding.cloneUrl,
+      branch,
+      repoUrl,
     })
     if (!ensured.success) {
       throw new Error(ensured.error || "Could not initialize the local Git repository")
@@ -61,7 +72,7 @@ export async function downloadAuthorizedProjectRepository(args: {
     const fetched = await window.electronAPI.workspaceSync.gitFetchMain({
       workspaceId,
       remote: "origin",
-      branch: binding.defaultBranch,
+      branch,
       provider: auth.provider,
       extraHeader: auth.extraHeader,
     })
@@ -72,8 +83,8 @@ export async function downloadAuthorizedProjectRepository(args: {
     const restored = await window.electronAPI.workspaceSync.gitRestoreMain({
       workspaceId,
       remote: "origin",
-      branch: binding.defaultBranch,
-      repoUrl: binding.cloneUrl,
+      branch,
+      repoUrl,
       provider: auth.provider,
       extraHeader: auth.extraHeader,
     })

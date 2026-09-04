@@ -29,6 +29,7 @@ export interface ReadyMessage {
     serverTime: number
     headSeq: number
     resyncRequired: boolean
+    mediaClientId?: string
   }
 }
 

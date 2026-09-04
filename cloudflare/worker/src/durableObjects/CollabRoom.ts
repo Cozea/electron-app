@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { COLLAB_MAX_FRAME_BYTES, reserveUpdateBudget, validateUpdateInput, type RetainedUsage, type UpdateRate } from '../lib/collaborationLimits'
 import {
   fetchActiveAwarenessFromConvex,
   fetchYjsDeltasFromConvex,
@@ -31,6 +32,7 @@ interface SocketAttachment {
   roomId: string
   sessionId?: string
   userId: string
+  mediaClientId: string
   knownSeq: number
   awarenessBinary?: string
   presenceExpiresAt?: number
@@ -50,11 +52,13 @@ interface StoredSessionUpdate {
   idempotencyKey: string
   clientId: string
   timestamp: number
+  retainedBytes?: number
 }
 
 const UPDATE_PREFIX = 'update:'
 const IDEMPOTENCY_PREFIX = 'idempotency:'
 const HEAD_SEQUENCE_KEY = 'head-sequence'
+const RETAINED_USAGE_KEY = 'retained-usage'
 const SYNC_PAGE_SIZE = 128
 
 function parseMessage(data: string | ArrayBuffer): IncomingClientMessage {
@@ -113,7 +117,9 @@ export class CollabRoom implements DurableObject {
       if (!Number.isFinite(sequence) || sequence < 0 || typeof body.commitSha !== 'string') {
         return new Response('Invalid base advancement', { status: 400 })
       }
-      await this.pruneThrough(Math.floor(sequence))
+      const pruning = this.updateQueue.then(() => this.pruneThrough(Math.floor(sequence)))
+      this.updateQueue = pruning.catch(() => undefined)
+      await pruning
       this.broadcast({
         type: 'base.advanced',
         payload: {
@@ -135,15 +141,25 @@ export class CollabRoom implements DurableObject {
       return protocolError('BAD_REQUEST', 'Expected websocket upgrade', { status: 400 })
     }
 
+    const selectedRoomId = url.searchParams.get('roomId')
+    if (!selectedRoomId || selectedRoomId.length > 256) {
+      return protocolError('BAD_REQUEST', 'A valid roomId is required', { status: 400 })
+    }
     const pair = new WebSocketPair()
     const client = pair[0]
     const server = pair[1]
+    server.serializeAttachment({ handshaken: false, roomId: selectedRoomId })
     this.state.acceptWebSocket(server)
     return new Response(null, { status: 101, webSocket: client })
   }
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     let parsed: IncomingClientMessage
+    const frameBytes = typeof message === 'string' ? new TextEncoder().encode(message).byteLength : message.byteLength
+    if (frameBytes > COLLAB_MAX_FRAME_BYTES) {
+      socket.close(1009, 'Collaboration frame too large')
+      return
+    }
     try {
       parsed = parseMessage(message)
     } catch {
@@ -192,6 +208,13 @@ export class CollabRoom implements DurableObject {
   private async handleHello(socket: WebSocket, message: HelloMessage): Promise<void> {
     try {
       const claims = await verifySessionToken(this.env, message.payload.sessionToken)
+      const selected = socket.deserializeAttachment<{ handshaken: boolean; roomId: string }>()
+      if (!selected || selected.roomId !== claims.roomId) {
+        throw new Error('Session token does not match the selected room')
+      }
+      if (selected.handshaken) throw new Error('Socket is already authenticated')
+      if (!claims.userId || !claims.deviceId) throw new Error('Session principal is missing')
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(message.payload.clientId)) throw new Error('Invalid document client ID')
       const protocolVersion = this.env.COLLAB_PROTOCOL_VERSION ?? COLLAB_PROTOCOL_VERSION
       if (message.payload.protocolVersion !== protocolVersion) {
         throw new Error(`Expected protocol version ${protocolVersion}`)
@@ -214,6 +237,7 @@ export class CollabRoom implements DurableObject {
         roomId: claims.roomId,
         sessionId: claims.sessionId,
         userId: claims.userId,
+        mediaClientId: `${claims.userId}:${crypto.randomUUID()}`,
         knownSeq: Math.max(0, Math.floor(message.payload.knownSeq)),
       }
       socket.serializeAttachment(attachment)
@@ -224,6 +248,7 @@ export class CollabRoom implements DurableObject {
           roomId: claims.roomId,
           serverTime: Date.now(),
           headSeq,
+          mediaClientId: attachment.mediaClientId,
           resyncRequired: headSeq > attachment.knownSeq,
         },
       }))
@@ -249,14 +274,20 @@ export class CollabRoom implements DurableObject {
     connection: SocketAttachment,
     message: IncomingClientMessage,
   ): Promise<void> {
+    if (!message.payload || message.payload.roomId !== connection.roomId) {
+      throw new Error('Message room does not match the authenticated socket')
+    }
     switch (message.type) {
       case 'sync.request':
         await this.handleSyncRequest(socket, connection, message)
         return
-      case 'update.push':
-        this.updateQueue = this.updateQueue.then(() => this.handleUpdatePush(socket, connection, message))
-        await this.updateQueue
+      case 'update.push': {
+        const operation = this.updateQueue.then(() => this.handleUpdatePush(socket, connection, message))
+        // Keep serialization alive after failure, but report this operation to its sender.
+        this.updateQueue = operation.catch(() => undefined)
+        await operation
         return
+      }
       case 'presence.push':
         await this.handlePresencePush(socket, connection, message)
         return
@@ -364,10 +395,21 @@ export class CollabRoom implements DurableObject {
     connection: SocketAttachment,
     message: UpdatePushMessage,
   ): Promise<{ seq: number }> {
+    const retainedBytes = validateUpdateInput(message.payload)
     const idempotencyKey = `${IDEMPOTENCY_PREFIX}${message.payload.idempotencyKey}`
     const existing = await this.state.storage.get<number>(idempotencyKey)
-    if (typeof existing === 'number') return { seq: existing }
+    if (typeof existing === 'number') {
+      const saved = await this.state.storage.get<StoredSessionUpdate>(updateKey(existing))
+      if (!saved || saved.updateBinary !== message.payload.updateBinary) {
+        throw new Error('Idempotency key was already used for another update')
+      }
+      return { seq: existing }
+    }
 
+    const usage = await this.getRetainedUsage()
+    const rateKey = `rate:${connection.userId}`
+    const rate = await this.state.storage.get<UpdateRate>(rateKey)
+    const budget = reserveUpdateBudget(usage, rate, retainedBytes, Date.now())
     const seq = (await this.getSessionHeadSequence()) + 1
     const stored: StoredSessionUpdate = {
       seq,
@@ -375,11 +417,14 @@ export class CollabRoom implements DurableObject {
       idempotencyKey: message.payload.idempotencyKey,
       clientId: connection.clientId,
       timestamp: message.payload.timestamp,
+      retainedBytes,
     }
     await this.state.storage.put({
       [HEAD_SEQUENCE_KEY]: seq,
       [updateKey(seq)]: stored,
       [idempotencyKey]: seq,
+      [RETAINED_USAGE_KEY]: budget.usage,
+      [rateKey]: budget.rate,
     })
     return { seq }
   }
@@ -430,11 +475,14 @@ export class CollabRoom implements DurableObject {
     connection: SocketAttachment,
     message: MediaSignalMessage,
   ): void {
-    if (message.payload.sourceClientId !== connection.clientId) return
+    if (message.payload.sourceClientId !== connection.mediaClientId) return
     for (const candidate of this.state.getWebSockets()) {
       const target = attachmentOf(candidate)
-      if (target?.roomId === connection.roomId && target.clientId === message.payload.targetClientId) {
-        candidate.send(stringifyMessage(message))
+      if (target?.roomId === connection.roomId && target.mediaClientId === message.payload.targetClientId) {
+        candidate.send(stringifyMessage({
+          ...message,
+          payload: { ...message.payload, roomId: connection.roomId, sourceClientId: connection.mediaClientId },
+        }))
         return
       }
     }
@@ -449,11 +497,11 @@ export class CollabRoom implements DurableObject {
     connection: SocketAttachment,
     message: MediaStateMessage,
   ): void {
-    if (message.payload.clientId !== connection.clientId) return
+    if (message.payload.clientId !== connection.mediaClientId) return
     connection.audio = message.payload.audio
     connection.screenShare = message.payload.screenShare
     socket.serializeAttachment(connection)
-    this.broadcast(message)
+    this.broadcast({ ...message, payload: { ...message.payload, roomId: connection.roomId, clientId: connection.mediaClientId } })
   }
 
   private broadcastMediaState(socket: WebSocket, connection: SocketAttachment): void {
@@ -465,7 +513,7 @@ export class CollabRoom implements DurableObject {
         type: 'media.state',
         payload: {
           roomId: connection.roomId,
-          clientId: other.clientId,
+          clientId: other.mediaClientId,
           audio: other.audio === true,
           screenShare: other.screenShare === true,
         },
@@ -520,6 +568,24 @@ export class CollabRoom implements DurableObject {
     return Math.max(0, Math.floor((await this.state.storage.get<number>(HEAD_SEQUENCE_KEY)) ?? 0))
   }
 
+  private async getRetainedUsage(): Promise<RetainedUsage> {
+    const saved = await this.state.storage.get<RetainedUsage>(RETAINED_USAGE_KEY)
+    if (saved) return saved
+    // Upgrade existing rooms without resetting their storage budget to zero.
+    const usage = { bytes: 0, count: 0 }
+    let start = UPDATE_PREFIX
+    while (true) {
+      const entries = await this.state.storage.list<StoredSessionUpdate>({ prefix: UPDATE_PREFIX, start, limit: 256 })
+      for (const update of entries.values()) {
+        usage.bytes += update.retainedBytes ?? update.updateBinary.length + update.idempotencyKey.length * 2 + 1024
+        usage.count += 1
+      }
+      if (entries.size < 256) break
+      start = [...entries.keys()].at(-1)! + '\0'
+    }
+    return usage
+  }
+
   private async pruneThrough(sequence: number): Promise<void> {
     while (true) {
       const entries = await this.state.storage.list<StoredSessionUpdate>({
@@ -533,7 +599,16 @@ export class CollabRoom implements DurableObject {
       for (const [key, update] of removable) {
         keys.push(key, `${IDEMPOTENCY_PREFIX}${update.idempotencyKey}`)
       }
-      await this.state.storage.delete(keys)
+      const usage = await this.getRetainedUsage()
+      const removedBytes = removable.reduce((total, [, update]) =>
+        total + (update.retainedBytes ?? update.updateBinary.length + update.idempotencyKey.length * 2 + 1024), 0)
+      await this.state.storage.transaction(async (storage) => {
+        await storage.delete(keys)
+        await storage.put(RETAINED_USAGE_KEY, {
+          bytes: Math.max(0, usage.bytes - removedBytes),
+          count: Math.max(0, usage.count - removable.length),
+        })
+      })
       if (entries.size < 256) return
     }
   }

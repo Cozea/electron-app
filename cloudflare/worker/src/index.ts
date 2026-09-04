@@ -7,6 +7,7 @@ import { handleCollabV2Session } from './routes/collabV2Session'
 import {
   handleCollaborationRepositoryCredential,
   handleVerifyCollaborationPush,
+  RepositoryAuthenticationError,
 } from './routes/collaborationRepositories'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
@@ -97,6 +98,9 @@ export default {
         try {
           return await handleCollaborationRepositoryCredential(request, env)
         } catch (error) {
+          if (error instanceof RepositoryAuthenticationError) {
+            return protocolError('DEVICE_AUTH_REJECTED', error.message, { status: 401 }, false, origin)
+          }
           return protocolError('REPOSITORY_ACCESS_REJECTED', error instanceof Error ? error.message : 'Repository access failed', { status: 403 }, false, origin)
         }
       }
@@ -105,6 +109,9 @@ export default {
         try {
           return await handleVerifyCollaborationPush(request, env)
         } catch (error) {
+          if (error instanceof RepositoryAuthenticationError) {
+            return protocolError('DEVICE_AUTH_REJECTED', error.message, { status: 401 }, false, origin)
+          }
           return protocolError('PUSH_VERIFICATION_REJECTED', error instanceof Error ? error.message : 'Push verification failed', { status: 409 }, false, origin)
         }
       }

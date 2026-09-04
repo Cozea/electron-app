@@ -61,9 +61,7 @@ export function buildCollaborationRepositoryId(
   repositoryNumericId: string,
 ): string {
   const numericId = repositoryNumericId.trim()
-  if (!/^\d+$/.test(numericId)) {
-    throw new Error("Repository numeric ID must contain digits only")
-  }
+  parseGitHubNumericId(numericId)
   return `${provider}:${numericId}`
 }
 
@@ -80,4 +78,13 @@ export function createGitHubExtraHeader(token: string): string {
   const normalized = token.trim()
   if (!normalized) throw new Error("GitHub access token is required")
   return `AUTHORIZATION: basic ${btoa(`x-access-token:${normalized}`)}`
+}
+
+export function parseGitHubNumericId(value: string): number {
+  if (!/^[0-9]+$/.test(value)) throw new Error("Invalid GitHub numeric ID")
+  const numeric = Number(value)
+  if (!Number.isSafeInteger(numeric) || numeric <= 0) {
+    throw new Error("GitHub numeric ID must be a positive safe integer")
+  }
+  return numeric
 }

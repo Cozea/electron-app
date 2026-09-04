@@ -1,4 +1,4 @@
-import type { CollaborationRepositoryCredentialOperation } from '../../../../shared/collaborationRepository'
+import { parseGitHubNumericId, type CollaborationRepositoryCredentialOperation } from '../../../../shared/collaborationRepository'
 import type { Env } from '../types'
 
 const DEFAULT_GITHUB_API_BASE_URL = 'https://api.github.com'
@@ -11,7 +11,11 @@ function toBase64Url(bytes: Uint8Array): string {
 }
 
 function apiBaseUrl(env: Env): string {
-  return (env.GITHUB_API_BASE_URL?.trim() || DEFAULT_GITHUB_API_BASE_URL).replace(/\/+$/, '')
+  const url = new URL(env.GITHUB_API_BASE_URL?.trim() || DEFAULT_GITHUB_API_BASE_URL)
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error('GitHub API base URL must use HTTPS without credentials, query or fragment')
+  }
+  return url.toString().replace(/\/+$/, '')
 }
 
 function githubHeaders(token: string): HeadersInit {
@@ -78,14 +82,19 @@ export async function mintGitHubInstallationCredential(
     operation: CollaborationRepositoryCredentialOperation
   },
 ): Promise<GitHubInstallationCredential> {
+  const baseUrl = apiBaseUrl(env)
+  const repositoryNumericId = parseGitHubNumericId(args.repositoryNumericId)
+  parseGitHubNumericId(args.installationId)
   const appJwt = await createGitHubAppJwt(env)
   const response = await fetch(
-    `${apiBaseUrl(env)}/app/installations/${encodeURIComponent(args.installationId)}/access_tokens`,
+    `${baseUrl}/app/installations/${encodeURIComponent(args.installationId)}/access_tokens`,
     {
       method: 'POST',
+      redirect: 'error',
+      cache: 'no-store',
       headers: githubHeaders(appJwt),
       body: JSON.stringify({
-        repository_ids: [Number(args.repositoryNumericId)],
+        repository_ids: [repositoryNumericId],
         permissions: {
           metadata: 'read',
           contents: args.operation === 'write' ? 'write' : 'read',
@@ -120,7 +129,7 @@ export async function verifyGitHubBranchHead(
   const encodedBranch = args.branch.split('/').map(encodeURIComponent).join('/')
   const response = await fetch(
     `${apiBaseUrl(env)}/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.name)}/git/ref/heads/${encodedBranch}`,
-    { headers: githubHeaders(credential.token) },
+    { headers: githubHeaders(credential.token), redirect: 'error', cache: 'no-store' },
   )
   const result = await parseGitHubResponse<{ object?: { sha?: string } }>(response)
   return result.object?.sha?.toLowerCase() === args.expectedCommitSha.toLowerCase()

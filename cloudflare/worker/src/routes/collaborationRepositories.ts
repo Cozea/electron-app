@@ -19,6 +19,8 @@ import type {
   CollaborationPushVerificationResponse,
 } from '../../../../shared/collaborationRepository'
 
+export class RepositoryAuthenticationError extends Error {}
+
 function requiredString(value: unknown, label: string, maxLength = 512): string {
   if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
     throw new Error(`${label} is invalid`)
@@ -27,11 +29,15 @@ function requiredString(value: unknown, label: string, maxLength = 512): string 
 }
 
 async function authenticate(request: Request, env: Env): Promise<DeviceAccessClaims> {
-  const authorization = request.headers.get('authorization')
-  if (!authorization?.startsWith('Bearer ')) throw new Error('Device authentication is required')
-  const auth = await verifyDeviceAccessToken(env, authorization.slice(7).trim())
-  await requireActiveDeviceAccessInConvex(env, auth)
-  return auth
+  try {
+    const authorization = request.headers.get('authorization')
+    if (!authorization?.startsWith('Bearer ')) throw new Error('Missing bearer token')
+    const auth = await verifyDeviceAccessToken(env, authorization.slice(7).trim())
+    await requireActiveDeviceAccessInConvex(env, auth)
+    return auth
+  } catch {
+    throw new RepositoryAuthenticationError('Device authentication is required or expired')
+  }
 }
 
 function parseOperation(value: unknown): CollaborationRepositoryCredentialOperation {
@@ -90,7 +96,7 @@ export async function handleCollaborationRepositoryCredential(
     token: credential.token,
     expiresAt: credential.expiresAt,
   }
-  return jsonResponse(result)
+  return jsonResponse(result, { headers: { 'cache-control': 'no-store' } })
 }
 
 export async function handleVerifyCollaborationPush(
@@ -144,5 +150,5 @@ export async function handleVerifyCollaborationPush(
     coveredThroughSequence: authorization.session.pendingCommitThroughSequence,
     baseAdvanced: true,
   }
-  return jsonResponse(result)
+  return jsonResponse(result, { headers: { 'cache-control': 'no-store' } })
 }

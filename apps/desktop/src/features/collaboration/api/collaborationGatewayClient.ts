@@ -26,8 +26,11 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function authenticatedPost<T>(path: string, body: unknown): Promise<T> {
+  const baseUrl = getDeviceGatewayBaseUrl()
   const session = await getDeviceSession()
-  const response = await fetch(`${getDeviceGatewayBaseUrl()}${path}`, {
+  const response = await fetch(`${baseUrl}${path}`, {
+    redirect: "error",
+    cache: "no-store",
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -52,7 +55,7 @@ export async function requestCollaborationRepositoryCredential(args: {
     credential.operation !== args.operation ||
     !credential.token ||
     !credential.cloneUrl ||
-    !Number.isFinite(credential.expiresAt)
+    (!Number.isFinite(credential.expiresAt) || credential.expiresAt <= Date.now())
   ) {
     throw new Error("Repository credential response is invalid")
   }
