@@ -4,13 +4,13 @@ import type {
   GitStatusResult,
 } from "@cozea/assistant-contracts"
 
-import { getStatusSummary } from "@/features/projects/components/workbench/branch-control/workbenchBranchDisplay"
+import { getStatusSummary } from "@/features/workbench/branch-control/workbenchBranchDisplay"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
 import type { ProjectLaneDescriptor } from "@shared/electronApiTypes"
 
-export { getStatusSummary } from "@/features/projects/components/workbench/branch-control/workbenchBranchDisplay"
+export { getStatusSummary } from "@/features/workbench/branch-control/workbenchBranchDisplay"
 
 export type LaneAction =
   | "pull"

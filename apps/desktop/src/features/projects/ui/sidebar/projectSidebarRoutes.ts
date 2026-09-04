@@ -1,5 +1,5 @@
 import type { ComponentType } from "react"
-import type { SidebarActiveSelectionLevel } from "@/features/projects/components/sidebar/projectSidebarShared"
+import type { SidebarActiveSelectionLevel } from "@/features/projects/ui/sidebar/projectSidebarShared"
 
 import { Alert01Icon as __AlertTriangleHugeIcon, AlignHorizontalCenterIcon as __SlidersHorizontalHugeIcon } from '@hugeicons/core-free-icons'
 

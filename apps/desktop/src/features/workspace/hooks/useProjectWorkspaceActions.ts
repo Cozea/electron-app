@@ -13,13 +13,13 @@ import {
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
 import {
   clearProjectBranchSession,
-} from "@/features/projects/lib/projectBranchSessionStore"
-import { clearCachedProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
-import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/projects/lib/workbenchLayoutPersistence"
-import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
-import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
-import { invalidateProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution"
-import { evictTerminalViewsForWorkspace } from "@/features/projects/terminals/terminalViewKeepAlive"
+} from "@/features/source-control/model/projectBranchSessionStore"
+import { clearCachedProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
+import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/workbench/model/workbenchLayoutPersistence"
+import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
+import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
+import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
+import { evictTerminalViewsForWorkspace } from "@/features/terminal/terminalViewKeepAlive"
 
 interface ProjectWorkspaceActionProject {
   _id: Id<"projects">

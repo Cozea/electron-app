@@ -10,7 +10,7 @@ import type {
 import {
   createEmptyOrchestrationReadModel,
   projectOrchestrationReadModelEvent,
-} from "@/stores/orchestrationReadModelProjector";
+} from "@/features/assistant/model/orchestrationReadModelProjector";
 import { resolveModelSlugForProvider } from "@cozea/assistant-shared/model";
 import { create } from "zustand";
 import {
@@ -22,7 +22,7 @@ import {
   type TurnDiffSummary,
 } from "./types";
 import { normalizeThreadSession } from "./threadSession";
-import { normalizeThreadError } from "@/features/projects/components/assistant/lib/assistantErrors";
+import { normalizeThreadError } from "@/features/assistant/lib/assistantErrors";
 import { Debouncer } from "@tanstack/react-pacer";
 import { resolveWsHttpOrigin } from "@/lib/desktopBridgeClient";
 

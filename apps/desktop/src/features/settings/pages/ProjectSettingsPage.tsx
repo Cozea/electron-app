@@ -4,14 +4,14 @@ import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useCollabSession, invalidateCollabSession } from '@/hooks/useCollabSession'
+import { useCollabSession, invalidateCollabSession } from '@/features/collaboration/hooks/useCollabSession'
 import { useTranslation } from '@/lib/i18n'
 import { featureFlags } from '@/lib/featureFlags'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-import { ProjectDeleteDialog } from '@/features/projects/components/ProjectDeleteDialog'
+import { ProjectDeleteDialog } from '@/features/projects/ui/ProjectDeleteDialog'
 import { cleanupDeletedProjectLocally } from '@/features/projects/lib/projectLocalCleanup'
 import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDeletedProjectFromUi'
-import type { ProjectDeleteConfirmOptions } from '@/features/projects/components/ProjectDeleteDialog'
+import type { ProjectDeleteConfirmOptions } from '@/features/projects/ui/ProjectDeleteDialog'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { PublishedDevAppIcon } from '@/features/devapps/components/PublishedDevAppIcon'
@@ -27,7 +27,7 @@ import {
   SettingsPageHeader,
   settingsInlineInputClass,
   settingsInlineInputWidth,
-} from '@/components/settings/SettingsChrome'
+} from '@/features/settings/ui/SettingsChrome'
 import {
   AlertDialog,
   AlertDialogAction,

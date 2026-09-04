@@ -18,7 +18,7 @@ import type {
   Thread,
   ThreadSession,
   TurnDiffSummary,
-} from "@/stores/types";
+} from "@/features/assistant/model/types";
 import { truncateTextToWidth } from "@/lib/text/pretextMeasure";
 
 export type ProviderPickerKind = ProviderKind;

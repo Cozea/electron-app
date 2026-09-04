@@ -3,8 +3,18 @@ import { Tooltip as BaseTooltip } from "@base-ui/react"
 
 import { cn } from "@/lib/utils"
 
-function TooltipProvider({ children }: { children: React.ReactNode; delayDuration?: number }) {
-  return <>{children}</>
+function TooltipProvider({
+  children,
+  delay = 120,
+  closeDelay = 100,
+  ...props
+}: React.ComponentProps<typeof BaseTooltip.Provider> & { delayDuration?: number }) {
+  const resolvedDelay = props.delayDuration ?? delay
+  return (
+    <BaseTooltip.Provider delay={resolvedDelay} closeDelay={closeDelay} {...props}>
+      {children}
+    </BaseTooltip.Provider>
+  )
 }
 
 function Tooltip({ ...props }: React.ComponentProps<typeof BaseTooltip.Root>) {

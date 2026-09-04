@@ -1,24 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DockviewApi, DockviewPanelApi } from "dockview-react";
 
-import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
+import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
-} from "@/features/projects/browser/browserSurfaceIdentity";
-import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry";
-import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome";
-import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode";
+} from "@/features/browser/browserSurfaceIdentity";
+import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry";
+import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
+import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
 import {
   publishDevAppPreviewRuntime,
   releaseDevAppPreviewRuntime,
-} from "@/features/projects/devapps/devAppPreviewRuntimeStore";
-import type { WorkbenchDevAppPreviewTile as PreviewTileRecord } from "@/stores/useProjectWorkbenchStore";
+} from "@/features/devapps/preview/devAppPreviewRuntimeStore";
+import type { WorkbenchDevAppPreviewTile as PreviewTileRecord } from "@/features/workbench/model/workbenchStore";
+import { usePublishTileActivity } from "@/features/workbench/model/tileActivityStore";
 import { Button } from "@/components/ui/button";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Alert01Icon,
+  Shield01Icon,
+} from "@hugeicons/core-free-icons";
+import { DevAppCapabilityList } from "@/features/devapps/components/DevAppCapabilityList";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
-import { CAPABILITY_DESCRIPTIONS } from "@shared/devAppCapabilities";
-import type { DevAppCapability } from "@shared/devAppCapabilities";
 import type { DevAppPreviewStatus } from "@shared/devAppPreviewTypes";
 
 /**
@@ -162,6 +167,13 @@ export function WorkbenchDevAppPreviewTile({
   }, [preview, sourceId, status]);
 
   const running = status?.status === "running" ? status : null;
+
+  // The sidebar cannot see this tile's local status, so mirror it into the tile
+  // activity store: a running preview keeps its sidebar row animating.
+  usePublishTileActivity(
+    tile.id,
+    running ? (running.worker?.status === "starting" ? "starting" : "running") : "idle",
+  );
   const view = running?.view ?? null;
 
   // Both paths enter the shared T3 host. Built output uses the confined
@@ -316,21 +328,37 @@ function PreviewDiagnostics({
   status: Extract<DevAppPreviewStatus, { status: "invalid" }>;
 }) {
   return (
-    <div className="h-full overflow-auto p-6">
-      <p className="text-sm font-medium text-foreground">This package cannot be loaded</p>
-      <ul className="mt-3 space-y-3">
-        {status.diagnostics.map((diagnostic, index) => (
-          <li key={`${diagnostic.code}-${index}`} className="space-y-1">
-            <p className="text-xs font-medium text-foreground">{diagnostic.message}</p>
-            {diagnostic.field ? (
-              <p className="font-mono text-[11px] text-muted-foreground">{diagnostic.field}</p>
-            ) : null}
-            {diagnostic.fix ? (
-              <p className="text-[11px] text-muted-foreground">{diagnostic.fix}</p>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+    <div className="flex h-full flex-col items-center justify-center overflow-y-auto p-6 text-center">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="mx-auto flex size-11 items-center justify-center rounded-xl border border-destructive/30 bg-destructive/10 text-destructive">
+          <HugeiconsIcon icon={Alert01Icon} className="size-5" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">
+            This package cannot be loaded
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Configuration issues found in cozea-devapp.json
+          </p>
+        </div>
+        <div className="w-full divide-y divide-border/25 text-left">
+          {status.diagnostics.map((diagnostic, index) => (
+            <div key={`${diagnostic.code}-${index}`} className="space-y-1 py-2.5 first:pt-0 last:pb-0">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-medium text-foreground">{diagnostic.message}</p>
+                {diagnostic.field ? (
+                  <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/80">
+                    {diagnostic.field}
+                  </span>
+                ) : null}
+              </div>
+              {diagnostic.fix ? (
+                <p className="text-[11px] text-muted-foreground">{diagnostic.fix}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -344,41 +372,40 @@ function PreviewApproval({
   error: string | null;
   onApprove: () => void;
 }) {
+  const hasAccessRequests =
+    status.requested.capabilities.length > 0 || status.requested.agentInvocable;
+
   return (
-    <div className="flex h-full items-center justify-center p-6">
-      <div className="max-w-sm space-y-4">
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-foreground">
-            {status.name} is asking for access
-          </p>
-          <p className="text-xs text-muted-foreground">{status.badge.detail}</p>
+    <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="flex items-center justify-start gap-1.5 text-sm whitespace-nowrap">
+          <div className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40">
+            <HugeiconsIcon icon={Shield01Icon} className="size-3 text-amber-500" />
+          </div>
+          <h2 className="font-semibold tracking-tight text-foreground truncate max-w-[200px]">
+            {status.name}
+          </h2>
+          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
+            dev
+          </span>
+          <span className="shrink-0 text-muted-foreground">
+            {hasAccessRequests ? "needs access to:" : "needs permission to run"}
+          </span>
         </div>
-        <ul className="space-y-1.5">
-          {status.workerExecution ? (
-            <li className="text-xs text-foreground">
-              Run unpublished Node worker code from this project. Filesystem and process access
-              are restricted, but network access is not OS-sandboxed.
-            </li>
-          ) : null}
-          {status.requested.capabilities.map((capability) => (
-            <li key={capability} className="text-xs text-foreground">
-              {CAPABILITY_DESCRIPTIONS[capability as DevAppCapability] ?? capability}
-            </li>
-          ))}
-          {status.requested.agentInvocable ? (
-            <li className="text-xs text-foreground">
-              Be used by agents without you watching
-            </li>
-          ) : null}
-        </ul>
+
+        <DevAppCapabilityList
+          capabilities={status.requested.capabilities}
+          agentInvocable={status.requested.agentInvocable}
+        />
+
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        <Button size="sm" onClick={onApprove}>
-          Allow for this session
-        </Button>
-        <p className="text-[11px] text-muted-foreground">
-          This grant is not saved. It lapses when Cozea closes, and again whenever the app
-          asks for more.
-        </p>
+
+        {/* This grant is not saved beyond the active session */}
+        <div className="pt-1">
+          <Button size="sm" className="w-full" onClick={onApprove}>
+            Allow for this session
+          </Button>
+        </div>
       </div>
     </div>
   );

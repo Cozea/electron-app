@@ -1,9 +1,9 @@
 import {
   buildDevServerRunKey,
   stopDevServerRun,
-} from "@/features/projects/devserver/devServerRunStore";
-import type { WorkbenchRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime";
-import { useTerminalStore } from "@/stores/useTerminalStore";
+} from "@/features/dev-server/devServerRunStore";
+import type { WorkbenchRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime";
+import { useTerminalStore } from "@/features/terminal/model/terminalStore";
 
 /** Release bindings owned by an auxiliary source-project session. */
 export async function releaseProjectDevAppRuntimeTarget(

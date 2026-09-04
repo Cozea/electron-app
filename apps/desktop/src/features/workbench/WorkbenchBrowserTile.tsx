@@ -7,19 +7,19 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
-import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
-import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError";
+import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot";
+import { resolveBrowserPageError } from "@/features/browser/browserPageError";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
-} from "@/features/projects/browser/browserSurfaceIdentity";
-import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore";
-import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry";
-import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome";
-import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode";
-import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore";
-import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/stores/useProjectWorkbenchStore";
+} from "@/features/browser/browserSurfaceIdentity";
+import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore";
+import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry";
+import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
+import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
+import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore";
+import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/features/workbench/model/workbenchStore";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 
 interface WorkbenchBrowserTileProps {
@@ -36,14 +36,9 @@ interface WorkbenchBrowserTileProps {
 function BrowserStartState() {
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-content-surface p-6 text-center">
-      <div className="flex max-w-sm flex-col items-center gap-2">
-        <div className="flex size-10 items-center justify-center rounded-xl border border-border/70 bg-muted/45 text-muted-foreground">
-          <HugeiconsIcon icon={__GlobeHugeIcon} className="size-5" />
-        </div>
-        <h2 className="text-sm font-medium text-foreground">No page open</h2>
-        <p className="text-xs leading-5 text-muted-foreground">
-          Search or enter a URL above to open it in this Browser tile.
-        </p>
+      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+        <HugeiconsIcon icon={__GlobeHugeIcon} className="size-4 shrink-0" />
+        <span className="font-medium text-foreground">No page open</span>
       </div>
     </div>
   );
@@ -59,20 +54,23 @@ interface BrowserErrorStateProps {
 function BrowserErrorState({ title, description, url, onReload }: BrowserErrorStateProps) {
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-content-surface p-6 text-center">
-      <div className="flex max-w-lg flex-col items-center gap-3">
-        <div className="space-y-1.5">
-          <h2 className="text-sm font-medium text-foreground">{title}</h2>
-          <p className="text-xs leading-5 text-muted-foreground">{description}</p>
+      <div className="w-full max-w-xs space-y-2.5">
+        <div className="flex items-center justify-center gap-2 text-sm">
+          <HugeiconsIcon icon={__GlobeHugeIcon} className="size-4 shrink-0 text-muted-foreground" />
+          <h2 className="font-medium text-foreground whitespace-nowrap">{title}</h2>
         </div>
-        <div className="w-full max-w-md rounded-md border border-border/60 bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
-          <span className="block truncate" title={url}>
-            {url}
-          </span>
+        {description ? (
+          <p className="text-xs text-muted-foreground truncate">{description}</p>
+        ) : null}
+        <p className="font-mono text-[11px] text-muted-foreground/70 truncate" title={url}>
+          {url}
+        </p>
+        <div className="pt-1">
+          <Button type="button" variant="outline" size="sm" onClick={onReload}>
+            <HugeiconsIcon icon={__RefreshHugeIcon} className="mr-1.5 size-3.5" />
+            Reload
+          </Button>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={onReload}>
-          <HugeiconsIcon icon={__RefreshHugeIcon} className="mr-1.5 size-3.5" />
-          Reload
-        </Button>
       </div>
     </div>
   );

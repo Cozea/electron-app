@@ -7,10 +7,10 @@ import {
   type RuntimeMode,
 } from "@cozea/assistant-contracts"
 
-import { newCommandId, newMessageId } from "@/features/projects/components/assistant/lib/utils"
+import { newCommandId, newMessageId } from "@/features/assistant/lib/utils"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import type { ChatMessage, Thread } from "@/stores/types"
-import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/stores/useProjectWorkbenchStore"
+import type { ChatMessage, Thread } from "@/features/assistant/model/types"
+import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/features/workbench/model/workbenchStore"
 
 import { toErrorMessage, deriveTitleSeed, revokeUserMessagePreviewUrls, cloneComposerImageForRetry } from "./workbenchAssistantShared"
 

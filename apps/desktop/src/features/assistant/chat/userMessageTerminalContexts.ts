@@ -1,4 +1,4 @@
-import { formatInlineTerminalContextLabel as formatInlineTerminalContextSelectionLabel } from "@/stores/terminalContext";
+import { formatInlineTerminalContextLabel as formatInlineTerminalContextSelectionLabel } from "@/features/assistant/model/terminalContext";
 
 const TERMINAL_CONTEXT_HEADER_PATTERN = /^(.*?)\s+line(?:s)?\s+(\d+)(?:-(\d+))?$/i;
 

@@ -1,4 +1,4 @@
-import { type TurnDiffFileChange } from "@/stores/types";
+import { type TurnDiffFileChange } from "@/features/assistant/model/types";
 import { summarizeTurnDiffStats } from "./turnDiffTree";
 
 /**

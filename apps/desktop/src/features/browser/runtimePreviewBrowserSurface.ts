@@ -1,4 +1,4 @@
-import type { WorkbenchDevServerTile } from "@/stores/useProjectWorkbenchStore";
+import type { WorkbenchDevServerTile } from "@/features/workbench/model/workbenchStore";
 
 import { browserSurfaceRuntimeTabId } from "./browserSurfaceIdentity";
 

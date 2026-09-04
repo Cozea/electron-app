@@ -8,19 +8,19 @@ import {
   resolveFittedBrowserViewport,
   resolveBrowserViewportLayout,
   resolveResponsiveBrowserViewportSize,
-} from "@/features/projects/browser/browserViewportLayout"
+} from "@/features/browser/browserViewportLayout"
 import {
   BROWSER_VIEWPORT_COMMIT_TIMEOUT_MS,
   commitBrowserViewportChange,
   runBrowserViewportMutation,
   subscribeBrowserViewportChange,
-} from "@/features/projects/browser/browserViewportActions"
+} from "@/features/browser/browserViewportActions"
 import {
   appendPreviewAnnotationPrompt,
   buildPreviewAnnotationPrompt,
   extractTrailingPreviewAnnotations,
-} from "@/features/projects/browser/previewAnnotation"
-import { agentBrowserCursorOpacity } from "@/features/projects/browser/agentBrowserCursorLogic"
+} from "@/features/browser/previewAnnotation"
+import { agentBrowserCursorOpacity } from "@/features/browser/agentBrowserCursorLogic"
 
 describe("pinned T3 responsive browser viewport", () => {
   it("fills, centers, zooms, and frames the guest using renderer-local geometry", () => {

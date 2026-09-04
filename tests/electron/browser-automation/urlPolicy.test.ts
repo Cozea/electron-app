@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput";
+import { isExternallyOpenableBrowserUrl } from "@/features/browser/urlInput";
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
 describe("browser URL policy", () => {

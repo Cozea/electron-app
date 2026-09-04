@@ -2,7 +2,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 
-import { PublicIdDisclosure } from "@/components/settings/PublicIdDisclosure"
+import { PublicIdDisclosure } from "@/features/settings/ui/PublicIdDisclosure"
 
 describe("PublicIdDisclosure", () => {
   it("keeps the ID out of the rendered page until the user reveals it", () => {

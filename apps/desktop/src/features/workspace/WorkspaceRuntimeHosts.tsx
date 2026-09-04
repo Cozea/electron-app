@@ -8,8 +8,8 @@ import { ProjectSyncProviderRuntime } from "@/features/projects/contexts/Project
 import {
   useWorkspaceRuntimeStore,
   type WorkspaceRuntimeRecord,
-} from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
-import { selectHostedWorkspaceRuntimeRecords } from "@/features/projects/workspaces/workspaceRuntimePolicy"
+} from "@/features/workspace/useWorkspaceRuntimeStore"
+import { selectHostedWorkspaceRuntimeRecords } from "@/features/workspace/workspaceRuntimePolicy"
 
 function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {
   const yjsContext = useYjsProject()

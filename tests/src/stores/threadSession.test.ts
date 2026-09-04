@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ThreadId } from "@cozea/assistant-contracts";
 
-import { normalizeThreadSession } from "../../../apps/desktop/src/stores/threadSession";
+import { normalizeThreadSession } from "@/features/assistant/model/threadSession";
 
 describe("normalizeThreadSession", () => {
   it("preserves supported provider kinds from orchestration sessions", () => {

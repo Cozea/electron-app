@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { scheduleTask } from "@/lib/scheduler";
 import { buildProjectJoinUrl } from "@shared/projectShare";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
-import { useQueryCache } from "@/stores/useQueryCache";
+import { useQueryCache } from "@/app/model/queryCache";
 import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys";
 import { isLocalDeviceEmail } from "@/lib/userDisplay";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -554,7 +554,7 @@ export function HeaderProjectShareButton({
           <DialogTrigger asChild>
             <Button
               variant="ghost"
-              className="inline-flex h-7 w-7 sm:h-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
+              className="inline-flex h-7 w-7 sm:h-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
               disabled={!projectId || roleCheckPending || shareStatePending}
               aria-label={t("header.shareProject")}
               title={t("header.shareProject")}

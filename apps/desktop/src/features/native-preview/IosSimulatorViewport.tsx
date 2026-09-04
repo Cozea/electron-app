@@ -20,9 +20,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { TaskFocusOverlay } from '@/features/projects/components/TaskFocusOverlay'
-import type { TaskOverlayPayload } from '@/features/projects/lib/taskFocusOverlay'
-import type { PageRoute } from '@/features/projects/lib/previewRuntimeTypes'
+import { TaskFocusOverlay } from '@/features/tasks/ui/TaskFocusOverlay'
+import type { TaskOverlayPayload } from '@/features/tasks/model/taskFocusOverlay'
+import type { PageRoute } from '@/features/dev-server/model/previewRuntimeTypes'
 import type {
   NativePreviewIosSimulatorDevice,
   NativePreviewRotation,

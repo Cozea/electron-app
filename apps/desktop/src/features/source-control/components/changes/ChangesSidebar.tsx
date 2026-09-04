@@ -1,10 +1,10 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
-import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
+import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore"
 import { cn } from "@/lib/utils"
 
 const LazyChangesPage = lazy(() =>
-  import("@/features/projects/pages/ChangesPage").then((module) => ({
+  import("@/features/source-control/pages/ChangesPage").then((module) => ({
     default: module.ChangesPage,
   })),
 )

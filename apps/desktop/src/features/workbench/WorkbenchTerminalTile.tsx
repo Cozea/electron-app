@@ -2,10 +2,12 @@ import { useState, type ReactNode } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
-import { KeepAliveTerminalView } from "@/features/projects/terminals/KeepAliveTerminalView"
-import { useWorkbenchSessionTerminal } from "@/features/projects/terminals/useWorkbenchSessionTerminal"
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
+import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode"
+import { KeepAliveTerminalView } from "@/features/terminal/KeepAliveTerminalView"
+import { useTerminalSubprocessActivity } from "@/features/terminal/useTerminalSubprocessActivity"
+import { useWorkbenchSessionTerminal } from "@/features/terminal/useWorkbenchSessionTerminal"
+import { usePublishTileActivity } from "@/features/workbench/model/tileActivityStore"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon } from '@hugeicons/core-free-icons'
@@ -38,9 +40,15 @@ export function WorkbenchTerminalTile({
     laneId,
     tileId,
     terminalKind: "shell",
+    trackSubprocessActivity: true,
     visible: panelActivity.visible,
     retryKey,
   })
+
+  // A shell sitting at its prompt is open, not busy. The main process polls the
+  // pty for a live foreground process and pushes the verdict here, which is what
+  // decides whether this tile's sidebar row animates.
+  usePublishTileActivity(tileId, useTerminalSubprocessActivity(terminalId))
 
   const terminalShell = (
     <div

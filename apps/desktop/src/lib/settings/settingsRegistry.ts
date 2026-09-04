@@ -11,12 +11,14 @@ import { getTranslation, getStoredLanguage, type TranslationKey } from "@/lib/i1
 import { asHugeIcon } from "@/lib/icons/asHugeIcon"
 import {
   CommandLineIcon as __CommandLineIconHugeIcon,
+  PackageIcon as __PackageIconHugeIcon,
   PaintBoardIcon as __PaintBoardIconHugeIcon,
   UserCircleIcon as __UserCircleIconHugeIcon,
   UserGroupIcon as __UserGroupIconHugeIcon,
 } from "@hugeicons/core-free-icons"
 
 const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
+const PackageIcon = asHugeIcon(__PackageIconHugeIcon)
 const PaintBoardIcon = asHugeIcon(__PaintBoardIconHugeIcon)
 const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
 const UserGroupIcon = asHugeIcon(__UserGroupIconHugeIcon)
@@ -24,16 +26,18 @@ const UserGroupIcon = asHugeIcon(__UserGroupIconHugeIcon)
 const PERSONAL_DEVICE_SIDEBAR_ORDER: Record<SettingsSurfaceId, number> = {
   account: 0,
   appearance: 1,
-  organizations: 2,
-  tooling: 3,
+  devapps: 2,
+  organizations: 3,
+  tooling: 4,
 }
 
-const preloadAccountPage = () => import("@/pages/settings/Account")
-const preloadAppearancePage = () => import("@/pages/settings/Appearance")
-const preloadOrganizationsPage = () => import("@/pages/settings/Organizations")
+const preloadAccountPage = () => import("@/features/settings/Account")
+const preloadAppearancePage = () => import("@/features/settings/Appearance")
+const preloadDevAppsPage = () => import("@/features/settings/DevAppSettings")
+const preloadOrganizationsPage = () => import("@/features/settings/Organizations")
 
 const preloadToolingPage = async () => {
-  const module = await import("@/pages/settings/Tooling")
+  const module = await import("@/features/settings/Tooling")
   await module.prewarmToolingSettings?.()
 }
 
@@ -41,6 +45,7 @@ const preloadToolingPage = async () => {
 const SURFACE_LABEL_KEYS: Record<SettingsSurfaceId, TranslationKey> = {
   account: "settings.nav.account",
   appearance: "settings.nav.appearance",
+  devapps: "settings.nav.devapps",
   organizations: "settings.nav.organizations",
   tooling: "settings.nav.localEnvironment",
 }
@@ -73,6 +78,17 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadAppearancePage,
     commandKeywords: ["appearance", "theme", "settings"],
+  },
+  {
+    id: "devapps",
+    label: "DevApps",
+    icon: PackageIcon,
+    routes: { personal: "/settings/devapps" },
+    storageMode: { personal: "local" },
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
+    preload: preloadDevAppsPage,
+    commandKeywords: ["devapps", "plugins", "apps", "store", "installed"],
   },
   {
     id: "organizations",

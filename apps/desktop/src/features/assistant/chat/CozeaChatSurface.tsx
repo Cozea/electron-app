@@ -15,7 +15,7 @@ import {
   type ServerProviderSlashCommand,
   type TurnId,
 } from "@cozea/assistant-contracts"
-import type { TerminalContextDraft } from "@/features/projects/components/assistant/lib/terminalContext"
+import type { TerminalContextDraft } from "@/features/assistant/lib/terminalContext"
 import type { PreviewAnnotationPayload } from "@cozea/contracts/t3/ipc"
 import {
   type ClipboardEventHandler,
@@ -32,49 +32,49 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { AppOverlayPortal } from "@/components/ui/app-overlay-portal"
-import { ComposerPendingApprovalActions } from "@/features/projects/components/assistant/chat/ComposerPendingApprovalActions"
-import { ComposerPendingApprovalPanel } from "@/features/projects/components/assistant/chat/ComposerPendingApprovalPanel"
-import { ComposerPendingUserInputPanel } from "@/features/projects/components/assistant/chat/ComposerPendingUserInputPanel"
-import { ComposerPlanFollowUpBanner } from "@/features/projects/components/assistant/chat/ComposerPlanFollowUpBanner"
-import { ContextWindowMeter } from "@/features/projects/components/assistant/chat/ContextWindowMeter"
+import { ComposerPendingApprovalActions } from "@/features/assistant/chat/ComposerPendingApprovalActions"
+import { ComposerPendingApprovalPanel } from "@/features/assistant/chat/ComposerPendingApprovalPanel"
+import { ComposerPendingUserInputPanel } from "@/features/assistant/chat/ComposerPendingUserInputPanel"
+import { ComposerPlanFollowUpBanner } from "@/features/assistant/chat/ComposerPlanFollowUpBanner"
+import { ContextWindowMeter } from "@/features/assistant/chat/ContextWindowMeter"
 import type {
   ExpandedImageItem,
   ExpandedImagePreview,
-} from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
-import { buildExpandedImagePreview } from "@/features/projects/components/assistant/chat/ExpandedImagePreview"
-import { MessagesTimeline } from "@/features/projects/components/assistant/chat/MessagesTimeline"
-import { ProviderModelPicker } from "@/features/projects/components/assistant/chat/ProviderModelPicker"
-import { shouldDismissModelPickerOnPointerDown } from "@/features/projects/components/assistant/chat/modelPickerDismissal"
-import { ModelPickerContent } from "@/features/projects/components/assistant/chat/ModelPickerContent"
-import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner"
-import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
-import { ThreadRuntimeBanner } from "@/features/projects/components/assistant/chat/ThreadRuntimeBanner"
+} from "@/features/assistant/chat/ExpandedImagePreview"
+import { buildExpandedImagePreview } from "@/features/assistant/chat/ExpandedImagePreview"
+import { MessagesTimeline } from "@/features/assistant/chat/MessagesTimeline"
+import { ProviderModelPicker } from "@/features/assistant/chat/ProviderModelPicker"
+import { shouldDismissModelPickerOnPointerDown } from "@/features/assistant/chat/modelPickerDismissal"
+import { ModelPickerContent } from "@/features/assistant/chat/ModelPickerContent"
+import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner"
+import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction"
+import { ThreadRuntimeBanner } from "@/features/assistant/chat/ThreadRuntimeBanner"
 import type {
   PendingApproval,
   PendingUserInput,
-} from "@/features/projects/components/assistant/chat/pendingRequests"
-import { useAssistantThreadViewModel } from "@/features/projects/components/assistant/chat/useAssistantThreadViewModel"
-import { ComposerPromptEditor } from "@/features/projects/components/assistant/chat/ComposerPromptEditor"
-import { ComposerPreviewAnnotationCards } from "@/features/projects/components/assistant/chat/ComposerPreviewAnnotationCards"
+} from "@/features/assistant/chat/pendingRequests"
+import { useAssistantThreadViewModel } from "@/features/assistant/chat/useAssistantThreadViewModel"
+import { ComposerPromptEditor } from "@/features/assistant/chat/ComposerPromptEditor"
+import { ComposerPreviewAnnotationCards } from "@/features/assistant/chat/ComposerPreviewAnnotationCards"
 import {
   detectComposerTrigger,
   replaceTextRange,
   collapseExpandedComposerCursor,
   expandCollapsedComposerCursor,
-} from "@/features/projects/components/assistant/composer-logic"
+} from "@/features/assistant/composer-logic"
 import {
   basenameOfPath,
   getVscodeIconUrlForEntry,
-} from "@/features/projects/components/assistant/vscode-icons"
-import type { ContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
-import type { AccountUsageLimitSnapshot } from "@/features/projects/components/assistant/lib/usageLimits"
+} from "@/features/assistant/vscode-icons"
+import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWindow"
+import type { AccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits"
 import {
   buildPendingUserInputAnswers,
   derivePendingUserInputProgress,
   findFirstUnansweredPendingUserInputQuestionIndex,
   type PendingUserInputDraftAnswer,
-} from "@/features/projects/components/assistant/pendingUserInput"
-import { type Thread } from "@/stores/types"
+} from "@/features/assistant/pendingUserInput"
+import { type Thread } from "@/features/assistant/model/types"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "@/lib/i18n"

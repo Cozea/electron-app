@@ -16,7 +16,7 @@ import {
   SIDEBAR_GROUP_LABEL_CLASS,
   SIDEBAR_NAV_ROW_BUTTON_CLASS,
   SIDEBAR_PILL_ACTIVE_CLASS,
-} from "@/features/projects/components/sidebar/projectSidebarShared"
+} from "@/features/projects/ui/sidebar/projectSidebarShared"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon } from '@hugeicons/core-free-icons'

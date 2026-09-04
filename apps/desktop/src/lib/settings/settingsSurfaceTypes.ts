@@ -8,6 +8,7 @@ export type SettingsSidebarGroup = "personalDevice"
 export type SettingsSurfaceId =
   | "account"
   | "appearance"
+  | "devapps"
   | "organizations"
   | "tooling"
 

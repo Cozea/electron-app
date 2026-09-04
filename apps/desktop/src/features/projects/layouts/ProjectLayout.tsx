@@ -6,13 +6,13 @@ import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { useCachedQuery } from "@/stores/useQueryCache";
-import { ProjectSidebar } from "../components/ProjectSidebar";
-import { AppSidebarShell } from "../components/sidebar/AppSidebarShell";
+import { useCachedQuery } from "@/app/model/queryCache";
+import { ProjectSidebar } from "@/features/projects/ui/ProjectSidebar";
+import { AppSidebarShell } from "@/app/shell/sidebar/AppSidebarShell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
-import { TerminalEventBridge } from "@/features/projects/components/TerminalEventBridge";
-import { usePageContextStore } from "@/stores/usePageContextStore";
+import { TerminalEventBridge } from "@/features/terminal/TerminalEventBridge";
+import { usePageContextStore } from "@/features/browser/model/pageContextStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
@@ -20,9 +20,9 @@ import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { featureFlags } from "@/lib/featureFlags";
-import { useProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution";
-import { WorkspaceRepairScreen } from "@/features/projects/workspaces/WorkspaceRepairScreen";
-import { ActiveWorkspaceContext } from "@/features/projects/workspaces/ActiveWorkspaceContext";
+import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution";
+import { WorkspaceRepairScreen } from "@/features/workspace/WorkspaceRepairScreen";
+import { ActiveWorkspaceContext } from "@/features/workspace/ActiveWorkspaceContext";
 import {
   buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
@@ -30,14 +30,14 @@ import {
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
 import { appToast } from "@/lib/appToast";
 import { useTranslation } from "@/lib/i18n";
-import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
+import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState";
 import { useDeferredActivation } from "@/hooks/useDeferredActivation";
 import {
   ProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
 } from "@/features/projects/contexts/ProjectRouteContext";
 import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
-import { buildBranchSessionLaneId } from "@/features/projects/lib/projectBranchSessionStore";
+import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import {
   ensureProjectSwitchStarted,
@@ -47,7 +47,7 @@ import { formatActorDisplayName } from "@/lib/userDisplay";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
-  import("@/features/projects/components/SettingsSidebar").then((module) => ({
+  import("@/features/settings/ui/SettingsSidebar").then((module) => ({
     default: module.SettingsSidebar,
   })),
 );

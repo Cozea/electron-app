@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef } from "react"
 
-import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore"
+import { activateProjectBranchLane } from "@/features/source-control/model/projectBranchSessionStore"
 import {
   type WorkbenchTileType,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
-import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
+} from "@/features/workbench/model/workbenchStore"
+import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore"
 
 function normalizeOpenTargetParam(
   value: string | null,

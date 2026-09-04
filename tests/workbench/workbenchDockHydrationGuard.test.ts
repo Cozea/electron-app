@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const runtimeSource = readFileSync(
-  resolve(process.cwd(), "apps/desktop/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts"),
+  resolve(process.cwd(), "apps/desktop/src/features/workbench/hooks/useWorkbenchDockviewRuntime.ts"),
   "utf8",
 );
 

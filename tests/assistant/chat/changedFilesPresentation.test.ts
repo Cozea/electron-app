@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { TurnDiffFileChange } from "@/stores/types";
+import type { TurnDiffFileChange } from "@/features/assistant/model/types";
 import {
   CHANGED_FILES_AUTO_EXPAND_FILE_LIMIT,
   changedFileName,
   selectChangedFilePreview,
   shouldAutoExpandChangedFiles,
   summarizeChangedFileScopes,
-} from "@/features/projects/components/assistant/chat/changedFilesPresentation";
+} from "@/features/assistant/chat/changedFilesPresentation";
 
 const file = (path: string, additions = 0, deletions = 0): TurnDiffFileChange => ({
   path,

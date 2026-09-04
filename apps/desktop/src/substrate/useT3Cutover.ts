@@ -6,7 +6,7 @@ import type { NativeApi } from "@cozea/assistant-contracts";
 import {
   connectT3ServerConfigBridge,
   disconnectT3ServerConfigBridge,
-} from "@/features/projects/components/workbench/assistant/assistantRuntimeMetadataStore";
+} from "@/features/workbench/assistant/assistantRuntimeMetadataStore";
 import { registerT3NativeApiOverlay } from "@/lib/nativeApi";
 
 import { createT3NativeApi } from "./createT3NativeApi";

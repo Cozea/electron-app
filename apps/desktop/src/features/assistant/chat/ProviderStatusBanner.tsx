@@ -12,9 +12,9 @@ import { memo, useState } from "react";
 
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon";
 import { getDevAppForAssistantProvider } from "@/features/devapps/registry";
-import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction";
+import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
 import { Button } from "@/components/ui/button";
-import { updateAssistantProvider } from "@/features/projects/components/workbench/assistant/assistantRuntimeMetadataStore";
+import { updateAssistantProvider } from "@/features/workbench/assistant/assistantRuntimeMetadataStore";
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest"
 const meterSource = readFileSync(
   resolve(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/assistant/chat/ContextWindowMeter.tsx",
+    "apps/desktop/src/features/assistant/chat/ContextWindowMeter.tsx",
   ),
   "utf8",
 )

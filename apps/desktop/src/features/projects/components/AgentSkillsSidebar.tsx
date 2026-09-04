@@ -14,7 +14,7 @@ import {
   SIDEBAR_GROUP_LABEL_CLASS,
   SIDEBAR_NAV_ROW_BUTTON_CLASS,
   SIDEBAR_PILL_ACTIVE_CLASS,
-} from "@/features/projects/components/sidebar/projectSidebarShared";
+} from "@/features/projects/ui/sidebar/projectSidebarShared";
 import { useTranslation } from "@/lib/i18n";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useSearchParams } from "@/lib/router";
@@ -111,7 +111,7 @@ export function AgentSkillsSidebar({ user }: AgentSkillsSidebarProps) {
           onClick={() => navigate("/projects")}
         >
           <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-          <span className="truncate">{t("projects.backToProjects")}</span>
+          <span className="truncate">{t("common.back")}</span>
         </button>
 
         <div className="relative">

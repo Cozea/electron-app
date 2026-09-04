@@ -25,7 +25,7 @@ import {
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
-import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState";
+import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState";
 import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu";
 import {
   SidebarContent,
@@ -47,9 +47,9 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { buildProjectPath } from "../lib/projectRoutes";
-import { buildWorkbenchIntentState } from "../lib/workbenchIntent";
+import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent";
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
-import { ProjectSidebarTreeItem } from "@/features/projects/components/sidebar/ProjectSidebarTreeItem";
+import { ProjectSidebarTreeItem } from "@/features/projects/ui/sidebar/ProjectSidebarTreeItem";
 import {
   areSidebarProjectItemsEqual,
   resolveProjectCollabBranch,
@@ -59,35 +59,35 @@ import {
   SIDEBAR_PILL_ACTIVE_CLASS,
   type SidebarDevAppPublishMode,
   type SidebarProjectItem,
-} from "@/features/projects/components/sidebar/projectSidebarShared";
+} from "@/features/projects/ui/sidebar/projectSidebarShared";
 import {
   getProjectSidebarRouteState,
   PROJECT_SETTINGS_SECTIONS,
-} from "@/features/projects/components/sidebar/projectSidebarRoutes";
+} from "@/features/projects/ui/sidebar/projectSidebarRoutes";
 import {
   areStringArraysEqual,
   buildOrderedProjects,
   readPersistedProjectSidebarState,
   type PersistedProjectSidebarState,
   writePersistedProjectSidebarState,
-} from "@/features/projects/components/sidebar/projectSidebarState";
+} from "@/features/projects/ui/sidebar/projectSidebarState";
 import {
   formatProjectDeleteError,
   formatProjectRenameError,
 } from "../lib/projectMutationPresentation";
 import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup";
 import { detachDeletedProjectFromUi } from "@/features/projects/lib/detachDeletedProjectFromUi";
-import type { ProjectDeleteConfirmOptions } from "@/features/projects/components/ProjectDeleteDialog";
+import type { ProjectDeleteConfirmOptions } from "@/features/projects/ui/ProjectDeleteDialog";
 import { withProjectMutationTimeout } from "@/features/projects/lib/projectMutationTimeout";
 import {
   selectProjectWorkbench,
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore";
+} from "@/features/workbench/model/workbenchStore";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
-import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
-import { useProjectWorkspaceActions } from "@/features/projects/hooks/useProjectWorkspaceActions";
-import { openCommandPalette } from "@/features/projects/components/command-palette/commandPaletteBus";
+import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
+import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";
+import { openCommandPalette } from "@/features/workbench/command-palette/commandPaletteBus";
 
 const LazyProjectDeleteDialog = React.lazy(() =>
   import("./ProjectDeleteDialog").then((module) => ({
@@ -105,7 +105,7 @@ const LazyProjectDevAppLogoDialog = React.lazy(() =>
   })),
 );
 const LazyOrgAttachDialog = React.lazy(() =>
-  import("@/features/projects/components/OrgAttachDialog").then((module) => ({
+  import("@/features/projects/ui/OrgAttachDialog").then((module) => ({
     default: module.OrgAttachDialog,
   })),
 );
@@ -957,7 +957,7 @@ export function ProjectSidebar({
         <button
           type="button"
           onClick={() => openCommandPalette()}
-          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-border/50 bg-background/25 px-2.5 text-xs text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-xs text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={t('nav.search')}
         >
           <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground" />

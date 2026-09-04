@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useAutoUpdateStore } from '@/stores/useAutoUpdateStore'
+import { useAutoUpdateStore } from '@/app/model/autoUpdateStore'
 import type { UpdateState } from '@/types/electron'
 
 interface UseAutoUpdaterOptions {

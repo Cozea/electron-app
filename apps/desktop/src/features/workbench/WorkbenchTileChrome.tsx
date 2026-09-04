@@ -19,7 +19,7 @@ import {
   Gemini,
   OpenAI,
   OpenCodeIcon,
-} from "@/features/projects/components/assistant/Icons"
+} from "@/features/assistant/Icons"
 import { useRegisterWorkbenchDockHeaderControls } from "@/features/workbench/workbenchDockHeaderControls"
 import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import {

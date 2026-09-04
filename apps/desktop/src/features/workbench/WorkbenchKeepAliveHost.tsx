@@ -1,12 +1,12 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
-import { WorkbenchActivity } from "@/features/projects/components/workbench/WorkbenchActivity"
-import { WorkbenchDockviewSession } from "@/features/projects/components/workbench/WorkbenchDockviewSession"
+import { WorkbenchActivity } from "@/features/workbench/WorkbenchActivity"
+import { WorkbenchDockviewSession } from "@/features/workbench/WorkbenchDockviewSession"
 import {
   areWorkbenchKeepAliveSessionsEqual,
   selectWorkbenchKeepAliveSessions,
   type WorkbenchKeepAliveSession,
-} from "@/features/projects/components/workbench/workbenchKeepAlive"
+} from "@/features/workbench/workbenchKeepAlive"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 interface WorkbenchKeepAliveHostProps {

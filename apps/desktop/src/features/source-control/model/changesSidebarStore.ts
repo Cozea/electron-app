@@ -4,7 +4,7 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 import {
   CHANGES_TILE_MIN_WIDTH_COLLAPSED,
   CHANGES_TILE_MIN_WIDTH_EXPANDED,
-} from "@/features/projects/lib/changesTileSizing"
+} from "@/features/source-control/model/changesTileSizing"
 
 const SIDEBAR_DEFAULT_WIDTH = CHANGES_TILE_MIN_WIDTH_COLLAPSED
 const SIDEBAR_MAX_WIDTH = 1200
@@ -25,7 +25,7 @@ function createMemoryStorage(): StateStorage {
 const sidebarStorage =
   typeof window === "undefined" ? createMemoryStorage() : window.localStorage
 
-import type { ChangesViewMode } from "@/features/projects/components/changes/ChangesTypes"
+import type { ChangesViewMode } from "@/features/source-control/components/changes/ChangesTypes"
 
 interface ChangesSidebarState {
   isOpen: boolean

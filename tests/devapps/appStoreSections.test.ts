@@ -109,6 +109,7 @@ describe("buildAppStoreSections — built-in scope", () => {
       "mobile-simulator",
     ])
     expect(assistants.items.map((item) => item.app.id)).toEqual([
+      "memory",
       "llama",
       "codex",
       "claude",

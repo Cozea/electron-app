@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { OrchestrationThreadActivity } from "@cozea/assistant-contracts"
 
-import { deriveThreadImageArtifacts } from "../../apps/desktop/src/features/projects/components/assistant/artifacts/threadArtifacts"
+import { deriveThreadImageArtifacts } from "../../apps/desktop/src/features/assistant/artifacts/threadArtifacts"
 
 function imageActivity(input: {
   id: string

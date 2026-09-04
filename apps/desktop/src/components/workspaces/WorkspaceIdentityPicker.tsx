@@ -15,7 +15,7 @@ import {
   SettingsRowLabel,
   SettingsSectionDescription,
   SettingsSectionTitle,
-} from '@/components/settings/SettingsChrome'
+} from '@/features/settings/ui/SettingsChrome'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {

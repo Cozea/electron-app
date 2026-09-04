@@ -5,7 +5,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import {
   buildPatchCacheKey,
   resolveDiffThemeName,
-} from '@/features/projects/components/assistant/lib/diffRendering'
+} from '@/features/assistant/lib/diffRendering'
 import { cn } from '@/lib/utils'
 
 function resolveThemeMode(theme: ReturnType<typeof useTheme>['theme']): 'light' | 'dark' {

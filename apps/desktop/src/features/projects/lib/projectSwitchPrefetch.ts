@@ -2,9 +2,9 @@ import type { ConvexReactClient } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
-import { prefetchProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
-import { prefetchProjectWorkspaceResolution } from "@/features/projects/workspaces/useProjectWorkspaceResolution"
-import { useQueryCache } from "@/stores/useQueryCache"
+import { prefetchProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
+import { prefetchProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
+import { useQueryCache } from "@/app/model/queryCache"
 import { featureFlags } from "@/lib/featureFlags"
 
 export function layoutProjectQueryCacheKey(

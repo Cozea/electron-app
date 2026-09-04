@@ -51,7 +51,7 @@ describe('workbench layout persistence', () => {
       addEventListener: vi.fn(),
     }
 
-    const persistence = await import('../../apps/desktop/src/features/projects/lib/workbenchLayoutPersistence')
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
     persistence.ensureWorkbenchLayoutPersistenceReady()
 
     expect(
@@ -66,7 +66,7 @@ describe('workbench layout persistence', () => {
       addEventListener: vi.fn(),
     }
 
-    const persistence = await import('../../apps/desktop/src/features/projects/lib/workbenchLayoutPersistence')
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
     persistence.writePersistedWorkbenchLayout('project-1::collab', 7, {
       grid: { root: 'root-grid' },
       panels: {},
@@ -84,7 +84,7 @@ describe('workbench layout persistence', () => {
       addEventListener: vi.fn(),
     }
 
-    const persistence = await import('../../apps/desktop/src/features/projects/lib/workbenchLayoutPersistence')
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
     const layout = { grid: { root: 'root-grid' }, panels: {} } as never
     persistence.writePersistedWorkbenchLayout('project-1::collab', 1, layout)
     persistence.writePersistedWorkbenchLayout('project-1::feature::workspace-1', 1, layout)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { hasProjectSidebarChildren } from "@/features/projects/components/sidebar/projectSidebarShared";
-import type { WorkbenchLaneSidebarSummary } from "@/stores/useProjectWorkbenchStore";
+import { hasProjectSidebarChildren } from "@/features/projects/ui/sidebar/projectSidebarShared";
+import type { WorkbenchLaneSidebarSummary } from "@/features/workbench/model/workbenchStore";
 
 function createSummary(
   overrides: Partial<WorkbenchLaneSidebarSummary> = {},

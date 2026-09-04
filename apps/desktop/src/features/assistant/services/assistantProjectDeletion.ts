@@ -1,8 +1,8 @@
 import type { ProjectId } from "@cozea/assistant-contracts"
 
-import { newCommandId } from "@/features/projects/components/assistant/lib/utils"
+import { newCommandId } from "@/features/assistant/lib/utils"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import { useStore } from "@/stores/assistant-store"
+import { useStore } from "@/features/assistant/model/assistantStore"
 
 const STORAGE_KEY = "cozea:assistant-project-deletions:v1"
 const DELETE_COMMAND_TIMEOUT_MS = 5_000

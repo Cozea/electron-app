@@ -6,7 +6,7 @@ import {
   WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH,
   WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP,
   WORKBENCH_SELECTION_LAUNCHER_ROW_GAP,
-} from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
+} from "@/features/workbench/workbenchSelectionLauncherLayout"
 
 describe("workbenchSelectionLauncherLayout", () => {
   it("computes multiple columns when there is enough width", () => {

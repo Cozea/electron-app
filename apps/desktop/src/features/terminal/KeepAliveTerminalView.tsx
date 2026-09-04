@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react"
 import {
   adoptTerminalViewInto,
   useTerminalViewKeepAlive,
-} from "@/features/projects/terminals/terminalViewKeepAlive"
+} from "@/features/terminal/terminalViewKeepAlive"
 
 /**
  * Adopts the long-lived terminal view (see terminalViewKeepAlive.ts) into

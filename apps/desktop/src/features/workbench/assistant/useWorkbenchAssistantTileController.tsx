@@ -35,38 +35,38 @@ import {
   derivePendingApprovals,
   derivePendingUserInputs,
   inferCheckpointTurnCountByTurnId,
-} from "@/features/projects/components/assistant/chat/session-logic"
+} from "@/features/assistant/chat/session-logic"
 import {
   CozeaChatSurface,
   type ComposerImageDraft,
   type ProviderModelOptionsByProvider,
   type UserInputAnswerDrafts,
-} from "@/features/projects/components/assistant/chat/CozeaChatSurface"
+} from "@/features/assistant/chat/CozeaChatSurface"
 import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
-} from "@/features/projects/components/assistant/chat/composerDraftStore"
+} from "@/features/assistant/chat/composerDraftStore"
 import {
   reportMemoryUpdateOutcome,
   subscribeMemoryUpdateRequests,
 } from "@/features/project-memory/memoryUpdateBus"
-import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
+import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction"
 import {
   deriveThreadImageArtifacts,
   type ThreadImageArtifact,
-} from "@/features/projects/components/assistant/artifacts/threadArtifacts"
+} from "@/features/assistant/artifacts/threadArtifacts"
 import {
   useThreadArtifactMedia,
   type ThreadArtifactMediaState,
-} from "@/features/projects/components/assistant/artifacts/useThreadArtifactMedia"
-import { deriveLatestContextWindowSnapshot } from "@/features/projects/components/assistant/lib/contextWindow"
-import { deriveLatestAccountUsageLimitSnapshot } from "@/features/projects/components/assistant/lib/usageLimits"
+} from "@/features/assistant/artifacts/useThreadArtifactMedia"
+import { deriveLatestContextWindowSnapshot } from "@/features/assistant/lib/contextWindow"
+import { deriveLatestAccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits"
 import {
   newCommandId,
   newMessageId,
   newProjectId,
   newThreadId,
-} from "@/features/projects/components/assistant/lib/utils"
+} from "@/features/assistant/lib/utils"
 import {
   refreshAssistantRuntimeSnapshot,
   useAssistantRuntimeSync,
@@ -78,15 +78,15 @@ import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestra
 import { resolveOrchestrationApi } from "@/substrate/resolveOrchestrationApi"
 import { useT3CutoverActive } from "@/substrate/t3CutoverStore"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
-import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread"
+import { deleteAssistantThread } from "@/features/assistant/services/deleteAssistantThread"
 import { useTileThreadStream } from "@/substrate/useTileThreadStream"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import {
   appendPreviewAnnotationPrompt,
   previewAnnotationScreenshotFile,
-} from "@/features/projects/browser/previewAnnotation"
-import { getProviderModelCapabilities } from "@/stores/providerModels"
+} from "@/features/browser/previewAnnotation"
+import { getProviderModelCapabilities } from "@/features/assistant/model/providerModels"
 import {
   createAssistantProjectSelectorForTile,
   createAssistantThreadSelectorById,
@@ -95,8 +95,8 @@ import {
   selectAssistantThreadById,
   selectAssistantThreads,
   useStore,
-} from "@/stores/assistant-store"
-import type { ChatMessage, Project, Thread } from "@/stores/types"
+} from "@/features/assistant/model/assistantStore"
+import type { ChatMessage, Project, Thread } from "@/features/assistant/model/types"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
@@ -105,11 +105,11 @@ import {
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
 import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"
-import { resolvePlanFollowUpSubmission } from "@/features/projects/components/assistant/proposedPlan"
+import { resolvePlanFollowUpSubmission } from "@/features/assistant/proposedPlan"
 import {
   findLatestProposedPlan,
   hasActionableProposedPlan,
-} from "@/features/projects/components/assistant/chat/timelineDerivations"
+} from "@/features/assistant/chat/timelineDerivations"
 import {
   type DiffDialogState,
   basenameFromPath,

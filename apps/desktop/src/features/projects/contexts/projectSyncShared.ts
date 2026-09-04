@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import type { CollabEncryptionBootstrap } from "@/hooks/useCollabSession";
+import type { CollabEncryptionBootstrap } from "@/features/collaboration/hooks/useCollabSession";
 import type { SyncProgress } from "@/lib/sync/types";
 
 export type CollabSessionStatus = "idle" | "loading" | "ready" | "error";

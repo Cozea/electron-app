@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveBrowserRecordingStopTarget } from "@/features/projects/browser/browserRecordingScope"
+import { resolveBrowserRecordingStopTarget } from "@/features/browser/browserRecordingScope"
 
 describe("pinned T3 browser recording target scope", () => {
   it("stops the only active recording when the implicit target changed", () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 
-import type { ChatMessage, Thread } from "@/stores/types"
+import type { ChatMessage, Thread } from "@/features/assistant/model/types"
 
 export function useOptimisticThreadMessages(thread: Thread | null) {
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([])

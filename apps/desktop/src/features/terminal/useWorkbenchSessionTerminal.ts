@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import { useTerminalStore, type TerminalKind } from "@/stores/useTerminalStore"
+import { useTerminalStore, type TerminalKind } from "@/features/terminal/model/terminalStore"
 
 interface UseWorkbenchSessionTerminalOptions {
   workspaceId: string | null
@@ -9,6 +9,12 @@ interface UseWorkbenchSessionTerminalOptions {
   laneId: string
   tileId: string
   terminalKind: Extract<TerminalKind, "shell" | "dev-server">
+  /**
+   * Poll the pty for a live foreground process (main process, once a second)
+   * and emit `terminal.activity`. Off by default: each tracked terminal costs a
+   * `pgrep` spawn per second, so only surfaces that display the signal opt in.
+   */
+  trackSubprocessActivity?: boolean
   /** Fixed display title for registration; defaults to the PTY's own title. */
   title?: string | null
   /** Drives uiAttached; read through a ref so flips never re-run the binding. */
@@ -36,6 +42,7 @@ export function useWorkbenchSessionTerminal({
   laneId,
   tileId,
   terminalKind,
+  trackSubprocessActivity = false,
   title = null,
   visible,
   retryKey = 0,
@@ -151,7 +158,7 @@ export function useWorkbenchSessionTerminal({
           sessionKey: workbenchSessionKey,
           laneId,
           terminalKind,
-          activityTracking: "off",
+          activityTracking: trackSubprocessActivity ? "subprocess" : "off",
         })
 
         if (cancelled) {
@@ -245,6 +252,7 @@ export function useWorkbenchSessionTerminal({
     setTerminalUiAttached,
     terminalKind,
     tileId,
+    trackSubprocessActivity,
     workbenchSessionKey,
     workspaceId,
   ])

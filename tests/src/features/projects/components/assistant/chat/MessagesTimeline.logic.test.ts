@@ -6,7 +6,7 @@ import {
   deriveTurnHeaderIndex,
   deriveGenerationStatusPhase,
   normalizeCompactToolLabel,
-} from "../../../../../../../apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.logic";
+} from "../../../../../../../apps/desktop/src/features/assistant/chat/MessagesTimeline.logic";
 
 describe("deriveActiveTurnHeaderIndex", () => {
   const message = (id, role, turnId) => ({

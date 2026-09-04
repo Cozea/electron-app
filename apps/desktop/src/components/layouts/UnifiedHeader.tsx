@@ -12,7 +12,7 @@ import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
 import { HeaderInboxButton } from "./unified-header/HeaderInboxButton";
 import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChangesButton";
-import { WorkbenchHeaderEditorControl } from "@/features/projects/components/workbench/WorkbenchHeaderEditorControl";
+import { WorkbenchHeaderEditorControl } from "@/features/workbench/WorkbenchHeaderEditorControl";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 
 const LazyHeaderProjectShareButton = lazy(() =>

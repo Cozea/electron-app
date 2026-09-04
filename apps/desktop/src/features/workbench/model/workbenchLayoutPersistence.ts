@@ -1,5 +1,5 @@
 import type { SerializedDockview } from "dockview-react"
-import { buildWorkbenchScopeKey } from "@/stores/useProjectWorkbenchStore"
+import { buildWorkbenchScopeKey } from "@/features/workbench/model/workbenchStore"
 
 const WORKBENCH_LAYOUTS_STORAGE_KEY = "cozea:project-workbench-layouts"
 const LEGACY_WORKBENCH_STORAGE_KEY = "cozea:project-workbench"

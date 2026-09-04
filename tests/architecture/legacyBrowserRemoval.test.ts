@@ -59,13 +59,13 @@ describe("legacy browser removal boundary", () => {
 
   it("restores all four browser-backed surface families through the shared T3 host", () => {
     const browserTile = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx",
     );
     const runtimeTile = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx",
     );
     const orgDevAppTile = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+      "apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx",
     );
 
     expect(browserTile).toContain("<BrowserSurfaceSlot");

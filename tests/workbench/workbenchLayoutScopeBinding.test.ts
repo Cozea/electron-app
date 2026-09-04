@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 async function loadPersistence() {
-  return await import("../../apps/desktop/src/features/projects/lib/workbenchLayoutPersistence");
+  return await import("../../apps/desktop/src/features/workbench/model/workbenchLayoutPersistence");
 }
 
 /**

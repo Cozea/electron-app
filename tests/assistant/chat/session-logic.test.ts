@@ -9,8 +9,8 @@ import {
   deriveWorkLogEntries,
   formatDuration,
   hasToolActivityForTurn,
-} from "@/features/projects/components/assistant/chat/session-logic";
-import type { ThreadSession } from "@/stores/types";
+} from "@/features/assistant/chat/session-logic";
+import type { ThreadSession } from "@/features/assistant/model/types";
 
 const globalWithCanvas = globalThis as typeof globalThis & {
   OffscreenCanvas?: new (

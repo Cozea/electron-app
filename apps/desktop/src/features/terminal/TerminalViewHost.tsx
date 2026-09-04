@@ -1,7 +1,7 @@
 import { memo, useEffect } from "react"
 import { createPortal } from "react-dom"
 
-import { TerminalInstance } from "@/features/projects/components/TerminalInstance"
+import { TerminalInstance } from "@/features/terminal/TerminalInstance"
 import {
   getTerminalParkingLot,
   getTerminalViewMount,

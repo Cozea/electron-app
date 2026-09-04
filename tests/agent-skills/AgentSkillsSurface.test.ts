@@ -14,7 +14,7 @@ describe("Agent Skills surface", () => {
   it("is reachable as a first-class project-shell route and sidebar destination", () => {
     const routeSource = readWorkspaceSource("apps/desktop/src/router/routes.tsx");
     const projectSidebarSource = readWorkspaceSource(
-      "apps/desktop/src/features/projects/components/ProjectSidebar.tsx",
+      "apps/desktop/src/features/projects/ui/ProjectSidebar.tsx",
     );
     const layoutSource = readWorkspaceSource(
       "apps/desktop/src/features/projects/layouts/ProjectLayout.tsx",

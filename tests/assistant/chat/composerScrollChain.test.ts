@@ -7,10 +7,10 @@ function readSource(relativePath: string): string {
 }
 
 const surfaceSource = readSource(
-  "apps/desktop/src/features/projects/components/assistant/chat/CozeaChatSurface.tsx",
+  "apps/desktop/src/features/assistant/chat/CozeaChatSurface.tsx",
 );
 const panelSource = readSource(
-  "apps/desktop/src/features/projects/components/assistant/chat/ComposerPendingUserInputPanel.tsx",
+  "apps/desktop/src/features/assistant/chat/ComposerPendingUserInputPanel.tsx",
 );
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { useThreadDetailStore } from "../../apps/desktop/src/stores/threadDetailStore";
+import { useThreadDetailStore } from "@/features/assistant/model/threadDetailStore";
 
 describe("multiTileConcurrency", () => {
   beforeEach(() => {

@@ -4,7 +4,7 @@ import { EventId } from "@cozea/assistant-contracts"
 import {
   deriveLatestAccountUsageLimitSnapshot,
   formatUsageLimitReset,
-} from "@/features/projects/components/assistant/lib/usageLimits"
+} from "@/features/assistant/lib/usageLimits"
 
 const activity = (id: string, rateLimits: unknown, createdAt = "2026-09-01T01:00:00.000Z") => ({
   id: EventId.makeUnsafe(id),

@@ -4,7 +4,7 @@ import { EventId } from "@cozea/assistant-contracts";
 import {
   deriveLatestContextWindowSnapshot,
   formatContextWindowTokens,
-} from "@/features/projects/components/assistant/lib/contextWindow";
+} from "@/features/assistant/lib/contextWindow";
 
 describe("context window derivation", () => {
   it("calculates GPT-5.6's 1.05M context exactly", () => {

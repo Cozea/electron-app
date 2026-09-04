@@ -5,11 +5,11 @@ import type {
   NativePreviewSessionLocator,
 } from '@shared/nativePreviewTypes'
 
-import type { ServerStatus } from '@/features/projects/lib/previewRuntimeTypes'
+import type { ServerStatus } from '@/features/dev-server/model/previewRuntimeTypes'
 import {
   DEFAULT_NATIVE_PREVIEW_SCOPE_STATE,
   useNativePreviewStore,
-} from '@/stores/useNativePreviewStore'
+} from '@/features/native-preview/model/nativePreviewStore'
 
 interface UseIosNativePreviewOptions {
   scopeKey: string

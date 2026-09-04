@@ -2,8 +2,8 @@ import { type ReactNode, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
-import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore";
+import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
+import { useProjectHeaderStore } from "@/features/projects/model/projectHeaderStore";
 
 interface UseProjectChromeHeaderArgs {
   isSettingsModeRoute: boolean;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useDemandGatedInterval } from "@/hooks/useDemandGatedInterval"
-import { publishGitRemoteStatus } from "@/features/projects/lib/gitRemoteStatusCache"
+import { publishGitRemoteStatus } from "@/features/source-control/model/gitRemoteStatusCache"
 
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
 import {
@@ -9,8 +9,8 @@ import {
   readScopedProjectBranchSession,
   rememberProjectBranchSession,
   resolveLaneBranchKnowledge,
-} from "@/features/projects/lib/projectBranchSessionStore"
-import { normalizeWorkspaceProjectPath } from "@/features/projects/workspaces/workspaceIdentity"
+} from "@/features/source-control/model/projectBranchSessionStore"
+import { normalizeWorkspaceProjectPath } from "@/features/workspace/workspaceIdentity"
 
 interface UseProjectLaneStateArgs {
   projectId: string | null

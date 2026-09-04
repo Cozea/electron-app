@@ -24,7 +24,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/components/ProjectShellTitleBarCenterFromLabel"
+import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/ui/ProjectShellTitleBarCenterFromLabel"
 import {
   buildAppStoreSections,
   buildInstalledRail,
@@ -33,14 +33,14 @@ import {
   type AppStoreItem,
   type AppStoreScope,
   type AppStoreSectionId,
-} from "@/features/projects/lib/appStoreSections"
-import { useProjectHeader } from "@/hooks/useProjectHeader"
+} from "@/features/devapps/model/appStoreSections"
+import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
 import { featureFlags } from "@/lib/featureFlags"
 import { useSearchParams } from "@/lib/router"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
-import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore"
+import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 
 import { HugeiconsIcon } from "@hugeicons/react"

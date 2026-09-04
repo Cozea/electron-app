@@ -8,12 +8,12 @@ import {
   getPanelConstraintsForTile,
   getPanelRendererForTile,
   resolveTabGroupPreset,
-} from "@/features/projects/lib/workbenchDockview";
+} from "@/features/workbench/model/workbenchDockview";
 
 const tileSource = fs.readFileSync(
   path.join(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx",
+    "apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx",
   ),
   "utf8",
 );

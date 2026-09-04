@@ -5,7 +5,7 @@ import {
   interruptDevServerSurfaceLease,
   releaseDevServerSurfaceLease,
   renewDevServerSurfaceLease,
-} from '@/features/projects/devserver/devServerSurfaceController'
+} from '@/features/dev-server/devServerSurfaceController'
 
 describe('devServerSurfaceController leases', () => {
   it('reuses a surface for its owner and prevents another owner from hijacking it', () => {

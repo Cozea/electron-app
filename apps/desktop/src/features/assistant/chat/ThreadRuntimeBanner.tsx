@@ -6,7 +6,7 @@ import {
   Loading03Icon as __LoadingIconHugeIcon,
 } from "@hugeicons/core-free-icons";
 
-import type { SessionPhase } from "@/stores/types";
+import type { SessionPhase } from "@/features/assistant/model/types";
 import { cn } from "@/lib/utils";
 
 type ThreadRuntimeBannerState = Exclude<SessionPhase, "disconnected" | "ready" | "running"> | "interrupting";

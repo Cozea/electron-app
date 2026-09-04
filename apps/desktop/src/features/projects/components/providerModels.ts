@@ -9,7 +9,7 @@ export {
   normalizeCursorModelOptionsWithCapabilities,
   normalizeOpenCodeModelOptionsWithCapabilities,
   resolveSelectableProvider,
-} from "@/stores/providerModels"
+} from "@/features/assistant/model/providerModels"
 
 export {
   deriveProviderInstanceEntries,
@@ -20,4 +20,4 @@ export {
   resolveSelectableProviderInstance,
   sortProviderInstanceEntries,
   type ProviderInstanceEntry,
-} from "./providerInstances"
+} from "@/features/assistant/providerInstances"

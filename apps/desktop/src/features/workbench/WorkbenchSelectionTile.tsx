@@ -22,25 +22,25 @@ import type {
 import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
 import type {
   WorkbenchSelectionTile,
-} from "@/stores/useProjectWorkbenchStore"
-import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
+} from "@/features/workbench/model/workbenchStore"
+import { NativeProjectFolderIcon } from "@/features/projects/ui/NativeProjectFolderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
-import { useAssistantServerConfig } from "@/features/projects/components/workbench/assistant/useAssistantServerConfig"
-import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
+import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
+import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import {
   computeWorkbenchSelectionLauncherLayout,
   type WorkbenchSelectionLauncherLayout,
-} from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
-import { resolveEnabledWorkbenchAssistantProviders } from "@/features/projects/components/workbench/workbenchSelectionAssistantProviders"
+} from "@/features/workbench/workbenchSelectionLauncherLayout"
+import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders"
 import { useTranslation } from "@/lib/i18n"
 import {
   filterWorkbenchSelectionApps,
   getWorkbenchSelectionCategories,
   resolveWorkbenchSelectionCategory,
   type WorkbenchSelectionCategory,
-} from "@/features/projects/lib/workbenchSelectionCategories"
+} from "@/features/workbench/model/workbenchSelectionCategories"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon as __SearchHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
@@ -60,6 +60,8 @@ const LAUNCHER_CONFIG = {
   cellHeight: 102,
   columnGap: 22,
   rowGap: 18,
+  maxColumns: 6,
+  maxRows: 2,
   labelClassName: "text-[12px]",
 } as const
 
@@ -95,8 +97,8 @@ function WelcomeHero({
   const normalizedProjectName = projectName?.trim() || "this project"
 
   return (
-    <div className="mb-8 flex w-full max-w-4xl flex-col items-center">
-      <div className="mb-8 flex flex-col items-center gap-1">
+    <div className="mb-6 flex w-full max-w-4xl flex-col items-center">
+      <div className="flex flex-col items-center gap-1">
         <span className="text-center text-2xl text-muted-foreground md:text-3xl">
           {t('workbench.selection.letsWorkOn')}
         </span>
@@ -251,7 +253,8 @@ function useLauncherGridLayout(
       cellHeight: LAUNCHER_CONFIG.cellHeight,
       columnGap: LAUNCHER_CONFIG.columnGap,
       rowGap: LAUNCHER_CONFIG.rowGap,
-      maxColumns: 6,
+      maxColumns: LAUNCHER_CONFIG.maxColumns,
+      maxRows: LAUNCHER_CONFIG.maxRows,
     }),
   )
 
@@ -273,7 +276,8 @@ function useLauncherGridLayout(
         cellHeight: LAUNCHER_CONFIG.cellHeight,
         columnGap: LAUNCHER_CONFIG.columnGap,
         rowGap: LAUNCHER_CONFIG.rowGap,
-        maxColumns: 6,
+        maxColumns: LAUNCHER_CONFIG.maxColumns,
+        maxRows: LAUNCHER_CONFIG.maxRows,
       }),
     )
   }, [containerRef, itemCount])
@@ -708,6 +712,7 @@ export function WorkbenchSelectionTile({
                                 gridAutoRows: `${densityConfig.cellHeight}px`,
                                 columnGap: `${densityConfig.columnGap}px`,
                                 rowGap: `${densityConfig.rowGap}px`,
+                                minHeight: `${launcherLayout.rows * densityConfig.cellHeight + Math.max(0, launcherLayout.rows - 1) * densityConfig.rowGap}px`,
                               }}
                             >
                               {page.map((option) => (
@@ -740,37 +745,45 @@ export function WorkbenchSelectionTile({
           {!useListView && centerSingletonSelectionLayout ? (
             <div className="flex h-7 items-center justify-center">
               {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-1">
                   {pagedOptions.map((_, pageIndex) => (
                     <button
                       key={`selection-page-dot-${pageIndex}`}
                       type="button"
                       aria-label={`Go to page ${pageIndex + 1}`}
                       aria-pressed={pageIndex === currentPage}
-                      className={cn(
-                        "h-2.5 w-2.5 rounded-full transition-colors",
-                        pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
-                      )}
+                      className="flex size-5 items-center justify-center cursor-pointer p-0"
                       onClick={() => handlePageSelect(pageIndex)}
-                    />
+                    >
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full transition-all",
+                          pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
+                        )}
+                      />
+                    </button>
                   ))}
                 </div>
               ) : null}
             </div>
           ) : !useListView && filteredOptions.length > 0 && pagedOptions.length > 1 ? (
-            <div className="mt-3 flex items-center justify-center gap-2">
+            <div className="mt-3 flex items-center justify-center gap-1">
               {pagedOptions.map((_, pageIndex) => (
                 <button
                   key={`selection-page-dot-${pageIndex}`}
                   type="button"
                   aria-label={`Go to page ${pageIndex + 1}`}
                   aria-pressed={pageIndex === currentPage}
-                  className={cn(
-                    "h-2.5 w-2.5 rounded-full transition-colors",
-                    pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
-                  )}
+                  className="flex size-5 items-center justify-center cursor-pointer p-0"
                   onClick={() => handlePageSelect(pageIndex)}
-                />
+                >
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full transition-all",
+                      pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
+                    )}
+                  />
+                </button>
               ))}
             </div>
           ) : null}

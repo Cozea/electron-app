@@ -22,7 +22,7 @@ import {
   settingsInlineInputClass,
   settingsInlineInputWidth,
   settingsNativeSelectClass,
-} from "@/components/settings/SettingsChrome";
+} from "@/features/settings/ui/SettingsChrome";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";

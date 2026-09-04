@@ -1,7 +1,7 @@
 import { TurnId } from "@cozea/assistant-contracts";
 import { describe, expect, it } from "vitest";
 
-import type { WorkLogEntry } from "@/features/projects/components/assistant/chat/session-logic";
+import type { WorkLogEntry } from "@/features/assistant/chat/session-logic";
 import {
   omitSupersededLifecycleMarkers,
   summarizeToolGroup,
@@ -11,7 +11,7 @@ import {
   workGroupId,
   workLogEntryIsLocalCodeSearch,
   workLogEntryIsToolLike,
-} from "@/features/projects/components/assistant/chat/MessagesTimeline.logic";
+} from "@/features/assistant/chat/MessagesTimeline.logic";
 
 let nextId = 0;
 const entry = (overrides: Partial<WorkLogEntry> = {}): WorkLogEntry => ({

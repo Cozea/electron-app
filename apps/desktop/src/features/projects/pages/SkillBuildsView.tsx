@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SettingsPageBody, SettingsPageHeader } from "@/components/settings/SettingsChrome";
+import { SettingsPageBody, SettingsPageHeader } from "@/features/settings/ui/SettingsChrome";
 import { appToast } from "@/lib/appToast";
 import { ensureNativeApi } from "@/lib/nativeApi";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ import {
   OpenAI,
   OpenCodeIcon,
   type Icon,
-} from "@/features/projects/components/assistant/Icons";
+} from "@/features/assistant/Icons";
 import {
   conciseDescription,
   prettifySkillName,

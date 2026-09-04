@@ -18,7 +18,7 @@ import {
   getSyntheticOverlaySource,
   type TaskOverlayMarker,
   type TaskOverlayPayload,
-} from '@/features/projects/lib/taskFocusOverlay'
+} from '@/features/tasks/model/taskFocusOverlay'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Cancel01Icon as __XHugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon } from '@hugeicons/core-free-icons'

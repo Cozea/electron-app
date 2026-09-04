@@ -11,7 +11,7 @@ import {
   formatElementContextSourceLabel,
   newElementContextId,
   normalizeElementContextSelection,
-} from "@/features/projects/browser/elementContext"
+} from "@/features/browser/elementContext"
 
 function makePayload(overrides?: Partial<PickedElementPayload>): PickedElementPayload {
   return {

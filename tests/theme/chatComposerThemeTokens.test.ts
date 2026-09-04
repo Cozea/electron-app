@@ -9,21 +9,21 @@ const stylesheet = readFileSync(
 const chatSurface = readFileSync(
   resolve(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/assistant/chat/CozeaChatSurface.tsx",
+    "apps/desktop/src/features/assistant/chat/CozeaChatSurface.tsx",
   ),
   "utf8",
 )
 const promptEditor = readFileSync(
   resolve(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/assistant/chat/ComposerPromptEditor.tsx",
+    "apps/desktop/src/features/assistant/chat/ComposerPromptEditor.tsx",
   ),
   "utf8",
 )
 const messagesTimeline = readFileSync(
   resolve(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.tsx",
+    "apps/desktop/src/features/assistant/chat/MessagesTimeline.tsx",
   ),
   "utf8",
 )

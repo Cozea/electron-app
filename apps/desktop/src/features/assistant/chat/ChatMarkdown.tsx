@@ -23,17 +23,17 @@ import { resolveAppliedTheme } from "@/lib/theme";
 import {
   openProjectFileInExternalEditor,
   readStoredExternalEditorPreference,
-} from "@/features/projects/lib/externalEditorPreference";
+} from "@/features/settings/model/externalEditorPreference";
 import { splitPathAndPosition } from "@/lib/terminalLinks";
-import { openInPreferredEditor } from "@/stores/editorPreferences";
+import { openInPreferredEditor } from "@/features/settings/model/editorPreferences";
 import {
   resolveDiffThemeName,
   type DiffThemeName,
-} from "@/features/projects/components/assistant/lib/diffRendering";
+} from "@/features/assistant/lib/diffRendering";
 import {
   resolveMarkdownFileLinkTarget,
   rewriteMarkdownFileUriHref,
-} from "@/stores/markdown-links";
+} from "@/features/assistant/lib/markdownLinks";
 import { readNativeApi } from "@/lib/nativeApi";
 import { cn } from "@/lib/utils";
 

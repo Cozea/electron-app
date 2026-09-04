@@ -1,5 +1,5 @@
 import { startTransition, useEffect } from 'react'
-import { useTerminalStore } from '@/stores/useTerminalStore'
+import { useTerminalStore } from '@/features/terminal/model/terminalStore'
 
 export function TerminalEventBridge() {
   useEffect(() => {

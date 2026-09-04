@@ -3,8 +3,8 @@ import { useSyncExternalStore } from "react"
 import {
   readGitRemoteStatus,
   subscribeGitRemoteStatus,
-} from "@/features/projects/lib/gitRemoteStatusCache"
-import type { GitRemoteSnapshot } from "@/features/projects/lib/connectionStatusModel"
+} from "@/features/source-control/model/gitRemoteStatusCache"
+import type { GitRemoteSnapshot } from "@/features/collaboration/model/connectionStatusModel"
 
 export function useGitRemoteStatus(
   workspaceId: string | null | undefined,

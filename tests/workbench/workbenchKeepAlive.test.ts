@@ -4,7 +4,7 @@ import {
   areWorkbenchKeepAliveSessionsEqual,
   selectWorkbenchKeepAliveSessions,
   type WorkbenchKeepAliveSession,
-} from "@/features/projects/components/workbench/workbenchKeepAlive"
+} from "@/features/workbench/workbenchKeepAlive"
 
 function session(
   scopeKey: string,

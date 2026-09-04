@@ -9,7 +9,7 @@ import {
 
 import { type TurnId } from "@cozea/assistant-contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { type TurnDiffFileChange } from "@/stores/types";
+import { type TurnDiffFileChange } from "@/features/assistant/model/types";
 import { buildTurnDiffTree, summarizeTurnDiffStats, type TurnDiffTreeNode } from "./turnDiffTree";
 import {
   changedFileName,

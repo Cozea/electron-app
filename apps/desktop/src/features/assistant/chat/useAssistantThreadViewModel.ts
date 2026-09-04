@@ -8,23 +8,23 @@ import {
   findLatestProposedPlan,
   hasActionableProposedPlan,
   isLatestTurnSettled,
-} from "@/features/projects/components/assistant/chat/timelineDerivations"
-import type { PendingUserInput } from "@/features/projects/components/assistant/chat/pendingRequests"
+} from "@/features/assistant/chat/timelineDerivations"
+import type { PendingUserInput } from "@/features/assistant/chat/pendingRequests"
 import {
   buildRevertTurnCountByUserMessageId,
   buildTurnDiffSummaryByAssistantMessageId,
   deriveCompletionDividerBeforeEntryId,
   deriveCompletionSummariesByMessageId,
   inferCheckpointTurnCountByTurnId,
-} from "@/features/projects/components/assistant/chat/turnDiffDerivations"
+} from "@/features/assistant/chat/turnDiffDerivations"
 import {
   deriveWorkLogEntries,
   deriveActiveWorkStartedAt,
   formatElapsed,
   hasToolActivityForTurn,
-} from "@/features/projects/components/assistant/chat/workLogDerivations"
-import { deriveGenerationStatusPhase } from "@/features/projects/components/assistant/chat/MessagesTimeline.logic"
-import type { Thread } from "@/stores/types"
+} from "@/features/assistant/chat/workLogDerivations"
+import { deriveGenerationStatusPhase } from "@/features/assistant/chat/MessagesTimeline.logic"
+import type { Thread } from "@/features/assistant/model/types"
 
 interface UseAssistantThreadViewModelInput {
   thread: Thread | null

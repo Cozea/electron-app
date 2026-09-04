@@ -3,8 +3,8 @@ import { useMutation } from "convex/react";
 
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { getProjectChangesActivityCacheKey } from "@/features/projects/lib/changesQueryCache";
-import { useQueryCache } from "@/stores/useQueryCache";
+import { getProjectChangesActivityCacheKey } from "@/features/source-control/model/changesQueryCache";
+import { useQueryCache } from "@/app/model/queryCache";
 
 export function useProjectCheckpointCleanup(
   projectId: Id<"projects"> | null,

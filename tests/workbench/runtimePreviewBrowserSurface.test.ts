@@ -7,8 +7,8 @@ import {
   runtimePreviewBrowserSurfaceGeneration,
   runtimePreviewBrowserSurfaceKind,
   runtimePreviewBrowserSurfaceTabId,
-} from "@/features/projects/browser/runtimePreviewBrowserSurface";
-import type { WorkbenchDevServerTile } from "@/stores/useProjectWorkbenchStore";
+} from "@/features/browser/runtimePreviewBrowserSurface";
+import type { WorkbenchDevServerTile } from "@/features/workbench/model/workbenchStore";
 
 function devServerTile(overrides: Partial<WorkbenchDevServerTile> = {}): WorkbenchDevServerTile {
   return {
@@ -52,7 +52,7 @@ describe("T3 runtime preview browser surfaces", () => {
     const source = fs.readFileSync(
       path.join(
         process.cwd(),
-        "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
+        "apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx",
       ),
       "utf8",
     );
@@ -81,7 +81,7 @@ describe("T3 runtime preview browser surfaces", () => {
     const source = fs.readFileSync(
       path.join(
         process.cwd(),
-        "apps/desktop/src/features/projects/components/workbench/WorkbenchDockPanels.tsx",
+        "apps/desktop/src/features/workbench/WorkbenchDockPanels.tsx",
       ),
       "utf8",
     );

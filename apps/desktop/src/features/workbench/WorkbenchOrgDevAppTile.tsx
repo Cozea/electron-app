@@ -3,24 +3,27 @@ import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../../convex/_generated/api"
-import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
+import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot"
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
-} from "@/features/projects/browser/browserSurfaceIdentity"
-import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError"
-import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry"
-import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
-import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
+} from "@/features/browser/browserSurfaceIdentity"
+import { resolveBrowserPageError } from "@/features/browser/browserPageError"
+import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry"
+import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer"
+import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore"
 import { useAuth } from "@/contexts/AuthContext"
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
-import type { WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord } from "@/stores/useProjectWorkbenchStore"
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
+import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode"
+import type { WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord } from "@/features/workbench/model/workbenchStore"
+import { usePublishTileActivity } from "@/features/workbench/model/tileActivityStore"
 import { useTranslation } from "@/lib/i18n"
 import { getDeviceSession } from "@/lib/deviceSession"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
+import { DevAppCapabilityList } from "@/features/devapps/components/DevAppCapabilityList"
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
 import type { OrgDevAppRuntimeState } from "@shared/orgDevAppRuntime"
 import type { OrgDevAppEnvironmentStatus } from "@shared/orgDevAppEnvironment"
@@ -420,6 +423,19 @@ export function WorkbenchOrgDevAppTile({
     workspaceId,
   ])
   useHostedBrowserSurface(browserSurfaceDescriptor)
+  // Mirror the runtime's state for the sidebar, which cannot read this tile's
+  // local state; see useTileActivityStore.
+  usePublishTileActivity(
+    tile.id,
+    runtimeStopped
+      ? "idle"
+      : runtimeState?.status === "ready"
+        ? "running"
+        : runtimeState?.status === "starting"
+          ? "starting"
+          : "idle",
+  )
+
   const browserSurfaceState = useBrowserSurfaceStateStore((state) =>
     runtimeTabId ? state.byTabId[runtimeTabId] : undefined,
   )
@@ -631,40 +647,119 @@ export function WorkbenchOrgDevAppTile({
       }
       contentClassName="relative h-full overflow-hidden bg-content-surface"
     >
-      {statusMessage ? (
-        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-          <p className={prepareError ? "max-w-md text-sm text-destructive" : "max-w-md text-sm text-muted-foreground"}>
-            {statusMessage}
-          </p>
-          {prepareError && artifact !== null ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPrepareError(null)
-                setPrepareAttempt((attempt) => attempt + 1)
-              }}
-            >
-              {t("orgDevApp.open.retry")}
-            </Button>
-          ) : null}
-          {serviceNeedsApproval ? (
-            <div className="flex max-w-md flex-col items-center gap-3">
-              <p className="text-xs text-muted-foreground">
-                Published by{" "}
-                {artifact?.publisherDeviceLabel ?? artifact?.publisherIdentityKey ?? "an organization device"}. Runs in{" "}
-                {hostedRuntime ? "Cozea's hosted contained runtime" : "a contained Linux VM on this device"}.
-                {servicePermissions?.network ? " Network access is enabled." : " Network access is disabled."}
-                {runtimeStateScope === "organization"
-                  ? " State belongs to the organization publication."
-                  : runtimeStateScope === "device"
-                    ? " State belongs to this publication on this device."
-                    : " No persistent state is retained."}
-              </p>
+      {workerApprovalRequired && tile.devAppRef && workspaceId ? (
+        <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+          <div className="w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-start gap-1.5 text-sm whitespace-nowrap">
+              <span className="size-5 shrink-0 overflow-hidden rounded-md">
+                <PublishedDevAppIcon
+                  name={tile.title}
+                  logoDataUrl={tile.logoDataUrl}
+                />
+              </span>
+              <h2 className="font-semibold tracking-tight text-foreground truncate max-w-[200px]">
+                {tile.title}
+              </h2>
+              <span className="shrink-0 text-muted-foreground">
+                {workerCapabilities.length > 0 ? "needs access to:" : "needs permission to run"}
+              </span>
+            </div>
+
+            <DevAppCapabilityList capabilities={workerCapabilities} />
+
+            {prepareError ? <p className="text-xs text-destructive">{prepareError}</p> : null}
+
+            <div className="flex items-center gap-2 pt-1">
               <Button
                 type="button"
                 size="sm"
+                className="flex-1"
+                onClick={() => {
+                  void window.electronAPI.orgDevApp
+                    .approvePublishedWorker({
+                      ref: tile.devAppRef!,
+                      workspaceId,
+                      agentInvocable: false,
+                    })
+                    .then((result) => {
+                      if (!result.success) setPrepareError(result.error)
+                      else {
+                        setRuntimeStopped(false)
+                        setPrepareAttempt((attempt) => attempt + 1)
+                      }
+                    })
+                }}
+              >
+                Allow
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  void window.electronAPI.orgDevApp
+                    .approvePublishedWorker({
+                      ref: tile.devAppRef!,
+                      workspaceId,
+                      agentInvocable: true,
+                    })
+                    .then((result) => {
+                      if (!result.success) setPrepareError(result.error)
+                      else {
+                        setRuntimeStopped(false)
+                        setPrepareAttempt((attempt) => attempt + 1)
+                      }
+                    })
+                }}
+              >
+                Allow with automation
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : serviceNeedsApproval ? (
+        <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+          <div className="w-full max-w-sm space-y-4">
+            <div className="flex flex-col items-start gap-1.5">
+              <div className="flex items-center justify-start gap-1.5 text-sm whitespace-nowrap">
+                <span className="size-5 shrink-0 overflow-hidden rounded-md">
+                  <PublishedDevAppIcon
+                    name={tile.title}
+                    logoDataUrl={tile.logoDataUrl}
+                  />
+                </span>
+                <h2 className="font-semibold tracking-tight text-foreground truncate max-w-[200px]">
+                  {tile.title}
+                </h2>
+                <span className="shrink-0 text-muted-foreground">
+                  needs permission to run
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-start gap-1.5">
+                <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  {hostedRuntime ? "Hosted Container" : "Linux VM"}
+                </span>
+                {servicePermissions?.network ? (
+                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    Network
+                  </span>
+                ) : null}
+                {runtimeStateScope !== "none" ? (
+                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    {runtimeStateScope === "organization" ? "Org state" : "Device state"}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            {prepareError ? <p className="text-xs text-destructive">{prepareError}</p> : null}
+
+            <div className="pt-1">
+              <Button
+                type="button"
+                size="sm"
+                className="w-full"
                 onClick={() => {
                   if (!artifact?.permissionSetHash) return
                   void window.electronAPI.orgDevApp
@@ -683,63 +778,28 @@ export function WorkbenchOrgDevAppTile({
                     })
                 }}
               >
-                Run contained service
+                Run service
               </Button>
             </div>
-          ) : null}
-          {workerApprovalRequired && tile.devAppRef && workspaceId ? (
-            <div className="flex max-w-md flex-col items-center gap-3">
-              <p className="text-xs text-muted-foreground">
-                Requested access:{" "}
-                {workerCapabilities.length > 0 ? workerCapabilities.join(", ") : "no host capabilities"}. You can run
-                the worker for this project without granting autonomous agent use.
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    void window.electronAPI.orgDevApp
-                      .approvePublishedWorker({
-                        ref: tile.devAppRef!,
-                        workspaceId,
-                        agentInvocable: false,
-                      })
-                      .then((result) => {
-                        if (!result.success) setPrepareError(result.error)
-                        else {
-                          setRuntimeStopped(false)
-                          setPrepareAttempt((attempt) => attempt + 1)
-                        }
-                      })
-                  }}
-                >
-                  Run worker
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void window.electronAPI.orgDevApp
-                      .approvePublishedWorker({
-                        ref: tile.devAppRef!,
-                        workspaceId,
-                        agentInvocable: true,
-                      })
-                      .then((result) => {
-                        if (!result.success) setPrepareError(result.error)
-                        else {
-                          setRuntimeStopped(false)
-                          setPrepareAttempt((attempt) => attempt + 1)
-                        }
-                      })
-                  }}
-                >
-                  Run and allow agents
-                </Button>
-              </div>
-            </div>
+          </div>
+        </div>
+      ) : statusMessage ? (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+          <p className={prepareError ? "max-w-md text-sm text-destructive" : "max-w-md text-sm text-muted-foreground"}>
+            {statusMessage}
+          </p>
+          {prepareError && artifact !== null ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPrepareError(null)
+                setPrepareAttempt((attempt) => attempt + 1)
+              }}
+            >
+              {t("orgDevApp.open.retry")}
+            </Button>
           ) : null}
         </div>
       ) : (
@@ -756,22 +816,24 @@ export function WorkbenchOrgDevAppTile({
           ) : null}
           {browserPageError ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-content-surface p-6 text-center">
-              <div className="max-w-sm space-y-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
+              <div className="w-full max-w-xs space-y-2.5">
+                <div className="flex items-center justify-center gap-2 text-sm">
+                  <span className="font-medium text-foreground whitespace-nowrap">
                     {browserPageError.kind === "transport"
-                      ? "The DevApp surface could not be reached"
+                      ? "Surface unreachable"
                       : `${browserPageError.diagnostic.statusCode} ${browserPageError.diagnostic.statusText || "HTTP error"}`}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {browserPageError.kind === "transport"
-                      ? `${browserPageError.description} (${browserPageError.code}). The DevApp runtime remains independently manageable.`
-                      : "The DevApp returned an empty error response. Its runtime state is unchanged."}
-                  </p>
+                  </span>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={reloadEmbeddedDevApp}>
-                  Reload DevApp
-                </Button>
+                <p className="text-xs text-muted-foreground truncate">
+                  {browserPageError.kind === "transport"
+                    ? browserPageError.description
+                    : "DevApp returned an empty error response"}
+                </p>
+                <div className="pt-1">
+                  <Button type="button" variant="outline" size="sm" onClick={reloadEmbeddedDevApp}>
+                    Reload DevApp
+                  </Button>
+                </div>
               </div>
             </div>
           ) : null}

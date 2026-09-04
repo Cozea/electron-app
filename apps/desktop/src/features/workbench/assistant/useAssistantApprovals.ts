@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react"
 import { ApprovalRequestId, type ProviderApprovalDecision } from "@cozea/assistant-contracts"
 
-import type { UserInputAnswerDrafts } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
-import { newCommandId } from "@/features/projects/components/assistant/lib/utils"
+import type { UserInputAnswerDrafts } from "@/features/assistant/chat/CozeaChatSurface"
+import { newCommandId } from "@/features/assistant/lib/utils"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import type { Thread } from "@/stores/types"
+import type { Thread } from "@/features/assistant/model/types"
 
 interface UseAssistantApprovalsInput {
   thread: Thread | null
