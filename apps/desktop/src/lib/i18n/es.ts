@@ -239,6 +239,7 @@ const es: Record<TranslationKey, string> = {
   "nav.newProject": "Nuevo proyecto",
   "nav.devAppsStore": "Tienda DevApps",
   "nav.search": "Buscar",
+  "nav.skillBuilds": "Configuraciones",
   "nav.agentSkills": "Habilidades de agentes",
   "projects.projectSettings": "Configuración del proyecto",
   "projects.projects": "Proyectos",

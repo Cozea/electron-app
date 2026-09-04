@@ -229,6 +229,7 @@ const en = {
   "nav.newProject": "New project",
   "nav.devAppsStore": "DevApps Store",
   "nav.search": "Search",
+  "nav.skillBuilds": "Builds",
   "nav.agentSkills": "Agent Skills",
   "projects.projectSettings": "Project Settings",
   "projects.projects": "Projects",
