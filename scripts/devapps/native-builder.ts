@@ -28,12 +28,10 @@ import {
 
 export const NATIVE_DEV_APP_RUNTIME_IMPORTS = {
   react: "cozea-native-runtime://runtime/react.mjs",
-  "react/compiler-runtime": "cozea-native-runtime://runtime/react-compiler-runtime.mjs",
   "react/jsx-runtime": "cozea-native-runtime://runtime/jsx-runtime.mjs",
   "react/jsx-dev-runtime": "cozea-native-runtime://runtime/jsx-dev-runtime.mjs",
-  "react-dom": "cozea-native-runtime://runtime/react-dom.mjs",
   "@cozea/devapp-api/native": "cozea-native-runtime://runtime/native.mjs",
-  "@cozea/devapp-ui": "cozea-native-runtime://runtime/ui.mjs",
+  "@cozea/devapp-api/ui": "cozea-native-runtime://runtime/ui.mjs",
 } as const;
 
 export type NativeDevAppRuntimeImport = keyof typeof NATIVE_DEV_APP_RUNTIME_IMPORTS;
@@ -47,7 +45,9 @@ const NODE_IMPORTS = new Set(
 );
 const FORBIDDEN_EXACT_IMPORTS = new Set([
   "electron",
+  "react-dom",
   "react-dom/client",
+  "react/compiler-runtime",
   "@cozea/devapp-api",
   "@cozea/devapp-api/extension",
 ]);
