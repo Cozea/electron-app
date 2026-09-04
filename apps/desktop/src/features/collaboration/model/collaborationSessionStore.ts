@@ -5,6 +5,7 @@ export interface ActiveCollaborationBinding {
   projectId: string
   sessionId: string
   workspaceId: string
+  sourceWorkspaceId: string
   sessionBranch: string
   joinedAt: number
 }
@@ -40,19 +41,31 @@ export const useCollaborationSessionStore = create<CollaborationSessionState>()(
           })
         },
         clearSession(sessionId) {
-          set((state) => {
-            const next = Object.fromEntries(
+          set((state) => ({
+            activeByProject: Object.fromEntries(
               Object.entries(state.activeByProject).filter(([, binding]) => binding.sessionId !== sessionId),
-            )
-            return { activeByProject: next }
-          })
+            ),
+          }))
         },
       },
     }),
     {
       name: "cozea-collaboration-v2-active-sessions",
       partialize: (state) => ({ activeByProject: state.activeByProject }),
-      version: 1,
+      version: 2,
+      migrate: (persisted) => {
+        const candidate = persisted as Partial<CollaborationSessionState> | undefined
+        const activeByProject = Object.fromEntries(
+          Object.entries(candidate?.activeByProject ?? {}).flatMap(([projectId, binding]) => {
+            if (!binding?.workspaceId || !binding.sessionId || !binding.sessionBranch) return []
+            return [[projectId, {
+              ...binding,
+              sourceWorkspaceId: binding.sourceWorkspaceId ?? binding.workspaceId,
+            }]]
+          }),
+        )
+        return { activeByProject }
+      },
     },
   ),
 )
