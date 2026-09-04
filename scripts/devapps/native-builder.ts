@@ -28,6 +28,7 @@ import {
 
 export const NATIVE_DEV_APP_RUNTIME_IMPORTS = {
   react: "cozea-native-runtime://runtime/react.mjs",
+  "react/compiler-runtime": "cozea-native-runtime://runtime/react-compiler-runtime.mjs",
   "react/jsx-runtime": "cozea-native-runtime://runtime/jsx-runtime.mjs",
   "react/jsx-dev-runtime": "cozea-native-runtime://runtime/jsx-dev-runtime.mjs",
   "react-dom": "cozea-native-runtime://runtime/react-dom.mjs",
@@ -51,6 +52,8 @@ const FORBIDDEN_EXACT_IMPORTS = new Set([
   "@cozea/devapp-api/extension",
 ]);
 const FORBIDDEN_PREFIXES = [
+  "react-dom/",
+  "@cozea/devapp-api/",
   "@/",
   "@shared/",
   "@cozea/client-runtime",
@@ -122,6 +125,10 @@ function isInside(parent: string, candidate: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+function isNodeModulesPath(candidate: string): boolean {
+  return candidate.replaceAll("\\", "/").includes("/node_modules/");
+}
+
 async function resolveExistingPackagePath(
   packageRoot: string,
   relativePath: string,
@@ -174,7 +181,7 @@ export async function validateScopedDevAppCss(
 ): Promise<string[]> {
   const requiredPrefix = `[data-cozea-devapp="${appId}"]`;
   const violations = new Set<string>();
-  let root;
+  let root: ReturnType<typeof postcss.parse>;
   try {
     root = postcss.parse(source);
   } catch (error) {
@@ -266,7 +273,7 @@ function createRendererBoundaryPlugin(plan: NativeDevAppBuildPlan): Plugin {
   return {
     name: "cozea-native-devapp-boundary",
     enforce: "pre",
-    resolveId(source) {
+    async resolveId(source, importer, options) {
       if (source.startsWith(PUBLIC_ENTRY_PREFIX)) {
         return `${ENTRY_PREFIX}${source.slice(PUBLIC_ENTRY_PREFIX.length)}`;
       }
@@ -279,7 +286,16 @@ function createRendererBoundaryPlugin(plan: NativeDevAppBuildPlan): Plugin {
           `Native renderer code may not import ${JSON.stringify(source)}.`,
         );
       }
-      return null;
+      if (!importer || (!source.startsWith(".") && !path.isAbsolute(source))) return null;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      if (!resolved || resolved.external) return resolved;
+      const cleanId = resolved.id.split("?", 1)[0]!;
+      if (!isNodeModulesPath(cleanId) && !isInside(plan.packageRoot, cleanId)) {
+        throw new NativeDevAppBuildError(
+          `Native renderer import resolves outside the DevApp package: ${source}`,
+        );
+      }
+      return resolved;
     },
     load(id) {
       const module = entries.get(id);
@@ -301,7 +317,9 @@ function createExtensionBoundaryPlugin(packageRoot: string): Plugin {
       if (
         NODE_IMPORTS.has(source) ||
         source === "electron" ||
-        source === "@cozea/devapp-api/native" ||
+        source === "react" ||
+        source.startsWith("react/") ||
+        source.startsWith("react-dom") ||
         FORBIDDEN_PREFIXES.some((prefix) => source.startsWith(prefix))
       ) {
         throw new NativeDevAppBuildError(
@@ -312,7 +330,7 @@ function createExtensionBoundaryPlugin(packageRoot: string): Plugin {
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved || resolved.external) return resolved;
       const cleanId = resolved.id.split("?", 1)[0]!;
-      if (!cleanId.includes(`${path.sep}node_modules${path.sep}`) && !isInside(packageRoot, cleanId)) {
+      if (!isNodeModulesPath(cleanId) && !isInside(packageRoot, cleanId)) {
         throw new NativeDevAppBuildError(
           `Extension import resolves outside the DevApp package: ${source}`,
         );
