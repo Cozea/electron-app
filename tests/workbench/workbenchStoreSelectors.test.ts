@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
   buildWorkbenchLaneSidebarSummary,
-  buildWorkbenchScopeKey,
   selectProjectLaneWorkbenches,
   selectProjectWorkbench,
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore";
+} from "@/features/workbench/model/workbenchStore"
 
 describe("workbench store selectors", () => {
   beforeEach(() => {

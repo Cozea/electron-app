@@ -45,11 +45,6 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     reaches: ["WorkbenchDockRuntimeContext", "model/workbenchStore"],
   },
   {
-    pair: ["dev-server", "workbench"],
-    thinEdge: "dev-server -> workbench",
-    reaches: ["model/workbenchStore"],
-  },
-  {
     pair: ["devapps", "projects"],
     thinEdge: "devapps -> projects",
     reaches: ["hooks/useProjectHeader", "model/createProjectDialogStore"],
@@ -81,12 +76,8 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
   },
   {
     pair: ["workbench", "workspace"],
-    thinEdge: "workspace -> workbench",
-    reaches: [
-      "hooks/useProjectLaneState",
-      "model/workbenchLayoutPersistence",
-      "model/workbenchStore",
-    ],
+    thinEdge: "workbench -> workspace",
+    reaches: ["useWorkspaceIdentity", "useWorkspaceRuntimeStore"],
   },
 ];
 

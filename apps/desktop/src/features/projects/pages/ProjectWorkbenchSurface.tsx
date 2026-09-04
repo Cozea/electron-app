@@ -11,13 +11,12 @@ import {
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader";
+import { DEFAULT_WORKBENCH_LANE_ID, buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
-  DEFAULT_WORKBENCH_LANE_ID,
   type WorkbenchTileType,
-  buildWorkbenchScopeKey,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore";
+} from "@/features/workbench/model/workbenchStore"
 import { WorkbenchKeepAliveHost } from "@/features/workbench/WorkbenchKeepAliveHost";
 import type { WorkbenchKeepAliveSession } from "@/features/workbench/workbenchKeepAlive";
 import {

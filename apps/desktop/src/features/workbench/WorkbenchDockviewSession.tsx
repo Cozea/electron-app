@@ -6,8 +6,8 @@ import {
   ensureWorkbenchLayoutPersistenceReady,
   peekPersistedWorkbenchLayout,
 } from "@/features/workbench/model/workbenchLayoutPersistence"
+import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
-  buildWorkbenchScopeKey,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/features/workbench/model/workbenchStore"

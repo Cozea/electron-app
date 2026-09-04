@@ -10,7 +10,7 @@ import {
   rememberProjectBranchSession,
   resolveLaneBranchKnowledge,
 } from "@/features/source-control/model/projectBranchSessionStore"
-import { normalizeWorkspaceProjectPath } from "@/features/workspace/workspaceIdentity"
+import { normalizeWorkspaceProjectPath } from "@/lib/workspaceIdentity"
 
 interface UseProjectLaneStateArgs {
   projectId: string | null

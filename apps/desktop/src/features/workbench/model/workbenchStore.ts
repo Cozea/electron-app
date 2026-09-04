@@ -10,11 +10,12 @@ import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
 
+import { normalizeWorkspaceId } from "@/lib/workspaceIdentity"
 import {
-  buildLegacyWorkspaceIdentityKey,
-  buildWorkspaceIdentityKey,
-  normalizeWorkspaceId,
-} from "@/features/workspace/workspaceIdentity"
+  buildLegacyWorkbenchScopeKey,
+  buildWorkbenchScopeKey,
+  normalizeLaneId,
+} from "@/lib/workbenchScopeKey"
 import {
   getWorkbenchTileDefinition,
   type WorkbenchTileType,
@@ -414,30 +415,6 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
       workspaceId?: string | null,
     ) => void
   }
-}
-
-export const DEFAULT_WORKBENCH_LANE_ID = "collab"
-
-function normalizeLaneId(laneId: string | null | undefined): string {
-  const normalized = laneId?.trim()
-  return normalized && normalized.length > 0 ? normalized : DEFAULT_WORKBENCH_LANE_ID
-}
-
-function buildLegacyWorkbenchScopeKey(projectId: string, laneId?: string | null): string {
-  return buildLegacyWorkspaceIdentityKey(projectId, normalizeLaneId(laneId))!
-}
-
-export function buildWorkbenchScopeKey(
-  projectId: string,
-  laneId?: string | null,
-  workspaceId?: string | null,
-): string {
-  const normalizedWorkspace = normalizeWorkspaceId(workspaceId)
-  if (!normalizedWorkspace) {
-    return buildLegacyWorkbenchScopeKey(projectId, laneId)
-  }
-
-  return buildWorkspaceIdentityKey(projectId, normalizedWorkspace, normalizeLaneId(laneId))!
 }
 
 function resolveWorkbenchScopeKey(
