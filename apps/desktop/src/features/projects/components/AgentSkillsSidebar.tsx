@@ -18,20 +18,24 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useSearchParams } from "@/lib/router";
+import {
+  ClaudeAI,
+  CursorIcon,
+  OpenAI,
+  OpenCodeIcon,
+  type Icon,
+} from "@/features/assistant/Icons";
 import { cn } from "@/lib/utils";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  AiBrain01Icon as __AiBrainHugeIcon,
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   BookOpenCheckIcon as __BookOpenCheckHugeIcon,
-  FlashIcon as __FlashHugeIcon,
-  CodeSquareIcon as __CodeSquareHugeIcon,
-  CommandLineIcon as __CommandLineHugeIcon,
-  Cursor01Icon as __CursorHugeIcon,
+  DashboardSquare01Icon as __AllProvidersHugeIcon,
   FolderLibraryIcon as __FolderLibraryHugeIcon,
   LinkSquare02Icon as __LinkSquareHugeIcon,
   Search01Icon as __SearchHugeIcon,
+  UserCircleIcon as __ProfileHugeIcon,
 } from "@hugeicons/core-free-icons";
 
 interface AgentSkillsSidebarProps {
@@ -65,13 +69,15 @@ const SOURCE_FILTERS: ReadonlyArray<{
 const PROVIDER_FILTERS: ReadonlyArray<{
   id: ProviderFilter;
   label: string;
-  icon: typeof __FolderLibraryHugeIcon;
+  /** Only "All providers" needs a generic glyph; the agents carry their marks. */
+  icon?: typeof __FolderLibraryHugeIcon;
+  mark?: Icon;
 }> = [
-  { id: "all", label: "All providers", icon: __BookOpenCheckHugeIcon },
-  { id: "codex", label: "Codex", icon: __CommandLineHugeIcon },
-  { id: "claude", label: "Claude", icon: __AiBrainHugeIcon },
-  { id: "cursor", label: "Cursor", icon: __CursorHugeIcon },
-  { id: "opencode", label: "OpenCode", icon: __CodeSquareHugeIcon },
+  { id: "all", label: "All providers", icon: __AllProvidersHugeIcon },
+  { id: "codex", label: "Codex", mark: OpenAI },
+  { id: "claude", label: "Claude", mark: ClaudeAI },
+  { id: "cursor", label: "Cursor", mark: CursorIcon },
+  { id: "opencode", label: "OpenCode", mark: OpenCodeIcon },
 ];
 
 /** Content-only: renders inside the persistent AppSidebarShell. */
@@ -145,7 +151,8 @@ export function AgentSkillsSidebar({ user }: AgentSkillsSidebarProps) {
             )}
             onClick={() => updateParam("view", "builds")}
           >
-            <HugeiconsIcon icon={__FlashHugeIcon} />
+            {/* A build is a loadout for an agent, so it reads as a profile. */}
+            <HugeiconsIcon icon={__ProfileHugeIcon} />
             <span className="truncate">{t("nav.skillBuilds")}</span>
           </button>
         </SidebarGroup>
@@ -179,23 +186,30 @@ export function AgentSkillsSidebar({ user }: AgentSkillsSidebarProps) {
             {t("agentSkills.providers")}
           </SidebarGroupLabel>
           <div className="space-y-1">
-            {PROVIDER_FILTERS.map((filter) => (
-              <button
-                key={filter.id}
-                type="button"
-                aria-pressed={provider === filter.id}
-                className={cn(
-                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                  provider === filter.id && SIDEBAR_PILL_ACTIVE_CLASS,
-                )}
-                onClick={() => updateParam("provider", filter.id)}
-              >
-                <HugeiconsIcon icon={filter.icon} />
-                <span className="truncate">
-                  {filter.id === "all" ? t("agentSkills.providersAll") : filter.label}
-                </span>
-              </button>
-            ))}
+            {PROVIDER_FILTERS.map((filter) => {
+              const Mark = filter.mark;
+              return (
+                <button
+                  key={filter.id}
+                  type="button"
+                  aria-pressed={provider === filter.id}
+                  className={cn(
+                    SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                    provider === filter.id && SIDEBAR_PILL_ACTIVE_CLASS,
+                  )}
+                  onClick={() => updateParam("provider", filter.id)}
+                >
+                  {Mark ? (
+                    <Mark aria-hidden className="size-4 shrink-0" />
+                  ) : filter.icon ? (
+                    <HugeiconsIcon icon={filter.icon} />
+                  ) : null}
+                  <span className="truncate">
+                    {filter.id === "all" ? t("agentSkills.providersAll") : filter.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </SidebarGroup>
         )}

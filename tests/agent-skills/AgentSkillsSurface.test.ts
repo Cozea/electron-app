@@ -33,7 +33,15 @@ describe("Agent Skills surface", () => {
     expect(pageSource).toContain("Claude");
     expect(pageSource).toContain("Cursor");
     expect(pageSource).toContain("OpenCode");
-    expect(pageSource).toContain("setProviderEnabled");
+  });
+
+  it("reports which providers run a skill without offering to switch it", () => {
+    // Activation belongs to Builds: the library is for finding, installing,
+    // updating and deleting. Leaving toggles here gave two places to change
+    // the same state, and the library's copy went stale behind the other.
+    expect(pageSource).not.toContain("setProviderEnabled");
+    expect(pageSource).not.toContain("agentSkills.setEnabled");
+    expect(pageSource).toContain("Turn skills on and off");
   });
 
   it("exposes portable read-only setup discovery and personal copying", () => {

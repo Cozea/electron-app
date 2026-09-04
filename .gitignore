@@ -94,6 +94,8 @@ scratch/
 # is invoked, so match at any depth.
 graphify-out/
 **/graphify-out/
+# Scan scoping for the same tool; local, like the graph it produces.
+.graphifyignore
 .impeccable/
 **/.impeccable/
 

@@ -40,6 +40,149 @@ async function makeSkill(name: string) {
   return created.skillId!;
 }
 
+/** Writes an external skill straight into a provider's own folder. */
+function makeExternalSkill(relativeRoot: string, slug: string) {
+  const dir = path.join(homeRoot, relativeRoot, slug);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "SKILL.md"),
+    `---\nname: ${slug}\ndescription: The ${slug} skill.\n---\n\nDo it.\n`,
+    "utf8",
+  );
+  return dir;
+}
+
+describe("skills the provider owns and restores", () => {
+  it("refuses to disable a skill from the provider's own bundled folder", async () => {
+    makeExternalSkill(".cursor/skills-cursor", "autopilot");
+    const svc = service();
+    const skill = svc.list().skills.find((s) => s.slug === "autopilot")!;
+
+    expect(skill.bindings.some((b) => b.provider === "cursor" && b.essential)).toBe(true);
+
+    const result = await svc.setEnabled({ skillId: skill.id, enabled: false });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/cannot disable/i);
+    // Still on disk: Cozea did not move a folder the provider would restore.
+    expect(fs.existsSync(path.join(homeRoot, ".cursor/skills-cursor/autopilot"))).toBe(true);
+  });
+
+  it("refuses to delete a skill the provider restores", async () => {
+    makeExternalSkill(".cursor/skills-cursor", "autopilot");
+    const svc = service();
+    const skill = svc.list().skills.find((s) => s.slug === "autopilot")!;
+
+    const result = await svc.remove(skill.id);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/cannot delete/i);
+    expect(fs.existsSync(path.join(homeRoot, ".cursor/skills-cursor/autopilot"))).toBe(true);
+  });
+
+  it("leaves essential skills alone when a build is applied", async () => {
+    makeExternalSkill(".cursor/skills-cursor", "autopilot");
+    makeExternalSkill(".cursor/skills", "mine");
+    const svc = service();
+    const mine = svc.list().skills.find((s) => s.slug === "mine")!.id;
+
+    const saved = await svc.saveBuild({ name: "Mine only", skillIds: [mine] });
+    const applied = await svc.applyBuild(saved.skillId!);
+
+    expect(applied.success).toBe(true);
+    expect(fs.existsSync(path.join(homeRoot, ".cursor/skills-cursor/autopilot"))).toBe(true);
+  });
+
+  it("drops a stale disabled record once the skill is back at its original path", async () => {
+    // Legacy state: skills disabled before Cozea knew the provider restores
+    // them. The live copy is the truth, so the record has to go.
+    const original = makeExternalSkill(".cursor/skills", "restored");
+    const svc = service();
+    const id = svc.list().skills.find((s) => s.slug === "restored")!.id;
+
+    await svc.setEnabled({ skillId: id, enabled: false });
+    expect(fs.existsSync(original)).toBe(false);
+
+    makeExternalSkill(".cursor/skills", "restored");
+
+    const skill = svc.list().skills.find((s) => s.slug === "restored")!;
+    expect(skill.bindings.some((b) => b.provider === "cursor" && b.enabled)).toBe(true);
+    const again = await svc.setEnabled({ skillId: skill.id, enabled: false });
+    expect(again.success).toBe(true);
+  });
+});
+
+describe("applying a build to skills the providers own", () => {
+  it("disables the external skills a build leaves out", async () => {
+    makeExternalSkill(".claude/skills", "alpha");
+    makeExternalSkill(".claude/skills", "beta");
+    makeExternalSkill(".codex/skills", "gamma");
+    const svc = service();
+
+    const before = svc.list().skills;
+    const alpha = before.find((s) => s.slug === "alpha")!.id;
+    expect(before.filter((s) => s.bindings.some((b) => b.enabled))).toHaveLength(3);
+
+    const saved = await svc.saveBuild({ name: "Alpha only", skillIds: [alpha] });
+    const applied = await svc.applyBuild(saved.skillId!);
+
+    const enabled = applied.snapshot.skills
+      .filter((skill) => skill.bindings.some((binding) => binding.enabled))
+      .map((skill) => skill.slug);
+    expect(enabled).toEqual(["alpha"]);
+    expect(applied.success).toBe(true);
+  });
+
+  it("re-enables a one-provider skill without reporting the other three as failures", async () => {
+    // Every binding is marked compatible, so switching a skill on asks all
+    // four providers. Only Claude ever had this one, so the other three have
+    // nothing to restore, and that must not read as an error.
+    makeExternalSkill(".claude/skills", "alpha");
+    const svc = service();
+    const alpha = svc.list().skills.find((s) => s.slug === "alpha")!.id;
+
+    const off = await svc.setEnabled({ skillId: alpha, enabled: false });
+    expect(off.success).toBe(true);
+
+    const on = await svc.setEnabled({ skillId: alpha, enabled: true });
+    expect(on.success).toBe(true);
+    expect(on.error).toBeUndefined();
+
+    const bindings = on.snapshot.skills.find((s) => s.slug === "alpha")!.bindings;
+    expect(bindings.filter((b) => b.enabled).map((b) => b.provider)).toEqual(["claude"]);
+  });
+
+  it("forgets a disabled skill whose trashed copy has gone", async () => {
+    // The record is only meaningful while the copy exists, so `list` drops it
+    // rather than leaving an enable that could never succeed.
+    makeExternalSkill(".claude/skills", "beta");
+    const svc = service();
+    const beta = svc.list().skills.find((s) => s.slug === "beta")!.id;
+    await svc.setEnabled({ skillId: beta, enabled: false });
+
+    const state = JSON.parse(
+      fs.readFileSync(path.join(dataRoot, "state.json"), "utf8"),
+    ) as { disabledExternalBindings: Array<{ trashPath: string }> };
+    fs.rmSync(state.disabledExternalBindings[0]!.trashPath, { recursive: true, force: true });
+
+    expect(svc.list().skills.some((s) => s.slug === "beta")).toBe(false);
+  });
+
+  it("does not spread a build's skills onto providers that never had them", async () => {
+    makeExternalSkill(".claude/skills", "alpha");
+    makeExternalSkill(".codex/skills", "gamma");
+    const svc = service();
+    const alpha = svc.list().skills.find((s) => s.slug === "alpha")!.id;
+
+    const saved = await svc.saveBuild({ name: "Alpha only", skillIds: [alpha] });
+    const applied = await svc.applyBuild(saved.skillId!);
+
+    const onProviders = applied.snapshot.skills
+      .find((s) => s.slug === "alpha")!
+      .bindings.filter((b) => b.enabled)
+      .map((b) => b.provider);
+    expect(onProviders).toEqual(["claude"]);
+  });
+});
+
 describe("what applying a build has to change", () => {
   it("turns on what is missing and off what is extra", () => {
     const plan = planBuildApplication({ skillIds: ["a", "b"] }, [
@@ -160,11 +303,17 @@ describe("saving and applying a build end to end", () => {
 
 import {
   buildLoadout,
+  cozeaSkills,
   filterPickerSkills,
-  installedSkills,
+  buildableSkills,
+  needsInstall,
+  partitionEssential,
+  providerEssentialCount,
   loadoutByCategory,
+  providerCandidates,
   providerLoadout,
   providerSkillCounts,
+  stepDetail,
   toggleCategorySelection,
 } from "../../apps/desktop/src/features/projects/pages/SkillBuildsView";
 import type { AgentSkillRecord } from "../../shared/electronApiTypes";
@@ -173,15 +322,15 @@ function record(
   id: string,
   category: string,
   source: AgentSkillRecord["source"],
-  compatibleWith: AgentSkillRecord["bindings"][number]["provider"][] = [],
+  installedOn: AgentSkillRecord["bindings"][number]["provider"][] = [],
 ): AgentSkillRecord {
   return {
     id, slug: id, name: id, description: "", instructions: "",
     source, editable: false, path: `/tmp/${id}`, createdAt: null, updatedAt: 0,
     category, categoryDeclared: false, updateSource: "none",
-    bindings: compatibleWith.map((provider) => ({
-      provider, compatible: true, enabled: false, ownership: "none" as const,
-      path: null, restartBehavior: "live" as const,
+    bindings: installedOn.map((provider) => ({
+      provider, compatible: true, enabled: true, ownership: "external" as const,
+      path: `/tmp/${provider}/${id}`, restartBehavior: "live" as const,
     })),
   };
 }
@@ -198,8 +347,13 @@ describe("what a build sheet shows", () => {
     record("d", "design", "catalog"),
   ];
 
-  it("draws only from skills that are actually installed", () => {
-    expect(installedSkills(library).map((s) => s.id)).toEqual(["a", "b", "c"]);
+  it("draws on catalog entries too, since a plate counts what a provider can run", () => {
+    expect(buildableSkills(library).map((s) => s.id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("marks a catalog entry as needing an install before a build can hold it", () => {
+    expect(needsInstall(library[3]!)).toBe(true);
+    expect(library.slice(0, 3).some(needsInstall)).toBe(false);
   });
 
   it("lists exactly the build's skills, in library order", () => {
@@ -279,18 +433,24 @@ describe("selecting a whole category at once", () => {
 });
 
 /**
- * The hub shows each provider carrying the number of the build's skills it
- * would run. Compatibility decides that, not what happens to be enabled — a
- * build describes intent, and an incompatible skill can never be part of it.
+ * The hub's buckets partition a build by whose skill it is: the core holds the
+ * Cozea library, a plate holds that provider's own. A library skill installed
+ * into every provider still belongs only to the core, so nothing is listed
+ * twice.
+ *
+ * Ownership decides the plates, not compatibility: every skill is marked
+ * compatible with every provider, so compatibility cannot tell them apart.
  */
-describe("what each provider runs in a build", () => {
+describe("what each bucket of a build holds", () => {
+  const everywhere = ["claude", "codex", "cursor", "opencode"] as const;
   const loadout = [
-    record("a", "code", "external", ["claude", "codex"]),
+    record("library", "code", "managed", [...everywhere]),
+    record("pair", "code", "external", ["claude", "codex"]),
     record("b", "code", "external", ["claude"]),
     record("c", "design", "external", ["cursor"]),
   ];
 
-  it("counts per provider, in a stable order", () => {
+  it("counts a provider's own skills, in a stable order", () => {
     expect(providerSkillCounts(loadout)).toEqual([
       { provider: "claude", label: "Claude", count: 2 },
       { provider: "codex", label: "Codex", count: 1 },
@@ -299,17 +459,156 @@ describe("what each provider runs in a build", () => {
     ]);
   });
 
-  it("counts a skill once per provider it supports, not once overall", () => {
-    const counts = providerSkillCounts(loadout);
-    expect(counts.reduce((sum, node) => sum + node.count, 0)).toBe(4);
+  it("treats the core as the Cozea library, not the shared set", () => {
+    expect(cozeaSkills(loadout).map((s) => s.id)).toEqual(["library"]);
   });
 
-  it("lists what one provider gets, ready to group", () => {
-    expect(providerLoadout(loadout, "claude").map((s) => s.id)).toEqual(["a", "b"]);
+  it("keeps a library skill off the plates it was installed into", () => {
+    // "library" reaches every provider's folder, but it is listed once, in
+    // the core — repeating it on four plates is what the partition avoids.
+    for (const provider of everywhere) {
+      expect(providerLoadout(loadout, provider).map((s) => s.id)).not.toContain("library");
+    }
+  });
+
+  it("lists only the provider's own skills", () => {
+    expect(providerLoadout(loadout, "claude").map((s) => s.id)).toEqual(["pair", "b"]);
     expect(providerLoadout(loadout, "opencode")).toEqual([]);
+  });
+
+  it("leaves no skill without a page", () => {
+    const buckets = [
+      ...cozeaSkills(loadout),
+      ...everywhere.flatMap((provider) => providerLoadout(loadout, provider)),
+    ].map((skill) => skill.id);
+    expect(new Set(buckets)).toEqual(new Set(["library", "pair", "b", "c"]));
+  });
+
+  it("still shows a provider-owned skill on each provider that installed it", () => {
+    // Only library skills are pulled out to one page. "pair" is Claude's and
+    // Codex's alike, so both plates list it — that is not duplication.
+    expect(providerLoadout(loadout, "claude").map((s) => s.id)).toContain("pair");
+    expect(providerLoadout(loadout, "codex").map((s) => s.id)).toContain("pair");
   });
 
   it("reports zero for every provider on an empty build", () => {
     expect(providerSkillCounts([]).every((node) => node.count === 0)).toBe(true);
+    expect(cozeaSkills([])).toEqual([]);
+  });
+});
+
+/**
+ * A and D page between the hub's buckets. The core is part of the ring, not a
+ * dead end: landing on it and pressing D must keep moving.
+ */
+describe("paging between hub buckets", () => {
+  it("walks the ring forward from the core through every agent", () => {
+    expect(stepDetail("cozea", 1)).toBe("claude");
+    expect(stepDetail("claude", 1)).toBe("codex");
+    expect(stepDetail("codex", 1)).toBe("cursor");
+    expect(stepDetail("cursor", 1)).toBe("opencode");
+  });
+
+  it("wraps at both ends rather than stopping", () => {
+    expect(stepDetail("opencode", 1)).toBe("cozea");
+    expect(stepDetail("cozea", -1)).toBe("opencode");
+  });
+
+  it("is reversible from anywhere in the ring", () => {
+    for (const bucket of ["cozea", "claude", "codex", "cursor", "opencode"] as const) {
+      expect(stepDetail(stepDetail(bucket, 1), -1)).toBe(bucket);
+    }
+  });
+});
+
+/**
+ * The page's pick-list is not the plate's contents. A plate counts what the
+ * build holds for that provider, on or off; the page offers what the provider
+ * can run right now — the same rule the Agent Skills page uses, so the two
+ * screens report the same number of skills per provider.
+ */
+describe("what a provider page offers to pick from", () => {
+  function binding(
+    provider: AgentSkillRecord["bindings"][number]["provider"],
+    state: { enabled?: boolean; available?: boolean; owned?: boolean },
+  ): AgentSkillRecord["bindings"][number] {
+    return {
+      provider,
+      compatible: true,
+      enabled: state.enabled ?? false,
+      ownership: state.owned ? ("external" as const) : ("none" as const),
+      path: state.owned ? "/tmp/x" : null,
+      restartBehavior: "live" as const,
+      ...(state.available === undefined ? {} : { available: state.available }),
+    };
+  }
+  function skill(id: string, source: AgentSkillRecord["source"], bindings: AgentSkillRecord["bindings"]) {
+    return { ...record(id, "code", source), bindings } as AgentSkillRecord;
+  }
+
+  const loaded = skill("loaded", "external", [binding("claude", { enabled: true, owned: true })]);
+  const offered = skill("offered", "catalog", [binding("claude", { available: true })]);
+  const turnedOff = skill("off", "external", [binding("claude", { owned: true })]);
+  const library = skill("library", "managed", [binding("claude", { enabled: true, owned: true })]);
+  const all = [loaded, offered, turnedOff, library];
+
+  it("offers what the provider can run, loaded or from its catalog", () => {
+    expect(providerCandidates(all, "claude", new Set()).map((s) => s.id)).toEqual([
+      "loaded",
+      "offered",
+    ]);
+  });
+
+  it("leaves the Cozea library to its own page", () => {
+    expect(providerCandidates(all, "claude", new Set(["library"])).map((s) => s.id)).not.toContain(
+      "library",
+    );
+  });
+
+  it("keeps a switched-off skill the build holds, so it can still be unticked", () => {
+    // Activating a build switches off what it excludes. Without this, a build
+    // could hold a skill that had vanished from the only page that edits it.
+    expect(providerCandidates(all, "claude", new Set(["off"])).map((s) => s.id)).toContain("off");
+    expect(providerCandidates(all, "claude", new Set()).map((s) => s.id)).not.toContain("off");
+  });
+});
+
+/**
+ * Some skills ship with the provider, which rewrites the folder they live in.
+ * A build cannot switch those off, so the page reports them instead of
+ * offering a tick it could not honour.
+ */
+describe("skills a build cannot control", () => {
+  function withEssential(id: string, essential: boolean): AgentSkillRecord {
+    const base = record(id, "code", "external", ["cursor"]);
+    return {
+      ...base,
+      bindings: base.bindings.map((b) => ({ ...b, ...(essential ? { essential: true } : {}) })),
+    };
+  }
+  const skills = [withEssential("mine", false), withEssential("bundled", true)];
+
+  it("separates what a build can choose from what it cannot", () => {
+    const { choosable, essential } = partitionEssential(skills);
+    expect(choosable.map((s) => s.id)).toEqual(["mine"]);
+    expect(essential.map((s) => s.id)).toEqual(["bundled"]);
+  });
+
+  it("keeps every skill in one side or the other", () => {
+    const { choosable, essential } = partitionEssential(skills);
+    expect(choosable.length + essential.length).toBe(skills.length);
+  });
+
+  it("counts what a provider always runs, per provider", () => {
+    // The plate would otherwise report a Cursor running one skill while it
+    // actually loads the bundled set it restores on its own.
+    expect(providerEssentialCount(skills, "cursor")).toBe(1);
+    expect(providerEssentialCount(skills, "claude")).toBe(0);
+    expect(providerEssentialCount([], "cursor")).toBe(0);
+  });
+
+  it("treats a skill with no essential binding as choosable", () => {
+    expect(partitionEssential([]).essential).toEqual([]);
+    expect(partitionEssential([withEssential("plain", false)]).choosable).toHaveLength(1);
   });
 });

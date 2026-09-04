@@ -92,6 +92,13 @@ interface AgentSkillStateFile {
 interface ProviderSkillRoot {
   relativePath: string;
   /**
+   * The provider owns this folder and rewrites it. Cozea can move a skill out
+   * of it, but the provider puts it back — measured: 23 skills restored 22
+   * minutes after being disabled, all with the same birth time. So these are
+   * reported as essential rather than offered as something to switch off.
+   */
+  essential?: boolean;
+  /**
    * A plugin marketplace rather than a skills folder: everything under it is
    * on disk but not loaded by the provider until the user installs it, and it
    * is nested one plugin deep rather than flat.
@@ -156,7 +163,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     // `skills-cursor` is Cursor's own bundled set, alongside the user's.
     relativeRoots: [
       { relativePath: path.join(".cursor", "skills") },
-      { relativePath: path.join(".cursor", "skills-cursor") },
+      { relativePath: path.join(".cursor", "skills-cursor"), essential: true },
     ],
     rootPath: "",
     rootPaths: [],
@@ -216,6 +223,8 @@ function listDirectories(directoryPath: string): string[] {
 
 interface DiscoveredSkillDirectory {
   directoryPath: string;
+  /** Found in a folder the provider rewrites, so Cozea cannot switch it off. */
+  essential?: boolean;
   /** Present only for catalog finds: the plugin that owns the skill. */
   plugin?: string;
   marketplace?: string;
@@ -687,7 +696,10 @@ export class AgentSkillService {
         (root, index) => {
           const rootPath = provider.rootPaths[index];
           if (root.catalog) return listCatalogSkillDirectories(rootPath);
-          return listDirectories(rootPath).map((directoryPath) => ({ directoryPath }));
+          return listDirectories(rootPath).map((directoryPath) => ({
+            directoryPath,
+            ...(root.essential ? { essential: true } : {}),
+          }));
         },
       );
 
@@ -695,7 +707,7 @@ export class AgentSkillService {
         ? this.installedCatalogPlugins(provider.id)
         : new Set<string>();
 
-      for (const { directoryPath, plugin, marketplace } of discovered) {
+      for (const { directoryPath, plugin, marketplace, essential } of discovered) {
         // A skill from a plugin the provider already runs is not "available";
         // it is already live, and its files belong to the plugin.
         if (plugin && marketplace && installedPlugins.has(`${plugin}@${marketplace}`)) continue;
@@ -799,6 +811,7 @@ export class AgentSkillService {
           binding.enabled = true;
           binding.ownership = "external";
           binding.path = directoryPath;
+          if (essential) binding.essential = true;
           // The first provider scanned defines the record's canonical text.
           // Later ones only carry a variant when they actually read different,
           // so identical copies cost nothing on the wire.
@@ -820,6 +833,15 @@ export class AgentSkillService {
     const state = this.loadState();
     let stateChanged = false;
     const validDisabledBindings = state.disabledExternalBindings.filter((disabled) => {
+      // The provider put it back. Cursor rewrites its own managed skills
+      // folder, so a directory Cozea moved to trash can reappear at the path
+      // it came from. The live copy is the truth: keeping the record would
+      // report the skill as off while the provider is still loading it, and
+      // would later refuse to re-enable it because the path is occupied.
+      if (isDirectory(disabled.originalPath)) {
+        stateChanged = true;
+        return false;
+      }
       const markdown = readSkillMarkdown(disabled.trashPath);
       if (!markdown) {
         stateChanged = true;
@@ -1122,6 +1144,11 @@ export class AgentSkillService {
         const binding = skill.bindings.find((candidate) => candidate.provider === options.provider);
         if (!binding?.compatible)
           throw new Error("This skill is not marked compatible with that provider.");
+        if (binding.essential && !options.enabled) {
+          throw new Error(
+            "This skill ships with the agent, which restores it. Cozea cannot disable it.",
+          );
+        }
         if (binding.enabled === options.enabled) {
           return this.mutationResult(true, { skillId: skill.id, changedProviders: [] });
         }
@@ -1136,7 +1163,15 @@ export class AgentSkillService {
               (candidate) =>
                 candidate.skillId === skill.id && candidate.provider === options.provider,
             );
-            if (!disabled || !isDirectory(disabled.trashPath)) {
+            // No record means this provider never had a copy to begin with.
+            // Every binding is marked compatible, so switching a skill on asks
+            // all four providers; the ones that never carried it have nothing
+            // to restore, which is not a failure. Reporting it as one made a
+            // build that applied correctly look like it had errored.
+            if (!disabled) {
+              return this.mutationResult(true, { skillId: skill.id, changedProviders: [] });
+            }
+            if (!isDirectory(disabled.trashPath)) {
               throw new Error("The disabled provider copy could not be restored.");
             }
             if (fs.existsSync(disabled.originalPath)) {
@@ -1393,8 +1428,13 @@ export class AgentSkillService {
     }
 
     // Catalog entries are not installed, so there is nothing to switch on.
+    // Essential skills are skipped outright: the provider rewrites the folder
+    // they live in, so disabling them churns the filesystem and then loses.
     const installed = snapshot.skills
-      .filter((skill) => skill.source !== "catalog")
+      .filter(
+        (skill) =>
+          skill.source !== "catalog" && !skill.bindings.some((binding) => binding.essential),
+      )
       .map((skill) => ({
         id: skill.id,
         enabled: skill.bindings.some((binding) => binding.enabled),
@@ -1427,6 +1467,13 @@ export class AgentSkillService {
       try {
         const skill = this.list().skills.find((candidate) => candidate.id === skillId);
         if (!skill) throw new Error("This skill is no longer available.");
+        // The agent owns the folder and rewrites it, so a delete would come
+        // back. Refused here as well as hidden, so no other caller can try.
+        if (skill.bindings.some((binding) => binding.essential)) {
+          throw new Error(
+            "This skill ships with the agent, which restores it. Cozea cannot delete it.",
+          );
+        }
         const changedProviders: AgentSkillProvider[] = [];
         if (skill.source === "managed") {
           for (const binding of skill.bindings) {

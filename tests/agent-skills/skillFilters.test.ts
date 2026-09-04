@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  describeSkillsView,
   skillMatchesProvider,
   skillMatchesStatus,
 } from "../../apps/desktop/src/features/projects/pages/AgentSkillsPage";
@@ -91,5 +92,35 @@ describe("the installed / not installed menu", () => {
     for (const candidate of [installed, mine, installable]) {
       expect(skillMatchesStatus(candidate, "all")).toBe(true);
     }
+  });
+});
+
+/**
+ * "My library" and "Provider folders" are named after where a skill lives,
+ * which does not explain itself. Those views describe what they mean; the
+ * unfiltered view still reports the tally.
+ */
+describe("what the Agent Skills subtitle says", () => {
+  const snapshot = { skills: Array.from({ length: 119 }, () => null) } as never;
+
+  it("explains the library view instead of counting", () => {
+    const text = describeSkillsView("managed", snapshot, { visible: 1, available: 80 });
+    expect(text).toMatch(/library/i);
+    expect(text).not.toMatch(/\d+ of \d+/);
+  });
+
+  it("explains the provider-folders view instead of counting", () => {
+    const text = describeSkillsView("external", snapshot, { visible: 38, available: 80 });
+    expect(text).toMatch(/own folders/i);
+    expect(text).not.toMatch(/\d+ of \d+/);
+  });
+
+  it("still reports the tally when nothing is filtered out", () => {
+    expect(describeSkillsView("all", snapshot, { visible: 119, available: 80 })).toContain(
+      "119 skills on this Mac",
+    );
+    expect(describeSkillsView("all", snapshot, { visible: 12, available: 80 })).toBe(
+      "12 of 119 skills",
+    );
   });
 });

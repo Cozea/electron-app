@@ -24,6 +24,7 @@ import {
   settingsNativeSelectClass,
 } from "@/features/settings/ui/SettingsChrome";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { appToast } from "@/lib/appToast";
@@ -67,6 +68,7 @@ import {
   MoreHorizontalIcon as __MoreHugeIcon,
   RefreshIcon as __RefreshHugeIcon,
   Share08Icon as __ShareHugeIcon,
+  InformationCircleIcon as __InfoHugeIcon,
   Tick02Icon as __TickHugeIcon,
 } from "@hugeicons/core-free-icons";
 
@@ -256,6 +258,40 @@ const STATUS_FILTERS: ReadonlyArray<{ id: SkillStatusFilter; label: string }> = 
  * sits in its catalog waiting to be installed. Matching only `enabled` hid
  * every installable skill behind the provider rows in the sidebar.
  */
+/**
+ * What the subtitle says under "Agent Skills".
+ *
+ * The two source views are named after where a skill lives, which is not
+ * self-explanatory, so they explain themselves rather than repeating a count
+ * the list beneath already shows.
+ */
+/** Ships with the agent, which restores it, so Cozea cannot manage it. */
+export function isEssentialSkill(skill: AgentSkillRecord): boolean {
+  return skill.bindings.some((binding) => binding.essential);
+}
+
+/** The one sentence shown wherever an essential skill is marked. */
+export const ESSENTIAL_SKILL_NOTE = "Cozea cannot disable or delete it.";
+
+export function describeSkillsView(
+  source: string,
+  snapshot: AgentSkillsSnapshot | null,
+  counts: { visible: number; available: number },
+): string {
+  if (source === "managed") {
+    return "Skills Cozea keeps in its own library. Any agent inside Cozea can use them.";
+  }
+  if (source === "external") {
+    return "Skills that already live in your agents' own folders.";
+  }
+  if (!snapshot) return "Skills available to your agent apps on this Mac";
+  if (counts.visible === snapshot.skills.length) {
+    const total = snapshot.skills.length;
+    return `${total} ${total === 1 ? "skill" : "skills"} on this Mac · ${counts.available} ready to install`;
+  }
+  return `${counts.visible} of ${snapshot.skills.length} skills`;
+}
+
 export function skillMatchesProvider(
   skill: AgentSkillRecord,
   provider: AgentSkillProvider | null,
@@ -474,7 +510,6 @@ interface SkillInspectorProps {
   onUpdate: () => void;
   onInstall: () => void;
   onRemove: () => void;
-  onToggleProvider: (provider: AgentSkillProvider, enabled: boolean) => void;
 }
 
 function SkillInspector({
@@ -487,7 +522,6 @@ function SkillInspector({
   onUpdate,
   onInstall,
   onRemove,
-  onToggleProvider,
 }: SkillInspectorProps) {
   const [instructionsOpen, setInstructionsOpen] = React.useState(false);
   const [copyProvider, setCopyProvider] = React.useState<AgentSkillProvider | null>(null);
@@ -567,7 +601,8 @@ function SkillInspector({
                   {busyKey === "copy" ? "Copying…" : "Copy to my library"}
                 </Button>
               )}
-              {skill.source === "catalog" ? null : (
+              {isEssentialSkill(skill) ? <EssentialTag /> : null}
+              {skill.source === "catalog" || isEssentialSkill(skill) ? null : (
                 <Button
                   variant="destructive-outline"
                   size="sm"
@@ -590,7 +625,8 @@ function SkillInspector({
             <span id="skill-providers-title">Use with</span>
           </SettingsSectionTitle>
           <SettingsSectionDescription>
-            Changes apply to provider apps on this Mac. Other devices keep their own setup.
+            Which providers currently run this skill. Turn skills on and off by activating a
+            build.
           </SettingsSectionDescription>
           <SettingsGroup>
             {skill.bindings.map((binding) => (
@@ -600,16 +636,14 @@ function SkillInspector({
                   description={providerBindingLabel(binding)}
                 />
                 <SettingsRowControl>
-                  {binding.compatible ? (
-                    <Switch
-                      aria-label={`${binding.enabled ? "Disable" : "Enable"} ${skill.name} for ${PROVIDER_LABELS[binding.provider]}`}
-                      checked={binding.enabled}
-                      disabled={busyKey === `provider:${binding.provider}`}
-                      onCheckedChange={(enabled) => onToggleProvider(binding.provider, enabled)}
-                    />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Not compatible</span>
-                  )}
+                  <span
+                    className={cn(
+                      "text-[11px] tracking-[0.1em] uppercase",
+                      binding.enabled ? "text-success" : "text-muted-foreground/70",
+                    )}
+                  >
+                    {binding.enabled ? "On" : "Off"}
+                  </span>
                 </SettingsRowControl>
               </SettingsRow>
             ))}
@@ -881,15 +915,18 @@ export function AgentSkillsPage() {
     }
   }, []);
 
-  React.useEffect(() => {
-    void loadSnapshot();
-  }, [loadSnapshot]);
-
   const query = searchParams.get("q") ?? "";
   const source = searchParams.get("source") ?? "all";
   const provider = searchParams.get("provider") as AgentSkillProvider | null;
   const status = (searchParams.get("status") ?? "all") as SkillStatusFilter;
   const view = searchParams.get("view") ?? "skills";
+
+  // Keyed by view, not just mount: Builds switches skills on and off, and this
+  // component only early-returns for it rather than unmounting. Loading once
+  // would leave the library showing the state from before a build was applied.
+  React.useEffect(() => {
+    void loadSnapshot();
+  }, [loadSnapshot, view]);
 
   /**
    * Everything the sidebar and search allow through, before the status filter.
@@ -1002,17 +1039,6 @@ export function AgentSkillsPage() {
       }
     },
     [acceptMutation],
-  );
-
-  const handleToggleSkill = React.useCallback(
-    async (skill: AgentSkillRecord, enabled: boolean) => {
-      await runMutation(
-        `enabled:${skill.id}`,
-        () => window.electronAPI.agentSkills.setEnabled({ skillId: skill.id, enabled }),
-        enabled ? `${skill.name} enabled` : `${skill.name} disabled`,
-      );
-    },
-    [runMutation],
   );
 
   /**
@@ -1147,20 +1173,6 @@ export function AgentSkillsPage() {
         onUpdate={() => void handleUpdate(selectedSkill)}
         onInstall={() => void handleInstall(selectedSkill)}
         onRemove={() => void handleRemove()}
-        onToggleProvider={(providerId, enabled) => {
-          void runMutation(
-            `provider:${providerId}`,
-            () =>
-              window.electronAPI.agentSkills.setProviderEnabled({
-                skillId: selectedSkill.id,
-                provider: providerId,
-                enabled,
-              }),
-            enabled
-              ? `Enabled for ${PROVIDER_LABELS[providerId]}`
-              : `Disabled for ${PROVIDER_LABELS[providerId]}`,
-          );
-        }}
       />
     );
   }
@@ -1198,13 +1210,10 @@ export function AgentSkillsPage() {
           ) : null}
           <SettingsPageHeader
             title="Agent Skills"
-            description={
-              snapshot
-                ? visibleSkills.length === snapshot.skills.length
-                  ? `${snapshot.skills.length} ${snapshot.skills.length === 1 ? "skill" : "skills"} on this Mac · ${statusCounts.available} ready to install`
-                  : `${visibleSkills.length} of ${snapshot.skills.length} skills`
-                : "Skills available to your agent apps on this Mac"
-            }
+            description={describeSkillsView(source, snapshot, {
+              visible: visibleSkills.length,
+              available: statusCounts.available,
+            })}
             className="mb-0 min-w-0 text-center"
           />
           <div className="absolute top-0 right-0 flex shrink-0 items-center gap-1.5">
@@ -1386,13 +1395,19 @@ export function AgentSkillsPage() {
                           <HugeiconsIcon icon={__DownloadHugeIcon} className="size-3" />
                           {installing ? "Installing…" : "Install"}
                         </Button>
+                      ) : isEssentialSkill(skill) ? (
+                        <EssentialTag />
                       ) : (
-                        <Switch
-                          checked={enabled}
-                          disabled={busyKey === `enabled:${skill.id}`}
-                          aria-label={`${enabled ? "Disable" : "Enable"} ${skill.name}`}
-                          onCheckedChange={(next) => void handleToggleSkill(skill, next)}
-                        />
+                        // Read-only: builds decide what is on, so the library
+                        // reports state rather than offering to change it.
+                        <span
+                          className={cn(
+                            "text-[11px] tracking-[0.1em] uppercase",
+                            enabled ? "text-success" : "text-muted-foreground/70",
+                          )}
+                        >
+                          {enabled ? "On" : "Off"}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1402,6 +1417,30 @@ export function AgentSkillsPage() {
         )}
       </section>
     </div>
+  );
+}
+
+/** The mark shown wherever a skill is Cozea's to list but not to manage. */
+function EssentialTag() {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      <span className="text-[11px] tracking-[0.1em] text-muted-foreground/70 uppercase">
+        Essential
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            tabIndex={0}
+            role="note"
+            aria-label={ESSENTIAL_SKILL_NOTE}
+            className="flex size-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
+          >
+            <HugeiconsIcon icon={__InfoHugeIcon} className="size-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{ESSENTIAL_SKILL_NOTE}</TooltipContent>
+      </Tooltip>
+    </span>
   );
 }
 

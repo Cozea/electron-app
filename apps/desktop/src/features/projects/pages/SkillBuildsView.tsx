@@ -1,10 +1,12 @@
 import * as React from "react";
 
+import { Logo } from "@/components/Logo";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SettingsPageBody, SettingsPageHeader } from "@/features/settings/ui/SettingsChrome";
 import { appToast } from "@/lib/appToast";
 import { ensureNativeApi } from "@/lib/nativeApi";
+import { useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import {
   ClaudeAI,
@@ -15,6 +17,7 @@ import {
 } from "@/features/assistant/Icons";
 import {
   conciseDescription,
+  ESSENTIAL_SKILL_NOTE,
   prettifySkillName,
 } from "@/features/projects/pages/AgentSkillsPage";
 import {
@@ -35,15 +38,62 @@ import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   ArrowRight01Icon as __ArrowRightHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
-  Edit02Icon as __EditHugeIcon,
   FlashIcon as __FlashHugeIcon,
   Search01Icon as __SearchHugeIcon,
+  InformationCircleIcon as __InfoHugeIcon,
   Tick02Icon as __TickHugeIcon,
 } from "@hugeicons/core-free-icons";
 
-/** A build can only hold skills that are actually installed. */
-export function installedSkills(skills: readonly AgentSkillRecord[]): AgentSkillRecord[] {
-  return skills.filter((skill) => skill.source !== "catalog");
+/**
+ * Everything a build can draw on: what is installed, plus what the providers'
+ * own catalogs offer.
+ *
+ * Catalog entries are on disk but not loaded by the provider yet, so ticking
+ * one installs it first. Leaving them out made the plates read far lower than
+ * the provider actually has available.
+ */
+export function buildableSkills(skills: readonly AgentSkillRecord[]): AgentSkillRecord[] {
+  return [...skills];
+}
+
+/**
+ * Ships with the provider and is restored by it, so Cozea cannot switch it
+ * off. These are reported, not offered — a tick would be a promise the
+ * filesystem does not keep.
+ */
+export function isEssential(skill: AgentSkillRecord): boolean {
+  return skill.bindings.some((binding) => binding.essential);
+}
+
+/** Splits a bucket into the skills a build controls and the ones it cannot. */
+export function partitionEssential(skills: readonly AgentSkillRecord[]): {
+  choosable: AgentSkillRecord[];
+  essential: AgentSkillRecord[];
+} {
+  return {
+    choosable: skills.filter((skill) => !isEssential(skill)),
+    essential: skills.filter(isEssential),
+  };
+}
+
+/**
+ * How many skills this provider always runs, whatever the build says.
+ *
+ * The plates would otherwise report a Cursor that runs one skill while it
+ * actually loads two dozen, because the ones it restores are not in any build.
+ */
+export function providerEssentialCount(
+  skills: readonly AgentSkillRecord[],
+  provider: AgentSkillProvider,
+): number {
+  return skills.filter((skill) =>
+    skill.bindings.some((binding) => binding.provider === provider && binding.essential),
+  ).length;
+}
+
+/** Whether ticking this skill has to install it before the build can hold it. */
+export function needsInstall(skill: AgentSkillRecord): boolean {
+  return skill.source === "catalog";
 }
 
 /** Skills a build names, in library order, ignoring ones that have gone. */
@@ -97,32 +147,85 @@ export const BUILD_PROVIDER_ORDER: AgentSkillProvider[] = [
 ];
 
 /**
- * Which of a build's skills each provider would actually run.
+ * Whether a provider actually carries this skill.
  *
- * Compatibility, not current state: a build describes what you want on, and a
- * skill that is not compatible with a provider can never be part of what that
- * provider runs, whether the build is equipped or not.
+ * Not `compatible`: every skill is marked compatible with every provider (a
+ * SKILL.md is portable), so compatibility cannot tell the providers apart —
+ * it made all four plates show the same number. Ownership is where the skill
+ * is really installed, which is what the hub is asking about.
  */
+function providerOwns(skill: AgentSkillRecord, provider: AgentSkillProvider): boolean {
+  return skill.bindings.some(
+    (binding) =>
+      binding.provider === provider &&
+      // Installed for this provider, or offered by its own catalog — both are
+      // skills this provider can run, which is what a plate is counting.
+      (binding.ownership !== "none" || binding.available === true),
+  );
+}
+
+/**
+ * The Cozea skills: the ones in your own library.
+ *
+ * A library skill is installed *into* providers, so it reaches their folders
+ * too — but it belongs here. The buckets partition the build by whose skill
+ * it is, so nothing is listed on two pages.
+ */
+export function cozeaSkills(loadout: readonly AgentSkillRecord[]): AgentSkillRecord[] {
+  return loadout.filter((skill) => skill.source === "managed");
+}
+
+/**
+ * A provider's own skills inside a build: everything it has any relationship
+ * with, on or off, minus the library.
+ *
+ * Deliberately broad. Activating a build disables what it leaves out, and a
+ * disabled skill still belongs to its provider — if this narrowed to what is
+ * currently switched on, a build's own contents would vanish from the plate
+ * the moment it was activated.
+ */
+export function providerLoadout(
+  loadout: readonly AgentSkillRecord[],
+  provider: AgentSkillProvider,
+): AgentSkillRecord[] {
+  return loadout.filter((skill) => skill.source !== "managed" && providerOwns(skill, provider));
+}
+
+/**
+ * What a provider's page offers to pick from: the skills it can run right now
+ * — loaded, or offered by its catalog — matching the Agent Skills page, so the
+ * two screens agree on how many skills a provider has.
+ *
+ * Skills the build already holds are always included even when switched off,
+ * so nothing it carries can become impossible to untick.
+ */
+export function providerCandidates(
+  skills: readonly AgentSkillRecord[],
+  provider: AgentSkillProvider,
+  held: ReadonlySet<string>,
+): AgentSkillRecord[] {
+  return skills.filter(
+    (skill) =>
+      skill.source !== "managed" &&
+      skill.bindings.some(
+        (binding) =>
+          binding.provider === provider &&
+          (binding.enabled ||
+            binding.available === true ||
+            (held.has(skill.id) && binding.ownership !== "none")),
+      ),
+  );
+}
+
+/** How many skills each provider carries, in a stable order. */
 export function providerSkillCounts(
   loadout: readonly AgentSkillRecord[],
 ): Array<{ provider: AgentSkillProvider; label: string; count: number }> {
   return BUILD_PROVIDER_ORDER.map((provider) => ({
     provider,
     label: BUILD_PROVIDER_LABELS[provider],
-    count: loadout.filter((skill) =>
-      skill.bindings.some((binding) => binding.provider === provider && binding.compatible),
-    ).length,
+    count: providerLoadout(loadout, provider).length,
   }));
-}
-
-/** The part of a build one provider runs, ready to group by category. */
-export function providerLoadout(
-  loadout: readonly AgentSkillRecord[],
-  provider: AgentSkillProvider,
-): AgentSkillRecord[] {
-  return loadout.filter((skill) =>
-    skill.bindings.some((binding) => binding.provider === provider && binding.compatible),
-  );
 }
 
 /**
@@ -158,12 +261,14 @@ export function filterPickerSkills(
 }
 
 export function SkillBuildsView() {
+  const [searchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
   const [snapshot, setSnapshot] = React.useState<AgentSkillsSnapshot | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [selectedBuildId, setSelectedBuildId] = React.useState<string | null>(null);
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
-  const [openProvider, setOpenProvider] = React.useState<AgentSkillProvider | null>(null);
+  const [openDetail, setOpenDetail] = React.useState<AgentSkillProvider | "cozea" | null>(null);
   const [draftName, setDraftName] = React.useState("");
   const [draftSkillIds, setDraftSkillIds] = React.useState<string[]>([]);
 
@@ -187,7 +292,11 @@ export function SkillBuildsView() {
   }, [load]);
 
   const runMutation = React.useCallback(
-    async (key: string, operation: () => Promise<AgentSkillMutationResult>, success: string) => {
+    async (
+      key: string,
+      operation: () => Promise<AgentSkillMutationResult>,
+      success: string | null,
+    ) => {
       setBusyKey(key);
       try {
         const result = await operation();
@@ -203,7 +312,7 @@ export function SkillBuildsView() {
             // The runtime's periodic provider snapshot converges anyway.
           }
         }
-        appToast.success({ title: success });
+        if (success) appToast.success({ title: success });
         return result;
       } catch (error) {
         appToast.error({
@@ -218,7 +327,7 @@ export function SkillBuildsView() {
     [],
   );
 
-  const skills = React.useMemo(() => installedSkills(snapshot?.skills ?? []), [snapshot]);
+  const skills = React.useMemo(() => buildableSkills(snapshot?.skills ?? []), [snapshot]);
   const builds = snapshot?.builds ?? [];
   const selectedBuild = builds.find((build) => build.id === selectedBuildId) ?? null;
   const loadout = React.useMemo(
@@ -226,19 +335,107 @@ export function SkillBuildsView() {
     [selectedBuild, skills],
   );
 
-  const startEditing = React.useCallback((build: AgentSkillBuild | null) => {
+  /** Builds are created and deleted, not edited: this always opens blank. */
+  const startEditing = React.useCallback(() => {
     setIsEditing(true);
-    setOpenProvider(null);
-    setDraftName(build?.name ?? "");
-    setDraftSkillIds(build?.skillIds ?? []);
+    setOpenDetail(null);
+    setDraftName("");
+    setDraftSkillIds([]);
   }, []);
+
+  /**
+   * Add or drop one skill on the open build. Deliberately silent: a bucket
+   * page is a checklist, and a toast per tick would bury the screen.
+   */
+  const toggleBuildSkill = React.useCallback(
+    async (skillId: string) => {
+      if (!selectedBuild) return;
+
+      // A catalog entry sits on disk unloaded, so it has to be installed
+      // before a build can switch it on. Its id changes once installed, so
+      // resolve the new record before writing the build.
+      const candidate = skills.find((skill) => skill.id === skillId);
+      let targetId = skillId;
+      if (candidate && needsInstall(candidate)) {
+        const installed = await runMutation(
+          `toggle:${skillId}`,
+          () => window.electronAPI.agentSkills.install({ skillId }),
+          `${prettifySkillName(candidate.name)} installed`,
+        );
+        if (!installed?.success) return;
+        targetId =
+          installed.skillId ??
+          installed.snapshot.skills.find((skill) => skill.slug === candidate.slug)?.id ??
+          skillId;
+      }
+
+      const skillIds = selectedBuild.skillIds.includes(targetId)
+        ? selectedBuild.skillIds.filter((held) => held !== targetId)
+        : [...selectedBuild.skillIds, targetId];
+      const isActive = snapshot?.activeBuildId === selectedBuild.id;
+      const saved = await runMutation(
+        `toggle:${skillId}`,
+        () =>
+          window.electronAPI.agentSkills.saveBuild({
+            buildId: selectedBuild.id,
+            name: selectedBuild.name,
+            skillIds,
+          }),
+        null,
+      );
+      // `saveBuild` only records the build; it does not touch what is enabled
+      // on disk. Editing the active build would therefore leave the providers
+      // holding the previous set, so re-apply it here to keep them honest.
+      if (saved?.success && isActive) {
+        await runMutation(
+          `toggle:${skillId}`,
+          () => window.electronAPI.agentSkills.applyBuild({ buildId: selectedBuild.id }),
+          null,
+        );
+      }
+    },
+    [runMutation, selectedBuild, skills, snapshot],
+  );
+
+  /** Deleting a build is destructive and unlabelled once gone: ask first. */
+  const confirmDeleteBuild = React.useCallback(
+    async (build: AgentSkillBuild) => {
+      const result = await window.electronAPI.dialog.showMessageBox({
+        type: "warning",
+        title: "Delete build",
+        message: `Delete “${build.name}”?`,
+        detail:
+          "The build is removed. The skills in it stay installed, and nothing is turned on or off by deleting it.",
+        buttons: ["Delete", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      if (result.response !== 0) return;
+      const mutation = await runMutation(
+        `delete:${build.id}`,
+        () => window.electronAPI.agentSkills.deleteBuild({ buildId: build.id }),
+        "Build deleted",
+      );
+      // The hub renders nothing without a selection, so hand the page to a
+      // surviving build rather than leaving it blank on the one just deleted.
+      if (mutation?.success) {
+        setSelectedBuildId((current) =>
+          current === build.id
+            ? (mutation.snapshot.activeBuildId ?? mutation.snapshot.builds[0]?.id ?? null)
+            : current,
+        );
+        setOpenDetail(null);
+      }
+    },
+    [runMutation],
+  );
 
   const saveDraft = React.useCallback(async () => {
     const result = await runMutation(
       "save",
       () =>
         window.electronAPI.agentSkills.saveBuild({
-          ...(selectedBuild && draftName !== "" ? { buildId: selectedBuild.id } : {}),
           name: draftName,
           skillIds: draftSkillIds,
         }),
@@ -248,37 +445,22 @@ export function SkillBuildsView() {
       if (result.skillId) setSelectedBuildId(result.skillId);
       setIsEditing(false);
     }
-  }, [draftName, draftSkillIds, runMutation, selectedBuild]);
+  }, [draftName, draftSkillIds, runMutation]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <SettingsPageBody className="max-w-5xl shrink-0 space-y-5 pb-4">
-        <div className="relative flex items-start justify-center gap-4">
-          <SettingsPageHeader
-            title="Builds"
-            description={
-              snapshot
-                ? `${builds.length} ${builds.length === 1 ? "build" : "builds"} · ${skills.length} skills to draw from`
-                : "Saved skill loadouts"
-            }
-            className="mb-0 min-w-0 text-center"
-          />
-          <div className="absolute top-0 right-0 flex shrink-0 items-center gap-1.5">
-            <Button
-              size="sm"
-              onClick={() => {
-                setSelectedBuildId(null);
-                startEditing(null);
-              }}
-            >
-              <HugeiconsIcon icon={__AddHugeIcon} />
-              New build
-            </Button>
-          </div>
-        </div>
-      </SettingsPageBody>
-
-      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-8 pb-5 sm:px-10">
+    <div
+      style={HUB_TOKENS}
+      className={cn(
+        "relative flex h-full min-h-0 flex-col",
+        // The lit field is the page, not a panel inside it: it rises toward
+        // the middle and falls away at the edges, which is what makes the
+        // plates sitting on it read as raised.
+        "bg-[radial-gradient(120%_95%_at_50%_40%,color-mix(in_oklch,var(--foreground)_7%,var(--background))_0%,var(--background)_62%)]",
+        "after:pointer-events-none after:absolute after:inset-0 after:z-[4] after:content-['']",
+        "after:bg-[radial-gradient(76%_64%_at_50%_46%,transparent_46%,color-mix(in_oklch,var(--foreground)_7%,transparent)_100%)]",
+      )}
+    >
+      <div className="relative z-[5] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-8 pt-6 pb-5 sm:px-10">
         {loadError ? (
           <p className="p-6 text-sm text-destructive">{loadError}</p>
         ) : isEditing ? (
@@ -303,57 +485,68 @@ export function SkillBuildsView() {
           </section>
         ) : builds.length === 0 ? (
           <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-border/50 bg-card/40">
-            <EmptyBuilds onCreate={() => startEditing(null)} />
+            <EmptyBuilds onCreate={() => startEditing()} />
           </section>
         ) : selectedBuild ? (
           <>
-            {openProvider ? (
-              <ProviderSheet
-                provider={openProvider}
-                total={providerLoadout(loadout, openProvider).length}
-                groups={loadoutByCategory(providerLoadout(loadout, openProvider))}
-                onBack={() => setOpenProvider(null)}
+            {openDetail ? (
+              <DetailSheet
+                detail={openDetail}
+                candidates={filterPickerSkills(
+                  openDetail === "cozea"
+                    ? cozeaSkills(skills)
+                    : providerCandidates(skills, openDetail, new Set(selectedBuild.skillIds)),
+                  query,
+                  null,
+                )}
+                buildSkillIds={selectedBuild.skillIds}
+                busySkillId={busyKey?.startsWith("toggle:") ? busyKey.slice(7) : null}
+                onToggle={(skillId) => void toggleBuildSkill(skillId)}
+                onSwitch={(direction) =>
+                  setOpenDetail((current) => (current ? stepDetail(current, direction) : current))
+                }
+                onBack={() => setOpenDetail(null)}
               />
             ) : (
               <ProviderHub
                 build={selectedBuild}
                 loadout={loadout}
+                skills={skills}
                 isActive={snapshot?.activeBuildId === selectedBuild.id}
                 busyKey={busyKey}
-                onOpenProvider={setOpenProvider}
-                onEdit={() => startEditing(selectedBuild)}
-                onDelete={() =>
-                  void runMutation(
-                    `delete:${selectedBuild.id}`,
-                    () =>
-                      window.electronAPI.agentSkills.deleteBuild({ buildId: selectedBuild.id }),
-                    "Build deleted",
-                  )
-                }
+                onOpenProvider={setOpenDetail}
+                onOpenShared={() => setOpenDetail("cozea")}
                 onEquip={() =>
                   void runMutation(
                     `apply:${selectedBuild.id}`,
                     () => window.electronAPI.agentSkills.applyBuild({ buildId: selectedBuild.id }),
-                    `${selectedBuild.name} equipped`,
+                    `${selectedBuild.name} activated`,
                   )
                 }
               />
             )}
 
-            <BuildStrip
-              builds={builds}
-              activeBuildId={snapshot?.activeBuildId ?? null}
-              selectedBuildId={selectedBuildId}
-              onSelect={(id) => {
-                setSelectedBuildId(id);
-                setIsEditing(false);
-                setOpenProvider(null);
-              }}
-              onCreate={() => {
-                setSelectedBuildId(null);
-                startEditing(null);
-              }}
-            />
+            {/* The strip picks which build you are looking at, which is only
+                a question on the hub. Inside a bucket page it is noise, and
+                switching builds under an open page would be disorienting. */}
+            {openDetail ? null : (
+              <BuildStrip
+                builds={builds}
+                activeBuildId={snapshot?.activeBuildId ?? null}
+                selectedBuildId={selectedBuildId}
+                busyKey={busyKey}
+                onDelete={(build) => void confirmDeleteBuild(build)}
+                onSelect={(id) => {
+                  setSelectedBuildId(id);
+                  setIsEditing(false);
+                  setOpenDetail(null);
+                }}
+                onCreate={() => {
+                  setSelectedBuildId(null);
+                  startEditing();
+                }}
+              />
+            )}
           </>
         ) : null}
       </div>
@@ -361,268 +554,600 @@ export function SkillBuildsView() {
   );
 }
 
-/** Elongated hexagon, the shape a loadout node wants to be. */
-const NODE_HEX = "polygon(12% 0,88% 0,100% 50%,88% 100%,12% 100%,0 50%)";
+/**
+ * The hub is laid out in a fixed 900x560 coordinate space and then expressed
+ * in percentages, so the whole diagram scales with the pane while the
+ * hairlines stay 1px (`vector-effect: non-scaling-stroke`).
+ */
+const HUB_W = 900;
+const HUB_H = 560;
 
-/** Where each provider sits on the stage, as a percentage of it. */
-const NODE_POSITIONS: Array<{ left: string; top: string }> = [
-  { left: "26%", top: "28%" },
-  { left: "74%", top: "28%" },
-  { left: "26%", top: "78%" },
-  { left: "74%", top: "78%" },
-];
+const pctX = (value: number) => `${(value / HUB_W) * 100}%`;
+const pctY = (value: number) => `${(value / HUB_H) * 100}%`;
 
 /**
- * The loadout screen: the build at the centre, each provider a node around it
+ * One seat in the ring. `d` is drawn in the node's own box, so each silhouette
+ * chamfers the corners that face the core — the ring reads as one machined
+ * plate rather than four identical cards.
+ */
+interface HubSlot {
+  d: string;
+  w: number;
+  h: number;
+  x: number;
+  y: number;
+  edge: "top" | "left" | "right" | "bottom";
+}
+
+const HUB_SLOTS: HubSlot[] = [
+  { edge: "top", w: 300, h: 120, x: 450, y: 68, d: "M40 1 H260 L299 27 V119 H1 V27 Z" },
+  { edge: "left", w: 280, h: 132, x: 145, y: 280, d: "M40 1 H279 V101 L239 131 H1 V31 Z" },
+  { edge: "right", w: 280, h: 132, x: 755, y: 280, d: "M1 1 H239 L279 31 V131 H41 L1 101 Z" },
+  { edge: "bottom", w: 300, h: 120, x: 450, y: 492, d: "M1 1 H299 V93 L260 119 H40 L1 93 Z" },
+];
+
+/** Decorative part codes, the way a machined panel carries a stamp. */
+const HUB_STAMP = "8W7F1 1A1T1 21TRG";
+
+/**
+ * Structure colours are derived from the theme's foreground rather than fixed,
+ * so the diagram re-skins with the app instead of carrying its own palette.
+ */
+const HUB_TOKENS = {
+  "--hub-ln": "color-mix(in oklch, var(--foreground) 20%, transparent)",
+  "--hub-ln-hi": "color-mix(in oklch, var(--foreground) 45%, transparent)",
+  "--hub-fill": "color-mix(in oklch, var(--foreground) 4%, transparent)",
+  "--hub-fill-hi": "color-mix(in oklch, var(--foreground) 8%, transparent)",
+  "--hub-trace": "color-mix(in oklch, var(--foreground) 15%, transparent)",
+  "--hub-micro": "color-mix(in oklch, var(--foreground) 32%, transparent)",
+} as React.CSSProperties;
+
+/**
+ * The loadout screen: the build at the centre, each provider a plate around it
  * carrying the number of that build's skills it would run, joined by traces.
- * Clicking a node opens what that provider actually gets.
+ * Clicking a plate opens what that provider actually gets.
  */
 function ProviderHub({
   build,
   loadout,
+  skills,
   isActive,
   busyKey,
   onOpenProvider,
-  onEdit,
-  onDelete,
+  onOpenShared,
   onEquip,
 }: {
   build: AgentSkillBuild;
   loadout: AgentSkillRecord[];
+  skills: AgentSkillRecord[];
   isActive: boolean;
   busyKey: string | null;
   onOpenProvider: (provider: AgentSkillProvider) => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  onOpenShared: () => void;
   onEquip: () => void;
 }) {
   const counts = providerSkillCounts(loadout);
+  const shared = cozeaSkills(loadout);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-center justify-end gap-1.5 px-1 pb-1">
-        <Button variant="ghost" size="sm" onClick={onEdit}>
-          <HugeiconsIcon icon={__EditHugeIcon} />
-          Edit
-        </Button>
-        <Button
-          variant="destructive-outline"
-          size="sm"
-          onClick={onDelete}
-          disabled={busyKey === `delete:${build.id}`}
-        >
-          <HugeiconsIcon icon={__DeleteHugeIcon} />
-          Delete
-        </Button>
-        <Button size="sm" onClick={onEquip} disabled={isActive || busyKey === `apply:${build.id}`}>
-          <HugeiconsIcon icon={isActive ? __TickHugeIcon : __FlashHugeIcon} />
-          {busyKey === `apply:${build.id}` ? "Equipping…" : isActive ? "Equipped" : "Equip build"}
-        </Button>
+      {/* The build names the page: centred like any page title, with the one
+          action that belongs to the whole build parked on the right. No
+          status badge — that button already reads "Activated" when active. */}
+      <header className="relative flex shrink-0 items-center justify-center px-1 pb-3">
+        <h1 className="max-w-[60%] truncate text-2xl font-bold tracking-tight text-foreground">
+          {build.name}
+        </h1>
+        <div className="absolute top-1/2 right-0 -translate-y-1/2">
+          <Button
+            size="sm"
+            onClick={onEquip}
+            disabled={isActive || busyKey === `apply:${build.id}`}
+          >
+            {busyKey === `apply:${build.id}`
+              ? "Activating…"
+              : isActive
+                ? "Activated"
+                : "Activate build"}
+          </Button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 items-center justify-center">
-        <div className="relative aspect-[1/0.62] w-full max-w-[640px]">
-          {/* Traces from the core to each node, drawn behind them. */}
-          <svg
-            viewBox="0 0 100 62"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            className="absolute inset-0 size-full overflow-visible"
+        <div
+          className={cn(
+            // Sized by the height it is given, not the width: a fixed-ratio
+            // box driven by `w-full` overflows a short pane instead of
+            // shrinking (measured: 117px over at a 620px pane). The lit field
+            // it used to carry is now the page's, so this box is transparent.
+            "relative h-full max-h-[560px] w-auto max-w-full",
+            "aspect-[900/560]",
+          )}
+        >
+          <HubTraces />
+
+          {counts.map((node, index) => {
+            const slot = HUB_SLOTS[index];
+            if (!slot) return null;
+            return (
+              <ProviderNode
+                key={node.provider}
+                node={node}
+                slot={slot}
+                essential={providerEssentialCount(skills, node.provider)}
+                onClick={onOpenProvider}
+              />
+            );
+          })}
+
+          {/* The core plate: what every provider carries, on top of the traces. */}
+          <button
+            type="button"
+            onClick={() => onOpenShared()}
+            aria-label={`Cozea skills: ${shared.length} carried by every provider`}
+            className="group absolute top-1/2 left-1/2 z-[2] aspect-square w-[20.6%] -translate-x-1/2 -translate-y-1/2 cursor-pointer"
           >
-            <defs>
-              <linearGradient id="cozea-build-trace" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="currentColor" stopOpacity="0.05" />
-                <stop offset="0.5" stopColor="currentColor" stopOpacity="0.3" />
-                <stop offset="1" stopColor="currentColor" stopOpacity="0.05" />
-              </linearGradient>
-            </defs>
-            <g
-              className="text-foreground"
-              stroke="url(#cozea-build-trace)"
-              strokeWidth="0.5"
-              fill="none"
-            >
-              <path d="M50 31 L26 17" />
-              <path d="M50 31 L74 17" />
-              <path d="M50 31 L26 48" />
-              <path d="M50 31 L74 48" />
-            </g>
-          </svg>
-
-          {counts.map((node, index) => (
-            <ProviderNode
-              key={node.provider}
-              node={node}
-              position={NODE_POSITIONS[index]!}
-              isActive={isActive}
-              onClick={onOpenProvider}
+            <span
+              className={cn(
+                "absolute inset-0 rotate-45 rounded-[3px] border border-[var(--hub-ln-hi)] transition-colors",
+                "bg-[linear-gradient(150deg,color-mix(in_oklch,var(--foreground)_10%,var(--background)),color-mix(in_oklch,var(--foreground)_3%,var(--background)))]",
+                "shadow-[0_0_28px_color-mix(in_oklch,var(--foreground)_8%,transparent)]",
+                "group-hover:border-foreground/60",
+              )}
             />
-          ))}
-
-          {/* The core plate, carrying the build's total. */}
-          <div className="absolute top-1/2 left-1/2 size-[160px] -translate-x-1/2 -translate-y-1/2">
-            <div className="absolute inset-0 rotate-45 rounded-[14px] border border-foreground/25 bg-[linear-gradient(160deg,var(--card),color-mix(in_oklch,var(--card)_60%,black))] after:absolute after:inset-[5px] after:rounded-[10px] after:border after:border-foreground/[0.07] after:content-['']" />
-            <div className="absolute inset-0 flex flex-col items-center justify-center px-3.5">
-              <span className="line-clamp-2 text-center text-[13px] leading-[1.25] font-medium text-foreground">
-                {build.name}
+            <span className="absolute inset-[12%] rotate-45 rounded-[2px] border border-[var(--hub-ln)] opacity-55" />
+            {/* Same arrangement as a provider plate — name, then mark and
+                count — so the core reads as one of the family, just bigger. */}
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-[8%]">
+              <span className="text-[11px] tracking-[0.16em] text-muted-foreground uppercase transition-colors group-hover:text-foreground">
+                Cozea
               </span>
-              <span className="mt-1.5 text-[8.5px] tracking-[0.2em] whitespace-nowrap text-muted-foreground/60">
-                {loadout.length} {loadout.length === 1 ? "SKILL" : "SKILLS"}
+              <span className="flex items-center gap-2.5">
+                <Logo size={22} className="shrink-0 opacity-90" />
+                <span
+                  className={cn(
+                    "text-[26px] leading-none font-medium tabular-nums text-foreground",
+                    shared.length === 0 && "opacity-45",
+                  )}
+                >
+                  {shared.length}
+                </span>
               </span>
-            </div>
-          </div>
-
-            {isActive ? (
-              <p className="absolute top-[calc(50%+120px)] left-1/2 -translate-x-1/2 text-[9px] tracking-[0.18em] whitespace-nowrap text-emerald-500">
-                EQUIPPED
-              </p>
-            ) : null}
+            </span>
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Circuit routes from the core out to each plate, drawn behind them. */
+function HubTraces() {
+  return (
+    <svg
+      viewBox={`0 0 ${HUB_W} ${HUB_H}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="absolute inset-0 z-[1] size-full"
+    >
+      <g stroke="var(--hub-trace)" strokeWidth="1.1" fill="none" vectorEffect="non-scaling-stroke">
+        <path d="M450 128 V150" />
+        <path d="M436 128 V142 H406" />
+        <path d="M464 128 V142 H494" />
+        <path d="M450 410 V432" />
+        <path d="M436 432 V418 H406" />
+        <path d="M464 432 V418 H494" />
+        <path d="M285 264 H316" />
+        <path d="M285 246 H300 V226" />
+        <path d="M285 298 H300 V318" />
+        <path d="M615 264 H584" />
+        <path d="M615 246 H600 V226" />
+        <path d="M615 298 H600 V318" />
+        <path d="M300 188 H352 L390 150" />
+        <path d="M600 188 H548 L510 150" />
+        <path d="M300 374 H352 L390 412" />
+        <path d="M600 374 H548 L510 412" />
+      </g>
+      <g fill="var(--hub-trace)">
+        <rect x="402" y="139" width="9" height="5" />
+        <rect x="491" y="139" width="9" height="5" />
+        <rect x="402" y="415" width="9" height="5" />
+        <rect x="491" y="415" width="9" height="5" />
+        <rect x="297" y="222" width="5" height="9" />
+        <rect x="597" y="222" width="5" height="9" />
+        <rect x="297" y="316" width="5" height="9" />
+        <rect x="597" y="316" width="5" height="9" />
+      </g>
+    </svg>
   );
 }
 
 function ProviderNode({
   node,
-  position,
-  isActive,
+  slot,
+  essential,
   onClick,
 }: {
   node: { provider: AgentSkillProvider; label: string; count: number };
-  position: { left: string; top: string };
-  isActive: boolean;
+  slot: HubSlot;
+  essential: number;
   onClick: (provider: AgentSkillProvider) => void;
 }) {
   const isEmpty = node.count === 0;
+  const stampVertical = slot.edge === "left" || slot.edge === "right";
+
   return (
     <button
       type="button"
-      style={position}
       onClick={() => onClick(node.provider)}
-      disabled={isEmpty}
-      aria-label={`${node.label}: ${node.count} skills`}
-      className="group absolute h-[74px] w-[168px] -translate-x-1/2 -translate-y-1/2"
+      aria-label={`${node.label}: ${node.count} skills in this build`}
+      style={{
+        left: pctX(slot.x),
+        top: pctY(slot.y),
+        width: pctX(slot.w),
+        height: pctY(slot.h),
+      }}
+      className="group absolute z-[2] -translate-x-1/2 -translate-y-1/2 cursor-pointer"
     >
-      {/* Two stacked hexagons: the outer is the hairline, the inner the fill.
-          A clip-path cannot take a border, so the border is a layer. */}
-      <span
-        style={{ clipPath: NODE_HEX }}
-        className={cn(
-          "absolute inset-0 transition-colors",
-          isEmpty
-            ? "bg-foreground/[0.09]"
-            : isActive
-              ? "bg-emerald-500/60 group-hover:bg-emerald-500/80"
-              : "bg-foreground/25 group-hover:bg-foreground/50",
-        )}
-      />
-      <span
-        style={{ clipPath: NODE_HEX }}
-        className={cn(
-          "absolute inset-[1.5px]",
-          isEmpty
-            ? "bg-background/60"
-            : "bg-[linear-gradient(180deg,var(--card),color-mix(in_oklch,var(--card)_70%,black))]",
-        )}
-      />
-      <span
-        className={cn(
-          "relative z-10 flex h-full flex-col items-center justify-center gap-px",
-          isEmpty && "opacity-40",
-        )}
+      <svg
+        viewBox={`0 0 ${slot.w} ${slot.h}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        className="absolute inset-0 size-full drop-shadow-[0_0_10px_color-mix(in_oklch,var(--foreground)_5%,transparent)]"
       >
-        <span className="text-[9.5px] tracking-[0.18em] text-muted-foreground uppercase">
+        <path
+          d={slot.d}
+          fill="var(--hub-fill)"
+          stroke="var(--hub-ln)"
+          strokeWidth="1.25"
+          vectorEffect="non-scaling-stroke"
+          className="transition-[fill,stroke] duration-150 group-hover:fill-[var(--hub-fill-hi)] group-hover:stroke-[var(--hub-ln-hi)]"
+        />
+      </svg>
+
+      <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+        <span className="text-[11px] tracking-[0.16em] text-muted-foreground uppercase transition-colors group-hover:text-foreground">
           {node.label}
         </span>
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-2.5">
           <ProviderMark provider={node.provider} />
-          <span className="text-[22px] leading-none font-semibold tabular-nums text-foreground">
+          <span
+            className={cn(
+              "text-[22px] leading-none font-medium tabular-nums text-foreground",
+              isEmpty && "opacity-45",
+            )}
+          >
             {node.count}
           </span>
+          {/* Always on, whatever the build holds, so it is shown apart from
+              the count rather than folded into it. */}
+          {essential > 0 ? (
+            <span
+              className="text-[12px] leading-none tabular-nums text-muted-foreground"
+              title={`${essential} essential ${essential === 1 ? "skill" : "skills"} always on`}
+            >
+              +{essential}
+            </span>
+          ) : null}
         </span>
+      </span>
+
+      {/* A clip straddling the edge that faces the core, and a stamped code. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute border border-[var(--hub-ln)] bg-background opacity-90",
+          slot.edge === "top" && "bottom-[-4px] left-[42%] h-[7px] w-[16%]",
+          slot.edge === "bottom" && "top-[-4px] left-[42%] h-[7px] w-[16%]",
+          slot.edge === "left" && "top-[42%] right-[-4px] h-[22px] w-[8px]",
+          slot.edge === "right" && "top-[42%] left-[-4px] h-[22px] w-[8px]",
+        )}
+      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute font-mono text-[6.5px] leading-none tracking-[0.1em] whitespace-nowrap text-[var(--hub-micro)]",
+          slot.edge === "right" ? "right-[15%]" : "left-[15%]",
+          slot.edge === "bottom" ? "bottom-[-10px]" : "top-[-9px]",
+        )}
+      >
+        {stampVertical ? HUB_STAMP : "8W7F1 1A1T1"}
       </span>
     </button>
   );
 }
 
-/** What one provider runs in this build, by category. */
+/** The provider's own mark, beside its count on the plate. */
 function ProviderMark({ provider }: { provider: AgentSkillProvider }) {
   const Mark = BUILD_PROVIDER_ICONS[provider];
-  return <Mark aria-hidden className="size-[18px] shrink-0 text-foreground/70" />;
+  return (
+    <Mark
+      aria-hidden
+      className="size-[18px] shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
+    />
+  );
 }
 
-function ProviderSheet({
-  provider,
-  groups,
-  total,
+/** The A/D ring: the core, then the agents, in the order the hub draws them. */
+const DETAIL_RING: Array<AgentSkillProvider | "cozea"> = ["cozea", ...BUILD_PROVIDER_ORDER];
+
+export function stepDetail(
+  current: AgentSkillProvider | "cozea",
+  direction: -1 | 1,
+): AgentSkillProvider | "cozea" {
+  const index = DETAIL_RING.indexOf(current);
+  const next = (index + direction + DETAIL_RING.length) % DETAIL_RING.length;
+  return DETAIL_RING[next]!;
+}
+
+/**
+ * A bucket's page: every skill that bucket holds, grouped by category, with a
+ * tick for the ones this build carries.
+ *
+ * The candidates are the whole installed library filtered to this bucket, not
+ * just what the build already holds; otherwise an empty plate would open onto
+ * an empty page with nothing to add.
+ */
+function DetailSheet({
+  detail,
+  candidates,
+  buildSkillIds,
+  busySkillId,
+  onToggle,
+  onSwitch,
   onBack,
 }: {
-  provider: AgentSkillProvider;
-  groups: Array<{ category: string; label: string; skills: AgentSkillRecord[] }>;
-  total: number;
+  detail: AgentSkillProvider | "cozea";
+  candidates: AgentSkillRecord[];
+  buildSkillIds: readonly string[];
+  busySkillId: string | null;
+  onToggle: (skillId: string) => void;
+  onSwitch: (direction: -1 | 1) => void;
   onBack: () => void;
 }) {
+  const isShared = detail === "cozea";
+  const chosen = new Set(buildSkillIds);
+  // Essential skills are always on and cannot be chosen, so they sit out of
+  // the categories and the counts, in their own section at the end.
+  const { choosable, essential } = partitionEssential(candidates);
+  const groups = loadoutByCategory(choosable);
+  const inBuild = choosable.filter((skill) => chosen.has(skill.id)).length;
+  const Mark = isShared ? null : BUILD_PROVIDER_ICONS[detail];
+  const title = isShared ? "Cozea" : BUILD_PROVIDER_LABELS[detail];
+
+  // A and D walk the ring, the way the reference screen pages between
+  // attributes. Ignored while typing so it cannot fight a text field.
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      const key = event.key.toLowerCase();
+      if (key !== "a" && key !== "d") return;
+      event.preventDefault();
+      onSwitch(key === "a" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onSwitch]);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border/50 bg-card/40">
-      <header className="flex shrink-0 items-center gap-3 rounded-t-2xl border-b border-border/50 bg-foreground/[0.05] px-5 py-3.5">
-        <Button variant="ghost" size="sm" className="-ml-2 h-7 px-2" onClick={onBack}>
+    <div style={HUB_TOKENS} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <header className="relative flex shrink-0 items-center justify-center gap-4 px-5 pt-3 pb-3">
+        {/* Back and the tally are pinned to opposite ends so neither can
+            land on the other, leaving the middle free for the agent. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute top-1/2 left-1 h-7 -translate-y-1/2 px-2"
+          onClick={onBack}
+        >
           <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
           Back
         </Button>
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-foreground">
-            {BUILD_PROVIDER_LABELS[provider]}
-          </h2>
-          <p className="text-[11px] text-muted-foreground/70">
-            {total} {total === 1 ? "skill" : "skills"} in this build
-          </p>
-        </div>
+
+        <RingKey label="A" onClick={() => onSwitch(-1)} />
+        <span className="flex items-center gap-2.5">
+          {Mark ? (
+            <Mark aria-hidden className="size-[18px] shrink-0 text-muted-foreground" />
+          ) : (
+            <Logo size={18} className="shrink-0 opacity-90" />
+          )}
+          <h2 className="text-[15px] tracking-[0.17em] text-foreground uppercase">{title}</h2>
+          <span className="text-[13px] leading-none tabular-nums text-muted-foreground">
+            <span className="font-medium text-foreground">{inBuild}</span>/{choosable.length}
+          </span>
+        </span>
+        <RingKey label="D" onClick={() => onSwitch(1)} />
+
+        <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-[var(--hub-ln)]" />
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0 left-1/2 h-0.5 w-[210px] -translate-x-1/2 bg-foreground/55"
+        />
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        <div className="space-y-5">
-          {groups.map((group) => (
-            <div key={group.category}>
-              <h3 className="px-1 pb-2 text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">
-                {group.label}
-              </h3>
-              <ul className="grid gap-2 sm:grid-cols-2">
-                {group.skills.map((skill) => (
-                  <li
-                    key={skill.id}
-                    className="min-w-0 rounded-xl border border-border/40 bg-background/40 px-3 py-2.5"
-                  >
-                    <span className="block truncate text-sm font-medium text-foreground">
-                      {prettifySkillName(skill.name)}
-                    </span>
-                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/70">
-                      {conciseDescription(skill.description)}
-                    </span>
-                  </li>
-                ))}
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-1 pb-6">
+        {choosable.length === 0 && essential.length === 0 ? (
+          <p className="mx-auto max-w-sm py-12 text-center text-sm leading-6 text-muted-foreground">
+            {isShared
+              ? "Your library is empty. Skills you create or import into Cozea appear here."
+              : `${BUILD_PROVIDER_LABELS[detail as AgentSkillProvider]} has no skills of its own yet. Skills from your library are listed on the Cozea page.`}
+          </p>
+        ) : null}
+
+        {groups.map((group) => {
+          const held = group.skills.filter((skill) => chosen.has(skill.id)).length;
+          return (
+            <section key={group.category} className="pt-5 first:pt-2">
+              {/* Plain type, no frame: the hub carries the drawn structure,
+                  and a page of lists is easier to read without it. */}
+              <div className="flex items-baseline gap-2 pb-1.5">
+                <h3 className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
+                  {group.label}
+                </h3>
+                <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                  {held}/{group.skills.length}
+                </span>
+              </div>
+
+              <ul className="grid gap-0.5 sm:grid-cols-2">
+                {group.skills.map((skill) => {
+                  const isChosen = chosen.has(skill.id);
+                  return (
+                    <li key={skill.id} className="min-w-0">
+                      <button
+                        type="button"
+                        aria-pressed={isChosen}
+                        disabled={busySkillId === skill.id}
+                        onClick={() => onToggle(skill.id)}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                          "disabled:opacity-60",
+                          isChosen
+                            ? "bg-foreground/[0.07] hover:bg-foreground/[0.1]"
+                            : "hover:bg-foreground/[0.04]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                            isChosen
+                              ? "border-transparent bg-foreground text-background"
+                              : "border-border",
+                          )}
+                        >
+                          {isChosen ? (
+                            <HugeiconsIcon icon={__TickHugeIcon} className="size-3" />
+                          ) : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={cn(
+                              "block truncate text-[13px] font-medium transition-colors",
+                              isChosen ? "text-foreground" : "text-muted-foreground",
+                            )}
+                          >
+                            {prettifySkillName(skill.name)}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                            {conciseDescription(skill.description)}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
+            </section>
+          );
+        })}
+
+        {essential.length > 0 ? (
+          <section className="pt-6">
+            <div className="flex items-baseline gap-2 pb-1.5">
+              <h3 className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
+                Essential
+              </h3>
+              <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                {essential.length}
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Why these cannot be switched off"
+                    className="flex size-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
+                  >
+                    <HugeiconsIcon icon={__InfoHugeIcon} className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {ESSENTIAL_SKILL_NOTE}
+                </TooltipContent>
+              </Tooltip>
             </div>
-          ))}
-        </div>
+
+            <ul className="grid gap-0.5 sm:grid-cols-2">
+              {essential.map((skill) => (
+                <li key={skill.id} className="min-w-0">
+                  <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
+                    {/* No tick: the provider restores these, so a build cannot
+                        promise to turn one off. */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          tabIndex={0}
+                          role="note"
+                          aria-label={ESSENTIAL_SKILL_NOTE}
+                          className="flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground/70"
+                        >
+                          <HugeiconsIcon icon={__InfoHugeIcon} className="size-3.5" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {ESSENTIAL_SKILL_NOTE}
+                      </TooltipContent>
+                    </Tooltip>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium text-muted-foreground">
+                        {prettifySkillName(skill.name)}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                        {conciseDescription(skill.description)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[9px] tracking-[0.16em] text-muted-foreground/60 uppercase">
+                      Essential
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </div>
   );
 }
 
-/** The saved builds, along the bottom, with arrows beside the scroll. */
+/** The bracketed A / D keys that page between agents. */
+function RingKey({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label === "A" ? "Previous agent" : "Next agent"}
+      className="flex h-[22px] min-w-[26px] items-center justify-center rounded-[4px] border border-[var(--hub-ln)] px-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-[var(--hub-ln-hi)] hover:text-foreground"
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Shared chrome for the small actions that sit on a build card. */
+const CARD_ACTION_CLASS = cn(
+  "flex size-6 items-center justify-center rounded-md text-muted-foreground",
+  "transition-colors focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none",
+  "disabled:pointer-events-none disabled:opacity-40",
+);
+
 function BuildStrip({
   builds,
   activeBuildId,
   selectedBuildId,
+  busyKey,
   onSelect,
   onCreate,
+  onDelete,
 }: {
   builds: AgentSkillBuild[];
   activeBuildId: string | null;
   selectedBuildId: string | null;
+  busyKey: string | null;
   onSelect: (id: string) => void;
   onCreate: () => void;
+  onDelete: (build: AgentSkillBuild) => void;
 }) {
   const trackRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -633,7 +1158,7 @@ function BuildStrip({
   };
 
   return (
-    <div className="relative shrink-0 pt-3">
+    <div style={HUB_TOKENS} className="relative shrink-0 pt-3">
       <Button
         variant="outline"
         size="icon-xl"
@@ -660,39 +1185,81 @@ function BuildStrip({
         {builds.map((build) => {
           const isSelected = build.id === selectedBuildId;
           return (
+            // A card is two controls: select the build, or bin it. Nesting a
+            // button inside a button is invalid, so the plate is the select
+            // and the trash sits over it.
+            <div key={build.id} className="group relative w-[158px] shrink-0">
             <button
-              key={build.id}
               type="button"
               onClick={() => onSelect(build.id)}
               aria-current={isSelected ? "true" : undefined}
-              className={cn(
-                "relative flex w-[158px] shrink-0 flex-col items-start gap-0.5 rounded-[10px] border px-3 py-2.5 text-left transition-colors",
-                // A hairline along the top edge marks the selected card the way
-                // the hub's nodes are lit.
-                isSelected
-                  ? "border-border/60 bg-card/70 text-foreground before:absolute before:inset-x-3 before:-top-px before:h-px before:bg-foreground/50 before:content-['']"
-                  : "border-border/40 text-muted-foreground hover:border-border/70 hover:text-foreground",
-              )}
+              className="relative flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left"
             >
-              <span className="w-full min-w-0 truncate text-[12.5px] font-medium">
+              {/* Same chamfered plate as the hub, at card scale. */}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "absolute inset-0 border transition-colors",
+                  "[clip-path:polygon(0_0,calc(100%-10px)_0,100%_10px,100%_100%,10px_100%,0_calc(100%-10px))]",
+                  isSelected
+                    ? "border-[var(--hub-ln-hi)] bg-[var(--hub-fill-hi)]"
+                    : "border-[var(--hub-ln)] bg-[var(--hub-fill)] group-hover:border-[var(--hub-ln-hi)]",
+                )}
+              />
+              {/* Lit top edge: the selected build reads as the powered one. */}
+              {isSelected ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-3 top-0 h-px bg-foreground/55"
+                />
+              ) : null}
+              <span
+                className={cn(
+                  "relative w-full min-w-0 truncate text-[12.5px] font-medium transition-colors",
+                  isSelected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground",
+                )}
+              >
                 {build.name}
               </span>
-              <span className="flex items-center gap-1 text-[10.5px] tracking-[0.04em] text-muted-foreground/70">
-                {build.skillIds.length} {build.skillIds.length === 1 ? "SKILL" : "SKILLS"}
+              <span className="relative flex items-center gap-1 text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
+                {build.skillIds.length}
                 {build.id === activeBuildId ? (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span className="text-emerald-500">EQUIPPED</span>
+                    <span className="text-success">Activated</span>
                   </>
                 ) : null}
               </span>
             </button>
+            {/* Deleting a build belongs to the build, not the page header.
+                Hidden until the card is under the pointer; keyboard focus
+                always brings it back. */}
+            <span
+              className={cn(
+                "absolute right-1.5 bottom-1.5 z-10 flex items-center gap-0.5 rounded-md",
+                // Opaque, because the cluster sits over the card's count row.
+                "bg-background/90 transition-opacity",
+                "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => onDelete(build)}
+                disabled={busyKey === `delete:${build.id}`}
+                aria-label={`Delete ${build.name}`}
+                title={`Delete ${build.name}`}
+                className={cn(CARD_ACTION_CLASS, "hover:bg-destructive/12 hover:text-destructive")}
+              >
+                <HugeiconsIcon icon={__DeleteHugeIcon} className="size-3.5" />
+              </button>
+            </span>
+            </div>
           );
         })}
         <button
           type="button"
           onClick={onCreate}
-          className="flex w-[158px] shrink-0 items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-border/50 px-3 py-2.5 text-[11.5px] text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+          className="flex w-[158px] shrink-0 items-center justify-center gap-1.5 border border-dashed border-[var(--hub-ln)] px-3 py-2.5 text-[11.5px] text-muted-foreground transition-colors [clip-path:polygon(0_0,calc(100%-10px)_0,100%_10px,100%_100%,10px_100%,0_calc(100%-10px))] hover:border-[var(--hub-ln-hi)] hover:text-foreground"
         >
           <HugeiconsIcon icon={__AddHugeIcon} className="size-3.5" />
           New build
@@ -896,7 +1463,7 @@ function EmptyBuilds({ onCreate }: { onCreate: () => void }) {
       <div>
         <p className="text-sm font-medium text-foreground">No builds yet</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          A build is a named set of skills. Equip one and Cozea turns those on and
+          A build is a named set of skills. Activate one and Cozea turns those on and
           everything else off.
         </p>
       </div>

@@ -1121,6 +1121,12 @@ export interface AgentSkillProviderBinding {
   /** The skill is in this provider's catalog and can be installed for it. */
   available?: boolean
   /**
+   * The provider owns this copy and rewrites the folder it lives in, so Cozea
+   * cannot switch it off — it moves the files out and the provider restores
+   * them. Reported as essential instead of offered as a toggle.
+   */
+  essential?: boolean
+  /**
    * This provider's own copy of the skill, present only when it differs from
    * the record's canonical text — the usual reason being a copy tailored to
    * that provider's paths or frontmatter. Absent means it matches.
