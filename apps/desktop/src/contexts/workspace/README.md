@@ -18,4 +18,5 @@ workbench store.
 
 Nothing here may import from `features/`.
 
-See `tests/architecture/featureDependencyGraph.test.ts` for the invariant.
+See `tests/architecture/featureDependencyGraph.test.ts` for the cycles and
+`tests/architecture/neutralGround.test.ts` for the invariant.
