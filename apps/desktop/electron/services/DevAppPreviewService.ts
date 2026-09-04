@@ -16,6 +16,8 @@ import { ORG_DEVAPP_SCHEME } from "../../../../shared/orgDevAppProtocol"
 import { parseDevAppPreviewUrl } from "../../../../shared/devAppPreviewProtocol"
 import type { DevAppWorkerViewPortBootstrap } from "../../../../shared/devAppWorkerProtocol"
 import type { DevAppWorkerState, DevAppWorkerTransferablePort } from "./DevAppWorkerHost"
+import type { NativeDevAppBuildService } from "./NativeDevAppBuildService"
+import { NativeDevAppPreviewSession } from "./NativeDevAppPreviewSession"
 
 /**
  * Owns the development preview: the session, the watcher, and telling the renderer.
@@ -33,6 +35,7 @@ export interface DevAppPreviewServiceDeps {
   /** Injected for tests; defaults to a recursive fs.watch. */
   watch?: DevAppWatch
   now?: () => number
+  nativeBuilds?: NativeDevAppBuildService
 }
 
 const nodeWatch: DevAppWatch = (root, onChange) => {
@@ -51,6 +54,7 @@ const nodeWatch: DevAppWatch = (root, onChange) => {
 export class DevAppPreviewService {
   private readonly session: DevAppPreviewSession
   private readonly watcher: DevAppPreviewWatcher
+  private readonly native: NativeDevAppPreviewSession | null
   private readonly broadcast: (sourceId: string, status: DevAppPreviewStatus) => void
   private readonly roots = new Map<string, string>()
   private readonly entryPaths = new Map<string, string>()
@@ -71,6 +75,12 @@ export class DevAppPreviewService {
       trust: new DevAppDevelopmentTrustStore(deps.now ?? (() => Date.now())),
       worker: deps.worker,
     })
+    this.native = deps.nativeBuilds
+      ? new NativeDevAppPreviewSession(
+          deps.nativeBuilds,
+          new DevAppDevelopmentTrustStore(deps.now ?? (() => Date.now())),
+        )
+      : null
     this.watcher = new DevAppPreviewWatcher({
       watch: deps.watch ?? nodeWatch,
       setTimer: (callback, ms) => setTimeout(callback, ms),
@@ -90,32 +100,52 @@ export class DevAppPreviewService {
    * `relativePath` is resolved against the authorized workspace root by the caller's
    * `workspaceRoot`, never taken as an absolute path from the renderer.
    */
-  open(options: {
+  async open(options: {
     workspaceId: string
     workspaceRoot: string
     relativePath: string
     leaseId: string
-  }): DevAppPreviewStatus & { hotReload: boolean } {
-    const sourcePath = path.resolve(options.workspaceRoot, options.relativePath)
-    const status = this.session.open({
-      sourcePath,
-      workspaceId: options.workspaceId,
-      workspaceRoot: options.workspaceRoot,
-      leaseId: options.leaseId,
-    })
+  }): Promise<DevAppPreviewStatus & { hotReload: boolean }> {
+    const unresolvedSourcePath = path.resolve(options.workspaceRoot, options.relativePath)
+    const confined = resolveConfinedPreviewRoot(options.workspaceRoot, unresolvedSourcePath)
+
+    let status: DevAppPreviewStatus
+    let sourcePath = unresolvedSourcePath
+    const native = this.native
+    if (confined && native?.recognizes(confined.sourcePath)) {
+      sourcePath = confined.sourcePath
+      const sourceId = hashSourcePath(sourcePath)
+      status = await native.open({
+        sourceId,
+        sourcePath,
+        workspaceId: options.workspaceId,
+        workspaceRoot: confined.workspaceRoot,
+        leaseId: options.leaseId,
+      })
+    } else {
+      status = this.session.open({
+        sourcePath,
+        workspaceId: options.workspaceId,
+        workspaceRoot: options.workspaceRoot,
+        leaseId: options.leaseId,
+      })
+    }
 
     if (status.status === "invalid") return { ...status, hotReload: false }
 
     this.roots.set(status.sourceId, sourcePath)
     this.trackEntryPath(status.sourceId, status)
     const hotReload = this.watcher.start(status.sourceId, sourcePath, () => {
-      this.onChanged(status.sourceId)
+      void this.onChanged(status.sourceId)
     })
     return { ...status, hotReload }
   }
 
-  private onChanged(sourceId: string): void {
-    const status = this.session.reload(sourceId)
+  private async onChanged(sourceId: string): Promise<void> {
+    const native = this.native
+    const status = native?.status(sourceId)
+      ? await native.reload(sourceId)
+      : this.session.reload(sourceId)
     // A reload for a source that was closed mid-burst has nothing to report.
     if (status) {
       this.trackEntryPath(sourceId, status)
@@ -123,8 +153,14 @@ export class DevAppPreviewService {
     }
   }
 
-  approve(sourceId: string, approvalFingerprint: string): DevAppPreviewStatus | null {
-    const status = this.session.approve(sourceId, approvalFingerprint)
+  async approve(
+    sourceId: string,
+    approvalFingerprint: string,
+  ): Promise<DevAppPreviewStatus | null> {
+    const native = this.native
+    const status = native?.status(sourceId)
+      ? await native.approve(sourceId, approvalFingerprint)
+      : this.session.approve(sourceId, approvalFingerprint)
     if (status) {
       this.trackEntryPath(sourceId, status)
       this.broadcast(sourceId, status)
@@ -133,7 +169,7 @@ export class DevAppPreviewService {
   }
 
   status(sourceId: string): DevAppPreviewStatus | null {
-    return this.session.status(sourceId)
+    return this.native?.status(sourceId) ?? this.session.status(sourceId)
   }
 
   workerConnection(sourceId: string): {
@@ -149,6 +185,11 @@ export class DevAppPreviewService {
     input: unknown,
     timeoutMs?: number,
   ): Promise<unknown> {
+    if (this.native?.status(sourceId)) {
+      return Promise.reject(
+        new Error("Native DevApp command invocation is unavailable until its extension host is active."),
+      )
+    }
     return this.session.invokeTool(sourceId, name, input, timeoutMs)
   }
 
@@ -170,7 +211,11 @@ export class DevAppPreviewService {
   }
 
   close(sourceId: string, leaseId: string): void {
-    if (!this.session.close(sourceId, leaseId)) return
+    const native = this.native
+    const closed = native?.status(sourceId)
+      ? native.close(sourceId, leaseId)
+      : this.session.close(sourceId, leaseId)
+    if (!closed) return
     this.watcher.stop(sourceId)
     this.roots.delete(sourceId)
     this.entryPaths.delete(sourceId)
@@ -245,6 +290,7 @@ export class DevAppPreviewService {
     this.removeWorkerStateListener?.()
     this.workerStateListeners.clear()
     this.watcher.stopAll()
+    this.native?.dispose()
     for (const sourceId of Array.from(this.roots.keys())) this.session.close(sourceId)
     this.roots.clear()
     this.entryPaths.clear()
@@ -282,4 +328,23 @@ function resolvePreviewFile(contentRoot: string, relativePath: string): string |
   } catch {
     return null
   }
+}
+
+function resolveConfinedPreviewRoot(
+  workspaceRootInput: string,
+  sourcePathInput: string,
+): { workspaceRoot: string; sourcePath: string } | null {
+  try {
+    const workspaceRoot = fs.realpathSync.native(workspaceRootInput)
+    const sourcePath = fs.realpathSync.native(sourcePathInput)
+    return isPathInside(workspaceRoot, sourcePath)
+      ? { workspaceRoot, sourcePath }
+      : null
+  } catch {
+    return null
+  }
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`)
 }

@@ -25,6 +25,9 @@ import {
 import { DevAppCapabilityList } from "@/features/devapps/components/DevAppCapabilityList";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 import type { DevAppPreviewStatus } from "@shared/devAppPreviewTypes";
+import type { DevAppJsonValue } from "../../../../../packages/devapp-api/src/native";
+import { NativeDevAppSurfaceHost } from "@/features/devapps/native-runtime/NativeDevAppSurfaceHost";
+import { createNativeDevAppHostClient } from "@/features/devapps/native-runtime/createNativeDevAppHostClient";
 
 /**
  * A DevApp under development, rendered exactly as an installed one would be.
@@ -60,6 +63,7 @@ export function WorkbenchDevAppPreviewTile({
   const [openError, setOpenError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [hotReload, setHotReload] = useState(true);
+  const [nativeInstanceState, setNativeInstanceState] = useState<DevAppJsonValue | undefined>();
   // State for rendering; a ref alongside it so unmount can close the preview it opened
   // even after the component has stopped re-rendering.
   const [sourceId, setSourceId] = useState<string | null>(null);
@@ -175,8 +179,31 @@ export function WorkbenchDevAppPreviewTile({
     running ? (running.worker?.status === "starting" ? "starting" : "running") : "idle",
   );
   const view = running?.view ?? null;
+  const nativeView = view?.kind === "nativeReact" ? view : null;
+  const nativeHost = useMemo(() => {
+    if (!nativeView || !sourceId) return null;
+    return createNativeDevAppHostClient({
+      identity: {
+        appId: nativeView.appId,
+        version: nativeView.appVersion,
+        installationId: `development:${sourceId}`,
+      },
+      surface: {
+        surfaceId: nativeView.surfaceId,
+        instanceId: tile.id,
+        projectId,
+        workspaceId: sourceWorkspaceId,
+        laneId: sourceLaneId,
+      },
+      storageNamespace: `cozea:native-devapp:development:${sourceId}:${nativeView.surfaceId}`,
+    });
+  }, [nativeView, projectId, sourceId, sourceLaneId, sourceWorkspaceId, tile.id]);
 
-  // Both paths enter the shared T3 host. Built output uses the confined
+  useEffect(() => {
+    setNativeInstanceState(undefined);
+  }, [nativeView?.moduleUrl]);
+
+  // Both web paths enter the shared T3 host. Built output uses the confined
   // development package protocol; framework previews use their declared URL.
   const surfaceUrl =
     view?.kind === "devServer" || view?.kind === "builtOutput" ? view.url : null;
@@ -264,6 +291,16 @@ export function WorkbenchDevAppPreviewTile({
           <>
             {view?.kind === "unavailable" ? (
               <PreviewMessage title={view.reason} detail={view.fix ?? null} />
+            ) : nativeView && nativeHost ? (
+              <NativeDevAppSurfaceHost
+                key={nativeView.moduleUrl}
+                moduleUrl={nativeView.moduleUrl}
+                stylesUrl={nativeView.stylesUrl}
+                componentName={nativeView.component}
+                host={nativeHost}
+                instanceState={nativeInstanceState}
+                onInstanceStateChange={setNativeInstanceState}
+              />
             ) : runtimeTabId ? (
               <BrowserSurfaceSlot
                 tabId={runtimeTabId}

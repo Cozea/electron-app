@@ -40,6 +40,8 @@ import { createDevAppWorkerHandlers } from './services/devAppWorkerHandlers'
 import { createNodeDevAppHostServices } from './services/devAppHostServices'
 import { DevAppPreviewService } from './services/DevAppPreviewService'
 import { DevAppAuthoringService } from './services/DevAppAuthoringService'
+import { NativeDevAppBuildService } from './services/NativeDevAppBuildService'
+import { NativeDevAppModuleService } from './services/NativeDevAppModuleService'
 import { DeviceContainedDevAppRuntimeService } from './services/ContainedDevAppRuntimeService'
 import { HostedContainedDevAppRuntimeService } from './services/HostedContainedDevAppRuntimeService'
 import { SignedDevAppRuntimeImageVerifier } from './services/DevAppRuntimeImageVerifier'
@@ -60,10 +62,21 @@ import { OrgDevAppInstallationService } from './services/OrgDevAppInstallationSe
 import { T3BrowserSurfaceService } from './services/T3BrowserSurfaceService'
 import { WorkbenchSessionManager } from './services/WorkbenchSessionManager'
 import { ORG_DEVAPP_SCHEME } from '../../../shared/orgDevAppProtocol'
+import { NATIVE_DEV_APP_MODULE_SCHEME } from '../../../shared/nativeDevAppModuleProtocol'
 
 protocol.registerSchemesAsPrivileged([
   {
     scheme: ORG_DEVAPP_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+  {
+    scheme: NATIVE_DEV_APP_MODULE_SCHEME,
     privileges: {
       standard: true,
       secure: true,
@@ -193,8 +206,8 @@ const APP_CONTENT_SECURITY_POLICY = [
   "form-action 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' cozea-native-devapp:",
+  "style-src 'self' 'unsafe-inline' cozea-native-devapp:",
   "img-src 'self' data: blob: https: http:",
   "font-src 'self' data: https:",
   "connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* data: blob:",
@@ -1158,8 +1171,14 @@ const devAppWorkerHost = new DevAppWorkerHost(
   createDevAppWorkerHandlers(createNodeDevAppHostServices()),
 )
 
+const nativeDevAppModuleService = new NativeDevAppModuleService()
+const nativeDevAppBuildService = new NativeDevAppBuildService(
+  () => path.join(app.getPath('userData'), 'native-devapp-builds'),
+  nativeDevAppModuleService,
+)
 const devAppPreviewService = new DevAppPreviewService({
   worker: devAppWorkerHost,
+  nativeBuilds: nativeDevAppBuildService,
   broadcast: (sourceId, status) => {
     broadcastDevAppPreviewStatus(() => (win ? [win.webContents] : []), sourceId, status)
   },
@@ -1842,6 +1861,7 @@ app.on('before-quit', () => {
   devAppPreviewService.dispose()
   devAppWorkerHost.dispose()
   publishedDevAppWorkerHost.dispose()
+  nativeDevAppModuleService.dispose()
   void disposeContainedDevAppRuntime()
   PreviewSnapshotService.getInstance().dispose()
   LocalAutomationResolverService.getInstance().dispose()
@@ -1887,6 +1907,7 @@ app.whenReady().then(() => {
    */
   void AgentSkillService.getInstance().ensureBuiltInSkills()
   orgDevAppArtifactService.registerProtocol()
+  nativeDevAppModuleService.registerProtocol()
   t3BrowserSurfaceService = new T3BrowserSurfaceService({
     getMainWindow: () => win,
     orgDevAppArtifactService,
