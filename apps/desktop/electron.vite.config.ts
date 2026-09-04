@@ -279,7 +279,7 @@ export default defineConfig({
         },
       },
       rollupOptions: {
-        external: ['electron', '@vscode/ripgrep', 'node-pty', 'electron-updater', '@cozea/pty'],
+        external: ['electron', '@vscode/ripgrep', 'node-pty', 'electron-updater', '@cozea/pty', 'fsevents'],
         output: {
           format: 'cjs',
           entryFileNames: '[name].js',

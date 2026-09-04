@@ -368,6 +368,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     openSettings: (route = '/settings/account') => ipcRenderer.invoke('window:openSettings', { route }),
   },
+  devApp: {
+    listInstallations: () => ipcRenderer.invoke('devApp:listInstallations'),
+    getInstallation: (options: { installationId: string }) =>
+      ipcRenderer.invoke('devApp:getInstallation', options),
+    installDevelopment: (options: {
+      workspaceId: string
+      laneId?: string | null
+      relativePath: string
+    }) => ipcRenderer.invoke('devApp:installDevelopment', options),
+    prepareSurface: (options: { installationId: string; surfaceId?: string | null }) =>
+      ipcRenderer.invoke('devApp:prepareSurface', options),
+    activateRelease: (options: { installationId: string; releaseId: string }) =>
+      ipcRenderer.invoke('devApp:activateRelease', options),
+    uninstall: (options: { installationId: string; removeData?: boolean }) =>
+      ipcRenderer.invoke('devApp:uninstall', options),
+    onInstallationsChanged: (
+      listener: (installations: import('@shared/devAppInstallationV3').DevAppInstallationV3[]) => void,
+    ) => {
+      const wrapped = (
+        _event: Electron.IpcRendererEvent,
+        installations: import('@shared/devAppInstallationV3').DevAppInstallationV3[],
+      ) => listener(installations)
+      ipcRenderer.on('devApp:installationsChanged', wrapped)
+      return () => ipcRenderer.removeListener('devApp:installationsChanged', wrapped)
+    },
+  },
   orgDevApp: {
     listInstallations: () => ipcRenderer.invoke('orgDevApp:listInstallations'),
     getInstallation: (options: { ref: string }) => ipcRenderer.invoke('orgDevApp:getInstallation', options),

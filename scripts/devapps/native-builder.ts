@@ -205,8 +205,8 @@ export async function createNativeDevAppBuildPlan(options: {
   const outputRoot = path.resolve(
     options.outputRoot ?? path.join(packageRoot, ".cozea", "native-build"),
   );
-  if (!isInside(packageRoot, outputRoot)) {
-    throw new NativeDevAppBuildError("The native build output must stay inside the package.");
+  if (outputRoot === packageRoot || outputRoot === path.parse(outputRoot).root) {
+    throw new NativeDevAppBuildError("The native build output directory is unsafe.");
   }
 
   const rendererModules: NativeDevAppSourceModule[] = [];

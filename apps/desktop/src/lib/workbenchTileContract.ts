@@ -26,6 +26,7 @@ export type WorkbenchTileType =
   | "llama"
   | "mobileSimulator"
   | "orgDevApp"
+  | "devApp"
   | "devAppPreview"
   | "selection"
   | "tasks"
@@ -78,6 +79,15 @@ export interface WorkbenchBrowserTile extends WorkbenchBaseTile {
   url: string
   favicon?: string | null
   storageScope?: BrowserStorageScope
+}
+
+export interface WorkbenchDevAppTile extends WorkbenchBaseTile {
+  type: "devApp"
+  installationId: string
+  appId: string
+  appVersion: string
+  releaseId: string
+  surfaceId: string
 }
 
 export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
@@ -193,6 +203,7 @@ export type WorkbenchTile =
   | WorkbenchMemoryTile
   | WorkbenchMobileSimulatorTile
   | WorkbenchOrgDevAppTile
+  | WorkbenchDevAppTile
   | WorkbenchDevAppPreviewTile
   | WorkbenchSelectionTile
   | WorkbenchTasksTile

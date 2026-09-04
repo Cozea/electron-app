@@ -42,6 +42,7 @@ import { DevAppPreviewService } from './services/DevAppPreviewService'
 import { DevAppAuthoringService } from './services/DevAppAuthoringService'
 import { NativeDevAppBuildService } from './services/NativeDevAppBuildService'
 import { NativeDevAppModuleService } from './services/NativeDevAppModuleService'
+import { DevAppInstallationService } from './services/DevAppInstallationService'
 import { DeviceContainedDevAppRuntimeService } from './services/ContainedDevAppRuntimeService'
 import { HostedContainedDevAppRuntimeService } from './services/HostedContainedDevAppRuntimeService'
 import { SignedDevAppRuntimeImageVerifier } from './services/DevAppRuntimeImageVerifier'
@@ -1172,6 +1173,10 @@ const devAppWorkerHost = new DevAppWorkerHost(
 )
 
 const nativeDevAppModuleService = new NativeDevAppModuleService()
+const devAppInstallationService = new DevAppInstallationService(
+  () => path.join(app.getPath('userData'), 'devapps-v3'),
+  nativeDevAppModuleService,
+)
 const nativeDevAppBuildService = new NativeDevAppBuildService(
   () => path.join(app.getPath('userData'), 'native-devapp-builds'),
   nativeDevAppModuleService,
@@ -1807,6 +1812,11 @@ registerDevAppPreviewHandlers(ipcMain, {
   getMainWindow: () => win,
 })
 
+const unregisterDevAppInstallationHandlers = registerDevAppInstallationHandlers(ipcMain, {
+  service: devAppInstallationService,
+  getMainWindow: () => win,
+})
+
 registerDevAppAuthoringHandlers(ipcMain, {
   service: devAppAuthoringService,
 })
@@ -1861,6 +1871,8 @@ app.on('before-quit', () => {
   devAppPreviewService.dispose()
   devAppWorkerHost.dispose()
   publishedDevAppWorkerHost.dispose()
+  unregisterDevAppInstallationHandlers()
+  devAppInstallationService.dispose()
   nativeDevAppModuleService.dispose()
   void disposeContainedDevAppRuntime()
   PreviewSnapshotService.getInstance().dispose()
