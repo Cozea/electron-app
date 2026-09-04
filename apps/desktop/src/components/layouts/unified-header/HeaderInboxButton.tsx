@@ -109,7 +109,7 @@ export function HeaderInboxButton() {
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
-              className="h-7 sm:h-7 gap-1 shrink-0 rounded-md border border-border/60 bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
+              className="h-7 sm:h-7 gap-1 shrink-0 rounded-md bg-transparent px-3 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
             >
               <span className="relative flex">
                 <HugeiconsIcon icon={__InboxHugeIcon} className="size-3 shrink-0" />

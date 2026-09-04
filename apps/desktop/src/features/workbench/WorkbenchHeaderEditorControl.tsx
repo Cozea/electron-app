@@ -222,10 +222,10 @@ export function WorkbenchHeaderEditorControl({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className={cn("group inline-flex h-7 items-center rounded-md border bg-transparent shadow-none overflow-hidden", adjacentOpenSidebar ? "border-sidebar-foreground/20" : "border-border/60")}>
+        <div className="group inline-flex h-7 items-center rounded-md bg-transparent shadow-none">
           <Button
             variant="ghost"
-            className={cn("h-full shrink-0 rounded-none bg-transparent !px-2 shadow-none", chromeButtonClass)}
+            className={cn("h-7 shrink-0 rounded-md bg-transparent !px-2 shadow-none hover:bg-muted/40", chromeButtonClass)}
             onClick={handleOpenProjectInEditor}
             disabled={!workspaceId || !selectedEditorOption}
             aria-label={
@@ -242,7 +242,7 @@ export function WorkbenchHeaderEditorControl({
               type="button"
               variant="ghost"
               className={cn(
-                "inline-flex h-full w-5 shrink-0 items-center justify-center rounded-none bg-transparent px-0 shadow-none",
+                "inline-flex h-7 w-5 shrink-0 items-center justify-center rounded-md bg-transparent px-0 shadow-none hover:bg-muted/40",
                 chromeButtonClass,
               )}
               aria-label="Choose editor"
