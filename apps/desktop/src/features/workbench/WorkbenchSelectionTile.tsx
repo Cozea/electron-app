@@ -21,7 +21,7 @@ import type {
 } from "@/features/devapps/registry/types"
 import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
 import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
-import { ProjectPixelInvaderIcon } from "@/features/projects/ui/ProjectPixelInvaderIcon"
+import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"

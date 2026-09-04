@@ -13,7 +13,7 @@ import { prefetchProjectSwitch } from "@/features/projects/lib/projectSwitchPref
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { useWorkspaceSnapshotEntry } from "@/features/workspace/useWorkspaceCatalogSnapshot"
 import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
-import { ProjectPixelInvaderIcon } from "@/features/projects/ui/ProjectPixelInvaderIcon"
+import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
 import { SidebarLaneTiles } from "./SidebarLaneTiles"
 import {
   buildDevServerRunKey,

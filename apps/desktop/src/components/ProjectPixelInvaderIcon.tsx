@@ -4,10 +4,19 @@ import {
   PROJECT_ICON_SETS,
   useProjectIconSetsStore,
   type ProjectIconSetId,
-} from "@/features/projects/model/projectIconSetsStore"
+} from "@/lib/projectIconSets"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Folder01Icon as __FolderHugeIcon } from "@hugeicons/core-free-icons"
+
+/**
+ * A deterministic sprite for a name, from whichever icon sets are enabled.
+ *
+ * Shared, not project-specific: the sidebar draws project rows with it, the
+ * workbench draws its selection tile, and settings draws set samples. It sat in
+ * `features/projects/ui` on the strength of its name alone, which made the
+ * workbench import a feature it composes to draw an icon.
+ */
 
 /**
  * Every sprite carries a stable id: it selects the sprite's own idle animation

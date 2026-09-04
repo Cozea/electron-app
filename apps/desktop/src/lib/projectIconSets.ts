@@ -1,3 +1,12 @@
+/**
+ * Which sprite sets the project icons may draw from.
+ *
+ * A user appearance preference, not project domain: settings toggles it and the
+ * icon reads it, and nothing here knows what a project is. It lived under
+ * `features/projects/model` because of the word in its name, which is also how
+ * the icon that reads it ended up there.
+ */
+
 import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
 

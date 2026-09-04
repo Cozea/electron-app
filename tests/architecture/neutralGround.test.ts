@@ -27,7 +27,9 @@ const NEUTRAL_ROOTS = ["apps/desktop/src/contexts"];
 
 /** Individual modules lifted out of a feature, whose siblings are not neutral. */
 const NEUTRAL_MODULES = [
+  "apps/desktop/src/components/ProjectPixelInvaderIcon.tsx",
   "apps/desktop/src/lib/browseForDirectory.ts",
+  "apps/desktop/src/lib/projectIconSets.ts",
   "apps/desktop/src/lib/sidebarActivity.ts",
   "apps/desktop/src/lib/workbenchScopeKey.ts",
   "apps/desktop/src/lib/workbenchStore.ts",

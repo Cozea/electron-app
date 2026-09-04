@@ -54,11 +54,6 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     thinEdge: "projects -> settings",
     reaches: ["pages/ProjectSettingsPage", "ui/SettingsChrome", "ui/SettingsSidebar"],
   },
-  {
-    pair: ["projects", "workbench"],
-    thinEdge: "workbench -> projects",
-    reaches: ["ui/ProjectPixelInvaderIcon"],
-  },
 ];
 
 function listSourceFiles(directory: string): string[] {
