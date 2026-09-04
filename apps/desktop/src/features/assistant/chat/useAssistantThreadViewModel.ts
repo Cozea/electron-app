@@ -17,12 +17,12 @@ import {
   deriveCompletionSummariesByMessageId,
   inferCheckpointTurnCountByTurnId,
 } from "@/features/assistant/chat/turnDiffDerivations"
+import { deriveWorkLogEntries } from "@/features/assistant/chat/workLogDerivations"
 import {
-  deriveWorkLogEntries,
   deriveActiveWorkStartedAt,
   formatElapsed,
   hasToolActivityForTurn,
-} from "@/features/assistant/chat/workLogDerivations"
+} from "@/features/assistant/chat/session-logic"
 import { deriveGenerationStatusPhase } from "@/features/assistant/chat/MessagesTimeline.logic"
 import type { Thread } from "@/features/assistant/model/types"
 

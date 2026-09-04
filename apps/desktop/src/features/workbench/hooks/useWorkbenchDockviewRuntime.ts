@@ -29,6 +29,7 @@ import {
   clearPersistedWorkbenchLayout,
   writePersistedWorkbenchLayout,
 } from "@/features/workbench/model/workbenchLayoutPersistence";
+import { shouldSuppressNoOpSelfDropOverlay } from "@/features/workbench/model/workbenchDropOverlay";
 import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/source-control/model/changesTileSizing";
 import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime";
 import { releaseProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntimeLifecycle";
@@ -1041,7 +1042,15 @@ export function useWorkbenchDockviewRuntime(
         const isChangesGroup = overlayEvent.group?.panels.some(
           (panel) => panel.id === CHANGES_PANEL_ID,
         );
-        if (isChangesGroup) {
+        const isNoOpSelfTarget = shouldSuppressNoOpSelfDropOverlay({
+          dragData: overlayEvent.getData(),
+          targetViewId: overlayEvent.api.id,
+          targetGroupId: overlayEvent.group?.id,
+          targetPanelCount: overlayEvent.group?.panels.length ?? 0,
+          kind: overlayEvent.kind,
+          position: overlayEvent.position,
+        });
+        if (isChangesGroup || isNoOpSelfTarget) {
           overlayEvent.preventDefault();
         }
       });
