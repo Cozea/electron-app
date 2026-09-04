@@ -1,0 +1,50 @@
+name: Native DevApp toolchain export
+
+on:
+  push:
+    branches:
+      - chore/native-devapp-toolchain-export
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Initialize T3 substrate
+        run: git submodule update --init vendor/t3code
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install T3 source dependencies
+        run: bun x pnpm@11.10.0 --dir vendor/t3code install --frozen-lockfile --ignore-scripts
+
+      - name: Package toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .toolchain/bin
+          cp "$(command -v bun)" .toolchain/bin/bun
+          tar -czf native-devapp-toolchain.tgz \
+            .toolchain/bin/bun \
+            node_modules \
+            vendor/t3code/node_modules
+
+      - name: Upload toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-devapp-toolchain-${{ github.sha }}
+          path: native-devapp-toolchain.tgz
+          if-no-files-found: error
+          retention-days: 1
