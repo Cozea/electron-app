@@ -91,6 +91,27 @@ export function providerEssentialCount(
   ).length;
 }
 
+/**
+ * Which build the hub shows.
+ *
+ * Falls back rather than resolving to nothing: starting a new build clears the
+ * selection, so cancelling used to leave the hub with no build to draw and the
+ * page went blank. Any path that drops the selection lands on the active build,
+ * or the first one.
+ */
+export function resolveSelectedBuild(
+  builds: readonly AgentSkillBuild[],
+  selectedBuildId: string | null,
+  activeBuildId: string | null,
+): AgentSkillBuild | null {
+  return (
+    builds.find((build) => build.id === selectedBuildId) ??
+    builds.find((build) => build.id === activeBuildId) ??
+    builds[0] ??
+    null
+  );
+}
+
 /** Whether ticking this skill has to install it before the build can hold it. */
 export function needsInstall(skill: AgentSkillRecord): boolean {
   return skill.source === "catalog";
@@ -329,7 +350,11 @@ export function SkillBuildsView() {
 
   const skills = React.useMemo(() => buildableSkills(snapshot?.skills ?? []), [snapshot]);
   const builds = snapshot?.builds ?? [];
-  const selectedBuild = builds.find((build) => build.id === selectedBuildId) ?? null;
+  const selectedBuild = resolveSelectedBuild(
+    builds,
+    selectedBuildId,
+    snapshot?.activeBuildId ?? null,
+  );
   const loadout = React.useMemo(
     () => (selectedBuild ? buildLoadout(selectedBuild, skills) : []),
     [selectedBuild, skills],

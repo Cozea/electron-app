@@ -309,6 +309,7 @@ import {
   needsInstall,
   partitionEssential,
   providerEssentialCount,
+  resolveSelectedBuild,
   loadoutByCategory,
   providerCandidates,
   providerLoadout,
@@ -610,5 +611,37 @@ describe("skills a build cannot control", () => {
   it("treats a skill with no essential binding as choosable", () => {
     expect(partitionEssential([]).essential).toEqual([]);
     expect(partitionEssential([withEssential("plain", false)]).choosable).toHaveLength(1);
+  });
+});
+
+/**
+ * The hub draws one build. Anything that clears the selection, starting a new
+ * build and cancelling most of all, must not leave it with nothing to draw.
+ */
+describe("which build the hub shows", () => {
+  const builds = [
+    { id: "a", name: "A", skillIds: [], createdAt: 0, updatedAt: 0 },
+    { id: "b", name: "B", skillIds: [], createdAt: 0, updatedAt: 0 },
+  ];
+
+  it("shows the selected build", () => {
+    expect(resolveSelectedBuild(builds, "b", "a")?.id).toBe("b");
+  });
+
+  it("falls back to the active build when the selection is cleared", () => {
+    // "New build" clears the selection; cancelling used to leave a blank page.
+    expect(resolveSelectedBuild(builds, null, "b")?.id).toBe("b");
+  });
+
+  it("falls back to the first build when nothing is selected or active", () => {
+    expect(resolveSelectedBuild(builds, null, null)?.id).toBe("a");
+  });
+
+  it("falls back when the selection points at a build that has gone", () => {
+    expect(resolveSelectedBuild(builds, "deleted", null)?.id).toBe("a");
+  });
+
+  it("resolves to nothing only when there are no builds", () => {
+    expect(resolveSelectedBuild([], "a", "a")).toBeNull();
   });
 });
