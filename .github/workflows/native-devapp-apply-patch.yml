@@ -36,6 +36,10 @@ jobs:
             > /tmp/native-devapp.patch
           git apply --check /tmp/native-devapp.patch
           git apply --index /tmp/native-devapp.patch
+          # The GitHub Actions token may update source code but cannot create a new
+          # workflow file. The validator is installed separately through the GitHub API.
+          git restore --staged .github/workflows/native-devapp-validation.yml
+          rm .github/workflows/native-devapp-validation.yml
           git rm .github/native-devapp-slice1.chunk.*
           git rm .github/workflows/native-devapp-apply-patch.yml
 
