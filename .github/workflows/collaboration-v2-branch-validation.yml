@@ -33,6 +33,9 @@ jobs:
       - name: Bootstrap repository
         run: bun run bootstrap
 
+      - name: Install Electron runtime for tests
+        run: node node_modules/electron/install.js
+
       - name: Typecheck renderer
         run: bun run typecheck
 
