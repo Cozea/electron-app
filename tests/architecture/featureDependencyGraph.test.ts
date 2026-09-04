@@ -35,11 +35,6 @@ interface PinnedCycle {
 
 const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
-    pair: ["assistant", "workbench"],
-    thinEdge: "assistant -> workbench",
-    reaches: ["WorkbenchEditorIcons", "assistant/assistantRuntimeMetadataStore"],
-  },
-  {
     pair: ["browser", "workbench"],
     thinEdge: "browser -> workbench",
     reaches: ["WorkbenchDockRuntimeContext"],

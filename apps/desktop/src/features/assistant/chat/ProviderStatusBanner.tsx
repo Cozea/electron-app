@@ -14,7 +14,7 @@ import { DevAppIcon } from "@/features/devapps/components/DevAppIcon";
 import { getDevAppForAssistantProvider } from "@/features/devapps/registry";
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
 import { Button } from "@/components/ui/button";
-import { updateAssistantProvider } from "@/features/workbench/assistant/assistantRuntimeMetadataStore";
+import { updateAssistantProvider } from "@/features/assistant/model/assistantRuntimeMetadataStore";
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
