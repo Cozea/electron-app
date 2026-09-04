@@ -3,68 +3,39 @@ import {
   type ProviderDriverKind,
   type ProviderInstanceId,
   type ProviderKind,
-  type ServerProvider,
   type ProviderOptionDescriptor,
+  type ServerProvider,
 } from "@cozea/assistant-contracts";
-import { resolveSelectableModel, getProviderOptionCurrentValue } from "@cozea/assistant-shared/model";
-import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { getProviderOptionCurrentValue, resolveSelectableModel } from "@cozea/assistant-shared/model";
 import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   ArrowRight01Icon as __ArrowRightHugeIcon,
   CheckmarkCircle02Icon as __CheckHugeIcon,
-  Search01Icon as __SearchIconHugeIcon,
+  Refresh01Icon as __ResetHugeIcon,
+  ZapIcon as __ZapHugeIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ModelListRow } from "./ModelListRow";
-import { ModelPickerSidebar } from "./ModelPickerSidebar";
-import { isModelPickerNewModel } from "./modelPickerModelHighlights";
-import { buildModelPickerSearchText, scoreModelPickerSearch } from "./modelPickerSearch";
-import { Combobox, ComboboxEmpty, ComboboxInput, ComboboxListVirtualized } from "@/components/ui/combobox";
-import { type ModelEsque, getDisplayModelName } from "./providerIconUtils";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { Schema } from "effect";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
 import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
   type ProviderInstanceEntry,
 } from "@/features/assistant/providerInstances";
+import { cn } from "@/lib/utils";
+import { getDirectlySelectableOptions } from "./modelPickerOptions";
+import { getDisplayModelName, type ModelEsque } from "./providerIconUtils";
 
-type ModelPickerItem = {
-  slug: string;
-  name: string;
-  shortName?: string;
-  subProvider?: string;
-  isDefault?: boolean;
-  isLegacy?: boolean;
+type SelectDescriptor = Extract<ProviderOptionDescriptor, { type: "select" }>;
+
+type ModelPickerItem = ModelEsque & {
   provider: ProviderKind;
   instanceId: ProviderInstanceId;
   driverKind: ProviderDriverKind;
   instanceDisplayName: string;
-  instanceAccentColor?: string;
 };
 
-const FavoritesSchema = Schema.Array(Schema.Struct({
-  provider: Schema.String,
-  model: Schema.String,
-}));
-
-function providerModelKey(provider: string, model: string): string {
-  return `${provider}:${model}`;
-}
-
-function splitInstanceModelKey(key: string): { instanceId: ProviderInstanceId; slug: string } {
-  const colonIndex = key.indexOf(":");
-  if (colonIndex === -1) {
-    return { instanceId: key as ProviderInstanceId, slug: "" };
-  }
-  return {
-    instanceId: key.slice(0, colonIndex) as ProviderInstanceId,
-    slug: key.slice(colonIndex + 1),
-  };
-}
+export type ModelPickerPrimaryView = "models" | "capabilities";
 
 function toModelEsque(model: ModelEsque): ModelEsque {
   return {
@@ -81,27 +52,43 @@ function buildModelOptionsByInstance(
   entries: ReadonlyArray<ProviderInstanceEntry>,
   modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<ModelEsque>>,
 ): ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>> {
-  const out = new Map<ProviderInstanceId, ReadonlyArray<ModelEsque>>();
+  const optionsByInstance = new Map<ProviderInstanceId, ReadonlyArray<ModelEsque>>();
   for (const entry of entries) {
     const snapshotModels = entry.models.map(toModelEsque);
-    out.set(
+    optionsByInstance.set(
       entry.instanceId,
       snapshotModels.length > 0 ? snapshotModels : modelOptionsByProvider[entry.provider] ?? [],
     );
   }
-  return out;
+  return optionsByInstance;
 }
 
-function isSpeedOption(id: string, label?: string) {
-  const normId = id.toLowerCase();
-  const normLabel = (label ?? "").toLowerCase();
+function isEffortDescriptor(descriptor: SelectDescriptor): boolean {
+  const normalizedId = descriptor.id.toLowerCase();
   return (
-    normId === "fastmode" ||
-    normId === "servicetier" ||
-    normId === "speed" ||
-    normId === "fast" ||
-    normLabel.includes("speed") ||
-    normLabel.includes("fast mode")
+    normalizedId === "effort" ||
+    normalizedId === "reasoningeffort" ||
+    normalizedId === "reasoning" ||
+    normalizedId === "thinking"
+  );
+}
+
+function isSpeedOption(id: string, label?: string): boolean {
+  const normalizedId = id.toLowerCase();
+  const normalizedLabel = (label ?? "").toLowerCase();
+  return (
+    normalizedId === "fastmode" ||
+    normalizedId === "servicetier" ||
+    normalizedId === "speed" ||
+    normalizedId === "fast" ||
+    normalizedLabel.includes("speed") ||
+    normalizedLabel.includes("fast mode")
+  );
+}
+
+function isEnabledSpeedValue(value: unknown): boolean {
+  return ["true", "on", "fast", "priority", "turbo", "enabled"].includes(
+    String(value ?? "").toLowerCase(),
   );
 }
 
@@ -115,16 +102,21 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   optionDescriptors?: ReadonlyArray<ProviderOptionDescriptor>;
   onOptionChange?: (id: string, value: string | boolean) => void;
   terminalOpen: boolean;
+  initialView?: ModelPickerPrimaryView;
   maxAvailableHeightPx?: number;
   onRequestClose?: () => void;
-  onProviderModelChange: (provider: ProviderKind, model: string, instanceId?: ProviderInstanceId) => void;
+  onProviderModelChange: (
+    provider: ProviderKind,
+    model: string,
+    instanceId?: ProviderInstanceId,
+  ) => void;
 }) {
-  const { onProviderModelChange } = props;
-  const [activeView, setActiveView] = useState<string>("root");
-  const [searchQuery, setSearchQuery] = useState("");
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const listRegionRef = useRef<HTMLDivElement>(null);
-  const [favorites, setFavorites] = useLocalStorage<ReadonlyArray<{ provider: string; model: string }>>("cozea:favorites", [], FavoritesSchema);
+  const { onOptionChange, onProviderModelChange, onRequestClose } = props;
+  const [activeView, setActiveView] = useState<string>(props.initialView ?? "models");
+
+  useEffect(() => {
+    setActiveView(props.initialView ?? "models");
+  }, [props.initialView]);
 
   const instanceEntries = useMemo(
     () => sortProviderInstanceEntries(deriveProviderInstanceEntries(props.providers ?? [])),
@@ -132,521 +124,216 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   );
   const activeInstanceId =
     props.activeInstanceId ?? defaultInstanceIdForDriver(props.provider as ProviderDriverKind);
+  const entryByInstanceId = useMemo(
+    () => new Map(instanceEntries.map((entry) => [entry.instanceId, entry] as const)),
+    [instanceEntries],
+  );
   const modelOptionsByInstance = useMemo(
     () => buildModelOptionsByInstance(instanceEntries, props.modelOptionsByProvider),
     [instanceEntries, props.modelOptionsByProvider],
   );
 
-  const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | "favorites">(() => {
-    if (props.lockedProvider !== null) {
-      return activeInstanceId;
-    }
-    return favorites.length > 0 ? "favorites" : activeInstanceId;
-  });
-
-  const focusSearchInput = useCallback(() => {
-    searchInputRef.current?.focus({ preventScroll: true });
-  }, []);
-
-  const handleSelectInstance = useCallback(
-    (instanceId: ProviderInstanceId | "favorites") => {
-      setSelectedInstanceId(instanceId);
-      window.requestAnimationFrame(() => {
-        focusSearchInput();
-      });
-    },
-    [focusSearchInput],
-  );
-
-  useLayoutEffect(() => {
-    focusSearchInput();
-    const frame = window.requestAnimationFrame(() => {
-      focusSearchInput();
-    });
-    const timeout = window.setTimeout(() => {
-      focusSearchInput();
-    }, 0);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timeout);
-    };
-  }, [focusSearchInput]);
-
-  const favoritesSet = useMemo(() => {
-    return new Set(favorites.map((fav) => providerModelKey(fav.provider, fav.model)));
-  }, [favorites]);
-  const favoriteOrder = useMemo(() => {
-    return new Map(
-      favorites.map((favorite, index) => [providerModelKey(favorite.provider, favorite.model), index]),
-    );
-  }, [favorites]);
-
-  const entryByInstanceId = useMemo(
-    () => new Map(instanceEntries.map((entry) => [entry.instanceId, entry] as const)),
-    [instanceEntries],
-  );
-  const matchesLockedProvider = useCallback(
-    (entry: Pick<ProviderInstanceEntry, "provider"> | ModelPickerItem): boolean => {
-      return props.lockedProvider === null || entry.provider === props.lockedProvider;
-    },
-    [props.lockedProvider],
-  );
-
-  const readyInstanceSet = useMemo(() => {
-    const ready = new Set<ProviderInstanceId>();
-    for (const entry of instanceEntries) {
-      if (entry.status === "ready") {
-        ready.add(entry.instanceId);
-      }
-    }
-    return ready;
-  }, [instanceEntries]);
-
-  const flatModels = useMemo(() => {
-    const out: ModelPickerItem[] = [];
-    for (const [instanceId, models] of modelOptionsByInstance) {
+  const visibleModels = useMemo(() => {
+    const models: ModelPickerItem[] = [];
+    for (const [instanceId, options] of modelOptionsByInstance) {
       const entry = entryByInstanceId.get(instanceId);
-      if (!entry || !readyInstanceSet.has(instanceId)) {
+      if (
+        !entry ||
+        entry.status !== "ready" ||
+        (props.lockedProvider !== null && entry.provider !== props.lockedProvider)
+      ) {
         continue;
       }
-      for (const model of models) {
-        out.push({
-          slug: model.slug,
-          name: model.name,
-          ...(model.shortName ? { shortName: model.shortName } : {}),
-          ...(model.subProvider ? { subProvider: model.subProvider } : {}),
-          ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}),
-          ...(model.isLegacy !== undefined ? { isLegacy: model.isLegacy } : {}),
+      for (const model of options) {
+        models.push({
+          ...toModelEsque(model),
           provider: entry.provider,
           instanceId,
           driverKind: entry.driverKind,
           instanceDisplayName: entry.displayName,
-          ...(entry.accentColor ? { instanceAccentColor: entry.accentColor } : {}),
         });
       }
     }
-    return out;
-  }, [entryByInstanceId, modelOptionsByInstance, readyInstanceSet]);
 
-  const isLocked = props.lockedProvider !== null;
-  const isSearching = searchQuery.trim().length > 0;
-  const lockedInstanceEntries = useMemo(
-    () => (props.lockedProvider ? instanceEntries.filter((entry) => matchesLockedProvider(entry)) : []),
-    [instanceEntries, matchesLockedProvider, props.lockedProvider],
-  );
-  const showLockedInstanceSidebar = isLocked && lockedInstanceEntries.length > 1;
-  const showSidebar = !isSearching && (!isLocked || showLockedInstanceSidebar);
-  const sidebarInstanceEntries = showLockedInstanceSidebar ? lockedInstanceEntries : instanceEntries;
-  const instanceOrder = useMemo(
-    () => instanceEntries.map((entry) => entry.instanceId),
-    [instanceEntries],
-  );
-
-  const filteredModels = useMemo(() => {
-    let result = flatModels;
-
-    if (searchQuery.trim()) {
-      const rankedMatches = result
-        .map((model) => ({
-          model,
-          score: scoreModelPickerSearch(
-            {
-              name: model.name,
-              ...(model.shortName ? { shortName: model.shortName } : {}),
-              ...(model.subProvider ? { subProvider: model.subProvider } : {}),
-              driverKind: model.driverKind,
-              providerDisplayName: model.instanceDisplayName,
-              isFavorite: favoritesSet.has(providerModelKey(model.instanceId, model.slug)),
-            },
-            searchQuery,
-          ),
-          isFavorite: favoritesSet.has(providerModelKey(model.instanceId, model.slug)),
-          tieBreaker: buildModelPickerSearchText({
-            name: model.name,
-            ...(model.shortName ? { shortName: model.shortName } : {}),
-            ...(model.subProvider ? { subProvider: model.subProvider } : {}),
-            driverKind: model.driverKind,
-            providerDisplayName: model.instanceDisplayName,
-          }),
-        }))
-        .filter(
-          (
-            rankedModel,
-          ): rankedModel is {
-            model: ModelPickerItem;
-            score: number;
-            isFavorite: boolean;
-            tieBreaker: string;
-          } => rankedModel.score !== null,
-        );
-
-      return rankedMatches
-        .filter((rankedModel) => matchesLockedProvider(rankedModel.model))
-        .toSorted((a, b) => {
-          const scoreDelta = a.score - b.score;
-          if (scoreDelta !== 0) return scoreDelta;
-          if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
-          return a.tieBreaker.localeCompare(b.tieBreaker);
-        })
-        .map((rankedModel) => rankedModel.model);
-    }
-
-    if (props.lockedProvider !== null) {
-      result = result.filter((m) => matchesLockedProvider(m));
-      if (showLockedInstanceSidebar) {
-        result = result.filter((m) => m.instanceId === selectedInstanceId);
-      }
-    } else if (selectedInstanceId === "favorites") {
-      result = result.filter((m) => favoritesSet.has(providerModelKey(m.instanceId, m.slug)));
-    } else {
-      result = result.filter((m) => m.instanceId === selectedInstanceId);
-    }
-
-    return result.toSorted((a, b) => {
-      const aOrder = favoriteOrder.get(providerModelKey(a.instanceId, a.slug));
-      const bOrder = favoriteOrder.get(providerModelKey(b.instanceId, b.slug));
-
-      if (aOrder !== undefined && bOrder !== undefined) return aOrder - bOrder;
-      if (aOrder !== undefined) return -1;
-      if (bOrder !== undefined) return 1;
-      if (a.isLegacy !== b.isLegacy) return a.isLegacy ? 1 : -1;
-      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
-      if (selectedInstanceId === "favorites") {
-        return instanceOrder.indexOf(a.instanceId) - instanceOrder.indexOf(b.instanceId);
-      }
+    return models.toSorted((left, right) => {
+      const leftActive = left.instanceId === activeInstanceId;
+      const rightActive = right.instanceId === activeInstanceId;
+      if (leftActive !== rightActive) return leftActive ? -1 : 1;
+      if (left.isLegacy !== right.isLegacy) return left.isLegacy ? 1 : -1;
+      if (left.isDefault !== right.isDefault) return left.isDefault ? -1 : 1;
       return 0;
     });
-  }, [
-    favoriteOrder,
-    favoritesSet,
-    flatModels,
-    instanceOrder,
-    matchesLockedProvider,
-    props.lockedProvider,
-    searchQuery,
-    selectedInstanceId,
-    showLockedInstanceSidebar,
-  ]);
+  }, [activeInstanceId, entryByInstanceId, modelOptionsByInstance, props.lockedProvider]);
 
-  const handleModelSelect = useCallback(
-    (modelSlug: string, instanceId: ProviderInstanceId) => {
-      const options = modelOptionsByInstance.get(instanceId);
-      const entry = entryByInstanceId.get(instanceId);
-      if (!options || !entry) return;
-      const resolvedModel = resolveSelectableModel(entry.provider, modelSlug, options as any);
-      if (resolvedModel) {
-        onProviderModelChange(entry.provider, resolvedModel, instanceId);
-      }
-    },
-    [entryByInstanceId, modelOptionsByInstance, onProviderModelChange],
-  );
-
-  const toggleFavorite = useCallback(
-    (instanceId: ProviderInstanceId, model: string) => {
-      setFavorites((prev) => {
-        const newFavorites = [...prev];
-        const index = newFavorites.findIndex((f) => f.provider === instanceId && f.model === model);
-        if (index >= 0) {
-          newFavorites.splice(index, 1);
-        } else {
-          newFavorites.push({ provider: instanceId, model });
-        }
-        return newFavorites;
-      });
-    },
-    [setFavorites],
-  );
-
-  const modelJumpCommandByKey = useMemo(() => {
-    const mapping = new Map<string, string>();
-    for (const [visibleModelIndex, model] of filteredModels.entries()) {
-      if (visibleModelIndex < 9) {
-        mapping.set(providerModelKey(model.instanceId, model.slug), `modelPicker.jump.${visibleModelIndex + 1}`);
-      }
-    }
-    return mapping;
-  }, [filteredModels]);
-
-  const modelJumpModelKeys = useMemo(
-    () => [...modelJumpCommandByKey.keys()],
-    [modelJumpCommandByKey],
-  );
-
-  const filteredModelKeys = useMemo(
-    (): string[] => filteredModels.map((model) => providerModelKey(model.instanceId, model.slug)),
-    [filteredModels],
-  );
-  const filteredModelByKey = useMemo(
-    (): ReadonlyMap<string, ModelPickerItem> =>
-      new Map(filteredModels.map((model) => [providerModelKey(model.instanceId, model.slug), model] as const)),
-    [filteredModels],
-  );
-
-  useEffect(() => {
-    const onWindowKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat) {
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-        const digit = parseInt(event.key, 10);
-        if (digit >= 1 && digit <= 9) {
-          const jumpIndex = digit - 1;
-          const targetModelKey = modelJumpModelKeys[jumpIndex];
-          if (targetModelKey) {
-            const { instanceId, slug } = splitInstanceModelKey(targetModelKey);
-            event.preventDefault();
-            event.stopPropagation();
-            handleModelSelect(slug, instanceId);
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", onWindowKeyDown, true);
-    return () => window.removeEventListener("keydown", onWindowKeyDown, true);
-  }, [handleModelSelect, modelJumpModelKeys]);
-
-  useLayoutEffect(() => {
-    const listRegion = listRegionRef.current;
-    if (!listRegion) {
-      return;
-    }
-
-    let cancelled = false;
-    let frame = 0;
-    let nestedFrame = 0;
-    let timeout = 0;
-
-    const measureScrollArea = () => {
-      if (cancelled) {
-        return;
-      }
-      const viewport = listRegion;
-      if (viewport.scrollHeight <= viewport.clientHeight) {
-        return;
-      }
-      const originalScrollTop = viewport.scrollTop;
-      const maxScrollTop = viewport.scrollHeight - viewport.clientHeight;
-      if (maxScrollTop <= 0) {
-        return;
-      }
-      viewport.scrollTop = Math.min(originalScrollTop + 1, maxScrollTop);
-      viewport.scrollTop = originalScrollTop;
-    };
-
-    queueMicrotask(measureScrollArea);
-    frame = window.requestAnimationFrame(() => {
-      measureScrollArea();
-      nestedFrame = window.requestAnimationFrame(measureScrollArea);
-    });
-    timeout = window.setTimeout(measureScrollArea, 0);
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-      window.cancelAnimationFrame(nestedFrame);
-      window.clearTimeout(timeout);
-    };
-  }, [filteredModelKeys]);
-
-  const speedDescriptor = props.optionDescriptors?.find((d) => isSpeedOption(d.id, d.label));
-  const otherDescriptors = useMemo(
-    () => (props.optionDescriptors ?? []).filter((d) => !speedDescriptor || d.id !== speedDescriptor.id),
-    [props.optionDescriptors, speedDescriptor],
-  );
-  const selectDescriptors = useMemo(
+  const lockedInstanceCount = useMemo(
     () =>
-      otherDescriptors.filter(
-        (d): d is Extract<ProviderOptionDescriptor, { type: "select" }> => d.type === "select",
-      ),
-    [otherDescriptors],
+      props.lockedProvider === null
+        ? instanceEntries.length
+        : instanceEntries.filter((entry) => entry.provider === props.lockedProvider).length,
+    [instanceEntries, props.lockedProvider],
   );
-  const booleanDescriptors = useMemo(
+  const showInstanceLabel = props.lockedProvider === null || lockedInstanceCount > 1;
+
+  const activeSelectedModel = useMemo(
     () =>
-      otherDescriptors.filter(
-        (d): d is Extract<ProviderOptionDescriptor, { type: "boolean" }> => d.type === "boolean",
-      ),
-    [otherDescriptors],
+      visibleModels.find(
+        (model) => model.slug === props.model && model.instanceId === activeInstanceId,
+      ) ?? visibleModels.find((model) => model.slug === props.model) ?? null,
+    [activeInstanceId, props.model, visibleModels],
   );
-
-  const currentSpeedVal = String(
-    speedDescriptor ? getProviderOptionCurrentValue(speedDescriptor) ?? "" : "",
-  ).toLowerCase();
-  const isSpeedChecked =
-    currentSpeedVal === "true" ||
-    currentSpeedVal === "on" ||
-    currentSpeedVal === "fast" ||
-    currentSpeedVal === "priority" ||
-    currentSpeedVal === "turbo" ||
-    currentSpeedVal === "enabled";
-
-  const handleSpeedToggle = (nextChecked: boolean) => {
-    if (!speedDescriptor) return;
-    if (speedDescriptor.type === "select") {
-      const matched = speedDescriptor.options.find((opt) => {
-        const optId = opt.id.toLowerCase();
-        return nextChecked
-          ? optId === "fast" || optId === "priority" || optId === "turbo" || optId === "on" || optId === "true" || optId === "enabled"
-          : optId === "default" || optId === "standard" || optId === "auto" || optId === "off" || optId === "false" || optId === "disabled";
-      });
-      const fallbackValue = nextChecked
-        ? (speedDescriptor.options.find((o) => o.id !== "default" && o.id !== "standard")?.id ?? "fast")
-        : "default";
-      props.onOptionChange?.(speedDescriptor.id, matched ? matched.id : fallbackValue);
-    } else {
-      props.onOptionChange?.(speedDescriptor.id, nextChecked);
-    }
-  };
-
-  const activeSelectedModel = useMemo(() => {
-    for (const m of flatModels) {
-      if (m.slug === props.model && m.instanceId === activeInstanceId) return m;
-    }
-    return flatModels.find((m) => m.slug === props.model) ?? null;
-  }, [activeInstanceId, flatModels, props.model]);
-
   const activeModelDisplayLabel = activeSelectedModel
     ? getDisplayModelName(activeSelectedModel, { preferShortName: true })
     : props.model;
 
-  if (activeView === "root") {
-    return (
-      <div className="flex w-full flex-col divide-y divide-border/30 text-popover-foreground">
-        <button
-          type="button"
-          className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.04]"
-          onClick={() => setActiveView("models")}
-        >
-          <span className="text-xs font-medium text-foreground">Model</span>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="truncate">{activeModelDisplayLabel}</span>
-            <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
-          </div>
-        </button>
+  const selectDescriptors = useMemo(
+    () =>
+      (props.optionDescriptors ?? []).filter(
+        (descriptor): descriptor is SelectDescriptor => descriptor.type === "select",
+      ),
+    [props.optionDescriptors],
+  );
+  const speedDescriptor = useMemo(
+    () => props.optionDescriptors?.find((descriptor) => isSpeedOption(descriptor.id, descriptor.label)),
+    [props.optionDescriptors],
+  );
+  const primaryCapabilityDescriptor = useMemo(
+    () =>
+      selectDescriptors.find(isEffortDescriptor) ??
+      selectDescriptors.find((descriptor) => descriptor.id.toLowerCase() === "variant") ??
+      null,
+    [selectDescriptors],
+  );
+  const secondarySelectDescriptors = useMemo(
+    () =>
+      selectDescriptors.filter(
+        (descriptor) =>
+          descriptor.id !== primaryCapabilityDescriptor?.id &&
+          descriptor.id !== speedDescriptor?.id,
+      ),
+    [primaryCapabilityDescriptor?.id, selectDescriptors, speedDescriptor?.id],
+  );
+  const booleanDescriptors = useMemo(
+    () =>
+      (props.optionDescriptors ?? []).filter(
+        (descriptor) =>
+          descriptor.type === "boolean" && descriptor.id !== speedDescriptor?.id,
+      ),
+    [props.optionDescriptors, speedDescriptor?.id],
+  );
 
-        {selectDescriptors.map((descriptor) => {
-          const currentVal = getProviderOptionCurrentValue(descriptor);
-          const currentLabel =
-            descriptor.options.find((o) => o.id === currentVal)?.label ??
-            String(currentVal ?? "Default");
-          return (
-            <button
-              key={descriptor.id}
-              type="button"
-              className="flex h-11 w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left outline-none transition-colors hover:bg-foreground/[0.04]"
-              onClick={() => setActiveView(`option:${descriptor.id}`)}
-            >
-              <span className="text-xs font-medium text-foreground">{descriptor.label}</span>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span className="truncate">{currentLabel}</span>
-                <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0 opacity-60" />
-              </div>
-            </button>
-          );
-        })}
+  const handleModelSelect = useCallback(
+    (model: ModelPickerItem) => {
+      const options = modelOptionsByInstance.get(model.instanceId);
+      if (!options) return;
+      const resolvedModel = resolveSelectableModel(model.provider, model.slug, options);
+      if (!resolvedModel) return;
+      onProviderModelChange(model.provider, resolvedModel, model.instanceId);
+      onRequestClose?.();
+    },
+    [modelOptionsByInstance, onProviderModelChange, onRequestClose],
+  );
 
-        {booleanDescriptors.map((descriptor) => {
-          const isChecked = getProviderOptionCurrentValue(descriptor) === true;
-          return (
-            <div
-              key={descriptor.id}
-              className="flex h-11 w-full items-center justify-between px-4 py-2.5 text-left"
-            >
-              <span className="text-xs font-medium text-foreground">{descriptor.label}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{isChecked ? "On" : "Off"}</span>
-                <Switch
-                  checked={isChecked}
-                  onCheckedChange={(checked) => props.onOptionChange?.(descriptor.id, checked)}
-                  className="scale-[0.75] -mr-1"
-                />
-              </div>
-            </div>
-          );
-        })}
+  useEffect(() => {
+    if (activeView !== "models") return;
 
-        {speedDescriptor ? (
-          <div className="flex h-11 w-full items-center justify-between px-4 py-2.5 text-left">
-            <span className="text-xs font-medium text-foreground">Speed</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                {isSpeedChecked ? "Fast" : "Standard"}
-              </span>
-              <Switch
-                checked={isSpeedChecked}
-                onCheckedChange={handleSpeedToggle}
-                className="scale-[0.75] -mr-1"
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
+    const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        (!event.metaKey && !event.ctrlKey) ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const modelIndex = Number.parseInt(event.key, 10) - 1;
+      const selectedModel = visibleModels[modelIndex];
+      if (modelIndex < 0 || modelIndex > 8 || !selectedModel) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleModelSelect(selectedModel);
+    };
 
-  const activeOptionDescriptor = (() => {
-    if (activeView.startsWith("option:")) {
-      const id = activeView.slice("option:".length);
-      return selectDescriptors.find((d) => d.id === id);
-    }
-    if (activeView === "effort") {
-      return selectDescriptors.find(
-        (d) => d.id === "effort" || d.id === "reasoningEffort" || d.id === "reasoning" || d.id === "thinking",
-      );
-    }
-    if (activeView === "context") {
-      return selectDescriptors.find((d) => d.id === "contextWindow");
-    }
-    return undefined;
-  })();
+    window.addEventListener("keydown", handleWindowKeyDown, true);
+    return () => window.removeEventListener("keydown", handleWindowKeyDown, true);
+  }, [activeView, handleModelSelect, visibleModels]);
+
+  const handleSpeedToggle = useCallback(
+    (nextChecked: boolean) => {
+      if (!speedDescriptor) return;
+      if (speedDescriptor.type === "boolean") {
+        onOptionChange?.(speedDescriptor.id, nextChecked);
+        return;
+      }
+
+      const matchedOption = speedDescriptor.options.find((option) => {
+        const normalizedId = option.id.toLowerCase();
+        return nextChecked
+          ? ["fast", "priority", "turbo", "on", "true", "enabled"].includes(normalizedId)
+          : ["default", "standard", "auto", "off", "false", "disabled"].includes(normalizedId);
+      });
+      const fallbackValue = nextChecked
+        ? (speedDescriptor.options.find(
+            (option) => !["default", "standard", "auto"].includes(option.id.toLowerCase()),
+          )?.id ?? "fast")
+        : (speedDescriptor.options.find((option) => option.isDefault)?.id ??
+          speedDescriptor.options[0]?.id ??
+          "default");
+      onOptionChange?.(speedDescriptor.id, matchedOption?.id ?? fallbackValue);
+    },
+    [onOptionChange, speedDescriptor],
+  );
+
+  const activeOptionDescriptor = activeView.startsWith("option:")
+    ? selectDescriptors.find((descriptor) => descriptor.id === activeView.slice("option:".length))
+    : undefined;
 
   if (activeOptionDescriptor) {
-    const maxHeight = Math.max(80, Math.min(360, (props.maxAvailableHeightPx ?? 320) - 10));
-    const currentVal = getProviderOptionCurrentValue(activeOptionDescriptor);
+    const currentValue = getProviderOptionCurrentValue(activeOptionDescriptor);
+    const directlySelectableOptions = getDirectlySelectableOptions(activeOptionDescriptor);
+    const maxHeight = Math.max(144, Math.min(288, props.maxAvailableHeightPx ?? 288));
     return (
-      <div
-        className="flex w-full flex-col overflow-hidden text-popover-foreground"
-        style={{ maxHeight: `${maxHeight}px` }}
-      >
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/40 px-3 bg-muted/20">
+      <div className="flex w-full flex-col overflow-hidden text-popover-foreground" style={{ maxHeight }}>
+        <div className="grid h-9 shrink-0 grid-cols-[28px_1fr_28px] items-center px-2">
           <button
             type="button"
-            onClick={() => setActiveView("root")}
-            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground cursor-pointer px-1.5 py-0.5 rounded hover:bg-foreground/[0.05]"
+            onClick={() => setActiveView("capabilities")}
+            className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            aria-label="Back to capabilities"
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
-            <span>Back</span>
           </button>
-          <span className="text-xs font-medium text-muted-foreground mr-1">{activeOptionDescriptor.label}</span>
+          <span className="text-center text-[13px] font-medium text-foreground">
+            {activeOptionDescriptor.label}
+          </span>
         </div>
-        <div
-          className="flex flex-col divide-y divide-border/30 overflow-y-auto"
-          style={{ maxHeight: `${Math.max(50, maxHeight - 36)}px` }}
-        >
-          {activeOptionDescriptor.options.map((opt) => {
-            const isSelected = String(currentVal) === opt.id;
+        <div className="min-h-0 overflow-y-auto px-1.5 pb-1.5 app-scrollbar" role="listbox">
+          {directlySelectableOptions.map((option) => {
+            const isSelected = String(currentValue ?? "") === option.id;
             return (
               <button
-                key={opt.id}
+                key={option.id}
                 type="button"
+                role="option"
+                aria-selected={isSelected}
                 className={cn(
-                  "flex h-10 w-full cursor-pointer items-center justify-between px-4 py-2 text-left outline-none transition-colors hover:bg-foreground/[0.04]",
-                  isSelected && "bg-foreground/[0.03]",
+                  "flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1 text-left outline-none transition-colors hover:bg-foreground/[0.055] focus-visible:bg-foreground/[0.055]",
                 )}
                 onClick={() => {
-                  props.onOptionChange?.(activeOptionDescriptor.id, opt.id);
-                  setActiveView("root");
+                  onOptionChange?.(activeOptionDescriptor.id, option.id);
+                  setActiveView("capabilities");
                 }}
               >
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-normal text-foreground">{opt.label}</span>
-                  {opt.description ? (
-                    <span className="text-[10px] text-muted-foreground truncate">{opt.description}</span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] text-foreground">{option.label}</span>
+                  {option.description ? (
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {option.description}
+                    </span>
                   ) : null}
-                </div>
+                </span>
                 {isSelected ? (
-                  <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-primary" />
+                  <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-foreground" />
                 ) : null}
               </button>
             );
@@ -656,108 +343,259 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     );
   }
 
-  const modelsViewHeight = Math.max(120, Math.min(360, props.maxAvailableHeightPx ?? 320));
+  if (activeView === "models") {
+    const maxHeight = Math.max(160, Math.min(288, props.maxAvailableHeightPx ?? 288));
+    return (
+      <div
+        className="flex w-full flex-col overflow-hidden text-popover-foreground"
+        style={{ maxHeight }}
+      >
+        <div className="shrink-0 px-3.5 pb-1.5 pt-2.5 text-[13px] font-medium text-muted-foreground">
+          Select model
+        </div>
+        <div
+          data-model-picker-model-list
+          className="app-scrollbar scroll-fade-y min-h-0 overflow-y-auto px-1.5 pb-1.5"
+          role="listbox"
+        >
+          {visibleModels.length === 0 ? (
+            <div className="px-3 py-5 text-center text-[13px] text-muted-foreground">
+              No models available.
+            </div>
+          ) : (
+            visibleModels.map((model, index) => {
+              const isSelected =
+                props.model === model.slug && activeInstanceId === model.instanceId;
+              const modelLabel = getDisplayModelName(model, { preferShortName: true });
+              return (
+                <div key={`${model.instanceId}:${model.slug}`}>
+                  {index > 0 && model.isDefault ? (
+                    <div className="mx-3 my-1 h-px bg-border/50" aria-hidden />
+                  ) : null}
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    className={cn(
+                      "flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1 text-left outline-none transition-colors hover:bg-foreground/[0.055] focus-visible:bg-foreground/[0.055]",
+                    )}
+                    onClick={() => handleModelSelect(model)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-foreground">{modelLabel}</span>
+                      {model.isDefault || showInstanceLabel ? (
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {model.isDefault ? "Recommended" : null}
+                          {model.isDefault && showInstanceLabel ? " · " : null}
+                          {showInstanceLabel ? model.instanceDisplayName : null}
+                        </span>
+                      ) : null}
+                    </span>
+                    {isSelected ? (
+                      <HugeiconsIcon icon={__CheckHugeIcon} className="size-3.5 shrink-0 text-foreground" />
+                    ) : null}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const primaryOptions = primaryCapabilityDescriptor
+    ? getDirectlySelectableOptions(primaryCapabilityDescriptor)
+    : [];
+  const currentPrimaryValue = primaryCapabilityDescriptor
+    ? getProviderOptionCurrentValue(primaryCapabilityDescriptor)
+    : undefined;
+  const currentPrimaryIndex = Math.max(
+    0,
+    primaryOptions.findIndex((option) => option.id === currentPrimaryValue),
+  );
+  const selectedPrimaryOption = primaryOptions[currentPrimaryIndex];
+  const defaultPrimaryOption =
+    primaryOptions.find((option) => option.isDefault) ?? primaryOptions[0];
+  const effortProgress =
+    primaryOptions.length > 1 ? (currentPrimaryIndex / (primaryOptions.length - 1)) * 100 : 0;
+  const isSpeedChecked = speedDescriptor
+    ? isEnabledSpeedValue(getProviderOptionCurrentValue(speedDescriptor))
+    : false;
+  const inlineContextDescriptor = secondarySelectDescriptors.find(
+    (descriptor) => descriptor.id.toLowerCase() === "contextwindow",
+  );
+  const remainingSecondarySelectDescriptors = secondarySelectDescriptors.filter(
+    (descriptor) => descriptor.id !== inlineContextDescriptor?.id,
+  );
+  const inlineContextValue = inlineContextDescriptor
+    ? getProviderOptionCurrentValue(inlineContextDescriptor)
+    : undefined;
+  const inlineContextLabel = inlineContextDescriptor
+    ? (inlineContextDescriptor.options.find((option) => option.id === inlineContextValue)?.label ??
+      String(inlineContextValue ?? "Default"))
+    : null;
+  const sliderStyle = {
+    "--model-picker-effort-progress": `${effortProgress}%`,
+  } as CSSProperties;
 
   return (
-    <TooltipProvider delayDuration={0}>
-      <div
-        className="relative flex w-full overflow-hidden text-popover-foreground flex-col"
-        style={{ height: `${modelsViewHeight}px`, maxHeight: `${modelsViewHeight}px` }}
-      >
-        <div className="flex h-9 shrink-0 items-center border-b border-border/40 px-2 bg-muted/20">
+    <div className="flex w-full flex-col overflow-hidden text-popover-foreground">
+      <div className="px-3 pb-3 pt-2">
+        <div className="grid grid-cols-[32px_1fr_32px] items-start gap-1">
+          {speedDescriptor ? (
+            <button
+              type="button"
+              aria-label={isSpeedChecked ? "Turn off fast mode" : "Turn on fast mode"}
+              aria-pressed={isSpeedChecked}
+              onClick={() => handleSpeedToggle(!isSpeedChecked)}
+              className={cn(
+                "flex size-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:ring-1 focus-visible:ring-ring",
+                isSpeedChecked ? "text-blue-500" : "text-muted-foreground",
+              )}
+            >
+              <HugeiconsIcon icon={__ZapHugeIcon} className="size-4" />
+            </button>
+          ) : (
+            <span aria-hidden />
+          )}
+
+          <div className="min-w-0 text-center">
+            <button
+              type="button"
+              onClick={() => setActiveView("models")}
+              className="inline-flex max-w-full cursor-pointer items-center justify-center gap-0.5 rounded-lg px-1 text-[13px] font-medium text-blue-500 outline-none transition-colors hover:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-ring"
+              aria-label={`Select model. Current model: ${activeModelDisplayLabel}`}
+            >
+              <span className="truncate">
+                {selectedPrimaryOption?.label ?? primaryCapabilityDescriptor?.label ?? "Capabilities"}
+              </span>
+              <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0" />
+            </button>
+            <div className="mt-px flex min-w-0 items-center justify-center gap-1 text-[11px] text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => setActiveView("models")}
+                className="min-w-0 cursor-pointer truncate rounded px-0.5 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {activeModelDisplayLabel}
+              </button>
+              {inlineContextDescriptor && inlineContextLabel ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveView(`option:${inlineContextDescriptor.id}`)}
+                    className="flex shrink-0 cursor-pointer items-center gap-0.5 rounded px-0.5 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={`${inlineContextDescriptor.label}: ${inlineContextLabel}`}
+                  >
+                    <span>{inlineContextLabel}</span>
+                    <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-2.5" />
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
           <button
             type="button"
-            onClick={() => setActiveView("root")}
-            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground cursor-pointer px-1.5 py-0.5 rounded hover:bg-foreground/[0.05]"
+            aria-label={`Reset ${primaryCapabilityDescriptor?.label ?? "capability"}`}
+            disabled={
+              !primaryCapabilityDescriptor ||
+              !defaultPrimaryOption ||
+              defaultPrimaryOption.id === currentPrimaryValue
+            }
+            onClick={() => {
+              if (primaryCapabilityDescriptor && defaultPrimaryOption) {
+                onOptionChange?.(primaryCapabilityDescriptor.id, defaultPrimaryOption.id);
+              }
+            }}
+            className="flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default disabled:opacity-35"
           >
-            <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
-            <span>Back</span>
+            <HugeiconsIcon icon={__ResetHugeIcon} className="size-4" />
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden flex-row">
-          {showSidebar && (
-            <ModelPickerSidebar
-              selectedInstanceId={selectedInstanceId}
-              onSelectInstance={handleSelectInstance}
-              instanceEntries={sidebarInstanceEntries}
-              showFavorites={!isLocked}
-              showComingSoon={!isLocked}
-            />
-          )}
-
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <Combobox
-              open
-              disabled={false}
-              value={providerModelKey(activeInstanceId, props.model)}
-              onValueChange={(value) => {
-                if (!value) return;
-                const { instanceId, slug } = splitInstanceModelKey(String(value));
-                handleModelSelect(slug, instanceId);
-                props.onRequestClose?.();
-              }}
+        {primaryCapabilityDescriptor && primaryOptions.length > 1 ? (
+          <div className="relative mt-2 h-6" style={sliderStyle}>
+            <div className="absolute inset-0 overflow-hidden rounded-full bg-foreground/[0.13]">
+              <div
+                className="h-full bg-blue-500"
+                style={{ width: "var(--model-picker-effort-progress)" }}
+              />
+            </div>
+            <div
+              className="pointer-events-none absolute inset-x-3 top-1/2 flex -translate-y-1/2 items-center justify-between"
+              aria-hidden
             >
-              <div className="relative shrink-0 border-b border-border/40">
-                <ComboboxInput
-                  ref={searchInputRef}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search models..."
-                  showTrigger={false}
-                  showClear={false}
-                  startAddon={<HugeiconsIcon icon={__SearchIconHugeIcon} className="size-4 opacity-50" />}
-                  className="w-full text-sm"
-                  inputClassName="h-10 w-full rounded-none border-0 border-none bg-transparent px-0 text-sm font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent"
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setActiveView("root");
-                      return;
-                    }
-                    e.stopPropagation();
-                  }}
+              {primaryOptions.map((option, index) => (
+                <span
+                  key={option.id}
+                  className={cn(
+                    "size-1 rounded-full",
+                    index <= currentPrimaryIndex ? "bg-blue-200/60" : "bg-foreground/30",
+                  )}
+                />
+              ))}
+            </div>
+            <input
+              className="model-picker-effort-slider absolute inset-0 z-10 w-full"
+              type="range"
+              min={0}
+              max={primaryOptions.length - 1}
+              step={1}
+              value={currentPrimaryIndex}
+              aria-label={primaryCapabilityDescriptor.label}
+              aria-valuetext={selectedPrimaryOption?.label}
+              onChange={(event) => {
+                const selectedOption = primaryOptions[Number(event.currentTarget.value)];
+                if (selectedOption) {
+                  onOptionChange?.(primaryCapabilityDescriptor.id, selectedOption.id);
+                }
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {remainingSecondarySelectDescriptors.length > 0 || booleanDescriptors.length > 0 ? (
+        <div className="border-t border-border/45 px-1.5 py-1">
+          {remainingSecondarySelectDescriptors.map((descriptor) => {
+            const currentValue = getProviderOptionCurrentValue(descriptor);
+            const currentLabel =
+              descriptor.options.find((option) => option.id === currentValue)?.label ??
+              String(currentValue ?? "Default");
+            return (
+              <button
+                key={descriptor.id}
+                type="button"
+                className="flex h-8 w-full cursor-pointer items-center justify-between rounded-lg px-2.5 text-left text-[11px] outline-none transition-colors hover:bg-foreground/[0.055] focus-visible:bg-foreground/[0.055]"
+                onClick={() => setActiveView(`option:${descriptor.id}`)}
+              >
+                <span className="font-medium text-foreground">{descriptor.label}</span>
+                <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+                  <span className="truncate">{currentLabel}</span>
+                  <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0" />
+                </span>
+              </button>
+            );
+          })}
+          {booleanDescriptors.map((descriptor) => {
+            const isChecked = getProviderOptionCurrentValue(descriptor) === true;
+            return (
+              <div key={descriptor.id} className="flex h-8 items-center justify-between px-2.5 text-[11px]">
+                <span className="font-medium text-foreground">{descriptor.label}</span>
+                <Switch
+                  checked={isChecked}
+                  onCheckedChange={(checked) => onOptionChange?.(descriptor.id, checked)}
+                  className="-mr-1 scale-[0.75]"
+                  aria-label={descriptor.label}
                 />
               </div>
-              <div
-                ref={listRegionRef}
-                className="relative min-h-0 flex-1 w-full overflow-y-auto overscroll-contain app-scrollbar scroll-fade-y"
-              >
-                <ComboboxListVirtualized className="min-h-full">
-                  {filteredModels.length === 0 ? (
-                    <ComboboxEmpty className="py-6">No matching models found.</ComboboxEmpty>
-                  ) : (
-                    filteredModelKeys.map((modelKey, index) => {
-                      const model = filteredModelByKey.get(modelKey);
-                      if (!model) return null;
-                      const isFav = favoritesSet.has(modelKey);
-                      return (
-                        <ModelListRow
-                          key={modelKey}
-                          index={index}
-                          model={model}
-                          instanceId={model.instanceId}
-                          driverKind={model.driverKind}
-                          providerDisplayName={model.instanceDisplayName}
-                          providerAccentColor={model.instanceAccentColor}
-                          isFavorite={isFav}
-                          isSelected={props.model === model.slug && activeInstanceId === model.instanceId}
-                          showProvider={isSearching || selectedInstanceId === "favorites" || showLockedInstanceSidebar}
-                          showNewBadge={isModelPickerNewModel(model.provider, model.slug)}
-                          onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
-                          preferShortName={!isSearching}
-                          useTriggerLabel={isLocked && !showLockedInstanceSidebar}
-                        />
-                      );
-                    })
-                  )}
-                </ComboboxListVirtualized>
-              </div>
-            </Combobox>
-          </div>
+            );
+          })}
         </div>
-      </div>
-    </TooltipProvider>
+      ) : null}
+    </div>
   );
 });
