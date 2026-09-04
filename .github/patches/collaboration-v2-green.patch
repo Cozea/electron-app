@@ -1,0 +1,511 @@
+--- a/apps/desktop/src/features/collaboration/runtime/CollaborationTransport.ts
++++ b/apps/desktop/src/features/collaboration/runtime/CollaborationTransport.ts
+@@ -374,8 +374,17 @@
+       if (id && this.pendingUpdates.has(id)) {
+         this.pendingUpdates.delete(id)
+         await this.outbox.acknowledge(id)
++
++        // An acknowledgement proves only that this local update was assigned a
++        // server sequence. It does not prove that every earlier remote update
++        // has been applied locally, so advancing knownSeq here could skip a gap.
++        // Treat the acknowledged sequence as a catch-up target and advance only
++        // after the contiguous sync.delta range has actually been decoded.
+         const seq = finiteSequence(payload.seq)
+-        if (seq !== null) this.knownSeq = Math.max(this.knownSeq, seq)
++        if (seq !== null) {
++          this.targetHeadSeq = Math.max(this.targetHeadSeq, seq)
++          if (this.knownSeq < this.targetHeadSeq) this.requestSync()
++        }
+       }
+       return
+     }
+--- a/tests/collaboration/collabWsCatchUp.test.ts
++++ b/tests/collaboration/collabWsCatchUp.test.ts
+@@ -5,40 +5,46 @@
+ import {
+   CollabWsProvider,
+   type CollabSessionDescriptor,
+-} from "@/lib/yjs/CollabWsProvider"
++} from "@/features/collaboration/runtime/CollaborationTransport"
++import { EncryptedCollabOutbox } from "@/features/collaboration/persistence/EncryptedCollabOutbox"
+ 
+ interface TestPendingUpdate {
+-  updateBinary: string
+   idempotencyKey: string
++  updateBinary: string
+   timestamp: number
+ }
+ 
+ interface ProviderInternals {
+   handleIncoming(raw: unknown): Promise<void>
+-  decodeInboundBytes(encoded: string, kind: string): Promise<unknown>
++  decodeInbound(
++    encoded: string,
++    kind: "yjs_update" | "yjs_awareness",
++  ): Promise<{ bytes: Uint8Array; metadata: Record<string, unknown> }>
+   applyRemoteUpdate(
+     bytes: Uint8Array,
+     metadata: Record<string, unknown>,
+     timestamp: number | null,
+   ): void
+-  requestInitialSync(): void
+-  queueUnacknowledgedUpdatesForRetry(): void
+-  localUpdatesById: Map<string, TestPendingUpdate>
+-  pendingUpdates: TestPendingUpdate[]
++  requestSync(): void
++  restoreOutboxAndConnect(): Promise<void>
++  connect(): Promise<void>
++  pendingUpdates: Map<string, TestPendingUpdate>
++  outbox: EncryptedCollabOutbox
+ }
+ 
+-function createProvider() {
++function createProvider(outbox = new EncryptedCollabOutbox(null)) {
+   const doc = new Y.Doc()
+   const awareness = new Awareness(doc)
+   const session: CollabSessionDescriptor = {
+     projectId: "project_1",
+-    roomId: "project:project_1",
++    sessionId: "session_1",
++    roomId: "session:session_1",
+     collabWsUrl: "wss://collaboration.invalid/collab/ws",
+     token: "header.payload.signature",
+-    protocolVersion: "2.0",
++    protocolVersion: "2.1",
+     deviceId: "user_1",
+     encryption: {
+-      roomId: "project:project_1",
++      roomId: "session:session_1",
+       encryptionRequired: true,
+       status: "ready",
+       activeKeyVersion: 1,
+@@ -51,6 +57,7 @@
+   return {
+     doc,
+     awareness,
++    outbox,
+     provider: new CollabWsProvider({
+       doc,
+       awareness,
+@@ -60,6 +67,7 @@
+         roomKeyBase64: "unused-by-mocked-decoder",
+         keyVersion: 1,
+       },
++      outbox,
+     }),
+   }
+ }
+@@ -69,26 +77,32 @@
+ }
+ 
+ function mockDecodedUpdates(testProvider: ProviderInternals): void {
+-  vi.spyOn(testProvider, "decodeInboundBytes").mockResolvedValue({
++  vi.spyOn(testProvider, "decodeInbound").mockResolvedValue({
+     bytes: new Uint8Array(),
+     metadata: {},
+   })
+   vi.spyOn(testProvider, "applyRemoteUpdate").mockImplementation(() => undefined)
+ }
+ 
++function cleanup(doc: Y.Doc, awareness: Awareness, outbox: EncryptedCollabOutbox): void {
++  awareness.destroy()
++  doc.destroy()
++  outbox.close()
++}
++
+ describe("CollabWsProvider catch-up", () => {
+   it("requests another page after a full 128-update delta", async () => {
+-    const { provider, doc, awareness } = createProvider()
++    const { provider, doc, awareness, outbox } = createProvider()
+     const testProvider = internals(provider)
+     mockDecodedUpdates(testProvider)
+     const requestNextPage = vi
+-      .spyOn(testProvider, "requestInitialSync")
++      .spyOn(testProvider, "requestSync")
+       .mockImplementation(() => undefined)
+ 
+     await testProvider.handleIncoming(JSON.stringify({
+       type: "sync.delta",
+       payload: {
+-        roomId: "project:project_1",
++        roomId: "session:session_1",
+         fromSeq: 0,
+         toSeq: 128,
+         updatesBinary: Array.from({ length: 128 }, (_, index) => `update-${index}`),
+@@ -97,21 +111,19 @@
+ 
+     expect(provider.getKnownSeq()).toBe(128)
+     expect(requestNextPage).toHaveBeenCalledTimes(1)
+-
+-    awareness.destroy()
+-    doc.destroy()
++    cleanup(doc, awareness, outbox)
+   })
+ 
+   it("does not advance the sequence before encrypted updates are applied", async () => {
+-    const { provider, doc, awareness } = createProvider()
++    const { provider, doc, awareness, outbox } = createProvider()
+     const testProvider = internals(provider)
+ 
+-    let releaseDecode!: () => void
++    let releaseDecode: () => void = () => undefined
+     const decodeGate = new Promise<void>((resolve) => {
+       releaseDecode = resolve
+     })
+ 
+-    vi.spyOn(testProvider, "decodeInboundBytes").mockImplementation(async () => {
++    vi.spyOn(testProvider, "decodeInbound").mockImplementation(async () => {
+       await decodeGate
+       return { bytes: new Uint8Array(), metadata: {} }
+     })
+@@ -120,7 +132,7 @@
+     const handling = testProvider.handleIncoming(JSON.stringify({
+       type: "sync.delta",
+       payload: {
+-        roomId: "project:project_1",
++        roomId: "session:session_1",
+         fromSeq: 0,
+         toSeq: 1,
+         updatesBinary: ["update-1"],
+@@ -133,23 +145,21 @@
+     releaseDecode()
+     await handling
+     expect(provider.getKnownSeq()).toBe(1)
+-
+-    awareness.destroy()
+-    doc.destroy()
++    cleanup(doc, awareness, outbox)
+   })
+ 
+   it("continues catch-up when the room advertises a later head", async () => {
+-    const { provider, doc, awareness } = createProvider()
++    const { provider, doc, awareness, outbox } = createProvider()
+     const testProvider = internals(provider)
+     mockDecodedUpdates(testProvider)
+     const requestNextPage = vi
+-      .spyOn(testProvider, "requestInitialSync")
++      .spyOn(testProvider, "requestSync")
+       .mockImplementation(() => undefined)
+ 
+     await testProvider.handleIncoming(JSON.stringify({
+       type: "sync.delta",
+       payload: {
+-        roomId: "project:project_1",
++        roomId: "session:session_1",
+         fromSeq: 0,
+         toSeq: 25,
+         headSeq: 40,
+@@ -160,23 +170,21 @@
+ 
+     expect(provider.getKnownSeq()).toBe(25)
+     expect(requestNextPage).toHaveBeenCalledTimes(1)
+-
+-    awareness.destroy()
+-    doc.destroy()
++    cleanup(doc, awareness, outbox)
+   })
+ 
+   it("refuses an out-of-order live delta and requests the missing contiguous range", async () => {
+-    const { provider, doc, awareness } = createProvider()
++    const { provider, doc, awareness, outbox } = createProvider()
+     const testProvider = internals(provider)
+     mockDecodedUpdates(testProvider)
+     const requestMissingRange = vi
+-      .spyOn(testProvider, "requestInitialSync")
++      .spyOn(testProvider, "requestSync")
+       .mockImplementation(() => undefined)
+ 
+     await testProvider.handleIncoming(JSON.stringify({
+       type: "sync.delta",
+       payload: {
+-        roomId: "project:project_1",
++        roomId: "session:session_1",
+         fromSeq: 8,
+         toSeq: 9,
+         updatesBinary: ["update-9"],
+@@ -184,20 +192,18 @@
+     }))
+ 
+     expect(provider.getKnownSeq()).toBe(0)
+-    expect(testProvider.decodeInboundBytes).not.toHaveBeenCalled()
++    expect(testProvider.decodeInbound).not.toHaveBeenCalled()
+     expect(requestMissingRange).toHaveBeenCalledTimes(1)
+-
+-    awareness.destroy()
+-    doc.destroy()
++    cleanup(doc, awareness, outbox)
+   })
+ 
+-  it("does not accept another client's broadcast acknowledgement as applied state", async () => {
+-    const { provider, doc, awareness } = createProvider()
++  it("ignores acknowledgements for updates sent by another client", async () => {
++    const { provider, doc, awareness, outbox } = createProvider()
+ 
+     await internals(provider).handleIncoming(JSON.stringify({
+       type: "update.ack",
+       payload: {
+-        roomId: "project:project_1",
++        roomId: "session:session_1",
+         seq: 9,
+         idempotencyKey: "foreign-update",
+         persisted: true,
+@@ -205,56 +211,62 @@
+     }))
+ 
+     expect(provider.getKnownSeq()).toBe(0)
+-
+-    awareness.destroy()
+-    doc.destroy()
++    cleanup(doc, awareness, outbox)
+   })
+ 
+-  it("clears a durable local update without pretending its global sequence is applied", async () => {
+-    const { provider, doc, awareness } = createProvider()
++  it("acknowledges durable local data but advances only through contiguous deltas", async () => {
++    const { provider, doc, awareness, outbox } = createProvider()
+     const testProvider = internals(provider)
++    const requestCatchUp = vi
++      .spyOn(testProvider, "requestSync")
++      .mockImplementation(() => undefined)
++    const acknowledge = vi.spyOn(testProvider.outbox, "acknowledge")
+     const localUpdate: TestPendingUpdate = {
+       updateBinary: "encrypted-update",
+       idempotencyKey: "local-update",
+       timestamp: 1,
+     }
+-    testProvider.localUpdatesById.set(localUpdate.idempotencyKey, localUpdate)
+-    testProvider.pendingUpdates.push(localUpdate)
++    testProvider.pendingUpdates.set(localUpdate.idempotencyKey, localUpdate)
+ 
+     await testProvider.handleIncoming(JSON.stringify({
+       type: "update.ack",
+       payload: {
+-        roomId: "project:project_1",
++        roomId: "session:session_1",
+         seq: 9,
+         idempotencyKey: localUpdate.idempotencyKey,
+         persisted: true,
+       },
+     }))
+ 
++    expect(testProvider.pendingUpdates.has(localUpdate.idempotencyKey)).toBe(false)
++    expect(acknowledge).toHaveBeenCalledWith(localUpdate.idempotencyKey)
+     expect(provider.getKnownSeq()).toBe(0)
+-    expect(testProvider.localUpdatesById.has(localUpdate.idempotencyKey)).toBe(false)
+-    expect(testProvider.pendingUpdates).toHaveLength(0)
+-
+-    awareness.destroy()
+-    doc.destroy()
++    expect(requestCatchUp).toHaveBeenCalledTimes(1)
++    cleanup(doc, awareness, outbox)
+   })
+ 
+-  it("requeues sent but unacknowledged local updates for reconnect", () => {
+-    const { provider, doc, awareness } = createProvider()
+-    const testProvider = internals(provider)
+-    const localUpdate: TestPendingUpdate = {
++  it("restores encrypted unacknowledged updates before reconnecting", async () => {
++    const outbox = new EncryptedCollabOutbox(null)
++    await outbox.enqueue({
++      id: "local-update",
++      projectId: "project_1",
++      roomId: "session:session_1",
++      keyVersion: 1,
+       updateBinary: "encrypted-update",
+-      idempotencyKey: "local-update",
+       timestamp: 1,
+-    }
+-    testProvider.localUpdatesById.set(localUpdate.idempotencyKey, localUpdate)
+-
+-    testProvider.queueUnacknowledgedUpdatesForRetry()
+-    testProvider.queueUnacknowledgedUpdatesForRetry()
++    })
++    const { provider, doc, awareness } = createProvider(outbox)
++    const testProvider = internals(provider)
++    const connect = vi.spyOn(testProvider, "connect").mockResolvedValue(undefined)
+ 
+-    expect(testProvider.pendingUpdates).toEqual([localUpdate])
++    await testProvider.restoreOutboxAndConnect()
+ 
+-    awareness.destroy()
+-    doc.destroy()
++    expect(testProvider.pendingUpdates.get("local-update")).toEqual({
++      idempotencyKey: "local-update",
++      updateBinary: "encrypted-update",
++      timestamp: 1,
++    })
++    expect(connect).toHaveBeenCalledTimes(1)
++    cleanup(doc, awareness, outbox)
+   })
+ })
+--- a/tests/architecture/neutralGround.test.ts
++++ b/tests/architecture/neutralGround.test.ts
+@@ -52,6 +52,12 @@
+ 
+ const PINNED_FEATURE_IMPORTS: readonly PinnedFeatureImport[] = [
+   {
++    file: "apps/desktop/src/contexts/YjsProjectContext.tsx",
++    specifier: "@/features/collaboration/runtime/seedProjectDocFromWorkspace",
++    because:
++      "The migration provider still owns legacy Yjs bootstrap while the v2 runtime is extracted; seeding is collaboration-owned and one-way.",
++  },
++  {
+     file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
+     specifier: "@/features/collaboration/hooks/useCollabSession",
+     because:
+@@ -63,6 +69,12 @@
+     because: "Same runtime, same reason.",
+   },
+   {
++    file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
++    specifier: "@/features/collaboration/model/collaborationSessionStore",
++    because:
++      "The provider runtime is the application composition boundary that selects the explicitly joined session workspace; the store does not import contexts.",
++  },
++  {
+     file: "apps/desktop/src/contexts/project/projectSyncShared.ts",
+     specifier: "@/features/collaboration/hooks/useCollabSession",
+     because:
+--- a/tests/devapps/devAppReleaseParts.test.ts
++++ b/tests/devapps/devAppReleaseParts.test.ts
+@@ -7,7 +7,7 @@
+ import { partsForPublishedRuntimeKind } from "@shared/devAppParts"
+ 
+ const root = process.cwd()
+-const schema = fs.readFileSync(path.join(root, "convex/schema.ts"), "utf8")
++const schema = fs.readFileSync(path.join(root, "convex/schema/base.ts"), "utf8")
+ const devApps = fs.readFileSync(path.join(root, "convex/devApps.ts"), "utf8")
+ const publishedManifest = fs.readFileSync(
+   path.join(root, "apps/desktop/src/features/devapps/orgDevAppManifest.ts"),
+--- a/tests/projects/projectDeletionCompleteness.test.ts
++++ b/tests/projects/projectDeletionCompleteness.test.ts
+@@ -21,7 +21,13 @@
+ }
+ 
+ describe("project deletion completeness", () => {
+-  const schemaSource = readFileSync(resolve(process.cwd(), "convex/schema.ts"), "utf8")
++  const schemaSource = [
++    "convex/schema/base.ts",
++    "convex/schema/collaboration.ts",
++    "convex/schema/collaborationRepositories.ts",
++  ]
++    .map((file) => readFileSync(resolve(process.cwd(), file), "utf8"))
++    .join("\n")
+   const projectsSource = readFileSync(resolve(process.cwd(), "convex/projects.ts"), "utf8")
+ 
+   it("purges every table whose rows are directly owned by a project", () => {
+--- a/tests/identity/convexEndpointAuthority.test.ts
++++ b/tests/identity/convexEndpointAuthority.test.ts
+@@ -19,9 +19,13 @@
+       const source = readFileSync(file, "utf8")
+       if (!/export const \w+\s*=\s*(?:query|mutation)\s*\(/.test(source)) continue
+       const name = file.split("/").at(-1)
+-      const deviceAuthenticated = source.includes("./lib/authenticatedFunctions")
+-      const gatewayOnly = name === "deployments.ts" && source.includes("assertGatewaySecret")
+-      if (!deviceAuthenticated && !gatewayOnly) failures.push(name ?? file)
++      const deviceAuthenticated =
++        source.includes("./lib/authenticatedFunctions") ||
++        source.includes("requireAuthenticatedDevice")
++      const gatewayProtected =
++        source.includes("assertGatewaySecret") &&
++        /serverSecret:\s*v\.string\(\)/.test(source)
++      if (!deviceAuthenticated && !gatewayProtected) failures.push(name ?? file)
+     }
+     expect(failures).toEqual([])
+   })
+--- a/tests/substrate/t3RuntimePreparation.test.ts
++++ b/tests/substrate/t3RuntimePreparation.test.ts
+@@ -1,4 +1,5 @@
+ import fs from "node:fs";
++import os from "node:os";
+ import path from "node:path";
+ import { describe, expect, it } from "vitest";
+ 
+@@ -81,7 +82,7 @@
+ 
+   it("removes pnpm deploy self-links that escape the packaged runtime", () => {
+     const temporaryRoot = fs.mkdtempSync(
+-      path.join(repositoryRoot, ".agent", "t3-runtime-link-test-"),
++      path.join(os.tmpdir(), "cozea-t3-runtime-link-test-"),
+     );
+     const runtimeRoot = path.join(temporaryRoot, "runtime");
+     const linkDirectory = path.join(runtimeRoot, "node_modules", "pnpm-store", "node_modules");
+@@ -102,7 +103,7 @@
+ 
+   it("rejects unexpected symlinks that escape the packaged runtime", () => {
+     const temporaryRoot = fs.mkdtempSync(
+-      path.join(repositoryRoot, ".agent", "t3-runtime-link-test-"),
++      path.join(os.tmpdir(), "cozea-t3-runtime-link-test-"),
+     );
+     const runtimeRoot = path.join(temporaryRoot, "runtime");
+     const linkDirectory = path.join(runtimeRoot, "node_modules");
+--- a/convex/projects.ts
++++ b/convex/projects.ts
+@@ -973,7 +973,7 @@
+ })
+ 
+ const PROJECT_PURGE_BATCH_SIZE = 64
+-const PROJECT_PURGE_FINAL_STAGE = 29
++const PROJECT_PURGE_FINAL_STAGE = 34
+ 
+ async function deleteRows<TableName extends TableNames>(
+   ctx: MutationCtx,
+@@ -1236,6 +1236,46 @@
+       }
+       return rows.length
+     }
++    case 29: {
++      const rows = await ctx.db
++        .query("collaborationRepositoryAccessEvents")
++        .withIndex("by_project_and_created", (q) => q.eq("projectId", projectId))
++        .take(PROJECT_PURGE_BATCH_SIZE)
++      await deleteRows(ctx, rows)
++      return rows.length
++    }
++    case 30: {
++      const rows = await ctx.db
++        .query("collaborationSessionEvents")
++        .withIndex("by_project_and_created_at", (q) => q.eq("projectId", projectId))
++        .take(PROJECT_PURGE_BATCH_SIZE)
++      await deleteRows(ctx, rows)
++      return rows.length
++    }
++    case 31: {
++      const rows = await ctx.db
++        .query("collaborationParticipants")
++        .withIndex("by_project_and_user", (q) => q.eq("projectId", projectId))
++        .take(PROJECT_PURGE_BATCH_SIZE)
++      await deleteRows(ctx, rows)
++      return rows.length
++    }
++    case 32: {
++      const rows = await ctx.db
++        .query("collaborationSessions")
++        .withIndex("by_project_and_status", (q) => q.eq("projectId", projectId))
++        .take(PROJECT_PURGE_BATCH_SIZE)
++      await deleteRows(ctx, rows)
++      return rows.length
++    }
++    case 33: {
++      const rows = await ctx.db
++        .query("collaborationRepositoryBindings")
++        .withIndex("by_project", (q) => q.eq("projectId", projectId))
++        .take(PROJECT_PURGE_BATCH_SIZE)
++      await deleteRows(ctx, rows)
++      return rows.length
++    }
+     default:
+       return 0
+   }
+--- a/.github/workflows/collaboration-v2-branch-validation.yml
++++ b/.github/workflows/collaboration-v2-branch-validation.yml
+@@ -33,6 +33,9 @@
+       - name: Bootstrap repository
+         run: bun run bootstrap
+ 
++      - name: Install Electron runtime for tests
++        run: node node_modules/electron/install.js
++
+       - name: Typecheck renderer
+         run: bun run typecheck
+ 
