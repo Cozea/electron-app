@@ -6,9 +6,10 @@ import { describe, expect, it } from "vitest";
 import {
   classifyNativeDevAppImport,
   createNativeDevAppBuildPlan,
-  nativeDevAppRuntimeImportUrl,
+  nativeDevAppRuntimeModuleId,
   validateScopedDevAppCss,
 } from "../../scripts/devapps/native-builder";
+import { nativeDevAppRuntimeProxySource } from "@shared/nativeDevAppRuntime";
 
 const fixtureRoot = path.join(process.cwd(), "examples/native-devapps/counter");
 
@@ -17,16 +18,19 @@ describe("native DevApp builder boundary", () => {
     expect(classifyNativeDevAppImport("react")).toBe("host-runtime");
     expect(classifyNativeDevAppImport("react/jsx-runtime")).toBe("host-runtime");
     expect(classifyNativeDevAppImport("@cozea/devapp-api/native")).toBe("host-runtime");
-    expect(nativeDevAppRuntimeImportUrl("react")).toBe(
-      "cozea-native-runtime://runtime/react.mjs",
-    );
+    expect(classifyNativeDevAppImport("@cozea/devapp-api/ui")).toBe("host-runtime");
+    const virtualId = nativeDevAppRuntimeModuleId("react")
+    expect(virtualId).toContain("cozea:native-runtime:react")
+    expect(nativeDevAppRuntimeProxySource(virtualId!)).toContain("api.useState")
   });
 
-  it("blocks Electron, Node, renderer internals, and nested React roots", () => {
+  it("blocks Electron, Node, renderer internals, nested React roots, and the extension SDK", () => {
     expect(classifyNativeDevAppImport("electron")).toBe("forbidden");
     expect(classifyNativeDevAppImport("node:fs")).toBe("forbidden");
     expect(classifyNativeDevAppImport("@/features/projects")).toBe("forbidden");
     expect(classifyNativeDevAppImport("react-dom/client")).toBe("forbidden");
+    expect(classifyNativeDevAppImport("react/compiler-runtime")).toBe("forbidden");
+    expect(classifyNativeDevAppImport("@cozea/devapp-api/extension")).toBe("forbidden");
     expect(classifyNativeDevAppImport("date-fns")).toBe("bundled");
   });
 
