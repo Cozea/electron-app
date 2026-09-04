@@ -289,5 +289,52 @@ No reliable calendar estimate is assigned before the contract/Effect boundary, m
   schema-construction APIs for the existing root Effect pin. Runtime identity is
   checked before database startup. Five new contract/bootstrap tests pass; app
   typecheck, Electron typecheck, lint, build and the 2079 existing tests pass.
-- Phase 3 bootstrap smoke/packaging and phases 4–5 remain in progress. No release,
-  main-branch push, real provider login, or private-history recovery is claimed.
+- Fork continuation commit `59e1f1749a90912a5d68eedf026c4ba7fdcfb204` and parent
+  pin `7b5920d7` add parent-only IPC preparation/cancellation and refuse unstamped
+  bundles. The fork feature branch was pushed after explicit user authorization;
+  an empty Git repository fetched that exact revision from Cozea/t3code.
+- Cozea question/compaction, native permission labels, controlled updates and
+  local Antigravity setup are implemented. Actual Electron component QA passed
+  active Stop, independent message/image drafts, scoped keyboard events, duplicate
+  native option labels, lost-ack/reload retry identity, completed-turn answer,
+  independent windows/tiles and OpenCode workspace warnings. Setup QA passed
+  explicit enable/install/cancel/progress, browser flow/cancel, separate account
+  IDs and sign-out/disable with a fixture transport. It caught and fixed the
+  early-auth-notification/browser-open race; two focused regressions cover it.
+- The repeatable vendor compatibility command passed 1561 tests (8 skipped);
+  final parent suite passed 2106 tests (7 skipped), including the auth race and
+  preference regressions. App/Electron/test typechecks, lint, production build and
+  whitespace checks passed.
+- Source shadow RPC and host-update prepare/cancel smoke passed. Portable runtime
+  preparation passed at `59e1f1749`; final built-shadow RPC and host-update smoke
+  passed after rebuilding the parent. Runtime and contract identity checks pass.
+
+### Native and release qualification boundaries
+
+| Environment/case | Evidence and result |
+| --- | --- |
+| macOS arm64 / Codex CLI 0.153.2 | Auth/catalog probe and two real consecutive `gpt-5.6-luna` turns passed in an isolated project. Completed-subagent history/process restart uses synthetic protocol fixtures; the friend's rollout and 0.153.3 binary were unavailable. |
+| Claude CLI 2.1.260 | Auth/catalog probe passed. A real chat reached the adapter and displayed the provider account rejection; successful-turn qualification is unavailable with this account. |
+| OpenCode CLI 1.18.28 | Auth/catalog probe passed. Lifecycle/permissions/stop use upstream integration fixtures; real paid-model conversation matrix remains unverified. |
+| Cursor | Native executable unavailable in this host's PATH; adapter/ACP fixtures pass. Native UI matrix remains unverified. |
+| Antigravity | Auth/account/install/lease/skills/attachment tests and actual Cozea setup UI with fixture transport pass. Real Google browser sign-in is user-operated and was not performed. |
+| App update | Parent transport, multi-host preparation/cancel/failure, off/on preference and startup reconciliation are tested. Signed installer replacement requires a release candidate and was not invoked. |
+| Packaging/platforms | macOS arm64 portable runtime and production bundles built. Docker daemon and other native release architectures were unavailable; those targets remain unverified. |
+
+The machine-readable manifest deliberately has no fully qualified native-version
+entries yet. Observed versions and limited live smoke results do not certify the
+entire live matrix. Feature-specific automated and Electron fixture checks are
+repeatable, while the credential/platform/release cases above are explicit rollout
+gates. No release, parent push, main merge, real Google login or private-history
+recovery is claimed. Existing source and distribution publication rules remain
+in force. Do not downgrade a live database to test rollback.
+
+
+### Reviewable parent stack
+
+- `c6f9e42a`: upstream conversation UI, async answer durability, compaction,
+  permission scopes, history variants and local Antigravity setup/capabilities.
+- `bb5f1808`: controlled-update preference, parent/shadow/T3 transport, multi-host
+  preparation/cancellation and retry behavior; operator documentation updated.
+- Compatibility CI and provider documentation follow as a separate change.
+  Only the fork feature branch was published; parent changes remain local.

@@ -82,6 +82,12 @@ jobs:
             source "$BASH_ENV"
             bun run prepare:t3-runtime
       - run:
+          name: Verify provider contracts and saved-history compatibility
+          command: |
+            source "$BASH_ENV"
+            bun run check:provider-compatibility
+            bun run test:provider-compatibility
+      - run:
           name: Validate build environment
           command: |
             set -euo pipefail

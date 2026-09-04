@@ -65,3 +65,10 @@ A future organization catalog may move setup-pack manifests and revisions into C
 9. Create and apply two builds; verify their selections and provider counts. Cancel a new build and delete the selected build; the hub should fall back to an existing build.
 10. Verify essential skills have no disable/delete controls and remain present when switching builds.
 11. Install a catalog entry, update an imported skill manually, and return from Builds to verify the library refreshes.
+
+## Integrated provider runtime
+
+The upstream T3 catalog also discovers Antigravity-native skills for explicitly
+enabled local instances. Cozea’s managed library still targets Codex, Claude,
+Cursor and OpenCode; this integration adds no fifth writable binding or automatic
+copy. Account-specific catalogs remain routed by provider instance.
