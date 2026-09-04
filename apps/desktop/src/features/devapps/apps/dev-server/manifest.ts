@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const devServerDevAppManifest = {
   id: "dev-server",
   name: "Dev Server",
-  description: "Workspace runtime panel for booting, monitoring, and previewing local apps.",
+  description: "Run local dev servers.",
   categories: ["discover", "preview-tools", "runtimes"],
   icon: {
     src: iconSrc,

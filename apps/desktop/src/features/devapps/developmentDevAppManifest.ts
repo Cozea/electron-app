@@ -27,7 +27,11 @@ export function buildDevelopmentDevAppManifest(source: DevAppDevelopmentSource):
     name: source.name,
     description: source.description ?? "Local native DevApp development package.",
     categories: ["preview-tools", "build-release"],
-    icon: { src: devAppIcon, alt: `${source.name} development preview` },
+    icon: {
+      src: devAppIcon,
+      alt: `${source.name} development preview`,
+      className: "scale-[1.25]",
+    },
     launcher: {
       enabled: true,
       order: 3,

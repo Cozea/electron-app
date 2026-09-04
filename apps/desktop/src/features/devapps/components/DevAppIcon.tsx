@@ -48,7 +48,7 @@ export function DevAppIcon({ app, className }: DevAppIconProps) {
         decoding="async"
         className={cn(
           "h-full w-full rounded-[inherit] object-contain",
-          app.icon.className,
+          app.icon.className ?? "scale-[1.25]",
           className,
         )}
         onLoad={() => {

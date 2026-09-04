@@ -143,7 +143,7 @@ export function SettingsDrawer() {
           </aside>
 
           <div className="relative min-w-0 flex-1">
-            <div className="scroll-fade-y h-full overflow-y-auto scrollbar-hide">
+            <div className={cn("h-full overflow-y-auto scrollbar-hide", section !== 'devapps' && "scroll-fade-y")}>
               <SettingsDrawerBody section={section} route={route} />
             </div>
           </div>

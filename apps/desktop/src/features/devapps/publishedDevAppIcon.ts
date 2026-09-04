@@ -11,6 +11,6 @@ export function buildPublishedDevAppIconDefinition(
   return {
     src: resolvedLogoDataUrl ?? defaultIconSrc,
     alt: `${name} DevApp`,
-    ...(resolvedLogoDataUrl ? {} : { className: "scale-[1.25]" }),
+    className: "scale-[1.25]",
   };
 }

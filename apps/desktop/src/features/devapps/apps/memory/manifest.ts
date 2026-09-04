@@ -5,8 +5,7 @@ import iconSrc from "./icon.png"
 export const memoryDevAppManifest = {
   id: "memory",
   name: "Memory",
-  description:
-    "Visual map of what the agents know about this project, and what changed in the last build.",
+  description: "Project memory map.",
   categories: ["discover", "agent-kits"],
   icon: {
     src: iconSrc,

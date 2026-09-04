@@ -367,6 +367,9 @@ export function ProjectLayout({
     pathname.startsWith("/projects/settings/") ||
     pathname.startsWith("/projects/workspace/") ||
     pathname.startsWith("/projects/teams");
+  const isStickySearchPage =
+    pathname.endsWith("/store") ||
+    pathname.includes("/settings/devapps");
   const shouldEnableProjectRuntime = Boolean(runtimeWorkspaceId);
   const runtimeEffectsReady = useDeferredActivation(shouldEnableProjectRuntime, {
     delayMs: 250,
@@ -638,7 +641,9 @@ export function ProjectLayout({
                   // when it contains wide children (iframes, editors, etc.).
                   "flex flex-1 flex-col min-h-0 min-w-0",
                   shouldRemovePadding ? "p-0" : "p-4",
-                  shouldRemovePadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden",
+                  shouldRemovePadding
+                    ? "overflow-hidden"
+                    : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
                 {featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (

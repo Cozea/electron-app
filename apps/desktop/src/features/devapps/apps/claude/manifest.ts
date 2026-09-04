@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const claudeDevAppManifest = {
   id: "claude",
   name: "Claude",
-  description: "Anthropic assistant for thoughtful implementation, planning, and code changes.",
+  description: "Anthropic coding agent.",
   categories: ["discover", "agent-kits"],
   icon: {
     src: iconSrc,

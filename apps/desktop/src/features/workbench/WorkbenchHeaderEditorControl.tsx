@@ -225,7 +225,7 @@ export function WorkbenchHeaderEditorControl({
         <div className="group inline-flex h-7 items-center rounded-md bg-transparent shadow-none">
           <Button
             variant="ghost"
-            className={cn("h-7 shrink-0 rounded-md bg-transparent !px-2 shadow-none hover:bg-muted/40", chromeButtonClass)}
+            className={cn("h-7 shrink-0 rounded-md bg-transparent !px-1.5 shadow-none hover:bg-muted/40", chromeButtonClass)}
             onClick={handleOpenProjectInEditor}
             disabled={!workspaceId || !selectedEditorOption}
             aria-label={
@@ -234,7 +234,7 @@ export function WorkbenchHeaderEditorControl({
                 : t("workbench.editor.noEditor")
             }
           >
-            <SelectedEditorIcon className="size-4 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+            <SelectedEditorIcon className="size-5 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
           </Button>
 
           {orderedEditors.length > 1 ? (

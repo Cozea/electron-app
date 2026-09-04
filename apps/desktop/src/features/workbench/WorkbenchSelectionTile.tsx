@@ -23,7 +23,7 @@ import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
 import type {
   WorkbenchSelectionTile,
 } from "@/features/workbench/model/workbenchStore"
-import { NativeProjectFolderIcon } from "@/features/projects/ui/NativeProjectFolderIcon"
+import { ProjectPixelInvaderIcon } from "@/features/projects/ui/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
@@ -88,7 +88,7 @@ interface WorkbenchSelectionTileProps {
 
 function WelcomeHero({
   projectName,
-  workspaceId,
+  workspaceId: _workspaceId,
 }: {
   projectName?: string | null
   workspaceId?: string | null
@@ -102,11 +102,10 @@ function WelcomeHero({
         <span className="text-center text-2xl text-muted-foreground md:text-3xl">
           {t('workbench.selection.letsWorkOn')}
         </span>
-        <span className="inline-flex items-center gap-3 text-center text-2xl font-bold tracking-tight text-foreground md:text-4xl">
-          <NativeProjectFolderIcon
-            folderPath={workspaceId}
-            fallbackClassName="h-7 w-7 text-muted-foreground md:h-9 md:w-9"
-            imgClassName="h-7 w-7 md:h-9 md:w-9"
+        <span className="inline-flex items-center gap-3 text-center text-2xl font-medium tracking-tight text-foreground md:text-4xl">
+          <ProjectPixelInvaderIcon
+            name={normalizedProjectName}
+            className="size-7 md:size-8.5 shrink-0"
           />
           {normalizedProjectName}
         </span>
