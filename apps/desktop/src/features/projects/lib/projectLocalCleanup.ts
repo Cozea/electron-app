@@ -1,26 +1,26 @@
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 import { removeLocalProjectDevApp } from "@/features/devapps/localProjectDevAppStore"
-import { useAssistantComposerDraftStore } from "@/features/projects/components/assistant/chat/composerDraftStore"
-import { clearPersistedProjectSidebarEntry } from "@/features/projects/components/sidebar/projectSidebarState"
+import { useAssistantComposerDraftStore } from "@/features/assistant/chat/composerDraftStore"
+import { clearPersistedProjectSidebarEntry } from "@/features/projects/ui/sidebar/projectSidebarState"
 import { clearDevServerRunsForWorkspace } from "@/features/dev-server/devServerRunStore"
 import { clearDevServerProcessConfigForWorkspace } from "@/features/dev-server/devServerProcessConfigStore"
 import { releaseDevServerSurfaceLease } from "@/features/dev-server/devServerSurfaceController"
-import { clearCachedProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
+import { clearCachedProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
 import {
   collectAssistantProjectIdsForDeletion,
   deleteAssistantProjectsForDeletedWorkspace,
-} from "@/features/projects/lib/assistantProjectDeletion"
-import { clearLastWorkbenchRoutesForProject } from "@/features/projects/lib/lastWorkbenchRoute"
-import { clearProjectBranchSession } from "@/features/projects/lib/projectBranchSessionStore"
+} from "@/features/assistant/services/assistantProjectDeletion"
+import { clearLastWorkbenchRoutesForProject } from "@/features/workbench/model/lastWorkbenchRoute"
+import { clearProjectBranchSession } from "@/features/source-control/model/projectBranchSessionStore"
 import { clearRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync"
-import { clearPersistedWorkbenchLayoutsForProject } from "@/features/projects/lib/workbenchLayoutPersistence"
-import { clearSyncFeedSeen } from "@/features/projects/syncFeedSeen"
-import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+import { clearPersistedWorkbenchLayoutsForProject } from "@/features/workbench/model/workbenchLayoutPersistence"
+import { clearSyncFeedSeen } from "@/features/source-control/syncFeedSeen"
+import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
 import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
-import { useQueryCache } from "@/stores/useQueryCache"
-import { useTerminalStore } from "@/stores/useTerminalStore"
-import { useThreadDetailStore } from "@/stores/threadDetailStore"
+import { useQueryCache } from "@/app/model/queryCache"
+import { useTerminalStore } from "@/features/terminal/model/terminalStore"
+import { useThreadDetailStore } from "@/features/assistant/model/threadDetailStore"
 
 const WORKSPACE_LOOKUP_TIMEOUT_MS = 3_000
 const SESSION_CLEANUP_TIMEOUT_MS = 3_000

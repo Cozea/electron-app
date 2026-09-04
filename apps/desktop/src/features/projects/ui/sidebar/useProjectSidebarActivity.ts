@@ -5,7 +5,7 @@ import {
   mergeSidebarActivity,
   resolveDevServerActivity,
   type SidebarActivity,
-} from "@/features/projects/ui/sidebar/sidebarActivity"
+} from "@/lib/sidebarActivity"
 import {
   createAgentsActivitySelector,
   createProjectAgentsActivitySelector,

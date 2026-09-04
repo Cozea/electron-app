@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DockviewApi, DockviewPanelApi } from "dockview-react";
 
-import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
+import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
-} from "@/features/projects/browser/browserSurfaceIdentity";
-import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry";
-import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
+} from "@/features/browser/browserSurfaceIdentity";
+import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry";
+import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
 import {

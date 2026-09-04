@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { WorkspaceRuntimeRecord } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+import type { WorkspaceRuntimeRecord } from "@/features/workspace/useWorkspaceRuntimeStore"
 import { cn } from "@/lib/utils"
 
 interface WorkspaceLifecycleIndicatorProps {

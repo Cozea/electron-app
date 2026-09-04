@@ -12,8 +12,8 @@ import {
   SettingsRowLabel,
   SettingsSectionDescription,
   SettingsSectionTitle,
-} from "@/components/settings/SettingsChrome";
-import { PublicIdDisclosure } from "@/components/settings/PublicIdDisclosure";
+} from "@/features/settings/ui/SettingsChrome";
+import { PublicIdDisclosure } from "@/features/settings/ui/PublicIdDisclosure";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";

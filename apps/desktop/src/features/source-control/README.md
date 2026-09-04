@@ -9,4 +9,4 @@ Owns changes, diffs, checkpoint presentation, branch-scoped Git state, remote-st
 - `model/`: Git snapshots, branch sessions, diff trees, remote state, query caches, sizing rules, and sidebar preferences.
 - `syncFeedSeen.ts`: source-control activity read marker.
 
-Historical project and global-store modules are compatibility facades. New code should import from `@/features/source-control/...`.
+The former project and global-store compatibility facades have been removed. Import from `@/features/source-control/...`.

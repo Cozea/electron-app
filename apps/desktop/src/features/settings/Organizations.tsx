@@ -21,8 +21,8 @@ import {
   SettingsSectionDescription,
   SettingsSectionTitle,
   settingsNativeSelectClass,
-} from "@/components/settings/SettingsChrome"
-import { PublicIdDisclosure } from "@/components/settings/PublicIdDisclosure"
+} from "@/features/settings/ui/SettingsChrome"
+import { PublicIdDisclosure } from "@/features/settings/ui/PublicIdDisclosure"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -31,7 +31,7 @@ import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useTranslation } from "@/lib/i18n"
 import { useSearchParams } from "@/lib/router"
-import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import { formatDevAppRef } from "@shared/devAppRef"
 import { cn } from "@/lib/utils"

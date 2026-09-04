@@ -69,48 +69,6 @@ const repoRoot = path.resolve(__dirname, '../..')
 const t3Root = path.resolve(repoRoot, 'vendor/t3code')
 const t3DesktopSource = path.resolve(t3Root, 'apps/desktop/src')
 const sharedAliases: Alias[] = [
-  // Compatibility bridges for feature ownership moves. Keep these before the
-  // generic `@` alias; new code must import from the canonical feature roots.
-  {
-    find: '@/features/projects/components/assistant',
-    replacement: path.resolve(__dirname, './src/features/assistant'),
-  },
-  {
-    find: '@/features/projects/components/workbench',
-    replacement: path.resolve(__dirname, './src/features/workbench'),
-  },
-  {
-    find: '@/features/projects/components/command-palette',
-    replacement: path.resolve(__dirname, './src/features/workbench/command-palette'),
-  },
-  {
-    find: '@/features/projects/components/changes',
-    replacement: path.resolve(__dirname, './src/features/source-control/components/changes'),
-  },
-  {
-    find: '@/features/projects/browser',
-    replacement: path.resolve(__dirname, './src/features/browser'),
-  },
-  {
-    find: '@/features/projects/devserver',
-    replacement: path.resolve(__dirname, './src/features/dev-server'),
-  },
-  {
-    find: '@/features/projects/terminals',
-    replacement: path.resolve(__dirname, './src/features/terminal'),
-  },
-  {
-    find: '@/features/projects/workspaces',
-    replacement: path.resolve(__dirname, './src/features/workspace'),
-  },
-  {
-    find: '@/features/projects/components/previews',
-    replacement: path.resolve(__dirname, './src/features/native-preview'),
-  },
-  {
-    find: '@/features/projects/devapps',
-    replacement: path.resolve(__dirname, './src/features/devapps/preview'),
-  },
   { find: '@', replacement: path.resolve(__dirname, './src') },
   { find: '@shared', replacement: path.resolve(repoRoot, './shared') },
   {

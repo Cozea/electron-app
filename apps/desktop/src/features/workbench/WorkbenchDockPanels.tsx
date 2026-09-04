@@ -21,15 +21,15 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Toggle } from "@/components/ui/toggle"
-import { BrowserNavigationControls } from "@/features/projects/browser/BrowserNavigationControls"
-import { BrowserPreviewActionsForTile } from "@/features/projects/browser/BrowserPreviewActions"
+import { BrowserNavigationControls } from "@/features/browser/BrowserNavigationControls"
+import { BrowserPreviewActionsForTile } from "@/features/browser/BrowserPreviewActions"
 import {
   browserAddressDisplayValue,
   resolveBrowserAddressSubmission,
-} from "@/features/projects/browser/browserAddressState"
-import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
-import { runtimePreviewBrowserSurfaceTabId } from "@/features/projects/browser/runtimePreviewBrowserSurface"
-import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput"
+} from "@/features/browser/browserAddressState"
+import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore"
+import { runtimePreviewBrowserSurfaceTabId } from "@/features/browser/runtimePreviewBrowserSurface"
+import { isExternallyOpenableBrowserUrl } from "@/features/browser/urlInput"
 import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,
@@ -54,7 +54,7 @@ import type { DevAppWorkbenchTileTarget } from "@/features/devapps/registry/type
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { DevServerProcessesDialog } from "@/features/workbench/DevServerProcessesDialog"
 import { useWorkbenchDockHeaderControls } from "@/features/workbench/workbenchDockHeaderControls"
-import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
+import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
@@ -72,7 +72,7 @@ import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,
 } from "@/features/workbench/WorkbenchDockRuntimeContext"
-import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime"
+import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime"
 import {
   getWorkbenchDockDefinition,
   getWorkbenchTileDefinition,
@@ -160,7 +160,7 @@ const LazyWorkbenchDevAppPreviewTile = lazy(loadWorkbenchDevAppPreviewTile)
 const LazyWorkbenchSelectionTile = lazy(loadWorkbenchSelectionTile)
 const LazyWorkbenchTerminalTile = lazy(loadWorkbenchTerminalTile)
 const LazyChangesPage = lazy(() =>
-  import("@/features/projects/pages/ChangesPage").then((m) => ({
+  import("@/features/source-control/pages/ChangesPage").then((m) => ({
     default: m.ChangesPage,
   })),
 )

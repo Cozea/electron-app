@@ -6,8 +6,8 @@ import {
   fnv1a32,
   resolveDiffThemeName,
   type DiffThemeName,
-} from "@/features/projects/components/assistant/lib/diffRendering";
-import { LRUCache } from "@/features/projects/components/assistant/lib/lruCache";
+} from "@/features/assistant/lib/diffRendering";
+import { LRUCache } from "@/features/assistant/lib/lruCache";
 
 interface ChatCodeHighlighterProps {
   className: string | undefined;

@@ -5,12 +5,12 @@ const mocks = vi.hoisted(() => ({
   stopDevServerRun: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/features/projects/devserver/devServerRunStore", () => ({
+vi.mock("@/features/dev-server/devServerRunStore", () => ({
   buildDevServerRunKey: (workspaceId: string, laneId: string) => `${workspaceId}::${laneId}`,
   stopDevServerRun: mocks.stopDevServerRun,
 }));
 
-vi.mock("@/stores/useTerminalStore", () => ({
+vi.mock("@/features/terminal/model/terminalStore", () => ({
   useTerminalStore: {
     getState: () => ({
       actions: { removeTerminal: mocks.removeTerminal },
@@ -18,7 +18,7 @@ vi.mock("@/stores/useTerminalStore", () => ({
   },
 }));
 
-import { releaseProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntimeLifecycle";
+import { releaseProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntimeLifecycle";
 
 afterEach(() => {
   vi.clearAllMocks();

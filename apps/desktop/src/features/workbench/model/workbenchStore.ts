@@ -14,7 +14,7 @@ import {
   buildLegacyWorkspaceIdentityKey,
   buildWorkspaceIdentityKey,
   normalizeWorkspaceId,
-} from "@/features/projects/workspaces/workspaceIdentity"
+} from "@/features/workspace/workspaceIdentity"
 import {
   getWorkbenchTileDefinition,
   type WorkbenchTileType,

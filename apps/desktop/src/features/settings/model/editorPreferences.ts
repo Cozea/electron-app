@@ -1,6 +1,6 @@
 import { EDITORS, EditorId } from "@cozea/assistant-contracts";
 import type { NativeApi } from "@cozea/assistant-contracts";
-import { readStoredExternalEditorPreference } from "@/features/projects/lib/externalEditorPreference";
+import { readStoredExternalEditorPreference } from "@/features/settings/model/externalEditorPreference";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMemo } from "react";
 

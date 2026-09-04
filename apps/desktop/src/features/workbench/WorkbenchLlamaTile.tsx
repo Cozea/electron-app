@@ -11,9 +11,9 @@ import {
 
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { getDevAppById } from "@/features/devapps/registry"
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { Badge } from "@/components/ui/badge"
-import type { WorkbenchLlamaTile as WorkbenchLlamaTileRecord } from "@/stores/useProjectWorkbenchStore"
+import type { WorkbenchLlamaTile as WorkbenchLlamaTileRecord } from "@/features/workbench/model/workbenchStore"
 
 interface WorkbenchLlamaTileProps {
   projectId: string

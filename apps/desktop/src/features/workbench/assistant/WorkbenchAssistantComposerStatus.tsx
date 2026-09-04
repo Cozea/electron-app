@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { isIntentionalAbortMessage } from "@/features/projects/components/assistant/lib/assistantErrors"
+import { isIntentionalAbortMessage } from "@/features/assistant/lib/assistantErrors"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AlertCircleIcon as __AlertCircleHugeIcon } from "@hugeicons/core-free-icons"

@@ -3,7 +3,7 @@ import {
   initialDevServerLifecycle,
   isStaleDevServerRun,
   transitionDevServerLifecycle,
-} from '../../apps/desktop/src/features/projects/lib/devServerLifecycle'
+} from '@/features/dev-server/model/devServerLifecycle'
 
 describe('devServerLifecycle', () => {
   it('moves from start to ready for the same run', () => {

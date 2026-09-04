@@ -23,38 +23,38 @@ vi.mock("@/features/devapps/localProjectDevAppStore", () => ({
   removeLocalProjectDevApp,
 }))
 
-vi.mock("@/features/projects/components/assistant/chat/composerDraftStore", () => ({
+vi.mock("@/features/assistant/chat/composerDraftStore", () => ({
   useAssistantComposerDraftStore: {
     getState: () => ({ clearDrafts }),
   },
 }))
 
-vi.mock("@/features/projects/components/sidebar/projectSidebarState", () => ({
+vi.mock("@/features/projects/ui/sidebar/projectSidebarState", () => ({
   clearPersistedProjectSidebarEntry,
 }))
 
-vi.mock("@/features/projects/devserver/devServerRunStore", () => ({
+vi.mock("@/features/dev-server/devServerRunStore", () => ({
   clearDevServerRunsForWorkspace: resetDevServerRuns,
 }))
 
-vi.mock("@/features/projects/devserver/devServerSurfaceController", () => ({
+vi.mock("@/features/dev-server/devServerSurfaceController", () => ({
   releaseDevServerSurfaceLease,
 }))
 
-vi.mock("@/features/projects/hooks/useProjectLaneState", () => ({
+vi.mock("@/features/workbench/hooks/useProjectLaneState", () => ({
   clearCachedProjectLaneState,
 }))
 
-vi.mock("@/features/projects/lib/assistantProjectDeletion", () => ({
+vi.mock("@/features/assistant/services/assistantProjectDeletion", () => ({
   collectAssistantProjectIdsForDeletion,
   deleteAssistantProjectsForDeletedWorkspace,
 }))
 
-vi.mock("@/features/projects/lib/lastWorkbenchRoute", () => ({
+vi.mock("@/features/workbench/model/lastWorkbenchRoute", () => ({
   clearLastWorkbenchRoutesForProject,
 }))
 
-vi.mock("@/features/projects/lib/projectBranchSessionStore", () => ({
+vi.mock("@/features/source-control/model/projectBranchSessionStore", () => ({
   clearProjectBranchSession,
 }))
 
@@ -62,15 +62,15 @@ vi.mock("@/features/projects/lib/recentProjectOpenSync", () => ({
   clearRecentProjectOpenSync,
 }))
 
-vi.mock("@/features/projects/lib/workbenchLayoutPersistence", () => ({
+vi.mock("@/features/workbench/model/workbenchLayoutPersistence", () => ({
   clearPersistedWorkbenchLayoutsForProject,
 }))
 
-vi.mock("@/features/projects/syncFeedSeen", () => ({
+vi.mock("@/features/source-control/syncFeedSeen", () => ({
   clearSyncFeedSeen,
 }))
 
-vi.mock("@/features/projects/workspaces/useWorkspaceRuntimeStore", () => ({
+vi.mock("@/features/workspace/useWorkspaceRuntimeStore", () => ({
   useWorkspaceRuntimeStore: {
     getState: () => ({
       runtimes: {
@@ -131,21 +131,21 @@ const mockWorkbenchStore = {
 }
 
 vi.mock("@/features/workbench/model/workbenchStore", () => mockWorkbenchStore)
-vi.mock("@/stores/useProjectWorkbenchStore", () => mockWorkbenchStore)
+vi.mock("@/features/workbench/model/workbenchStore", () => mockWorkbenchStore)
 
-vi.mock("@/stores/useQueryCache", () => ({
+vi.mock("@/app/model/queryCache", () => ({
   useQueryCache: {
     getState: () => ({ clear: clearQueryCache }),
   },
 }))
 
-vi.mock("@/stores/useTerminalStore", () => ({
+vi.mock("@/features/terminal/model/terminalStore", () => ({
   useTerminalStore: {
     getState: () => ({ actions: { resetProject: resetTerminalProject } }),
   },
 }))
 
-vi.mock("@/stores/threadDetailStore", () => ({
+vi.mock("@/features/assistant/model/threadDetailStore", () => ({
   useThreadDetailStore: {
     getState: () => ({ resetThread }),
   },

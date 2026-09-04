@@ -2,14 +2,14 @@ import { Debouncer } from "@tanstack/react-pacer";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DockviewApi, DockviewReadyEvent, SerializedDockview } from "dockview-react";
 
-import type { WorkbenchSelectionTile, WorkbenchTile } from "@/stores/useProjectWorkbenchStore";
+import type { WorkbenchSelectionTile, WorkbenchTile } from "@/features/workbench/model/workbenchStore";
 import {
   selectProjectWorkbench,
   type WorkbenchProjectState,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore";
-import { useTerminalStore } from "@/stores/useTerminalStore";
-import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore";
+} from "@/features/workbench/model/workbenchStore";
+import { useTerminalStore } from "@/features/terminal/model/terminalStore";
+import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore";
 import {
   applyWorkbenchDockviewPolicies,
   buildAddPanelOptions,
@@ -22,27 +22,27 @@ import {
   isSelectionTile,
   reconcilePanels,
   syncPanelTitles,
-} from "@/features/projects/lib/workbenchDockview";
-import { isBrowserBackedWorkbenchTile } from "@/features/projects/lib/workbenchTileRegistry";
-import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
+} from "@/features/workbench/model/workbenchDockview";
+import { isBrowserBackedWorkbenchTile } from "@/features/workbench/model/workbenchTileRegistry";
+import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch";
 import {
   clearPersistedWorkbenchLayout,
   writePersistedWorkbenchLayout,
-} from "@/features/projects/lib/workbenchLayoutPersistence";
-import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/projects/lib/changesTileSizing";
-import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime";
-import { releaseProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntimeLifecycle";
+} from "@/features/workbench/model/workbenchLayoutPersistence";
+import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/source-control/model/changesTileSizing";
+import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime";
+import { releaseProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntimeLifecycle";
 import {
   claimDevServerSurface,
   releaseDevServerSurfaceLease,
   registerDevServerSurfaceController,
   type DevServerSurfaceHandle,
-} from "@/features/projects/devserver/devServerSurfaceController";
+} from "@/features/dev-server/devServerSurfaceController";
 import {
   normalizeDevAppPreviewRelativePath,
   registerDevAppPreviewSurfaceController,
   type DevAppPreviewSurfaceHandle,
-} from "@/features/projects/devapps/devAppPreviewSurfaceController";
+} from "@/features/devapps/preview/devAppPreviewSurfaceController";
 
 const CHANGES_PANEL_ID = "cozea-changes-panel";
 
@@ -850,7 +850,7 @@ export function useWorkbenchDockviewRuntime(
         if (!api || !isSelectionTile(selectionTile) || !input.projectId) return;
 
         const { resolveWorkbenchSelectionLaunchRequest } =
-          await import("@/features/projects/lib/workbenchSelectionLaunch");
+          await import("@/features/workbench/model/workbenchSelectionLaunch");
         const resolvedLaunch = resolveWorkbenchSelectionLaunchRequest(request);
         const tileId =
           resolvedLaunch.action === "openSingletonTile"

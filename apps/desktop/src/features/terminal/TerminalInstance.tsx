@@ -13,7 +13,7 @@ import { extractTerminalLinks, isTerminalLinkActivation, splitPathAndPosition } 
 
 import { cn } from '@/lib/utils'
 
-import { useTerminalActions } from '@/stores/useTerminalStore'
+import { useTerminalActions } from '@/features/terminal/model/terminalStore'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
   buildAnsiPalette,

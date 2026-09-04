@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { MessageId, ThreadId } from "@cozea/assistant-contracts"
 
-import { newCommandId } from "@/features/projects/components/assistant/lib/utils"
+import { newCommandId } from "@/features/assistant/lib/utils"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import type { Thread } from "@/stores/types"
+import type { Thread } from "@/features/assistant/model/types"
 
 import { toErrorMessage } from "./workbenchAssistantShared"
 

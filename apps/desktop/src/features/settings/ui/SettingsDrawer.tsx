@@ -4,11 +4,11 @@ import { useCallback, useMemo, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { WindowChromeTopInset } from '@/components/window-chrome/WindowChromeTopInset'
-import { Account } from '@/pages/settings/Account'
-import { Appearance } from '@/pages/settings/Appearance'
+import { Account } from '@/features/settings/Account'
+import { Appearance } from '@/features/settings/Appearance'
 import { DevAppSettings } from '@/features/settings/DevAppSettings'
-import { Organizations } from '@/pages/settings/Organizations'
-import { Tooling } from '@/pages/settings/Tooling'
+import { Organizations } from '@/features/settings/Organizations'
+import { Tooling } from '@/features/settings/Tooling'
 import {
   resolveSettingsSurfaceFromRoute,
 } from '@/lib/settings/settingsRegistry'
@@ -16,11 +16,11 @@ import { resolveSettingsNavigationSections } from '@/lib/settings/settingsNaviga
 import {
   useSettingsDrawerStore,
   type SettingsDrawerSection,
-} from '@/stores/useSettingsDrawerStore'
+} from '@/features/settings/model/settingsDrawerStore'
 import {
   SETTINGS_DRAWER_NAV_ROW_CLASS,
   SIDEBAR_PILL_ACTIVE_CLASS,
-} from '@/features/projects/components/sidebar/projectSidebarShared'
+} from '@/features/projects/ui/sidebar/projectSidebarShared'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'

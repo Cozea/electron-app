@@ -1,7 +1,7 @@
 import { CommandId, ThreadId } from "@cozea/assistant-contracts";
 import { describe, expect, it, vi } from "vitest";
 
-import { deleteAssistantThread } from "@/features/projects/lib/deleteAssistantThread";
+import { deleteAssistantThread } from "@/features/assistant/services/deleteAssistantThread";
 
 describe("deleteAssistantThread", () => {
   const threadId = ThreadId.makeUnsafe("thread-orphan-1");

@@ -12,12 +12,12 @@ import {
 import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { useAssistantTransportState } from "@/hooks/useAssistantTransportState"
-import { useGitRemoteStatus } from "@/hooks/useGitRemoteStatus"
+import { useAssistantTransportState } from "@/features/assistant/hooks/useAssistantTransportState"
+import { useGitRemoteStatus } from "@/features/source-control/hooks/useGitRemoteStatus"
 import {
   COLLAB_RECONNECT_CAP_MS,
   resolveConnectionStatusPresentation,
-} from "@/features/projects/lib/connectionStatusModel"
+} from "@/features/collaboration/model/connectionStatusModel"
 import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
 
 type ProjectSyncIndicatorVariant = "sidebar" | "compact"

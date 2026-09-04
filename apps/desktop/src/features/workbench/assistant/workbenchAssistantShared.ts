@@ -16,19 +16,19 @@ import {
   defaultInstanceIdForDriver,
 } from "@cozea/assistant-contracts"
 
-import { formatTerminalContextLabel } from "@/features/projects/components/assistant/lib/terminalContext"
+import { formatTerminalContextLabel } from "@/features/assistant/lib/terminalContext"
 import {
   createModelSelection,
   resolveModelSlugForProvider,
   resolveSelectableModel,
 } from "@cozea/assistant-shared/model"
 
-import type { Project, Thread } from "@/stores/types"
+import type { Project, Thread } from "@/features/assistant/model/types"
 import {
   selectProjectWorkbench,
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 
 export interface DiffDialogState {
   title: string

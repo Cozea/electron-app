@@ -10,7 +10,7 @@ import {
 } from "dockview-react"
 
 import "dockview-react/dist/styles/dockview.css"
-import "@/features/projects/components/workbench/workbench.css"
+import "@/features/workbench/workbench.css"
 
 import {
   WorkbenchDockHeaderActions,
@@ -18,15 +18,15 @@ import {
   WORKBENCH_DOCK_COMPONENTS,
   WorkbenchDockTab,
   WorkbenchDockWatermark,
-} from "@/features/projects/components/workbench/WorkbenchDockPanels"
-import { resolveTabGroupPreset } from "@/features/projects/lib/workbenchDockview"
+} from "@/features/workbench/WorkbenchDockPanels"
+import { resolveTabGroupPreset } from "@/features/workbench/model/workbenchDockview"
 import {
   getWorkbenchDockDefinition,
   getWorkbenchTileDefinition,
   isBrowserBackedWorkbenchTile,
-} from "@/features/projects/lib/workbenchTileRegistry"
-import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
-import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchTileRegistry"
+import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
+import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
 import { cn } from "@/lib/utils"
 import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"

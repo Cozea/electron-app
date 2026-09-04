@@ -4,8 +4,8 @@ import {
   getAssistantTransportState,
   onAssistantTransportState,
 } from "@/lib/wsNativeApi"
-import type { TransportState } from "@/stores/assistant-wsTransport"
-import type { RawAssistantTransportState } from "@/features/projects/lib/connectionStatusModel"
+import type { TransportState } from "@/features/assistant/model/wsTransport"
+import type { RawAssistantTransportState } from "@/features/collaboration/model/connectionStatusModel"
 
 /**
  * Live assistant runtime WebSocket transport state.

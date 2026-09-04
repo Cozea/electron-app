@@ -1,4 +1,4 @@
-import type { SidebarProjectItem } from "@/features/projects/components/sidebar/projectSidebarShared"
+import type { SidebarProjectItem } from "@/features/projects/ui/sidebar/projectSidebarShared"
 
 const PROJECT_SIDEBAR_STATE_STORAGE_KEY = "cozea.projectSidebar.state.v1"
 

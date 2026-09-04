@@ -6,8 +6,8 @@ import {
   selectAssistantThreadById,
   syncServerReadModel,
   type AppState,
-} from "@/stores/assistant-store"
-import { createEmptyOrchestrationReadModel } from "@/stores/orchestrationReadModelProjector"
+} from "@/features/assistant/model/assistantStore"
+import { createEmptyOrchestrationReadModel } from "@/features/assistant/model/orchestrationReadModelProjector"
 
 const NOW = "2026-04-25T00:00:00.000Z"
 

@@ -31,13 +31,13 @@ const PERSONAL_DEVICE_SIDEBAR_ORDER: Record<SettingsSurfaceId, number> = {
   tooling: 4,
 }
 
-const preloadAccountPage = () => import("@/pages/settings/Account")
-const preloadAppearancePage = () => import("@/pages/settings/Appearance")
-const preloadDevAppsPage = () => import("@/pages/settings/DevAppSettings")
-const preloadOrganizationsPage = () => import("@/pages/settings/Organizations")
+const preloadAccountPage = () => import("@/features/settings/Account")
+const preloadAppearancePage = () => import("@/features/settings/Appearance")
+const preloadDevAppsPage = () => import("@/features/settings/DevAppSettings")
+const preloadOrganizationsPage = () => import("@/features/settings/Organizations")
 
 const preloadToolingPage = async () => {
-  const module = await import("@/pages/settings/Tooling")
+  const module = await import("@/features/settings/Tooling")
   await module.prewarmToolingSettings?.()
 }
 

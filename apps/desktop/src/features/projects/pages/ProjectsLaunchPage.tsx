@@ -19,12 +19,12 @@ import {
   buildWorkbenchHref,
   clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
-} from "@/features/projects/lib/lastWorkbenchRoute"
+} from "@/features/workbench/model/lastWorkbenchRoute"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 import { resolveDroppedLocalFolderPath } from "@/features/projects/lib/resolveDroppedLocalFolderPath"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore"
+import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
 
 export function ProjectsLaunchPage() {
   const { convexUserId, user } = useAuth()

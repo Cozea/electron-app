@@ -9,7 +9,7 @@ import {
   SettingsRowLabel,
   SettingsSectionDescription,
   SettingsSectionTitle,
-} from '@/components/settings/SettingsChrome'
+} from '@/features/settings/ui/SettingsChrome'
 import { settingsDesktopClient } from '@/lib/settings/settingsDesktopClient'
 import { toolingSettingsClient } from '@/lib/settings/toolingSettingsClient'
 import { Badge } from '../../components/ui/badge'

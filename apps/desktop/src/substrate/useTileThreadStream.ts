@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { T3OrchestrationClient } from "@cozea/client-runtime";
 import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 
-import { useThreadDetailStore, type ThreadDetailRecord } from "@/stores/threadDetailStore";
+import { useThreadDetailStore, type ThreadDetailRecord } from "@/features/assistant/model/threadDetailStore";
 import { useSubstrateChatTransport } from "./useSubstrateChatTransport";
 import { fetchT3RpcSession } from "./fetchT3RpcSession";
 import { useT3CutoverActive } from "./t3CutoverStore";

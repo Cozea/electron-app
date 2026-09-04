@@ -7,7 +7,7 @@ import {
   encryptPayload,
   envelopeToBytes,
 } from '@/lib/collab/cipherEnvelope'
-import { invalidateCollabSession } from '@/hooks/useCollabSession'
+import { invalidateCollabSession } from '@/features/collaboration/hooks/useCollabSession'
 import { ensureActiveCheckpointGroup } from './checkpointGroups'
 import { extractAttributionOrigin, isRemoteYjsOrigin, makeRemoteYjsOrigin } from './origins'
 

@@ -26,10 +26,10 @@ import {
   SettingsRowControl,
   SettingsRowLabel,
   settingsInlineInputWidth,
-} from "@/components/settings/SettingsChrome"
-import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"
+} from "@/features/settings/ui/SettingsChrome"
+import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
-import { buildWorkbenchIntentState } from "@/features/projects/lib/workbenchIntent"
+import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
 import {
   browseForDirectory,
   buildFilesystemSlug,
@@ -38,11 +38,11 @@ import {
   resolveImportedProjectName,
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
-import type { CreateProjectDialogMode } from "@/stores/useCreateProjectDialogStore"
+import type { CreateProjectDialogMode } from "@/features/projects/model/createProjectDialogStore"
 import {
   DEFAULT_WORKBENCH_LANE_ID,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 import { useTranslation } from "@/lib/i18n"
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 

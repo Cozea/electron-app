@@ -11,7 +11,7 @@ import {
   resolveWorkbenchBranchAriaLabel,
   resolveWorkbenchBranchChromeLabel,
   resolveWorkbenchBranchTooltipDetail,
-} from "@/features/projects/components/workbench/branch-control/workbenchBranchDisplay"
+} from "@/features/workbench/branch-control/workbenchBranchDisplay"
 
 function buildGitStatusResult(overrides: Partial<GitStatusResult> = {}): GitStatusResult {
   return {

@@ -6,7 +6,7 @@ import {
   filterWorkbenchSelectionApps,
   getWorkbenchSelectionCategories,
   resolveWorkbenchSelectionCategory,
-} from "@/features/projects/lib/workbenchSelectionCategories";
+} from "@/features/workbench/model/workbenchSelectionCategories";
 
 const builtIn: DevAppManifest = {
   id: "dev-server",

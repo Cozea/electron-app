@@ -1,4 +1,4 @@
-import type { WorkspaceRuntimeRecord } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+import type { WorkspaceRuntimeRecord } from "@/features/workspace/useWorkspaceRuntimeStore"
 
 const MAX_CONNECTED_COLLAB_BACKGROUND_HOSTS = 2
 const MAX_BROWSER_BACKGROUND_HOSTS = 2

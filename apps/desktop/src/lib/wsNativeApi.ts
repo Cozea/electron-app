@@ -12,7 +12,7 @@ import {
 } from "@cozea/assistant-contracts";
 
 import { showContextMenuFallback } from "./contextMenuFallback";
-import { WsTransport, type TransportState } from "@/stores/assistant-wsTransport";
+import { WsTransport, type TransportState } from "@/features/assistant/model/wsTransport";
 
 type WsNativeApiSingleton = { api: NativeApi; transport: WsTransport; url: string | null };
 

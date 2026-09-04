@@ -7,19 +7,19 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
-import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot";
-import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError";
+import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot";
+import { resolveBrowserPageError } from "@/features/browser/browserPageError";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
-} from "@/features/projects/browser/browserSurfaceIdentity";
-import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore";
-import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry";
-import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer";
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome";
-import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode";
-import { useProjectWorkbenchStore } from "@/stores/useProjectWorkbenchStore";
-import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/stores/useProjectWorkbenchStore";
+} from "@/features/browser/browserSurfaceIdentity";
+import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore";
+import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry";
+import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
+import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
+import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore";
+import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/features/workbench/model/workbenchStore";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 
 interface WorkbenchBrowserTileProps {

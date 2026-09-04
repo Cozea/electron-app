@@ -5,7 +5,7 @@ import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
-import { openProjectFileInExternalEditor } from '@/features/projects/lib/externalEditorPreference'
+import { openProjectFileInExternalEditor } from '@/features/settings/model/externalEditorPreference'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
 import {
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveWorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
+import { resolveWorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
 
 describe("resolveWorkbenchSelectionLaunchRequest", () => {
   it("resolves assistant apps to addTile requests with provider defaults", () => {

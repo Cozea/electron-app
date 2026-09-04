@@ -14,11 +14,11 @@ import {
   transitionDevServerLifecycle,
   type DevServerLifecycleEvent,
   type DevServerLifecycleSnapshot,
-} from '@/features/projects/lib/devServerLifecycle'
+} from '@/features/dev-server/model/devServerLifecycle'
 import {
   createDevServerRestartScheduler,
   type DevServerRestartScheduler,
-} from '@/hooks/devServerRestartScheduler'
+} from '@/features/dev-server/model/devServerRestartScheduler'
 import type {
   DevServerAuxiliaryProcessConfig,
   DevServerManagedProcessState,

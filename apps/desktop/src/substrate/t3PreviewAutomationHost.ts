@@ -32,40 +32,40 @@ import {
   readActiveBrowserRecordingTargets,
   startBrowserRecording,
   stopBrowserRecording,
-} from "@/features/projects/browser/browserRecording";
-import { useBrowserSurfaceStore } from "@/features/projects/browser/browserSurfaceStore";
-import { normalizeUrlInput } from "@/features/projects/browser/urlInput";
-import { commitBrowserViewportChange } from "@/features/projects/browser/browserViewportActions";
-import { readBrowserViewport } from "@/features/projects/browser/browserViewportStore";
-import { resolvePreviewViewport } from "@/features/projects/browser/previewViewport";
-import { isPreviewViewportReady } from "@/features/projects/browser/previewViewportReadiness";
-import { shouldRollbackPreviewViewport } from "@/features/projects/browser/previewViewportRollback";
+} from "@/features/browser/browserRecording";
+import { useBrowserSurfaceStore } from "@/features/browser/browserSurfaceStore";
+import { normalizeUrlInput } from "@/features/browser/urlInput";
+import { commitBrowserViewportChange } from "@/features/browser/browserViewportActions";
+import { readBrowserViewport } from "@/features/browser/browserViewportStore";
+import { resolvePreviewViewport } from "@/features/browser/previewViewport";
+import { isPreviewViewportReady } from "@/features/browser/previewViewportReadiness";
+import { shouldRollbackPreviewViewport } from "@/features/browser/previewViewportRollback";
 import {
   buildDevServerRunKey,
   ensureDevServerRun,
   useDevServerRunStore,
-} from "@/features/projects/devserver/devServerRunStore";
+} from "@/features/dev-server/devServerRunStore";
 import {
   ensureDevServerSurface,
   focusDevServerSurface,
   releaseDevServerSurfaceLease,
   renewDevServerSurfaceLease,
   type DevServerSurfaceHandle,
-} from "@/features/projects/devserver/devServerSurfaceController";
+} from "@/features/dev-server/devServerSurfaceController";
 import {
   ensureDevAppPreviewSurface,
   focusDevAppPreviewSurface,
   normalizeDevAppPreviewRelativePath,
-} from "@/features/projects/devapps/devAppPreviewSurfaceController";
+} from "@/features/devapps/preview/devAppPreviewSurfaceController";
 import {
   readDevAppPreviewRuntime,
   type DevAppPreviewRuntimeSnapshot,
-} from "@/features/projects/devapps/devAppPreviewRuntimeStore";
+} from "@/features/devapps/preview/devAppPreviewRuntimeStore";
 import {
   useProjectWorkbenchStore,
   type WorkbenchDevAppPreviewTile,
   type WorkbenchOrgDevAppTile,
-} from "@/stores/useProjectWorkbenchStore";
+} from "@/features/workbench/model/workbenchStore";
 
 const SUPPORTED_OPERATIONS = [
   "status",

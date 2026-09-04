@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeUrlInput } from '@/features/projects/browser/urlInput'
+import { normalizeUrlInput } from '@/features/browser/urlInput'
 
 describe('normalizeUrlInput', () => {
   it('keeps explicit schemes untouched', () => {

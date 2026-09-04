@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { create } from "zustand"
 
-import type { SidebarActivity } from "@/features/projects/ui/sidebar/sidebarActivity"
+import type { SidebarActivity } from "@/lib/sidebarActivity"
 
 /**
  * Runtime execution state published by workbench tiles, keyed by tile id.

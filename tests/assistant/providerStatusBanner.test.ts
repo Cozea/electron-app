@@ -6,9 +6,9 @@ import type { ServerProvider } from "@cozea/assistant-contracts";
 import {
   ProviderAuthenticationHelp,
   resolveProviderRemediation,
-} from "@/features/projects/components/assistant/chat/ProviderRemediationAction";
-import { ProviderStatusBanner } from "@/features/projects/components/assistant/chat/ProviderStatusBanner";
-import { markProviderRemediationResolved } from "@/features/projects/components/assistant/chat/providerRemediationResolutionStore";
+} from "@/features/assistant/chat/ProviderRemediationAction";
+import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner";
+import { markProviderRemediationResolved } from "@/features/assistant/chat/providerRemediationResolutionStore";
 
 function createMemorySessionStorage(): Storage {
   const values = new Map<string, string>();

@@ -3,7 +3,7 @@ import {
   type TerminalContextDraft,
   formatTerminalContextLabel,
   isTerminalContextExpired,
-} from "@/stores/terminalContext";
+} from "@/features/assistant/model/terminalContext";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 
 interface ComposerPendingTerminalContextsProps {

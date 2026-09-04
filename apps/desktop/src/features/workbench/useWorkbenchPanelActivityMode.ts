@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { DockviewPanelApi } from "dockview-react"
 
-import { useOptionalWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+import { useOptionalWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
 
 export interface WorkbenchPanelActivityState {
   mode: "visible" | "hidden"

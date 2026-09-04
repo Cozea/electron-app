@@ -5,9 +5,9 @@ import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildWorkbenchHref } from "@/features/projects/lib/lastWorkbenchRoute"
+import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
-import { buildWorkbenchIntentState } from "@/features/projects/lib/workbenchIntent"
+import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
 import {
   deriveProviderFromRepoUrl,
   resolveImportedProjectName,
@@ -16,7 +16,7 @@ import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLoc
 import {
   DEFAULT_WORKBENCH_LANE_ID,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 
 export type LocalProjectImportOutcome =
   | "cancelled"

@@ -4,13 +4,13 @@ import { Outlet, useLocation } from '@/lib/router'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { LanguageProvider } from './lib/i18n'
-import { CreateProjectDialogHost } from './features/projects/components/CreateProjectDialogHost'
+import { CreateProjectDialogHost } from '@/features/projects/ui/CreateProjectDialogHost'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
-import { useSettingsDrawerStore } from './stores/useSettingsDrawerStore'
-import { WorkspaceRuntimeHostsGate } from '@/features/projects/workspaces/WorkspaceRuntimeHostsGate'
-import { TerminalViewHost } from '@/features/projects/terminals/TerminalViewHost'
+import { useSettingsDrawerStore } from '@/features/settings/model/settingsDrawerStore'
+import { WorkspaceRuntimeHostsGate } from '@/features/workspace/WorkspaceRuntimeHostsGate'
+import { TerminalViewHost } from '@/features/terminal/TerminalViewHost'
 
 const LazyLogin = lazy(() =>
   import('./pages/Login').then((module) => ({
@@ -28,7 +28,7 @@ const LazyUpdateMenu = lazy(() =>
   })),
 )
 const LazySettingsDrawer = lazy(() =>
-  import('./components/settings/SettingsDrawer').then((module) => ({
+  import('@/features/settings/ui/SettingsDrawer').then((module) => ({
     default: module.SettingsDrawer,
   })),
 )
@@ -247,7 +247,7 @@ function AppContent() {
     }
 
     return scheduleIdleWarmup(() => {
-      void import('./pages/settings/Tooling').then((module) =>
+      void import('@/features/settings/Tooling').then((module) =>
         module.prewarmToolingSettings?.()
       )
     }, { delayMs: 6_000, timeoutMs: 15_000 })

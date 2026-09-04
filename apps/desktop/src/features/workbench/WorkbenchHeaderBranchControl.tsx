@@ -5,8 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext"
-import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity"
-import { useWorkbenchBranchControl } from "@/features/projects/components/workbench/branch-control/useWorkbenchBranchControl"
+import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity"
+import { useWorkbenchBranchControl } from "@/features/workbench/branch-control/useWorkbenchBranchControl"
 
 interface WorkbenchHeaderBranchControlProps {
   triggerClassName?: string

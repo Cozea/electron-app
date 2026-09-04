@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   resolveDevAppPreviewManifestPath,
   resolveDevAppPreviewRelativePath,
-} from "../../apps/desktop/src/features/projects/lib/devAppPreviewSelection"
+} from "@/features/devapps/model/devAppPreviewSelection"
 
 describe("DevApp preview package selection", () => {
   it("stores a package below the project as a workspace-relative path", () => {

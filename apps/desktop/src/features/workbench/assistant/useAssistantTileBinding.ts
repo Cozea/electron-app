@@ -5,16 +5,16 @@ import {
   newCommandId,
   newProjectId,
   newThreadId,
-} from "@/features/projects/components/assistant/lib/utils"
-import { refreshAssistantRuntimeSnapshot } from "@/features/projects/components/workbench/useAssistantRuntimeSync"
+} from "@/features/assistant/lib/utils"
+import { refreshAssistantRuntimeSnapshot } from "@/features/workbench/useAssistantRuntimeSync"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import {
   selectAssistantProjectByCwd,
   selectAssistantProjectById,
   selectAssistantThreadById,
   useStore,
-} from "@/stores/assistant-store"
-import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/stores/useProjectWorkbenchStore"
+} from "@/features/assistant/model/assistantStore"
+import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/features/workbench/model/workbenchStore"
 
 import {
   basenameFromPath,

@@ -31,21 +31,21 @@ const devServerRunMocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/features/projects/browser/browserRecording", () => ({
+vi.mock("@/features/browser/browserRecording", () => ({
   readActiveBrowserRecordingTargets: recordingMocks.readTargets,
   startBrowserRecording: recordingMocks.start,
   stopBrowserRecording: recordingMocks.stop,
 }));
-vi.mock("@/features/projects/browser/browserViewportActions", () => ({
+vi.mock("@/features/browser/browserViewportActions", () => ({
   commitBrowserViewportChange: viewportMocks.commit,
 }));
-vi.mock("@/features/projects/devserver/devServerSurfaceController", () => ({
+vi.mock("@/features/dev-server/devServerSurfaceController", () => ({
   ensureDevServerSurface: surfaceControllerMocks.ensure,
   focusDevServerSurface: surfaceControllerMocks.focus,
   releaseDevServerSurfaceLease: surfaceControllerMocks.release,
   renewDevServerSurfaceLease: surfaceControllerMocks.renew,
 }));
-vi.mock("@/features/projects/devserver/devServerRunStore", () => ({
+vi.mock("@/features/dev-server/devServerRunStore", () => ({
   buildDevServerRunKey: (workspaceId: string, laneId: string) => `${workspaceId}::${laneId}`,
   ensureDevServerRun: devServerRunMocks.ensure,
   useDevServerRunStore: Object.assign(() => devServerRunMocks.state, {
@@ -53,20 +53,20 @@ vi.mock("@/features/projects/devserver/devServerRunStore", () => ({
   }),
 }));
 
-import { browserViewportSettingKey } from "../../apps/desktop/src/features/projects/browser/browserViewportLayout";
-import { useBrowserViewportStore } from "../../apps/desktop/src/features/projects/browser/browserViewportStore";
+import { browserViewportSettingKey } from "@/features/browser/browserViewportLayout";
+import { useBrowserViewportStore } from "@/features/browser/browserViewportStore";
 import {
   clearDevAppPreviewRuntimeForTests,
   publishDevAppPreviewRuntime,
-} from "../../apps/desktop/src/features/projects/devapps/devAppPreviewRuntimeStore";
+} from "@/features/devapps/preview/devAppPreviewRuntimeStore";
 import {
   clearDevAppPreviewSurfaceControllersForTests,
   registerDevAppPreviewSurfaceController,
-} from "../../apps/desktop/src/features/projects/devapps/devAppPreviewSurfaceController";
+} from "@/features/devapps/preview/devAppPreviewSurfaceController";
 import {
   buildWorkbenchScopeKey,
   useProjectWorkbenchStore,
-} from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
+} from "@/features/workbench/model/workbenchStore";
 import { __t3PreviewAutomationHostTestUtils } from "../../apps/desktop/src/substrate/t3PreviewAutomationHost";
 
 const THREAD_ID = "thread-automation" as PreviewAutomationRequest["threadId"];

@@ -10,7 +10,7 @@ import {
   SettingsSectionDescription,
   SettingsSectionTitle,
   settingsNativeSelectClass,
-} from "@/components/settings/SettingsChrome";
+} from "@/features/settings/ui/SettingsChrome";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from "../../components/ui/switch";
 import { useTheme } from "../../contexts/ThemeContext";

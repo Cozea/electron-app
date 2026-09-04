@@ -6,8 +6,8 @@ import {
   groupCommandPaletteCommands,
   normalizeSearchText,
   type CommandPaletteCommand,
-} from "@/features/projects/components/command-palette/CommandPalette.logic"
-import { commandLabel } from "@/features/projects/components/command-palette/commandLabels"
+} from "@/features/workbench/command-palette/CommandPalette.logic"
+import { commandLabel } from "@/features/workbench/command-palette/commandLabels"
 import {
   formatShortcutLabel,
   resolveShortcutCommand,

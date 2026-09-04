@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { scheduleTask } from "@/lib/scheduler";
 import { buildProjectJoinUrl } from "@shared/projectShare";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
-import { useQueryCache } from "@/stores/useQueryCache";
+import { useQueryCache } from "@/app/model/queryCache";
 import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys";
 import { isLocalDeviceEmail } from "@/lib/userDisplay";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";

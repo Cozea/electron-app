@@ -1,7 +1,7 @@
 import type { ServerProvider } from "@cozea/assistant-contracts"
 import { describe, expect, it } from "vitest"
 
-import { resolveEnabledWorkbenchAssistantProviders } from "@/features/projects/components/workbench/workbenchSelectionAssistantProviders"
+import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders"
 
 function providerSnapshot(driver: string, enabled: boolean): ServerProvider {
   return {

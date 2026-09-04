@@ -12,7 +12,7 @@ import {
 import { checkoutGitBranchCompat, loadGitBranchesCompat } from "./workbenchBranchCompat"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
-import { rememberProjectBranchSession } from "@/features/projects/lib/projectBranchSessionStore"
+import { rememberProjectBranchSession } from "@/features/source-control/model/projectBranchSessionStore"
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
 import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import {

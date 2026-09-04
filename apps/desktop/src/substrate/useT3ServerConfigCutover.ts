@@ -6,7 +6,7 @@ import type { ServerConfig } from "@cozea/assistant-contracts";
 import {
   connectT3ServerConfigBridge,
   disconnectT3ServerConfigBridge,
-} from "@/features/projects/components/workbench/assistant/assistantRuntimeMetadataStore";
+} from "@/features/workbench/assistant/assistantRuntimeMetadataStore";
 import { fetchT3RpcSession } from "./fetchT3RpcSession";
 
 const SHADOW_READY_PATH = "/.well-known/cozea/substrate/ready";

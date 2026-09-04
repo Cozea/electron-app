@@ -5,7 +5,7 @@ import type {
   ResolvedKeybindingsConfig,
 } from "@cozea/assistant-contracts"
 
-import { isMacPlatform } from "@/features/projects/components/assistant/lib/utils"
+import { isMacPlatform } from "@/features/assistant/lib/utils"
 
 export interface ShortcutEventLike {
   type?: string

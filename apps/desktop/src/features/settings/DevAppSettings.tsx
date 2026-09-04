@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import {
   SettingsPageBody,
   SettingsPageHeader,
-} from "@/components/settings/SettingsChrome"
+} from "@/features/settings/ui/SettingsChrome"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { STORE_ORGANIZATION_ACCENT_CLASS } from "@/features/devapps/components/devAppStoreAccent"
 import { totalInstalledDevAppBytes } from "@/features/devapps/orgDevAppInstallationCatalog"
@@ -18,7 +18,7 @@ import { formatDevAppRef } from "@shared/devAppRef"
 import { featureFlags } from "@/lib/featureFlags"
 import { useTranslation } from "@/lib/i18n"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { useCreateProjectDialogStore } from "@/stores/useCreateProjectDialogStore"
+import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
 import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

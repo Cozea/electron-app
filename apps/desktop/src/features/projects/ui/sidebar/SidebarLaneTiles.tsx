@@ -15,14 +15,14 @@ import {
   Gemini,
   OpenAI,
   OpenCodeIcon,
-} from "@/features/projects/components/assistant/Icons"
+} from "@/features/assistant/Icons"
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
   findLatestProposedPlan,
   hasActionableProposedPlan,
   isLatestTurnSettled,
-} from "@/features/projects/components/assistant/chat/session-logic"
+} from "@/features/assistant/chat/session-logic"
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { cn, formatRelativeTimeLabel } from "@/lib/utils"
@@ -36,7 +36,7 @@ import {
   isSidebarActivityLive,
   resolveDevServerActivity,
   type SidebarActivity,
-} from "@/features/projects/ui/sidebar/sidebarActivity"
+} from "@/lib/sidebarActivity"
 import { resolveThreadActivity } from "@/features/projects/ui/sidebar/sidebarActivitySelectors"
 import type { DevServerStatus } from "@/features/dev-server/devServerRunStore"
 import { createAssistantThreadSelectorById, useStore } from "@/features/assistant/model/assistantStore"

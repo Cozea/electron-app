@@ -36,7 +36,7 @@ const assistantState = {
   } as Record<string, string>,
 }
 
-vi.mock("@/features/projects/components/assistant/lib/utils", () => ({
+vi.mock("@/features/assistant/lib/utils", () => ({
   newCommandId: () => "command-1",
 }))
 
@@ -44,7 +44,7 @@ vi.mock("@/lib/nativeApi", () => ({
   ensureNativeApi: () => ({ orchestration: { dispatchCommand } }),
 }))
 
-vi.mock("@/stores/assistant-store", () => ({
+vi.mock("@/features/assistant/model/assistantStore", () => ({
   useStore: {
     getState: () => assistantState,
   },
@@ -65,7 +65,7 @@ describe("assistant project deletion", () => {
 
   it("resolves T3 projects by explicit binding and workspace root", async () => {
     const deletion = await import(
-      "../../apps/desktop/src/features/projects/lib/assistantProjectDeletion"
+      "@/features/assistant/services/assistantProjectDeletion"
     )
 
     expect(
@@ -78,7 +78,7 @@ describe("assistant project deletion", () => {
 
   it("forces deletion so T3 also removes project threads", async () => {
     const deletion = await import(
-      "../../apps/desktop/src/features/projects/lib/assistantProjectDeletion"
+      "@/features/assistant/services/assistantProjectDeletion"
     )
 
     await deletion.deleteAssistantProjectsForDeletedWorkspace({
@@ -98,7 +98,7 @@ describe("assistant project deletion", () => {
   it("persists failed deletions and retries them after a later runtime snapshot", async () => {
     dispatchCommand.mockRejectedValueOnce(new Error("runtime unavailable"))
     const deletion = await import(
-      "../../apps/desktop/src/features/projects/lib/assistantProjectDeletion"
+      "@/features/assistant/services/assistantProjectDeletion"
     )
 
     await deletion.deleteAssistantProjectsForDeletedWorkspace({

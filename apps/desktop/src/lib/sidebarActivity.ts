@@ -8,6 +8,13 @@ import type { ThreadSession } from "@/features/assistant/model/types"
  * (an idle shell, a connected-but-quiet agent, a stopped dev server) reads `idle`.
  * Both the project row and the nested tile rows resolve through this module so the
  * two levels can never disagree about what is running.
+ *
+ * It lives in `lib/` rather than under the sidebar because the vocabulary is
+ * shared across capabilities: the terminal and workbench features publish into it
+ * (`features/workbench/model/tileActivityStore`), and the projects sidebar only
+ * consumes the result. Keeping it below every feature is what stops terminal or
+ * workbench from having to reach into project UI for a type. The two imports
+ * above are type-only, so nothing here pulls a feature in at runtime.
  */
 export type SidebarActivity = "idle" | "starting" | "running"
 

@@ -8,11 +8,11 @@ import {
   getPanelConstraintsForTile,
   getPanelRendererForTile,
   resolveTabGroupPreset,
-} from "@/features/projects/lib/workbenchDockview"
+} from "@/features/workbench/model/workbenchDockview"
 import {
   getWorkbenchTileDefinition,
   isBrowserBackedWorkbenchTile,
-} from "@/features/projects/lib/workbenchTileRegistry"
+} from "@/features/workbench/model/workbenchTileRegistry"
 
 const root = process.cwd()
 const tileSource = fs.readFileSync(

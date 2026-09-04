@@ -6,8 +6,8 @@ import { SubstrateOrchestrationClient, T3OrchestrationClient } from "@cozea/clie
 import {
   coalesceOrchestrationUiEvents,
   useStore,
-} from "@/stores/assistant-store";
-import { createOrchestrationRecoveryCoordinator } from "@/stores/orchestrationRecovery";
+} from "@/features/assistant/model/assistantStore";
+import { createOrchestrationRecoveryCoordinator } from "@/features/assistant/model/orchestrationRecovery";
 
 import { fetchT3RpcSession } from "./fetchT3RpcSession";
 

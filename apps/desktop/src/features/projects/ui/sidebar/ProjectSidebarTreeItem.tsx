@@ -11,8 +11,8 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useConvex } from "convex/react"
 import { prefetchProjectSwitch } from "@/features/projects/lib/projectSwitchPrefetch"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
-import { useWorkspaceSnapshotEntry } from "@/features/projects/workspaces/useWorkspaceCatalogSnapshot"
-import { useProjectLaneState } from "@/features/projects/hooks/useProjectLaneState"
+import { useWorkspaceSnapshotEntry } from "@/features/workspace/useWorkspaceCatalogSnapshot"
+import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
 import { ProjectPixelInvaderIcon } from "@/features/projects/ui/ProjectPixelInvaderIcon"
 import { SidebarLaneTiles } from "./SidebarLaneTiles"
 import {
@@ -37,7 +37,7 @@ import {
 import {
   isSidebarActivityLive,
   resolveProjectRowActivity,
-} from "./sidebarActivity"
+} from "@/lib/sidebarActivity"
 import { useProjectSidebarActivity } from "./useProjectSidebarActivity"
 
 import { HugeiconsIcon } from '@hugeicons/react'

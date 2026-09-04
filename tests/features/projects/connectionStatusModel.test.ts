@@ -5,7 +5,7 @@ import {
   mapDataSyncStatus,
   mapGitRemoteStatus,
   resolveConnectionStatusPresentation,
-} from "@/features/projects/lib/connectionStatusModel"
+} from "@/features/collaboration/model/connectionStatusModel"
 import { isBackgroundRefreshAllowed, readDocumentVisibility } from "@/lib/backgroundPolicy"
 
 describe("connectionStatusModel", () => {

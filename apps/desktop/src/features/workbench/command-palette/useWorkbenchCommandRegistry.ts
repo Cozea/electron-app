@@ -2,14 +2,14 @@ import { useMemo } from "react"
 
 import type { KeybindingCommand } from "@cozea/assistant-contracts"
 
-import { resolveDevAppPreviewManifestPath } from "@/features/projects/lib/devAppPreviewSelection"
+import { resolveDevAppPreviewManifestPath } from "@/features/devapps/model/devAppPreviewSelection"
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
 import { useNavigate } from "@/lib/router"
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
   type WorkbenchTileType,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 import { commandLabel } from "./commandLabels"
 import type { CommandPaletteCommand } from "./CommandPalette.logic"
 import { toggleCommandPalette } from "./commandPaletteBus"

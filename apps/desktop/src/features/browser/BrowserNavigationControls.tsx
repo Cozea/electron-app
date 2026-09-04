@@ -11,15 +11,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext";
+import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext";
 import {
   BROWSER_FOCUS_URL_EVENT,
   isExternallyOpenableBrowserUrl,
-} from "@/features/projects/browser/urlInput";
+} from "@/features/browser/urlInput";
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore";
+} from "@/features/workbench/model/workbenchStore";
 import { cn } from "@/lib/utils";
 
 import { browserAddressDisplayValue, resolveBrowserAddressSubmission } from "./browserAddressState";

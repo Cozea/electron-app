@@ -7,16 +7,6 @@ const desktopRoot = path.join(repoRoot, "apps/desktop")
 export default defineConfig({
   resolve: {
     alias: {
-      "@/features/projects/components/assistant": path.resolve(desktopRoot, "./src/features/assistant"),
-      "@/features/projects/components/workbench": path.resolve(desktopRoot, "./src/features/workbench"),
-      "@/features/projects/components/command-palette": path.resolve(desktopRoot, "./src/features/workbench/command-palette"),
-      "@/features/projects/components/changes": path.resolve(desktopRoot, "./src/features/source-control/components/changes"),
-      "@/features/projects/browser": path.resolve(desktopRoot, "./src/features/browser"),
-      "@/features/projects/devserver": path.resolve(desktopRoot, "./src/features/dev-server"),
-      "@/features/projects/terminals": path.resolve(desktopRoot, "./src/features/terminal"),
-      "@/features/projects/workspaces": path.resolve(desktopRoot, "./src/features/workspace"),
-      "@/features/projects/components/previews": path.resolve(desktopRoot, "./src/features/native-preview"),
-      "@/features/projects/devapps": path.resolve(desktopRoot, "./src/features/devapps/preview"),
       "@": path.resolve(desktopRoot, "./src"),
       "@shared": path.resolve(repoRoot, "./shared"),
       "@cozea/assistant-contracts": path.resolve(repoRoot, "./shared/assistant-contracts/index.ts"),

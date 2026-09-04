@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError";
+import { resolveBrowserPageError } from "@/features/browser/browserPageError";
 import { browserHttpDiagnosticForResponse } from "@shared/browserHttpDiagnostics";
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 import type { CozeaBrowserSurfaceState } from "@shared/browserSurfaceTypes";

@@ -23,8 +23,8 @@ import { useOptionalProjectSyncContext } from '@/features/projects/contexts/Proj
 import { markSyncFeedAsSeen } from '../syncFeedSeen'
 import { CheckpointDiffWorkerProvider } from '../components/changes/CheckpointDiffWorkerProvider'
 import { useTranslation } from '@/lib/i18n'
-import { useGitChangesStore } from '@/stores/useGitChangesStore'
-import { useChangesSidebarStore } from '@/stores/useChangesSidebarStore'
+import { useGitChangesStore } from '@/features/source-control/model/gitChangesStore'
+import { useChangesSidebarStore } from '@/features/source-control/model/changesSidebarStore'
 import { formatActorDisplayName } from '@/lib/userDisplay'
 import { useTheme } from '@/contexts/ThemeContext'
 import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
@@ -32,10 +32,10 @@ import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 import {
   buildPatchCacheKey,
   resolveDiffThemeName,
-} from '@/features/projects/components/assistant/lib/diffRendering'
+} from '@/features/assistant/lib/diffRendering'
 import {
   CHANGES_TILE_MIN_WIDTH_COLLAPSED,
-} from '@/features/projects/lib/changesTileSizing'
+} from '@/features/source-control/model/changesTileSizing'
 
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff, type FileDiffMetadata, Virtualizer } from "@pierre/diffs/react";

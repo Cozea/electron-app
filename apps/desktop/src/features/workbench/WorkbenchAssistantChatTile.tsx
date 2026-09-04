@@ -3,19 +3,19 @@ import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { CozeaChatSurface } from "@/features/projects/components/assistant/chat/CozeaChatSurface"
-import { ThreadArtifactsView } from "@/features/projects/components/assistant/artifacts/ThreadArtifactsView"
-import { WorkbenchAssistantDiffDialog } from "@/features/projects/components/workbench/assistant/WorkbenchAssistantDiffDialog"
-import { useWorkbenchAssistantTileController } from "@/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController"
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchDockRuntime } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
-import { registerPreviewAnnotationComposerTarget } from "@/features/projects/browser/previewAnnotationComposerRegistry"
-import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/stores/useProjectWorkbenchStore"
+import { CozeaChatSurface } from "@/features/assistant/chat/CozeaChatSurface"
+import { ThreadArtifactsView } from "@/features/assistant/artifacts/ThreadArtifactsView"
+import { WorkbenchAssistantDiffDialog } from "@/features/workbench/assistant/WorkbenchAssistantDiffDialog"
+import { useWorkbenchAssistantTileController } from "@/features/workbench/assistant/useWorkbenchAssistantTileController"
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
+import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
+import { registerPreviewAnnotationComposerTarget } from "@/features/browser/previewAnnotationComposerRegistry"
+import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/features/workbench/model/workbenchStore"
 import {
   flushWorkbenchStorage,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from "@hugeicons/react"

@@ -8,12 +8,12 @@ import { scheduleTask } from "@/lib/scheduler";
 import { useLocation } from "@/lib/router";
 import { buildProjectPath } from "@/features/projects/lib/projectRoutes";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
-import { getProjectChangesActivityCacheKey } from "@/features/projects/lib/changesQueryCache";
-import { useQueryCache } from "@/stores/useQueryCache";
-import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore";
+import { getProjectChangesActivityCacheKey } from "@/features/source-control/model/changesQueryCache";
+import { useQueryCache } from "@/app/model/queryCache";
+import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useGitChangesStore } from "@/stores/useGitChangesStore";
+import { useGitChangesStore } from "@/features/source-control/model/gitChangesStore";
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useViewTransitionNavigate();

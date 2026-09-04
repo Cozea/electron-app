@@ -63,9 +63,9 @@ import { splitPromptIntoComposerSegments } from "../composer-editor-mentions";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
-} from "@/stores/terminalContext";
+} from "@/features/assistant/model/terminalContext";
 import { cn } from "@/lib/utils";
-import { formatProviderSkillDisplayName } from "@/features/projects/components/assistant/providerSkillPresentation";
+import { formatProviderSkillDisplayName } from "@/features/assistant/providerSkillPresentation";
 import { basenameOfPath, getVscodeIconUrlForEntry, inferEntryKindFromPath } from "../vscode-icons";
 import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,

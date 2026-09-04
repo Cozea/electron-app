@@ -5,7 +5,7 @@ import {
   normalizeToolRowPresentation,
   normalizedToolAction,
   parseToolDetail,
-} from "@/features/projects/components/assistant/chat/toolDetailPresentation";
+} from "@/features/assistant/chat/toolDetailPresentation";
 
 describe("isGenericToolTitle", () => {
   it("flags the category labels providers emit", () => {

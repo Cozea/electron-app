@@ -4,12 +4,12 @@ import {
   hasHostableWorkspaceRuntime,
   hasImmediateWorkspaceRuntimeHost,
   selectHostedWorkspaceRuntimeRecords,
-} from "@/features/projects/workspaces/workspaceRuntimePolicy"
+} from "@/features/workspace/workspaceRuntimePolicy"
 import type {
   WorkspaceRuntimeLifecycle,
   WorkspaceRuntimeRecord,
   WorkspaceRuntimeSignals,
-} from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+} from "@/features/workspace/useWorkspaceRuntimeStore"
 
 const baseSignals: WorkspaceRuntimeSignals = {
   hasConnectedCollab: false,

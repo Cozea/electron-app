@@ -6,7 +6,7 @@ import {
   mergeSidebarActivity,
   resolveAgentActivity,
   type SidebarActivity,
-} from "@/features/projects/ui/sidebar/sidebarActivity"
+} from "@/lib/sidebarActivity"
 import { createAssistantThreadSelectorById, type AppState } from "@/features/assistant/model/assistantStore"
 import type { Thread } from "@/features/assistant/model/types"
 import type { ProjectId } from "@cozea/assistant-contracts"

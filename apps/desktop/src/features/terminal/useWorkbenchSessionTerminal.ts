@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import { useTerminalStore, type TerminalKind } from "@/stores/useTerminalStore"
+import { useTerminalStore, type TerminalKind } from "@/features/terminal/model/terminalStore"
 
 interface UseWorkbenchSessionTerminalOptions {
   workspaceId: string | null

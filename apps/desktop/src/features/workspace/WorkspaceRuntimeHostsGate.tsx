@@ -1,13 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 
-import { useWorkspaceRuntimeStore } from "@/features/projects/workspaces/useWorkspaceRuntimeStore"
+import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
 import {
   hasHostableWorkspaceRuntime,
   hasImmediateWorkspaceRuntimeHost,
-} from "@/features/projects/workspaces/workspaceRuntimePolicy"
+} from "@/features/workspace/workspaceRuntimePolicy"
 
 const LazyWorkspaceRuntimeHosts = lazy(() =>
-  import("@/features/projects/workspaces/WorkspaceRuntimeHosts").then((module) => ({
+  import("@/features/workspace/WorkspaceRuntimeHosts").then((module) => ({
     default: module.WorkspaceRuntimeHosts,
   })),
 )

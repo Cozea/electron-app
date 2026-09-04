@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   commandProgramName,
   tokenizeShellCommand,
-} from "@/features/projects/components/assistant/chat/shellCommandProgram";
+} from "@/features/assistant/chat/shellCommandProgram";
 
 describe("tokenizeShellCommand", () => {
   it("splits on unquoted whitespace", () => {

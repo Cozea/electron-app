@@ -46,7 +46,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
-import { type TurnDiffSummary } from "@/stores/types";
+import { type TurnDiffSummary } from "@/features/assistant/model/types";
 import ChatMarkdown from "./ChatMarkdown";
 import {
   Empty,
@@ -91,11 +91,11 @@ import {
 } from "./MessagesTimeline.logic";
 import { PersistedFilesList } from "./PersistedFilesList";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
-import { extractTrailingPreviewAnnotations } from "@/features/projects/browser/previewAnnotation";
+import { extractTrailingPreviewAnnotations } from "@/features/browser/previewAnnotation";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
-} from "@/stores/terminalContext";
+} from "@/features/assistant/model/terminalContext";
 import { cn } from "@/lib/utils";
 import {
   buildInlineTerminalContextText,

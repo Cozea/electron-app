@@ -11,7 +11,7 @@ import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
 import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
-import { useCollabSession } from "@/hooks/useCollabSession"
+import { useCollabSession } from "@/features/collaboration/hooks/useCollabSession"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
 import type { CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
@@ -20,7 +20,7 @@ import {
   ProjectSyncContext,
   type ProjectSyncProviderProps,
 } from "@/features/projects/contexts/projectSyncShared"
-import { useProjectCheckpointCleanup } from "@/features/projects/hooks/useProjectCheckpointCleanup"
+import { useProjectCheckpointCleanup } from "@/features/source-control/hooks/useProjectCheckpointCleanup"
 import type { SyncProgress } from "@/lib/sync/types"
 
 interface ProjectSyncProviderRuntimeProps extends ProjectSyncProviderProps {

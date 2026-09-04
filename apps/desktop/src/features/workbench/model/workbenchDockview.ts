@@ -9,15 +9,15 @@ import type {
   WorkbenchSelectionTile,
   WorkbenchTile,
   WorkbenchTileType,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 import {
   CHANGES_DOCK_DEFINITION,
   getWorkbenchDockDefinition,
   getWorkbenchTileDefinition,
   type RenderableWorkbenchTileType,
   type WorkbenchTabGroupPreset,
-} from "@/features/projects/lib/workbenchTileRegistry"
-import type { WorkbenchDockPanelParams } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+} from "@/features/workbench/model/workbenchTileRegistry"
+import type { WorkbenchDockPanelParams } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
 const RESERVED_DOCKVIEW_PANEL_IDS = new Set(["cozea-changes-panel"])

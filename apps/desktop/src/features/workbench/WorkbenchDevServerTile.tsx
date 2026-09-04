@@ -12,18 +12,18 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/i18n"
-import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
-import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
-import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError"
-import { resolveBrowserWorkbenchSessionKey } from "@/features/projects/browser/browserSurfaceIdentity"
-import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
-import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry"
+import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot"
+import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer"
+import { resolveBrowserPageError } from "@/features/browser/browserPageError"
+import { resolveBrowserWorkbenchSessionKey } from "@/features/browser/browserSurfaceIdentity"
+import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore"
+import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry"
 import {
   runtimePreviewBrowserSurfaceGeneration,
   runtimePreviewBrowserSurfaceKind,
   runtimePreviewBrowserSurfaceTabId,
-} from "@/features/projects/browser/runtimePreviewBrowserSurface"
-import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
+} from "@/features/browser/runtimePreviewBrowserSurface"
+import { IosSimulatorViewport } from "@/features/native-preview/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode"
 import {
@@ -41,9 +41,9 @@ import {
   useDevServerProcessConfigStore,
 } from "@/features/dev-server/devServerProcessConfigStore"
 import { interruptDevServerSurfaceLease } from "@/features/dev-server/devServerSurfaceController"
-import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
-import { KeepAliveTerminalView } from "@/features/projects/terminals/KeepAliveTerminalView"
-import { useWorkbenchSessionTerminal } from "@/features/projects/terminals/useWorkbenchSessionTerminal"
+import { useIosNativePreview } from "@/features/native-preview/hooks/useIosNativePreview"
+import { KeepAliveTerminalView } from "@/features/terminal/KeepAliveTerminalView"
+import { useWorkbenchSessionTerminal } from "@/features/terminal/useWorkbenchSessionTerminal"
 import {
   getEffectiveExternalBrowserId,
   getVisibleExternalBrowsers,
@@ -53,22 +53,22 @@ import {
   readStoredPreviewDestinationPreference,
   type PreviewDestination,
   resolvePreferredExternalBrowserId,
-} from "@/features/projects/lib/externalBrowserPreference"
+} from "@/features/settings/model/externalBrowserPreference"
 import { type DevServerStatus, useDevServerManager } from "@/features/dev-server/hooks/useDevServerManager"
 import { cn } from "@/lib/utils"
 import {
   buildWorkbenchRuntimeTargetIdentity,
   resolveProjectDevAppRuntimeTarget,
   type WorkbenchRuntimeTarget,
-} from "@/features/projects/lib/projectDevAppRuntime"
-import { releaseProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntimeLifecycle"
-import type { PageRoute, ServerStatus } from "@/features/projects/lib/previewRuntimeTypes"
+} from "@/features/devapps/model/projectDevAppRuntime"
+import { releaseProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntimeLifecycle"
+import type { PageRoute, ServerStatus } from "@/features/dev-server/model/previewRuntimeTypes"
 import {
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   useProjectWorkbenchStore,
 } from "@/features/workbench/model/workbenchStore"
-import { useTerminalStore } from "@/stores/useTerminalStore"
+import { useTerminalStore } from "@/features/terminal/model/terminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
 import { HugeiconsIcon } from "@hugeicons/react"

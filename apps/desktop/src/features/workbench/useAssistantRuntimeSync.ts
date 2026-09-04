@@ -1,10 +1,10 @@
 import { useEffect } from "react"
 
 import type { OrchestrationEvent } from "@cozea/assistant-contracts"
-import { flushPendingAssistantProjectDeletions } from "@/features/projects/lib/assistantProjectDeletion"
+import { flushPendingAssistantProjectDeletions } from "@/features/assistant/services/assistantProjectDeletion"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import { coalesceOrchestrationUiEvents, useStore } from "@/stores/assistant-store"
-import { createOrchestrationRecoveryCoordinator } from "@/stores/orchestrationRecovery"
+import { coalesceOrchestrationUiEvents, useStore } from "@/features/assistant/model/assistantStore"
+import { createOrchestrationRecoveryCoordinator } from "@/features/assistant/model/orchestrationRecovery"
 
 let subscriberCount = 0
 let unsubscribeDomainEvents: (() => void) | null = null

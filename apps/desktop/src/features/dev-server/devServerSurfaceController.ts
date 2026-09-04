@@ -1,4 +1,4 @@
-import { buildWorkbenchScopeKey } from "@/stores/useProjectWorkbenchStore"
+import { buildWorkbenchScopeKey } from "@/features/workbench/model/workbenchStore"
 
 const DEFAULT_LEASE_TTL_MS = 45_000
 

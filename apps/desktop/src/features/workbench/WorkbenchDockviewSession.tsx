@@ -1,25 +1,25 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import { WorkbenchDockRuntimeProvider } from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
-import { useWorkbenchDockviewRuntime } from "@/features/projects/hooks/useWorkbenchDockviewRuntime"
+import { WorkbenchDockRuntimeProvider } from "@/features/workbench/WorkbenchDockRuntimeContext"
+import { useWorkbenchDockviewRuntime } from "@/features/workbench/hooks/useWorkbenchDockviewRuntime"
 import {
   ensureWorkbenchLayoutPersistenceReady,
   peekPersistedWorkbenchLayout,
-} from "@/features/projects/lib/workbenchLayoutPersistence"
+} from "@/features/workbench/model/workbenchLayoutPersistence"
 import {
   buildWorkbenchScopeKey,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 import {
   endProjectSwitch,
   markProjectSwitchPhase,
 } from "@/lib/performance/projectSwitchMarks"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
-import type { WorkbenchKeepAliveSession } from "@/features/projects/components/workbench/workbenchKeepAlive"
+import type { WorkbenchKeepAliveSession } from "@/features/workbench/workbenchKeepAlive"
 
 const LazyWorkbenchDockviewCanvas = lazy(() =>
-  import("@/features/projects/components/workbench/WorkbenchDockviewCanvas").then((module) => ({
+  import("@/features/workbench/WorkbenchDockviewCanvas").then((module) => ({
     default: module.WorkbenchDockviewCanvas,
   })),
 )

@@ -2,7 +2,7 @@ import { WorkerPoolContextProvider, useWorkerPool } from '@pierre/diffs/react'
 import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
-import { resolveDiffThemeName, type DiffThemeName } from '@/features/projects/components/assistant/lib/diffRendering'
+import { resolveDiffThemeName, type DiffThemeName } from '@/features/assistant/lib/diffRendering'
 
 function resolveThemeMode(theme: ReturnType<typeof useTheme>['theme']): 'light' | 'dark' {
   if (theme === 'light' || theme === 'dark') {

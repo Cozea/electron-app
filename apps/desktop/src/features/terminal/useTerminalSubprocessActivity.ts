@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 import {
   resolveTerminalActivity,
   type SidebarActivity,
-} from "@/features/projects/ui/sidebar/sidebarActivity"
+} from "@/lib/sidebarActivity"
 
 /**
  * Tracks whether a terminal currently has a foreground process.

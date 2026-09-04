@@ -8,8 +8,8 @@ import {
   resolveProjectRowActivity,
   resolveTerminalActivity,
   type SidebarActivity,
-} from "@/features/projects/components/sidebar/sidebarActivity"
-import { createProjectAgentsActivitySelector } from "@/features/projects/components/sidebar/sidebarActivitySelectors"
+} from "@/lib/sidebarActivity"
+import { createProjectAgentsActivitySelector } from "@/features/projects/ui/sidebar/sidebarActivitySelectors"
 
 describe("sidebar activity engine", () => {
   describe("what counts as executing", () => {

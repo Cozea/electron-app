@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildDevelopmentDevAppManifest } from "../../apps/desktop/src/features/devapps/developmentDevAppManifest";
-import { resolveWorkbenchSelectionLaunchRequest } from "../../apps/desktop/src/features/projects/lib/workbenchSelectionLaunch";
+import { resolveWorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch";
 import { DEV_APP_PACKAGE_JSON_SCHEMA } from "../../shared/devAppPackage";
 
 describe("native DevApp authoring contract", () => {

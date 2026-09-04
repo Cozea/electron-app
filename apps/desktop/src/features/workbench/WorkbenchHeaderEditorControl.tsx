@@ -14,14 +14,14 @@ import {
   PREVIEW_EDITOR_PREFERENCE_KEY,
   readStoredExternalEditorPreference,
   resolvePreferredExternalEditorId,
-} from "@/features/projects/lib/externalEditorPreference"
+} from "@/features/settings/model/externalEditorPreference"
 import {
   AntigravityIcon,
   CursorIcon,
   FinderIcon,
   VisualStudioCodeIcon,
   ZedIcon,
-} from "@/features/projects/components/workbench/WorkbenchEditorIcons"
+} from "@/features/workbench/WorkbenchEditorIcons"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDown01Icon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'

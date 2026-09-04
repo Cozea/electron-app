@@ -10,52 +10,52 @@ import {
 } from "react";
 import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
 import { useAuth } from "@/contexts/AuthContext";
-import { useProjectHeader } from "@/hooks/useProjectHeader";
+import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader";
 import {
   DEFAULT_WORKBENCH_LANE_ID,
   type WorkbenchTileType,
   buildWorkbenchScopeKey,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore";
-import { WorkbenchKeepAliveHost } from "@/features/projects/components/workbench/WorkbenchKeepAliveHost";
-import type { WorkbenchKeepAliveSession } from "@/features/projects/components/workbench/workbenchKeepAlive";
+} from "@/features/workbench/model/workbenchStore";
+import { WorkbenchKeepAliveHost } from "@/features/workbench/WorkbenchKeepAliveHost";
+import type { WorkbenchKeepAliveSession } from "@/features/workbench/workbenchKeepAlive";
 import {
   type TaskOverlayLocationState,
   type TaskOverlayPayload,
-} from "@/features/projects/lib/taskFocusOverlay";
+} from "@/features/tasks/model/taskFocusOverlay";
 import { useLocation, useSearchParams } from "@/lib/router";
 import { useTheme } from "@/contexts/ThemeContext";
-import { ProjectShellTitleBarLeft } from "@/features/projects/components/ProjectShellTitleBarLeft";
-import { ProjectSyncIndicator } from "@/features/projects/components/ProjectSyncIndicator";
-import { WorkbenchHeaderBranchControl } from "@/features/projects/components/workbench/WorkbenchHeaderBranchControl";
-import { useProjectWorkbenchSearchParamSync } from "@/features/projects/hooks/useProjectWorkbenchSearchParamSync";
+import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
+import { ProjectSyncIndicator } from "@/features/projects/ui/ProjectSyncIndicator";
+import { WorkbenchHeaderBranchControl } from "@/features/workbench/WorkbenchHeaderBranchControl";
+import { useProjectWorkbenchSearchParamSync } from "@/features/workbench/hooks/useProjectWorkbenchSearchParamSync";
 import {
   markWorkbenchIntentApplied,
   readWorkbenchIntentFromState,
   wasWorkbenchIntentApplied,
-} from "@/features/projects/lib/workbenchIntent";
-import { activateProjectBranchLane } from "@/features/projects/lib/projectBranchSessionStore";
-import { writeLastWorkbenchRoute } from "@/features/projects/lib/lastWorkbenchRoute";
-import { useWorkbenchSessionLifecycle } from "@/features/projects/hooks/useWorkbenchSessionLifecycle";
+} from "@/features/workbench/model/workbenchIntent";
+import { activateProjectBranchLane } from "@/features/source-control/model/projectBranchSessionStore";
+import { writeLastWorkbenchRoute } from "@/features/workbench/model/lastWorkbenchRoute";
+import { useWorkbenchSessionLifecycle } from "@/features/workbench/hooks/useWorkbenchSessionLifecycle";
 import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
 import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,
-} from "@/features/projects/workspaces/useWorkspaceRuntimeStore";
-import { useActiveWorkspaceOrNull } from "@/features/projects/workspaces/ActiveWorkspaceContext";
-import { useWorkspaceIdentity } from "@/features/projects/workspaces/useWorkspaceIdentity";
+} from "@/features/workspace/useWorkspaceRuntimeStore";
+import { useActiveWorkspaceOrNull } from "@/features/workspace/ActiveWorkspaceContext";
+import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
-import { WorkbenchCommandPaletteHost } from "@/features/projects/components/command-palette/WorkbenchCommandPaletteHost";
+import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 const LazyProjectSettingsPage = lazy(() =>
-  import("@/features/projects/pages/ProjectSettingsPage").then((module) => ({
+  import("@/features/settings/pages/ProjectSettingsPage").then((module) => ({
     default: module.ProjectSettingsPage,
   })),
 );
 const LazyTaskFocusOverlay = lazy(() =>
-  import("@/features/projects/components/TaskFocusOverlay").then((module) => ({
+  import("@/features/tasks/ui/TaskFocusOverlay").then((module) => ({
     default: module.TaskFocusOverlay,
   })),
 );

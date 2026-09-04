@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveSidebarDevAppMenuAction,
   canReuseProjectDevAppLogo,
-} from "@/features/projects/components/sidebar/projectSidebarShared";
+} from "@/features/projects/ui/sidebar/projectSidebarShared";
 
 describe("project sidebar DevApp menu action", () => {
   it("offers publish for an unpublished project", () => {

@@ -3,15 +3,15 @@ import type { DockviewApi, DockviewPanelApi } from "dockview-react"
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../../convex/_generated/api"
-import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
+import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot"
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
-} from "@/features/projects/browser/browserSurfaceIdentity"
-import { resolveBrowserPageError } from "@/features/projects/browser/browserPageError"
-import { useHostedBrowserSurface } from "@/features/projects/browser/browserSurfaceRegistry"
-import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
-import { useBrowserSurfaceStateStore } from "@/features/projects/browser/browserSurfaceStateStore"
+} from "@/features/browser/browserSurfaceIdentity"
+import { resolveBrowserPageError } from "@/features/browser/browserPageError"
+import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry"
+import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer"
+import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore"
 import { useAuth } from "@/contexts/AuthContext"
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode"

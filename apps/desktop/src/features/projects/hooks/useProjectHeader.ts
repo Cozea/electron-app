@@ -1,6 +1,6 @@
 import { useEffect } from "react"
 import type { ReactNode } from "react"
-import { useProjectHeaderStore } from "@/stores/useProjectHeaderStore"
+import { useProjectHeaderStore } from "@/features/projects/model/projectHeaderStore"
 
 interface ProjectHeaderOptions {
   insetLeft?: number

@@ -22,25 +22,25 @@ import type {
 import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
 import type {
   WorkbenchSelectionTile,
-} from "@/stores/useProjectWorkbenchStore"
-import { NativeProjectFolderIcon } from "@/features/projects/components/NativeProjectFolderIcon"
+} from "@/features/workbench/model/workbenchStore"
+import { NativeProjectFolderIcon } from "@/features/projects/ui/NativeProjectFolderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
-import { useAssistantServerConfig } from "@/features/projects/components/workbench/assistant/useAssistantServerConfig"
-import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch"
+import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
+import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import {
   computeWorkbenchSelectionLauncherLayout,
   type WorkbenchSelectionLauncherLayout,
-} from "@/features/projects/components/workbench/workbenchSelectionLauncherLayout"
-import { resolveEnabledWorkbenchAssistantProviders } from "@/features/projects/components/workbench/workbenchSelectionAssistantProviders"
+} from "@/features/workbench/workbenchSelectionLauncherLayout"
+import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders"
 import { useTranslation } from "@/lib/i18n"
 import {
   filterWorkbenchSelectionApps,
   getWorkbenchSelectionCategories,
   resolveWorkbenchSelectionCategory,
   type WorkbenchSelectionCategory,
-} from "@/features/projects/lib/workbenchSelectionCategories"
+} from "@/features/workbench/model/workbenchSelectionCategories"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon as __SearchHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
@@ -97,8 +97,8 @@ function WelcomeHero({
   const normalizedProjectName = projectName?.trim() || "this project"
 
   return (
-    <div className="mb-8 flex w-full max-w-4xl flex-col items-center">
-      <div className="mb-8 flex flex-col items-center gap-1">
+    <div className="mb-6 flex w-full max-w-4xl flex-col items-center">
+      <div className="flex flex-col items-center gap-1">
         <span className="text-center text-2xl text-muted-foreground md:text-3xl">
           {t('workbench.selection.letsWorkOn')}
         </span>

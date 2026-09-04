@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import {
   formatElementContextLabel,
   normalizeElementContextSelection,
-} from "@/features/projects/browser/elementContext"
+} from "@/features/browser/elementContext"
 import { cn } from "@/lib/utils"
 
 import type { ComposerImageDraft } from "./CozeaChatSurface"

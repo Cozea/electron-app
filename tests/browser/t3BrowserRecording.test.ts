@@ -52,7 +52,7 @@ const { events, frameSubscription, onFrame, save, startScreencast, stopScreencas
     }
   })
 
-vi.mock("@/features/projects/browser/browserSurfaceStore", () => ({
+vi.mock("@/features/browser/browserSurfaceStore", () => ({
   useBrowserSurfaceStore: { getState: () => surfaceState },
 }))
 
@@ -66,7 +66,7 @@ import {
   startBrowserRecording,
   stopBrowserRecording,
   useBrowserRecordingStore,
-} from "@/features/projects/browser/browserRecording"
+} from "@/features/browser/browserRecording"
 
 class FakeMediaRecorder {
   static isTypeSupported(): boolean {
