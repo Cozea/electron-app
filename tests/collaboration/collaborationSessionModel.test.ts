@@ -29,6 +29,9 @@ function createSession(
     createdByUserId: "user_1",
     commitLeaseUserId: null,
     commitLeaseExpiresAt: null,
+    pendingCommitSha: null,
+    pendingCommitThroughSequence: null,
+    pendingCommitCreatedAt: null,
     status: "active",
     createdAt: 1,
     updatedAt: 1,
@@ -44,6 +47,10 @@ function pushingSession(
     status: "pushing",
     commitLeaseUserId: "user_1",
     commitLeaseExpiresAt: 100,
+    pendingCommitSha: PUBLISHED_SHA,
+    pendingCommitThroughSequence: 8,
+    pendingCommitCreatedAt: 40,
+    updatedAt: 40,
     ...overrides,
   })
 }
@@ -123,11 +130,16 @@ describe("collaboration session model", () => {
       status: "local_commit_ready",
       commitLeaseUserId: "user_1",
       commitLeaseExpiresAt: 100,
+      pendingCommitSha: PUBLISHED_SHA,
+      pendingCommitThroughSequence: 8,
+      pendingCommitCreatedAt: 40,
+      updatedAt: 40,
     })
 
     expect(session.baseCommitSha).toBe(BASE_SHA)
     expect(session.publishedCommitSha).toBeNull()
     expect(session.publishedThroughSequence).toBe(0)
+    expect(session.pendingCommitSha).toBe(PUBLISHED_SHA)
   })
 
   it("advances the base only after a verified publication by the lease holder", () => {
@@ -144,6 +156,7 @@ describe("collaboration session model", () => {
     expect(result.baseCommitSha).toBe(PUBLISHED_SHA)
     expect(result.publishedCommitSha).toBe(PUBLISHED_SHA)
     expect(result.publishedThroughSequence).toBe(8)
+    expect(result.pendingCommitSha).toBeNull()
     expect(result.status).toBe("active")
     expect(result.commitLeaseUserId).toBeNull()
   })
@@ -183,6 +196,10 @@ describe("collaboration session model", () => {
           status: "local_commit_ready",
           commitLeaseUserId: "user_1",
           commitLeaseExpiresAt: 100,
+          pendingCommitSha: PUBLISHED_SHA,
+          pendingCommitThroughSequence: 8,
+          pendingCommitCreatedAt: 40,
+          updatedAt: 40,
         }),
         {
           commitSha: PUBLISHED_SHA,
@@ -197,7 +214,9 @@ describe("collaboration session model", () => {
   it("rejects publication beyond the room head", () => {
     expect(() =>
       advancePublishedCollaborationBase(
-        pushingSession(),
+        pushingSession({
+          pendingCommitThroughSequence: 13,
+        }),
         {
           commitSha: PUBLISHED_SHA,
           coveredThroughSequence: 13,
@@ -205,7 +224,34 @@ describe("collaboration session model", () => {
           publishedAt: 50,
         },
       ),
-    ).toThrow("cannot exceed the room head")
+    ).toThrow("unpublished room range")
+  })
+
+  it("rejects publication that differs from the prepared local commit", () => {
+    expect(() =>
+      advancePublishedCollaborationBase(
+        pushingSession(),
+        {
+          commitSha: "3333333333333333333333333333333333333333",
+          coveredThroughSequence: 8,
+          publishedByUserId: "user_1",
+          publishedAt: 50,
+        },
+      ),
+    ).toThrow("must match the prepared local commit")
+  })
+
+  it("rejects partially recorded prepared commit metadata", () => {
+    expect(() =>
+      validateCollaborationSession(
+        createSession({
+          status: "local_commit_ready",
+          commitLeaseUserId: "user_1",
+          commitLeaseExpiresAt: 100,
+          pendingCommitSha: PUBLISHED_SHA,
+        }),
+      ),
+    ).toThrow("recorded atomically")
   })
 
   it("rejects a session branch that is not derived from its session ID", () => {
@@ -234,15 +280,18 @@ describe("collaboration session model", () => {
   })
 
   it("prevents one covered sequence from mapping to two published commits", () => {
+    const existingPublished = "3333333333333333333333333333333333333333"
     expect(() =>
       advancePublishedCollaborationBase(
         pushingSession({
-          baseCommitSha: PUBLISHED_SHA,
-          publishedCommitSha: PUBLISHED_SHA,
+          baseCommitSha: existingPublished,
+          publishedCommitSha: existingPublished,
           publishedThroughSequence: 8,
+          pendingCommitSha: PUBLISHED_SHA,
+          pendingCommitThroughSequence: 8,
         }),
         {
-          commitSha: "3333333333333333333333333333333333333333",
+          commitSha: PUBLISHED_SHA,
           coveredThroughSequence: 8,
           publishedByUserId: "user_1",
           publishedAt: 50,
