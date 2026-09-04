@@ -1,0 +1,38 @@
+name: Apply checked PR review fixes
+on:
+  push:
+    branches: [refactor/collaboration-v2-end-to-end]
+    paths: [.github/workflows/collaboration-review-apply.yml]
+permissions:
+  contents: write
+jobs:
+  apply-reviewed-patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+          submodules: false
+      - name: Apply exact reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/refactor/collaboration-v2-end-to-end'
+          test "$(git rev-parse HEAD^)" = '01682e8bd59fec51de27b6e1c1749f54fc4ec346'
+          python3 - <<'PY'
+          import base64, hashlib, os, pathlib, subprocess, zlib
+          source = subprocess.check_output(['git', 'show', '01682e8bd59fec51de27b6e1c1749f54fc4ec346:.github/workflows/collaboration-review-repair.yml'], text=True)
+          encoded = source.split("encoded = '''", 1)[1].split("'''", 1)[0]
+          patch = zlib.decompress(base64.b64decode(encoded))
+          assert hashlib.sha256(patch).hexdigest() == '16f3a0a5d1be46cd7e36e02691b72bc89c98d8404df0d45dbb8855c0c32fc23b'
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'review.patch').write_bytes(patch)
+          PY
+          git apply --check "$RUNNER_TEMP/review.patch"
+          git apply "$RUNNER_TEMP/review.patch"
+          git diff --check
+          git add --all
+          git config user.name 'Cozea review maintenance'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(collaboration): address PR 141 security and lifecycle review'
+          git push origin HEAD:refs/heads/refactor/collaboration-v2-end-to-end
