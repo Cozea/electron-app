@@ -34,6 +34,9 @@ jobs:
       - name: Install T3 source dependencies
         run: bun x pnpm@11.10.0 --dir vendor/t3code install --frozen-lockfile --ignore-scripts
 
+      - name: Prepare test scratch space
+        run: mkdir -p .agent
+
       - name: Typecheck renderer
         run: bun run typecheck
 
