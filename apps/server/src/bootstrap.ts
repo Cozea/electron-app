@@ -1,3 +1,4 @@
+import { isHostUpdateRequest } from "../../../shared/hostUpdateControl.ts";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -122,9 +123,22 @@ export async function bootstrapCozeaSubstrateServer(
     },
   });
 
+  const onHostUpdate = (message: unknown) => {
+    if (!isHostUpdateRequest(message)) return;
+    const request = t3Handle?.process.controlUpdate(message) ?? Promise.reject(new Error("Chat server is unavailable"));
+    const reply = (success: boolean) => {
+      if (!process.connected || !process.send) return;
+      try {
+        process.send({ type: "cozea:host-update-result", requestId: message.requestId, action: message.action, success }, () => undefined);
+      } catch { /* The parent may exit between the connected check and send. */ }
+    };
+    void request.then(() => reply(true), () => reply(false));
+  };
+  process.on("message", onHostUpdate);
   await handle.start();
   return {
     stop: async () => {
+      process.off("message", onHostUpdate);
       await handle.stop();
       if (t3Handle) {
         await t3Handle.stop();

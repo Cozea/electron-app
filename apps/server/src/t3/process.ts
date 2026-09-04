@@ -1,5 +1,5 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process";
-import type { Readable } from "node:stream";
+import { requestHostUpdate, type HostUpdateRequest } from "../../../../shared/hostUpdateControl.ts";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,6 +27,7 @@ export interface T3ServerProcessHandle {
   readonly host: string;
   readonly port: number;
   readonly pairingToken: string;
+  readonly controlUpdate: (request: HostUpdateRequest) => Promise<void>;
   readonly stop: () => Promise<void>;
 }
 
@@ -190,18 +191,18 @@ export async function startT3ServerProcess(
   const startupOutput = createT3StartupOutputTracker(options.onLog);
 
   const nodeLaunch = resolveT3ServerNodeLaunch();
-  const child: ChildProcessByStdio<null, Readable, Readable> = spawn(
+  const child = spawn(
     nodeLaunch.executable,
     [VENDOR_T3_SERVER_BIN, "serve", "--port", String(port), "--host", host, "--no-browser", "--base-dir", baseDir],
     {
       cwd: VENDOR_T3_SERVER_PKG,
-      env: nodeLaunch.environment,
-      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...nodeLaunch.environment, COZEA_HOST_CONTINUATION: "1" },
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
     },
   );
 
-  child.stdout.on("data", (chunk: Buffer) => startupOutput.append("stdout", chunk));
-  child.stderr.on("data", (chunk: Buffer) => startupOutput.append("stderr", chunk));
+  child.stdout?.on("data", (chunk: Buffer) => startupOutput.append("stdout", chunk));
+  child.stderr?.on("data", (chunk: Buffer) => startupOutput.append("stderr", chunk));
 
   const exited = new Promise<never>((_, reject) => {
     child.once("exit", (code, signal) => {
@@ -231,6 +232,7 @@ export async function startT3ServerProcess(
     host,
     port,
     pairingToken,
+    controlUpdate: (request) => requestHostUpdate(child, request),
     stop: async () => {
       child.kill("SIGTERM");
       await new Promise<void>((resolve) => {

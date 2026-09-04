@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { requestHostUpdate } from "../shared/hostUpdateControl.ts";
 /**
  * Phase T1 smoke: shadow child with COZEA_T3_SERVER=1 serves orchestration.getSnapshot via T3.
  */
@@ -55,7 +56,7 @@ const child = spawn(runner, args, {
     COZEA_SUBSTRATE_RPC_CHAT: "1",
     COZEA_SUBSTRATE_PRIMARY: "1",
   },
-  stdio: ["ignore", "pipe", "pipe"],
+  stdio: ["ignore", "pipe", "pipe", "ipc"],
 });
 
 child.stdout?.on("data", (chunk) => process.stdout.write(chunk));
@@ -133,6 +134,10 @@ try {
     throw new Error("expected object snapshot from T3 orchestration backend");
   }
   ws.close();
+  const updateRequestId = crypto.randomUUID();
+  await requestHostUpdate(child, { type: "cozea:host-update", requestId: updateRequestId, action: "prepare" }, 20_000);
+  await requestHostUpdate(child, { type: "cozea:host-update", requestId: updateRequestId, action: "cancel" }, 20_000);
+  console.log("[smoke-t3-server] host update prepare/cancel acknowledged");
   console.log("[smoke-t3-server] ok");
 } finally {
   child.kill("SIGTERM");

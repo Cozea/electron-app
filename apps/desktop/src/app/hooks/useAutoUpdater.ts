@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useAutoUpdateStore } from '@/app/model/autoUpdateStore'
+import { installDownloadedUpdate, useAutoUpdateStore } from '@/app/model/autoUpdateStore'
 import type { UpdateState } from '@/types/electron'
 
 interface UseAutoUpdaterOptions {
@@ -39,12 +39,12 @@ export function useAutoUpdater(options?: UseAutoUpdaterOptions) {
 
     if (status === 'downloaded' && installMode === 'now' && !installTriggeredRef.current) {
       installTriggeredRef.current = true
-      void window.electronAPI.updates.install()
+      void installDownloadedUpdate()
       return
     }
 
-    if (status !== 'downloaded') {
+    if (status !== 'downloaded' || installMode !== 'now') {
       installTriggeredRef.current = false
     }
-  }, [enabled, installMode, status])
+  }, [enabled, installMode, status, applyUpdateState])
 }
