@@ -25,16 +25,13 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      - name: Initialize T3 vendor
-        run: git submodule update --init --depth 1 vendor/t3code
-
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - name: Bootstrap repository
+        run: bun run bootstrap
 
       - name: Typecheck renderer
         run: bun run typecheck
