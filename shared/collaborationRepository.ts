@@ -79,8 +79,5 @@ export function normalizeGitHubCloneUrl(owner: string, name: string): string {
 export function createGitHubExtraHeader(token: string): string {
   const normalized = token.trim()
   if (!normalized) throw new Error("GitHub access token is required")
-  const encoded = typeof btoa === "function"
-    ? btoa(`x-access-token:${normalized}`)
-    : Buffer.from(`x-access-token:${normalized}`, "utf8").toString("base64")
-  return `AUTHORIZATION: basic ${encoded}`
+  return `AUTHORIZATION: basic ${btoa(`x-access-token:${normalized}`)}`
 }
