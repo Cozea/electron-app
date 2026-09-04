@@ -78,7 +78,7 @@ export function ProjectSyncProviderRuntime({
   lastSyncAt: initialLastSyncAt,
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
   onFilesChanged,
-  collaborationEnabled = true,
+  collaborationEnabled: _legacyBranchCollaborationEnabled = true,
   activeBranch = null,
   sharedBranch = null,
   documentScopeId = null,
@@ -104,7 +104,10 @@ export function ProjectSyncProviderRuntime({
   }, [initialLastSyncAt])
 
   const canSync = Boolean(projectId && userId && workspaceId)
-  const sharedCollaborationEnabled = canSync && collaborationEnabled && Boolean(activeSessionId)
+  // A v2 room is activated only by an explicit Start/Join binding. The old
+  // shared-branch equality remains useful for legacy local lanes, but it must
+  // not disable the dedicated `cozea/collab/<session-id>` worktree.
+  const sharedCollaborationEnabled = canSync && Boolean(activeSessionId)
   const collaborationMode: "shared" | "local" = sharedCollaborationEnabled ? "shared" : "local"
 
   const {
