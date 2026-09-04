@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: apply-collaboration-v2-green
@@ -30,29 +29,27 @@ jobs:
           fetch-depth: 0
           ref: refactor/collaboration-v2-end-to-end
 
-      - name: Apply reviewed patch
+      - name: Apply reviewed code patch
         run: |
-          git apply --check .github/patches/collaboration-v2-green.patch
-          git apply .github/patches/collaboration-v2-green.patch
-          rm .github/patches/collaboration-v2-green.patch
-          rm .github/workflows/apply-collaboration-v2-green.yml
+          git apply --check \
+            --exclude=.github/workflows/collaboration-v2-branch-validation.yml \
+            .github/patches/collaboration-v2-green.patch
+          git apply \
+            --exclude=.github/workflows/collaboration-v2-branch-validation.yml \
+            .github/patches/collaboration-v2-green.patch
 
       - name: Commit and push
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add \
+            apps/desktop/src/features/collaboration/runtime/CollaborationTransport.ts \
+            convex/projects.ts \
+            tests/architecture/neutralGround.test.ts \
+            tests/collaboration/collabWsCatchUp.test.ts \
+            tests/devapps/devAppReleaseParts.test.ts \
+            tests/identity/convexEndpointAuthority.test.ts \
+            tests/projects/projectDeletionCompleteness.test.ts \
+            tests/substrate/t3RuntimePreparation.test.ts
           git commit -m 'fix(collaboration): close PR validation gaps'
           git push origin HEAD:refactor/collaboration-v2-end-to-end
-
-      - name: Dispatch final validation
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Accept: application/vnd.github+json" \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/Cozea/electron-app/actions/workflows/collaboration-v2-branch-validation.yml/dispatches \
-            --data '{"ref":"refactor/collaboration-v2-end-to-end"}'
