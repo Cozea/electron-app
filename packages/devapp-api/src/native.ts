@@ -114,8 +114,8 @@ export function defineNativeDevApp<const Components extends NativeDevAppComponen
   definition: NativeDevAppDefinitionInput<Components>,
 ): NativeDevAppDefinition<Components> {
   return Object.freeze({
-    kind: NATIVE_DEV_APP_DEFINITION_KIND,
     ...definition,
+    kind: NATIVE_DEV_APP_DEFINITION_KIND,
   });
 }
 

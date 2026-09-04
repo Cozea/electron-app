@@ -1,0 +1,62 @@
+{
+  "manifestVersion": 3,
+  "id": "dev.cozea.examples.counter",
+  "name": "Native Counter",
+  "version": "0.1.0",
+  "description": "A small native React DevApp used to validate Cozea's host runtime.",
+  "engines": {
+    "cozea": ">=0.3.0 <0.4.0",
+    "nativeApi": 1
+  },
+  "rendererModules": {
+    "main": {
+      "entry": "src/index.tsx",
+      "styles": "src/styles.css"
+    }
+  },
+  "extension": {
+    "entry": "src/extension.ts"
+  },
+  "permissions": {
+    "required": [],
+    "optional": []
+  },
+  "contributes": {
+    "surfaces": [
+      {
+        "id": "counter",
+        "title": "Native Counter",
+        "description": "A direct React component with instance and app storage.",
+        "default": true,
+        "singleton": false,
+        "placement": {
+          "group": "Development",
+          "minimumWidth": 280,
+          "minimumHeight": 220,
+          "defaultWidth": 420,
+          "defaultHeight": 320
+        },
+        "renderer": {
+          "kind": "native-react",
+          "module": "main",
+          "component": "Counter"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "counter.reset",
+        "title": "Reset counter"
+      }
+    ],
+    "settings": [
+      {
+        "id": "counter.step",
+        "title": "Counter step",
+        "description": "Amount added or removed by each click.",
+        "type": "number",
+        "default": 1
+      }
+    ]
+  }
+}

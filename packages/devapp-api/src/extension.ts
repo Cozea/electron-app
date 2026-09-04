@@ -54,8 +54,8 @@ export function defineDevAppExtension(
   definition: DevAppExtensionDefinitionInput,
 ): DevAppExtensionDefinition {
   return Object.freeze({
-    kind: DEV_APP_EXTENSION_DEFINITION_KIND,
     ...definition,
+    kind: DEV_APP_EXTENSION_DEFINITION_KIND,
   });
 }
 

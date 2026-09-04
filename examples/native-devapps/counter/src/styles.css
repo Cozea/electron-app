@@ -1,0 +1,54 @@
+[data-cozea-devapp="dev.cozea.examples.counter"] [data-native-counter] {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  color: var(--foreground);
+  background: var(--content-surface);
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] .counter-eyebrow {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] output {
+  font-variant-numeric: tabular-nums;
+  font-size: 4rem;
+  font-weight: 700;
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] .counter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] button {
+  min-height: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  color: var(--foreground);
+  background: var(--secondary);
+  cursor: pointer;
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] button:hover {
+  background: var(--accent);
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] small {
+  color: var(--muted-foreground);
+}
