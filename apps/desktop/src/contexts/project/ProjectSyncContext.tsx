@@ -23,7 +23,7 @@ import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,
 } from "@/features/workspace/useWorkspaceRuntimeStore"
-import { normalizeWorkspaceLaneId } from "@/features/workspace/workspaceIdentity"
+import { normalizeWorkspaceLaneId } from "@/lib/workspaceIdentity"
 
 const LazyDeleteConflictDialog = lazy(() =>
   import("@/components/editor/DeleteConflictDialog").then((module) => ({

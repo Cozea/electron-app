@@ -63,10 +63,10 @@ import {
   clearDevAppPreviewSurfaceControllersForTests,
   registerDevAppPreviewSurfaceController,
 } from "@/features/devapps/preview/devAppPreviewSurfaceController";
+import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
-  buildWorkbenchScopeKey,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore";
+} from "@/features/workbench/model/workbenchStore"
 import { __t3PreviewAutomationHostTestUtils } from "../../apps/desktop/src/substrate/t3PreviewAutomationHost";
 
 const THREAD_ID = "thread-automation" as PreviewAutomationRequest["threadId"];

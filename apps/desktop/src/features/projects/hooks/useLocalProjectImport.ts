@@ -13,8 +13,8 @@ import {
   resolveImportedProjectName,
 } from "@/features/projects/lib/localProjectImport"
 import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup"
+import { DEFAULT_WORKBENCH_LANE_ID } from "@/lib/workbenchScopeKey"
 import {
-  DEFAULT_WORKBENCH_LANE_ID,
   useProjectWorkbenchStore,
 } from "@/features/workbench/model/workbenchStore"
 

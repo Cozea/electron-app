@@ -6,7 +6,7 @@ import {
   type YjsProjectContextValue,
 } from "@/contexts/YjsProjectContextValue"
 import type { ProjectSyncContextValue } from "@/contexts/project/projectSyncShared"
-import { buildWorkspaceIdentityKey, normalizeWorkspaceLaneId } from "@/features/workspace/workspaceIdentity"
+import { buildWorkspaceIdentityKey, normalizeWorkspaceLaneId } from "@/lib/workspaceIdentity"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
 export type WorkspaceRuntimeLifecycle =
