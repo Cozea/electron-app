@@ -4,7 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { BUILT_IN_SKILLS, MEMORY_SKILL_KEY } from "./agentSkills/builtInSkills";
+import { BUILT_IN_SKILLS, MEMORY_SKILL_KEY, type BuiltInSkillDefinition } from "./agentSkills/builtInSkills";
+import {
+  normalizeAgentSkillCategory,
+  resolveAgentSkillCategory,
+} from "../../../../shared/agentSkillCategories";
 import {
   removeMemoryInstructions,
   writeMemoryInstructions,
@@ -19,8 +23,10 @@ import type {
   AgentSkillProviderInfo,
   AgentSkillRecord,
   AgentSkillsSnapshot,
+  AgentSkillBuild,
   AgentSkillSetupPack,
   AgentSkillSetupPackResult,
+  AgentSkillUpdateSource,
 } from "../../../../shared/electronApiTypes";
 import {
   parseSkillMarkdown,
@@ -51,6 +57,10 @@ interface ManagedSkillMetadata {
   createdAt: number;
   updatedAt: number;
   originLabel?: string;
+  /** Author-declared shelf. Absent means Cozea infers one from name and text. */
+  category?: string;
+  /** Folder this skill was copied from, re-read by a manual update. */
+  originPath?: string;
 }
 
 interface ManagedBindingMetadata {
@@ -73,10 +83,36 @@ interface AgentSkillStateFile {
   disabledExternalBindings: DisabledExternalBinding[];
   /** Built-in skill keys already seeded, so deleting one keeps it deleted. */
   seededBuiltInSkills?: string[];
+  /** Providers whose managed copies have been moved to their primary root. */
+  migratedPrimaryRoots?: string[];
+  /** Named skill loadouts. */
+  builds?: AgentSkillBuild[];
+}
+
+interface ProviderSkillRoot {
+  relativePath: string;
+  /**
+   * The provider owns this folder and rewrites it. Cozea can move a skill out
+   * of it, but the provider puts it back — measured: 23 skills restored 22
+   * minutes after being disabled, all with the same birth time. So these are
+   * reported as essential rather than offered as something to switch off.
+   */
+  essential?: boolean;
+  /**
+   * A plugin marketplace rather than a skills folder: everything under it is
+   * on disk but not loaded by the provider until the user installs it, and it
+   * is nested one plugin deep rather than flat.
+   */
+  catalog?: boolean;
 }
 
 interface ProviderDefinition extends AgentSkillProviderInfo {
-  relativeRoot: string;
+  /**
+   * Every folder this provider loads skills from, in order. The first is the
+   * one Cozea installs into; the rest are read-only, which is what keeps a
+   * provider's own bundled skills visible without Cozea claiming to own them.
+   */
+  relativeRoots: ProviderSkillRoot[];
   /**
    * The file this provider always loads, relative to home. A skill folder is
    * only *offered* to the model; whether it gets used is the model's choice.
@@ -96,32 +132,50 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
   {
     id: "codex",
     label: "Codex",
-    relativeRoot: path.join(".agents", "skills"),
+    // `.codex/skills` is where Codex actually keeps its library, so it leads
+    // and is what Cozea installs into; `.agents` stays readable for skills
+    // dropped there under the AGENTS.md convention.
+    relativeRoots: [
+      { relativePath: path.join(".codex", "skills") },
+      { relativePath: path.join(".agents", "skills") },
+      { relativePath: path.join(".codex", "plugins", "cache"), catalog: true },
+    ],
     rootPath: "",
+    rootPaths: [],
     instructionsFile: path.join(".agents", "AGENTS.md"),
     restartBehavior: "restart-external-app",
   },
   {
     id: "claude",
     label: "Claude",
-    relativeRoot: path.join(".claude", "skills"),
+    relativeRoots: [
+      { relativePath: path.join(".claude", "skills") },
+      { relativePath: path.join(".claude", "plugins", "marketplaces"), catalog: true },
+    ],
     rootPath: "",
+    rootPaths: [],
     instructionsFile: path.join(".claude", "CLAUDE.md"),
     restartBehavior: "live",
   },
   {
     id: "cursor",
     label: "Cursor",
-    relativeRoot: path.join(".cursor", "skills"),
+    // `skills-cursor` is Cursor's own bundled set, alongside the user's.
+    relativeRoots: [
+      { relativePath: path.join(".cursor", "skills") },
+      { relativePath: path.join(".cursor", "skills-cursor"), essential: true },
+    ],
     rootPath: "",
+    rootPaths: [],
     instructionsFile: path.join(".cursor", "rules", "cozea-project-memory.mdc"),
     restartBehavior: "restart-recommended",
   },
   {
     id: "opencode",
     label: "OpenCode",
-    relativeRoot: path.join(".config", "opencode", "skills"),
+    relativeRoots: [{ relativePath: path.join(".config", "opencode", "skills") }],
     rootPath: "",
+    rootPaths: [],
     instructionsFile: path.join(".config", "opencode", "AGENTS.md"),
     restartBehavior: "restart-recommended",
   },
@@ -165,6 +219,116 @@ function listDirectories(directoryPath: string): string[] {
   } catch {
     return [];
   }
+}
+
+interface DiscoveredSkillDirectory {
+  directoryPath: string;
+  /** Found in a folder the provider rewrites, so Cozea cannot switch it off. */
+  essential?: boolean;
+  /** Present only for catalog finds: the plugin that owns the skill. */
+  plugin?: string;
+  marketplace?: string;
+}
+
+/** Depth to search below a marketplace for a `skills` folder. */
+const CATALOG_MAX_DEPTH = 3;
+
+/** Path segments that group plugins rather than name one. */
+const CATALOG_GROUP_SEGMENTS = new Set(["plugins", "external_plugins"]);
+
+/** A version or content hash sitting between a plugin and its `skills` folder. */
+const CATALOG_VERSION_SEGMENT = /^v?\d[\w.+-]*$|^[0-9a-f]{6,40}$/i;
+
+/**
+ * Name the plugin that owns a `skills` folder, whatever the marketplace's
+ * shape. Claude nests `plugins/<plugin>/skills`; Codex nests
+ * `<plugin>/<version>/skills`. Walking back from the folder and stepping over
+ * grouping and version segments covers both without hard-coding either.
+ */
+function catalogPluginName(marketplacePath: string, skillsParent: string): string | null {
+  const relative = path.relative(marketplacePath, skillsParent);
+  const segments = relative ? relative.split(path.sep) : [];
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const segment = segments[index];
+    if (CATALOG_GROUP_SEGMENTS.has(segment) || CATALOG_VERSION_SEGMENT.test(segment)) continue;
+    return segment;
+  }
+  return null;
+}
+
+/**
+ * Walk a provider's plugin marketplaces. Slugs repeat across plugins —
+ * discord, imessage and telegram each ship an `access` skill — so the owning
+ * plugin travels with the directory and becomes part of the skill's identity.
+ */
+function listCatalogSkillDirectories(catalogRoot: string): DiscoveredSkillDirectory[] {
+  const found: DiscoveredSkillDirectory[] = [];
+  for (const marketplacePath of listDirectories(catalogRoot)) {
+    const marketplace = path.basename(marketplacePath);
+
+    const visit = (directoryPath: string, depth: number) => {
+      if (depth > CATALOG_MAX_DEPTH) return;
+      // Highest version first, so a plugin cached at several versions is
+      // represented by its newest copy.
+      const children = listDirectories(directoryPath).sort((left, right) =>
+        path.basename(right).localeCompare(path.basename(left), undefined, { numeric: true }),
+      );
+      for (const child of children) {
+        if (path.basename(child) !== "skills") {
+          visit(child, depth + 1);
+          continue;
+        }
+        const plugin = catalogPluginName(marketplacePath, directoryPath);
+        if (!plugin) continue;
+        for (const skillPath of listDirectories(child)) {
+          found.push({ directoryPath: skillPath, plugin, marketplace });
+        }
+      }
+    };
+
+    visit(marketplacePath, 0);
+  }
+  return found;
+}
+
+/**
+ * Plugins Codex has actually installed, as `plugin@marketplace`. Its
+ * `config.toml` records them explicitly, so skills belonging to one are
+ * already live and must not be offered for install — nor treated as files
+ * Cozea may move, since the plugin owns them.
+ */
+function readCodexInstalledPlugins(configPath: string): Set<string> {
+  const installed = new Set<string>();
+  let contents: string;
+  try {
+    contents = fs.readFileSync(configPath, "utf8");
+  } catch {
+    return installed;
+  }
+
+  // Line-based rather than one big regex: in multiline mode `$` ends a block
+  // at the first newline, which silently hid every `enabled = false`.
+  let current: string | null = null;
+  let enabled = true;
+  const commit = () => {
+    if (current && enabled) installed.add(current);
+  };
+
+  for (const line of contents.split(/\r?\n/)) {
+    const header = line.match(/^\s*\[([^\]]+)\]/);
+    if (header) {
+      commit();
+      current = header[1].match(/^plugins\."([^"]+)"$/)?.[1] ?? null;
+      enabled = true;
+      continue;
+    }
+    if (!current) continue;
+    const flag = line.match(/^\s*enabled\s*=\s*(true|false)/);
+    if (flag) enabled = flag[1] === "true";
+  }
+  commit();
+
+  return installed;
 }
 
 function readSkillMarkdown(directoryPath: string): string | null {
@@ -228,8 +392,72 @@ function copySkillDirectory(sourceRoot: string, destinationRoot: string): void {
   }
 }
 
-function createExternalSkillId(markdown: string): string {
-  return `external_${createHash("sha256").update(markdown).digest("hex").slice(0, 20)}`;
+/**
+ * External skills are identified by their folder name, not their contents.
+ * One skill installed into four providers is usually four *different* files —
+ * each tailored to that provider's paths and frontmatter — so hashing the text
+ * split a single skill into four indistinguishable rows.
+ */
+function createExternalSkillId(slug: string): string {
+  const normalized = slugifySkillName(slug);
+  return `external_${normalized || createHash("sha256").update(slug).digest("hex").slice(0, 20)}`;
+}
+
+/**
+ * Match a library skill back to the definition Cozea ships, so the Update
+ * button can restore it. Matched by name rather than a stored key so skills
+ * seeded before this existed — and ones the user re-imported — still resolve.
+ */
+function findBuiltInDefinition(skill: {
+  name: string;
+  slug: string;
+}): BuiltInSkillDefinition | null {
+  const name = skill.name.trim().toLowerCase();
+  const slug = skill.slug.trim().toLowerCase();
+  return (
+    BUILT_IN_SKILLS.find(
+      (definition) =>
+        definition.name.trim().toLowerCase() === name ||
+        slugifySkillName(definition.name) === slug,
+    ) ?? null
+  );
+}
+
+/**
+ * A build is "active" when what is enabled matches it exactly — not merely
+ * contains it. Toggling one extra skill on should stop claiming the build.
+ */
+export function findActiveBuildId(
+  builds: readonly AgentSkillBuild[],
+  enabledSkillIds: readonly string[],
+  knownSkillIds: ReadonlySet<string>,
+): string | null {
+  const enabled = new Set(enabledSkillIds);
+  for (const build of builds) {
+    // Skills the build names that no longer exist cannot be held against it.
+    const wanted = build.skillIds.filter((id) => knownSkillIds.has(id));
+    if (wanted.length !== enabled.size) continue;
+    if (wanted.every((id) => enabled.has(id))) return build.id;
+  }
+  return null;
+}
+
+/** What applying a build has to turn on and off. */
+export function planBuildApplication(
+  build: Pick<AgentSkillBuild, "skillIds">,
+  installedSkills: ReadonlyArray<{ id: string; enabled: boolean }>,
+): { enable: string[]; disable: string[] } {
+  const wanted = new Set(build.skillIds);
+  const enable: string[] = [];
+  const disable: string[] = [];
+  for (const skill of installedSkills) {
+    if (wanted.has(skill.id)) {
+      if (!skill.enabled) enable.push(skill.id);
+    } else if (skill.enabled) {
+      disable.push(skill.id);
+    }
+  }
+  return { enable, disable };
 }
 
 function uniqueProviders(values: readonly AgentSkillProvider[]): AgentSkillProvider[] {
@@ -342,12 +570,29 @@ export class AgentSkillService {
   }
 
   private get providers(): AgentSkillProviderInfo[] {
-    return PROVIDER_DEFINITIONS.map((provider) => ({
-      id: provider.id,
-      label: provider.label,
-      rootPath: path.join(this.homeRoot, provider.relativeRoot),
-      restartBehavior: provider.restartBehavior,
-    }));
+    return PROVIDER_DEFINITIONS.map((provider) => {
+      const rootPaths = provider.relativeRoots.map((root) =>
+        path.join(this.homeRoot, root.relativePath),
+      );
+      return {
+        id: provider.id,
+        label: provider.label,
+        rootPath: rootPaths[0],
+        rootPaths,
+        restartBehavior: provider.restartBehavior,
+      };
+    });
+  }
+
+  /**
+   * Catalog plugins the provider already runs, as `plugin@marketplace`. Their
+   * skills are live, so they are neither offered for install nor listed as
+   * Cozea's to move. Only Codex records this; Claude's marketplace clone has
+   * no such file, so everything in it is genuinely uninstalled.
+   */
+  private installedCatalogPlugins(providerId: AgentSkillProvider): Set<string> {
+    if (providerId !== "codex") return new Set();
+    return readCodexInstalledPlugins(path.join(this.homeRoot, ".codex", "config.toml"));
   }
 
   private getProvider(providerId: AgentSkillProvider): AgentSkillProviderInfo {
@@ -416,10 +661,12 @@ export class AgentSkillService {
         continue;
       const parsed = parseSkillMarkdown(markdown, metadata.slug);
       const compatibleProviders = uniqueProviders(metadata.compatibleProviders);
+      const name = metadata.displayName || parsed.name;
+      const declaredCategory = metadata.category ?? parsed.category ?? null;
       managedById.set(metadata.id, {
         id: metadata.id,
         slug: metadata.slug,
-        name: metadata.displayName || parsed.name,
+        name,
         description: parsed.description,
         instructions: parsed.instructions,
         source: "managed",
@@ -428,21 +675,51 @@ export class AgentSkillService {
         createdAt: metadata.createdAt,
         updatedAt: metadata.updatedAt,
         originLabel: metadata.originLabel,
+        category: resolveAgentSkillCategory(declaredCategory, {
+          name,
+          description: parsed.description,
+          slug: metadata.slug,
+        }),
+        categoryDeclared: normalizeAgentSkillCategory(declaredCategory) !== null,
+        updateSource: "none",
+        originPath: metadata.originPath,
         bindings: providers.map((provider) =>
           emptyBinding(provider, compatibleProviders.includes(provider.id)),
         ),
       });
     }
 
+    const catalogById = new Map<string, AgentSkillRecord>();
     for (const provider of providers) {
-      for (const directoryPath of listDirectories(provider.rootPath)) {
+      const definition = PROVIDER_DEFINITIONS.find((candidate) => candidate.id === provider.id);
+      const discovered = (definition?.relativeRoots ?? []).flatMap<DiscoveredSkillDirectory>(
+        (root, index) => {
+          const rootPath = provider.rootPaths[index];
+          if (root.catalog) return listCatalogSkillDirectories(rootPath);
+          return listDirectories(rootPath).map((directoryPath) => ({
+            directoryPath,
+            ...(root.essential ? { essential: true } : {}),
+          }));
+        },
+      );
+
+      const installedPlugins = discovered.some((entry) => entry.plugin)
+        ? this.installedCatalogPlugins(provider.id)
+        : new Set<string>();
+
+      for (const { directoryPath, plugin, marketplace, essential } of discovered) {
+        // A skill from a plugin the provider already runs is not "available";
+        // it is already live, and its files belong to the plugin.
+        if (plugin && marketplace && installedPlugins.has(`${plugin}@${marketplace}`)) continue;
         const markdown = readSkillMarkdown(directoryPath);
         if (!markdown) continue;
         const marker = readJsonFile<ManagedBindingMetadata>(
           path.join(directoryPath, COZEA_METADATA_FILE_NAME),
         );
         if (marker?.kind === "binding" && marker.schemaVersion === 1) {
-          const managed = managedById.get(marker.skillId);
+          const managed =
+            managedById.get(marker.skillId) ??
+            this.reclaimOrphanedBinding(marker, directoryPath, managedById);
           if (managed) {
             const binding = managed.bindings.find(
               (candidate) => candidate.provider === provider.id,
@@ -457,27 +734,97 @@ export class AgentSkillService {
         }
 
         const parsed = parseSkillMarkdown(markdown, path.basename(directoryPath));
-        const skillId = createExternalSkillId(markdown);
+
+        // A catalog find is not loaded by the provider yet, so it is offered
+        // for install rather than reported as enabled.
+        if (plugin) {
+          const catalogId = `catalog_${slugifySkillName(plugin)}_${slugifySkillName(path.basename(directoryPath))}`;
+          // Qualify the display name the way the providers themselves do
+          // (`plugin:skill`): three plugins each ship an `access` skill, and
+          // three rows called "access" are unreadable. The slug stays bare,
+          // because that is the folder name an install writes to.
+          const displayName =
+            slugifySkillName(plugin) === slugifySkillName(parsed.name)
+              ? parsed.name
+              : `${plugin}:${parsed.name}`;
+          const record =
+            catalogById.get(catalogId) ??
+            ({
+              id: catalogId,
+              slug: slugifySkillName(parsed.name) || path.basename(directoryPath),
+              name: displayName,
+              description: parsed.description,
+              instructions: parsed.instructions,
+              source: "catalog" as const,
+              editable: false,
+              path: directoryPath,
+              createdAt: null,
+              updatedAt: fs.statSync(path.join(directoryPath, SKILL_FILE_NAME)).mtimeMs,
+              originLabel: marketplace ? `${plugin} · ${marketplace}` : plugin,
+              category: resolveAgentSkillCategory(parsed.category, {
+                name: parsed.name,
+                description: parsed.description,
+                slug: path.basename(directoryPath),
+              }),
+              categoryDeclared: normalizeAgentSkillCategory(parsed.category) !== null,
+              updateSource: "none" as const,
+              bindings: providers.map((candidate) => emptyBinding(candidate, true)),
+            } satisfies AgentSkillRecord);
+          const catalogBinding = record.bindings.find(
+            (candidate) => candidate.provider === provider.id,
+          );
+          if (catalogBinding) {
+            catalogBinding.available = true;
+            catalogBinding.path ??= directoryPath;
+          }
+          catalogById.set(catalogId, record);
+          continue;
+        }
+
+        const skillId = createExternalSkillId(path.basename(directoryPath));
         const existing = externalById.get(skillId);
-        const record = existing ?? {
-          id: skillId,
-          slug: slugifySkillName(parsed.name) || path.basename(directoryPath),
-          name: parsed.name,
-          description: parsed.description,
-          instructions: parsed.instructions,
-          source: "external" as const,
-          editable: false,
-          path: directoryPath,
-          createdAt: null,
-          updatedAt: fs.statSync(path.join(directoryPath, SKILL_FILE_NAME)).mtimeMs,
-          originLabel: "Provider folder",
-          bindings: providers.map((candidate) => emptyBinding(candidate, true)),
-        };
+        const record =
+          existing ??
+          ({
+            id: skillId,
+            slug: slugifySkillName(parsed.name) || path.basename(directoryPath),
+            name: parsed.name,
+            description: parsed.description,
+            instructions: parsed.instructions,
+            source: "external" as const,
+            editable: false,
+            path: directoryPath,
+            createdAt: null,
+            updatedAt: fs.statSync(path.join(directoryPath, SKILL_FILE_NAME)).mtimeMs,
+            originLabel: "Provider folder",
+            category: resolveAgentSkillCategory(parsed.category, {
+              name: parsed.name,
+              description: parsed.description,
+              slug: path.basename(directoryPath),
+            }),
+            categoryDeclared: normalizeAgentSkillCategory(parsed.category) !== null,
+            updateSource: "none" as const,
+            bindings: providers.map((candidate) => emptyBinding(candidate, true)),
+          } satisfies AgentSkillRecord);
         const binding = record.bindings.find((candidate) => candidate.provider === provider.id);
-        if (binding) {
+        if (binding && !binding.enabled) {
           binding.enabled = true;
           binding.ownership = "external";
           binding.path = directoryPath;
+          if (essential) binding.essential = true;
+          // The first provider scanned defines the record's canonical text.
+          // Later ones only carry a variant when they actually read different,
+          // so identical copies cost nothing on the wire.
+          if (
+            existing &&
+            (parsed.instructions !== record.instructions ||
+              parsed.description !== record.description)
+          ) {
+            binding.variant = {
+              description: parsed.description,
+              instructions: parsed.instructions,
+            };
+          }
         }
         externalById.set(skillId, record);
       }
@@ -486,47 +833,135 @@ export class AgentSkillService {
     const state = this.loadState();
     let stateChanged = false;
     const validDisabledBindings = state.disabledExternalBindings.filter((disabled) => {
+      // The provider put it back. Cursor rewrites its own managed skills
+      // folder, so a directory Cozea moved to trash can reappear at the path
+      // it came from. The live copy is the truth: keeping the record would
+      // report the skill as off while the provider is still loading it, and
+      // would later refuse to re-enable it because the path is occupied.
+      if (isDirectory(disabled.originalPath)) {
+        stateChanged = true;
+        return false;
+      }
       const markdown = readSkillMarkdown(disabled.trashPath);
       if (!markdown) {
         stateChanged = true;
         return false;
       }
       const parsed = parseSkillMarkdown(markdown, path.basename(disabled.originalPath));
-      const record = externalById.get(disabled.skillId) ?? {
-        id: disabled.skillId,
-        slug: slugifySkillName(parsed.name) || path.basename(disabled.originalPath),
-        name: parsed.name,
-        description: parsed.description,
-        instructions: parsed.instructions,
-        source: "external" as const,
-        editable: false,
-        path: disabled.trashPath,
-        createdAt: null,
-        updatedAt: disabled.disabledAt,
-        originLabel: "Provider folder",
-        bindings: providers.map((provider) => emptyBinding(provider, true)),
-      };
+      // Older state stored a content hash here; re-derive so a disabled copy
+      // rejoins the same row as its still-enabled siblings.
+      const skillId = createExternalSkillId(path.basename(disabled.originalPath));
+      if (disabled.skillId !== skillId) {
+        disabled.skillId = skillId;
+        stateChanged = true;
+      }
+      const record =
+        externalById.get(skillId) ??
+        ({
+          id: skillId,
+          slug: slugifySkillName(parsed.name) || path.basename(disabled.originalPath),
+          name: parsed.name,
+          description: parsed.description,
+          instructions: parsed.instructions,
+          source: "external" as const,
+          editable: false,
+          path: disabled.trashPath,
+          createdAt: null,
+          updatedAt: disabled.disabledAt,
+          originLabel: "Provider folder",
+          category: resolveAgentSkillCategory(parsed.category, {
+            name: parsed.name,
+            description: parsed.description,
+            slug: path.basename(disabled.originalPath),
+          }),
+          categoryDeclared: normalizeAgentSkillCategory(parsed.category) !== null,
+          updateSource: "none" as const,
+          bindings: providers.map((provider) => emptyBinding(provider, true)),
+        } satisfies AgentSkillRecord);
       const binding = record.bindings.find((candidate) => candidate.provider === disabled.provider);
       if (binding && !binding.enabled) {
         binding.ownership = "external";
         binding.path = disabled.originalPath;
       }
-      externalById.set(disabled.skillId, record);
+      externalById.set(skillId, record);
       return true;
     });
     if (stateChanged) {
       this.saveState({ ...state, disabledExternalBindings: validDisabledBindings });
     }
 
-    const skills = [...managedById.values(), ...externalById.values()].sort((left, right) =>
+    const installed = [...managedById.values(), ...externalById.values()];
+    // A catalog entry whose slug already occupies the install path is simply
+    // the installed skill, so it is not offered a second time.
+    const installedSlugs = new Set(installed.map((skill) => skill.slug));
+    const catalog = [...catalogById.values()].filter(
+      (skill) => !installedSlugs.has(skill.slug),
+    );
+    const skills = [...installed, ...catalog].sort((left, right) =>
       left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
     );
+    for (const skill of skills) {
+      skill.updateSource = this.resolveUpdateSource(skill);
+    }
+    const builds = this.loadState().builds ?? [];
+    const enabledSkillIds = skills
+      .filter((skill) => skill.bindings.some((binding) => binding.enabled))
+      .map((skill) => skill.id);
+
     return {
       skills,
       providers,
       libraryPath: this.libraryRoot,
       generatedAt: Date.now(),
+      builds,
+      activeBuildId: findActiveBuildId(
+        builds,
+        enabledSkillIds,
+        new Set(skills.map((skill) => skill.id)),
+      ),
     };
+  }
+
+  /**
+   * A provider copy whose marker points at a library skill that no longer
+   * exists is an orphan: the library entry was reseeded under a new id while
+   * its provider copies kept the old one. Left alone it shows up as a second,
+   * external-looking row beside the skill it belongs to, and disabling it fails
+   * the ownership check. Re-adopt it by slug and heal the marker on disk.
+   */
+  private reclaimOrphanedBinding(
+    marker: ManagedBindingMetadata,
+    directoryPath: string,
+    managedById: Map<string, AgentSkillRecord>,
+  ): AgentSkillRecord | null {
+    const slug = path.basename(directoryPath);
+    const managed = Array.from(managedById.values()).find(
+      (candidate) => candidate.slug === slug,
+    );
+    if (!managed) return null;
+    try {
+      writeJsonFile(path.join(directoryPath, COZEA_METADATA_FILE_NAME), {
+        ...marker,
+        skillId: managed.id,
+        updatedAt: Date.now(),
+      } satisfies ManagedBindingMetadata);
+    } catch {
+      // Display still resolves correctly; the next write retries the heal.
+    }
+    return managed;
+  }
+
+  /**
+   * What a manual update would read from. Cozea never polls for new versions,
+   * so this answers "is there anywhere to update from", not "is one waiting".
+   */
+  private resolveUpdateSource(skill: AgentSkillRecord): AgentSkillUpdateSource {
+    if (skill.source !== "managed") return "none";
+    if (findBuiltInDefinition(skill)) return "built-in";
+    if (skill.originPath && isDirectory(skill.originPath)) return "folder";
+    return skill.bindings.some((binding) => binding.enabled && binding.ownership === "managed")
+      ? "providers"
+      : "none";
   }
 
   private mutationResult(
@@ -565,6 +1000,11 @@ export class AgentSkillService {
         const existingMetadata = current
           ? readJsonFile<ManagedSkillMetadata>(path.join(directoryPath, COZEA_METADATA_FILE_NAME))
           : null;
+        const category =
+          normalizeAgentSkillCategory(draft.category) ??
+          (draft.category === undefined
+            ? normalizeAgentSkillCategory(existingMetadata?.category)
+            : null);
         const metadata: ManagedSkillMetadata = {
           schemaVersion: 1,
           kind: "library",
@@ -575,10 +1015,17 @@ export class AgentSkillService {
           createdAt: existingMetadata?.createdAt ?? now,
           updatedAt: now,
           originLabel: existingMetadata?.originLabel,
+          originPath: existingMetadata?.originPath,
+          ...(category ? { category } : {}),
         };
         fs.writeFileSync(
           path.join(directoryPath, SKILL_FILE_NAME),
-          renderSkillMarkdown({ name: slug, description, instructions }),
+          renderSkillMarkdown({
+            name: slug,
+            description,
+            instructions,
+            ...(category ? { category } : {}),
+          }),
           "utf8",
         );
         writeJsonFile(path.join(directoryPath, COZEA_METADATA_FILE_NAME), metadata);
@@ -637,21 +1084,51 @@ export class AgentSkillService {
       if (fs.existsSync(stagePath)) fs.rmSync(stagePath, { recursive: true, force: true });
       throw error;
     }
+
+    // The skill lives in exactly one place per provider. Clearing our own
+    // copies out of the other roots is what migrates a binding when a
+    // provider's primary folder changes.
+    this.trashManagedCopiesOutsidePrimary(skill, providerId);
+  }
+
+  /** Remove Cozea-owned copies of a skill from a provider's non-primary roots. */
+  private trashManagedCopiesOutsidePrimary(
+    skill: AgentSkillRecord,
+    providerId: AgentSkillProvider,
+  ): void {
+    const provider = this.getProvider(providerId);
+    for (const rootPath of provider.rootPaths.slice(1)) {
+      const strayPath = path.join(rootPath, skill.slug);
+      if (!isDirectory(strayPath)) continue;
+      const marker = readJsonFile<ManagedBindingMetadata>(
+        path.join(strayPath, COZEA_METADATA_FILE_NAME),
+      );
+      if (marker?.kind !== "binding" || marker.skillId !== skill.id) continue;
+      try {
+        this.moveToTrash(strayPath, `${providerId}-${skill.slug}-moved`);
+      } catch {
+        // Leaving a duplicate behind is better than failing the whole toggle.
+      }
+    }
   }
 
   private disableManagedBinding(skill: AgentSkillRecord, providerId: AgentSkillProvider): void {
     const provider = this.getProvider(providerId);
-    const destinationPath = path.join(provider.rootPath, skill.slug);
-    if (!fs.existsSync(destinationPath)) return;
-    const marker = readJsonFile<ManagedBindingMetadata>(
-      path.join(destinationPath, COZEA_METADATA_FILE_NAME),
-    );
-    if (marker?.kind !== "binding" || marker.skillId !== skill.id) {
-      throw new Error(
-        `Cozea will not remove the externally managed ${provider.label} skill at this path.`,
+    // Check every root: a binding written before the provider's primary folder
+    // changed still needs removing from wherever it actually sits.
+    for (const rootPath of provider.rootPaths) {
+      const destinationPath = path.join(rootPath, skill.slug);
+      if (!fs.existsSync(destinationPath)) continue;
+      const marker = readJsonFile<ManagedBindingMetadata>(
+        path.join(destinationPath, COZEA_METADATA_FILE_NAME),
       );
+      if (marker?.kind !== "binding" || marker.skillId !== skill.id) {
+        throw new Error(
+          `Cozea will not remove the externally managed ${provider.label} skill at this path.`,
+        );
+      }
+      this.moveToTrash(destinationPath, `${provider.id}-${skill.slug}`);
     }
-    this.moveToTrash(destinationPath, `${provider.id}-${skill.slug}`);
   }
 
   async setProviderEnabled(options: {
@@ -667,6 +1144,11 @@ export class AgentSkillService {
         const binding = skill.bindings.find((candidate) => candidate.provider === options.provider);
         if (!binding?.compatible)
           throw new Error("This skill is not marked compatible with that provider.");
+        if (binding.essential && !options.enabled) {
+          throw new Error(
+            "This skill ships with the agent, which restores it. Cozea cannot disable it.",
+          );
+        }
         if (binding.enabled === options.enabled) {
           return this.mutationResult(true, { skillId: skill.id, changedProviders: [] });
         }
@@ -681,7 +1163,15 @@ export class AgentSkillService {
               (candidate) =>
                 candidate.skillId === skill.id && candidate.provider === options.provider,
             );
-            if (!disabled || !isDirectory(disabled.trashPath)) {
+            // No record means this provider never had a copy to begin with.
+            // Every binding is marked compatible, so switching a skill on asks
+            // all four providers; the ones that never carried it have nothing
+            // to restore, which is not a failure. Reporting it as one made a
+            // build that applied correctly look like it had errored.
+            if (!disabled) {
+              return this.mutationResult(true, { skillId: skill.id, changedProviders: [] });
+            }
+            if (!isDirectory(disabled.trashPath)) {
               throw new Error("The disabled provider copy could not be restored.");
             }
             if (fs.existsSync(disabled.originalPath)) {
@@ -724,11 +1214,266 @@ export class AgentSkillService {
     });
   }
 
+  /**
+   * The row-level master switch: turn a skill on or off everywhere it is
+   * compatible. Each provider still goes through `setProviderEnabled`, so a
+   * partial failure leaves the providers that did change already applied and
+   * reports the first reason the rest did not.
+   */
+  async setEnabled(options: {
+    skillId: string;
+    enabled: boolean;
+  }): Promise<AgentSkillMutationResult> {
+    const skill = this.list().skills.find((candidate) => candidate.id === options.skillId);
+    if (!skill) {
+      return this.mutationResult(false, { error: "This skill is no longer available." });
+    }
+
+    const targets = skill.bindings
+      .filter((binding) => binding.compatible && binding.enabled !== options.enabled)
+      .map((binding) => binding.provider);
+    if (targets.length === 0) {
+      return this.mutationResult(true, { skillId: skill.id, changedProviders: [] });
+    }
+
+    const changedProviders: AgentSkillProvider[] = [];
+    let failure: string | undefined;
+    for (const provider of targets) {
+      const result = await this.setProviderEnabled({
+        skillId: skill.id,
+        provider,
+        enabled: options.enabled,
+      });
+      if (result.success) changedProviders.push(...(result.changedProviders ?? []));
+      else failure ??= result.error;
+    }
+
+    if (failure) {
+      return this.mutationResult(false, { skillId: skill.id, error: failure });
+    }
+    return this.mutationResult(true, {
+      skillId: skill.id,
+      changedProviders: uniqueProviders(changedProviders),
+    });
+  }
+
+  /**
+   * Re-read a skill from wherever it came from, then push the refreshed copy
+   * into every provider that has it enabled. Deliberately manual: Cozea does
+   * not poll origins, so this runs only when the user asks.
+   */
+  async update(skillId: string): Promise<AgentSkillMutationResult> {
+    return await this.enqueue(() => {
+      try {
+        const skill = this.list().skills.find((candidate) => candidate.id === skillId);
+        if (!skill) throw new Error("This skill is no longer available.");
+        if (skill.source !== "managed") {
+          throw new Error(
+            "This skill lives in a provider folder, so that provider owns its updates. Copy it to your library first.",
+          );
+        }
+
+        const metadata = readJsonFile<ManagedSkillMetadata>(
+          path.join(skill.path, COZEA_METADATA_FILE_NAME),
+        );
+        if (!metadata) throw new Error("This skill's library copy could not be read.");
+        const now = Date.now();
+
+        if (skill.updateSource === "built-in") {
+          const definition = findBuiltInDefinition(skill);
+          if (!definition) throw new Error("This skill no longer ships with Cozea.");
+          fs.writeFileSync(
+            path.join(skill.path, SKILL_FILE_NAME),
+            renderSkillMarkdown({
+              name: metadata.slug,
+              description: definition.description,
+              instructions: definition.instructions,
+              ...(metadata.category ? { category: metadata.category } : {}),
+            }),
+            "utf8",
+          );
+          writeJsonFile(path.join(skill.path, COZEA_METADATA_FILE_NAME), {
+            ...metadata,
+            displayName: definition.name,
+            compatibleProviders: uniqueProviders(definition.compatibleProviders),
+            updatedAt: now,
+          } satisfies ManagedSkillMetadata);
+          if (definition.key === MEMORY_SKILL_KEY) this.syncMemoryInstructions(definition.name);
+        } else if (skill.updateSource === "folder") {
+          const originPath = metadata.originPath;
+          if (!originPath || !isDirectory(originPath)) {
+            throw new Error("The folder this skill was imported from is no longer available.");
+          }
+          if (!readSkillMarkdown(originPath)) {
+            throw new Error("That folder no longer contains a readable SKILL.md file.");
+          }
+          const stagePath = path.join(
+            this.libraryRoot,
+            `.${metadata.slug}.cozea-update-${randomUUID()}`,
+          );
+          try {
+            copySkillDirectory(originPath, stagePath);
+            writeJsonFile(path.join(stagePath, COZEA_METADATA_FILE_NAME), {
+              ...metadata,
+              updatedAt: now,
+            } satisfies ManagedSkillMetadata);
+            this.moveToTrash(skill.path, `library-${metadata.slug}-previous`);
+            fs.renameSync(stagePath, skill.path);
+          } catch (error) {
+            if (fs.existsSync(stagePath)) fs.rmSync(stagePath, { recursive: true, force: true });
+            throw error;
+          }
+        } else if (skill.updateSource !== "providers") {
+          throw new Error(
+            "There is nothing to update this skill from. Edit it to change what it does.",
+          );
+        }
+
+        const refreshed = this.list().skills.find((candidate) => candidate.id === skillId);
+        const changedProviders: AgentSkillProvider[] = [];
+        for (const binding of skill.bindings) {
+          if (!binding.enabled || binding.ownership !== "managed" || !refreshed) continue;
+          const stillCompatible = refreshed.bindings.some(
+            (candidate) => candidate.provider === binding.provider && candidate.compatible,
+          );
+          if (stillCompatible) this.enableManagedBinding(refreshed, binding.provider);
+          else this.disableManagedBinding(refreshed, binding.provider);
+          changedProviders.push(binding.provider);
+        }
+
+        return this.mutationResult(true, {
+          skillId,
+          changedProviders: uniqueProviders(changedProviders),
+        });
+      } catch (error) {
+        return this.mutationResult(false, {
+          error: error instanceof Error ? error.message : "Unable to update the skill.",
+        });
+      }
+    });
+  }
+
+  async saveBuild(options: {
+    buildId?: string;
+    name: string;
+    skillIds: string[];
+  }): Promise<AgentSkillMutationResult> {
+    return await this.enqueue(() => {
+      try {
+        const name = options.name.trim();
+        if (!name) throw new Error("Give the build a name.");
+
+        const known = new Set(this.list().skills.map((skill) => skill.id));
+        const skillIds = Array.from(new Set(options.skillIds)).filter((id) => known.has(id));
+
+        const state = this.loadState();
+        const builds = [...(state.builds ?? [])];
+        const now = Date.now();
+        const index = options.buildId
+          ? builds.findIndex((build) => build.id === options.buildId)
+          : -1;
+
+        if (options.buildId && index === -1) throw new Error("That build no longer exists.");
+
+        const build: AgentSkillBuild = {
+          id: options.buildId ?? `build_${randomUUID()}`,
+          name: name.slice(0, 80),
+          skillIds,
+          createdAt: index >= 0 ? builds[index]!.createdAt : now,
+          updatedAt: now,
+        };
+
+        if (index >= 0) builds[index] = build;
+        else builds.push(build);
+
+        this.saveState({ ...state, builds });
+        return this.mutationResult(true, { skillId: build.id });
+      } catch (error) {
+        return this.mutationResult(false, {
+          error: error instanceof Error ? error.message : "Unable to save the build.",
+        });
+      }
+    });
+  }
+
+  async deleteBuild(buildId: string): Promise<AgentSkillMutationResult> {
+    return await this.enqueue(() => {
+      try {
+        const state = this.loadState();
+        const builds = (state.builds ?? []).filter((build) => build.id !== buildId);
+        this.saveState({ ...state, builds });
+        return this.mutationResult(true);
+      } catch (error) {
+        return this.mutationResult(false, {
+          error: error instanceof Error ? error.message : "Unable to delete the build.",
+        });
+      }
+    });
+  }
+
+  /**
+   * Switch to a build: everything it names goes on, everything else goes off.
+   *
+   * Runs through `setEnabled` per skill rather than touching files directly, so
+   * a build change is exactly the same operation as flipping those toggles by
+   * hand — including the ownership checks that stop Cozea removing a skill it
+   * does not manage. A skill that refuses is reported and the rest still apply,
+   * because a half-applied build the user can see beats an opaque failure.
+   */
+  async applyBuild(buildId: string): Promise<AgentSkillMutationResult> {
+    const snapshot = this.list();
+    const build = snapshot.builds.find((candidate) => candidate.id === buildId);
+    if (!build) {
+      return this.mutationResult(false, { error: "That build no longer exists." });
+    }
+
+    // Catalog entries are not installed, so there is nothing to switch on.
+    // Essential skills are skipped outright: the provider rewrites the folder
+    // they live in, so disabling them churns the filesystem and then loses.
+    const installed = snapshot.skills
+      .filter(
+        (skill) =>
+          skill.source !== "catalog" && !skill.bindings.some((binding) => binding.essential),
+      )
+      .map((skill) => ({
+        id: skill.id,
+        enabled: skill.bindings.some((binding) => binding.enabled),
+      }));
+
+    const { enable, disable } = planBuildApplication(build, installed);
+    const changedProviders: AgentSkillProvider[] = [];
+    const failures: string[] = [];
+
+    for (const [skillId, enabled] of [
+      ...disable.map((id) => [id, false] as const),
+      ...enable.map((id) => [id, true] as const),
+    ]) {
+      const result = await this.setEnabled({ skillId, enabled });
+      if (result.success) changedProviders.push(...(result.changedProviders ?? []));
+      else if (result.error) failures.push(result.error);
+    }
+
+    return this.mutationResult(failures.length === 0, {
+      skillId: build.id,
+      changedProviders: uniqueProviders(changedProviders),
+      ...(failures.length > 0
+        ? { error: `${failures.length} skill(s) could not change: ${failures[0]}` }
+        : {}),
+    });
+  }
+
   async remove(skillId: string): Promise<AgentSkillMutationResult> {
     return await this.enqueue(() => {
       try {
         const skill = this.list().skills.find((candidate) => candidate.id === skillId);
         if (!skill) throw new Error("This skill is no longer available.");
+        // The agent owns the folder and rewrites it, so a delete would come
+        // back. Refused here as well as hidden, so no other caller can try.
+        if (skill.bindings.some((binding) => binding.essential)) {
+          throw new Error(
+            "This skill ships with the agent, which restores it. Cozea cannot delete it.",
+          );
+        }
         const changedProviders: AgentSkillProvider[] = [];
         if (skill.source === "managed") {
           for (const binding of skill.bindings) {
@@ -753,6 +1498,54 @@ export class AgentSkillService {
       } catch (error) {
         return this.mutationResult(false, {
           error: error instanceof Error ? error.message : "Unable to remove the skill.",
+        });
+      }
+    });
+  }
+
+  /**
+   * Install a catalog skill by copying it into the provider's own skills
+   * folder, which is what the provider actually loads from. The marketplace
+   * copy stays put — Cozea is not the owner of a plugin's files.
+   */
+  async install(skillId: string): Promise<AgentSkillMutationResult> {
+    return await this.enqueue(() => {
+      try {
+        const skill = this.list().skills.find((candidate) => candidate.id === skillId);
+        if (!skill) throw new Error("This skill is no longer available.");
+        if (skill.source !== "catalog") {
+          throw new Error("This skill is already installed.");
+        }
+        const target = skill.bindings.find((binding) => binding.available && binding.path);
+        if (!target?.path || !isDirectory(target.path)) {
+          throw new Error("The catalog folder for this skill could not be read.");
+        }
+
+        const provider = this.getProvider(target.provider);
+        const slug = slugifySkillName(skill.slug) || slugifySkillName(path.basename(target.path));
+        if (!slug) throw new Error("This skill does not have a valid name.");
+        const destinationPath = path.join(provider.rootPath, slug);
+        if (fs.existsSync(destinationPath)) {
+          throw new Error(`${provider.label} already has a skill named “${slug}”.`);
+        }
+
+        ensureDirectory(provider.rootPath);
+        const stagePath = path.join(provider.rootPath, `.${slug}.cozea-install-${randomUUID()}`);
+        try {
+          copySkillDirectory(target.path, stagePath);
+          fs.renameSync(stagePath, destinationPath);
+        } catch (error) {
+          if (fs.existsSync(stagePath)) fs.rmSync(stagePath, { recursive: true, force: true });
+          throw error;
+        }
+
+        return this.mutationResult(true, {
+          skillId: createExternalSkillId(slug),
+          changedProviders: [target.provider],
+        });
+      } catch (error) {
+        return this.mutationResult(false, {
+          error: error instanceof Error ? error.message : "Unable to install the skill.",
         });
       }
     });
@@ -792,6 +1585,7 @@ export class AgentSkillService {
     const directoryPath = this.uniqueLibraryPath(slug);
     copySkillDirectory(sourcePath, directoryPath);
     const now = Date.now();
+    const category = normalizeAgentSkillCategory(parsed.category);
     const metadata: ManagedSkillMetadata = {
       schemaVersion: 1,
       kind: "library",
@@ -802,6 +1596,8 @@ export class AgentSkillService {
       createdAt: now,
       updatedAt: now,
       originLabel,
+      originPath: sourcePath,
+      ...(category ? { category } : {}),
     };
     writeJsonFile(path.join(directoryPath, COZEA_METADATA_FILE_NAME), metadata);
     return this.mutationResult(true, { skillId: metadata.id, changedProviders: [] });
@@ -972,6 +1768,57 @@ export class AgentSkillService {
   }
 
   /**
+   * Move managed copies into whichever folder a provider now loads from.
+   *
+   * Codex reads `~/.codex/skills`, but Cozea used to install into
+   * `~/.agents/skills`, so an enabled skill never actually reached it. Runs
+   * once per provider and records that it did, because it is a repair rather
+   * than something to redo on every launch.
+   */
+  async migrateManagedBindingsToPrimaryRoot(): Promise<void> {
+    const done = this.loadState().migratedPrimaryRoots ?? [];
+    const pending = PROVIDER_DEFINITIONS.filter(
+      (definition) =>
+        !done.includes(definition.id) &&
+        definition.relativeRoots.filter((root) => !root.catalog).length > 1,
+    );
+    if (pending.length === 0) return;
+
+    for (const definition of pending) {
+      const provider = this.getProvider(definition.id);
+      const secondaryRoots = provider.rootPaths.filter(
+        (_root, index) => index > 0 && !definition.relativeRoots[index]?.catalog,
+      );
+      for (const rootPath of secondaryRoots) {
+        for (const strayPath of listDirectories(rootPath)) {
+          const marker = readJsonFile<ManagedBindingMetadata>(
+            path.join(strayPath, COZEA_METADATA_FILE_NAME),
+          );
+          if (marker?.kind !== "binding" || marker.schemaVersion !== 1) continue;
+          const skill = this.list().skills.find((candidate) => candidate.id === marker.skillId);
+          if (!skill || skill.source !== "managed") continue;
+          try {
+            // Writes into the primary root, then clears the stray copy.
+            this.enableManagedBinding(skill, definition.id);
+          } catch {
+            // A blocked move is not worth failing startup for; the next
+            // enable or update retries it.
+          }
+        }
+      }
+    }
+
+    const next = this.loadState();
+    this.saveState({
+      ...next,
+      migratedPrimaryRoots: [
+        ...(next.migratedPrimaryRoots ?? []),
+        ...pending.map((definition) => definition.id),
+      ],
+    });
+  }
+
+  /**
    * Install the skills Cozea ships, once, and enable them everywhere they are
    * compatible so every agent tile inherits project memory as default context.
    *
@@ -1054,6 +1901,27 @@ export class AgentSkillService {
       "agentSkills:setProviderEnabled",
       (_event, options: { skillId: string; provider: AgentSkillProvider; enabled: boolean }) =>
         this.setProviderEnabled(options),
+    );
+    ipcMain.handle(
+      "agentSkills:setEnabled",
+      (_event, options: { skillId: string; enabled: boolean }) => this.setEnabled(options),
+    );
+    ipcMain.handle("agentSkills:update", (_event, options: { skillId: string }) =>
+      this.update(options.skillId),
+    );
+    ipcMain.handle("agentSkills:install", (_event, options: { skillId: string }) =>
+      this.install(options.skillId),
+    );
+    ipcMain.handle(
+      "agentSkills:saveBuild",
+      (_event, options: { buildId?: string; name: string; skillIds: string[] }) =>
+        this.saveBuild(options),
+    );
+    ipcMain.handle("agentSkills:deleteBuild", (_event, options: { buildId: string }) =>
+      this.deleteBuild(options.buildId),
+    );
+    ipcMain.handle("agentSkills:applyBuild", (_event, options: { buildId: string }) =>
+      this.applyBuild(options.buildId),
     );
     ipcMain.handle("agentSkills:copyToLibrary", (_event, options: { skillId: string }) =>
       this.copyToLibrary(options.skillId),

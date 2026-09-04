@@ -1749,7 +1749,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         event.preventDefault()
         void handleSendWithMode()
       }}
-      className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl flex-col"
+      className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col"
     >
       {/* Autocomplete Menu (floating above) */}
       {composerMenuOpen ? (
@@ -1885,7 +1885,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       <div
         data-chat-composer-layout={isStackedComposer ? "stacked" : "inline"}
         className={cn(
-          "relative flex flex-wrap border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-radius,padding,background-color,border-color,box-shadow] duration-150 dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
+          "relative flex min-h-0 flex-wrap border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-radius,padding,background-color,border-color,box-shadow] duration-150 dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
           isStackedComposer
             ? "items-end gap-x-2 gap-y-1.5 rounded-3xl p-2.5"
             : "items-center gap-1.5 rounded-full p-1.5",
@@ -1925,7 +1925,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             </div>
           </div>
         ) : activePendingUserInput ? (
-          <div className="basis-full border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
+          <div className="flex min-h-0 max-h-[40vh] basis-full flex-col border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
             <ComposerPendingUserInputPanel
               pendingUserInputs={props.pendingUserInputs}
               respondingRequestIds={
@@ -2197,7 +2197,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       </div>
 
       {!dockComposerOnHover && !composerSuppressed ? (
-        <div className="px-3 pt-1.5 pb-4 sm:px-5 sm:pt-2 sm:pb-5">{composerForm}</div>
+        // Capped so a tall pending-question card scrolls inside the composer
+        // instead of collapsing the conversation above it to nothing.
+        <div className="flex max-h-[70%] min-h-0 flex-col px-3 pt-1.5 pb-4 sm:px-5 sm:pt-2 sm:pb-5">
+          {composerForm}
+        </div>
       ) : null}
 
       {expandedImage && expandedImageItem ? (

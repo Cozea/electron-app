@@ -787,6 +787,16 @@ const es: Record<TranslationKey, string> = {
   "routeLoading.appearance": "Cargando apariencia…",
   "routeLoading.tooling": "Cargando herramientas…",
   "routeLoading.devapps": "Cargando DevApps…",
+  "agentSkills.filter.all": "Todas las habilidades",
+  "agentSkills.filter.external": "Carpetas de proveedores",
+  "agentSkills.library": "Biblioteca de habilidades",
+  "agentSkills.providersAll": "Todos los proveedores",
+  "nav.skillBuilds": "Configuraciones",
+  "routeLoading.agentSkills": "Cargando habilidades de agentes…",
+  "agentSkills.searchPlaceholder": "Buscar habilidades...",
+  "agentSkills.filter.managed": "Mi biblioteca",
+  "agentSkills.providers": "Activadas en",
+  "nav.agentSkills": "Habilidades de agentes",
 } as const
 
 export default es

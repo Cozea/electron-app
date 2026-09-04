@@ -1156,6 +1156,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       provider: import('../../../shared/electronApiTypes').AgentSkillProvider
       enabled: boolean
     }) => ipcRenderer.invoke('agentSkills:setProviderEnabled', options),
+    setEnabled: (options: { skillId: string; enabled: boolean }) =>
+      ipcRenderer.invoke('agentSkills:setEnabled', options),
+    update: (options: { skillId: string }) => ipcRenderer.invoke('agentSkills:update', options),
+    install: (options: { skillId: string }) => ipcRenderer.invoke('agentSkills:install', options),
+    saveBuild: (options: { buildId?: string; name: string; skillIds: string[] }) =>
+      ipcRenderer.invoke('agentSkills:saveBuild', options),
+    deleteBuild: (options: { buildId: string }) =>
+      ipcRenderer.invoke('agentSkills:deleteBuild', options),
+    applyBuild: (options: { buildId: string }) =>
+      ipcRenderer.invoke('agentSkills:applyBuild', options),
     copyToLibrary: (options: { skillId: string }) =>
       ipcRenderer.invoke('agentSkills:copyToLibrary', options),
     remove: (options: { skillId: string }) =>

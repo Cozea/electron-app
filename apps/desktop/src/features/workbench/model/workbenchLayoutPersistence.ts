@@ -162,6 +162,32 @@ export function ensureWorkbenchLayoutPersistenceReady(): void {
   ensureLegacyLayoutsMigrated()
 }
 
+/**
+ * A layout snapshot together with the scope and reset key it was taken under.
+ *
+ * Snapshots are queued (a frame, then a debounce) before they are written, and
+ * the workbench scope can settle from a transient boot value to the real one in
+ * between. Reading the scope at write time therefore files a snapshot of one
+ * workbench under another's key. Carrying the identity with the snapshot is
+ * what keeps a queued write from landing in the wrong place.
+ */
+export interface PendingWorkbenchLayoutWrite {
+  scopeKey: string
+  layoutResetKey: number
+  layout: SerializedDockview
+}
+
+export function isWorkbenchLayoutWriteStillValid(
+  pending: Pick<PendingWorkbenchLayoutWrite, "scopeKey" | "layoutResetKey">,
+  current: { scopeKey: string | null | undefined; layoutResetKey: number },
+): boolean {
+  return (
+    Boolean(pending.scopeKey) &&
+    pending.scopeKey === current.scopeKey &&
+    pending.layoutResetKey === current.layoutResetKey
+  )
+}
+
 export function peekPersistedWorkbenchLayout(
   scopeKey: string,
   layoutResetKey: number,

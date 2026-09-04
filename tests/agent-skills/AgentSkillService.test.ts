@@ -50,7 +50,7 @@ describe("AgentSkillService", () => {
       provider: "codex",
       enabled: true,
     });
-    const codexPath = path.join(homeRoot, ".agents", "skills", "review-pull-requests");
+    const codexPath = path.join(homeRoot, ".codex", "skills", "review-pull-requests");
     expect(enabled.success).toBe(true);
     expect(fs.existsSync(path.join(codexPath, "SKILL.md"))).toBe(true);
     expect(
