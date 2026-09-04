@@ -18,10 +18,10 @@ import {
 import {
   getWorkbenchTileDefinition,
   type WorkbenchTileType,
-} from "@/features/projects/lib/workbenchTileRegistry"
+} from "@/features/workbench/model/workbenchTileRegistry"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
-export type { WorkbenchTileType } from "@/features/projects/lib/workbenchTileRegistry"
+export type { WorkbenchTileType } from "@/features/workbench/model/workbenchTileRegistry"
 
 const PERSIST_DEBOUNCE_MS = 500
 
@@ -194,6 +194,10 @@ export interface WorkbenchLlamaTile extends WorkbenchBaseTile {
   type: "llama"
 }
 
+export interface WorkbenchMemoryTile extends WorkbenchBaseTile {
+  type: "memory"
+}
+
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
   type: "selection"
   mode: WorkbenchSelectionTileMode
@@ -228,6 +232,7 @@ export type WorkbenchTile =
   | WorkbenchTerminalTile
   | WorkbenchDevServerTile
   | WorkbenchLlamaTile
+  | WorkbenchMemoryTile
   | WorkbenchMobileSimulatorTile
   | WorkbenchOrgDevAppTile
   | WorkbenchDevAppPreviewTile
@@ -349,7 +354,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
     openSingletonTile: (
       projectId: string,
       laneId: string,
-      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "llama">,
+      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "llama" | "memory">,
       options?: CreateTileOptions,
       workspaceId?: string | null,
     ) => string
@@ -685,6 +690,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     }
     case "mobileSimulator":
     case "llama":
+    case "memory":
       return { id, type, title, createdAt }
     case "devAppPreview":
       return {
@@ -1053,12 +1059,18 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
         : isSerializedDockview(workbench.layout)
           ? workbench.layout
           : null,
-    layoutResetKey:
-      shouldResetLayout
-        ? nextLayoutResetKey()
-        : typeof workbench.layoutResetKey === "number"
-          ? workbench.layoutResetKey
-          : 0,
+    /*
+     * Never mint a new key here. Sanitize runs while *reading* persisted state,
+     * and this key is what `peekPersistedWorkbenchLayout` matches against the
+     * separately stored layout blob. Regenerating it on read guarantees a
+     * mismatch with a layout that was saved perfectly well, so the dock falls
+     * back to `buildDefaultDockview` and every tile is rearranged on restart.
+     *
+     * Dropping an obsolete tile still clears `layout` below; a saved layout
+     * that genuinely references a dead panel is handled where it is restored,
+     * which fails and clears for that one scope instead of resetting all of them.
+     */
+    layoutResetKey: typeof workbench.layoutResetKey === "number" ? workbench.layoutResetKey : 0,
     order: sanitizedOrder,
     tiles: sanitizedTiles,
   }

@@ -22,7 +22,7 @@ import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
-} from "../../providerInstances";
+} from "@/features/assistant/providerInstances";
 
 interface ProviderModelPickerProps {
   provider: ProviderKind;
@@ -59,7 +59,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
   const selectedProviderOptions = activeEntry?.models.length
     ? activeEntry.models
     : props.modelOptionsByProvider[activeProvider];
-  
+
   const selectedModel =
     selectedProviderOptions?.find((option) => option.slug === props.model) ??
     selectedProviderOptions?.find((option) => option.isDefault && !option.isLegacy) ??

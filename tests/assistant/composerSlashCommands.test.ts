@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   detectComposerTrigger,
   filterSlashItems,
-} from "../../apps/desktop/src/features/projects/components/assistant/composer-logic";
+} from "../../apps/desktop/src/features/assistant/composer-logic";
 import {
   splitPromptIntoComposerSegments,
-} from "../../apps/desktop/src/features/projects/components/assistant/composer-editor-mentions";
+} from "../../apps/desktop/src/features/assistant/composer-editor-mentions";
 
 describe("composer triggers and slash commands", () => {
   it("detects @ file mention triggers", () => {

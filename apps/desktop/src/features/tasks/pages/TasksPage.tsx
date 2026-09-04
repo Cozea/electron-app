@@ -11,14 +11,14 @@ import {
 
   type TaskOverlayLocationState,
   type TaskOverlayPayload,
-} from '@/features/projects/lib/taskFocusOverlay'
+} from '@/features/tasks/model/taskFocusOverlay'
 import type { ProjectScannedRoute } from '@shared/electronApiTypes'
 import { GroupedVirtuoso } from 'react-virtuoso'
 import { useTranslation } from '@/lib/i18n'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
-import { useOptionalProjectSyncContext } from '../contexts/ProjectSyncContext'
+import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

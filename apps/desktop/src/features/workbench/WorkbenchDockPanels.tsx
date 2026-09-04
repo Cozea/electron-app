@@ -37,12 +37,12 @@ import {
   startDevServerRun,
   stopDevServerRun,
   useDevServerRunStore,
-} from "@/features/projects/devserver/devServerRunStore"
+} from "@/features/dev-server/devServerRunStore"
 import {
   buildLocalDevServerUrl,
   dispatchDevServerTileCommand,
   isSameDevServerPreviewUrl,
-} from "@/features/projects/devserver/devServerTileCommands"
+} from "@/features/dev-server/devServerTileCommands"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
@@ -51,8 +51,9 @@ import {
   getDevAppForSurfaceTileType,
 } from "@/features/devapps/registry"
 import type { DevAppWorkbenchTileTarget } from "@/features/devapps/registry/types"
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchDockHeaderControls } from "@/features/projects/components/workbench/workbenchDockHeaderControls"
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
+import { DevServerProcessesDialog } from "@/features/workbench/DevServerProcessesDialog"
+import { useWorkbenchDockHeaderControls } from "@/features/workbench/workbenchDockHeaderControls"
 import { useChangesSidebarStore } from "@/stores/useChangesSidebarStore"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
@@ -66,11 +67,11 @@ import {
   type WorkbenchTile,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,
-} from "@/features/projects/components/workbench/WorkbenchDockRuntimeContext"
+} from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime"
 import {
   getWorkbenchDockDefinition,
@@ -79,7 +80,7 @@ import {
   WORKBENCH_TILE_REGISTRY,
   type WorkbenchDockComponentName,
   type WorkbenchPanelRendererKey,
-} from "@/features/projects/lib/workbenchTileRegistry"
+} from "@/features/workbench/model/workbenchTileRegistry"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useTranslation } from "@/lib/i18n"
@@ -98,45 +99,53 @@ import {
   Layout04Icon as __Layout04HugeIcon,
   PlayIcon as __PlayHugeIcon,
   Refresh01Icon as __RefreshCcwHugeIcon,
+  Settings02Icon as __SettingsHugeIcon,
   StopIcon as __SquareHugeIcon,
 } from "@hugeicons/core-free-icons"
+import { WorkbenchMemoryTileHeaderActions } from "@/features/workbench/WorkbenchMemoryTileHeaderActions"
+import { WorkbenchMemoryTileInfo } from "@/features/workbench/WorkbenchMemoryTileInfo"
 
 const changesSuspenseFallback = <div className="h-full bg-content-surface" aria-hidden="true" />
 
 const loadWorkbenchAssistantChatTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchAssistantChatTile").then((m) => ({
+  import("@/features/workbench/WorkbenchAssistantChatTile").then((m) => ({
     default: m.WorkbenchAssistantChatTile,
   }))
 const loadWorkbenchBrowserTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchBrowserTile").then((m) => ({
+  import("@/features/workbench/WorkbenchBrowserTile").then((m) => ({
     default: m.WorkbenchBrowserTile,
   }))
 const loadWorkbenchDevServerTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
+  import("@/features/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchDevServerTile,
   }))
 const loadWorkbenchMobileSimulatorTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchDevServerTile").then((m) => ({
+  import("@/features/workbench/WorkbenchDevServerTile").then((m) => ({
     default: m.WorkbenchMobileSimulatorTile,
   }))
+
+const loadWorkbenchMemoryTile = () =>
+  import("@/features/workbench/WorkbenchMemoryTile").then((m) => ({
+    default: m.WorkbenchMemoryTile,
+  }))
 const loadWorkbenchLlamaTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchLlamaTile").then((m) => ({
+  import("@/features/workbench/WorkbenchLlamaTile").then((m) => ({
     default: m.WorkbenchLlamaTile,
   }))
 const loadWorkbenchOrgDevAppTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchOrgDevAppTile").then((m) => ({
+  import("@/features/workbench/WorkbenchOrgDevAppTile").then((m) => ({
     default: m.WorkbenchOrgDevAppTile,
   }))
 const loadWorkbenchDevAppPreviewTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchDevAppPreviewTile").then((m) => ({
+  import("@/features/workbench/WorkbenchDevAppPreviewTile").then((m) => ({
     default: m.WorkbenchDevAppPreviewTile,
   }))
 const loadWorkbenchSelectionTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchSelectionTile").then((m) => ({
+  import("@/features/workbench/WorkbenchSelectionTile").then((m) => ({
     default: m.WorkbenchSelectionTile,
   }))
 const loadWorkbenchTerminalTile = () =>
-  import("@/features/projects/components/workbench/WorkbenchTerminalTile").then((m) => ({
+  import("@/features/workbench/WorkbenchTerminalTile").then((m) => ({
     default: m.WorkbenchTerminalTile,
   }))
 
@@ -144,6 +153,7 @@ const LazyWorkbenchAssistantChatTile = lazy(loadWorkbenchAssistantChatTile)
 const LazyWorkbenchBrowserTile = lazy(loadWorkbenchBrowserTile)
 const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
 const LazyWorkbenchLlamaTile = lazy(loadWorkbenchLlamaTile)
+const LazyWorkbenchMemoryTile = lazy(loadWorkbenchMemoryTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchOrgDevAppTile = lazy(loadWorkbenchOrgDevAppTile)
 const LazyWorkbenchDevAppPreviewTile = lazy(loadWorkbenchDevAppPreviewTile)
@@ -517,7 +527,9 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
   tileId: string
   surface: "devServer" | "mobileSimulator"
 }) {
+  const { t } = useTranslation()
   const runtime = useWorkbenchDockRuntime()
+  const [processesOpen, setProcessesOpen] = useState(false)
   const tile = useWorkbenchTile(runtime.projectId, runtime.laneId, runtime.workspaceId, tileId)
   const runtimeTarget =
     tile?.type === "devServer" ? resolveProjectDevAppRuntimeTarget(tile, runtime) : runtime
@@ -545,9 +557,35 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
     return null
   }
 
+  const canConfigureProcesses =
+    surface === "devServer" && tile?.type === "devServer" && !tile.devAppId
+  const processSettings = canConfigureProcesses ? (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        onClick={() => setProcessesOpen(true)}
+        aria-label={t("workbench.devserver.processes.configure")}
+        title={t("workbench.devserver.processes.configure")}
+      >
+        <HugeiconsIcon icon={__SettingsHugeIcon} className="h-3.5 w-3.5" />
+      </Button>
+      <DevServerProcessesDialog
+        open={processesOpen}
+        onOpenChange={setProcessesOpen}
+        workspaceId={runtimeTarget.workspaceId}
+        runKey={runKey}
+        running={isDevServerRunActive(run.status)}
+      />
+    </>
+  ) : null
+
   if (isDevServerRunActive(run.status)) {
     return (
       <>
+        {processSettings}
         <Button
           type="button"
           variant="ghost"
@@ -585,20 +623,23 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
   }
 
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="h-7 w-7"
-      disabled={!hasLaunchTerminal}
-      title={hasLaunchTerminal ? undefined : "Preparing the dev server"}
-      onClick={() => {
-        void startDevServerRun(runKey)
-      }}
-      aria-label="Start dev server"
-    >
-      <HugeiconsIcon icon={__PlayHugeIcon} className="h-3.5 w-3.5 fill-current" />
-    </Button>
+    <>
+      {processSettings}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        disabled={!hasLaunchTerminal}
+        title={hasLaunchTerminal ? undefined : "Preparing the dev server"}
+        onClick={() => {
+          void startDevServerRun(runKey)
+        }}
+        aria-label="Start dev server"
+      >
+        <HugeiconsIcon icon={__PlayHugeIcon} className="h-3.5 w-3.5 fill-current" />
+      </Button>
+    </>
   )
 })
 
@@ -1278,6 +1319,56 @@ const ChangesPanel = memo(function ChangesPanel(
   )
 })
 
+const MemoryPanel: FunctionComponent<IDockviewPanelProps> = memo(function MemoryPanel(props) {
+  const runtime = useWorkbenchDockRuntime()
+  const tile = useWorkbenchTile(
+    props.params.projectId,
+    props.params.laneId,
+    runtime.workspaceId,
+    props.params.tileId,
+  )
+
+  useSyncPanelTitle(props.api, tile?.title)
+
+  if (!tile || tile.type !== "memory") {
+    return (
+      <WorkbenchTileChrome title="Memory" panelApi={props.api} containerApi={props.containerApi}>
+        <MissingTilePlaceholder />
+      </WorkbenchTileChrome>
+    )
+  }
+
+  return (
+    <WorkbenchTileChrome
+      title={tile.title}
+      panelApi={props.api}
+      containerApi={props.containerApi}
+      tileType="memory"
+      controls={
+        <WorkbenchMemoryTileInfo
+          workspaceId={runtime.workspaceId ?? null}
+          laneId={props.params.laneId ?? null}
+        />
+      }
+      actions={
+        <WorkbenchMemoryTileHeaderActions
+          projectId={props.params.projectId}
+          workspaceId={runtime.workspaceId ?? null}
+          laneId={props.params.laneId ?? null}
+        />
+      }
+    >
+      <Suspense fallback={changesSuspenseFallback}>
+        <LazyWorkbenchMemoryTile
+          projectId={props.params.projectId}
+          workspaceId={runtime.workspaceId ?? null}
+          laneId={props.params.laneId ?? null}
+        />
+      </Suspense>
+    </WorkbenchTileChrome>
+  )
+})
+
 type WorkbenchDockPanelComponent = FunctionComponent<IDockviewPanelProps>
 
 const WORKBENCH_PANEL_RENDERERS = {
@@ -1286,6 +1377,7 @@ const WORKBENCH_PANEL_RENDERERS = {
   terminal: TerminalPanel,
   devServer: DevServerPanel,
   llama: LlamaPanel,
+  memory: MemoryPanel,
   mobileSimulator: MobileSimulatorPanel,
   orgDevApp: OrgDevAppPanel,
   devAppPreview: DevAppPreviewPanel,

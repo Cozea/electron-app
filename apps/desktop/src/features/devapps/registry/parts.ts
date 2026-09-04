@@ -58,6 +58,14 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
         service: { runtimeKind: "node", singleton: true },
       }
 
+    case "memory":
+      // Read-only by design: agents own the graph, this surface only reads it.
+      return {
+        view: NATIVE_VIEW("memory"),
+        worker: { capabilities: ["project.read"] },
+        service: { runtimeKind: "node", singleton: true },
+      }
+
     case "llama":
       return {
         view: NATIVE_VIEW("llama"),

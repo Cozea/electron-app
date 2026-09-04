@@ -46,6 +46,10 @@ import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
 } from "@/features/projects/components/assistant/chat/composerDraftStore"
+import {
+  reportMemoryUpdateOutcome,
+  subscribeMemoryUpdateRequests,
+} from "@/features/project-memory/memoryUpdateBus"
 import { ProviderRemediationAction } from "@/features/projects/components/assistant/chat/ProviderRemediationAction"
 import {
   deriveThreadImageArtifacts,
@@ -66,9 +70,9 @@ import {
 import {
   refreshAssistantRuntimeSnapshot,
   useAssistantRuntimeSync,
-} from "@/features/projects/components/workbench/useAssistantRuntimeSync"
-import { useAssistantRuntimeStatus } from "@/features/projects/components/workbench/useAssistantRuntimeStatus"
-import { useSubstrateRpcChat } from "@/features/projects/components/workbench/assistant/useSubstrateRpcChat"
+} from "@/features/workbench/useAssistantRuntimeSync"
+import { useAssistantRuntimeStatus } from "@/features/workbench/useAssistantRuntimeStatus"
+import { useSubstrateRpcChat } from "@/features/workbench/assistant/useSubstrateRpcChat"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
 import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestrationSync"
 import { resolveOrchestrationApi } from "@/substrate/resolveOrchestrationApi"
@@ -97,7 +101,7 @@ import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
   flushWorkbenchStorage,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
 import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"
@@ -226,6 +230,9 @@ export function useWorkbenchAssistantTileController(
     isLoading: isConfigLoading,
   } = useAssistantServerConfig(isChatReady)
   const [composer, setComposer] = useState("")
+  const [pendingMemoryUpdateAt, setPendingMemoryUpdateAt] = useState<number | null>(null)
+  /** Set while a memory rebuild we were asked to run is still outstanding. */
+  const [memoryUpdateInFlight, setMemoryUpdateInFlight] = useState(false)
   const [composerCursor, setComposerCursor] = useState(0)
   const [sendError, setSendError] = useState<string | null>(null)
   const [composerImages, setComposerImages] = useState<ComposerImageDraft[]>([])
@@ -1618,6 +1625,50 @@ export function useWorkbenchAssistantTileController(
   }
 
   handleSendRef.current = handleSend
+
+  /*
+   * The Memory tile asks a chosen agent to rebuild the project map. There is no
+   * prompt-injection IPC — the assistant transport has no such seam — so the
+   * request lands here, in the controller that owns the composer, and is sent
+   * as an ordinary user turn.
+   */
+  useEffect(
+    () =>
+      subscribeMemoryUpdateRequests((request) => {
+        if (request.targetTileId !== input.tile.id) return
+        if (sendInFlightRef.current) return
+        setComposer(request.prompt)
+        setComposerCursor(request.prompt.length)
+        setPendingMemoryUpdateAt(request.requestedAt)
+        setMemoryUpdateInFlight(true)
+      }),
+    [input.tile.id],
+  )
+
+  useEffect(() => {
+    if (!pendingMemoryUpdateAt || isSending || sendInFlightRef.current) return
+    if (composer.trim().length === 0) return
+    setPendingMemoryUpdateAt(null)
+    void handleSendRef.current()
+  }, [pendingMemoryUpdateAt, composer, isSending])
+
+  /*
+   * A rebuild can die on a usage limit or a runtime outage. The Memory tile
+   * only watches the graph file, so without this it would wait out its whole
+   * timeout for a build that is never coming.
+   */
+  const memoryTurnError =
+    thread?.session?.lastError ?? thread?.error ?? runtimeErrorMessage ?? null
+
+  useEffect(() => {
+    if (!memoryUpdateInFlight || !memoryTurnError) return
+    setMemoryUpdateInFlight(false)
+    reportMemoryUpdateOutcome({
+      targetTileId: input.tile.id,
+      status: "failed",
+      message: memoryTurnError,
+    })
+  }, [memoryUpdateInFlight, memoryTurnError, input.tile.id])
 
   useEffect(() => {
     if (!autoSendAnnotationId || isSending || sendInFlightRef.current) return

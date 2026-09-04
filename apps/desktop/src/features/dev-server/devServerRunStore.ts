@@ -20,6 +20,8 @@ import {
   type DevServerRestartScheduler,
 } from '@/hooks/devServerRestartScheduler'
 import type {
+  DevServerAuxiliaryProcessConfig,
+  DevServerManagedProcessState,
   DevCommandSuggestion,
   DevServerProcessState,
   DevServerProcessStateEvent,
@@ -57,6 +59,7 @@ export interface DevServerRunState {
   error: string | null
   requiresCommandSelection: boolean
   commandSuggestions: DevCommandSuggestion[]
+  processes: DevServerManagedProcessState[]
   timeline: DevServerTimelineEvent[]
 }
 
@@ -78,6 +81,7 @@ export interface DevServerRunContext {
   storedCommandSource: DevServerLaunchContext['storedCommandSource']
   previewMode: DevServerLaunchContext['previewMode']
   nativePlatform: DevServerLaunchContext['nativePlatform']
+  auxiliaryProcesses: DevServerAuxiliaryProcessConfig[]
 }
 
 export interface DevServerEnsureOptions {
@@ -101,6 +105,7 @@ export const DEFAULT_DEV_SERVER_RUN: DevServerRunState = Object.freeze({
   error: null,
   requiresCommandSelection: false,
   commandSuggestions: [],
+  processes: [],
   timeline: [],
 }) as DevServerRunState
 
@@ -289,6 +294,7 @@ function applyAuthoritativeProcessState(
   processState: DevServerProcessState,
   options: { preserveIdle: boolean },
 ): void {
+  const processes = processState.processes ?? []
   if (processState.running && processState.ready && processState.port) {
     const url = buildLocalDevServerUrl(processState.port)
     runtime.lifecycles.set(key, {
@@ -301,7 +307,8 @@ function applyAuthoritativeProcessState(
       if (
         prev.status === 'ready' &&
         prev.port === processState.port &&
-        prev.runId === (processState.runId ?? prev.runId)
+        prev.runId === (processState.runId ?? prev.runId) &&
+        JSON.stringify(prev.processes) === JSON.stringify(processes)
       ) {
         return prev
       }
@@ -316,6 +323,7 @@ function applyAuthoritativeProcessState(
         error: null,
         requiresCommandSelection: false,
         commandSuggestions: [],
+        processes,
       }
     })
     return
@@ -323,7 +331,9 @@ function applyAuthoritativeProcessState(
 
   if (processState.running) {
     setRun(key, (prev) =>
-      prev.status === 'starting' && prev.runId === (processState.runId ?? prev.runId)
+      prev.status === 'starting' &&
+      prev.runId === (processState.runId ?? prev.runId) &&
+      JSON.stringify(prev.processes) === JSON.stringify(processes)
         ? prev
         : {
             ...prev,
@@ -336,6 +346,7 @@ function applyAuthoritativeProcessState(
             error: null,
             requiresCommandSelection: false,
             commandSuggestions: [],
+            processes,
           },
     )
     return
@@ -354,6 +365,7 @@ function applyAuthoritativeProcessState(
       reachable: false,
       failureReason: preserveError ? prev.failureReason : null,
       error: preserveError ? prev.error : null,
+      processes,
     }
   })
 }
@@ -372,11 +384,28 @@ export function registerDevServerRunContext(key: string, context: DevServerRunCo
       prev.storedDevPort === context.storedDevPort &&
       prev.storedCommandSource === context.storedCommandSource &&
       prev.previewMode === context.previewMode &&
-      prev.nativePlatform === context.nativePlatform
+      prev.nativePlatform === context.nativePlatform &&
+      JSON.stringify(prev.auxiliaryProcesses) === JSON.stringify(context.auxiliaryProcesses)
     ) {
       return state
     }
     return { contexts: { ...state.contexts, [key]: context } }
+  })
+}
+
+export function updateDevServerRunAuxiliaryProcesses(
+  key: string,
+  auxiliaryProcesses: DevServerAuxiliaryProcessConfig[],
+): void {
+  runtime.store.setState((state) => {
+    const context = state.contexts[key]
+    if (!context) return state
+    return {
+      contexts: {
+        ...state.contexts,
+        [key]: { ...context, auxiliaryProcesses },
+      },
+    }
   })
 }
 
@@ -593,6 +622,7 @@ async function launchDevServerRun(
       framework: context.framework,
       terminalId: context.terminalId,
       runId: requestedRunId,
+      auxiliaryProcesses: context.auxiliaryProcesses,
     })
 
     const resolvedRunId = result.runId ?? requestedRunId
@@ -720,6 +750,7 @@ export async function stopDevServerRun(key: string): Promise<boolean> {
       port: null,
       reachable: false,
       failureReason: null,
+      processes: [],
     }))
     appendTimeline(key, { runId: currentRunId, type: 'stopped', message: 'Dev server stopped' })
     return true
