@@ -30,7 +30,7 @@ jobs:
       - name: Install T3 source dependencies
         run: bun x pnpm@11.10.0 --dir vendor/t3code install --frozen-lockfile --ignore-scripts
 
-      - name: Package toolchain
+      - name: Package and split toolchain
         shell: bash
         run: |
           set -euo pipefail
@@ -40,11 +40,41 @@ jobs:
             .toolchain/bin/bun \
             node_modules \
             vendor/t3code/node_modules
+          split -b 300M -d -a 2 native-devapp-toolchain.tgz native-devapp-toolchain.part-
+          ls -lh native-devapp-toolchain.part-*
 
-      - name: Upload toolchain
+      - name: Upload toolchain part 00
         uses: actions/upload-artifact@v4
         with:
-          name: native-devapp-toolchain-${{ github.sha }}
-          path: native-devapp-toolchain.tgz
+          name: native-devapp-toolchain-00-${{ github.sha }}
+          path: native-devapp-toolchain.part-00
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload toolchain part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-devapp-toolchain-01-${{ github.sha }}
+          path: native-devapp-toolchain.part-01
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload toolchain part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-devapp-toolchain-02-${{ github.sha }}
+          path: native-devapp-toolchain.part-02
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload toolchain part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-devapp-toolchain-03-${{ github.sha }}
+          path: native-devapp-toolchain.part-03
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 1
