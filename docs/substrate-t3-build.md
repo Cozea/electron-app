@@ -1,7 +1,7 @@
 # T3 runtime preparation and packaging
 
 Date: 2026-09-05
-Pin: `docs/substrate-t3-pin.md` (`e6fd2165`)
+Pin: `docs/substrate-t3-pin.md` (`59e1f1749`)
 
 Cozea runs its pinned T3 assistant server as a separate local process. The
 source tree preserves T3 as a direct Git submodule and keeps its pnpm workspace

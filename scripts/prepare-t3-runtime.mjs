@@ -328,11 +328,16 @@ function currentVendorSourceStamp(expectedPin) {
   return buildVendorSourceStamp(expectedPin, trackedDiff, untrackedFiles);
 }
 
+export function isCurrentT3Bundle(validBundle, stamp, sourceStamp) {
+  return validBundle && stamp !== null && stamp === sourceStamp;
+}
+
 function prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, { checkOnly, force }) {
   const validBundle = bundleLoads();
   const stamp = readBundleStamp();
-  const mayAdoptExistingBundle = validBundle && stamp === null && sourceStamp === expectedPin;
-  const current = validBundle && (stamp === sourceStamp || mayAdoptExistingBundle);
+  // A loadable but unstamped bundle may have been built before a fork commit.
+  // Only a completed preparation can attest its source revision.
+  const current = isCurrentT3Bundle(validBundle, stamp, sourceStamp);
 
   if (checkOnly) {
     if (!current)
@@ -342,9 +347,6 @@ function prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, { checkOnly
   }
 
   if (!force && current) {
-    if (mayAdoptExistingBundle) {
-      fs.writeFileSync(bundlePinStamp, `${sourceStamp}\n`);
-    }
     applyCozeaT3RuntimePatches({ checkOnly: false });
     console.log(`[prepare-t3-runtime] T3 server bundle is ready at ${expectedPin.slice(0, 8)}.`);
     return;

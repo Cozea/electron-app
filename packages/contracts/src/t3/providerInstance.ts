@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ e6fd2165c7c1e8a1a0563c993d5205d53480130b; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 59e1f1749a90912a5d68eedf026c4ba7fdcfb204; run scripts/vendor/sync-t3-contracts.mjs */
 /**
  * Provider-instance contracts.
  *
