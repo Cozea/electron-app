@@ -35,11 +35,6 @@ interface PinnedCycle {
 
 const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
-    pair: ["assistant", "projects"],
-    thinEdge: "assistant -> projects",
-    reaches: ["ui/NativeProjectFolderIcon"],
-  },
-  {
     pair: ["assistant", "workbench"],
     thinEdge: "assistant -> workbench",
     reaches: ["WorkbenchEditorIcons", "assistant/assistantRuntimeMetadataStore"],
@@ -97,7 +92,7 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     thinEdge: "workbench -> projects",
     reaches: [
       "lib/projectRoutes",
-      "ui/NativeProjectFolderIcon",
+      "ui/ProjectPixelInvaderIcon",
       "contexts/ProjectRouteContext",
       "contexts/ProjectSyncContext",
     ],
@@ -173,6 +168,32 @@ function readFeatureEdges(): Map<string, Set<string>> {
   return edges;
 }
 
+/**
+ * Modules each cross-feature edge reaches for, keyed "importer -> imported".
+ * Only the aliased form is collected, which is every cross-feature import
+ * today; the relative form is still resolved above for cycle detection.
+ */
+function readEdgeModules(): Map<string, Set<string>> {
+  const modules = new Map<string, Set<string>>();
+
+  for (const filePath of listSourceFiles(FEATURES_ROOT)) {
+    const importer = path.relative(FEATURES_ROOT, filePath).split(path.sep)[0];
+    const source = fs.readFileSync(filePath, "utf8");
+
+    for (const [, imported, module] of source.matchAll(
+      /["']@\/features\/([a-z0-9-]+)\/([^"']+)["']/g,
+    )) {
+      if (imported === importer) continue;
+      const key = `${importer} -> ${imported}`;
+      const existing = modules.get(key) ?? new Set<string>();
+      existing.add(module);
+      modules.set(key, existing);
+    }
+  }
+
+  return modules;
+}
+
 function findMutualPairs(edges: Map<string, Set<string>>): string[] {
   const pairs = new Set<string>();
 
@@ -199,12 +220,19 @@ describe("feature dependency graph", () => {
   });
 
   it("pins each cycle with the edge to delete and what it reaches for", () => {
+    const modules = readEdgeModules();
+
     for (const { pair, thinEdge, reaches } of PINNED_CYCLES) {
       const [importer, imported] = thinEdge.split(" -> ");
 
       expect(pair, `${thinEdge} names a feature outside its own pair`).toContain(importer);
       expect(pair, `${thinEdge} names a feature outside its own pair`).toContain(imported);
       expect(reaches.length, `${thinEdge} records no modules to delete`).toBeGreaterThan(0);
+
+      // Without this the recorded modules rot silently: a call site can swap
+      // one import for another and leave the plan pointing at the wrong fix.
+      expect([...(modules.get(thinEdge) ?? [])].sort(), `${thinEdge} reaches for different modules than recorded`)
+        .toEqual([...reaches].sort());
     }
   });
 
