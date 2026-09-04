@@ -11,7 +11,6 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { useTranslation } from "@/lib/i18n"
 import { BrowserSurfaceSlot } from "@/features/projects/browser/BrowserSurfaceSlot"
 import { useDockviewBrowserSurfacePresentation } from "@/features/projects/browser/useDockviewBrowserSurfaceLayer"
@@ -134,64 +133,27 @@ function RuntimePreviewStartState({
   onRetry: () => void
   onShowLogs: () => void
 }) {
-  const title =
-    status === "starting"
-      ? "Starting Dev Server…"
-      : status === "error"
-        ? "Dev Server failed to start"
-        : "Start the Dev Server to open its preview"
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-content-surface p-6 text-center">
-      <Empty className="w-full max-w-lg py-8">
-        <EmptyHeader>
-          <EmptyMedia className="h-12 w-12 rounded-2xl border border-border/60 bg-secondary/70 shadow-sm [&>svg]:h-6 [&>svg]:w-6 [&>svg]:text-muted-foreground">
-            <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="h-6 w-6" />
-          </EmptyMedia>
-          <EmptyTitle className="text-base font-medium">{title}</EmptyTitle>
-          <EmptyDescription className="max-w-md leading-5">
-            {error ??
-              (status === "starting"
-                ? "Cozea is preparing the project runtime. The living T3 preview will attach as soon as the process exposes a URL."
-                : "Launch the project runtime here, then keep the same page alive while you edit, resize, split, or float the tile.")}
-          </EmptyDescription>
-        </EmptyHeader>
-        {status === "starting" ? (
-          <div className="flex justify-center pt-1" aria-label="Starting Dev Server">
-            <div className="cozea-loader" />
+      {status === "starting" ? (
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div className="cozea-loader" />
+          <span className="font-medium text-foreground whitespace-nowrap">
+            Starting Dev Server…
+          </span>
+        </div>
+      ) : status === "error" ? (
+        <div className="w-full max-w-xs space-y-3">
+          <div className="flex items-center justify-center gap-2 text-sm">
+            <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="size-4 shrink-0 text-destructive" />
+            <span className="font-medium text-foreground whitespace-nowrap">
+              Dev Server failed to start
+            </span>
           </div>
-        ) : null}
-        {requiresCommandSelection && commandSuggestions.length > 0 ? (
-          <div className="mt-2 grid w-full max-w-md gap-2 text-left">
-            {commandSuggestions.slice(0, 5).map((suggestion) => (
-              <button
-                key={suggestion.command}
-                type="button"
-                className="group flex w-full items-start gap-3 rounded-lg border border-border/60 bg-secondary/35 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-secondary/65"
-                onClick={() => onSelectCommand(suggestion.command)}
-              >
-                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-background/70 text-muted-foreground group-hover:text-foreground">
-                  <HugeiconsIcon icon={__CommandLineHugeIcon} className="size-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-mono text-xs text-foreground">
-                    {suggestion.command}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
-                    {suggestion.reason}
-                  </span>
-                </span>
-                <HugeiconsIcon
-                  icon={__PlayHugeIcon}
-                  className="mt-1 size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
-                />
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {status === "error" ? (
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
+          {error ? <p className="text-xs text-destructive text-center">{error}</p> : null}
+          <div className="flex items-center justify-center gap-2 pt-1">
             {!requiresCommandSelection ? (
-              <Button type="button" size="sm" variant="secondary" onClick={onRetry}>
+              <Button type="button" size="sm" onClick={onRetry}>
                 Try again
               </Button>
             ) : null}
@@ -199,8 +161,40 @@ function RuntimePreviewStartState({
               Server logs
             </Button>
           </div>
-        ) : null}
-      </Empty>
+        </div>
+      ) : requiresCommandSelection && commandSuggestions.length > 0 ? (
+        <div className="w-full max-w-xs space-y-3">
+          <div className="flex items-center justify-center gap-2 text-sm">
+            <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="size-4 shrink-0 text-muted-foreground" />
+            <span className="font-medium text-foreground whitespace-nowrap">
+              Select start command:
+            </span>
+          </div>
+          <div className="w-full divide-y divide-border/20 text-left">
+            {commandSuggestions.slice(0, 5).map((suggestion) => (
+              <button
+                key={suggestion.command}
+                type="button"
+                className="group flex w-full items-center justify-between py-2 text-left transition-colors hover:text-foreground"
+                onClick={() => onSelectCommand(suggestion.command)}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <HugeiconsIcon icon={__CommandLineHugeIcon} className="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
+                  <span className="font-mono text-xs text-foreground truncate">{suggestion.command}</span>
+                </div>
+                <HugeiconsIcon icon={__PlayHugeIcon} className="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="size-4 shrink-0" />
+          <span className="font-medium text-foreground whitespace-nowrap">
+            Dev Server is stopped
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -218,17 +212,22 @@ function RuntimePreviewPageError({
 }) {
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-content-surface p-6 text-center">
-      <div className="flex max-w-lg flex-col items-center gap-3">
-        <div className="space-y-1.5">
-          <div className="text-sm font-medium text-foreground">{title}</div>
-          <div className="text-xs leading-5 text-muted-foreground">{description}</div>
+      <div className="w-full max-w-xs space-y-2.5">
+        <div className="flex items-center justify-center gap-2 text-sm">
+          <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="size-4 shrink-0 text-muted-foreground" />
+          <span className="font-medium text-foreground whitespace-nowrap">{title}</span>
         </div>
-        <div className="w-full max-w-md truncate rounded-md border border-border/60 bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        {description ? (
+          <p className="text-xs text-muted-foreground truncate">{description}</p>
+        ) : null}
+        <p className="font-mono text-[11px] text-muted-foreground/70 truncate" title={url}>
           {url}
+        </p>
+        <div className="pt-1">
+          <Button type="button" variant="outline" size="sm" onClick={onReload}>
+            Reload preview
+          </Button>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={onReload}>
-          Reload preview
-        </Button>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
-import { useMemo, useEffect, useState } from "react"
+import { useCallback, useMemo, useEffect, useState } from "react"
 import { SiOllama } from "react-icons/si"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
@@ -23,6 +23,7 @@ import {
   hasActionableProposedPlan,
   isLatestTurnSettled,
 } from "@/features/projects/components/assistant/chat/session-logic"
+import { LiveShimmerText } from "@/components/ui/live-shimmer-text"
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { cn, formatRelativeTimeLabel } from "@/lib/utils"
 import {
@@ -31,12 +32,21 @@ import {
   SIDEBAR_PILL_NESTED_ROW_CLASS,
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
 } from "@/features/projects/ui/sidebar/projectSidebarShared"
-import { createAssistantThreadSelectorById, useStore } from "@/stores/assistant-store"
-import type { Thread as AssistantThread } from "@/stores/types"
+import {
+  isSidebarActivityLive,
+  resolveDevServerActivity,
+  type SidebarActivity,
+} from "@/features/projects/ui/sidebar/sidebarActivity"
+import { resolveThreadActivity } from "@/features/projects/ui/sidebar/sidebarActivitySelectors"
+import type { DevServerStatus } from "@/features/dev-server/devServerRunStore"
+import { createAssistantThreadSelectorById, useStore } from "@/features/assistant/model/assistantStore"
+import type { Thread as AssistantThread } from "@/features/assistant/model/types"
 import type {
   WorkbenchLaneSidebarSummary,
+  WorkbenchSidebarAssistantTileSummary,
   WorkbenchSidebarSurfaceTileSummary,
 } from "@/features/workbench/model/workbenchStore"
+import { useTileActivityStore } from "@/features/workbench/model/tileActivityStore"
 import { getWorkbenchTileDefinition } from "@/features/workbench/model/workbenchTileRegistry"
 
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
@@ -400,11 +410,147 @@ function AgentTimeLabel(props: { threadId?: string | null }) {
   )
 }
 
+/**
+ * Gutter indicator for a surface tile that is executing something. Sits in the
+ * same 16px gutter the agent rows use, clear of the row's own glyph.
+ */
+function TileActivityIndicator(props: { activity: SidebarActivity; label: string }) {
+  if (props.activity === "idle") return null
+  return (
+    <div
+      className="absolute left-[16px] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+      title={props.label}
+    >
+      {props.activity === "starting" ? (
+        <div className="loader" />
+      ) : (
+        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+      )}
+    </div>
+  )
+}
+
+/** Row label: shimmers while the tile is executing, plain text otherwise. */
+function TileRowLabel(props: {
+  activity: SidebarActivity
+  title: string
+  overflowTitle?: string
+}) {
+  if (isSidebarActivityLive(props.activity)) {
+    return (
+      <LiveShimmerText
+        className="min-w-0 flex-1"
+        title={props.overflowTitle}
+        baseClassName="text-sidebar-foreground"
+        sweepClassName="text-muted-foreground"
+      >
+        {props.title}
+      </LiveShimmerText>
+    )
+  }
+  return (
+    <span className="min-w-0 flex-1 truncate" title={props.overflowTitle}>
+      {props.title}
+    </span>
+  )
+}
+
+function AgentTileRow(props: {
+  tile: WorkbenchSidebarAssistantTileSummary
+  isActiveTile: boolean
+  overflowTitle?: string
+  onOpen: () => void
+}) {
+  const { tile, isActiveTile, overflowTitle, onOpen } = props
+  const threadSelector = useMemo(
+    () => createAssistantThreadSelectorById(tile.threadId),
+    [tile.threadId],
+  )
+  const thread = useStore(threadSelector)
+  const activity = resolveThreadActivity(thread)
+
+  return (
+    <button
+      type="button"
+      data-sidebar-tile-row={tile.id}
+      data-sidebar-tile-type="assistantChat"
+      data-sidebar-tile-active={isActiveTile || undefined}
+      data-sidebar-tile-activity={activity !== "idle" ? activity : undefined}
+      className={cn("relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS, isActiveTile && SIDEBAR_PILL_ACTIVE_CLASS)}
+      onClick={onOpen}
+    >
+      <div className="absolute left-[16px] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+        <AgentStatusPill threadId={tile.threadId} />
+      </div>
+      <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
+        <ProviderGlyph
+          provider={tile.provider}
+          className={cn("size-[18px] shrink-0", providerGlyphColorClass(tile.provider, isActiveTile))}
+        />
+        <TileRowLabel activity={activity} title={tile.title} overflowTitle={overflowTitle} />
+        <AgentTimeLabel threadId={tile.threadId} />
+      </div>
+    </button>
+  )
+}
+
+function SurfaceTileRow(props: {
+  tile: WorkbenchSidebarSurfaceTileSummary
+  isActiveTile: boolean
+  devServerStatus?: DevServerStatus
+  overflowTitle?: string
+  onOpen: () => void
+}) {
+  const { tile, isActiveTile, devServerStatus, overflowTitle, onOpen } = props
+
+  // The built-in Dev Server surface is driven by the lane's run store; every
+  // other surface publishes its own state from inside the tile.
+  const isBuiltInDevServer = tile.type === "devServer" && !tile.devAppId
+  const publishedActivity = useTileActivityStore(
+    useCallback((state) => state.activityByTileId[tile.id] ?? "idle", [tile.id]),
+  )
+  const activity = isBuiltInDevServer
+    ? resolveDevServerActivity(devServerStatus)
+    : publishedActivity
+
+  return (
+    <button
+      type="button"
+      data-sidebar-tile-row={tile.id}
+      data-sidebar-tile-type={tile.type}
+      data-sidebar-tile-active={isActiveTile || undefined}
+      data-sidebar-tile-activity={activity !== "idle" ? activity : undefined}
+      className={cn("relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS, isActiveTile && SIDEBAR_PILL_ACTIVE_CLASS)}
+      onClick={onOpen}
+    >
+      <TileActivityIndicator
+        activity={activity}
+        label={activity === "starting" ? `Starting ${tile.title}` : `${tile.title} is running`}
+      />
+      <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
+        <SurfaceTileGlyph
+          favicon={tile.favicon}
+          devAppId={tile.devAppId}
+          logoDataUrl={tile.logoDataUrl}
+          title={tile.title}
+          type={tile.type}
+          className={cn(
+            "size-[18px] shrink-0 text-muted-foreground/75",
+            isActiveTile && "text-[var(--sidebar-pill-hover-fg)]",
+          )}
+        />
+        <TileRowLabel activity={activity} title={tile.title} overflowTitle={overflowTitle} />
+      </div>
+    </button>
+  )
+}
+
 interface SidebarLaneTilesProps {
   activeLaneSummary: WorkbenchLaneSidebarSummary | null
   activeSelectionLevel: SidebarActiveSelectionLevel
   activeTileId: string | null
   hasHeadlessDevServer: boolean
+  activeDevServerStatus?: DevServerStatus
   onOpenLaneWorkbench: (options?: {
     openTile?: "assistantChat" | "devServer" | "terminal"
     focusTileId?: string
@@ -417,11 +563,13 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
     activeSelectionLevel,
     activeTileId,
     hasHeadlessDevServer,
+    activeDevServerStatus,
     onOpenLaneWorkbench,
   } = props
   const agents = activeLaneSummary?.agents ?? []
   const surfaces = activeLaneSummary?.surfaces ?? []
   const resolvedActiveTileId = activeSelectionLevel === "tile" ? activeTileId : null
+  const headlessDevServerActivity = resolveDevServerActivity(activeDevServerStatus)
   const { containerRef: rootRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
     font: SIDEBAR_LANE_LABEL_FONT,
   })
@@ -443,86 +591,45 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
   return (
     <div ref={rootRef} className="w-full space-y-0.5 pt-0.5">
       {agents.map((tile) => (
-        <button
+        <AgentTileRow
           key={tile.id}
-          type="button"
-          data-sidebar-tile-row={tile.id}
-          data-sidebar-tile-type="assistantChat"
-          data-sidebar-tile-active={resolvedActiveTileId === tile.id || undefined}
-          className={cn(
-            "relative w-full",
-            SIDEBAR_PILL_NESTED_ROW_CLASS,
-            resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
-          )}
-          onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
-        >
-          <div className="absolute left-[16px] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
-            <AgentStatusPill threadId={tile.threadId} />
-          </div>
-          <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
-            <ProviderGlyph
-              provider={tile.provider}
-              className={cn(
-                "size-[18px] shrink-0",
-                providerGlyphColorClass(tile.provider, resolvedActiveTileId === tile.id),
-              )}
-            />
-            <span className="min-w-0 flex-1 truncate" title={shouldShowAgentTitle(tile.title) ? tile.title : undefined}>
-              {tile.title}
-            </span>
-            <AgentTimeLabel threadId={tile.threadId} />
-          </div>
-        </button>
+          tile={tile}
+          isActiveTile={resolvedActiveTileId === tile.id}
+          overflowTitle={shouldShowAgentTitle(tile.title) ? tile.title : undefined}
+          onOpen={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
+        />
       ))}
       {surfaces.map((tile) => (
-        <button
+        <SurfaceTileRow
           key={tile.id}
-          type="button"
-          data-sidebar-tile-row={tile.id}
-          data-sidebar-tile-type={tile.type}
-          data-sidebar-tile-active={resolvedActiveTileId === tile.id || undefined}
-          className={cn(
-            "w-full",
-            SIDEBAR_PILL_NESTED_ROW_CLASS,
-            resolvedActiveTileId === tile.id && SIDEBAR_PILL_ACTIVE_CLASS,
-          )}
-          onClick={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
-        >
-          <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
-            <SurfaceTileGlyph
-              favicon={tile.favicon}
-              devAppId={tile.devAppId}
-              logoDataUrl={tile.logoDataUrl}
-              title={tile.title}
-              type={tile.type}
-              className={cn(
-                "size-[18px] shrink-0 text-muted-foreground/75",
-                resolvedActiveTileId === tile.id && "text-[var(--sidebar-pill-hover-fg)]",
-              )}
-            />
-            <span className="min-w-0 flex-1 truncate" title={shouldShowSurfaceTitle(tile.title) ? tile.title : undefined}>
-              {tile.title}
-            </span>
-          </div>
-        </button>
+          tile={tile}
+          isActiveTile={resolvedActiveTileId === tile.id}
+          devServerStatus={activeDevServerStatus}
+          overflowTitle={shouldShowSurfaceTitle(tile.title) ? tile.title : undefined}
+          onOpen={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
+        />
       ))}
       {hasHeadlessDevServer ? (
         <button
           type="button"
           data-sidebar-tile-type="devServer"
           data-sidebar-headless-dev-server
-          className={cn("w-full", SIDEBAR_PILL_NESTED_ROW_CLASS)}
+          className={cn("relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS)}
           onClick={() => onOpenLaneWorkbench({ openTile: "devServer" })}
           aria-label="Open running Dev Server"
         >
+          <TileActivityIndicator
+            activity={headlessDevServerActivity}
+            label={headlessDevServerActivity === "starting" ? "Starting dev server" : "Dev server running"}
+          />
           <div className={SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS}>
             <SurfaceTileGlyph
               title="Dev Server"
               type="devServer"
               className="size-[18px] shrink-0 text-muted-foreground/75"
             />
-            <span className="min-w-0 flex-1 truncate">Dev Server</span>
-            <span className="shrink-0 text-[10px] text-muted-foreground/55">Running</span>
+            <TileRowLabel activity={headlessDevServerActivity} title="Dev Server" />
+            <span className="shrink-0 text-[10px] text-emerald-500/90 font-medium">Running</span>
           </div>
         </button>
       ) : null}

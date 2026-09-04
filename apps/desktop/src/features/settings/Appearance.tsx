@@ -18,6 +18,8 @@ import type { Theme } from "@/lib/theme";
 import { cn } from "../../lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { useLanguage, useTranslation, LANGUAGES, type Language } from "@/lib/i18n";
+import { PROJECT_ICON_SETS, useProjectIconSetsStore } from "@/features/projects/model/projectIconSetsStore";
+import { ProjectPixelInvaderIcon } from "@/features/projects/ui/ProjectPixelInvaderIcon";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'
@@ -32,6 +34,8 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
   const [transparencyOff, setTransparencyOff] = useState(false);
+  const enabledSets = useProjectIconSetsStore((state) => state.enabledSets);
+  const iconSetActions = useProjectIconSetsStore((state) => state.actions);
 
   const themes: {
     value: Theme;
@@ -155,6 +159,39 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
             </div>
           </div>
         </TooltipProvider>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>Project Icons</SettingsSectionTitle>
+        <SettingsSectionDescription>
+          Activate retro arcade icon sets for projects in the sidebar. When all sets are disabled, projects use clean library folder icons.
+        </SettingsSectionDescription>
+        <SettingsGroup>
+          {PROJECT_ICON_SETS.map((setMeta, index) => {
+            const isEnabled = enabledSets[setMeta.id];
+            return (
+              <SettingsRow key={setMeta.id} isFirst={index === 0}>
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 p-1.5 rounded-md bg-muted/40 shrink-0">
+                    <ProjectPixelInvaderIcon name="sample-1" forceSetId={setMeta.id} sampleIndex={0} className="size-4" />
+                    <ProjectPixelInvaderIcon name="sample-2" forceSetId={setMeta.id} sampleIndex={1} className="size-4" />
+                    <ProjectPixelInvaderIcon name="sample-3" forceSetId={setMeta.id} sampleIndex={2} className="size-4" />
+                  </div>
+                  <SettingsRowLabel
+                    title={setMeta.name}
+                    description={setMeta.description}
+                  />
+                </div>
+                <SettingsRowControl>
+                  <Switch
+                    checked={isEnabled}
+                    onCheckedChange={(checked) => iconSetActions.setSetEnabled(setMeta.id, checked)}
+                  />
+                </SettingsRowControl>
+              </SettingsRow>
+            );
+          })}
+        </SettingsGroup>
       </section>
 
       <section>

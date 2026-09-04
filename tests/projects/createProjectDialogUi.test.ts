@@ -9,7 +9,7 @@ function readWorkspaceSource(relativePath: string): string {
 
 describe("create project dialog UI", () => {
   const dialogSource = readWorkspaceSource(
-    "apps/desktop/src/features/projects/components/CreateProjectDialog.tsx",
+    "apps/desktop/src/features/projects/ui/CreateProjectDialog.tsx",
   )
 
   it("renders the project setup dialog on an opaque readable surface", () => {

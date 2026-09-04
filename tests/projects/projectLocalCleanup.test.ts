@@ -103,7 +103,7 @@ vi.mock("@/features/projects/workspaces/useWorkspaceRuntimeStore", () => ({
   },
 }))
 
-vi.mock("@/stores/useProjectWorkbenchStore", () => ({
+const mockWorkbenchStore = {
   useProjectWorkbenchStore: {
     getState: () => ({
       workbenches: {
@@ -128,7 +128,10 @@ vi.mock("@/stores/useProjectWorkbenchStore", () => ({
       actions: { removeProject: removeProjectWorkbench },
     }),
   },
-}))
+}
+
+vi.mock("@/features/workbench/model/workbenchStore", () => mockWorkbenchStore)
+vi.mock("@/stores/useProjectWorkbenchStore", () => mockWorkbenchStore)
 
 vi.mock("@/stores/useQueryCache", () => ({
   useQueryCache: {

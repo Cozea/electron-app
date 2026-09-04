@@ -22,7 +22,7 @@ describe("stale local project binding recovery", () => {
   const createProjectDialogSource = readFileSync(
     resolve(
       process.cwd(),
-      "apps/desktop/src/features/projects/components/CreateProjectDialog.tsx",
+      "apps/desktop/src/features/projects/ui/CreateProjectDialog.tsx",
     ),
     "utf8",
   )

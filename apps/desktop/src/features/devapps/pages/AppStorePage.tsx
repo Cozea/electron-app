@@ -33,7 +33,7 @@ import {
   type AppStoreItem,
   type AppStoreScope,
   type AppStoreSectionId,
-} from "@/features/projects/lib/appStoreSections"
+} from "@/features/devapps/model/appStoreSections"
 import { useProjectHeader } from "@/hooks/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
 import { featureFlags } from "@/lib/featureFlags"

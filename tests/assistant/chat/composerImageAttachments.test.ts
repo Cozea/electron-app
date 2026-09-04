@@ -5,14 +5,14 @@ import { describe, expect, it } from "vitest"
 const controllerSource = readFileSync(
   resolve(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/workbench/assistant/useWorkbenchAssistantTileController.tsx",
+    "apps/desktop/src/features/workbench/assistant/useWorkbenchAssistantTileController.tsx",
   ),
   "utf8",
 )
 const chatSurfaceSource = readFileSync(
   resolve(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/assistant/chat/CozeaChatSurface.tsx",
+    "apps/desktop/src/features/assistant/chat/CozeaChatSurface.tsx",
   ),
   "utf8",
 )

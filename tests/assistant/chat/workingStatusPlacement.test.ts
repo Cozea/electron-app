@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const timelineSource = readFileSync(
   resolve(
     process.cwd(),
-    "apps/desktop/src/features/projects/components/assistant/chat/MessagesTimeline.tsx",
+    "apps/desktop/src/features/assistant/chat/MessagesTimeline.tsx",
   ),
   "utf8",
 );

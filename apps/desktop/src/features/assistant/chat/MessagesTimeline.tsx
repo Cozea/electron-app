@@ -56,6 +56,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { asHugeIcon } from "@/lib/icons/asHugeIcon";
+import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
@@ -1594,30 +1595,6 @@ const WorkingTimer = memo(function WorkingTimer(props: { startedAtIso: string })
   }, [props.startedAtIso]);
 
   return <span ref={textRef}>{initialText}</span>;
-});
-
-const LiveShimmerText = memo(function LiveShimmerText(props: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "cozea-live-shimmer relative inline-block max-w-full overflow-hidden",
-        props.className,
-      )}
-    >
-      <span className="text-muted-foreground/75">{props.children}</span>
-      <span
-        aria-hidden
-        className="cozea-live-shimmer-focus pointer-events-none absolute inset-y-0 select-none"
-      >
-        <span className="cozea-live-shimmer-counter block">
-          <span className="cozea-live-shimmer-aligned block text-foreground">{props.children}</span>
-        </span>
-      </span>
-    </span>
-  );
 });
 
 const TurnStatusRow = memo(function TurnStatusRow(props: {

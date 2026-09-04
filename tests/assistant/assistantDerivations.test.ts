@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest"
 import { EventId, MessageId, TurnId } from "@cozea/assistant-contracts"
 
-import { isIntentionalAbortMessage, normalizeThreadError } from "../../apps/desktop/src/features/projects/components/assistant/lib/assistantErrors"
+import { isIntentionalAbortMessage, normalizeThreadError } from "../../apps/desktop/src/features/assistant/lib/assistantErrors"
 import {
   buildRevertTurnCountByUserMessageId,
   buildTurnDiffSummaryByAssistantMessageId,
   deriveCompletionDividerBeforeEntryId,
   deriveCompletionSummariesByMessageId,
-} from "../../apps/desktop/src/features/projects/components/assistant/chat/threadTimelineDerivations"
-import type { TimelineEntry } from "../../apps/desktop/src/features/projects/components/assistant/chat/timelineDerivations"
-import type { ChatMessage, TurnDiffSummary } from "../../apps/desktop/src/stores/types"
+} from "../../apps/desktop/src/features/assistant/chat/threadTimelineDerivations"
+import type { TimelineEntry } from "../../apps/desktop/src/features/assistant/chat/timelineDerivations"
+import type { ChatMessage, TurnDiffSummary } from "../../apps/desktop/src/features/assistant/model/types"
 
 describe("assistant error policy", () => {
   it("treats user interruption messages as non-sticky errors", () => {

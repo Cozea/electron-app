@@ -47,7 +47,7 @@ describe("DevApp worker security architecture", () => {
   })
 
   it("creates each device container exactly once before starting it", () => {
-    const helper = read("native/devapp-container-runtime/Sources/CozeaDevAppContainerRuntime/main.swift")
+    const helper = read("native/devapp-container-runtime/Sources/CozeaDevAppContainerRuntime/CozeaDevAppContainerRuntime.swift")
     expect(helper.match(/try await container\.create\(\)/g)).toHaveLength(1)
     expect(helper).toContain("try await container.start()")
   })
@@ -75,7 +75,7 @@ describe("DevApp worker security architecture", () => {
   it("revokes worker authority by terminating the shared contained runtime", () => {
     const handlers = read("apps/desktop/electron/ipc/registerOrgDevAppHandlers.ts")
     const published = read("apps/desktop/electron/services/PublishedDevAppRuntimeService.ts")
-    const tile = read("apps/desktop/src/features/projects/components/workbench/WorkbenchOrgDevAppTile.tsx")
+    const tile = read("apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx")
     expect(handlers).toMatch(/"orgDevApp:revokePublishedWorker",\s+async/)
     expect(handlers).toContain("await service.stopRuntime(")
     expect(handlers).toContain("await publishedRuntime.stopFor(options.ref, options.workspaceId)")

@@ -52,7 +52,7 @@ describe("T3 runtime preview browser surfaces", () => {
     const source = fs.readFileSync(
       path.join(
         process.cwd(),
-        "apps/desktop/src/features/projects/components/workbench/WorkbenchDevServerTile.tsx",
+        "apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx",
       ),
       "utf8",
     );
@@ -81,7 +81,7 @@ describe("T3 runtime preview browser surfaces", () => {
     const source = fs.readFileSync(
       path.join(
         process.cwd(),
-        "apps/desktop/src/features/projects/components/workbench/WorkbenchDockPanels.tsx",
+        "apps/desktop/src/features/workbench/WorkbenchDockPanels.tsx",
       ),
       "utf8",
     );
