@@ -19,7 +19,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
       candidate?.payload?.message ||
         candidate?.message ||
         candidate?.error ||
-        `Collaboration gateway request failed (${response.status})`,
+        `Request failed (${response.status})`,
     )
   }
   return payload as T
@@ -57,6 +57,31 @@ export async function requestCollaborationRepositoryCredential(args: {
     throw new Error("Repository credential response is invalid")
   }
   return credential
+}
+
+export async function resolveGitHubBranchHead(
+  credential: CollaborationRepositoryCredentialResponse,
+  branch: string,
+): Promise<string> {
+  const normalizedBranch = branch.trim()
+  if (!normalizedBranch) throw new Error("Git branch is required")
+  const encodedBranch = normalizedBranch.split("/").map(encodeURIComponent).join("/")
+  const response = await fetch(
+    `https://api.github.com/repos/${credential.fullName}/git/ref/heads/${encodedBranch}`,
+    {
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${credential.token}`,
+        "x-github-api-version": "2022-11-28",
+      },
+    },
+  )
+  const result = await parseResponse<{ object?: { sha?: string } }>(response)
+  const commitSha = result.object?.sha?.trim().toLowerCase() ?? ""
+  if (!/^[0-9a-f]{40}$/.test(commitSha)) {
+    throw new Error("GitHub did not return an exact branch commit")
+  }
+  return commitSha
 }
 
 export async function verifyCollaborationPush(args: {
