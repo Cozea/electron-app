@@ -1,42 +1,42 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import { type OrgDevAppDiagnostic, type OrgDevAppPreflightReport } from "../../../../shared/orgDevAppDiagnostics"
-import { DEV_APP_MANIFEST_FILENAME, parseDevAppPackage, type DevAppPackage } from "../../../../shared/devAppPackage"
-
-/**
- * Everything about a project that can be known before spending minutes on a build.
- *
- * The publish pipeline validates only after building, so a project with three problems
- * costs three builds to discover them. This reports all of them at once, in well under a
- * second, in a form an agent can act on.
- */
+import {
+  type OrgDevAppDiagnostic,
+  type OrgDevAppPreflightReport,
+} from "../../../../shared/orgDevAppDiagnostics"
+import {
+  NATIVE_DEV_APP_MANIFEST_FILENAME,
+  parseNativeDevAppManifest,
+  type NativeDevAppManifestV3,
+} from "../../../../shared/nativeDevAppManifest"
 
 const ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"] as const
-const NEXT_CONFIG_FILES = ["next.config.ts", "next.config.js", "next.config.mjs", "next.config.cjs"] as const
 
 function readJsonObject(filePath: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"))
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
   } catch {
     return null
   }
 }
 
-function dependencyNames(pkg: Record<string, unknown> | null): {
-  runtime: Set<string>
-  all: Set<string>
-} {
+function dependencyNames(pkg: Record<string, unknown> | null): Set<string> {
   const asRecord = (value: unknown): Record<string, unknown> =>
-    value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
-  const runtime = new Set(Object.keys(asRecord(pkg?.dependencies)))
-  const all = new Set([...runtime, ...Object.keys(asRecord(pkg?.devDependencies))])
-  return { runtime, all }
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  return new Set([
+    ...Object.keys(asRecord(pkg?.dependencies)),
+    ...Object.keys(asRecord(pkg?.devDependencies)),
+  ])
 }
 
 export function detectFramework(projectRoot: string): string {
-  const { all } = dependencyNames(readJsonObject(path.join(projectRoot, "package.json")))
+  const all = dependencyNames(readJsonObject(path.join(projectRoot, "package.json")))
   if (all.has("next")) return "nextjs"
   if (all.has("nuxt")) return "nuxt"
   if (all.has("astro")) return "astro"
@@ -46,32 +46,7 @@ export function detectFramework(projectRoot: string): string {
   if (all.has("vite") && all.has("svelte")) return "vite-svelte"
   if (all.has("vite")) return "vite-react"
   if (all.has("gatsby")) return "gatsby"
-  return "web"
-}
-
-/**
- * Next config is TypeScript more often than not, so it cannot be imported here without a
- * transform. Reading it as text is imprecise by construction: a config that computes its
- * `output` at runtime reads as absent. Both `output` diagnostics are therefore warnings
- * rather than blockers — better a false warning than a false refusal to publish.
- */
-function readNextOutputMode(projectRoot: string): "standalone" | "export" | "unknown" | "absent" {
-  for (const candidate of NEXT_CONFIG_FILES) {
-    const configPath = path.join(projectRoot, candidate)
-    if (!fs.existsSync(configPath)) continue
-    let source: string
-    try {
-      source = fs.readFileSync(configPath, "utf8")
-    } catch {
-      return "unknown"
-    }
-    if (/output\s*:\s*["'`]standalone["'`]/.test(source)) return "standalone"
-    if (/output\s*:\s*["'`]export["'`]/.test(source)) return "export"
-    // An `output` key whose value we cannot read statically.
-    if (/\boutput\s*:/.test(source)) return "unknown"
-    return "absent"
-  }
-  return "absent"
+  return "native-react"
 }
 
 function publicEnvKeys(projectRoot: string): { file: string; keys: string[] }[] {
@@ -90,145 +65,148 @@ function publicEnvKeys(projectRoot: string): { file: string; keys: string[] }[] 
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#"))
       .map((line) => line.split("=", 1)[0]?.trim() ?? "")
-      .filter((key) => key.startsWith("NEXT_PUBLIC_") || key.startsWith("VITE_") || key.startsWith("PUBLIC_"))
+      .filter(
+        (key) =>
+          key.startsWith("NEXT_PUBLIC_") ||
+          key.startsWith("VITE_") ||
+          key.startsWith("PUBLIC_"),
+      )
     if (keys.length > 0) found.push({ file: candidate, keys })
   }
   return found
 }
 
-function detectPackageManagerBuild(projectRoot: string): string | null {
+function hasBuildScript(projectRoot: string): boolean {
   const pkg = readJsonObject(path.join(projectRoot, "package.json"))
   const scripts = pkg?.scripts
   const build =
     scripts && typeof scripts === "object" && !Array.isArray(scripts)
       ? (scripts as Record<string, unknown>).build
       : undefined
-  if (typeof build !== "string" || !build.trim()) return null
-  if (fs.existsSync(path.join(projectRoot, "bun.lock")) || fs.existsSync(path.join(projectRoot, "bun.lockb"))) {
-    return "bun run build"
-  }
-  if (fs.existsSync(path.join(projectRoot, "pnpm-lock.yaml"))) return "pnpm run build"
-  if (fs.existsSync(path.join(projectRoot, "yarn.lock"))) return "yarn build"
-  return "npm run build"
+  return typeof build === "string" && build.trim().length > 0
 }
 
-/** Static analysis of a project root. Never builds, never spawns, never writes. */
-export function preflightProject(projectRoot: string): OrgDevAppPreflightReport {
-  const resolvedRoot = path.resolve(projectRoot)
+function readManifest(
+  projectRoot: string,
+  diagnostics: OrgDevAppDiagnostic[],
+): NativeDevAppManifestV3 | null {
+  const manifestPath = path.join(projectRoot, NATIVE_DEV_APP_MANIFEST_FILENAME)
+  if (!fs.existsSync(manifestPath)) {
+    diagnostics.push({
+      code: "devapp-manifest-invalid",
+      severity: "blocker",
+      message: "This project has no native DevApp manifest.",
+      fix: "Add a manifestVersion 3 cozea-devapp.json or create a native DevApp project.",
+      paths: [NATIVE_DEV_APP_MANIFEST_FILENAME],
+    })
+    return null
+  }
+  const parsed = parseNativeDevAppManifest(fs.readFileSync(manifestPath, "utf8"))
+  if (!parsed.manifest) {
+    diagnostics.push({
+      code: "devapp-manifest-invalid",
+      severity: "blocker",
+      message: "cozea-devapp.json is invalid.",
+      detail: parsed.diagnostics
+        .map((entry) => entry.message)
+        .join(" ")
+        .slice(0, 1_000),
+      fix: "Fix the manifest v3 diagnostics before previewing or publishing.",
+      paths: [NATIVE_DEV_APP_MANIFEST_FILENAME],
+    })
+    return null
+  }
+  return parsed.manifest
+}
+
+function validateDeclaredOutputs(
+  projectRoot: string,
+  manifest: NativeDevAppManifestV3,
+  diagnostics: OrgDevAppDiagnostic[],
+): void {
+  for (const [id, module] of Object.entries(manifest.rendererModules ?? {})) {
+    if (!fs.existsSync(path.join(projectRoot, module.output))) {
+      diagnostics.push({
+        code: "no-publishable-output",
+        severity: "warning",
+        message: `Native renderer ${id} has not been built yet.`,
+        detail: module.output,
+        fix: "Run `bun run build` before publishing.",
+        paths: [module.output],
+      })
+    }
+  }
+  if (manifest.extension && !fs.existsSync(path.join(projectRoot, manifest.extension.output))) {
+    diagnostics.push({
+      code: "no-publishable-output",
+      severity: "warning",
+      message: "The extension worker has not been built yet.",
+      detail: manifest.extension.output,
+      fix: "Run `bun run build` before publishing.",
+      paths: [manifest.extension.output],
+    })
+  }
+  for (const [id, application] of Object.entries(manifest.webApplications ?? {})) {
+    if (application.entry && !fs.existsSync(path.join(projectRoot, application.entry))) {
+      diagnostics.push({
+        code: "no-publishable-output",
+        severity: "warning",
+        message: `Web application ${id} has not been built yet.`,
+        detail: application.entry,
+        fix: "Run the declared production build before publishing.",
+        paths: [application.entry],
+      })
+    }
+  }
+}
+
+/** Static analysis of a DevApp project. Never builds, spawns, or writes. */
+export function preflightProject(projectRootInput: string): OrgDevAppPreflightReport {
+  const projectRoot = path.resolve(projectRootInput)
   const diagnostics: OrgDevAppDiagnostic[] = []
-  const packageJsonPath = path.join(resolvedRoot, "package.json")
+  const packageJsonPath = path.join(projectRoot, "package.json")
 
   if (!fs.existsSync(packageJsonPath)) {
     diagnostics.push({
       code: "not-node-project",
       severity: "blocker",
-      message: "This folder has no package.json, so Cozea cannot build a DevApp from it.",
-      fix: "Publish from the directory that contains the project's package.json.",
+      message: "This folder has no package.json, so Cozea cannot build its DevApp outputs.",
+      fix: "Open the directory containing the native DevApp package.json.",
       paths: ["package.json"],
     })
     return { ok: false, framework: "unknown", expectedRuntimeKind: "unknown", diagnostics }
   }
 
-  const framework = detectFramework(resolvedRoot)
-  const buildCommand = detectPackageManagerBuild(resolvedRoot)
-  const manifestPath = path.join(resolvedRoot, DEV_APP_MANIFEST_FILENAME)
-  let authoredPackage: DevAppPackage | null = null
-  if (fs.existsSync(manifestPath)) {
-    const parsed = parseDevAppPackage(fs.readFileSync(manifestPath, "utf8"))
-    authoredPackage = parsed.manifest
-    if (!authoredPackage) {
-      diagnostics.push({
-        code: "devapp-manifest-invalid",
-        severity: "blocker",
-        message: "cozea-devapp.json is invalid.",
-        detail: parsed.diagnostics
-          .map((entry) => entry.message)
-          .join(" ")
-          .slice(0, 1_000),
-        fix: "Fix the v2 DevApp manifest before publishing.",
-        paths: [DEV_APP_MANIFEST_FILENAME],
-      })
-    }
-  }
-
-  if (!buildCommand) {
+  const manifest = readManifest(projectRoot, diagnostics)
+  if (!hasBuildScript(projectRoot)) {
     diagnostics.push({
       code: "no-build-script",
       severity: "blocker",
-      message: "This project has no build script.",
-      detail: "Org DevApps publish a production artifact, not a localhost preview.",
-      fix: 'Add a "build" script to package.json that produces a static UI or a portable service output.',
+      message: "This DevApp project has no build script.",
+      detail: "Published releases contain immutable ESM/web/service outputs, not source files.",
+      fix: 'Add a "build" script, normally "cozea-devapp build".',
       paths: ["package.json"],
     })
   }
 
-  let expectedRuntimeKind: OrgDevAppPreflightReport["expectedRuntimeKind"] = "unknown"
+  if (manifest) validateDeclaredOutputs(projectRoot, manifest, diagnostics)
 
-  if (authoredPackage?.service?.runtimeKind === "node") {
-    expectedRuntimeKind = "service"
-  } else if (authoredPackage) {
-    expectedRuntimeKind = "static"
-  } else if (framework === "nextjs") {
-    const outputMode = readNextOutputMode(resolvedRoot)
-    if (outputMode === "export") {
-      expectedRuntimeKind = "static"
-    } else if (outputMode === "standalone") {
-      expectedRuntimeKind = "service"
-    } else if (outputMode === "absent") {
-      expectedRuntimeKind = "service"
-      diagnostics.push({
-        code: "next-missing-standalone",
-        severity: "blocker",
-        message: "This Next.js app does not declare a publishable output mode.",
-        detail: "Next builds a server that expects the project directory, which never ships to consumers.",
-        fix: 'Add output: "standalone" to next.config for a Service DevApp, or output: "export" for a static one.',
-        paths: [NEXT_CONFIG_FILES.find((f) => fs.existsSync(path.join(resolvedRoot, f))) ?? "next.config.ts"],
-      })
-    } else {
-      diagnostics.push({
-        code: "next-missing-standalone",
-        severity: "warning",
-        message: "Cozea could not statically determine this Next.js app's output mode.",
-        detail: "next.config sets output to a computed value, so publishing may still fail after the build.",
-        fix: 'Set output to a literal "standalone" or "export" if publishing fails.',
-      })
-    }
-  } else if (framework === "nuxt") {
-    expectedRuntimeKind = "service"
-  } else {
-    const declaresService = readJsonObject(packageJsonPath)?.cozeaDevApp
-    expectedRuntimeKind =
-      declaresService && typeof declaresService === "object" && "service" in (declaresService as object)
-        ? "service"
-        : "static"
-  }
-
-  if (expectedRuntimeKind === "service" && !authoredPackage && !fs.existsSync(manifestPath)) {
-    diagnostics.push({
-      code: "contained-runtime-manifest-missing",
-      severity: "blocker",
-      message: "Published Service DevApps require an explicit contained-runtime manifest.",
-      detail: "A Node service cannot choose device/hosted placement or state ownership by inference.",
-      fix: "Add a v2 cozea-devapp.json that declares service.runtimeKind, service.entry, runtime.location, and runtime.state.",
-      paths: [DEV_APP_MANIFEST_FILENAME],
-    })
-  }
-
-  for (const { file, keys } of publicEnvKeys(resolvedRoot)) {
+  for (const { file, keys } of publicEnvKeys(projectRoot)) {
     diagnostics.push({
       code: "public-env-inlined",
       severity: "warning",
-      message: "Public environment values are compiled into the artifact at build time.",
-      detail: `${file} defines ${keys.join(", ")}. These become constants in the published bundle and cannot be reconfigured per consumer.`,
-      fix: "Make sure these hold the values every org member should receive, not this machine's local ones.",
+      message: "Public environment values are compiled into an adopted web application.",
+      detail: `${file} defines ${keys.join(", ")}. These values cannot be changed per consumer after publication.`,
+      fix: "Keep secrets in a contained service or declared runtime configuration.",
       paths: [file],
     })
   }
 
+  const hasServices = manifest ? Object.keys(manifest.services ?? {}).length > 0 : false
   return {
-    ok: !diagnostics.some((diagnostic) => diagnostic.severity === "blocker"),
-    framework,
-    expectedRuntimeKind,
+    ok: !diagnostics.some((entry) => entry.severity === "blocker"),
+    framework: manifest?.rendererModules ? "native-react" : detectFramework(projectRoot),
+    expectedRuntimeKind: hasServices ? "service" : manifest ? "static" : "unknown",
     diagnostics,
   }
 }

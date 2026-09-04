@@ -1,24 +1,29 @@
 import type { DevAppGrant } from "./devAppCapabilities"
-import type { DevAppPackageDiagnostic, DevAppPackageToolSpec } from "./devAppPackage"
+import type {
+  NativeDevAppDiagnostic,
+  NativeDevAppToolSpec,
+} from "./nativeDevAppManifest"
 import type { DevAppTrustBadge } from "./devAppDevelopmentTrust"
 import type { OrgDevAppPreflightReport } from "./orgDevAppDiagnostics"
 
-/**
- * What the renderer is told about a development preview.
- *
- * Lives in shared rather than beside the session because both sides read it, and because
- * the tile must not be able to invent a status the host did not produce — it renders
- * these, and never the other way around.
- */
-
+/** What the renderer is told about a development preview. */
 export type DevAppPreviewView =
-  /** A framework dev server the author is already running. Hot reload comes free. */
+  | {
+      kind: "nativeReact"
+      appId: string
+      appVersion: string
+      surfaceId: string
+      moduleUrl: string
+      component: string
+      stylesUrl?: string
+    }
+  /** An adopted web application's local development server. */
   | { kind: "devServer"; url: string }
-  /** The same built output publishing would pack. No hot reload, but no surprises either. */
+  /** An adopted web application's built static output. */
   | { kind: "builtOutput"; entryPath: string; url: string }
   | { kind: "unavailable"; reason: string; fix?: string }
 
-/** Mirrors the worker host's state, which the tile shows so a crash loop is diagnosable. */
+/** Mirrors the extension host's state, which the tile shows so a crash loop is diagnosable. */
 export interface DevAppPreviewWorkerState {
   publicationId: string
   protocolVersion: number
@@ -29,34 +34,34 @@ export interface DevAppPreviewWorkerState {
 }
 
 export type DevAppPreviewStatus =
-  | { status: "invalid"; diagnostics: DevAppPackageDiagnostic[] }
+  | { status: "invalid"; diagnostics: NativeDevAppDiagnostic[] }
   | {
-    status: "needsApproval"
-    sourceId: string
-    name: string
-    requested: DevAppGrant
-    declaredTools: DevAppPackageToolSpec[]
-    /** Worker code executes out of process but is not an OS sandbox. */
-    workerExecution: boolean
-    /** Binds approval to the exact request the user was shown. */
-    approvalFingerprint: string
-    missing: string[]
-    badge: DevAppTrustBadge
-    preflight: OrgDevAppPreflightReport
-  }
+      status: "needsApproval"
+      sourceId: string
+      name: string
+      requested: DevAppGrant
+      declaredTools: NativeDevAppToolSpec[]
+      /** Extension code executes out of process but is not an OS sandbox in development. */
+      workerExecution: boolean
+      /** Binds approval to the exact request the user was shown. */
+      approvalFingerprint: string
+      missing: string[]
+      badge: DevAppTrustBadge
+      preflight: OrgDevAppPreflightReport
+    }
   | {
-    status: "running"
-    sourceId: string
-    name: string
-    view: DevAppPreviewView
-    grant: DevAppGrant
-    declaredTools: DevAppPackageToolSpec[]
-    badge: DevAppTrustBadge
-    preflight: OrgDevAppPreflightReport
-    worker: DevAppPreviewWorkerState | null
-    /** Changes whenever the view should reload. */
-    reloadToken: number
-  }
+      status: "running"
+      sourceId: string
+      name: string
+      view: DevAppPreviewView
+      grant: DevAppGrant
+      declaredTools: NativeDevAppToolSpec[]
+      badge: DevAppTrustBadge
+      preflight: OrgDevAppPreflightReport
+      worker: DevAppPreviewWorkerState | null
+      /** Changes whenever the renderer module or adopted web view should reload. */
+      reloadToken: number
+    }
 
 export type DevAppPreviewOpenResult =
   | { success: true; preview: DevAppPreviewStatus & { hotReload: boolean } }

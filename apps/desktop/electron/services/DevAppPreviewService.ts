@@ -18,19 +18,13 @@ import type { DevAppWorkerViewPortBootstrap } from "../../../../shared/devAppWor
 import type { DevAppWorkerState, DevAppWorkerTransferablePort } from "./DevAppWorkerHost"
 
 /**
- * Owns the development preview: the session, the watcher, and telling the renderer.
- *
- * The renderer never names a directory. It names a workspace and a path relative to that
- * workspace's root, and this joins them — so there is no message the renderer can send
- * that points outside the project, whatever it does with its own state. The session's own
- * containment check then stands as a second line rather than the only one.
+ * Owns one native/web development package session, its extension worker, file watcher and
+ * protected asset protocol. Native ESM modules are served to the main renderer; adopted web
+ * applications keep using an isolated browser partition.
  */
-
 export interface DevAppPreviewServiceDeps {
   worker: DevAppPreviewWorkerHost
-  /** Pushes a fresh status to whoever is showing this source. */
   broadcast: (sourceId: string, status: DevAppPreviewStatus) => void
-  /** Injected for tests; defaults to a recursive fs.watch. */
   watch?: DevAppWatch
   now?: () => number
 }
@@ -42,8 +36,6 @@ const nodeWatch: DevAppWatch = (root, onChange) => {
     })
     return { close: () => watcher.close() }
   } catch {
-    // Recursive watching is unavailable on some platforms and filesystems. The caller
-    // reports "no hot reload" rather than silently never reloading.
     return null
   }
 }
@@ -54,7 +46,8 @@ export class DevAppPreviewService {
   private readonly broadcast: (sourceId: string, status: DevAppPreviewStatus) => void
   private readonly roots = new Map<string, string>()
   private readonly entryPaths = new Map<string, string>()
-  private readonly registeredSessionProtocols = new WeakSet<Session>()
+  private readonly registeredBoundSessionProtocols = new WeakSet<Session>()
+  private readonly registeredRendererProtocols = new WeakSet<Session>()
   private readonly workerStateListeners = new Set<
     (sourceId: string, state: DevAppWorkerState) => void
   >()
@@ -84,12 +77,6 @@ export class DevAppPreviewService {
       }) ?? null
   }
 
-  /**
-   * Opens a package for preview.
-   *
-   * `relativePath` is resolved against the authorized workspace root by the caller's
-   * `workspaceRoot`, never taken as an absolute path from the renderer.
-   */
   open(options: {
     workspaceId: string
     workspaceRoot: string
@@ -116,7 +103,6 @@ export class DevAppPreviewService {
 
   private onChanged(sourceId: string): void {
     const status = this.session.reload(sourceId)
-    // A reload for a source that was closed mid-burst has nothing to report.
     if (status) {
       this.trackEntryPath(sourceId, status)
       this.broadcast(sourceId, status)
@@ -136,9 +122,7 @@ export class DevAppPreviewService {
     return this.session.status(sourceId)
   }
 
-  workerConnection(sourceId: string): {
-    protocolVersion: number
-  } | null {
+  workerConnection(sourceId: string): { protocolVersion: number } | null {
     const connection = this.session.workerConnection(sourceId)
     return connection ? { protocolVersion: connection.protocolVersion } : null
   }
@@ -176,35 +160,62 @@ export class DevAppPreviewService {
     this.entryPaths.delete(sourceId)
   }
 
+  /** Registers one source-confined handler in an isolated web preview partition. */
   registerProtocolForSession(targetSession: Session, sourceId: string): void {
-    if (this.registeredSessionProtocols.has(targetSession)) return
+    if (this.registeredBoundSessionProtocols.has(targetSession)) return
     if (!/^[0-9a-f]{32}$/.test(sourceId)) {
       throw new Error("The DevApp preview session key is invalid.")
     }
     targetSession.protocol.handle(ORG_DEVAPP_SCHEME, (request) =>
       this.handleProtocolRequest(sourceId, request),
     )
-    this.registeredSessionProtocols.add(targetSession)
+    this.registeredBoundSessionProtocols.add(targetSession)
+  }
+
+  /**
+   * Registers a multi-source handler in Cozea's main renderer session. The URL still carries an
+   * opaque source id and every request is checked against an open, authorized package root.
+   */
+  registerRendererProtocol(targetSession: Session): void {
+    if (this.registeredRendererProtocols.has(targetSession)) return
+    targetSession.protocol.handle(ORG_DEVAPP_SCHEME, (request) =>
+      this.handleProtocolRequest(null, request),
+    )
+    this.registeredRendererProtocols.add(targetSession)
   }
 
   private trackEntryPath(sourceId: string, status: DevAppPreviewStatus): void {
-    if (status.status === "running" && status.view.kind === "builtOutput") {
-      this.entryPaths.set(sourceId, status.view.entryPath)
-    } else {
+    if (status.status !== "running") {
       this.entryPaths.delete(sourceId)
+      return
     }
+    if (status.view.kind === "builtOutput") {
+      this.entryPaths.set(sourceId, status.view.entryPath)
+      return
+    }
+    if (status.view.kind === "nativeReact") {
+      const parsed = parseDevAppPreviewUrl(status.view.moduleUrl)
+      if (parsed) {
+        this.entryPaths.set(sourceId, parsed.assetPath)
+        return
+      }
+    }
+    this.entryPaths.delete(sourceId)
   }
 
-  private async handleProtocolRequest(boundSourceId: string, request: Request): Promise<Response> {
+  private async handleProtocolRequest(
+    boundSourceId: string | null,
+    request: Request,
+  ): Promise<Response> {
     const parsed = parseDevAppPreviewUrl(request.url)
-    if (!parsed || parsed.sourceId !== boundSourceId) {
+    if (!parsed || (boundSourceId !== null && parsed.sourceId !== boundSourceId)) {
       return new Response("Invalid DevApp preview URL", {
         status: 400,
         headers: { "content-type": "text/plain; charset=utf-8" },
       })
     }
-    const sourceRoot = this.roots.get(boundSourceId)
-    const entryPath = this.entryPaths.get(boundSourceId)
+    const sourceRoot = this.roots.get(parsed.sourceId)
+    const entryPath = this.entryPaths.get(parsed.sourceId)
     if (!sourceRoot || !entryPath) {
       return new Response("DevApp preview is no longer open", {
         status: 410,
@@ -233,6 +244,8 @@ export class DevAppPreviewService {
     const headers = new Headers(fileResponse.headers)
     headers.set("content-type", mimeForPreviewPath(filePath))
     headers.set("cache-control", "no-store")
+    headers.set("access-control-allow-origin", "*")
+    headers.set("cross-origin-resource-policy", "cross-origin")
     headers.set(
       "content-security-policy",
       "default-src 'self' https: data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; connect-src 'self' https: wss:; script-src 'self'; style-src 'self' 'unsafe-inline'",
@@ -259,6 +272,7 @@ const PREVIEW_MIME_TYPES: Readonly<Record<string, string>> = {
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".map": "application/json; charset=utf-8",
   ".png": "image/png",

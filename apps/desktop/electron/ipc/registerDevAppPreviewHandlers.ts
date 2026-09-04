@@ -4,15 +4,11 @@ import { resolveAuthorizedWorkspaceAccess } from "../workspaces/authorization"
 import type { DevAppPreviewService } from "../services/DevAppPreviewService"
 
 /**
- * IPC for the development preview.
+ * IPC for native/web DevApp development preview.
  *
- * The renderer names a workspace and a path relative to it, never a directory. The
- * workspace is resolved through the same authorization every other project operation goes
- * through, and the relative path is joined against the root that resolution returns — so
- * a compromised or confused renderer has no message it can send that reaches outside the
- * project it was granted.
+ * The renderer names a workspace and a path relative to it, never a directory. Main resolves
+ * that workspace through the same authorization every other project operation uses.
  */
-
 export const DEV_APP_PREVIEW_STATUS_CHANNEL = "devAppPreview:status"
 
 interface RegisterDevAppPreviewHandlersDeps {
@@ -20,7 +16,6 @@ interface RegisterDevAppPreviewHandlersDeps {
   getMainWindow: () => BrowserWindow | null
 }
 
-/** Source ids are hashes we produced; anything else is not addressing our session. */
 function isSourceId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{32}$/.test(value)
 }
@@ -67,6 +62,9 @@ export function registerDevAppPreviewHandlers(
           laneId: options.laneId,
           operation: "read-file",
         })
+        // Native React ESM is imported by the main renderer rather than an isolated webview.
+        // Register a multi-source, authorization-backed protocol handler for that renderer session.
+        service.registerRendererProtocol(event.sender.session)
         return {
           success: true as const,
           preview: service.open({
@@ -85,80 +83,105 @@ export function registerDevAppPreviewHandlers(
     },
   )
 
-  ipcMain.handle("devAppPreview:approve", async (event, options: {
-    sourceId: string
-    approvalFingerprint: string
-  }) => {
-    assertMainRenderer(event)
-    if (!isSourceId(options?.sourceId)) return { success: false as const, error: "Unknown preview." }
-    if (typeof options.approvalFingerprint !== "string" || options.approvalFingerprint.length > 512) {
-      return { success: false as const, error: "The approval request is invalid." }
-    }
-    try {
-      const status = service.approve(options.sourceId, options.approvalFingerprint)
-      return status
-        ? { success: true as const, preview: status }
-        : { success: false as const, error: "That preview is no longer open." }
-    } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : "Could not approve the preview.",
+  ipcMain.handle(
+    "devAppPreview:approve",
+    async (
+      event,
+      options: {
+        sourceId: string
+        approvalFingerprint: string
+      },
+    ) => {
+      assertMainRenderer(event)
+      if (!isSourceId(options?.sourceId)) {
+        return { success: false as const, error: "Unknown preview." }
       }
-    }
-  })
+      if (
+        typeof options.approvalFingerprint !== "string" ||
+        options.approvalFingerprint.length > 512
+      ) {
+        return { success: false as const, error: "The approval request is invalid." }
+      }
+      try {
+        const status = service.approve(options.sourceId, options.approvalFingerprint)
+        return status
+          ? { success: true as const, preview: status }
+          : { success: false as const, error: "That preview is no longer open." }
+      } catch (error) {
+        return {
+          success: false as const,
+          error: error instanceof Error ? error.message : "Could not approve the preview.",
+        }
+      }
+    },
+  )
 
   ipcMain.handle("devAppPreview:status", async (event, options: { sourceId: string }) => {
     assertMainRenderer(event)
-    if (!isSourceId(options?.sourceId)) return { success: false as const, error: "Unknown preview." }
+    if (!isSourceId(options?.sourceId)) {
+      return { success: false as const, error: "Unknown preview." }
+    }
     const status = service.status(options.sourceId)
     return status
       ? { success: true as const, preview: status }
       : { success: false as const, error: "That preview is no longer open." }
   })
 
-  ipcMain.handle("devAppPreview:invokeTool", async (event, options: {
-    sourceId: string
-    name: string
-    input: unknown
-    timeoutMs?: number
-  }) => {
-    assertMainRenderer(event)
-    if (
-      !isSourceId(options?.sourceId) ||
-      typeof options?.name !== "string" ||
-      !/^[a-z][a-z0-9_-]{0,63}$/.test(options.name)
-    ) {
-      return { success: false as const, error: "The DevApp tool target is invalid." }
-    }
-    try {
-      return {
-        success: true as const,
-        result: await service.invokeTool(
-          options.sourceId,
-          options.name,
-          options.input,
-          options.timeoutMs,
-        ),
+  ipcMain.handle(
+    "devAppPreview:invokeTool",
+    async (
+      event,
+      options: {
+        sourceId: string
+        name: string
+        input: unknown
+        timeoutMs?: number
+      },
+    ) => {
+      assertMainRenderer(event)
+      if (
+        !isSourceId(options?.sourceId) ||
+        typeof options?.name !== "string" ||
+        !/^[a-z][a-z0-9_-]{0,63}$/.test(options.name)
+      ) {
+        return { success: false as const, error: "The DevApp tool target is invalid." }
       }
-    } catch (error) {
-      return { success: false as const, error: error instanceof Error ? error.message : "The DevApp tool failed." }
-    }
-  })
+      try {
+        return {
+          success: true as const,
+          result: await service.invokeTool(
+            options.sourceId,
+            options.name,
+            options.input,
+            options.timeoutMs,
+          ),
+        }
+      } catch (error) {
+        return {
+          success: false as const,
+          error: error instanceof Error ? error.message : "The DevApp tool failed.",
+        }
+      }
+    },
+  )
 
-  ipcMain.handle("devAppPreview:close", async (event, options: { sourceId: string; leaseId: string }) => {
-    assertMainRenderer(event)
-    if (isSourceId(options?.sourceId) && isLeaseId(options?.leaseId)) {
-      service.close(options.sourceId, options.leaseId)
-    }
-    return { success: true as const }
-  })
+  ipcMain.handle(
+    "devAppPreview:close",
+    async (event, options: { sourceId: string; leaseId: string }) => {
+      assertMainRenderer(event)
+      if (isSourceId(options?.sourceId) && isLeaseId(options?.leaseId)) {
+        service.close(options.sourceId, options.leaseId)
+      }
+      return { success: true as const }
+    },
+  )
 }
 
 function isLeaseId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_-]{1,192}$/.test(value)
 }
 
-/** Pushes status changes — reloads, crashes, preflight verdicts — to open windows. */
+/** Pushes build generations, extension crashes and preflight changes to open windows. */
 export function broadcastDevAppPreviewStatus(
   targets: () => WebContents[],
   sourceId: string,
