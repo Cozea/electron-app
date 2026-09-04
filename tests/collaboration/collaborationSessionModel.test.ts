@@ -37,14 +37,31 @@ function createSession(
   }
 }
 
+function pushingSession(
+  overrides: Partial<CollaborationSessionDescriptor> = {},
+): CollaborationSessionDescriptor {
+  return createSession({
+    status: "pushing",
+    commitLeaseUserId: "user_1",
+    commitLeaseExpiresAt: 100,
+    ...overrides,
+  })
+}
+
 describe("collaboration session model", () => {
   it("derives one Git-safe collaboration branch from the session ID", () => {
     expect(buildCollaborationSessionBranch("  session / 01  ")).toBe(
       "cozea/collab/session-01",
     )
+    expect(buildCollaborationSessionBranch("session..lock")).toBe(
+      "cozea/collab/session-lock",
+    )
+    expect(buildCollaborationSessionBranch("release.lock")).toBe(
+      "cozea/collab/release-session",
+    )
   })
 
-  it("keeps organization visibility separate from restricted project membership", () => {
+  it("keeps organization visibility separate from restricted project invitations", () => {
     expect(
       canAccessCollaborationProject({
         policy: "organization",
@@ -55,8 +72,16 @@ describe("collaboration session model", () => {
 
     expect(
       canAccessCollaborationProject({
+        policy: "organization",
+        isActiveOrganizationMember: false,
+        isExplicitProjectMember: true,
+      }),
+    ).toBe(false)
+
+    expect(
+      canAccessCollaborationProject({
         policy: "restricted",
-        isActiveOrganizationMember: true,
+        isActiveOrganizationMember: false,
         isExplicitProjectMember: false,
       }),
     ).toBe(false)
@@ -64,7 +89,7 @@ describe("collaboration session model", () => {
     expect(
       canAccessCollaborationProject({
         policy: "restricted",
-        isActiveOrganizationMember: true,
+        isActiveOrganizationMember: false,
         isExplicitProjectMember: true,
       }),
     ).toBe(true)
@@ -97,7 +122,7 @@ describe("collaboration session model", () => {
     const session = createSession({
       status: "local_commit_ready",
       commitLeaseUserId: "user_1",
-      commitLeaseExpiresAt: Date.now() + 10_000,
+      commitLeaseExpiresAt: 100,
     })
 
     expect(session.baseCommitSha).toBe(BASE_SHA)
@@ -105,16 +130,13 @@ describe("collaboration session model", () => {
     expect(session.publishedThroughSequence).toBe(0)
   })
 
-  it("advances the base only after a verified publication boundary", () => {
+  it("advances the base only after a verified publication by the lease holder", () => {
     const result = advancePublishedCollaborationBase(
-      createSession({
-        status: "pushing",
-        commitLeaseUserId: "user_1",
-        commitLeaseExpiresAt: Date.now() + 10_000,
-      }),
+      pushingSession(),
       {
         commitSha: PUBLISHED_SHA,
         coveredThroughSequence: 8,
+        publishedByUserId: "user_1",
         publishedAt: 50,
       },
     )
@@ -126,13 +148,60 @@ describe("collaboration session model", () => {
     expect(result.commitLeaseUserId).toBeNull()
   })
 
+  it("rejects publication by a user who does not hold the lease", () => {
+    expect(() =>
+      advancePublishedCollaborationBase(
+        pushingSession(),
+        {
+          commitSha: PUBLISHED_SHA,
+          coveredThroughSequence: 8,
+          publishedByUserId: "user_2",
+          publishedAt: 50,
+        },
+      ),
+    ).toThrow("active commit lease holder")
+  })
+
+  it("rejects publication after the lease expires", () => {
+    expect(() =>
+      advancePublishedCollaborationBase(
+        pushingSession({ commitLeaseExpiresAt: 40 }),
+        {
+          commitSha: PUBLISHED_SHA,
+          coveredThroughSequence: 8,
+          publishedByUserId: "user_1",
+          publishedAt: 50,
+        },
+      ),
+    ).toThrow("active commit lease holder")
+  })
+
+  it("rejects base advancement before an explicit push state", () => {
+    expect(() =>
+      advancePublishedCollaborationBase(
+        createSession({
+          status: "local_commit_ready",
+          commitLeaseUserId: "user_1",
+          commitLeaseExpiresAt: 100,
+        }),
+        {
+          commitSha: PUBLISHED_SHA,
+          coveredThroughSequence: 8,
+          publishedByUserId: "user_1",
+          publishedAt: 50,
+        },
+      ),
+    ).toThrow("only after an explicit push")
+  })
+
   it("rejects publication beyond the room head", () => {
     expect(() =>
       advancePublishedCollaborationBase(
-        createSession({ status: "pushing" }),
+        pushingSession(),
         {
           commitSha: PUBLISHED_SHA,
           coveredThroughSequence: 13,
+          publishedByUserId: "user_1",
           publishedAt: 50,
         },
       ),
@@ -153,11 +222,21 @@ describe("collaboration session model", () => {
     ).toThrow("40-character hexadecimal Git commit SHA")
   })
 
+  it("requires the shared base to match the latest published commit", () => {
+    expect(() =>
+      validateCollaborationSession(
+        createSession({
+          publishedCommitSha: PUBLISHED_SHA,
+          publishedThroughSequence: 8,
+        }),
+      ),
+    ).toThrow("shared base must equal")
+  })
+
   it("prevents one covered sequence from mapping to two published commits", () => {
     expect(() =>
       advancePublishedCollaborationBase(
-        createSession({
-          status: "pushing",
+        pushingSession({
           baseCommitSha: PUBLISHED_SHA,
           publishedCommitSha: PUBLISHED_SHA,
           publishedThroughSequence: 8,
@@ -165,7 +244,8 @@ describe("collaboration session model", () => {
         {
           commitSha: "3333333333333333333333333333333333333333",
           coveredThroughSequence: 8,
-          publishedAt: 60,
+          publishedByUserId: "user_1",
+          publishedAt: 50,
         },
       ),
     ).toThrow("cannot map to two commits")
