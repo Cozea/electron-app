@@ -32,12 +32,16 @@ jobs:
       - name: Install T3 source dependencies
         run: bun x pnpm@11.10.0 --dir vendor/t3code install --frozen-lockfile --ignore-scripts
 
-      - name: Correct staged generator type alias
+      - name: Apply installed DevApp integration
+        run: python .automation/native-devapp-finish-phase1.py
+
+      - name: Normalize generated service state type
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('.automation/native-devapp-finish-phase1.py')
+          import re
+          path = Path('apps/desktop/src/features/devapps/installedDevAppManifest.ts')
           source = path.read_text()
           source = source.replace(
               'import type { DevAppReleaseManifestV1, DevAppSurfaceContributionV3 } from "@shared/devAppManifestV3"',
@@ -47,23 +51,16 @@ jobs:
               'import type { DevAppParts, DevAppStateScope } from "@shared/devAppParts"',
               'import type { DevAppParts, DevAppStateScope as LegacyDevAppStateScope } from "@shared/devAppParts"',
           )
-          old = '''function stateScopeForParts(
-            state: DevAppReleaseManifestV1["services"] extends Record<string, infer Service>
-              ? Service extends { state: infer State }
-                ? State
-                : never
-              : never,
-          ): DevAppStateScope {'''
-          new = '''function stateScopeForParts(
-            state: DevAppReleaseServiceV1["state"],
-          ): LegacyDevAppStateScope {'''
-          if old not in source:
-              raise SystemExit('staged state-scope type block not found')
-          path.write_text(source.replace(old, new, 1))
+          source, count = re.subn(
+              r'function stateScopeForParts\([\s\S]*?\): DevAppStateScope \{',
+              'function stateScopeForParts(\n  state: DevAppReleaseServiceV1["state"],\n): LegacyDevAppStateScope {',
+              source,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'generated state-scope type block matches: {count}')
+          path.write_text(source)
           PY
-
-      - name: Apply installed DevApp integration
-        run: python .automation/native-devapp-finish-phase1.py
 
       - name: Format changed sources
         run: |
