@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest"
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8")
 
 const stylesheet = read("apps/desktop/src/index.css")
-const appStore = read("apps/desktop/src/features/projects/pages/AppStorePage.tsx")
+const appStore = read("apps/desktop/src/features/devapps/pages/AppStorePage.tsx")
 const storeRow = read("apps/desktop/src/features/devapps/components/DevAppStoreRow.tsx")
 const accent = read("apps/desktop/src/features/devapps/components/devAppStoreAccent.ts")
 

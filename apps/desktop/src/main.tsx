@@ -10,14 +10,14 @@ import '@fontsource-variable/jetbrains-mono/index.css'
 import './lib/immer'
 import './index.css'
 import { ConvexProvider } from './contexts/ConvexProvider'
-import { ToastProvider } from './features/projects/components/assistant/ui/toast'
+import { ToastProvider } from './features/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { applyStoredLanguage } from './lib/i18n'
 
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
-import { ElectronBrowserHost } from './features/projects/browser/ElectronBrowserHost'
+import { ElectronBrowserHost } from './features/browser/ElectronBrowserHost'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')

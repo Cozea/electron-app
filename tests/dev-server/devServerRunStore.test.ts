@@ -28,14 +28,15 @@ import {
   registerDevServerRunContext,
   restartDevServerRun,
   startDevServerRun,
+  updateDevServerRunAuxiliaryProcesses,
   useDevServerRunStore,
   type DevServerRunContext,
-} from '@/features/projects/devserver/devServerRunStore'
+} from '@/features/dev-server/devServerRunStore'
 import {
   buildLocalDevServerUrl,
   getDevServerPreviewRecoveryKey,
   isSameDevServerPreviewUrl,
-} from '@/features/projects/devserver/devServerTileCommands'
+} from '@/features/dev-server/devServerTileCommands'
 
 describe('dev server preview URLs', () => {
   it('uses IPv4 loopback for the managed preview URL', () => {
@@ -130,6 +131,13 @@ type StateHandler = (event: {
   runId: string | null
   phase: 'bootstrapping' | 'launching' | 'running' | null
   headless: boolean
+  processes?: Array<{
+    id: string
+    name: string
+    terminalId: string
+    kind: 'primary' | 'auxiliary'
+    running: boolean
+  }>
 }) => void
 
 let outputHandler: OutputHandler
@@ -145,6 +153,7 @@ const getStateMock = vi.fn(async () => ({
   runId: null,
   phase: null,
   headless: false,
+  processes: [],
 }))
 const getDevServerConfigMock = vi.mocked(getDevServerConfig)
 
@@ -157,8 +166,10 @@ function makeContext(workspaceId: string, overrides: Partial<DevServerRunContext
     terminalId: 'term-1',
     storedDevCommand: null,
     storedDevPort: null,
+    storedCommandSource: 'detected',
     previewMode: 'web',
     nativePlatform: null,
+    auxiliaryProcesses: [],
     ...overrides,
   }
 }
@@ -201,6 +212,7 @@ beforeEach(() => {
     runId: null,
     phase: null,
     headless: false,
+    processes: [],
   })
   getDevServerConfigMock.mockResolvedValue({
     command: 'npm run dev',
@@ -380,6 +392,26 @@ describe('startDevServerRun', () => {
       commandSuggestions: [],
     })
   })
+
+  it('passes project-local additional processes to the managed run', async () => {
+    const workspaceId = freshWorkspace()
+    const key = buildDevServerRunKey(workspaceId)
+    const auxiliaryProcesses = [
+      {
+        id: 'backend',
+        name: 'Backend',
+        command: 'bun run dev',
+      },
+    ]
+    registerDevServerRunContext(key, makeContext(workspaceId, { auxiliaryProcesses }))
+    startMock.mockResolvedValue({ success: true, port: 5191, runId: 'run-stack' })
+
+    await startDevServerRun(key)
+
+    expect(startMock).toHaveBeenCalledWith(
+      expect.objectContaining({ auxiliaryProcesses }),
+    )
+  })
 })
 
 describe('reportDevServerPreviewHttpStatus', () => {
@@ -528,6 +560,40 @@ describe('restartDevServerRun', () => {
       await vi.advanceTimersByTimeAsync(2000)
 
       expect(startMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('restarts with a newly saved auxiliary-process configuration', async () => {
+    vi.useFakeTimers()
+    try {
+      const workspaceId = freshWorkspace()
+      const key = buildDevServerRunKey(workspaceId)
+      registerDevServerRunContext(key, makeContext(workspaceId))
+      startMock.mockImplementation(async (options: { runId?: string }) => ({
+        success: true,
+        port: 5202,
+        runId: options.runId,
+      }))
+      await startDevServerRun(key)
+      startMock.mockClear()
+
+      const auxiliaryProcesses = [
+        {
+          id: 'api',
+          name: 'API',
+          command: 'bun run dev',
+        },
+      ]
+      updateDevServerRunAuxiliaryProcesses(key, auxiliaryProcesses)
+
+      await restartDevServerRun(key)
+      await vi.advanceTimersByTimeAsync(2000)
+
+      expect(startMock).toHaveBeenCalledWith(
+        expect.objectContaining({ auxiliaryProcesses }),
+      )
     } finally {
       vi.useRealTimers()
     }

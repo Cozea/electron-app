@@ -9,7 +9,7 @@ import {
   matchesOrgDevAppQuery,
   resolveAppStoreScope,
   resolveOrgInstallState,
-} from "@/features/projects/lib/appStoreSections"
+} from "@/features/devapps/model/appStoreSections"
 import type { OrgDevAppInstallation } from "@shared/orgDevAppInstallation"
 
 function orgEntry(overrides: Partial<OrgDevAppConsumerRecord> = {}): OrgDevAppConsumerRecord {
@@ -88,7 +88,6 @@ describe("resolveAppStoreScope", () => {
   })
 
   it("falls back to built-in for missing and legacy values", () => {
-    // `?category=…` links from the previous storefront must still land somewhere.
     for (const value of [null, undefined, "", "discover", "themes", "nonsense"]) {
       expect(resolveAppStoreScope(value)).toBe("builtin")
     }
@@ -118,7 +117,7 @@ describe("buildAppStoreSections — built-in scope", () => {
     ])
   })
 
-  it("collapses to a single flat result list while searching", () => {
+  it("collapses to a flat result list while searching", () => {
     const sections = buildAppStoreSections({
       ...base,
       query: "browser",
@@ -164,20 +163,17 @@ describe("buildAppStoreSections — organization scope", () => {
     expect(sections[0].items.map((item) => item.key)).toEqual(["pub-2"])
   })
 
-  it("yields nothing while the catalog is still loading", () => {
+  it("yields nothing while the catalog is loading", () => {
     expect(sectionIds({ ...base, orgApps: undefined, installations: [] })).toEqual([])
   })
 })
 
 describe("resolveOrgInstallState", () => {
   it("reports install when nothing is installed", () => {
-    expect(resolveOrgInstallState([], orgEntry())).toEqual({
-      state: "install",
-      installedVersion: null,
-    })
+    expect(resolveOrgInstallState([], orgEntry())).toEqual({ state: "install", installedVersion: null })
   })
 
-  it("reports installed when the active version matches the catalog", () => {
+  it("reports installed when the active version matches", () => {
     expect(resolveOrgInstallState([installation()], orgEntry())).toEqual({
       state: "installed",
       installedVersion: 3,
@@ -185,18 +181,12 @@ describe("resolveOrgInstallState", () => {
   })
 
   it("reports update when the active version differs", () => {
-    const older = installation({
-      activeRelease: { ...installation().activeRelease, version: 2 },
-    })
-    expect(resolveOrgInstallState([older], orgEntry())).toEqual({
-      state: "update",
-      installedVersion: 2,
-    })
+    const older = installation({ activeRelease: { ...installation().activeRelease, version: 2 } })
+    expect(resolveOrgInstallState([older], orgEntry())).toEqual({ state: "update", installedVersion: 2 })
   })
 
   it("ignores inactive installs of the catalog version", () => {
-    const inactive = installation({ active: false })
-    expect(resolveOrgInstallState([inactive], orgEntry()).state).toBe("install")
+    expect(resolveOrgInstallState([installation({ active: false })], orgEntry()).state).toBe("install")
   })
 })
 
@@ -220,7 +210,7 @@ describe("matchesOrgDevAppQuery", () => {
 })
 
 describe("countAppStoreMatches", () => {
-  it("counts both scopes so the inactive tab can show what it hides", () => {
+  it("counts both scopes", () => {
     const counts = countAppStoreMatches({
       query: "docs",
       builtinApps: listStoreApps({ query: "docs" }),

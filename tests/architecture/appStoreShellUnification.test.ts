@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest"
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8")
 
 const LAYOUT = "apps/desktop/src/features/projects/layouts/ProjectLayout.tsx"
-const SHELL = "apps/desktop/src/features/projects/components/sidebar/AppSidebarShell.tsx"
-const SIDEBAR = "apps/desktop/src/features/projects/components/ProjectSidebar.tsx"
-const PAGE = "apps/desktop/src/features/projects/pages/AppStorePage.tsx"
+const SHELL = "apps/desktop/src/app/shell/sidebar/AppSidebarShell.tsx"
+const SIDEBAR = "apps/desktop/src/features/projects/ui/ProjectSidebar.tsx"
+const PAGE = "apps/desktop/src/features/devapps/pages/AppStorePage.tsx"
 const ROW = "apps/desktop/src/features/devapps/components/DevAppStoreRow.tsx"
 
 describe("DevApps Store shell unification", () => {
@@ -32,7 +32,7 @@ describe("DevApps Store shell unification", () => {
     expect(block).not.toContain("surface=")
   })
 
-  it("removes the per-surface taxonomy from the shell", () => {
+  it("removes the per-surface taxonomy from the application shell", () => {
     const shell = read(SHELL)
     expect(shell).not.toContain("AppSidebarSurface")
     expect(shell).not.toContain("appStore")
@@ -42,12 +42,14 @@ describe("DevApps Store shell unification", () => {
     for (const path of [
       "apps/desktop/src/features/projects/components/AppStoreSidebar.tsx",
       "apps/desktop/src/features/projects/lib/appStoreCatalog.ts",
+      "apps/desktop/src/features/devapps/ui/AppStoreSidebar.tsx",
+      "apps/desktop/src/features/devapps/model/appStoreCatalog.ts",
     ]) {
       expect(existsSync(resolve(process.cwd(), path))).toBe(false)
     }
   })
 
-  it("keeps the store nav row and its active state in the project sidebar", () => {
+  it("keeps the store nav row and its active state in project UI", () => {
     const sidebar = read(SIDEBAR)
     expect(sidebar).toContain('navigate("/projects/store")')
     expect(sidebar).toContain('const isOnAppStore = pathname === "/projects/store"')
@@ -59,7 +61,7 @@ describe("DevApps Store shell unification", () => {
     expect(sidebar.slice(activeIndex, labelIndex)).toContain("onClick={handleOpenMarketplace}")
   })
 
-  it("drops the storefront taxonomy from the page but keeps registry categories", () => {
+  it("drops the old storefront taxonomy but keeps registry categories", () => {
     const page = read(PAGE)
     expect(page).not.toContain("appStoreCatalog")
     expect(page).not.toContain("resolveAppStoreCategory")
@@ -72,14 +74,13 @@ describe("DevApps Store shell unification", () => {
     expect(registry).toContain("options.category")
   })
 
-  it("pins the store actions to the title bar and drops the share control there", () => {
+  it("pins store actions to the title bar and supports hiding share", () => {
     const page = read(PAGE)
-    // The actions live in the header's right slot, not in the page body.
     expect(page).toContain("rightAddon: headerActions")
     expect(page).toContain("hideShare: true")
     expect(page).not.toContain('className="flex items-center justify-end gap-2"')
 
-    const hook = read("apps/desktop/src/hooks/useProjectHeader.ts")
+    const hook = read("apps/desktop/src/features/projects/hooks/useProjectHeader.ts")
     expect(hook).toContain("rightAddon")
     expect(hook).toContain("hideShare")
 
@@ -87,15 +88,12 @@ describe("DevApps Store shell unification", () => {
     expect(chrome).toContain("rightAddon: isSettingsModeRoute")
     expect(chrome).toContain("hideShare")
 
-    // A page opting out must actually suppress the share button.
     const header = read("apps/desktop/src/components/layouts/UnifiedHeader.tsx")
     expect(header).toContain("hideShare = false")
     expect(header).toContain("if (!hideShare) {")
   })
 
-  it("never builds an i18n key from a free-text label, and uses no `any` casts", () => {
-    // `getTranslation` returns the key itself when a key is missing, so a
-    // template built from free text renders as `devApp.category.AI workflows`.
+  it("never builds an i18n key from a free-text label, and uses no any casts", () => {
     for (const source of [read(PAGE), read(ROW)]) {
       expect(source).not.toContain("devApp.category.${")
       expect(source).not.toContain("(t as any)")
@@ -150,8 +148,6 @@ describe("DevApps Store i18n sweep", () => {
   it.each(["en", "es"] as const)("%s drops storefront keys and keeps live ones", (locale) => {
     const source = read(`apps/desktop/src/lib/i18n/${locale}.ts`)
 
-    // Match the closing quote so `appStore.search` cannot match
-    // `appStore.searchPlaceholder`.
     for (const key of REMOVED_KEYS) expect(source).not.toContain(`"${key}"`)
     for (const key of RETAINED_KEYS) expect(source).toContain(`"${key}"`)
 

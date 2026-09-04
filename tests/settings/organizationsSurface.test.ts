@@ -5,7 +5,7 @@ import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
 
 import { SETTINGS_SURFACES, getSettingsSurface } from "@/lib/settings/settingsRegistry"
-import { OrganizationSettingsTabs } from "@/pages/settings/Organizations"
+import { OrganizationSettingsTabs } from "@/features/settings/Organizations"
 
 describe("organizations settings surface", () => {
   it("lists Organizations among personal settings", () => {
@@ -32,7 +32,7 @@ describe("organizations settings surface", () => {
 
   it("places the invite action above the members list", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "apps/desktop/src/pages/settings/Organizations.tsx"),
+      resolve(process.cwd(), "apps/desktop/src/features/settings/Organizations.tsx"),
       "utf8",
     )
 

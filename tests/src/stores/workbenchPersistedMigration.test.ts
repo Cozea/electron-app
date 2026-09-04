@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { migratePersistedWorkbenchState } from "@/stores/useProjectWorkbenchStore"
+import { migratePersistedWorkbenchState } from "@/features/workbench/model/workbenchStore"
 
 function bench(input: {
   projectId: string
@@ -26,6 +26,50 @@ function bench(input: {
 }
 
 describe("persisted workbench migration", () => {
+  it("preserves layoutResetKey across rehydration so saved layouts still match", () => {
+    // The key gates whether the separately stored dockview layout is accepted.
+    // Regenerating it while reading guaranteed a mismatch, so every restart
+    // rebuilt the default layout and the user's tiles moved.
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: {
+        "p1::collab::ws1": {
+          ...bench({
+            projectId: "p1",
+            workspaceId: "ws1",
+            tiles: [{ id: "t1", type: "terminal" }],
+          }),
+          layoutResetKey: 1717171717,
+        },
+      },
+    })
+
+    expect(Object.values(migrated.workbenches)[0]?.layoutResetKey).toBe(1717171717)
+  })
+
+  it("keeps the reset key even when an obsolete tile is dropped", () => {
+    // Removing a dead tile type must not invalidate the layout of the tiles
+    // that survived; the restore path handles a genuinely broken layout itself.
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: {
+        "p1::collab::ws1": {
+          ...bench({
+            projectId: "p1",
+            workspaceId: "ws1",
+            tiles: [
+              { id: "t1", type: "terminal" },
+              { id: "t2", type: "tasks" },
+            ],
+          }),
+          layoutResetKey: 42,
+        },
+      },
+    })
+
+    const restored = Object.values(migrated.workbenches)[0]
+    expect(restored?.layoutResetKey).toBe(42)
+    expect(Object.keys(restored?.tiles ?? {})).toEqual(["t1"])
+  })
+
   it("drops legacy benches shadowed by a workspace-scoped bench for the same lane", () => {
     const migrated = migratePersistedWorkbenchState({
       workbenches: {
