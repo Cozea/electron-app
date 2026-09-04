@@ -83,6 +83,14 @@ function requiredTrimmed(value: string, label: string): string {
   return normalized
 }
 
+function requireCanonicalTrimmed(value: string, label: string): string {
+  const normalized = requiredTrimmed(value, label)
+  if (normalized !== value) {
+    throw new Error(`${label} must not contain surrounding whitespace`)
+  }
+  return normalized
+}
+
 function normalizeTimestamp(value: number, label: string): number {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(`${label} must be a non-negative finite timestamp`)
@@ -179,18 +187,18 @@ export function normalizeSequence(value: number, label = "Sequence"): number {
 export function validateCollaborationSession(
   session: CollaborationSessionDescriptor,
 ): CollaborationSessionDescriptor {
-  requiredTrimmed(session.id, "Collaboration session ID")
-  requiredTrimmed(session.projectId, "Project ID")
-  requiredTrimmed(session.repositoryId, "Repository ID")
-  requiredTrimmed(session.targetBranch, "Target branch")
-  requiredTrimmed(session.createdByUserId, "Creating user ID")
-  assertGitCommitSha(session.baseCommitSha, "Base commit SHA")
+  requireCanonicalTrimmed(session.id, "Collaboration session ID")
+  requireCanonicalTrimmed(session.projectId, "Project ID")
+  requireCanonicalTrimmed(session.repositoryId, "Repository ID")
+  const targetBranch = requireCanonicalTrimmed(session.targetBranch, "Target branch")
+  requireCanonicalTrimmed(session.createdByUserId, "Creating user ID")
+  const baseCommitSha = assertGitCommitSha(session.baseCommitSha, "Base commit SHA")
 
   if (session.sessionBranch !== buildCollaborationSessionBranch(session.id)) {
     throw new Error("Session branch must be derived from the collaboration session ID")
   }
 
-  if (session.targetBranch === session.sessionBranch) {
+  if (targetBranch === session.sessionBranch) {
     throw new Error("Target branch and collaboration session branch must be different")
   }
 
@@ -209,25 +217,27 @@ export function validateCollaborationSession(
       session.publishedCommitSha,
       "Published commit SHA",
     )
-    if (publishedCommitSha !== session.baseCommitSha.toLowerCase()) {
+    if (publishedCommitSha !== baseCommitSha) {
       throw new Error("The shared base must equal the latest published commit")
     }
   } else if (publishedThroughSequence !== 0) {
     throw new Error("A session without a published commit cannot have a published sequence")
   }
 
-  if (session.commitLeaseUserId && !session.commitLeaseExpiresAt) {
-    throw new Error("An active commit lease must have an expiry")
-  }
-
-  if (!session.commitLeaseUserId && session.commitLeaseExpiresAt) {
-    throw new Error("A commit lease expiry requires a lease holder")
-  }
-
   const createdAt = normalizeTimestamp(session.createdAt, "Session creation time")
   const updatedAt = normalizeTimestamp(session.updatedAt, "Session update time")
   if (updatedAt < createdAt) {
     throw new Error("Session update time cannot precede creation time")
+  }
+
+  if (session.commitLeaseUserId !== null) {
+    requireCanonicalTrimmed(session.commitLeaseUserId, "Commit lease user ID")
+    if (session.commitLeaseExpiresAt === null) {
+      throw new Error("An active commit lease must have an expiry")
+    }
+    normalizeTimestamp(session.commitLeaseExpiresAt, "Commit lease expiry")
+  } else if (session.commitLeaseExpiresAt !== null) {
+    throw new Error("A commit lease expiry requires a lease holder")
   }
 
   if (session.closedAt !== null) {
@@ -251,7 +261,8 @@ export function hasActiveCommitLease(
 ): boolean {
   return Boolean(
     session.commitLeaseUserId &&
-      session.commitLeaseExpiresAt &&
+      session.commitLeaseExpiresAt !== null &&
+      Number.isFinite(session.commitLeaseExpiresAt) &&
       session.commitLeaseExpiresAt > now,
   )
 }
