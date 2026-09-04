@@ -50,6 +50,27 @@ export function buildNativeDevAppModuleUrl(address: NativeDevAppModuleAddress): 
 }
 
 export function parseNativeDevAppModuleUrl(value: string): NativeDevAppModuleAddress | null {
+  const schemePrefix = `${NATIVE_DEV_APP_MODULE_SCHEME}://`
+  if (!value.startsWith(schemePrefix)) return null
+
+  // WHATWG URL parsing normalizes encoded dot segments before exposing pathname.
+  // Validate the caller-provided path first so `%2e%2e/private.mjs` cannot become
+  // the apparently harmless `/private.mjs` during URL construction.
+  const rawAuthorityAndPath = value.slice(schemePrefix.length).split(/[?#]/, 1)[0] ?? ""
+  const rawPathStart = rawAuthorityAndPath.indexOf("/")
+  if (rawPathStart < 0) return null
+  const rawSegments = rawAuthorityAndPath.slice(rawPathStart + 1).split("/")
+  const decodedSegments: string[] = []
+  try {
+    for (const segment of rawSegments) {
+      const decoded = decodeURIComponent(segment)
+      if (decoded.includes("/") || decoded.includes("\\")) return null
+      decodedSegments.push(decoded)
+    }
+  } catch {
+    return null
+  }
+
   let url: URL
   try {
     url = new URL(value)
@@ -70,17 +91,6 @@ export function parseNativeDevAppModuleUrl(value: string): NativeDevAppModuleAdd
   const generation = url.searchParams.get("generation")
   if (!isNativeDevAppGeneration(generation)) return null
 
-  const rawSegments = url.pathname.replace(/^\/+/, "").split("/")
-  const decodedSegments: string[] = []
-  try {
-    for (const segment of rawSegments) {
-      const decoded = decodeURIComponent(segment)
-      if (decoded.includes("/") || decoded.includes("\\")) return null
-      decodedSegments.push(decoded)
-    }
-  } catch {
-    return null
-  }
   const assetPath = normalizeNativeDevAppAssetPath(decodedSegments.join("/"))
   return assetPath
     ? { registrationId: url.hostname, generation, assetPath }
