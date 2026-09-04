@@ -9,6 +9,7 @@ on:
       - "apps/desktop/electron/**"
       - "apps/desktop/src/features/devapps/**"
       - "apps/desktop/src/features/workbench/**"
+      - "apps/desktop/src/lib/workbench*"
       - "examples/native-devapps/**"
       - "packages/devapp-api/**"
       - "scripts/devapps/**"
@@ -67,6 +68,8 @@ jobs:
           tests/devapps/nativeDevAppPreviewSession.test.ts
           tests/devapps/devAppPreviewService.test.ts
           tests/devapps/devAppPreviewTile.test.ts
+          tests/devapps/devAppInstallationService.test.ts
+          tests/devapps/workbenchTileRegistry.test.ts
 
       - name: Lint changed platform areas
         run: >-
@@ -74,12 +77,21 @@ jobs:
           apps/desktop/electron/services/NativeDevAppBuildService.ts
           apps/desktop/electron/services/NativeDevAppModuleService.ts
           apps/desktop/electron/services/NativeDevAppPreviewSession.ts
+          apps/desktop/electron/services/DevAppInstallationService.ts
           apps/desktop/electron/services/DevAppPreviewService.ts
+          apps/desktop/electron/ipc/registerDevAppInstallationHandlers.ts
           apps/desktop/electron/ipc/registerDevAppPreviewHandlers.ts
           apps/desktop/src/features/devapps/native-runtime
           apps/desktop/src/features/workbench/WorkbenchDevAppPreviewTile.tsx
+          apps/desktop/src/features/workbench/WorkbenchDevAppTile.tsx
+          apps/desktop/src/features/workbench/model/workbenchTileRegistry.ts
+          apps/desktop/src/lib/workbenchStore.ts
+          apps/desktop/src/lib/workbenchTileContract.ts
+          shared/devAppInstallationV3.ts
           shared/devAppPreviewTypes.ts
           tests/devapps/nativeDevAppPreviewSession.test.ts
+          tests/devapps/devAppInstallationService.test.ts
+          tests/devapps/workbenchTileRegistry.test.ts
 
       - name: Production build
         run: bun run build
