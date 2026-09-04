@@ -4,7 +4,7 @@ import {
   buildProjectRouteNavigationState,
   readProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
-} from "@/features/projects/lib/projectNavigationState"
+} from "@/contexts/project/projectNavigationState"
 
 describe("projectNavigationState", () => {
   it("trusts preferred workspace ids when the navigation state project id matches the route", () => {

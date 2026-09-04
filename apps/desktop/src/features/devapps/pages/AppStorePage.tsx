@@ -35,7 +35,7 @@ import { useSearchParams } from "@/lib/router"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
-import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
+import { browseForDirectory } from "@/lib/browseForDirectory"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import {

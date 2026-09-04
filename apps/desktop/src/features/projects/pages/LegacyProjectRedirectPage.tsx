@@ -3,7 +3,7 @@ import { useLocation, useParams } from '@/lib/router'
 
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
-import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject"
 
 export function LegacyProjectRedirectPage() {

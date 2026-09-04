@@ -28,10 +28,10 @@ import {
   settingsInlineInputWidth,
 } from "@/features/settings/ui/SettingsChrome"
 import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
-import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
+import { browseForDirectory } from "@/lib/browseForDirectory"
 import {
-  browseForDirectory,
   buildFilesystemSlug,
   deriveNameFromPath,
   inspectLocalGitState,

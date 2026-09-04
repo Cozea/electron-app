@@ -18,7 +18,7 @@ import {
   COLLAB_RECONNECT_CAP_MS,
   resolveConnectionStatusPresentation,
 } from "@/features/collaboration/model/connectionStatusModel"
-import { useOptionalProjectSyncContext } from "../contexts/ProjectSyncContext"
+import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
 
 type ProjectSyncIndicatorVariant = "sidebar" | "compact"
 

@@ -6,7 +6,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
-import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
 import {
   deriveProviderFromRepoUrl,

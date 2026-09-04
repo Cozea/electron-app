@@ -1,5 +1,5 @@
-import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext"
-import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
+import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
+import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
 import { useActiveWorkspaceOrNull } from "./ActiveWorkspaceContext"
 
 export interface WorkspaceIdentity {

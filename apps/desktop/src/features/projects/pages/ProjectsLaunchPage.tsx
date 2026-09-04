@@ -20,7 +20,7 @@ import {
   clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/workbench/model/lastWorkbenchRoute"
-import { browseForDirectory } from "@/features/projects/lib/localProjectImport"
+import { browseForDirectory } from "@/lib/browseForDirectory"
 import { resolveDroppedLocalFolderPath } from "@/features/projects/lib/resolveDroppedLocalFolderPath"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"

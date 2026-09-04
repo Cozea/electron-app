@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveImportedProjectName } from "@/features/projects/lib/localProjectImport"
+import {
+  resolveImportedProjectName,
+} from "@/features/projects/lib/localProjectImport"
 
 describe("local project import naming", () => {
   it("uses the project name entered after folder selection", () => {

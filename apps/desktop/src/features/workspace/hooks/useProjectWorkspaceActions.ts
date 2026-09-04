@@ -5,12 +5,10 @@ import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
-import {
-  browseForDirectory,
-  formatWorkspaceBindFailure,
-} from "@/features/projects/lib/localProjectImport"
-import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { browseForDirectory } from "@/lib/browseForDirectory"
+import { formatWorkspaceBindFailure } from "@/features/workspace/formatWorkspaceBindFailure"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import {
   clearProjectBranchSession,
 } from "@/features/source-control/model/projectBranchSessionStore"

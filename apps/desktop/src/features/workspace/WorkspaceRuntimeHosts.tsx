@@ -3,7 +3,7 @@ import { memo, useEffect, useMemo } from "react"
 import {
   useYjsProject,
 } from "@/contexts/YjsProjectContextValue"
-import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
+import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
 import { ProjectSyncProviderRuntime } from "@/contexts/project/ProjectSyncProviderRuntime"
 import {
   useWorkspaceRuntimeStore,

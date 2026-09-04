@@ -38,7 +38,7 @@ import {
 import { activateProjectBranchLane } from "@/features/source-control/model/projectBranchSessionStore";
 import { writeLastWorkbenchRoute } from "@/features/workbench/model/lastWorkbenchRoute";
 import { useWorkbenchSessionLifecycle } from "@/features/workbench/hooks/useWorkbenchSessionLifecycle";
-import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
+import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext";
 import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,

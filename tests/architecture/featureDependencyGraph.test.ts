@@ -42,7 +42,7 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
     pair: ["browser", "workbench"],
     thinEdge: "browser -> workbench",
-    reaches: ["model/workbenchStore", "WorkbenchDockRuntimeContext"],
+    reaches: ["WorkbenchDockRuntimeContext", "model/workbenchStore"],
   },
   {
     pair: ["dev-server", "workbench"],
@@ -52,11 +52,7 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
     pair: ["devapps", "projects"],
     thinEdge: "devapps -> projects",
-    reaches: [
-      "hooks/useProjectHeader",
-      "model/createProjectDialogStore",
-      "lib/localProjectImport",
-    ],
+    reaches: ["hooks/useProjectHeader", "model/createProjectDialogStore"],
   },
   {
     pair: ["devapps", "workbench"],
@@ -71,38 +67,12 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
     pair: ["projects", "settings"],
     thinEdge: "projects -> settings",
-    reaches: ["ui/SettingsChrome", "ui/SettingsSidebar", "pages/ProjectSettingsPage"],
-  },
-  {
-    pair: ["projects", "source-control"],
-    thinEdge: "source-control -> projects",
-    reaches: ["contexts/ProjectRouteContext", "contexts/ProjectSyncContext"],
-  },
-  {
-    pair: ["projects", "tasks"],
-    thinEdge: "projects -> tasks",
-    reaches: ["model/taskFocusOverlay", "ui/TaskFocusOverlay"],
+    reaches: ["pages/ProjectSettingsPage", "ui/SettingsChrome", "ui/SettingsSidebar"],
   },
   {
     pair: ["projects", "workbench"],
     thinEdge: "workbench -> projects",
-    reaches: [
-      "lib/projectRoutes",
-      "ui/ProjectPixelInvaderIcon",
-      "contexts/ProjectRouteContext",
-      "contexts/ProjectSyncContext",
-    ],
-  },
-  {
-    pair: ["projects", "workspace"],
-    thinEdge: "workspace -> projects",
-    reaches: [
-      "contexts/ProjectRouteContext",
-      "contexts/ProjectSyncContext",
-      "lib/projectRoutes",
-      "lib/localProjectImport",
-      "lib/projectNavigationState",
-    ],
+    reaches: ["ui/ProjectPixelInvaderIcon"],
   },
   {
     pair: ["settings", "workbench"],

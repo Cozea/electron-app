@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import {
   useOptionalProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
-} from "@/features/projects/contexts/ProjectRouteContext"
+} from "@/contexts/project/ProjectRouteContext"
 
 export function useAccessibleProject() {
   const { slug, projectId } = useParams()

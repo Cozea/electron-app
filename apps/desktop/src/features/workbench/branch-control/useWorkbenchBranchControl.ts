@@ -19,7 +19,7 @@ import {
   useOptionalProjectSyncContext,
   type CollabEncryptionStatus,
   type CollabSessionStatus,
-} from "@/features/projects/contexts/ProjectSyncContext"
+} from "@/contexts/project/ProjectSyncContext"
 
 interface UseWorkbenchBranchControlInput {
   projectId: string | null

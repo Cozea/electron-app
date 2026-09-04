@@ -23,7 +23,7 @@ import {
 } from "@/features/devapps/orgDevAppPublishing";
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
-import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
+import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState";
 import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu";
 import {
@@ -45,9 +45,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { buildProjectPath } from "../lib/projectRoutes";
+import { buildProjectPath } from "@/contexts/project/projectRoutes";
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent";
-import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState";
 import { ProjectSidebarTreeItem } from "@/features/projects/ui/sidebar/ProjectSidebarTreeItem";
 import {
   areSidebarProjectItemsEqual,
@@ -83,7 +83,7 @@ import {
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
 } from "@/features/workbench/model/workbenchStore";
-import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
+import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext";
 import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";
 import { openCommandPalette } from "@/features/workbench/command-palette/commandPaletteBus";

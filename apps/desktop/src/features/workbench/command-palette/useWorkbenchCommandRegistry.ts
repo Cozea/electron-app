@@ -3,7 +3,7 @@ import { useMemo } from "react"
 import type { KeybindingCommand } from "@cozea/assistant-contracts"
 
 import { resolveDevAppPreviewManifestPath } from "@/features/devapps/model/devAppPreviewSelection"
-import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useNavigate } from "@/lib/router"
 import {
   selectProjectWorkbench,
