@@ -21,7 +21,6 @@ import {
   advancePublishedCollaborationBase,
   assertGitCommitSha,
   buildCollaborationSessionBranch,
-  hasActiveCommitLease,
   normalizeSequence,
   validateCollaborationSession,
   type CollaborationParticipantDescriptor,
@@ -42,6 +41,10 @@ const JOINABLE_SESSION_STATUSES = new Set([
   "commit_preparing",
   "local_commit_ready",
   "pushing",
+])
+const RECOVERABLE_EXPIRED_LEASE_STATUSES = new Set([
+  "commit_preparing",
+  "local_commit_ready",
 ])
 
 function assertGatewaySecret(secret: string): void {
@@ -142,7 +145,7 @@ function toParticipantDescriptor(
 }
 
 async function getSessionByPublicId(
-  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  ctx: QueryCtx | MutationCtx,
   sessionId: string,
 ): Promise<Doc<"collaborationSessions"> | null> {
   return await ctx.db
@@ -152,7 +155,7 @@ async function getSessionByPublicId(
 }
 
 async function requireSessionByPublicId(
-  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  ctx: QueryCtx | MutationCtx,
   sessionId: string,
 ): Promise<Doc<"collaborationSessions">> {
   const session = await getSessionByPublicId(
@@ -164,7 +167,7 @@ async function requireSessionByPublicId(
 }
 
 async function getParticipant(
-  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  ctx: QueryCtx | MutationCtx,
   sessionId: Id<"collaborationSessions">,
   userId: Id<"users">,
 ): Promise<Doc<"collaborationParticipants"> | null> {
@@ -177,7 +180,7 @@ async function getParticipant(
 }
 
 async function requireSessionAccess(
-  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  ctx: QueryCtx | MutationCtx,
   session: Doc<"collaborationSessions">,
   userId: Id<"users">,
 ): Promise<void> {
@@ -187,7 +190,7 @@ async function requireSessionAccess(
 }
 
 async function requireActiveEditorParticipant(
-  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  ctx: QueryCtx | MutationCtx,
   session: Doc<"collaborationSessions">,
   userId: Id<"users">,
 ): Promise<Doc<"collaborationParticipants">> {
@@ -202,7 +205,7 @@ async function requireActiveEditorParticipant(
 }
 
 async function requireLeaseHolder(
-  ctx: Pick<QueryCtx | MutationCtx, "db">,
+  ctx: QueryCtx | MutationCtx,
   session: Doc<"collaborationSessions">,
   userId: Id<"users">,
   now: number,
@@ -217,8 +220,19 @@ async function requireLeaseHolder(
   }
 }
 
+async function requireRecordedLeaseHolder(
+  ctx: QueryCtx | MutationCtx,
+  session: Doc<"collaborationSessions">,
+  userId: Id<"users">,
+): Promise<void> {
+  await requireActiveEditorParticipant(ctx, session, userId)
+  if (session.commitLeaseUserId !== userId) {
+    throw new ConvexError("The authenticated user does not own this commit preparation")
+  }
+}
+
 async function recordEvent(
-  ctx: Pick<MutationCtx, "db">,
+  ctx: MutationCtx,
   session: Doc<"collaborationSessions">,
   eventType: Doc<"collaborationSessionEvents">["eventType"],
   args: {
@@ -242,15 +256,19 @@ async function recordEvent(
 }
 
 async function upsertParticipant(
-  ctx: Pick<MutationCtx, "db">,
+  ctx: MutationCtx,
   session: Doc<"collaborationSessions">,
   userId: Id<"users">,
   role: CollaborationParticipantRole,
   capabilities: CollaborationSessionCapabilities,
   now: number,
-): Promise<Doc<"collaborationParticipants">> {
+): Promise<{
+  participant: Doc<"collaborationParticipants">
+  joined: boolean
+}> {
   const existing = await getParticipant(ctx, session._id, userId)
   if (existing) {
+    const joined = existing.leftAt !== undefined
     await ctx.db.patch(existing._id, {
       role,
       capabilities,
@@ -258,11 +276,14 @@ async function upsertParticipant(
       leftAt: undefined,
     })
     return {
-      ...existing,
-      role,
-      capabilities,
-      lastSeenAt: now,
-      leftAt: undefined,
+      participant: {
+        ...existing,
+        role,
+        capabilities,
+        lastSeenAt: now,
+        leftAt: undefined,
+      },
+      joined,
     }
   }
 
@@ -277,7 +298,7 @@ async function upsertParticipant(
   })
   const participant = await ctx.db.get(participantId)
   if (!participant) throw new ConvexError("Failed to create collaboration participant")
-  return participant
+  return { participant, joined: true }
 }
 
 export const createSession = mutation({
@@ -389,7 +410,12 @@ export const activateSession = mutation({
       revision: session.revision + 1,
       updatedAt: now,
     })
-    const updated = { ...session, status: "active" as const, revision: session.revision + 1, updatedAt: now }
+    const updated = {
+      ...session,
+      status: "active" as const,
+      revision: session.revision + 1,
+      updatedAt: now,
+    }
     await recordEvent(ctx, updated, "activated", {
       actorUserId: user._id,
       createdAt: now,
@@ -431,7 +457,7 @@ export const listForProject = query({
       .query("collaborationSessions")
       .withIndex("by_project_and_updated", (index) => index.eq("projectId", args.projectId))
       .order("desc")
-      .take(Math.min(MAX_SESSION_LIST_ITEMS, args.includeClosed ? limit : MAX_SESSION_LIST_ITEMS))
+      .take(MAX_SESSION_LIST_ITEMS)
 
     return sessions
       .filter((session) => args.includeClosed || !isTerminalSession(session))
@@ -462,7 +488,7 @@ export const joinSession = mutation({
     }
 
     const now = Date.now()
-    const participant = await upsertParticipant(
+    const { participant, joined } = await upsertParticipant(
       ctx,
       session,
       user._id,
@@ -474,11 +500,13 @@ export const joinSession = mutation({
       },
       now,
     )
-    await recordEvent(ctx, session, "participant_joined", {
-      actorUserId: user._id,
-      metadata: { role: requestedRole },
-      createdAt: now,
-    })
+    if (joined) {
+      await recordEvent(ctx, session, "participant_joined", {
+        actorUserId: user._id,
+        metadata: { role: requestedRole },
+        createdAt: now,
+      })
+    }
 
     return {
       session: toSessionDescriptor(session),
@@ -597,10 +625,13 @@ export const acquireCommitLease = mutation({
       })
     }
 
-    if (
-      session.status !== "active" &&
-      !(leaseIsActive && session.commitLeaseUserId === user._id && session.status === "commit_preparing")
-    ) {
+    const sameUserRenewal =
+      leaseIsActive &&
+      session.commitLeaseUserId === user._id &&
+      session.status === "commit_preparing"
+    const expiredLeaseRecovery =
+      !leaseIsActive && RECOVERABLE_EXPIRED_LEASE_STATUSES.has(session.status)
+    if (session.status !== "active" && !sameUserRenewal && !expiredLeaseRecovery) {
       throw new ConvexError(`Cannot acquire a commit lease in ${session.status} state`)
     }
 
@@ -626,9 +657,12 @@ export const acquireCommitLease = mutation({
       revision: session.revision + 1,
       updatedAt: now,
     }
-    await recordEvent(ctx, updated, leaseIsActive ? "lease_renewed" : "lease_acquired", {
+    await recordEvent(ctx, updated, sameUserRenewal ? "lease_renewed" : "lease_acquired", {
       actorUserId: user._id,
-      metadata: { leaseExpiresAt },
+      metadata: {
+        leaseExpiresAt,
+        recoveredExpiredLease: expiredLeaseRecovery,
+      },
       createdAt: now,
     })
     return toSessionDescriptor(updated)
@@ -762,12 +796,12 @@ export const releaseCommitLease = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
     const session = await requireSessionByPublicId(ctx, args.sessionId)
-    const now = Date.now()
-    await requireLeaseHolder(ctx, session, user._id, now)
+    await requireRecordedLeaseHolder(ctx, session, user._id)
     if (session.status === "pushing") {
       throw new ConvexError("Cannot release the commit lease while Push verification is running")
     }
 
+    const now = Date.now()
     await ctx.db.patch(session._id, {
       commitLeaseUserId: undefined,
       commitLeaseExpiresAt: undefined,
