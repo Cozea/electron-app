@@ -1885,7 +1885,9 @@ app.whenReady().then(() => {
    * before that, so seeding at module scope wrote the skill and its seed marker
    * into a root the running app never reads back.
    */
-  void AgentSkillService.getInstance().ensureBuiltInSkills()
+  void AgentSkillService.getInstance()
+    .ensureBuiltInSkills()
+    .then(() => AgentSkillService.getInstance().migrateManagedBindingsToPrimaryRoot())
   orgDevAppArtifactService.registerProtocol()
   t3BrowserSurfaceService = new T3BrowserSurfaceService({
     getMainWindow: () => win,

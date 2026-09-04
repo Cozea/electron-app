@@ -28,6 +28,8 @@ import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model
 import {
   clearPersistedWorkbenchLayout,
   writePersistedWorkbenchLayout,
+  isWorkbenchLayoutWriteStillValid,
+  type PendingWorkbenchLayoutWrite,
 } from "@/features/workbench/model/workbenchLayoutPersistence";
 import { shouldSuppressNoOpSelfDropOverlay } from "@/features/workbench/model/workbenchDropOverlay";
 import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/source-control/model/changesTileSizing";
@@ -142,7 +144,9 @@ export function useWorkbenchDockviewRuntime(
   const dockviewHostRef = useRef<HTMLDivElement | null>(null);
   const hydratedProjectKeyRef = useRef<string | null>(null);
   const layoutSaveFrameRef = useRef<number | null>(null);
-  const layoutSnapshotDebouncerRef = useRef<Debouncer<(layout: SerializedDockview) => void> | null>(
+  const layoutSnapshotDebouncerRef = useRef<Debouncer<
+    (pending: PendingWorkbenchLayoutWrite) => void
+  > | null>(
     null,
   );
   const transientSelectionTileIdRef = useRef<string | null>(null);
@@ -303,18 +307,36 @@ export function useWorkbenchDockviewRuntime(
     if (Object.keys(selectionPreviewTilesRef.current).length > 0) {
       return;
     }
+    // Captured now, not read back in the frame or the debounce: by then the
+    // scope may have settled to a different workbench, and this snapshot
+    // describes the one on screen at *this* moment.
+    const capturedScopeKey = workbenchScopeKeyRef.current;
+    const capturedLayoutResetKey = layoutResetKeyRef.current;
+    if (!capturedScopeKey) return;
+
     if (layoutSaveFrameRef.current !== null) {
       cancelAnimationFrame(layoutSaveFrameRef.current);
     }
     layoutSaveFrameRef.current = requestAnimationFrame(() => {
       layoutSaveFrameRef.current = null;
       const api = dockviewApiRef.current;
-      const scopeKey = workbenchScopeKeyRef.current;
-      if (!api || !scopeKey) {
+      if (!api) return;
+      if (
+        !isWorkbenchLayoutWriteStillValid(
+          { scopeKey: capturedScopeKey, layoutResetKey: capturedLayoutResetKey },
+          {
+            scopeKey: workbenchScopeKeyRef.current,
+            layoutResetKey: layoutResetKeyRef.current,
+          },
+        )
+      ) {
         return;
       }
-      const snapshot = api.toJSON() as SerializedDockview;
-      layoutSnapshotDebouncerRef.current?.maybeExecute(snapshot);
+      layoutSnapshotDebouncerRef.current?.maybeExecute({
+        scopeKey: capturedScopeKey,
+        layoutResetKey: capturedLayoutResetKey,
+        layout: api.toJSON() as SerializedDockview,
+      });
     });
   }, [input.projectId]);
 
@@ -1010,6 +1032,12 @@ export function useWorkbenchDockviewRuntime(
   const handleDockviewReady = useCallback(
     (event: DockviewReadyEvent) => {
       dockviewApiRef.current = event.api;
+      // A fresh dock is empty, but the hydration guard is keyed by scope +
+      // reset key, neither of which changes when only the canvas remounts.
+      // Left set, this instance skips its restore and the reconcile pass then
+      // flattens the user's splits into equal columns. Safe to clear here:
+      // hydration re-arms the guard, and it refuses a dock that holds panels.
+      hydratedProjectKeyRef.current = null;
       setDockviewReadyScopeKey(input.workbenchScopeKey ?? "workbench");
       if (import.meta.env.DEV && typeof window !== "undefined") {
         // Exposed for layout diagnostics (panel move/bounds verification).
@@ -1020,10 +1048,12 @@ export function useWorkbenchDockviewRuntime(
 
       layoutSnapshotDebouncerRef.current?.cancel();
       layoutSnapshotDebouncerRef.current = new Debouncer(
-        (layout: SerializedDockview) => {
-          const scopeKey = workbenchScopeKeyRef.current;
-          if (!scopeKey) return;
-          writePersistedWorkbenchLayout(scopeKey, layoutResetKeyRef.current, layout);
+        (pending: PendingWorkbenchLayoutWrite) => {
+          // Deliberately writes the identity the snapshot was captured with
+          // rather than whatever is current. This is flushed on scope change,
+          // where the outgoing workbench's last layout is still worth saving —
+          // to its own key, which is exactly what the snapshot carries.
+          writePersistedWorkbenchLayout(pending.scopeKey, pending.layoutResetKey, pending.layout);
         },
         { wait: 400 },
       );

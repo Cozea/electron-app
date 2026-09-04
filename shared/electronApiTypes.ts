@@ -1086,14 +1086,28 @@ export interface AgentToolLoginEvent {
 
 export type AgentSkillProvider = 'codex' | 'claude' | 'cursor' | 'opencode'
 
-export type AgentSkillSource = 'managed' | 'external'
+/**
+ * `catalog` is a skill sitting in a provider's plugin marketplace: present on
+ * disk, but not loaded by the provider until it is installed.
+ */
+export type AgentSkillSource = 'managed' | 'external' | 'catalog'
 
 export type AgentSkillRestartBehavior = 'live' | 'restart-external-app' | 'restart-recommended'
+
+/**
+ * Where an update pulls its newer copy from. Cozea never checks for updates on
+ * its own, so this only says whether the manual Update button has somewhere to
+ * read from — not that anything newer exists.
+ */
+export type AgentSkillUpdateSource = 'built-in' | 'folder' | 'providers' | 'none'
 
 export interface AgentSkillProviderInfo {
   id: AgentSkillProvider
   label: string
+  /** Where Cozea installs a skill it manages. Always the first of `rootPaths`. */
   rootPath: string
+  /** Every folder this provider loads skills from, including read-only ones. */
+  rootPaths: string[]
   restartBehavior: AgentSkillRestartBehavior
 }
 
@@ -1104,6 +1118,20 @@ export interface AgentSkillProviderBinding {
   ownership: AgentSkillSource | 'none'
   path: string | null
   restartBehavior: AgentSkillRestartBehavior
+  /** The skill is in this provider's catalog and can be installed for it. */
+  available?: boolean
+  /**
+   * The provider owns this copy and rewrites the folder it lives in, so Cozea
+   * cannot switch it off — it moves the files out and the provider restores
+   * them. Reported as essential instead of offered as a toggle.
+   */
+  essential?: boolean
+  /**
+   * This provider's own copy of the skill, present only when it differs from
+   * the record's canonical text — the usual reason being a copy tailored to
+   * that provider's paths or frontmatter. Absent means it matches.
+   */
+  variant?: { description: string; instructions: string }
 }
 
 export interface AgentSkillRecord {
@@ -1118,7 +1146,28 @@ export interface AgentSkillRecord {
   createdAt: number | null
   updatedAt: number
   originLabel?: string
+  /** Shelf the page groups this skill under; see shared/agentSkillCategories. */
+  category: string
+  /** True when the author declared `category:` instead of Cozea inferring one. */
+  categoryDeclared: boolean
+  updateSource: AgentSkillUpdateSource
+  /** Folder the update re-reads, when `updateSource` is `folder`. */
+  originPath?: string
   bindings: AgentSkillProviderBinding[]
+}
+
+/**
+ * A named set of skills to run with — a loadout. Applying one turns its skills
+ * on and everything else off, so switching between "writing docs" and "fixing
+ * CI" is one click rather than a dozen toggles.
+ */
+export interface AgentSkillBuild {
+  id: string
+  name: string
+  /** Skills this build turns on. Ids that no longer resolve are ignored. */
+  skillIds: string[]
+  createdAt: number
+  updatedAt: number
 }
 
 export interface AgentSkillsSnapshot {
@@ -1126,6 +1175,9 @@ export interface AgentSkillsSnapshot {
   providers: AgentSkillProviderInfo[]
   libraryPath: string
   generatedAt: number
+  builds: AgentSkillBuild[]
+  /** The build whose skills exactly match what is enabled, if any. */
+  activeBuildId: string | null
 }
 
 export interface AgentSkillMutationResult {
@@ -1142,6 +1194,7 @@ export interface AgentSkillDraft {
   description: string
   instructions: string
   compatibleProviders: AgentSkillProvider[]
+  category?: string
 }
 
 export interface AgentSkillSetupPackSkill {
@@ -2411,6 +2464,19 @@ export interface ElectronAPI {
       provider: AgentSkillProvider
       enabled: boolean
     }) => Promise<AgentSkillMutationResult>
+    /** Master switch: every compatible provider at once. */
+    setEnabled: (options: { skillId: string; enabled: boolean }) => Promise<AgentSkillMutationResult>
+    update: (options: { skillId: string }) => Promise<AgentSkillMutationResult>
+    /** Copy a catalog skill into the provider's own skills folder. */
+    install: (options: { skillId: string }) => Promise<AgentSkillMutationResult>
+    saveBuild: (options: {
+      buildId?: string
+      name: string
+      skillIds: string[]
+    }) => Promise<AgentSkillMutationResult>
+    deleteBuild: (options: { buildId: string }) => Promise<AgentSkillMutationResult>
+    /** Turn on exactly this build's skills and turn every other one off. */
+    applyBuild: (options: { buildId: string }) => Promise<AgentSkillMutationResult>
     copyToLibrary: (options: { skillId: string }) => Promise<AgentSkillMutationResult>
     remove: (options: { skillId: string }) => Promise<AgentSkillMutationResult>
     importDirectory: () => Promise<AgentSkillMutationResult>

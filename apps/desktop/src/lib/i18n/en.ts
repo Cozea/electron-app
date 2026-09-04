@@ -776,6 +776,16 @@ const en = {
   "routeLoading.appearance": "Loading appearance…",
   "routeLoading.tooling": "Loading tooling…",
   "routeLoading.devapps": "Loading DevApps…",
+  "agentSkills.filter.all": "All skills",
+  "agentSkills.filter.external": "Provider folders",
+  "agentSkills.library": "Skill library",
+  "agentSkills.providersAll": "All providers",
+  "nav.skillBuilds": "Builds",
+  "routeLoading.agentSkills": "Loading Agent Skills…",
+  "agentSkills.searchPlaceholder": "Search skills...",
+  "agentSkills.filter.managed": "My library",
+  "agentSkills.providers": "Enabled in",
+  "nav.agentSkills": "Agent Skills",
 } as const
 
 export type TranslationKey = keyof typeof en
