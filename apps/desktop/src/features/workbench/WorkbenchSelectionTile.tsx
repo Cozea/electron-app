@@ -60,6 +60,8 @@ const LAUNCHER_CONFIG = {
   cellHeight: 102,
   columnGap: 22,
   rowGap: 18,
+  maxColumns: 6,
+  maxRows: 2,
   labelClassName: "text-[12px]",
 } as const
 
@@ -251,7 +253,8 @@ function useLauncherGridLayout(
       cellHeight: LAUNCHER_CONFIG.cellHeight,
       columnGap: LAUNCHER_CONFIG.columnGap,
       rowGap: LAUNCHER_CONFIG.rowGap,
-      maxColumns: 6,
+      maxColumns: LAUNCHER_CONFIG.maxColumns,
+      maxRows: LAUNCHER_CONFIG.maxRows,
     }),
   )
 
@@ -273,7 +276,8 @@ function useLauncherGridLayout(
         cellHeight: LAUNCHER_CONFIG.cellHeight,
         columnGap: LAUNCHER_CONFIG.columnGap,
         rowGap: LAUNCHER_CONFIG.rowGap,
-        maxColumns: 6,
+        maxColumns: LAUNCHER_CONFIG.maxColumns,
+        maxRows: LAUNCHER_CONFIG.maxRows,
       }),
     )
   }, [containerRef, itemCount])
@@ -708,6 +712,7 @@ export function WorkbenchSelectionTile({
                                 gridAutoRows: `${densityConfig.cellHeight}px`,
                                 columnGap: `${densityConfig.columnGap}px`,
                                 rowGap: `${densityConfig.rowGap}px`,
+                                minHeight: `${launcherLayout.rows * densityConfig.cellHeight + Math.max(0, launcherLayout.rows - 1) * densityConfig.rowGap}px`,
                               }}
                             >
                               {page.map((option) => (
@@ -740,37 +745,45 @@ export function WorkbenchSelectionTile({
           {!useListView && centerSingletonSelectionLayout ? (
             <div className="flex h-7 items-center justify-center">
               {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-1">
                   {pagedOptions.map((_, pageIndex) => (
                     <button
                       key={`selection-page-dot-${pageIndex}`}
                       type="button"
                       aria-label={`Go to page ${pageIndex + 1}`}
                       aria-pressed={pageIndex === currentPage}
-                      className={cn(
-                        "h-2.5 w-2.5 rounded-full transition-colors",
-                        pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
-                      )}
+                      className="flex size-5 items-center justify-center cursor-pointer p-0"
                       onClick={() => handlePageSelect(pageIndex)}
-                    />
+                    >
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full transition-all",
+                          pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
+                        )}
+                      />
+                    </button>
                   ))}
                 </div>
               ) : null}
             </div>
           ) : !useListView && filteredOptions.length > 0 && pagedOptions.length > 1 ? (
-            <div className="mt-3 flex items-center justify-center gap-2">
+            <div className="mt-3 flex items-center justify-center gap-1">
               {pagedOptions.map((_, pageIndex) => (
                 <button
                   key={`selection-page-dot-${pageIndex}`}
                   type="button"
                   aria-label={`Go to page ${pageIndex + 1}`}
                   aria-pressed={pageIndex === currentPage}
-                  className={cn(
-                    "h-2.5 w-2.5 rounded-full transition-colors",
-                    pageIndex === currentPage ? "bg-foreground" : "bg-border hover:bg-muted-foreground/50",
-                  )}
+                  className="flex size-5 items-center justify-center cursor-pointer p-0"
                   onClick={() => handlePageSelect(pageIndex)}
-                />
+                >
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full transition-all",
+                      pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
+                    )}
+                  />
+                </button>
               ))}
             </div>
           ) : null}
