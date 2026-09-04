@@ -55,11 +55,13 @@ export interface NativeDevAppPreviewOpenOptions {
  */
 export class NativeDevAppPreviewSession {
   private readonly records = new Map<string, NativePreviewRecord>()
+  private readonly builds: NativeDevAppBuildService
+  private readonly trust: DevAppDevelopmentTrustStore
 
-  constructor(
-    private readonly builds: NativeDevAppBuildService,
-    private readonly trust: DevAppDevelopmentTrustStore,
-  ) {}
+  constructor(builds: NativeDevAppBuildService, trust: DevAppDevelopmentTrustStore) {
+    this.builds = builds
+    this.trust = trust
+  }
 
   recognizes(sourcePath: string): boolean {
     const manifestPath = path.join(sourcePath, DEV_APP_V3_FILENAME)

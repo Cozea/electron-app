@@ -23,10 +23,13 @@ export interface NativeDevAppDevelopmentBuild {
 
 /** Builds one immutable development generation and exposes it through the module service. */
 export class NativeDevAppBuildService {
-  constructor(
-    private readonly getBuildRoot: () => string,
-    private readonly modules: NativeDevAppModuleService,
-  ) {}
+  private readonly getBuildRoot: () => string
+  private readonly modules: NativeDevAppModuleService
+
+  constructor(getBuildRoot: () => string, modules: NativeDevAppModuleService) {
+    this.getBuildRoot = getBuildRoot
+    this.modules = modules
+  }
 
   async buildDevelopment(options: {
     sourceId: string
