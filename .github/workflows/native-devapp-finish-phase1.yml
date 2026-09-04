@@ -1,0 +1,109 @@
+name: Finish Native DevApp platform phase 1
+
+on:
+  push:
+    branches:
+      - feat/native-devapp-platform-finish
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Initialize T3 substrate
+        run: git submodule update --init vendor/t3code
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install T3 source dependencies
+        run: bun x pnpm@11.10.0 --dir vendor/t3code install --frozen-lockfile --ignore-scripts
+
+      - name: Correct staged generator type alias
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.automation/native-devapp-finish-phase1.py')
+          source = path.read_text()
+          source = source.replace(
+              'import type { DevAppReleaseManifestV1, DevAppSurfaceContributionV3 } from "@shared/devAppManifestV3"',
+              'import type { DevAppReleaseManifestV1, DevAppReleaseServiceV1, DevAppSurfaceContributionV3 } from "@shared/devAppManifestV3"',
+          )
+          source = source.replace(
+              'import type { DevAppParts, DevAppStateScope } from "@shared/devAppParts"',
+              'import type { DevAppParts, DevAppStateScope as LegacyDevAppStateScope } from "@shared/devAppParts"',
+          )
+          old = '''function stateScopeForParts(
+            state: DevAppReleaseManifestV1["services"] extends Record<string, infer Service>
+              ? Service extends { state: infer State }
+                ? State
+                : never
+              : never,
+          ): DevAppStateScope {'''
+          new = '''function stateScopeForParts(
+            state: DevAppReleaseServiceV1["state"],
+          ): LegacyDevAppStateScope {'''
+          if old not in source:
+              raise SystemExit('staged state-scope type block not found')
+          path.write_text(source.replace(old, new, 1))
+          PY
+
+      - name: Apply installed DevApp integration
+        run: python .automation/native-devapp-finish-phase1.py
+
+      - name: Format changed sources
+        run: |
+          bunx --bun oxfmt -w \
+            apps/desktop/src/features/devapps/useDevAppInstallations.ts \
+            apps/desktop/src/features/devapps/installedDevAppManifest.ts \
+            apps/desktop/src/features/devapps/registry/types.ts \
+            apps/desktop/src/features/workbench/model/workbenchSelectionLaunch.ts \
+            apps/desktop/src/features/workbench/WorkbenchSelectionTile.tsx \
+            tests/devapps/installedDevAppManifest.test.ts
+
+      - name: Commit product change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'feat(devapps): launch installed manifest-v3 packages'
+          git push origin HEAD:feat/native-devapp-platform-finish
+
+      - name: Typecheck renderer
+        run: bun run typecheck
+
+      - name: Typecheck Electron
+        run: bun run typecheck:electron
+
+      - name: Typecheck tests
+        run: bun run typecheck:tests
+
+      - name: Targeted DevApp tests
+        run: >-
+          bunx vitest run
+          tests/devapps/installedDevAppManifest.test.ts
+          tests/devapps/devAppLaunchResolver.test.ts
+          tests/devapps/workbenchTileRegistry.test.ts
+
+      - name: Full test suite
+        run: bun run test
+
+      - name: Production build
+        run: bun run build
