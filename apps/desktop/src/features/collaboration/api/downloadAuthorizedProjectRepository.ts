@@ -19,6 +19,11 @@ export async function downloadAuthorizedProjectRepository(args: {
 }): Promise<DownloadAuthorizedProjectRepositoryResult> {
   if (!convex) throw new Error("Convex is not configured")
 
+  const workspace = window.electronAPI.workspace
+  if (!workspace) {
+    throw new Error("Local workspace management is unavailable")
+  }
+
   const binding = await convex.query(api.collaborationRepositories.getBinding, {
     projectId: args.projectId as Id<"projects">,
   }) as CollaborationRepositoryBindingDescriptor | null
@@ -32,7 +37,7 @@ export async function downloadAuthorizedProjectRepository(args: {
   })
   const auth = repositoryGitAuthOptions(credential)
 
-  const created = await window.electronAPI.workspace.createForProject({
+  const created = await workspace.createForProject({
     projectId: args.projectId,
     slug: args.slug,
     initGit: true,
@@ -76,14 +81,14 @@ export async function downloadAuthorizedProjectRepository(args: {
       throw new Error(restored.error || "Could not materialize the downloaded project")
     }
 
-    const verified = await window.electronAPI.workspace.verify(workspaceId)
+    const verified = await workspace.verify(workspaceId)
     if (!verified.workspace) {
       throw new Error("The downloaded project workspace could not be verified")
     }
 
     return { workspace: verified.workspace, binding }
   } catch (error) {
-    await window.electronAPI.workspace.trashManagedWorkspace(workspaceId).catch(() => undefined)
+    await workspace.trashManagedWorkspace(workspaceId).catch(() => undefined)
     throw error
   }
 }
