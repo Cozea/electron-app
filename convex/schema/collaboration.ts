@@ -44,6 +44,7 @@ export const collaborationTables = {
   // and Git credentials never belong in these records.
   collaborationSessions: defineTable({
     sessionId: v.string(),
+    creationToken: v.string(),
     projectId: v.id("projects"),
     repositoryId: v.string(),
     targetBranch: v.string(),
@@ -55,6 +56,9 @@ export const collaborationTables = {
     createdByUserId: v.id("users"),
     commitLeaseUserId: v.optional(v.id("users")),
     commitLeaseExpiresAt: v.optional(v.number()),
+    pendingCommitSha: v.optional(v.string()),
+    pendingCommitThroughSequence: v.optional(v.number()),
+    pendingCommitCreatedAt: v.optional(v.number()),
     status: collaborationSessionStatusValidator,
     revision: v.number(),
     createdAt: v.number(),
@@ -64,6 +68,7 @@ export const collaborationTables = {
     failureMessage: v.optional(v.string()),
   })
     .index("by_session_id", ["sessionId"])
+    .index("by_project_and_creation_token", ["projectId", "creationToken"])
     .index("by_project_and_status", ["projectId", "status"])
     .index("by_project_and_target", ["projectId", "targetBranch"])
     .index("by_project_and_updated", ["projectId", "updatedAt"])
