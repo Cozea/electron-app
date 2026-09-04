@@ -229,6 +229,7 @@ export class CollabWsProvider {
   private hasHandshakeAcknowledged = false
   private activeSocketInstanceId: string | null = null
   private readonly pendingUpdates: PendingUpdate[] = []
+  private readonly localUpdatesById = new Map<string, PendingUpdate>()
   private hasPendingAwarenessPublish = false
   private requestedCatchUpAtSeq: number | null = null
   private incomingMessageQueue: Promise<void> = Promise.resolve()
@@ -330,6 +331,28 @@ export class CollabWsProvider {
     return this.socket === socket &&
       this.activeSocketInstanceId === socketInstanceId &&
       !this.isDestroyed
+  }
+
+  private queuePendingUpdate(update: PendingUpdate): void {
+    if (this.pendingUpdates.some((entry) => entry.idempotencyKey === update.idempotencyKey)) {
+      return
+    }
+    this.pendingUpdates.push(update)
+  }
+
+  private queueUnacknowledgedUpdatesForRetry(): void {
+    for (const update of this.localUpdatesById.values()) {
+      this.queuePendingUpdate(update)
+    }
+  }
+
+  private removePendingUpdate(idempotencyKey: string): void {
+    const index = this.pendingUpdates.findIndex(
+      (update) => update.idempotencyKey === idempotencyKey,
+    )
+    if (index >= 0) {
+      this.pendingUpdates.splice(index, 1)
+    }
   }
 
   private scheduleReconnect(errorMessage?: string): void {
@@ -477,6 +500,7 @@ export class CollabWsProvider {
       this.activeSocketInstanceId = null
       this.hasHandshakeAcknowledged = false
       this.requestedCatchUpAtSeq = null
+      this.queueUnacknowledgedUpdatesForRetry()
 
       const connectLifetimeMs = Date.now() - this.currentConnectStartedAt
       const initialHandshakeFailure =
@@ -530,7 +554,7 @@ export class CollabWsProvider {
       return
     }
 
-    this.pendingUpdates.push(update)
+    this.queuePendingUpdate(update)
   }
 
   private async encodeOutboundBytes(
@@ -621,8 +645,11 @@ export class CollabWsProvider {
   }
 
   private flushPendingUpdates(): void {
-    if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
-    while (this.pendingUpdates.length > 0) {
+    while (
+      this.pendingUpdates.length > 0 &&
+      this.socket?.readyState === WebSocket.OPEN &&
+      this.hasHandshakeAcknowledged
+    ) {
       const next = this.pendingUpdates.shift()
       if (next) this.sendUpdate(next)
     }
@@ -668,11 +695,13 @@ export class CollabWsProvider {
           gitCwd: attribution?.gitCwd,
         })
 
-        this.sendUpdate({
+        const pendingUpdate: PendingUpdate = {
           updateBinary: encoded,
           idempotencyKey,
           timestamp: Date.now(),
-        })
+        }
+        this.localUpdatesById.set(idempotencyKey, pendingUpdate)
+        this.sendUpdate(pendingUpdate)
       })
       .catch((error) => {
         console.warn('[CollabWsProvider] Failed to encrypt local update:', error)
@@ -861,7 +890,13 @@ export class CollabWsProvider {
     }
 
     if (message.type === 'update.ack') {
-      if (message.payload?.persisted !== false) {
+      const idempotencyKey = message.payload?.idempotencyKey
+      if (
+        message.payload?.persisted !== false &&
+        typeof idempotencyKey === 'string' &&
+        this.localUpdatesById.delete(idempotencyKey)
+      ) {
+        this.removePendingUpdate(idempotencyKey)
         this.advanceKnownSeq(message.payload?.seq)
       }
       return
