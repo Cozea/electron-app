@@ -35,11 +35,14 @@ export function createNativeDevAppHostClient(
     surface: Object.freeze({ ...options.surface }),
     locale: options.locale || document.documentElement.lang || navigator.language || "en",
     commands: {
-      execute: async (commandId, argument) => {
+      execute: async <Result = unknown>(
+        commandId: string,
+        argument?: DevAppJsonValue,
+      ): Promise<Result> => {
         if (!options.executeCommand) {
           throw new Error(`DevApp command ${commandId} has no active extension host.`)
         }
-        return await options.executeCommand(commandId, argument)
+        return (await options.executeCommand(commandId, argument)) as Result
       },
     },
     settings: {
@@ -83,11 +86,14 @@ export function createNativeDevAppHostClient(
         return { dispose: () => observer.disconnect() }
       },
     },
-    request: async (method, params) => {
+    request: async <Result = unknown>(
+      method: string,
+      params?: DevAppJsonValue,
+    ): Promise<Result> => {
       if (!options.request) {
         throw new Error(`DevApp host method ${method} is unavailable.`)
       }
-      return await options.request(method, params)
+      return (await options.request(method, params)) as Result
     },
   }
 }

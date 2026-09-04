@@ -142,7 +142,14 @@ export function NativeDevAppSurfaceHost({
       })
     return () => {
       active = false
-      if (lease) void lease.dispose().catch((error) => onError?.(error as Error))
+      if (!lease) return
+      try {
+        void Promise.resolve(lease.dispose()).catch((cause: unknown) => {
+          onError?.(cause instanceof Error ? cause : new Error(String(cause)))
+        })
+      } catch (cause) {
+        onError?.(cause instanceof Error ? cause : new Error(String(cause)))
+      }
     }
   }, [definition, host, onError])
 
