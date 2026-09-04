@@ -4,192 +4,114 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 /**
- * A delete-vs-edit conflict detected during reconnection.
- * Occurs when one user deleted a file while another was editing it offline.
+ * A delete-vs-edit conflict detected while a collaboration client is
+ * reconnecting. Conflict discovery remains here temporarily while the v2
+ * runtime takes ownership of deletion semantics.
  */
 export interface DeleteConflict {
-  /** The file path that was deleted */
   filePath: string
-  /** Who deleted the file */
   deletedBy: string | null
-  /** When the file was deleted */
   deletedAt: number
-  /** The local content that conflicts with the deletion */
   localContent: string
 }
 
-/**
- * Result of a reconnection sync operation.
- */
 export interface ReconnectionResult {
-  /** Whether the sync completed successfully */
   success: boolean
-  /** Number of updates sent from client to server */
   sentUpdates: number
-  /** Number of updates received from server */
   receivedUpdates: number
-  /** Delete-vs-edit conflicts that need user resolution */
   deleteConflicts: DeleteConflict[]
-  /** Error message if sync failed */
   error?: string
 }
 
-interface SyncWithServerResponse {
-  serverSnapshot: ArrayBuffer | null
-  snapshotVersion: number
-  snapshotCreatedAt: number
-  recentUpdates: Array<{ update: ArrayBuffer; clientId: string; timestamp: number }>
-  deltaUpdate?: ArrayBuffer
-  deltaByteLength?: number
-  serverStateVector?: ArrayBuffer
-  serverTimestamp?: number
-}
-
 /**
- * ReconnectionProtocol - Handles efficient sync after offline periods.
+ * Compatibility conflict detector for the encrypted websocket runtime.
  *
- * When a client reconnects after being offline, this protocol:
- * 1. Sends any local changes made while offline to the server
- * 2. Receives any remote changes made by others
- * 3. Uses Yjs CRDT to automatically merge changes
+ * The former implementation encoded the complete Y.Doc as plaintext and sent
+ * it to `yjs.syncWithServer`. Encrypted rooms reject that payload, and the
+ * response contains encrypted envelopes that cannot be passed directly to
+ * `Y.applyUpdate`. Keeping that path active risked both failed reconnects and
+ * accidental plaintext persistence attempts.
  *
- * This ensures no edits are lost and all clients converge to the same state.
+ * Websocket reconnect/catch-up is now the only transport responsibility. This
+ * class intentionally performs no document upload or server-state application;
+ * it only preserves the existing delete-conflict UI until deletion metadata is
+ * moved into the collaboration v2 session tree.
  */
 export class ReconnectionProtocol {
-  private doc: Y.Doc
-  private projectId: Id<'projects'>
-  private convex: ConvexReactClient
-  private clientId: string
-  private filesMap: Y.Map<Y.Text>
+  private readonly projectId: Id<'projects'>
+  private readonly convex: ConvexReactClient
+  private readonly filesMap: Y.Map<Y.Text>
 
   constructor(
     doc: Y.Doc,
     projectId: Id<'projects'>,
-    convex: ConvexReactClient
+    convex: ConvexReactClient,
   ) {
-    this.doc = doc
     this.projectId = projectId
     this.convex = convex
-    this.clientId = doc.clientID.toString()
     this.filesMap = doc.getMap<Y.Text>('files')
   }
 
-  /**
-   * Perform a full sync with the server.
-   * Should be called when connection is restored after being offline.
-   */
   async performSync(): Promise<ReconnectionResult> {
     try {
-      // 1. Check for delete-vs-edit conflicts before syncing
-      const deleteConflicts = await this.detectDeleteConflicts()
-
-      // 2. Encode our current state as an update
-      // This captures all local changes, including those made offline
-      const localUpdate = Y.encodeStateAsUpdate(this.doc)
-
-      // Create clean ArrayBuffer for Convex
-      const updateBuffer = new ArrayBuffer(localUpdate.byteLength)
-      new Uint8Array(updateBuffer).set(localUpdate)
-
-      // 3. Send to server and get server's state
-      const result = (await this.convex.mutation(api.yjs.syncWithServer, {
-        projectId: this.projectId,
-        clientUpdate: updateBuffer,
-        clientId: this.clientId,
-      })) as SyncWithServerResponse
-
-      let receivedUpdates = 0
-
-      // 4. Prefer state-vector delta updates for efficient reconciliation.
-      if (result.deltaUpdate && result.deltaUpdate.byteLength > 0) {
-        Y.applyUpdate(this.doc, new Uint8Array(result.deltaUpdate), 'sync')
-        receivedUpdates = 1
-      } else {
-        // Legacy fallback for older server payloads.
-        if (result.serverSnapshot) {
-          const serverBytes = new Uint8Array(result.serverSnapshot)
-          Y.applyUpdate(this.doc, serverBytes, 'sync')
-          receivedUpdates++
-        }
-
-        for (const update of result.recentUpdates) {
-          if (update.clientId !== this.clientId) {
-            const updateBytes = new Uint8Array(update.update)
-            Y.applyUpdate(this.doc, updateBytes, 'sync')
-            receivedUpdates++
-          }
-        }
-      }
-
-      // console.log(
-      //   `[ReconnectionProtocol] Sync complete: sent 1 update, received ${receivedUpdates} updates, ${deleteConflicts.length} conflicts`
-      // )
-
       return {
         success: true,
-        sentUpdates: 1,
-        receivedUpdates,
-        deleteConflicts,
+        sentUpdates: 0,
+        receivedUpdates: 0,
+        deleteConflicts: await this.detectDeleteConflicts(),
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      console.error('[ReconnectionProtocol] Sync failed:', err)
-
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error('[ReconnectionProtocol] Conflict discovery failed:', error)
       return {
         success: false,
         sentUpdates: 0,
         receivedUpdates: 0,
         deleteConflicts: [],
-        error: errorMessage,
+        error: message,
       }
     }
   }
 
-  /**
-   * Detect files that were deleted on the server while we have local edits.
-   */
   private async detectDeleteConflicts(): Promise<DeleteConflict[]> {
     const conflicts: DeleteConflict[] = []
 
     try {
-      // Get all tombstones for this project
       const tombstones = await this.convex.query(
         api.fileTombstones.getProjectTombstones,
-        { projectId: this.projectId }
+        { projectId: this.projectId },
       )
 
-      // Check each tombstone against our local files
       for (const tombstone of tombstones) {
         const localFile = this.filesMap.get(tombstone.filePath)
-        if (localFile) {
-          const localContent = localFile.toString()
-          // Only report as conflict if local file has content
-          if (localContent.length > 0) {
-            // Get who deleted it
-            let deletedBy: string | null = null
-            if (tombstone.deletedBy) {
-              const user = await this.convex.query(api.users.getById, {
-                userId: tombstone.deletedBy,
-              })
-              if (user) {
-                deletedBy = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email
-              }
-            } else if (tombstone.deletedByAgent) {
-              deletedBy = tombstone.deletedByAgent
-            }
+        if (!localFile) continue
 
-            conflicts.push({
-              filePath: tombstone.filePath,
-              deletedBy,
-              deletedAt: tombstone.deletedAt,
-              localContent,
-            })
+        const localContent = localFile.toString()
+        if (localContent.length === 0) continue
+
+        let deletedBy: string | null = null
+        if (tombstone.deletedBy) {
+          const user = await this.convex.query(api.users.getById, {
+            userId: tombstone.deletedBy,
+          })
+          if (user) {
+            deletedBy =
+              `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
+              user.email
           }
+        } else if (tombstone.deletedByAgent) {
+          deletedBy = tombstone.deletedByAgent
         }
+
+        conflicts.push({
+          filePath: tombstone.filePath,
+          deletedBy,
+          deletedAt: tombstone.deletedAt,
+          localContent,
+        })
       }
-    } catch (err) {
-      console.warn('[ReconnectionProtocol] Failed to check delete conflicts:', err)
-      // Non-fatal - continue with sync
+    } catch (error) {
+      console.warn('[ReconnectionProtocol] Failed to inspect delete conflicts:', error)
     }
 
     return conflicts
