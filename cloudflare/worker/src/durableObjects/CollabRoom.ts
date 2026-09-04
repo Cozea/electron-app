@@ -5,12 +5,15 @@ import {
   persistYjsUpdateToConvex,
   upsertAwarenessInConvex,
 } from '../lib/convex'
+import { updateAuthoritativeRoomHead } from '../lib/collaborationV2Convex'
 import type {
+  BarrierRequestMessage,
   HelloMessage,
   IncomingClientMessage,
+  MediaSignalMessage,
+  MediaStateMessage,
   PresencePushMessage,
   PresenceSnapshotMessage,
-  ReadyMessage,
   SyncRequestMessage,
   UpdatePushMessage,
 } from '../lib/protocol'
@@ -21,13 +24,18 @@ import {
 } from '../lib/protocol'
 import { verifySessionToken } from '../lib/jwt'
 
-interface ClientConnection {
-  socket: WebSocket
+interface SocketAttachment {
+  handshaken: true
   clientId: string
   projectId: string
   roomId: string
+  sessionId?: string
   userId: string
   knownSeq: number
+  awarenessBinary?: string
+  presenceExpiresAt?: number
+  audio?: boolean
+  screenShare?: boolean
 }
 
 interface PresenceEntry {
@@ -36,49 +44,61 @@ interface PresenceEntry {
   expiresAt: number
 }
 
+interface StoredSessionUpdate {
+  seq: number
+  updateBinary: string
+  idempotencyKey: string
+  clientId: string
+  timestamp: number
+}
+
+const UPDATE_PREFIX = 'update:'
+const IDEMPOTENCY_PREFIX = 'idempotency:'
+const HEAD_SEQUENCE_KEY = 'head-sequence'
+const SYNC_PAGE_SIZE = 128
+
 function parseMessage(data: string | ArrayBuffer): IncomingClientMessage {
   const text = typeof data === 'string' ? data : new TextDecoder().decode(data)
   return JSON.parse(text) as IncomingClientMessage
 }
 
 function isHelloLikeMessage(value: unknown): value is HelloMessage {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-
-  const candidate = value as {
-    type?: unknown
-    payload?: {
-      sessionToken?: unknown
-      projectId?: unknown
-      roomId?: unknown
-      clientId?: unknown
-      protocolVersion?: unknown
-      knownSeq?: unknown
-      clientType?: unknown
-    }
-  }
-
-  if (!candidate.payload || typeof candidate.payload !== 'object') {
-    return false
-  }
-
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { type?: unknown; payload?: Record<string, unknown> }
   return (
-    (candidate.type === 'hello' || typeof candidate.type !== 'string') &&
-    typeof candidate.payload.sessionToken === 'string' &&
-    typeof candidate.payload.projectId === 'string' &&
-    typeof candidate.payload.roomId === 'string' &&
-    typeof candidate.payload.clientId === 'string'
+    candidate.type === 'hello' &&
+    typeof candidate.payload?.sessionToken === 'string' &&
+    typeof candidate.payload?.projectId === 'string' &&
+    typeof candidate.payload?.roomId === 'string' &&
+    typeof candidate.payload?.clientId === 'string'
   )
+}
+
+function isV2Room(roomId: string): boolean {
+  return roomId.startsWith('session:')
+}
+
+function sessionIdFromRoom(roomId: string): string | null {
+  return isV2Room(roomId) ? roomId.slice('session:'.length) || null : null
+}
+
+function updateKey(sequence: number): string {
+  return `${UPDATE_PREFIX}${Math.max(0, Math.floor(sequence)).toString().padStart(16, '0')}`
+}
+
+function attachmentOf(socket: WebSocket): SocketAttachment | null {
+  try {
+    const value = socket.deserializeAttachment() as SocketAttachment | null
+    return value?.handshaken ? value : null
+  } catch {
+    return null
+  }
 }
 
 export class CollabRoom implements DurableObject {
   private readonly state: DurableObjectState
   private readonly env: Env
-  private readonly clients = new Map<WebSocket, ClientConnection>()
-  private readonly presence = new Map<string, PresenceEntry>()
-  private readonly handshakingSockets = new Set<WebSocket>()
-  private readonly queuedMessages = new Map<WebSocket, IncomingClientMessage[]>()
+  private updateQueue: Promise<void> = Promise.resolve()
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state
@@ -86,6 +106,31 @@ export class CollabRoom implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (url.pathname === '/internal/base-advanced' && request.method === 'POST') {
+      const body = await request.json() as { commitSha?: string; coveredThroughSequence?: number }
+      const sequence = Number(body.coveredThroughSequence)
+      if (!Number.isFinite(sequence) || sequence < 0 || typeof body.commitSha !== 'string') {
+        return new Response('Invalid base advancement', { status: 400 })
+      }
+      await this.pruneThrough(Math.floor(sequence))
+      this.broadcast({
+        type: 'base.advanced',
+        payload: {
+          roomId: this.currentRoomId() ?? '',
+          commitSha: body.commitSha,
+          coveredThroughSequence: Math.floor(sequence),
+        },
+      })
+      return new Response(null, { status: 204 })
+    }
+
+    if (url.pathname === '/internal/close' && request.method === 'POST') {
+      await this.state.storage.deleteAll()
+      for (const socket of this.state.getWebSockets()) socket.close(1000, 'Session closed')
+      return new Response(null, { status: 204 })
+    }
+
     if (request.headers.get('upgrade') !== 'websocket') {
       return protocolError('BAD_REQUEST', 'Expected websocket upgrade', { status: 400 })
     }
@@ -94,11 +139,7 @@ export class CollabRoom implements DurableObject {
     const client = pair[0]
     const server = pair[1]
     this.state.acceptWebSocket(server)
-
-    return new Response(null, {
-      status: 101,
-      webSocket: client,
-    })
+    return new Response(null, { status: 101, webSocket: client })
   }
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -106,88 +147,42 @@ export class CollabRoom implements DurableObject {
     try {
       parsed = parseMessage(message)
     } catch {
-      console.error('[CollabRoom] Failed to parse websocket message', {
-        messageType: typeof message,
-      })
-      socket.send(
-        JSON.stringify({
-          type: 'error',
-          payload: {
-            code: 'BAD_REQUEST',
-            message: 'Malformed websocket message',
-            recoverable: false,
-          },
-        }),
-      )
+      socket.send(stringifyMessage({
+        type: 'error',
+        payload: { code: 'BAD_REQUEST', message: 'Malformed websocket message', recoverable: false },
+      }))
       socket.close(1008, 'Malformed websocket message')
       return
     }
 
     try {
       if (isHelloLikeMessage(parsed)) {
-        console.log('[CollabRoom] Received hello', {
-          roomId: parsed.payload.roomId,
-          projectId: parsed.payload.projectId,
-          clientId: parsed.payload.clientId,
-        })
-        this.handshakingSockets.add(socket)
         await this.handleHello(socket, parsed)
         return
       }
-
-      const connection = this.clients.get(socket)
-      if (!connection) {
-        if (this.handshakingSockets.has(socket)) {
-          const pending = this.queuedMessages.get(socket) ?? []
-          pending.push(parsed)
-          this.queuedMessages.set(socket, pending)
-          console.log('[CollabRoom] Queued frame during handshake', {
-            type: parsed.type,
-            queuedCount: pending.length,
-          })
-          return
-        }
-        console.warn('[CollabRoom] Dropping pre-handshake frame', {
-          type: parsed.type,
-        })
-        // Be tolerant here. Some clients may emit an early frame before the
-        // handshake settles; dropping it is safer than tearing down the socket.
-        return
-      }
-      await this.routeMessage(connection, parsed)
+      const connection = attachmentOf(socket)
+      if (!connection) return
+      await this.routeMessage(socket, connection, parsed)
     } catch (error) {
-      console.error('[CollabRoom] Unhandled websocket message failure', {
-        type: parsed.type,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      socket.send(
-        stringifyMessage({
-          type: 'error',
-          payload: {
-            code: 'INTERNAL_ERROR',
-            message: error instanceof Error ? error.message : 'Unhandled websocket room error',
-            recoverable: false,
-          },
-        }),
-      )
+      socket.send(stringifyMessage({
+        type: 'error',
+        payload: {
+          code: 'INTERNAL_ERROR',
+          message: error instanceof Error ? error.message : 'Unhandled websocket room error',
+          recoverable: false,
+        },
+      }))
       socket.close(1011, 'internal room error')
     }
   }
 
   webSocketClose(socket: WebSocket): void {
-    this.handshakingSockets.delete(socket)
-    this.queuedMessages.delete(socket)
-    const connection = this.clients.get(socket)
+    const connection = attachmentOf(socket)
     if (!connection) return
-    this.clients.delete(socket)
-    this.presence.delete(connection.clientId)
     this.broadcast({
       type: 'presence.remove',
-      payload: {
-        roomId: connection.roomId,
-        clientIds: [connection.clientId],
-      },
-    })
+      payload: { roomId: connection.roomId, clientIds: [connection.clientId] },
+    }, socket)
   }
 
   webSocketError(socket: WebSocket): void {
@@ -199,285 +194,366 @@ export class CollabRoom implements DurableObject {
       const claims = await verifySessionToken(this.env, message.payload.sessionToken)
       const protocolVersion = this.env.COLLAB_PROTOCOL_VERSION ?? COLLAB_PROTOCOL_VERSION
       if (message.payload.protocolVersion !== protocolVersion) {
-        socket.send(
-          stringifyMessage({
-            type: 'error',
-            payload: {
-              code: 'INVALID_PROTOCOL_VERSION',
-              message: `Expected protocol version ${protocolVersion}`,
-              recoverable: false,
-            },
-          }),
-        )
-        socket.close(1008, 'Invalid protocol version')
-        return
+        throw new Error(`Expected protocol version ${protocolVersion}`)
       }
       if (claims.roomId !== message.payload.roomId || claims.projectId !== message.payload.projectId) {
-        socket.send(
-          stringifyMessage({
-            type: 'error',
-            payload: {
-              code: 'ROOM_MISMATCH',
-              message: 'Session token room does not match hello payload',
-              recoverable: false,
-            },
-          }),
-        )
-        socket.close(1008, 'Room mismatch')
-        return
+        throw new Error('Session token room does not match hello payload')
+      }
+      const roomSessionId = sessionIdFromRoom(claims.roomId)
+      if (roomSessionId && claims.sessionId !== roomSessionId) {
+        throw new Error('Session token does not match the explicit collaboration room')
       }
 
-      this.clients.set(socket, {
-        socket,
+      const headSeq = isV2Room(claims.roomId)
+        ? await this.getSessionHeadSequence()
+        : Math.max(0, Math.floor(message.payload.knownSeq))
+      const attachment: SocketAttachment = {
+        handshaken: true,
         clientId: message.payload.clientId,
         projectId: claims.projectId,
         roomId: claims.roomId,
+        sessionId: claims.sessionId,
         userId: claims.userId,
-        knownSeq: message.payload.knownSeq,
-      })
+        knownSeq: Math.max(0, Math.floor(message.payload.knownSeq)),
+      }
+      socket.serializeAttachment(attachment)
 
-      const readyMessage: ReadyMessage = {
+      socket.send(stringifyMessage({
         type: 'ready',
         payload: {
           roomId: claims.roomId,
           serverTime: Date.now(),
-          headSeq: message.payload.knownSeq,
-          resyncRequired: true,
+          headSeq,
+          resyncRequired: headSeq > attachment.knownSeq,
         },
-      }
-      socket.send(stringifyMessage(readyMessage))
+      }))
 
-      await this.hydratePresenceFromConvex(claims.projectId)
+      if (!isV2Room(claims.roomId)) await this.hydrateLegacyPresence(claims.projectId)
       this.sendPresenceSnapshot(socket, claims.roomId)
-      this.handshakingSockets.delete(socket)
-      await this.drainQueuedMessages(socket)
+      this.broadcastMediaState(socket, attachment)
     } catch (error) {
-      this.handshakingSockets.delete(socket)
-      this.queuedMessages.delete(socket)
-      console.error('[CollabRoom] Hello failed', {
-        roomId: message.payload.roomId,
-        projectId: message.payload.projectId,
-        clientId: message.payload.clientId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      socket.send(
-        stringifyMessage({
-          type: 'error',
-          payload: {
-            code: 'INVALID_SESSION_TOKEN',
-            message: error instanceof Error ? error.message : 'Session token verification failed',
-            recoverable: false,
-          },
-        }),
-      )
+      socket.send(stringifyMessage({
+        type: 'error',
+        payload: {
+          code: 'INVALID_SESSION_TOKEN',
+          message: error instanceof Error ? error.message : 'Session token verification failed',
+          recoverable: false,
+        },
+      }))
       socket.close(1008, 'Invalid session token')
     }
   }
 
-  private async drainQueuedMessages(socket: WebSocket): Promise<void> {
-    const connection = this.clients.get(socket)
-    const pending = this.queuedMessages.get(socket) ?? []
-    this.queuedMessages.delete(socket)
-    if (!connection || pending.length === 0) {
-      return
-    }
-
-    for (const message of pending) {
-      await this.routeMessage(connection, message)
-    }
-  }
-
   private async routeMessage(
-    connection: ClientConnection,
-    parsed: IncomingClientMessage,
+    socket: WebSocket,
+    connection: SocketAttachment,
+    message: IncomingClientMessage,
   ): Promise<void> {
-    switch (parsed.type) {
+    switch (message.type) {
       case 'sync.request':
-        console.log('[CollabRoom] Handling sync request', {
-          roomId: connection.roomId,
-          projectId: connection.projectId,
-          clientId: connection.clientId,
-          knownSeq: parsed.payload.knownSeq,
-        })
-        await this.handleSyncRequest(connection, parsed)
+        await this.handleSyncRequest(socket, connection, message)
         return
       case 'update.push':
-        console.log('[CollabRoom] Handling update push', {
-          roomId: connection.roomId,
-          projectId: connection.projectId,
-          clientId: connection.clientId,
-          idempotencyKey: parsed.payload.idempotencyKey,
-        })
-        await this.handleUpdatePush(connection, parsed)
+        this.updateQueue = this.updateQueue.then(() => this.handleUpdatePush(socket, connection, message))
+        await this.updateQueue
         return
       case 'presence.push':
-        console.log('[CollabRoom] Handling presence push', {
-          roomId: connection.roomId,
-          projectId: connection.projectId,
-          clientId: connection.clientId,
-        })
-        this.handlePresencePush(connection, parsed)
+        await this.handlePresencePush(socket, connection, message)
+        return
+      case 'barrier.request':
+        await this.handleBarrierRequest(socket, connection, message)
+        return
+      case 'media.signal':
+        this.handleMediaSignal(socket, connection, message)
+        return
+      case 'media.state':
+        this.handleMediaState(socket, connection, message)
         return
     }
   }
 
   private async handleSyncRequest(
-    connection: ClientConnection,
+    socket: WebSocket,
+    connection: SocketAttachment,
     message: SyncRequestMessage,
   ): Promise<void> {
-    try {
-      const updates = await fetchYjsDeltasFromConvex(
-        this.env,
-        connection.projectId,
-        connection.roomId,
-        message.payload.knownSeq,
-      )
-
-      connection.socket.send(
-        stringifyMessage({
-          type: 'sync.delta',
-          payload: {
-            roomId: connection.roomId,
-            fromSeq: message.payload.knownSeq,
-            toSeq: updates.length > 0 ? updates[updates.length - 1]!.seq : message.payload.knownSeq,
-            updatesBinary: updates.map((update) => update.updateBinary),
-          },
-        }),
-      )
-    } catch (error) {
-      console.error('[CollabRoom] Sync request failed', {
-        roomId: connection.roomId,
-        projectId: connection.projectId,
-        clientId: connection.clientId,
-        knownSeq: message.payload.knownSeq,
-        error: error instanceof Error ? error.message : String(error),
+    if (isV2Room(connection.roomId)) {
+      const headSeq = await this.getSessionHeadSequence()
+      const entries = await this.state.storage.list<StoredSessionUpdate>({
+        start: updateKey(message.payload.knownSeq + 1),
+        end: 'update;',
+        limit: SYNC_PAGE_SIZE,
       })
-      throw error
-    }
-  }
-
-  private async handleUpdatePush(
-    connection: ClientConnection,
-    message: UpdatePushMessage,
-  ): Promise<void> {
-    try {
-      const result = await persistYjsUpdateToConvex(this.env, {
-        projectId: connection.projectId,
-        roomId: connection.roomId,
-        clientId: connection.clientId,
-        idempotencyKey: message.payload.idempotencyKey,
-        updateBinary: message.payload.updateBinary,
-        authorType: message.payload.authorType,
-        authorId: message.payload.authorId,
-        timestamp: message.payload.timestamp,
-      })
-
-      connection.knownSeq = result.seq
-      this.broadcast({
-        type: 'update.ack',
-        payload: {
-          roomId: connection.roomId,
-          seq: result.seq,
-          idempotencyKey: message.payload.idempotencyKey,
-          persisted: true,
-        },
-      })
-      this.broadcast({
+      const updates = [...entries.values()].sort((left, right) => left.seq - right.seq)
+      const toSeq = updates.at(-1)?.seq ?? message.payload.knownSeq
+      socket.send(stringifyMessage({
         type: 'sync.delta',
         payload: {
           roomId: connection.roomId,
-          fromSeq: result.seq - 1,
-          toSeq: result.seq,
-          updatesBinary: [message.payload.updateBinary],
+          fromSeq: message.payload.knownSeq,
+          toSeq,
+          headSeq,
+          hasMore: toSeq < headSeq,
+          updatesBinary: updates.map((update) => update.updateBinary),
         },
-      })
-    } catch (error) {
-      console.error('[CollabRoom] Update push failed', {
-        roomId: connection.roomId,
-        projectId: connection.projectId,
-        clientId: connection.clientId,
-        idempotencyKey: message.payload.idempotencyKey,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      throw error
+      }))
+      return
     }
-  }
 
-  private handlePresencePush(connection: ClientConnection, message: PresencePushMessage): void {
-    const expiresAt = Date.now() + message.payload.ttlMs
-    this.presence.set(message.payload.clientId, {
-      clientId: message.payload.clientId,
-      awarenessBinary: message.payload.awarenessBinary,
-      expiresAt,
-    })
-    void upsertAwarenessInConvex(this.env, {
-      projectId: connection.projectId,
-      clientId: message.payload.clientId,
-      awarenessBinary: message.payload.awarenessBinary,
-      ttlMs: message.payload.ttlMs,
-    }).catch((error) => {
-      console.warn('[CollabRoom] Failed to persist awareness to Convex', error)
-    })
-    this.broadcast({
-      type: 'presence.snapshot',
+    const updates = await fetchYjsDeltasFromConvex(
+      this.env,
+      connection.projectId,
+      connection.roomId,
+      message.payload.knownSeq,
+    )
+    socket.send(stringifyMessage({
+      type: 'sync.delta',
       payload: {
         roomId: connection.roomId,
-        entries: this.getActivePresenceEntries(),
+        fromSeq: message.payload.knownSeq,
+        toSeq: updates.at(-1)?.seq ?? message.payload.knownSeq,
+        hasMore: updates.length === SYNC_PAGE_SIZE,
+        updatesBinary: updates.map((update) => update.updateBinary),
       },
+    }))
+  }
+
+  private async handleUpdatePush(
+    socket: WebSocket,
+    connection: SocketAttachment,
+    message: UpdatePushMessage,
+  ): Promise<void> {
+    const result = isV2Room(connection.roomId)
+      ? await this.persistSessionUpdate(connection, message)
+      : await persistYjsUpdateToConvex(this.env, {
+          projectId: connection.projectId,
+          roomId: connection.roomId,
+          clientId: connection.clientId,
+          idempotencyKey: message.payload.idempotencyKey,
+          updateBinary: message.payload.updateBinary,
+          authorType: message.payload.authorType,
+          authorId: message.payload.authorId,
+          timestamp: message.payload.timestamp,
+        })
+
+    connection.knownSeq = Math.max(connection.knownSeq, result.seq)
+    socket.serializeAttachment(connection)
+    socket.send(stringifyMessage({
+      type: 'update.ack',
+      payload: {
+        roomId: connection.roomId,
+        seq: result.seq,
+        idempotencyKey: message.payload.idempotencyKey,
+        persisted: true,
+      },
+    }))
+    this.broadcast({
+      type: 'sync.delta',
+      payload: {
+        roomId: connection.roomId,
+        fromSeq: result.seq - 1,
+        toSeq: result.seq,
+        headSeq: result.seq,
+        hasMore: false,
+        updatesBinary: [message.payload.updateBinary],
+      },
+    }, socket)
+  }
+
+  private async persistSessionUpdate(
+    connection: SocketAttachment,
+    message: UpdatePushMessage,
+  ): Promise<{ seq: number }> {
+    const idempotencyKey = `${IDEMPOTENCY_PREFIX}${message.payload.idempotencyKey}`
+    const existing = await this.state.storage.get<number>(idempotencyKey)
+    if (typeof existing === 'number') return { seq: existing }
+
+    const seq = (await this.getSessionHeadSequence()) + 1
+    const stored: StoredSessionUpdate = {
+      seq,
+      updateBinary: message.payload.updateBinary,
+      idempotencyKey: message.payload.idempotencyKey,
+      clientId: connection.clientId,
+      timestamp: message.payload.timestamp,
+    }
+    await this.state.storage.put({
+      [HEAD_SEQUENCE_KEY]: seq,
+      [updateKey(seq)]: stored,
+      [idempotencyKey]: seq,
     })
+    return { seq }
+  }
+
+  private async handlePresencePush(
+    socket: WebSocket,
+    connection: SocketAttachment,
+    message: PresencePushMessage,
+  ): Promise<void> {
+    connection.awarenessBinary = message.payload.awarenessBinary
+    connection.presenceExpiresAt = Date.now() + Math.max(5_000, Math.min(120_000, message.payload.ttlMs))
+    socket.serializeAttachment(connection)
+
+    if (!isV2Room(connection.roomId)) {
+      await upsertAwarenessInConvex(this.env, {
+        projectId: connection.projectId,
+        clientId: message.payload.clientId,
+        awarenessBinary: message.payload.awarenessBinary,
+        ttlMs: message.payload.ttlMs,
+      })
+    }
+    this.broadcast({
+      type: 'presence.snapshot',
+      payload: { roomId: connection.roomId, entries: this.getActivePresenceEntries(connection.roomId) },
+    })
+  }
+
+  private async handleBarrierRequest(
+    socket: WebSocket,
+    connection: SocketAttachment,
+    message: BarrierRequestMessage,
+  ): Promise<void> {
+    await this.updateQueue
+    const sequence = isV2Room(connection.roomId)
+      ? await this.getSessionHeadSequence()
+      : connection.knownSeq
+    if (connection.sessionId) {
+      await updateAuthoritativeRoomHead(this.env, connection.sessionId, sequence)
+    }
+    socket.send(stringifyMessage({
+      type: 'barrier.ready',
+      payload: { roomId: connection.roomId, requestId: message.payload.requestId, sequence },
+    }))
+  }
+
+  private handleMediaSignal(
+    socket: WebSocket,
+    connection: SocketAttachment,
+    message: MediaSignalMessage,
+  ): void {
+    if (message.payload.sourceClientId !== connection.clientId) return
+    for (const candidate of this.state.getWebSockets()) {
+      const target = attachmentOf(candidate)
+      if (target?.roomId === connection.roomId && target.clientId === message.payload.targetClientId) {
+        candidate.send(stringifyMessage(message))
+        return
+      }
+    }
+    socket.send(stringifyMessage({
+      type: 'error',
+      payload: { code: 'MEDIA_TARGET_OFFLINE', message: 'Media participant is not connected', recoverable: true },
+    }))
+  }
+
+  private handleMediaState(
+    socket: WebSocket,
+    connection: SocketAttachment,
+    message: MediaStateMessage,
+  ): void {
+    if (message.payload.clientId !== connection.clientId) return
+    connection.audio = message.payload.audio
+    connection.screenShare = message.payload.screenShare
+    socket.serializeAttachment(connection)
+    this.broadcast(message)
+  }
+
+  private broadcastMediaState(socket: WebSocket, connection: SocketAttachment): void {
+    for (const candidate of this.state.getWebSockets()) {
+      if (candidate === socket) continue
+      const other = attachmentOf(candidate)
+      if (!other || other.roomId !== connection.roomId) continue
+      socket.send(stringifyMessage({
+        type: 'media.state',
+        payload: {
+          roomId: connection.roomId,
+          clientId: other.clientId,
+          audio: other.audio === true,
+          screenShare: other.screenShare === true,
+        },
+      }))
+    }
   }
 
   private sendPresenceSnapshot(socket: WebSocket, roomId: string): void {
     const message: PresenceSnapshotMessage = {
       type: 'presence.snapshot',
-      payload: {
-        roomId,
-        entries: this.getActivePresenceEntries(),
-      },
+      payload: { roomId, entries: this.getActivePresenceEntries(roomId) },
     }
     socket.send(stringifyMessage(message))
   }
 
-  private getActivePresenceEntries(): PresenceEntry[] {
+  private getActivePresenceEntries(roomId: string): PresenceEntry[] {
     const now = Date.now()
-    const activeEntries: PresenceEntry[] = []
-    for (const [clientId, entry] of this.presence.entries()) {
-      if (entry.expiresAt <= now) {
-        this.presence.delete(clientId)
-        continue
-      }
-      activeEntries.push(entry)
-    }
-    return activeEntries
-  }
-
-  private broadcast(message: Parameters<typeof stringifyMessage>[0]): void {
-    const serialized = stringifyMessage(message)
-    for (const connection of this.clients.values()) {
-      connection.socket.send(serialized)
-    }
-  }
-
-  private async hydratePresenceFromConvex(projectId: string): Promise<void> {
-    try {
-      const entries = await fetchActiveAwarenessFromConvex(this.env, projectId)
-      const now = Date.now()
-      for (const entry of entries) {
-        if (entry.expiresAt <= now) {
-          continue
-        }
-        this.presence.set(entry.clientId, {
-          clientId: entry.clientId,
-          awarenessBinary: entry.awarenessBinary,
-          expiresAt: entry.expiresAt,
+    const entries: PresenceEntry[] = []
+    for (const socket of this.state.getWebSockets()) {
+      const connection = attachmentOf(socket)
+      if (
+        connection?.roomId === roomId &&
+        connection.awarenessBinary &&
+        (connection.presenceExpiresAt ?? 0) > now
+      ) {
+        entries.push({
+          clientId: connection.clientId,
+          awarenessBinary: connection.awarenessBinary,
+          expiresAt: connection.presenceExpiresAt!,
         })
       }
-    } catch (error) {
-      console.error('[CollabRoom] Presence hydration failed', {
-        projectId,
-        error: error instanceof Error ? error.message : String(error),
+    }
+    return entries
+  }
+
+  private broadcast(message: Parameters<typeof stringifyMessage>[0], except?: WebSocket): void {
+    const serialized = stringifyMessage(message)
+    for (const socket of this.state.getWebSockets()) {
+      if (socket !== except && attachmentOf(socket)) socket.send(serialized)
+    }
+  }
+
+  private currentRoomId(): string | null {
+    for (const socket of this.state.getWebSockets()) {
+      const connection = attachmentOf(socket)
+      if (connection) return connection.roomId
+    }
+    return null
+  }
+
+  private async getSessionHeadSequence(): Promise<number> {
+    return Math.max(0, Math.floor((await this.state.storage.get<number>(HEAD_SEQUENCE_KEY)) ?? 0))
+  }
+
+  private async pruneThrough(sequence: number): Promise<void> {
+    while (true) {
+      const entries = await this.state.storage.list<StoredSessionUpdate>({
+        prefix: UPDATE_PREFIX,
+        limit: 256,
       })
-      throw error
+      const removable = [...entries.entries()]
+        .filter(([, update]) => update.seq <= sequence)
+      if (removable.length === 0) return
+      const keys: string[] = []
+      for (const [key, update] of removable) {
+        keys.push(key, `${IDEMPOTENCY_PREFIX}${update.idempotencyKey}`)
+      }
+      await this.state.storage.delete(keys)
+      if (entries.size < 256) return
+    }
+  }
+
+  private async hydrateLegacyPresence(projectId: string): Promise<void> {
+    const existing = this.getActivePresenceEntries(`project:${projectId}`)
+    if (existing.length > 0) return
+    try {
+      const entries = await fetchActiveAwarenessFromConvex(this.env, projectId)
+      const sockets = this.state.getWebSockets()
+      for (const entry of entries) {
+        const socket = sockets.find((candidate) => attachmentOf(candidate)?.clientId === entry.clientId)
+        const connection = socket ? attachmentOf(socket) : null
+        if (!socket || !connection) continue
+        connection.awarenessBinary = entry.awarenessBinary
+        connection.presenceExpiresAt = entry.expiresAt
+        socket.serializeAttachment(connection)
+      }
+    } catch (error) {
+      console.warn('[CollabRoom] Failed to hydrate legacy presence', error)
     }
   }
 }
