@@ -5,7 +5,7 @@ import {
   buildInlineTerminalContextText,
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
-} from "../../../../../../../apps/desktop/src/features/assistant/chat/userMessageTerminalContexts";
+} from "@/features/assistant/chat/userMessageTerminalContexts";
 
 describe("userMessageTerminalContexts", () => {
   it("builds plain inline terminal text labels", () => {
