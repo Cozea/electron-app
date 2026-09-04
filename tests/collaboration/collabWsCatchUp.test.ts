@@ -7,6 +7,26 @@ import {
   type CollabSessionDescriptor,
 } from "@/lib/yjs/CollabWsProvider"
 
+interface TestPendingUpdate {
+  updateBinary: string
+  idempotencyKey: string
+  timestamp: number
+}
+
+interface ProviderInternals {
+  handleIncoming(raw: unknown): Promise<void>
+  decodeInboundBytes(encoded: string, kind: string): Promise<unknown>
+  applyRemoteUpdate(
+    bytes: Uint8Array,
+    metadata: Record<string, unknown>,
+    timestamp: number | null,
+  ): void
+  requestInitialSync(): void
+  queueUnacknowledgedUpdatesForRetry(): void
+  localUpdatesById: Map<string, TestPendingUpdate>
+  pendingUpdates: TestPendingUpdate[]
+}
+
 function createProvider() {
   const doc = new Y.Doc()
   const awareness = new Awareness(doc)
@@ -44,26 +64,25 @@ function createProvider() {
   }
 }
 
+function internals(provider: CollabWsProvider): ProviderInternals {
+  return provider as unknown as ProviderInternals
+}
+
 describe("CollabWsProvider catch-up", () => {
   it("requests another page after a full 128-update delta", async () => {
     const { provider, doc, awareness } = createProvider()
-    const internals = provider as unknown as {
-      handleIncoming(raw: unknown): Promise<void>
-      decodeInboundBytes(encoded: string, kind: string): Promise<unknown>
-      applyRemoteUpdate(bytes: Uint8Array, metadata: Record<string, unknown>, timestamp: number | null): void
-      requestInitialSync(): void
-    }
+    const testProvider = internals(provider)
 
-    vi.spyOn(internals, "decodeInboundBytes").mockResolvedValue({
+    vi.spyOn(testProvider, "decodeInboundBytes").mockResolvedValue({
       bytes: new Uint8Array(),
       metadata: {},
     })
-    vi.spyOn(internals, "applyRemoteUpdate").mockImplementation(() => undefined)
+    vi.spyOn(testProvider, "applyRemoteUpdate").mockImplementation(() => undefined)
     const requestNextPage = vi
-      .spyOn(internals, "requestInitialSync")
+      .spyOn(testProvider, "requestInitialSync")
       .mockImplementation(() => undefined)
 
-    await internals.handleIncoming(JSON.stringify({
+    await testProvider.handleIncoming(JSON.stringify({
       type: "sync.delta",
       payload: {
         roomId: "project:project_1",
@@ -82,24 +101,20 @@ describe("CollabWsProvider catch-up", () => {
 
   it("does not advance the sequence before encrypted updates are applied", async () => {
     const { provider, doc, awareness } = createProvider()
-    const internals = provider as unknown as {
-      handleIncoming(raw: unknown): Promise<void>
-      decodeInboundBytes(encoded: string, kind: string): Promise<unknown>
-      applyRemoteUpdate(bytes: Uint8Array, metadata: Record<string, unknown>, timestamp: number | null): void
-    }
+    const testProvider = internals(provider)
 
     let releaseDecode: (() => void) | null = null
     const decodeGate = new Promise<void>((resolve) => {
       releaseDecode = resolve
     })
 
-    vi.spyOn(internals, "decodeInboundBytes").mockImplementation(async () => {
+    vi.spyOn(testProvider, "decodeInboundBytes").mockImplementation(async () => {
       await decodeGate
       return { bytes: new Uint8Array(), metadata: {} }
     })
-    vi.spyOn(internals, "applyRemoteUpdate").mockImplementation(() => undefined)
+    vi.spyOn(testProvider, "applyRemoteUpdate").mockImplementation(() => undefined)
 
-    const handling = internals.handleIncoming(JSON.stringify({
+    const handling = testProvider.handleIncoming(JSON.stringify({
       type: "sync.delta",
       payload: {
         roomId: "project:project_1",
@@ -122,23 +137,18 @@ describe("CollabWsProvider catch-up", () => {
 
   it("continues catch-up when the room advertises a later head", async () => {
     const { provider, doc, awareness } = createProvider()
-    const internals = provider as unknown as {
-      handleIncoming(raw: unknown): Promise<void>
-      decodeInboundBytes(encoded: string, kind: string): Promise<unknown>
-      applyRemoteUpdate(bytes: Uint8Array, metadata: Record<string, unknown>, timestamp: number | null): void
-      requestInitialSync(): void
-    }
+    const testProvider = internals(provider)
 
-    vi.spyOn(internals, "decodeInboundBytes").mockResolvedValue({
+    vi.spyOn(testProvider, "decodeInboundBytes").mockResolvedValue({
       bytes: new Uint8Array(),
       metadata: {},
     })
-    vi.spyOn(internals, "applyRemoteUpdate").mockImplementation(() => undefined)
+    vi.spyOn(testProvider, "applyRemoteUpdate").mockImplementation(() => undefined)
     const requestNextPage = vi
-      .spyOn(internals, "requestInitialSync")
+      .spyOn(testProvider, "requestInitialSync")
       .mockImplementation(() => undefined)
 
-    await internals.handleIncoming(JSON.stringify({
+    await testProvider.handleIncoming(JSON.stringify({
       type: "sync.delta",
       payload: {
         roomId: "project:project_1",
@@ -152,6 +162,73 @@ describe("CollabWsProvider catch-up", () => {
 
     expect(provider.getKnownSeq()).toBe(25)
     expect(requestNextPage).toHaveBeenCalledTimes(1)
+
+    awareness.destroy()
+    doc.destroy()
+  })
+
+  it("does not accept another client's broadcast acknowledgement as applied state", async () => {
+    const { provider, doc, awareness } = createProvider()
+
+    await internals(provider).handleIncoming(JSON.stringify({
+      type: "update.ack",
+      payload: {
+        roomId: "project:project_1",
+        seq: 9,
+        idempotencyKey: "foreign-update",
+        persisted: true,
+      },
+    }))
+
+    expect(provider.getKnownSeq()).toBe(0)
+
+    awareness.destroy()
+    doc.destroy()
+  })
+
+  it("advances on an acknowledgement for a locally applied update", async () => {
+    const { provider, doc, awareness } = createProvider()
+    const testProvider = internals(provider)
+    const localUpdate: TestPendingUpdate = {
+      updateBinary: "encrypted-update",
+      idempotencyKey: "local-update",
+      timestamp: 1,
+    }
+    testProvider.localUpdatesById.set(localUpdate.idempotencyKey, localUpdate)
+    testProvider.pendingUpdates.push(localUpdate)
+
+    await testProvider.handleIncoming(JSON.stringify({
+      type: "update.ack",
+      payload: {
+        roomId: "project:project_1",
+        seq: 9,
+        idempotencyKey: localUpdate.idempotencyKey,
+        persisted: true,
+      },
+    }))
+
+    expect(provider.getKnownSeq()).toBe(9)
+    expect(testProvider.localUpdatesById.has(localUpdate.idempotencyKey)).toBe(false)
+    expect(testProvider.pendingUpdates).toHaveLength(0)
+
+    awareness.destroy()
+    doc.destroy()
+  })
+
+  it("requeues sent but unacknowledged local updates for reconnect", () => {
+    const { provider, doc, awareness } = createProvider()
+    const testProvider = internals(provider)
+    const localUpdate: TestPendingUpdate = {
+      updateBinary: "encrypted-update",
+      idempotencyKey: "local-update",
+      timestamp: 1,
+    }
+    testProvider.localUpdatesById.set(localUpdate.idempotencyKey, localUpdate)
+
+    testProvider.queueUnacknowledgedUpdatesForRetry()
+    testProvider.queueUnacknowledgedUpdatesForRetry()
+
+    expect(testProvider.pendingUpdates).toEqual([localUpdate])
 
     awareness.destroy()
     doc.destroy()
