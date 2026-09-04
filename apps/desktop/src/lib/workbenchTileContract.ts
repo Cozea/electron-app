@@ -50,6 +50,7 @@ export const WORKBENCH_TILE_DEFAULT_TITLES: Record<WorkbenchTileType, string> = 
   llama: "Llama",
   mobileSimulator: "Mobile Simulator",
   orgDevApp: "DevApp",
+  devApp: "DevApp",
   devAppPreview: "DevApp (development)",
   selection: "Add DevApp",
   tasks: "Tasks",
