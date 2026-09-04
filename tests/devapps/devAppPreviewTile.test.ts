@@ -18,32 +18,32 @@ const root = process.cwd()
 const tileSource = fs.readFileSync(
   path.join(
     root,
-    "apps/desktop/src/features/projects/components/workbench/WorkbenchDevAppPreviewTile.tsx",
+    "apps/desktop/src/features/workbench/WorkbenchDevAppPreviewTile.tsx",
   ),
   "utf8",
 )
 const storeSource = fs.readFileSync(
-  path.join(root, "apps/desktop/src/stores/useProjectWorkbenchStore.ts"),
+  path.join(root, "apps/desktop/src/features/workbench/model/workbenchStore.ts"),
   "utf8",
 )
 const panelsSource = fs.readFileSync(
   path.join(
     root,
-    "apps/desktop/src/features/projects/components/workbench/WorkbenchDockPanels.tsx",
+    "apps/desktop/src/features/workbench/WorkbenchDockPanels.tsx",
   ),
   "utf8",
 )
 const commandSource = fs.readFileSync(
   path.join(
     root,
-    "apps/desktop/src/features/projects/components/command-palette/useWorkbenchCommandRegistry.ts",
+    "apps/desktop/src/features/workbench/command-palette/useWorkbenchCommandRegistry.ts",
   ),
   "utf8",
 )
 const commandHostSource = fs.readFileSync(
   path.join(
     root,
-    "apps/desktop/src/features/projects/components/command-palette/WorkbenchCommandPaletteHost.tsx",
+    "apps/desktop/src/features/workbench/command-palette/WorkbenchCommandPaletteHost.tsx",
   ),
   "utf8",
 )

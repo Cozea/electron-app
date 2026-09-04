@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildClosedChangesSearchParams,
   deriveWorkbenchSearchParamIntent,
-} from '../../apps/desktop/src/features/projects/hooks/useProjectWorkbenchSearchParamSync'
+} from '../../apps/desktop/src/features/workbench/hooks/useProjectWorkbenchSearchParamSync'
 
 describe('workbench search param sync', () => {
   it('waits for lane activation before applying open and focus intents', () => {

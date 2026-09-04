@@ -1,6 +1,6 @@
 {
   "name": "cozea",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "workspaces": [
@@ -203,6 +203,7 @@
     "electron-mksnapshot": "^38.8.2",
     "electron-vite": "^5.0.0",
     "globals": "^17.3.0",
+    "js-yaml": "^5.4.1",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.57.0",
     "postcss": "^8.5.6",

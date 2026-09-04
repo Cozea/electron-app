@@ -21,12 +21,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import type { ContextMenuItem } from "@shared/assistant-contracts/ipc";
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient";
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -697,47 +694,43 @@ export function HeaderProjectShareButton({
                           </div>
                           {isExistingMember && existingMember ? (
                             <div className="flex items-center gap-1.5">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="group h-8 gap-1 px-2 text-xs text-muted-foreground"
-                                    disabled={
-                                      isSubmitting ||
-                                      !canManagePersonalProjectAccess ||
-                                      existingMember.userId === convexUserId
-                                    }
-                                  >
-                                    {(t as any)("share.role." + existingMember.role) ?? "Role"}
-                                    <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
-                                    <DropdownMenuItem
-                                      key={option.value}
-                                      disabled={
-                                        existingMember.role === option.value ||
-                                        teamActionKey === roleActionKey ||
-                                        existingMember.userId === convexUserId
-                                      }
-                                      onClick={() => {
-                                        void handleProjectMemberRoleChange(
-                                          existingMember.userId,
-                                          option.value,
-                                        );
-                                      }}
-                                    >
-                                      {teamActionKey === roleActionKey &&
-                                      existingMember.role !== option.value ? (
-                                        <div className="loader mr-2" />
-                                      ) : null}
-                                      {(t as any)(`share.role.${option.value}`) ?? option.label}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="group h-8 gap-1 px-2 text-xs text-muted-foreground"
+                                aria-haspopup="menu"
+                                disabled={
+                                  isSubmitting ||
+                                  !canManagePersonalProjectAccess ||
+                                  existingMember.userId === convexUserId
+                                }
+                                onClick={async (event) => {
+                                  event.preventDefault()
+                                  const rect = event.currentTarget.getBoundingClientRect()
+                                  const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+                                  const items: ContextMenuItem<string>[] = PROJECT_INVITE_ROLE_OPTIONS.map((option) => ({
+                                    id: option.value,
+                                    label: (t as any)(`share.role.${option.value}`) ?? option.label,
+                                    type: "radio" as const,
+                                    checked: existingMember.role === option.value,
+                                    icon: getNativeMenuIcon("shield"),
+                                    enabled:
+                                      existingMember.role !== option.value &&
+                                      teamActionKey !== roleActionKey &&
+                                      existingMember.userId !== convexUserId,
+                                  }))
+                                  const action = await showDesktopContextMenu(items, position)
+                                  if (action) {
+                                    void handleProjectMemberRoleChange(existingMember.userId, action as ProjectInviteRole)
+                                  }
+                                }}
+                              >
+                                {teamActionKey === roleActionKey ? (
+                                  <div className="loader mr-1" />
+                                ) : null}
+                                {(t as any)("share.role." + existingMember.role) ?? "Role"}
+                                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                              </Button>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -864,33 +857,34 @@ export function HeaderProjectShareButton({
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="group h-8 gap-1 px-2 text-xs text-muted-foreground"
-                                    disabled={isSubmitting}
-                                  >
-                                    {PROJECT_INVITE_ROLE_OPTIONS.find(
-                                      (option) => option.value === member.role,
-                                    )?.label ?? "Role"}
-                                    <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {PROJECT_INVITE_ROLE_OPTIONS.map((option) => (
-                                    <DropdownMenuItem
-                                      key={option.value}
-                                      onClick={() => {
-                                        handleUpdateRole(index, option.value);
-                                      }}
-                                    >
-                                      {(t as any)(`share.role.${option.value}`) ?? option.label}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="group h-8 gap-1 px-2 text-xs text-muted-foreground"
+                                aria-haspopup="menu"
+                                disabled={isSubmitting}
+                                onClick={async (event) => {
+                                  event.preventDefault()
+                                  const rect = event.currentTarget.getBoundingClientRect()
+                                  const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+                                  const items: ContextMenuItem<string>[] = PROJECT_INVITE_ROLE_OPTIONS.map((option) => ({
+                                    id: option.value,
+                                    label: (t as any)(`share.role.${option.value}`) ?? option.label,
+                                    type: "radio" as const,
+                                    checked: member.role === option.value,
+                                    icon: getNativeMenuIcon("shield"),
+                                  }))
+                                  const action = await showDesktopContextMenu(items, position)
+                                  if (action) {
+                                    handleUpdateRole(index, action as ProjectInviteRole)
+                                  }
+                                }}
+                              >
+                                {PROJECT_INVITE_ROLE_OPTIONS.find(
+                                  (option) => option.value === member.role,
+                                )?.label ?? "Role"}
+                                <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                              </Button>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -976,52 +970,49 @@ export function HeaderProjectShareButton({
                       <span className="sr-only">Copy link</span>
                     </Button>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
-                          disabled={joinLinkAction !== null || !canManageJoinLinks}
-                          title="Link options"
-                        >
-                          <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-2.5 w-2.5" />
-                          <span className="sr-only">Link options</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          disabled={joinLinkAction !== null || !canManageJoinLinks}
-                          onClick={() => {
-                            void handleRotateJoinLink();
-                          }}
-                        >
-                          {joinLinkAction === "rotate" ? (
-                            <div className="loader mr-2" />
-                          ) : (
-                            <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-2 h-2.5 w-2.5" />
-                          )}
-                          Rotate link
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={
-                            joinLinkAction !== null || !canManageJoinLinks || !activeJoinLink
-                          }
-                          onClick={() => {
-                            void handleDisableJoinLink();
-                          }}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          {joinLinkAction === "disable" ? (
-                            <div className="loader mr-2" />
-                          ) : (
-                            <HugeiconsIcon icon={__ShieldOffHugeIcon} className="mr-2 h-2.5 w-2.5" />
-                          )}
-                          Disable link
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 rounded-full bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                      disabled={joinLinkAction !== null || !canManageJoinLinks}
+                      title="Link options"
+                      aria-label="Link options"
+                      aria-haspopup="menu"
+                      onClick={async (event) => {
+                        event.preventDefault()
+                        const rect = event.currentTarget.getBoundingClientRect()
+                        const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+                        const items: ContextMenuItem<string>[] = [
+                          {
+                            id: "rotate",
+                            label: "Rotate link",
+                            icon: getNativeMenuIcon("restore"),
+                            enabled: joinLinkAction === null && canManageJoinLinks,
+                          },
+                          {
+                            id: "disable",
+                            label: "Disable link",
+                            destructive: true,
+                            icon: getNativeMenuIcon("close"),
+                            enabled: joinLinkAction === null && canManageJoinLinks && Boolean(activeJoinLink),
+                          },
+                        ]
+                        const action = await showDesktopContextMenu(items, position)
+                        if (action === "rotate") {
+                          void handleRotateJoinLink()
+                        } else if (action === "disable") {
+                          void handleDisableJoinLink()
+                        }
+                      }}
+                    >
+                      {joinLinkAction === "rotate" || joinLinkAction === "disable" ? (
+                        <div className="loader" />
+                      ) : (
+                        <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-2.5 w-2.5" />
+                      )}
+                      <span className="sr-only">Link options</span>
+                    </Button>
                   </div>
 
                   <p className="mt-2 pl-[52px] text-xs text-muted-foreground">

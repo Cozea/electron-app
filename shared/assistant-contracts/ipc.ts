@@ -63,6 +63,7 @@ export interface ContextMenuItem<T extends string = string> {
   accelerator?: string;
   sublabel?: string;
   submenu?: readonly ContextMenuItem<T>[];
+  icon?: string;
 }
 
 export type DesktopUpdateStatus =

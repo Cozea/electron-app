@@ -31,14 +31,17 @@ export function useProjectChromeHeader({
   projectName,
   editorProjectPath,
 }: UseProjectChromeHeaderArgs) {
-  const { headerFromPage, centerFromPage, insetLeft, insetRight } = useProjectHeaderStore(
-    useShallow((state) => ({
-      headerFromPage: state.header,
-      centerFromPage: state.centerAddon,
-      insetLeft: state.insetLeft,
-      insetRight: state.insetRight,
-    })),
-  );
+  const { headerFromPage, centerFromPage, rightFromPage, hideShare, insetLeft, insetRight } =
+    useProjectHeaderStore(
+      useShallow((state) => ({
+        headerFromPage: state.header,
+        centerFromPage: state.centerAddon,
+        rightFromPage: state.rightAddon,
+        hideShare: state.hideShare,
+        insetLeft: state.insetLeft,
+        insetRight: state.insetRight,
+      })),
+    );
 
   return useMemo(() => {
     const headerResolved = headerFromPage ?? <ProjectShellTitleBarLeft />;
@@ -48,6 +51,8 @@ export function useProjectChromeHeader({
       header: headerResolved,
       centerAddon,
       preSearchAddon: isSettingsModeRoute ? undefined : (presencePreSearchAddon ?? undefined),
+      rightAddon: isSettingsModeRoute ? undefined : (rightFromPage ?? undefined),
+      hideShare,
       contentInsetLeft: insetLeft,
       contentInsetRight: insetRight,
       projectInviteContext: {
@@ -58,6 +63,8 @@ export function useProjectChromeHeader({
     };
   }, [
     centerFromPage,
+    rightFromPage,
+    hideShare,
     editorProjectPath,
     headerFromPage,
     insetLeft,

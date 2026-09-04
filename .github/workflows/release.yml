@@ -26,6 +26,16 @@ concurrency:
 env:
   CI: true
   NODE_OPTIONS: --max-old-space-size=4096
+  # The release now exists before any build job starts, so electron-builder always
+  # finds one rather than creating it. Its guard against uploading into a release
+  # published more than two hours ago would turn that into a silent skip on any
+  # re-run of an older tag, which is exactly the recovery path this workflow needs
+  # to keep working. Uploading into the release that carries this build's own tag
+  # is never the accident the guard exists to prevent.
+  EP_GH_IGNORE_TIME: "true"
+  # Set to "1" to build unsigned even when signing secrets exist, without having to
+  # delete a certificate that may still be wanted later.
+  COZEA_FORCE_UNSIGNED_MAC: ${{ vars.COZEA_FORCE_UNSIGNED_MAC }}
   COZEA_RELEASE_REPO: ${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
   COZEA_RUNTIME_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
   COZEA_GIT_BUNDLE_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
@@ -250,11 +260,64 @@ jobs:
         run: bun run lint
 
 
+  stage:
+    name: Create release
+    needs:
+      - plan
+      - verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Every build job publishes into one release, and electron-builder creates it
+      # on demand when it is absent. Run in parallel they both find it missing and
+      # both post it; GitHub gives the tag to whichever lands first and rejects the
+      # loser with 422 "Published releases must have a valid tag". electron-builder
+      # only recovers from a 422 that says "already_exists", so the loser's job
+      # fails and that architecture ships nothing until someone re-runs it. Creating
+      # the release once here, from a job that cannot race itself, leaves every
+      # build job on the path that reuses an existing release.
+      #
+      # This runs after verify so a release is never created for a tag that could
+      # not even typecheck.
+      - name: Create the release the build jobs publish into
+        if: needs.plan.outputs.publish_mode == 'always'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # This is now the first step that writes to the release repository, so it
+          # is also the first that can fail for a missing token. Say so plainly
+          # rather than letting gh fall back to the workflow token and report an
+          # opaque permission error against a repository it was never issued for.
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing GH_TOKEN for publishing to ${COZEA_RUNTIME_RELEASE_REPO}."
+            exit 1
+          fi
+
+          tag="${{ needs.plan.outputs.release_tag }}"
+          repo="${COZEA_RUNTIME_RELEASE_REPO}"
+
+          if gh release view "${tag}" --repo "${repo}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists in ${repo}; reusing it."
+            exit 0
+          fi
+
+          # Title matches the name electron-builder gave the releases it created
+          # here before, so nothing downstream sees a change in naming.
+          create=(gh release create "${tag}" --repo "${repo}" --title "${tag#v}" --notes "")
+          if [[ "${{ needs.plan.outputs.github_release_type }}" == "prerelease" ]]; then
+            create+=(--prerelease)
+          fi
+
+          "${create[@]}"
+          echo "Created release ${tag} in ${repo}."
+
   build:
     name: ${{ matrix.name }}
     needs:
       - plan
       - verify
+      - stage
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 60
     strategy:
@@ -363,7 +426,13 @@ jobs:
           # produce usable artifacts without one: fall back to an unsigned build
           # instead of failing the job, and let the later signing, verification
           # and notarization steps opt out on this flag.
-          if [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" ]]; then
+          if [[ "${COZEA_FORCE_UNSIGNED_MAC:-}" == "1" ]]; then
+            echo "COZEA_MAC_SIGNING=0" >> "$GITHUB_ENV"
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "COZEA_SKIP_NOTARIZE=1" >> "$GITHUB_ENV"
+            echo "COZEA_ALLOW_UNSIGNED_GIT_BUNDLES=1" >> "$GITHUB_ENV"
+            echo "::warning::COZEA_FORCE_UNSIGNED_MAC is set; ignoring any signing certificate and producing an unsigned build."
+          elif [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" ]]; then
             echo "COZEA_MAC_SIGNING=1" >> "$GITHUB_ENV"
             echo "Signing certificate configured; producing a signed build."
           else
@@ -649,6 +718,19 @@ jobs:
             echo "::warning::No runtime assets found to upload."
           fi
 
+      - name: Upload this architecture's updater feed
+        # electron-builder writes a feed listing only what this job built, and every
+        # job uploads it to the same release under the same name, so the last upload
+        # wins and the release ends up describing one architecture. Keep each job's
+        # feed so they can be merged back together once both have finished.
+        if: matrix.electron_target == 'mac' && needs.plan.outputs.publish_mode == 'always'
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-feed-${{ matrix.artifact_name }}
+          path: dist/*-mac.yml
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -657,3 +739,70 @@ jobs:
           path: dist/**
           if-no-files-found: warn
           retention-days: 14
+
+  updates:
+    name: Merge updater feed
+    needs:
+      - plan
+      - build
+    if: needs.plan.outputs.publish_mode == 'always'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.plan.outputs.checkout_ref }}
+          # Only the merge script runs here; the substrate is not needed.
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Cache bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Download each architecture's updater feed
+        uses: actions/download-artifact@v4
+        with:
+          pattern: updater-feed-*
+          path: updater-feeds
+
+      - name: Merge the feeds and replace the published one
+        # This runs after every build job, so its upload is the one that survives.
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bun scripts/merge-updater-feed.mjs updater-feeds merged-updater-feeds
+
+          gh release upload "${{ needs.plan.outputs.release_tag }}" \
+            merged-updater-feeds/*.yml \
+            --repo "${COZEA_RUNTIME_RELEASE_REPO}" \
+            --clobber
+
+      - name: Merged feed summary
+        shell: bash
+        run: |
+          {
+            echo "## Updater feed"
+            echo
+            for feed in merged-updater-feeds/*.yml; do
+              echo "### $(basename "${feed}")"
+              echo
+              echo '```yaml'
+              cat "${feed}"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -4,7 +4,7 @@ import {
   MAX_DEV_SERVER_AUXILIARY_PROCESSES,
   normalizeDevServerAuxiliaryProcesses,
   useDevServerProcessConfigStore,
-} from '@/features/projects/devserver/devServerProcessConfigStore'
+} from '@/features/dev-server/devServerProcessConfigStore'
 
 describe('Dev Server project-local process configuration', () => {
   it('normalizes, bounds, and de-duplicates persisted process entries', () => {

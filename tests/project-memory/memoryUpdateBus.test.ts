@@ -6,7 +6,7 @@ import {
   reportMemoryUpdateOutcome,
   subscribeMemoryUpdateOutcomes,
   subscribeMemoryUpdateRequests,
-} from "../../apps/desktop/src/features/projects/memory/memoryUpdateBus"
+} from "../../apps/desktop/src/features/project-memory/memoryUpdateBus"
 
 describe("memory update bus", () => {
   it("reports failure when no agent controller is mounted", () => {

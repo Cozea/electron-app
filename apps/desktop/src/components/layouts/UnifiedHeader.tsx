@@ -43,6 +43,7 @@ interface UnifiedHeaderProps {
   contentInsetRight?: number;
   compactHeaderActions?: boolean;
   hideInbox?: boolean;
+  hideShare?: boolean;
   projectInviteContext?: {
     projectId: Id<"projects"> | null;
     projectName?: string | null;
@@ -63,6 +64,7 @@ export function UnifiedHeader({
   contentInsetRight = 0,
   compactHeaderActions = true,
   hideInbox = false,
+  hideShare = false,
   projectInviteContext = null,
   editorProjectPath = null,
 }: UnifiedHeaderProps) {
@@ -126,14 +128,16 @@ export function UnifiedHeader({
             <HeaderProjectChangesButton key="changes" projectId={projectInviteContext.projectId} />,
           );
         }
-        parts.push(
-          <Suspense key="share" fallback={<HeaderShareButtonFallback />}>
-            <LazyHeaderProjectShareButton
-              projectId={projectInviteContext.projectId}
-              projectName={projectInviteContext.projectName}
-            />
-          </Suspense>,
-        );
+        if (!hideShare) {
+          parts.push(
+            <Suspense key="share" fallback={<HeaderShareButtonFallback />}>
+              <LazyHeaderProjectShareButton
+                projectId={projectInviteContext.projectId}
+                projectName={projectInviteContext.projectName}
+              />
+            </Suspense>,
+          );
+        }
         if (shouldShowInbox) {
           parts.push(<HeaderInboxButton key="inbox" />);
         }

@@ -970,4 +970,3 @@ function buildTerminalLaunchCommand(input: {
 
   return `env PORT=${port} BROWSER=none ${command}`
 }
-

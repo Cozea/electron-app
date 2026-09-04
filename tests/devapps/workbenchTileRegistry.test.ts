@@ -10,7 +10,7 @@ import {
   isBrowserBackedWorkbenchTile,
   RENDERABLE_WORKBENCH_TILE_TYPES,
   WORKBENCH_TILE_REGISTRY,
-} from "@/features/projects/lib/workbenchTileRegistry"
+} from "@/features/workbench/model/workbenchTileRegistry"
 
 const root = process.cwd()
 const read = (relativePath: string) => fs.readFileSync(path.join(root, relativePath), "utf8")
@@ -67,17 +67,11 @@ describe("Workbench tile registry — one shell contract", () => {
 
 describe("Workbench tile registry — consumers do not compete", () => {
   it("drives Dockview, floating/popout, restoration, chrome, and component registration", () => {
-    const dockview = read("apps/desktop/src/features/projects/lib/workbenchDockview.ts")
-    const canvas = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchDockviewCanvas.tsx",
-    )
-    const runtime = read("apps/desktop/src/features/projects/hooks/useWorkbenchDockviewRuntime.ts")
-    const panels = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchDockPanels.tsx",
-    )
-    const chrome = read(
-      "apps/desktop/src/features/projects/components/workbench/WorkbenchTileChrome.tsx",
-    )
+    const dockview = read("apps/desktop/src/features/workbench/model/workbenchDockview.ts")
+    const canvas = read("apps/desktop/src/features/workbench/WorkbenchDockviewCanvas.tsx")
+    const runtime = read("apps/desktop/src/features/workbench/hooks/useWorkbenchDockviewRuntime.ts")
+    const panels = read("apps/desktop/src/features/workbench/WorkbenchDockPanels.tsx")
+    const chrome = read("apps/desktop/src/features/workbench/WorkbenchTileChrome.tsx")
 
     expect(dockview).toContain("getWorkbenchDockDefinition")
     expect(dockview).toContain("getWorkbenchTileDefinition")

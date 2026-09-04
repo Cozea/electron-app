@@ -5,7 +5,7 @@ import {
   isCozeaDefaultMemorySkill,
   isMemoryRelevantSkill,
   orderMemorySkills,
-} from "../../apps/desktop/src/features/projects/memory/memorySkillRelevance"
+} from "../../apps/desktop/src/features/project-memory/memorySkillRelevance"
 
 describe("memory skill relevance", () => {
   it("accepts the skills that could actually drive the map", () => {

@@ -6,34 +6,28 @@ import { describe, expect, it } from "vitest";
 import {
   browserAddressDisplayValue,
   resolveBrowserAddressSubmission,
-} from "@/features/projects/browser/browserAddressState";
-import { isExternallyOpenableBrowserUrl } from "@/features/projects/browser/urlInput";
+} from "@/features/browser/browserAddressState";
+import { isExternallyOpenableBrowserUrl } from "@/features/browser/urlInput";
 import { getBrowserPortParityRequirement } from "@shared/browserPortParityLedger";
 
 const browserTileSource = fs.readFileSync(
-  path.join(
-    process.cwd(),
-    "apps/desktop/src/features/projects/components/workbench/WorkbenchBrowserTile.tsx",
-  ),
+  path.join(process.cwd(), "apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx"),
   "utf8",
 );
 const browserControlsSource = fs.readFileSync(
-  path.join(
-    process.cwd(),
-    "apps/desktop/src/features/projects/browser/BrowserNavigationControls.tsx",
-  ),
+  path.join(process.cwd(), "apps/desktop/src/features/browser/BrowserNavigationControls.tsx"),
   "utf8",
 );
 const hostedWebviewSource = fs.readFileSync(
-  path.join(process.cwd(), "apps/desktop/src/features/projects/browser/HostedBrowserWebview.tsx"),
+  path.join(process.cwd(), "apps/desktop/src/features/browser/HostedBrowserWebview.tsx"),
   "utf8",
 );
 const browserPreviewActionsSource = fs.readFileSync(
-  path.join(process.cwd(), "apps/desktop/src/features/projects/browser/BrowserPreviewActions.tsx"),
+  path.join(process.cwd(), "apps/desktop/src/features/browser/BrowserPreviewActions.tsx"),
   "utf8",
 );
 const workbenchCssSource = fs.readFileSync(
-  path.join(process.cwd(), "apps/desktop/src/features/projects/components/workbench/workbench.css"),
+  path.join(process.cwd(), "apps/desktop/src/features/workbench/workbench.css"),
   "utf8",
 );
 
@@ -48,27 +42,13 @@ describe("ported T3 Browser tile", () => {
   });
 
   it("preserves a focused draft while browser navigation changes the committed URL", () => {
-    expect(
-      browserAddressDisplayValue({
-        committedUrl: "https://redirected.example/",
-        draft: "second destination",
-        focused: true,
-      }),
-    ).toBe("second destination");
-    expect(
-      browserAddressDisplayValue({
-        committedUrl: "https://redirected.example/",
-        draft: "second destination",
-        focused: false,
-      }),
-    ).toBe("https://redirected.example/");
+    expect(browserAddressDisplayValue({ committedUrl: "https://redirected.example/", draft: "second destination", focused: true })).toBe("second destination");
+    expect(browserAddressDisplayValue({ committedUrl: "https://redirected.example/", draft: "second destination", focused: false })).toBe("https://redirected.example/");
   });
 
   it("normalizes every submission without suppressing a repeated URL", () => {
     expect(resolveBrowserAddressSubmission("localhost:4173")).toBe("http://localhost:4173");
-    expect(resolveBrowserAddressSubmission("cozea browser port")).toBe(
-      "https://www.google.com/search?q=cozea%20browser%20port",
-    );
+    expect(resolveBrowserAddressSubmission("cozea browser port")).toBe("https://www.google.com/search?q=cozea%20browser%20port");
     expect(resolveBrowserAddressSubmission("https://example.com/")).toBe("https://example.com/");
     expect(resolveBrowserAddressSubmission("https://example.com/")).toBe("https://example.com/");
     expect(resolveBrowserAddressSubmission("file:///tmp/private")).toBeNull();
@@ -83,9 +63,7 @@ describe("ported T3 Browser tile", () => {
     expect(hostedWebviewSource).not.toContain("[descriptor, preview, runtimeTabId]");
     expect(hostedWebviewSource).not.toContain("{ ...current, state: surfaceState }");
     expect(hostedWebviewSource).toContain('useState(() => descriptor.initialUrl ?? "about:blank")');
-    expect(hostedWebviewSource).toContain(
-      "src={webviewGeneration === 0 ? initialSrc : recoverySrc}",
-    );
+    expect(hostedWebviewSource).toContain("src={webviewGeneration === 0 ? initialSrc : recoverySrc}");
   });
 
   it("uses the generic shell API only after the URL policy accepts the committed URL", () => {
@@ -96,19 +74,13 @@ describe("ported T3 Browser tile", () => {
 
   it("keeps the address field flexible without stretching every header control", () => {
     expect(browserControlsSource).toContain("data-browser-address-group");
-    expect(browserControlsSource).toContain(
-      "rounded-md bg-transparent px-2 focus-within:bg-background",
-    );
+    expect(browserControlsSource).toContain("rounded-md bg-transparent px-2 focus-within:bg-background");
     expect(browserControlsSource).not.toContain("rounded-md bg-muted/45 px-2 focus-within");
-    expect(workbenchCssSource).toMatch(
-      /\.cozea-workbench-dockview \.cozea-workbench-header-controls \{\s*width: 100%;\s*\}/,
-    );
-    expect(workbenchCssSource).not.toMatch(
-      /\.cozea-workbench-dockview \.cozea-workbench-header-controls > \* \{[^}]*(?:^|[;\s])width\s*:/m,
-    );
+    expect(workbenchCssSource).toMatch(/\.cozea-workbench-dockview \.cozea-workbench-header-controls \{\s*width: 100%;\s*\}/);
+    expect(workbenchCssSource).not.toMatch(/\.cozea-workbench-dockview \.cozea-workbench-header-controls > \* \{[^}]*(?:^|[;\s])width\s*:/m);
   });
 
-  it("groups browser and preview utilities into one overflow menu", () => {
+  it("groups browser and preview utilities into one native overflow menu", () => {
     expect(browserControlsSource).not.toContain('aria-label="Browser menu"');
     expect(browserControlsSource).not.toContain('data-browser-find-button');
     expect(browserPreviewActionsSource).toContain('aria-label="Browser and preview menu"');
@@ -116,12 +88,10 @@ describe("ported T3 Browser tile", () => {
     expect(browserPreviewActionsSource).toContain("Annotate preview");
     expect(browserPreviewActionsSource).toContain("Capture screenshot");
     expect(browserPreviewActionsSource).toContain("Open separate preview window");
-    expect(browserPreviewActionsSource.match(/<DropdownMenu>/g)).toHaveLength(1);
+    expect(browserPreviewActionsSource).toContain("showDesktopContextMenu");
     expect(browserPreviewActionsSource).toContain("Capture and recording");
-    expect(browserPreviewActionsSource).toContain("Zoom {Math.round");
+    expect(browserPreviewActionsSource).toContain("Zoom");
     expect(browserPreviewActionsSource).toContain("Advanced");
-    expect(browserPreviewActionsSource.match(/<DropdownMenuSubTrigger inset/g)).toHaveLength(4);
-    expect(browserPreviewActionsSource).toContain("<DropdownMenuItem\n            inset");
   });
 
   it.each([
@@ -130,10 +100,6 @@ describe("ported T3 Browser tile", () => {
     ["navigation.history-reload-find-zoom-devtools", "cozea-adapted"],
     ["navigation.popup-policy", "ported"],
   ])("records executable parity for %s", (id, status) => {
-    expect(getBrowserPortParityRequirement(id)).toMatchObject({
-      id,
-      area: "navigation",
-      status,
-    });
+    expect(getBrowserPortParityRequirement(id)).toMatchObject({ id, area: "navigation", status });
   });
 });

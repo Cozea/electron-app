@@ -63,7 +63,9 @@ export async function handleCreateDevAppRuntimePull(request: Request, env: Env):
   }
   try {
     return Response.json(
-      { scheme: 'bearer', ...(await createDevAppRegistryPullToken(env)) },
+      // Scoped to the organization Convex just authorized above, never to the value
+      // the caller sent, and never to the whole registry root.
+      { scheme: 'bearer', ...(await createDevAppRegistryPullToken(env, authorization.organizationId)) },
       {
         headers: { 'cache-control': 'no-store' },
       },

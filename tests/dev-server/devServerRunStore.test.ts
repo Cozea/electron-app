@@ -31,12 +31,12 @@ import {
   updateDevServerRunAuxiliaryProcesses,
   useDevServerRunStore,
   type DevServerRunContext,
-} from '@/features/projects/devserver/devServerRunStore'
+} from '@/features/dev-server/devServerRunStore'
 import {
   buildLocalDevServerUrl,
   getDevServerPreviewRecoveryKey,
   isSameDevServerPreviewUrl,
-} from '@/features/projects/devserver/devServerTileCommands'
+} from '@/features/dev-server/devServerTileCommands'
 
 describe('dev server preview URLs', () => {
   it('uses IPv4 loopback for the managed preview URL', () => {

@@ -1471,6 +1471,7 @@ export type ExternalEditorId =
   | 'vscodium'
   | 'zed'
   | 'antigravity'
+  | 'finder'
   | 'webstorm'
   | 'intellij-idea'
   | 'phpstorm'

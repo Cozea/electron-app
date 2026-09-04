@@ -252,6 +252,12 @@ export function ProjectDevAppLogoDialog(props: ProjectDevAppLogoDialogProps) {
           </div>
         </div>
 
+        {!logoDataUrl && !isProcessing ? (
+          <p id="project-devapp-logo-required" className="text-xs leading-5 text-muted-foreground">
+            {t("projectDevApp.logo.required")}
+          </p>
+        ) : null}
+
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           <span>{t("projectDevApp.logo.scope")}</span>
           <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
@@ -276,6 +282,7 @@ export function ProjectDevAppLogoDialog(props: ProjectDevAppLogoDialogProps) {
           <Button
             type="button"
             disabled={isConfirmDisabled}
+            aria-describedby={logoDataUrl ? undefined : "project-devapp-logo-required"}
             onClick={() => {
               if (!logoDataUrl) return;
 

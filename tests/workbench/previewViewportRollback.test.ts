@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldRollbackPreviewViewport } from "../../apps/desktop/src/features/projects/browser/previewViewportRollback";
+import { shouldRollbackPreviewViewport } from "../../apps/desktop/src/features/browser/previewViewportRollback";
 
 describe("shouldRollbackPreviewViewport", () => {
   const fill = { _tag: "fill" } as const;

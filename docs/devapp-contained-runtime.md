@@ -114,6 +114,54 @@ storage mechanism, and custom wildcard hostnames as the production mechanism for
    active release before every hosted start. The main process uses a build-pinned gateway origin;
    renderer IPC cannot choose where a device bearer token is sent.
 
+## Registry credentials and image tenancy
+
+Each organization publishes into its own repository, `ghcr.io/cozea/devapps/<organizationId>`.
+`handleCreateDevAppRuntimePull` authorizes a specific organization, publication, release and digest,
+then mints a pull token scoped to `repository:cozea/devapps/<organizationId>:pull`. A device
+authorized for one DevApp therefore holds a credential that cannot reach another organization's
+images, even given a digest.
+
+These packages are private and inherit access from the source repository, so a new organization's
+first publish creates its repository with the right access already attached. Nothing has to be
+granted by hand in GitHub for a new organization.
+
+**Why the device does not call `ImageStore.pull`.** That API accepts only an `Authentication`, and
+spends it inside `fetchToken` against `https://ghcr.io/token`, which expects Basic credentials. The
+Worker has already completed that exchange, so replaying the registry token it returned makes GHCR
+answer with its own `WWW-Authenticate` challenge, and Containerization refuses:
+
+```
+refusing insecure credential exchange:
+authorization server https://ghcr.io/token issued its own authentication challenge
+```
+
+The token is not weak or misscoped; it is being spent at the wrong step. `RegistryClient.request`
+does accept arbitrary headers, but it is `internal`, so using it would mean forking Containerization.
+
+**What the device does instead.** `RegistryPull.fetchOCILayout` fetches the image itself, using the
+token the only way it is valid — as a bearer on the `/v2/` requests — writes an OCI layout, and hands
+that to `ImageStore.load`, which keeps unpacking and storage with the library.
+
+**Why devices are not given a Basic credential instead.** A Basic credential can request any scope
+the underlying account can reach, so splitting repositories per organization does not narrow one.
+Only the token exchange narrows it, and that has to stay on the Worker, which holds the credential.
+
+**What the fetch verifies.** The release names the platform digest, and every manifest and blob is
+checked against the digest that referenced it. With `provenance: mode=max` the builder reports an
+index per platform, holding the image manifest alongside its attestations, so the named digest is
+often an index rather than a manifest; the runtime resolves through it to the entry matching the
+requested os and architecture, which also steps past the attestation entries filed there under an
+`unknown` platform. Choosing from that index is not the registry choosing for us — its digest came
+from the signed release and was verified before it was read. Registries redirect blob reads to
+storage on another host, so `Authorization` is dropped whenever a redirect changes host.
+
+**One registry quirk worth keeping in mind.** GHCR answers `404`, not `406`, when the stored
+manifest's media type is absent from the request's `Accept` header, which makes an incomplete list
+indistinguishable from a missing image. `RegistryPull` therefore offers the OCI and Docker forms of
+both the image manifest and the index.
+
+
 ## Filesystem and developer power
 
 Published hosted code cannot access local files. Use a normal HTTPS service or an explicit upload
