@@ -10,6 +10,8 @@
 
 import type * as activity from "../activity.js";
 import type * as clean from "../clean.js";
+import type * as collaborationRepositories from "../collaborationRepositories.js";
+import type * as collaborationRoomAuthorization from "../collaborationRoomAuthorization.js";
 import type * as collaborationSessions from "../collaborationSessions.js";
 import type * as crons from "../crons.js";
 import type * as deployments from "../deployments.js";
@@ -43,6 +45,7 @@ import type * as projectTasks from "../projectTasks.js";
 import type * as projects from "../projects.js";
 import type * as schema_base from "../schema/base.js";
 import type * as schema_collaboration from "../schema/collaboration.js";
+import type * as schema_collaborationRepositories from "../schema/collaborationRepositories.js";
 import type * as users from "../users.js";
 import type * as yjs from "../yjs.js";
 import type * as yjsAwareness from "../yjsAwareness.js";
@@ -56,6 +59,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   activity: typeof activity;
   clean: typeof clean;
+  collaborationRepositories: typeof collaborationRepositories;
+  collaborationRoomAuthorization: typeof collaborationRoomAuthorization;
   collaborationSessions: typeof collaborationSessions;
   crons: typeof crons;
   deployments: typeof deployments;
@@ -89,6 +94,7 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   "schema/base": typeof schema_base;
   "schema/collaboration": typeof schema_collaboration;
+  "schema/collaborationRepositories": typeof schema_collaborationRepositories;
   users: typeof users;
   yjs: typeof yjs;
   yjsAwareness: typeof yjsAwareness;
