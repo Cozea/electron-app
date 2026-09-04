@@ -5,22 +5,22 @@
  * behavior is declared here once: title, tab identity, Dockview lifetime and sizing,
  * grouping, detach geometry, hosted-browser policy, and header ownership. Consumers must
  * ask this registry rather than maintaining their own lists of tile type strings.
+ *
+ * The tile type names themselves live in `@/lib/workbenchTileContract`, where a
+ * capability can reach them without importing the workbench feature. This file
+ * declares what the shell does with each of them.
  */
 
-export type WorkbenchTileType =
-  | "browser"
-  | "memory"
-  | "terminal"
-  | "devServer"
-  | "llama"
-  | "mobileSimulator"
-  | "orgDevApp"
-  | "devAppPreview"
-  | "selection"
-  | "tasks"
-  | "assistantChat"
+import type {
+  RenderableWorkbenchTileType,
+  WorkbenchTileType,
+} from "@/lib/workbenchTileContract"
 
-export type RenderableWorkbenchTileType = Exclude<WorkbenchTileType, "tasks">
+export type {
+  RenderableWorkbenchTileType,
+  WorkbenchTileType,
+} from "@/lib/workbenchTileContract"
+
 export type WorkbenchDockComponentName = RenderableWorkbenchTileType | "changes"
 export type WorkbenchPanelRenderer = "always" | "onlyWhenVisible"
 /**

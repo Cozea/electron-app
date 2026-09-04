@@ -21,6 +21,17 @@ import {
   type WorkbenchTileType,
 } from "@/features/workbench/model/workbenchTileRegistry"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
+import type {
+  WorkbenchAssistantChatTile,
+  WorkbenchBrowserTile,
+  WorkbenchDevServerTile,
+  WorkbenchRuntimePreviewViewMode,
+  WorkbenchSelectionPreviewScope,
+  WorkbenchSelectionPreviewTargetKind,
+  WorkbenchSelectionTileEdge,
+  WorkbenchSelectionTileMode,
+  WorkbenchTile,
+} from "@/lib/workbenchTileContract"
 
 export type { WorkbenchTileType } from "@/features/workbench/model/workbenchTileRegistry"
 
@@ -98,148 +109,30 @@ const workbenchStorage =
     ? createMemoryStorage()
     : createDebouncedStorage(window.localStorage)
 
-export type WorkbenchRuntimePreviewViewMode = "preview" | "code"
-
-export type WorkbenchSelectionTileMode =
-  | "emptyState"
-  | "edgePreview"
-  | "seamPreview"
-  | "junctionPreview"
-export type WorkbenchSelectionTileEdge = "left" | "right" | "top" | "bottom"
-export type WorkbenchSelectionPreviewScope = "local" | "full-span"
-export type WorkbenchSelectionPreviewTargetKind = "edge" | "seam" | "junction"
-
-interface WorkbenchBaseTile {
-  id: string
-  type: WorkbenchTileType
-  title: string
-  createdAt: number
-}
-
-export interface WorkbenchBrowserTile extends WorkbenchBaseTile {
-  type: "browser"
-  url: string
-  favicon?: string | null
-  storageScope?: BrowserStorageScope
-}
-
-export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
-  type: "orgDevApp"
-  url: string
-  /** Durable publication identity. Empty legacy values fail closed and must be reopened. */
-  devAppRef: string
-  publicationId: string
-  organizationId?: string
-  contentHash: string
-  entryPath: string
-  runtimeKind?: "static" | "service"
-  logoDataUrl?: string | null
-  storageScope?: BrowserStorageScope
-}
-
 /**
- * An unpublished DevApp being developed in this project.
- *
- * Carries only the path relative to the workspace root. The absolute location is never
- * persisted and never crosses to the renderer: main joins this against the root that
- * authorization returns, so a tile restored from stored state cannot name a directory
- * outside the project it belongs to.
+ * Tile shapes live in `@/lib/workbenchTileContract` so a capability can describe
+ * a tile without importing this store. They are re-exported here because the
+ * store is where most call sites already look for them.
  */
-export interface WorkbenchDevAppPreviewTile extends WorkbenchBaseTile {
-  type: "devAppPreview"
-  relativePath: string
-  /** Source identity for cross-project integration testing; never an absolute path. */
-  sourceProjectId?: string | null
-  sourceWorkspaceId?: string | null
-  devAppRef?: string | null
-  /** Assigned by the host on open; absent until then. */
-  sourceId?: string | null
-}
-
-export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
-  type: "terminal"
-}
-
-export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
-  type: "devServer"
-  viewMode?: WorkbenchRuntimePreviewViewMode
-  /** Surface created for agent preview automation; the runtime remains workspace/lane-scoped. */
-  agentManaged?: boolean
-  /**
-   * URL the user navigated the embedded preview to, when it differs from the
-   * dev server's own URL. Persisted intent: survives remounts, cleared
-   * explicitly ("back to server URL") or by navigating back to the base.
-   */
-  previewOverrideUrl?: string | null
-  /** Private project DevApp identity and immutable release snapshot. */
-  devAppId?: string
-  devAppReleaseId?: string
-  devAppReleaseVersion?: number
-  /** Source runtime retained when this local DevApp is opened from another project. */
-  devAppProjectId?: string
-  devAppWorkspaceId?: string
-  devAppLaneId?: string
-  /** Launch-context overrides captured when the DevApp release was created. */
-  devAppFramework?: string
-  devAppCommand?: string
-  devAppPort?: number
-  autoStart?: boolean
-}
-
-export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
-  type: "mobileSimulator"
-  viewMode?: WorkbenchRuntimePreviewViewMode
-}
-
-export interface WorkbenchLlamaTile extends WorkbenchBaseTile {
-  type: "llama"
-}
-
-export interface WorkbenchMemoryTile extends WorkbenchBaseTile {
-  type: "memory"
-}
-
-export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
-  type: "selection"
-  mode: WorkbenchSelectionTileMode
-  edge?: WorkbenchSelectionTileEdge | null
-  referenceTileId?: string | null
-  adjacentTileId?: string | null
-  previewScope?: WorkbenchSelectionPreviewScope | null
-  previewTargetKind?: WorkbenchSelectionPreviewTargetKind | null
-  previewTargetId?: string | null
-}
-
-export interface WorkbenchTasksTile extends WorkbenchBaseTile {
-  type: "tasks"
-}
-
-export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
-  type: "assistantChat"
-  viewMode?: "chat" | "artifacts"
-  assistantProjectId?: string | null
-  threadId?: string | null
-  provider?: ProviderKind
-  providerInstanceId?: ProviderInstanceId
-  model?: string | null
-  runtimeMode?: RuntimeMode
-  interactionMode?: ProviderInteractionMode
-  agentLabel?: string | null
-  laneBinding?: "sessionWorkspace" | "threadWorktree"
-}
-
-export type WorkbenchTile =
-  | WorkbenchBrowserTile
-  | WorkbenchTerminalTile
-  | WorkbenchDevServerTile
-  | WorkbenchLlamaTile
-  | WorkbenchMemoryTile
-  | WorkbenchMobileSimulatorTile
-  | WorkbenchOrgDevAppTile
-  | WorkbenchDevAppPreviewTile
-  | WorkbenchSelectionTile
-  | WorkbenchTasksTile
-  | WorkbenchAssistantChatTile
+export type {
+  WorkbenchAssistantChatTile,
+  WorkbenchBrowserTile,
+  WorkbenchDevAppPreviewTile,
+  WorkbenchDevServerTile,
+  WorkbenchLlamaTile,
+  WorkbenchMemoryTile,
+  WorkbenchMobileSimulatorTile,
+  WorkbenchOrgDevAppTile,
+  WorkbenchRuntimePreviewViewMode,
+  WorkbenchSelectionPreviewScope,
+  WorkbenchSelectionPreviewTargetKind,
+  WorkbenchSelectionTile,
+  WorkbenchSelectionTileEdge,
+  WorkbenchSelectionTileMode,
+  WorkbenchTasksTile,
+  WorkbenchTerminalTile,
+  WorkbenchTile,
+} from "@/lib/workbenchTileContract"
 
 export interface WorkbenchProjectState {
   projectId: string
