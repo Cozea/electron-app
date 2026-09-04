@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const mobileSimulatorDevAppManifest = {
   id: "mobile-simulator",
   name: "iOS Simulator",
-  description: "Native device preview surface for mobile-first development and QA checks.",
+  description: "iOS device preview.",
   categories: ["discover", "preview-tools"],
   icon: {
     src: iconSrc,

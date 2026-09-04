@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { WindowChromeTopInset } from '@/components/window-chrome/WindowChromeTopInset'
 import { Account } from '@/pages/settings/Account'
 import { Appearance } from '@/pages/settings/Appearance'
+import { DevAppSettings } from '@/pages/settings/DevAppSettings'
 import { Organizations } from '@/pages/settings/Organizations'
 import { Tooling } from '@/pages/settings/Tooling'
 import {
@@ -32,6 +33,10 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 
   if (section === 'appearance') {
     return <Appearance surface="drawer" route={route} />
+  }
+
+  if (section === 'devapps') {
+    return <DevAppSettings surface="drawer" route={route} />
   }
 
   if (section === 'organizations') {

@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const codexDevAppManifest = {
   id: "codex",
   name: "Codex",
-  description: "OpenAI-powered coding agent tuned for workspace implementation and review.",
+  description: "OpenAI coding agent.",
   categories: ["discover", "agent-kits"],
   icon: {
     src: iconSrc,

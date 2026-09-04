@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const browserDevAppManifest = {
   id: "browser",
   name: "Browser",
-  description: "Persistent web surface for in-workbench browsing and preview flows.",
+  description: "Web preview and browsing.",
   categories: ["discover", "preview-tools"],
   icon: {
     src: iconSrc,

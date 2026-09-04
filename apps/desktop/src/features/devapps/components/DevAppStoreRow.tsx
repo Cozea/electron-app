@@ -39,14 +39,14 @@ export function DevAppStoreRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors",
+        "group flex items-center gap-3 rounded-xl px-2.5 py-2 transition-colors",
         highlighted ? "bg-secondary/60 ring-1 ring-ring/40" : "hover:bg-secondary/40",
         className,
       )}
     >
       <div
         className={cn(
-          "flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br",
+          "flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br ring-1 ring-border/50",
           app.store.accentClassName,
         )}
         style={{
@@ -60,15 +60,11 @@ export function DevAppStoreRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
-          <p className="truncate text-[13px] leading-5 font-medium text-foreground">{app.name}</p>
+          <p className="truncate text-[13px] leading-tight font-medium text-foreground">{app.name}</p>
           {badge}
         </div>
-        <p className="truncate text-[12px] leading-5 text-muted-foreground">
-          {meta}
-          <span aria-hidden className="px-1.5 text-muted-foreground/50">
-            ·
-          </span>
-          {app.description}
+        <p className="truncate text-[12px] leading-tight text-muted-foreground mt-1">
+          {app.description || meta}
         </p>
       </div>
 

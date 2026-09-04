@@ -47,7 +47,7 @@ describe("DevApp worker security architecture", () => {
   })
 
   it("creates each device container exactly once before starting it", () => {
-    const helper = read("native/devapp-container-runtime/Sources/CozeaDevAppContainerRuntime/main.swift")
+    const helper = read("native/devapp-container-runtime/Sources/CozeaDevAppContainerRuntime/CozeaDevAppContainerRuntime.swift")
     expect(helper.match(/try await container\.create\(\)/g)).toHaveLength(1)
     expect(helper).toContain("try await container.start()")
   })

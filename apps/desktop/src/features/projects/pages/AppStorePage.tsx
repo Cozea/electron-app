@@ -6,25 +6,19 @@ import { api } from "../../../../../../convex/_generated/api"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { DevAppStoreRow } from "@/features/devapps/components/DevAppStoreRow"
 import { STORE_ORGANIZATION_ACCENT_CLASS } from "@/features/devapps/components/devAppStoreAccent"
-import { totalInstalledDevAppBytes } from "@/features/devapps/orgDevAppInstallationCatalog"
 import { useOrgDevAppInstallations } from "@/features/devapps/useOrgDevAppInstallations"
 import { formatDevAppRef } from "@shared/devAppRef"
 import { listStoreApps } from "@/features/devapps/registry"
 import { useAuth } from "@/contexts/AuthContext"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ProjectShellTitleBarCenterFromLabel } from "@/features/projects/components/ProjectShellTitleBarCenterFromLabel"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import {
   buildAppStoreSections,
   buildInstalledRail,
@@ -47,8 +41,8 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon as __PlusHugeIcon,
   ArrowDown01Icon as __ChevronDownHugeIcon,
-  CheckmarkCircle02Icon as __CheckHugeIcon,
-  Copy01Icon as __CopyHugeIcon,
+  Delete02Icon as __DeleteHugeIcon,
+  MoreHorizontalIcon as __MoreHorizontalHugeIcon,
   Refresh01Icon as __RefreshHugeIcon,
   Search01Icon as __SearchHugeIcon,
   Settings01Icon as __SettingsHugeIcon,
@@ -79,10 +73,8 @@ export function AppStorePage() {
   const query = searchParams.get("q") ?? ""
   const scope = resolveAppStoreScope(searchParams.get("scope"))
 
-  const [copiedRef, setCopiedRef] = useState<string | null>(null)
   const [pendingPublicationId, setPendingPublicationId] = useState<string | null>(null)
   const [installationError, setInstallationError] = useState<string | null>(null)
-  const [storageOpen, setStorageOpen] = useState(false)
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
@@ -93,11 +85,6 @@ export function AppStorePage() {
 
   const orgScopeEnabled = featureFlags.projectDevApps && Boolean(convexUserId)
   const orgDevApps = useQuery(api.devApps.listMine, orgScopeEnabled ? {} : "skip")
-
-  const headerCenter = useMemo(
-    () => <ProjectShellTitleBarCenterFromLabel label={t("appStore.page.title")} />,
-    [t],
-  )
 
   // The registry owns built-in matching, so search stays consistent with the
   // workbench launcher.
@@ -190,15 +177,7 @@ export function AppStorePage() {
   }
 
   const copyRef = (ref: string) => {
-    void navigator.clipboard
-      .writeText(ref)
-      .then(() => {
-        setCopiedRef(ref)
-        window.setTimeout(() => {
-          setCopiedRef((current) => (current === ref ? null : current))
-        }, 1_500)
-      })
-      .catch(() => undefined)
+    void navigator.clipboard.writeText(ref).catch(() => undefined)
   }
 
   const handleRefresh = () => {
@@ -221,9 +200,32 @@ export function AppStorePage() {
             meta={item.app.store.categoryLabel}
             highlighted={highlighted}
             action={
-              <span className="px-2 text-[12px] text-muted-foreground">
-                {t("appStore.page.badgeBuiltIn")}
-              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                aria-label={t("common.manage")}
+                onClick={async (event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+                  const items: ContextMenuItem<string>[] = [
+                    {
+                      id: "manage",
+                      label: t("common.manage"),
+                      icon: getNativeMenuIcon("settings"),
+                    },
+                  ]
+                  const action = await showDesktopContextMenu(items, position)
+                  if (action === "manage") {
+                    navigate("/projects/settings/devapps")
+                  }
+                }}
+              >
+                <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" aria-hidden />
+              </Button>
             }
           />
         </div>
@@ -238,6 +240,43 @@ export function AppStorePage() {
       version: "latest",
     })
     const isPending = pendingPublicationId === entry.publicationId
+
+    const handleOrgMenu = async (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+      const items: ContextMenuItem<string>[] = [
+        {
+          id: "manage",
+          label: t("common.manage"),
+          icon: getNativeMenuIcon("settings"),
+        },
+        {
+          id: "copyRef",
+          label: t("appStore.page.copyReference"),
+          icon: getNativeMenuIcon("copy"),
+        },
+        {
+          id: "separator",
+          type: "separator",
+        },
+        {
+          id: "uninstall",
+          label: t("appStore.install.uninstall"),
+          destructive: true,
+          icon: getNativeMenuIcon("delete"),
+        },
+      ]
+      const action = await showDesktopContextMenu(items, position)
+      if (action === "manage") {
+        navigate("/projects/settings/devapps")
+      } else if (action === "copyRef") {
+        copyRef(latestRef)
+      } else if (action === "uninstall") {
+        void uninstallPublication(entry.publicationId)
+      }
+    }
 
     return (
       <div key={item.key} ref={registerRow}>
@@ -259,44 +298,60 @@ export function AppStorePage() {
           }
           action={
             installationsLoading ? (
-              <Skeleton className="h-7 w-20 rounded-full" />
+              <Skeleton className="size-7 rounded-full" />
+            ) : installState === "installed" ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                aria-label="Options"
+                disabled={isPending}
+                onClick={handleOrgMenu}
+              >
+                <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" aria-hidden />
+              </Button>
+            ) : installState === "update" ? (
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full px-2.5 text-xs font-normal"
+                  disabled={isPending}
+                  onClick={() => void installRelease(entry)}
+                >
+                  {isPending ? t("appStore.install.working") : t("appStore.install.update")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-7 text-muted-foreground hover:text-foreground"
+                  aria-label="Options"
+                  disabled={isPending}
+                  onClick={handleOrgMenu}
+                >
+                  <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" aria-hidden />
+                </Button>
+              </div>
             ) : (
               <Button
                 type="button"
-                size="sm"
-                variant={installState === "install" ? "default" : "outline"}
-                className="rounded-full"
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-foreground"
                 disabled={isPending}
-                onClick={() => {
-                  if (installState === "installed") void uninstallPublication(entry.publicationId)
-                  else void installRelease(entry)
-                }}
+                aria-label={t("appStore.install.install")}
+                onClick={() => void installRelease(entry)}
               >
-                {isPending
-                  ? t("appStore.install.working")
-                  : installState === "installed"
-                    ? t("appStore.install.uninstall")
-                    : installState === "update"
-                      ? t("appStore.install.update")
-                      : t("appStore.install.install")}
+                {isPending ? (
+                  <HugeiconsIcon icon={__RefreshHugeIcon} className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <HugeiconsIcon icon={__PlusHugeIcon} className="size-4" aria-hidden />
+                )}
               </Button>
             )
-          }
-          menu={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              title={t("appStore.page.copyReference")}
-              aria-label={t("appStore.page.copyReference")}
-              onClick={() => copyRef(latestRef)}
-            >
-              <HugeiconsIcon
-                icon={copiedRef === latestRef ? __CheckHugeIcon : __CopyHugeIcon}
-                className="size-3.5"
-                aria-hidden
-              />
-            </Button>
           }
         />
       </div>
@@ -347,31 +402,41 @@ export function AppStorePage() {
           </Tooltip>
         ) : null}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" size="sm" className="gap-1 rounded-full">
-              <HugeiconsIcon icon={__PlusHugeIcon} className="size-3.5" aria-hidden />
-              {t("appStore.page.newDevApp")}
-              <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3.5" aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openCreateProjectDialog({ mode: "devapp" })}>
-              {t("appStore.page.createNativeDevApp")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                void browseForDirectory("Select existing DevApp project").then((selectedPath) => {
-                  if (selectedPath?.trim()) {
-                    openCreateProjectDialog({ mode: "devapp-local", localFolderPath: selectedPath })
-                  }
-                })
-              }}
-            >
-              {t("appStore.page.openExistingDevApp")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          type="button"
+          size="sm"
+          className="gap-1 rounded-full"
+          onClick={async (event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
+            const items: ContextMenuItem<string>[] = [
+              {
+                id: "create",
+                label: t("appStore.page.createNativeDevApp"),
+                icon: getNativeMenuIcon("plus"),
+              },
+              {
+                id: "open",
+                label: t("appStore.page.openExistingDevApp"),
+                icon: getNativeMenuIcon("open-folder"),
+              },
+            ]
+            const action = await showDesktopContextMenu(items, position)
+            if (action === "create") {
+              openCreateProjectDialog({ mode: "devapp" })
+            } else if (action === "open") {
+              void browseForDirectory("Select existing DevApp project").then((selectedPath) => {
+                if (selectedPath?.trim()) {
+                  openCreateProjectDialog({ mode: "devapp-local", localFolderPath: selectedPath })
+                }
+              })
+            }
+          }}
+        >
+          <HugeiconsIcon icon={__PlusHugeIcon} className="size-3.5" aria-hidden />
+          {t("appStore.page.newDevApp")}
+          <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3.5" aria-hidden />
+        </Button>
       </div>
     ),
     [
@@ -384,7 +449,7 @@ export function AppStorePage() {
     ],
   )
 
-  useProjectHeader(null, headerCenter, { rightAddon: headerActions, hideShare: true })
+  useProjectHeader(null, null, { rightAddon: headerActions, hideShare: true })
 
   const orgLoading = orgScopeEnabled && orgDevApps === undefined
   const showEmptyState = sections.length === 0 && !orgLoading
@@ -416,53 +481,53 @@ export function AppStorePage() {
         <p className="text-sm text-muted-foreground">{t("appStore.page.subtitle")}</p>
       </header>
 
-      <div className="relative">
-        <HugeiconsIcon
-          icon={__SearchHugeIcon}
-          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/70"
+      <div className="sticky top-[-1rem] z-20 -mx-6 bg-background/95 px-6 pt-3 pb-2 backdrop-blur-md">
+        <div className="relative">
+          <HugeiconsIcon
+            icon={__SearchHugeIcon}
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/70"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) =>
+              setParam("q", event.target.value.trim() ? event.target.value : null, { replace: true })
+            }
+            placeholder={t("appStore.searchPlaceholder")}
+            className="h-11 rounded-full bg-muted pl-9 text-sm"
+          />
+        </div>
+        {/* Soft edge fade right under the search bar matching assistant fade */}
+        <div
+          className="pointer-events-none absolute -bottom-4 left-0 right-0 h-4 bg-gradient-to-b from-background/95 via-background/60 to-transparent"
           aria-hidden
-        />
-        <Input
-          type="search"
-          value={query}
-          onChange={(event) =>
-            setParam("q", event.target.value.trim() ? event.target.value : null, { replace: true })
-          }
-          placeholder={t("appStore.searchPlaceholder")}
-          className="h-11 rounded-full bg-muted pl-9 text-sm"
         />
       </div>
 
       {rail.length > 0 ? (
-        <Collapsible open={storageOpen} onOpenChange={setStorageOpen}>
-          <section className="space-y-2">
-            <div className="flex items-end justify-between gap-4">
-              <h2 className="text-[13px] font-medium text-foreground">
-                {t("appStore.section.installed")}
-              </h2>
-              {installations.length > 0 ? (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-[13px] font-medium text-foreground">
+              {t("appStore.section.installed")}
+            </h2>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
-                  className="h-6 gap-1 px-2 text-[11px] text-muted-foreground"
-                  onClick={() => setStorageOpen((open) => !open)}
+                  size="icon-xs"
+                  aria-label={t("appStore.page.manageDevApps")}
+                  onClick={() => navigate("/projects/settings/devapps")}
                 >
-                  {t("appStore.installed.storageToggle")
-                    .replace("{count}", String(installations.length))
-                    .replace(
-                      "{size}",
-                      (totalInstalledDevAppBytes(installations) / 1024 / 1024).toFixed(1),
-                    )}
-                  <HugeiconsIcon
-                    icon={__ChevronDownHugeIcon}
-                    className={cn("size-3.5 transition-transform", storageOpen && "rotate-180")}
-                    aria-hidden
-                  />
+                  <HugeiconsIcon icon={__SettingsHugeIcon} className="size-3.5" aria-hidden />
                 </Button>
-              ) : null}
-            </div>
+              </TooltipTrigger>
+              <TooltipContent>{t("appStore.page.manageDevApps")}</TooltipContent>
+            </Tooltip>
+          </div>
 
+          <TooltipProvider delay={100} closeDelay={80}>
             <div className="flex flex-wrap items-center gap-2">
               {rail.map((item) => (
                 <Tooltip key={`${item.kind}:${item.key}`}>
@@ -472,7 +537,7 @@ export function AppStorePage() {
                       aria-label={item.name}
                       onClick={() => revealApp(item.key, item.scope)}
                       className={cn(
-                        "flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br ring-1 ring-border/60 transition-transform hover:scale-105",
+                        "flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br ring-1 ring-border/50 shadow-[0_2px_8px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_10px_rgba(0,0,0,0.45)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.18)] dark:hover:shadow-[0_4px_16px_rgba(0,0,0,0.55)] transition-all hover:scale-105",
                         item.app.store.accentClassName,
                       )}
                       style={{
@@ -484,55 +549,18 @@ export function AppStorePage() {
                       <DevAppIcon app={item.app} />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>{item.name}</TooltipContent>
+                  <TooltipContent
+                    side="top"
+                    sideOffset={5}
+                    className="pointer-events-none rounded-md border border-border/50 bg-popover/95 px-1.5 py-0.5 text-[11px] font-medium leading-none text-popover-foreground shadow-sm backdrop-blur-sm"
+                  >
+                    {item.name}
+                  </TooltipContent>
                 </Tooltip>
               ))}
             </div>
-
-            <CollapsibleContent>
-              <div className="mt-2 divide-y divide-border/60 rounded-xl bg-secondary/25 px-3">
-                {installations.map((installation) => (
-                  <div key={installation.ref} className="flex items-center gap-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-[13px] font-medium text-foreground">
-                          {installation.name}
-                        </p>
-                        <span className="text-[11px] tabular-nums text-muted-foreground">
-                          V{installation.activeRelease.version}
-                          {installation.active ? ` · ${t("appStore.install.active")}` : ""}
-                        </span>
-                      </div>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {installation.ref}
-                      </p>
-                    </div>
-                    <span className="text-[11px] tabular-nums text-muted-foreground">
-                      {(installation.sizeBytes / 1024 / 1024).toFixed(1)} MB
-                    </span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={pendingPublicationId === installation.publicationId}
-                      onClick={() => {
-                        setPendingPublicationId(installation.publicationId)
-                        void window.electronAPI.orgDevApp
-                          .removeInstalledVersion({ ref: installation.ref })
-                          .then((result) => {
-                            if (!result.success) setInstallationError(result.error)
-                          })
-                          .finally(() => setPendingPublicationId(null))
-                      }}
-                    >
-                      {t("appStore.install.removeVersion")}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CollapsibleContent>
-          </section>
-        </Collapsible>
+          </TooltipProvider>
+        </section>
       ) : null}
 
       {orgScopeEnabled ? (
@@ -562,8 +590,9 @@ export function AppStorePage() {
         </div>
       ) : null}
 
-      {orgLoading && scope === "organization"
-        ? [0, 1, 2].map((row) => (
+      {orgLoading && scope === "organization" ? (
+        <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+          {[0, 1, 2, 3].map((row) => (
             <div key={row} className="flex items-center gap-3 px-2 py-2.5">
               <Skeleton className="size-10 rounded-[9px]" />
               <div className="flex-1 space-y-1.5">
@@ -571,15 +600,18 @@ export function AppStorePage() {
                 <Skeleton className="h-3 w-64" />
               </div>
             </div>
-          ))
-        : null}
+          ))}
+        </div>
+      ) : null}
 
       {sections.map((section) => (
         <section key={section.id} className="space-y-1">
           <h2 className="px-2 text-[13px] font-medium text-foreground">
             {t(SECTION_LABEL_KEYS[section.id])}
           </h2>
-          <div className="flex flex-col">{section.items.map(renderItem)}</div>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+            {section.items.map(renderItem)}
+          </div>
         </section>
       ))}
 
@@ -631,6 +663,12 @@ export function AppStorePage() {
           </EmptyContent>
         </Empty>
       ) : null}
+
+      {/* Soft edge fade right at the bottom of the screen matching assistant fade */}
+      <div
+        className="pointer-events-none sticky bottom-[-1rem] -mx-6 -mt-8 h-8 bg-gradient-to-t from-background via-background/70 to-transparent z-10"
+        aria-hidden
+      />
     </div>
   )
 }

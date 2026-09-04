@@ -50,7 +50,7 @@ export const SETTINGS_DRAWER_NAV_ROW_CLASS = cn(
  */
 export const SIDEBAR_PILL_NESTED_ROW_CLASS = cn(
   SIDEBAR_PILL_HOVER_CLASS,
-  "flex h-7 min-h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground/70",
+  "flex h-7 min-h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground",
 )
 
 /** Indented block inside a nested row (icon + primary label) — pill stays full width */

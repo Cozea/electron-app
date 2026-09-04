@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const openCodeDevAppManifest = {
   id: "opencode",
   name: "OpenCode",
-  description: "OpenCode coding assistant with a dedicated workspace chat surface.",
+  description: "OpenCode coding agent.",
   categories: ["discover", "agent-kits"],
   icon: {
     src: iconSrc,

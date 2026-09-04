@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const cursorDevAppManifest = {
   id: "cursor",
   name: "Cursor",
-  description: "Cursor provider surface for fast coding sessions inside the shared workbench.",
+  description: "Fast coding agent.",
   categories: ["discover", "agent-kits"],
   icon: {
     src: iconSrc,

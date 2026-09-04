@@ -122,6 +122,13 @@ const Organizations = createLazyRouteComponent(
     })),
   "routeLoading.organizations",
 );
+const DevAppSettings = createLazyRouteComponent(
+  () =>
+    import("@/pages/settings/DevAppSettings").then((module) => ({
+      default: module.DevAppSettings,
+    })),
+  "routeLoading.devapps",
+);
 const Tooling = createLazyRouteComponent(
   () =>
     import("@/pages/settings/Tooling").then((module) => ({
@@ -142,6 +149,7 @@ const LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE = "/workspace/source-control";
 const PERSONAL_SOURCE_CONTROL_ROUTE = "/settings/source-control";
 const PERSONAL_ACCOUNT_ROUTE = "/settings/account";
 const PERSONAL_APPEARANCE_ROUTE = "/settings/appearance";
+const PERSONAL_DEVAPPS_ROUTE = "/settings/devapps";
 const PERSONAL_ORGANIZATIONS_ROUTE = "/settings/organizations";
 const PERSONAL_TOOLING_ROUTE = "/settings/tooling";
 function toRoutePath(route: string): string {
@@ -480,6 +488,12 @@ const projectsPersonalAppearanceRoute = createRoute({
   component: Appearance,
 });
 
+const projectsPersonalDevAppsRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_DEVAPPS_ROUTE),
+  component: DevAppSettings,
+});
+
 const projectsPersonalOrganizationsRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_ORGANIZATIONS_ROUTE),
@@ -600,6 +614,12 @@ const personalAppearanceRoute = createRoute({
   component: () => <Navigate to={"/projects/settings/appearance" as never} replace />,
 });
 
+const personalDevAppsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: toRoutePath(PERSONAL_DEVAPPS_ROUTE),
+  component: () => <Navigate to={"/projects/settings/devapps" as never} replace />,
+});
+
 const personalOrganizationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_ORGANIZATIONS_ROUTE),
@@ -660,6 +680,7 @@ export const routeTree = rootRoute.addChildren([
     projectsPersonalAccountRoute,
     projectsPersonalBillingRoute,
     projectsPersonalAppearanceRoute,
+    projectsPersonalDevAppsRoute,
     projectsPersonalOrganizationsRoute,
     projectsPersonalToolingRoute,
   ]),
@@ -682,6 +703,7 @@ export const routeTree = rootRoute.addChildren([
   personalAccountRoute,
   personalBillingRoute,
   personalAppearanceRoute,
+  personalDevAppsRoute,
   personalOrganizationsRoute,
   personalToolingRoute,
   inviteRoute,

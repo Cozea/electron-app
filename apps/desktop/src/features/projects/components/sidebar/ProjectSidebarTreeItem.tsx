@@ -2,6 +2,7 @@ import * as React from "react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
+import { LiveShimmerText } from "@/components/ui/live-shimmer-text"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { cn } from "@/lib/utils"
@@ -33,6 +34,11 @@ import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/stores/useProjectWorkbenchStore"
+import {
+  isSidebarActivityLive,
+  resolveProjectRowActivity,
+} from "@/features/projects/components/sidebar/sidebarActivity"
+import { useProjectSidebarActivity } from "@/features/projects/components/sidebar/useProjectSidebarActivity"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -133,6 +139,24 @@ export const ProjectSidebarTreeItem = React.memo(
     )
     const isLanesOpen = selection.isExpanded && hasSidebarChildren
     const canToggleLanes = hasSidebarChildren || !shouldLoadLanes
+
+    // Keyed off the project, not the active lane: lane state only loads for the
+    // focused or expanded row, so a lane-scoped lookup would stop reporting the
+    // moment another project is focused.
+    const { projectActivity, visibleActivity } = useProjectSidebarActivity({
+      projectId: project.id,
+      workspaceId,
+      activeLaneSummary,
+      activeDevServerStatus,
+    })
+
+    const projectRowActivity = resolveProjectRowActivity({
+      isExpanded: isLanesOpen,
+      projectActivity,
+      visibleActivity,
+    })
+    const isProjectRowActive = isSidebarActivityLive(projectRowActivity)
+
     const { containerRef: projectRowRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
       font: SIDEBAR_PROJECT_LABEL_FONT,
     })
@@ -381,10 +405,25 @@ export const ProjectSidebarTreeItem = React.memo(
               onClick={handleProjectOpenClick}
               aria-label={`Open ${project.name}`}
             >
-              <ProjectPixelInvaderIcon name={project.name || project.id} className="size-4.5 shrink-0" />
-              <span className="truncate font-normal" title={projectNameTitle}>
-                {project.name}
-              </span>
+              <ProjectPixelInvaderIcon
+                name={project.name || project.id}
+                className="size-4.5 shrink-0"
+                isActive={isProjectRowActive}
+              />
+              {isProjectRowActive ? (
+                <LiveShimmerText
+                  className="font-normal"
+                  title={projectNameTitle}
+                  baseClassName="text-sidebar-foreground"
+                  sweepClassName="text-muted-foreground"
+                >
+                  {project.name}
+                </LiveShimmerText>
+              ) : (
+                <span className="truncate font-normal" title={projectNameTitle}>
+                  {project.name}
+                </span>
+              )}
             </button>
             {canToggleLanes ? (
               <button
@@ -417,6 +456,7 @@ export const ProjectSidebarTreeItem = React.memo(
               activeSelectionLevel={selection.activeSelectionLevel}
               activeTileId={selection.activeTileId}
               hasHeadlessDevServer={hasHeadlessDevServer}
+              activeDevServerStatus={activeDevServerStatus}
               onOpenLaneWorkbench={(options) => {
                 if (!activeLane) return
                 void actions.openLaneWorkbench(project, activeLane.id, {
