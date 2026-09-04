@@ -59,11 +59,6 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     thinEdge: "workbench -> projects",
     reaches: ["ui/ProjectPixelInvaderIcon"],
   },
-  {
-    pair: ["workbench", "workspace"],
-    thinEdge: "workbench -> workspace",
-    reaches: ["useWorkspaceIdentity", "useWorkspaceRuntimeStore"],
-  },
 ];
 
 function listSourceFiles(directory: string): string[] {

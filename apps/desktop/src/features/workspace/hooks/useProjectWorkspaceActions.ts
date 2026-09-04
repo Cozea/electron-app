@@ -15,7 +15,7 @@ import {
 import { clearCachedProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
 import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/workbench/model/workbenchLayoutPersistence"
 import { useProjectWorkbenchStore } from "@/lib/workbenchStore"
-import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
+import { useWorkspaceRuntimeStore } from "@/lib/workspaceRuntimeStore"
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { evictTerminalViewsForWorkspace } from "@/features/terminal/terminalViewKeepAlive"
 

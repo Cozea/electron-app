@@ -41,9 +41,9 @@ import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteC
 import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,
-} from "@/features/workspace/useWorkspaceRuntimeStore";
-import { useActiveWorkspaceOrNull } from "@/features/workspace/ActiveWorkspaceContext";
-import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
+} from "@/lib/workspaceRuntimeStore";
+import { useActiveWorkspaceOrNull } from "@/contexts/workspace/ActiveWorkspaceContext";
+import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
 import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
 import { Dialog, DialogContent } from "@/components/ui/dialog";

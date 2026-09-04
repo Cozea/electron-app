@@ -8,7 +8,7 @@ import { ProjectSyncProviderRuntime } from "@/contexts/project/ProjectSyncProvid
 import {
   useWorkspaceRuntimeStore,
   type WorkspaceRuntimeRecord,
-} from "@/features/workspace/useWorkspaceRuntimeStore"
+} from "@/lib/workspaceRuntimeStore"
 import { selectHostedWorkspaceRuntimeRecords } from "@/features/workspace/workspaceRuntimePolicy"
 
 function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {

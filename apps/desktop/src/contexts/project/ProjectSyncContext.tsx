@@ -22,7 +22,7 @@ import {
 import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,
-} from "@/features/workspace/useWorkspaceRuntimeStore"
+} from "@/lib/workspaceRuntimeStore"
 import { normalizeWorkspaceLaneId } from "@/lib/workspaceIdentity"
 
 const LazyDeleteConflictDialog = lazy(() =>

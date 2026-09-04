@@ -70,7 +70,7 @@ vi.mock("@/features/source-control/syncFeedSeen", () => ({
   clearSyncFeedSeen,
 }))
 
-vi.mock("@/features/workspace/useWorkspaceRuntimeStore", () => ({
+vi.mock("@/lib/workspaceRuntimeStore", () => ({
   useWorkspaceRuntimeStore: {
     getState: () => ({
       runtimes: {

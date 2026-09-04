@@ -84,7 +84,7 @@ import {
   useProjectWorkbenchStore,
 } from "@/lib/workbenchStore";
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext";
-import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
+import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";
 import { openCommandPalette } from "@/features/workbench/command-palette/commandPaletteBus";
 

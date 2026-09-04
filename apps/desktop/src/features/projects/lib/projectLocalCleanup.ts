@@ -16,7 +16,7 @@ import { clearProjectBranchSession } from "@/features/source-control/model/proje
 import { clearRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync"
 import { clearPersistedWorkbenchLayoutsForProject } from "@/features/workbench/model/workbenchLayoutPersistence"
 import { clearSyncFeedSeen } from "@/features/source-control/syncFeedSeen"
-import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
+import { useWorkspaceRuntimeStore } from "@/lib/workspaceRuntimeStore"
 import { useProjectWorkbenchStore } from "@/lib/workbenchStore"
 import { useQueryCache } from "@/app/model/queryCache"
 import { useTerminalStore } from "@/features/terminal/model/terminalStore"

@@ -22,7 +22,7 @@ import { buildLegacyProjectPath, buildProjectPath } from "@/contexts/project/pro
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution";
 import { WorkspaceRepairScreen } from "@/features/workspace/WorkspaceRepairScreen";
-import { ActiveWorkspaceContext } from "@/features/workspace/ActiveWorkspaceContext";
+import { ActiveWorkspaceContext } from "@/contexts/workspace/ActiveWorkspaceContext";
 import {
   buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,

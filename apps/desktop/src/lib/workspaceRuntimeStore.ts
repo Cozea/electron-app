@@ -1,6 +1,16 @@
+/**
+ * Lifecycle and runtime record for every bound workspace.
+ *
+ * Lives here rather than in `features/workspace` because the project sync
+ * context, project cleanup, the workbench's lifecycle indicator and the
+ * workspace feature itself all read it — and it imports nothing from any of
+ * them. Ambient identity for the same workspaces is in
+ * `contexts/workspace/useWorkspaceIdentity`.
+ */
+
 import { create } from "zustand"
 
-import type { Id } from "../../../../../convex/_generated/dataModel"
+import type { Id } from "../../../../convex/_generated/dataModel"
 import {
   EMPTY_YJS_PROJECT_CONTEXT_VALUE,
   type YjsProjectContextValue,
