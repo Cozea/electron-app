@@ -73,30 +73,24 @@ export async function createExplicitCollaborationContext(
     throw new Error('Collaboration session does not belong to the requested project')
   }
 
-  await client(env).mutation(
-    mutationReference('yjs:registerCollabDevice'),
-    {
-      serverSecret: env.AI_GATEWAY_SECRET,
-      userId: authorization.userId,
-      deviceId: body.deviceId,
-      deviceLabel: body.deviceLabel,
-      platform: body.platform,
-      publicKeyJwk: body.publicKeyJwk,
-      publicKeyAlgorithm: body.publicKeyAlgorithm,
-      fingerprint: body.fingerprint,
-    },
-  )
+  await client(env).mutation(mutationReference('yjs:registerCollabDevice'), {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    userId: authorization.userId,
+    deviceId: body.deviceId,
+    deviceLabel: body.deviceLabel,
+    platform: body.platform,
+    publicKeyJwk: body.publicKeyJwk,
+    publicKeyAlgorithm: body.publicKeyAlgorithm,
+    fingerprint: body.fingerprint,
+  })
 
-  const encryption = await client(env).query(
-    queryReference('yjs:getEncryptionBootstrap'),
-    {
-      serverSecret: env.AI_GATEWAY_SECRET,
-      projectId: authorization.projectId,
-      roomId: authorization.roomId,
-      userId: authorization.userId,
-      deviceId: body.deviceId,
-    },
-  ) as EncryptionBootstrap
+  const encryption = await client(env).query(queryReference('yjs:getEncryptionBootstrap'), {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    projectId: authorization.projectId,
+    roomId: authorization.roomId,
+    userId: authorization.userId,
+    deviceId: body.deviceId,
+  }) as EncryptionBootstrap
 
   return {
     userId: authorization.userId,
@@ -109,4 +103,19 @@ export async function createExplicitCollaborationContext(
     devicePublicKeyJwk: body.publicKeyJwk,
     encryption,
   }
+}
+
+export async function updateAuthoritativeRoomHead(
+  env: Env,
+  sessionId: string,
+  roomHeadSequence: number,
+): Promise<void> {
+  await client(env).mutation(
+    mutationReference('collaborationSessions:updateRoomHeadFromServer'),
+    {
+      serverSecret: env.AI_GATEWAY_SECRET,
+      sessionId,
+      roomHeadSequence,
+    },
+  )
 }
