@@ -81,16 +81,16 @@ export class BinaryFileSync {
       const raw = localStorage.getItem(LEGACY_UPLOAD_QUEUE_KEY)
       if (!raw) return
 
-      const parsed = JSON.parse(raw) as unknown
+      const parsed: unknown = JSON.parse(raw)
       if (!Array.isArray(parsed)) {
         localStorage.removeItem(LEGACY_UPLOAD_QUEUE_KEY)
         return
       }
 
       const projectId = String(this.projectId)
-      const retained = parsed.filter((entry): entry is LegacyQueuedBinaryUpload => {
-        return !entry || typeof entry !== 'object' ||
-          (entry as LegacyQueuedBinaryUpload).projectId !== projectId
+      const retained: unknown[] = parsed.filter((entry: unknown) => {
+        if (!entry || typeof entry !== 'object') return true
+        return (entry as LegacyQueuedBinaryUpload).projectId !== projectId
       })
 
       if (retained.length === parsed.length) return
