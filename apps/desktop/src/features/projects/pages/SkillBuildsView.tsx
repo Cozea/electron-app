@@ -213,17 +213,17 @@ export function providerLoadout(
 }
 
 /**
- * What a provider's page offers to pick from: the skills it can run right now
- * — loaded, or offered by its catalog — matching the Agent Skills page, so the
- * two screens agree on how many skills a provider has.
+ * What a provider's page offers to pick from: every skill this provider has a
+ * copy of, plus what its catalog offers.
  *
- * Skills the build already holds are always included even when switched off,
- * so nothing it carries can become impossible to untick.
+ * A switched-off skill still counts. Disabling moves the folder to Cozea's
+ * trash but the binding keeps its ownership, and listing only what is switched
+ * on made unticking a one-way door: the skill vanished from the one page that
+ * could put it back.
  */
 export function providerCandidates(
   skills: readonly AgentSkillRecord[],
   provider: AgentSkillProvider,
-  held: ReadonlySet<string>,
 ): AgentSkillRecord[] {
   return skills.filter(
     (skill) =>
@@ -231,9 +231,7 @@ export function providerCandidates(
       skill.bindings.some(
         (binding) =>
           binding.provider === provider &&
-          (binding.enabled ||
-            binding.available === true ||
-            (held.has(skill.id) && binding.ownership !== "none")),
+          (binding.enabled || binding.available === true || binding.ownership !== "none"),
       ),
   );
 }
@@ -520,7 +518,7 @@ export function SkillBuildsView() {
                 candidates={filterPickerSkills(
                   openDetail === "cozea"
                     ? cozeaSkills(skills)
-                    : providerCandidates(skills, openDetail, new Set(selectedBuild.skillIds)),
+                    : providerCandidates(skills, openDetail),
                   query,
                   null,
                 )}

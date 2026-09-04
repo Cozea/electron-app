@@ -44,6 +44,13 @@ export function useAssistantTurnLifecycle({
 }: UseAssistantTurnLifecycleInput) {
   const [isInterrupting, setIsInterrupting] = useState(false)
   const [isForceStopAvailable, setIsForceStopAvailable] = useState(false)
+  /**
+   * Bumped by every stop press. Force stop hides itself when it dispatches, and
+   * `isInterrupting` and `isRunning` both stay put across a second press, so
+   * without this the arming effect below never re-runs and the control latches
+   * off for the rest of the run.
+   */
+  const [stopAttempt, setStopAttempt] = useState(0)
   const [pendingTurnStart, setPendingTurnStart] = useState<PendingTurnStart | null>(null)
   const interruptFailureBaselineRef = useRef<string | null>(null)
   const pendingTurnObservedRunningRef = useRef<MessageId | null>(null)
@@ -171,7 +178,7 @@ export function useAssistantTurnLifecycle({
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [isInterrupting, isRunning, thread?.id])
+  }, [isInterrupting, isRunning, stopAttempt, thread?.id])
 
   useEffect(() => {
     if (!latestInterruptFailure) {
@@ -205,6 +212,7 @@ export function useAssistantTurnLifecycle({
       return
     }
 
+    setStopAttempt((current) => current + 1)
     setIsInterrupting(true)
     setIsForceStopAvailable(false)
     onError(null)
@@ -241,6 +249,7 @@ export function useAssistantTurnLifecycle({
     }
 
     interruptFailureBaselineRef.current = latestInterruptFailure?.id ?? null
+    setStopAttempt((current) => current + 1)
     setIsInterrupting(true)
     setIsForceStopAvailable(false)
     onError(null)

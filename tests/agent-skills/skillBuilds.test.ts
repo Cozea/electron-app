@@ -553,24 +553,26 @@ describe("what a provider page offers to pick from", () => {
   const library = skill("library", "managed", [binding("claude", { enabled: true, owned: true })]);
   const all = [loaded, offered, turnedOff, library];
 
-  it("offers what the provider can run, loaded or from its catalog", () => {
-    expect(providerCandidates(all, "claude", new Set()).map((s) => s.id)).toEqual([
+  it("offers every skill the provider has a copy of, plus its catalog", () => {
+    expect(providerCandidates(all, "claude").map((s) => s.id)).toEqual([
       "loaded",
       "offered",
+      "off",
     ]);
   });
 
   it("leaves the Cozea library to its own page", () => {
-    expect(providerCandidates(all, "claude", new Set(["library"])).map((s) => s.id)).not.toContain(
-      "library",
-    );
+    expect(providerCandidates(all, "claude").map((s) => s.id)).not.toContain("library");
   });
 
-  it("keeps a switched-off skill the build holds, so it can still be unticked", () => {
-    // Activating a build switches off what it excludes. Without this, a build
-    // could hold a skill that had vanished from the only page that edits it.
-    expect(providerCandidates(all, "claude", new Set(["off"])).map((s) => s.id)).toContain("off");
-    expect(providerCandidates(all, "claude", new Set()).map((s) => s.id)).not.toContain("off");
+  it("keeps a switched-off skill listed, so unticking is not a one-way door", () => {
+    // Unticking disables the skill. If the page then dropped it, the only
+    // screen that could put it back would no longer show it.
+    expect(providerCandidates(all, "claude").map((s) => s.id)).toContain("off");
+  });
+
+  it("offers nothing for a provider that has no copy and no catalog entry", () => {
+    expect(providerCandidates(all, "opencode")).toEqual([]);
   });
 });
 
