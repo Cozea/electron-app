@@ -52,7 +52,10 @@ import { buildExpandedImagePreview } from "@/features/assistant/chat/ExpandedIma
 import { MessagesTimeline } from "@/features/assistant/chat/MessagesTimeline"
 import { ProviderModelPicker } from "@/features/assistant/chat/ProviderModelPicker"
 import { shouldDismissModelPickerOnPointerDown } from "@/features/assistant/chat/modelPickerDismissal"
-import { ModelPickerContent } from "@/features/assistant/chat/ModelPickerContent"
+import {
+  ModelPickerContent,
+  type ModelPickerPrimaryView,
+} from "@/features/assistant/chat/ModelPickerContent"
 import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner"
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction"
 import { ThreadRuntimeBanner } from "@/features/assistant/chat/ThreadRuntimeBanner"
@@ -63,6 +66,10 @@ import type {
 import { useAssistantThreadViewModel } from "@/features/assistant/chat/useAssistantThreadViewModel"
 import { ComposerPromptEditor } from "@/features/assistant/chat/ComposerPromptEditor"
 import { ComposerPreviewAnnotationCards } from "@/features/assistant/chat/ComposerPreviewAnnotationCards"
+import {
+  INITIAL_COMPOSER_EXPANSION_STATE,
+  nextComposerExpansionState,
+} from "@/features/assistant/chat/composerExpansion"
 import {
   detectComposerTrigger,
   replaceTextRange,
@@ -518,6 +525,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([])
   const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false)
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
+  const [modelPickerView, setModelPickerView] = useState<ModelPickerPrimaryView>("models")
   const [shouldRenderModelPicker, setShouldRenderModelPicker] = useState(false)
   const [isModelPickerVisible, setIsModelPickerVisible] = useState(false)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
@@ -539,10 +547,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
   const modelPickerPanelRef = useRef<HTMLDivElement | null>(null)
-  const modelPickerTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const modelPickerTriggerRef = useRef<HTMLDivElement | null>(null)
   const modelPickerAnimationFrameRef = useRef<number | null>(null)
   const modelPickerCloseTimerRef = useRef<number | null>(null)
   const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
+
+  const handleModelPickerOpenChange = useCallback(
+    (open: boolean, view: ModelPickerPrimaryView) => {
+      if (open) {
+        setModelPickerView(view)
+      }
+      setIsModelPickerOpen(open)
+    },
+    [],
+  )
 
   const {
     activeTurn,
@@ -622,6 +640,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasComposerHeader =
     isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt
   const composerValue = activePendingProgress?.customAnswer ?? props.composer
+  const [composerExpansionState, setComposerExpansionState] = useState(
+    INITIAL_COMPOSER_EXPANSION_STATE,
+  )
+
   const composerExpandedCursor = useMemo(
     () => expandCollapsedComposerCursor(composerValue, props.composerCursor),
     [composerValue, props.composerCursor],
@@ -1396,12 +1418,24 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.previewAnnotations.length > 0 || regularComposerImages.length > 0,
   )
 
-  const isExpanded = Boolean(
-    composerValue.includes("\n") ||
-    composerValue.length > 110 ||
+  const hasStructuralComposerContent = Boolean(
     hasAttachments ||
     hasActiveComposerHeader ||
     props.composerStatus,
+  )
+  const hasExplicitLineBreak = composerValue.includes("\n")
+  const isStackedComposer = Boolean(
+    hasStructuralComposerContent ||
+    hasExplicitLineBreak ||
+    composerExpansionState.isMultiLine,
+  )
+  const handleMeasuredComposerLinesChange = useCallback(
+    (measuredLines: number, promptLength: number) => {
+      setComposerExpansionState((current) =>
+        nextComposerExpansionState(current, measuredLines, promptLength),
+      )
+    },
+    [],
   )
 
   const resolvedPlaceholder = useMemo(() => {
@@ -1707,6 +1741,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     return buttonElement
   }
 
+  const composerModeChip = renderModeChip()
+
   const composerForm = (
     <form
       onSubmit={(event) => {
@@ -1806,7 +1842,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       {isModelPickerVisible && shouldRenderModelPicker ? (
         <div
           ref={modelPickerPanelRef}
-          className="absolute bottom-[calc(100%+8px)] right-0 z-50 w-[420px] max-w-[95vw] rounded-2xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl overflow-hidden p-2 transition-all duration-200 dark:border-white/[0.08]"
+          className="absolute bottom-[calc(100%+8px)] right-0 z-50 w-64 max-w-[95vw] overflow-hidden rounded-[18px] border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl transition-all duration-200 dark:border-white/[0.08]"
           style={{ maxHeight: `${maxModelPickerHeightPx}px` }}
         >
           <div className="w-full" style={{ maxHeight: `${maxModelPickerHeightPx}px` }}>
@@ -1821,6 +1857,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               optionDescriptors={props.modelOptionDescriptors}
               onOptionChange={props.onModelOptionChange}
               terminalOpen={false}
+              initialView={modelPickerView}
               onRequestClose={() => setIsModelPickerOpen(false)}
               onProviderModelChange={(provider, model, instanceId) => {
                 void props.onProviderModelChange(provider, model, instanceId)
@@ -1841,29 +1878,190 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         tabIndex={-1}
       />
 
-      {!isExpanded ? (
-        /* Cursor Glass single-line capsule */
-        <div
-          className="relative flex items-center gap-1.5 rounded-full border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)] p-1.5"
-        >
-          {renderPlusDropdown()}
-          {renderModeChip()}
-          <div className="flex-1 min-w-0 px-1 flex items-center">
-            <ComposerPromptEditor
-              value={composerValue}
-              cursor={props.composerCursor}
-              skills={props.providerSnapshot?.skills ?? []}
-              terminalContexts={props.terminalContexts}
-              onRemoveTerminalContext={props.onRemoveTerminalContext}
-              onChange={handleComposerChange}
-              onCommandKeyDown={handleComposerCommandKey}
-              onPaste={props.onComposerPaste}
-              placeholder={resolvedPlaceholder}
-              className="min-h-[22px] max-h-[22px] leading-[22px] py-0 text-[13px] overflow-hidden"
-              disabled={composerDisabled}
+      {/* One surface and one editor subtree at every size. CSS order and
+        * flex-basis move the same controls beneath the prompt once it wraps;
+        * the Lexical editor never remounts, so focus and selection survive
+        * both expansion and collapse. */}
+      <div
+        data-chat-composer-layout={isStackedComposer ? "stacked" : "inline"}
+        className={cn(
+          "relative flex flex-wrap border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-radius,padding,background-color,border-color,box-shadow] duration-150 dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
+          isStackedComposer
+            ? "items-end gap-x-2 gap-y-1.5 rounded-3xl p-2.5"
+            : "items-center gap-1.5 rounded-full p-1.5",
+        )}
+      >
+        {props.composerStatus ? <div className="basis-full mb-2">{props.composerStatus}</div> : null}
+        {threadRuntimeBannerState ? (
+          <div className="basis-full mb-2">
+            <ThreadRuntimeBanner
+              state={threadRuntimeBannerState}
+              detail={threadRuntimeDetail}
+              isForceStopAvailable={props.isForceStopAvailable}
+              action={
+                <ProviderRemediationAction
+                  provider={props.selectedProvider}
+                  message={threadRuntimeDetail}
+                  authenticationRequired={props.providerSnapshot?.auth.status === "unauthenticated"}
+                />
+              }
             />
           </div>
-          <div className="shrink-0 flex items-center gap-1.5">
+        ) : null}
+        {activePendingApproval ? (
+          <div className="basis-full border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
+            <ComposerPendingApprovalPanel
+              approval={activePendingApproval}
+              pendingCount={props.pendingApprovals.length}
+            />
+            <div className="p-2 flex items-center justify-end gap-2">
+              <ComposerPendingApprovalActions
+                requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
+                isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
+                onRespondToApproval={async (requestId, decision) => {
+                  await props.onApprovalDecision(String(requestId), decision)
+                }}
+              />
+            </div>
+          </div>
+        ) : activePendingUserInput ? (
+          <div className="basis-full border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
+            <ComposerPendingUserInputPanel
+              pendingUserInputs={props.pendingUserInputs}
+              respondingRequestIds={
+                activePendingIsResponding && activePendingUserInput
+                  ? [ApprovalRequestId.makeUnsafe(String(activePendingUserInput.requestId))]
+                  : []
+              }
+              answers={activePendingDraftAnswers}
+              questionIndex={activePendingQuestionIndex}
+              onSelectOption={handleSelectPendingUserInputOption}
+              onAdvance={handleAdvancePendingQuestion}
+            />
+          </div>
+        ) : showPlanFollowUpPrompt && activeProposedPlan ? (
+          <div className="basis-full border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
+            <ComposerPlanFollowUpBanner
+              key={activeProposedPlan.id}
+              planTitle={planTitleFromMarkdown(activeProposedPlan.planMarkdown)}
+            />
+          </div>
+        ) : null}
+
+        {!isComposerApprovalState &&
+        !activePendingUserInput &&
+        props.previewAnnotations.length > 0 ? (
+          <div className="basis-full mb-2">
+            <ComposerPreviewAnnotationCards
+              annotations={props.previewAnnotations}
+              images={props.composerImages}
+              onRemove={props.onRemovePreviewAnnotation}
+              onExpandImage={(imageId) => {
+                const preview = buildExpandedImagePreview(props.composerImages, imageId)
+                if (preview) handleExpandImage(preview)
+              }}
+            />
+          </div>
+        ) : null}
+
+        {!isComposerApprovalState && !activePendingUserInput && regularComposerImages.length > 0 ? (
+          <div className="basis-full mb-2">
+            <div className="flex flex-wrap gap-2">
+              {regularComposerImages.map((image) => (
+                <div
+                  key={image.id}
+                  className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-background"
+                >
+                  <button
+                    type="button"
+                    className="h-full w-full cursor-zoom-in"
+                    aria-label={`Preview ${image.name}`}
+                    onClick={() => {
+                      const preview = buildExpandedImagePreview(regularComposerImages, image.id)
+                      if (!preview) return
+                      handleExpandImage(preview)
+                    }}
+                  >
+                    <img
+                      src={image.previewUrl}
+                      alt={image.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90"
+                    onClick={() => {
+                      props.onRemoveComposerImage(image.id)
+                    }}
+                    aria-label={`Remove ${image.name}`}
+                  >
+                    <HugeiconsIcon icon={__XIconHugeIcon} className="size-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!activePendingApproval ? (
+          <div
+            data-chat-composer-actions="left"
+            className={cn(
+              "flex min-w-0 shrink-0 items-center",
+              isStackedComposer ? "order-3" : "order-1",
+            )}
+          >
+            {renderPlusDropdown()}
+          </div>
+        ) : null}
+
+        {composerModeChip ? (
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-1.5",
+              isStackedComposer ? "order-1 basis-full px-1" : "order-2 shrink-0",
+            )}
+          >
+            {composerModeChip}
+          </div>
+        ) : null}
+
+        <div
+          data-chat-composer-prompt="true"
+          className={cn(
+            "min-w-0",
+            isStackedComposer
+              ? "order-2 basis-full px-1 py-0.5"
+              : "order-3 flex-1 px-1",
+            composerDisabled && "opacity-70",
+          )}
+        >
+          <ComposerPromptEditor
+            value={composerValue}
+            cursor={props.composerCursor}
+            skills={props.providerSnapshot?.skills ?? []}
+            terminalContexts={props.terminalContexts}
+            onRemoveTerminalContext={props.onRemoveTerminalContext}
+            onMeasuredLinesChange={handleMeasuredComposerLinesChange}
+            onChange={handleComposerChange}
+            onCommandKeyDown={handleComposerCommandKey}
+            onPaste={props.onComposerPaste}
+            placeholder={resolvedPlaceholder}
+            className="min-h-[var(--composer-line-height)] max-h-[calc(var(--composer-line-height)*10)] py-0 overflow-y-auto"
+            disabled={composerDisabled}
+          />
+        </div>
+
+        {!activePendingApproval ? (
+          <div
+            data-chat-composer-actions="right"
+            className={cn(
+              "order-4 ml-auto flex min-w-0 shrink items-center gap-1.5",
+              isStackedComposer ? "max-w-[calc(100%-40px)]" : "max-w-[55%]",
+            )}
+          >
             <ProviderModelPicker
               triggerRef={modelPickerTriggerRef}
               provider={props.selectedProvider}
@@ -1875,214 +2073,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               optionDescriptors={props.modelOptionDescriptors}
               showProviderIcon={false}
               disabled={!isChatReady || props.isRunning}
-              triggerClassName="h-7 rounded-full border-0 px-2 text-xs font-normal leading-none text-foreground/80 hover:text-foreground hover:bg-accent/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer"
+              triggerClassName="h-7 rounded-full border-0 px-2 text-xs font-normal leading-none text-foreground/80 hover:text-foreground hover:bg-accent/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer sm:text-xs"
               onProviderModelChange={props.onProviderModelChange}
               open={isModelPickerOpen}
-              onOpenChange={setIsModelPickerOpen}
+              activeView={modelPickerView}
+              onOpenChange={handleModelPickerOpenChange}
             />
             {renderSendOrStopButton()}
           </div>
-        </div>
-      ) : (
-        /* Multi-line / expanded container */
-        <div
-          className="relative flex flex-col rounded-2xl border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)] p-2.5"
-        >
-          {props.composerStatus ? <div className="shrink-0 mb-2">{props.composerStatus}</div> : null}
-          {threadRuntimeBannerState ? (
-            <div className="mb-2">
-              <ThreadRuntimeBanner
-                state={threadRuntimeBannerState}
-                detail={threadRuntimeDetail}
-                isForceStopAvailable={props.isForceStopAvailable}
-                action={
-                  <ProviderRemediationAction
-                    provider={props.selectedProvider}
-                    message={threadRuntimeDetail}
-                    authenticationRequired={props.providerSnapshot?.auth.status === "unauthenticated"}
-                  />
-                }
-              />
-            </div>
-          ) : null}
-          {activePendingApproval ? (
-            <div className="border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
-              <ComposerPendingApprovalPanel
-                approval={activePendingApproval}
-                pendingCount={props.pendingApprovals.length}
-              />
-              <div className="p-2 flex items-center justify-end gap-2">
-                <ComposerPendingApprovalActions
-                  requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
-                  isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
-                  onRespondToApproval={async (requestId, decision) => {
-                    await props.onApprovalDecision(String(requestId), decision)
-                  }}
-                />
-              </div>
-            </div>
-          ) : activePendingUserInput ? (
-            <div className="border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
-              <ComposerPendingUserInputPanel
-                pendingUserInputs={props.pendingUserInputs}
-                respondingRequestIds={
-                  activePendingIsResponding && activePendingUserInput
-                    ? [ApprovalRequestId.makeUnsafe(String(activePendingUserInput.requestId))]
-                    : []
-                }
-                answers={activePendingDraftAnswers}
-                questionIndex={activePendingQuestionIndex}
-                onSelectOption={handleSelectPendingUserInputOption}
-                onAdvance={handleAdvancePendingQuestion}
-              />
-            </div>
-          ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-            <div className="border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
-              <ComposerPlanFollowUpBanner
-                key={activeProposedPlan.id}
-                planTitle={planTitleFromMarkdown(activeProposedPlan.planMarkdown)}
-              />
-            </div>
-          ) : null}
-
-          {!isComposerApprovalState &&
-          !activePendingUserInput &&
-          props.previewAnnotations.length > 0 ? (
-            <div className="mb-2">
-              <ComposerPreviewAnnotationCards
-                annotations={props.previewAnnotations}
-                images={props.composerImages}
-                onRemove={props.onRemovePreviewAnnotation}
-                onExpandImage={(imageId) => {
-                  const preview = buildExpandedImagePreview(props.composerImages, imageId)
-                  if (preview) handleExpandImage(preview)
-                }}
-              />
-            </div>
-          ) : null}
-
-          {!isComposerApprovalState && !activePendingUserInput && regularComposerImages.length > 0 ? (
-            <div className="mb-2">
-              <div className="flex flex-wrap gap-2">
-                {regularComposerImages.map((image) => (
-                  <div
-                    key={image.id}
-                    className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-background"
-                  >
-                    <button
-                      type="button"
-                      className="h-full w-full cursor-zoom-in"
-                      aria-label={`Preview ${image.name}`}
-                      onClick={() => {
-                        const preview = buildExpandedImagePreview(regularComposerImages, image.id)
-                        if (!preview) return
-                        handleExpandImage(preview)
-                      }}
-                    >
-                      <img
-                        src={image.previewUrl}
-                        alt={image.name}
-                        className="h-full w-full object-cover"
-                      />
-                    </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90"
-                      onClick={() => {
-                        props.onRemoveComposerImage(image.id)
-                      }}
-                      aria-label={`Remove ${image.name}`}
-                    >
-                      <HugeiconsIcon icon={__XIconHugeIcon} className="size-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="flex flex-col gap-1.5 px-1 py-1">
-            {renderModeChip() ? (
-              <div className="flex items-center gap-1.5">
-                {renderModeChip()}
-              </div>
-            ) : null}
-            <div className={cn(composerDisabled && "opacity-70")}>
-              <ComposerPromptEditor
-                value={composerValue}
-                cursor={props.composerCursor}
-                skills={props.providerSnapshot?.skills ?? []}
-                terminalContexts={props.terminalContexts}
-                onRemoveTerminalContext={props.onRemoveTerminalContext}
-                onChange={handleComposerChange}
-                onCommandKeyDown={handleComposerCommandKey}
-                onPaste={props.onComposerPaste}
-                placeholder={resolvedPlaceholder}
-                className="min-h-[56px] max-h-[220px] leading-relaxed py-0 text-[13px] overflow-y-auto"
-                disabled={composerDisabled}
-              />
-            </div>
-          </div>
-
-          {!activePendingApproval ? (
-            <div
-              data-chat-composer-footer="true"
-              className="mt-1 flex flex-nowrap items-center justify-between gap-2 pt-1.5 border-t border-white/[0.06]"
-            >
-              <div className="flex min-w-0 shrink-0 items-center gap-1">
-                {renderPlusDropdown()}
-                <button
-                  type="button"
-                  onClick={() => void props.onToggleRuntimeMode()}
-                  className={cn(
-                    "inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-2 text-xs font-normal cursor-pointer transition-colors",
-                    props.selectedRuntimeMode === "full-access"
-                      ? "text-amber-500 hover:bg-white/5"
-                      : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200",
-                  )}
-                  title={`Runtime mode: ${props.selectedRuntimeMode === "full-access" ? "Full access" : "Approval required"}. Click to toggle.`}
-                >
-                  <HugeiconsIcon
-                    icon={
-                      props.selectedRuntimeMode === "full-access"
-                        ? __CircleAlertIconHugeIcon
-                        : __LockIconHugeIcon
-                    }
-                    className="size-3.5 shrink-0"
-                  />
-                  <span className="whitespace-nowrap">
-                    {props.selectedRuntimeMode === "full-access" ? "Full" : "Approval"}
-                  </span>
-                </button>
-              </div>
-
-              <div
-                data-chat-composer-actions="right"
-                className="flex min-w-0 max-w-[calc(100%-48px)] shrink items-center gap-1.5"
-              >
-                <ProviderModelPicker
-                  triggerRef={modelPickerTriggerRef}
-                  provider={props.selectedProvider}
-                  activeInstanceId={props.selectedModelSelection.instanceId}
-                  model={props.selectedModelSelection.model}
-                  lockedProvider={props.selectedProvider}
-                  providers={props.providers}
-                  modelOptionsByProvider={props.modelOptionsByProvider}
-                  optionDescriptors={props.modelOptionDescriptors}
-                  showProviderIcon={false}
-                  disabled={!isChatReady || props.isRunning}
-                  triggerClassName="h-7 rounded-full border-0 px-2 text-xs font-normal leading-none text-foreground/80 hover:text-foreground hover:bg-accent/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer sm:text-xs"
-                  onProviderModelChange={props.onProviderModelChange}
-                  open={isModelPickerOpen}
-                  onOpenChange={setIsModelPickerOpen}
-                />
-                {renderSendOrStopButton()}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      )}
+        ) : null}
+      </div>
     </form>
   )
 

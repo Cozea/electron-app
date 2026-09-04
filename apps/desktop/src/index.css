@@ -101,6 +101,14 @@
   /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
   --app-copy-font-size: 13px;
   --app-copy-line-height: 20px;
+  /* Composer prompt input line box. The typography normalization rule below
+   * forces app copy metrics onto anything carrying `.text-[13px]` with
+   * `!important`, so the editor's real line box is always the app copy one --
+   * no `leading-*` utility can win against it. Deriving the composer's min/max
+   * heights from the same token is what keeps them whole multiples of a line
+   * instead of cutting the last one mid-glyph.
+   */
+  --composer-line-height: var(--app-copy-line-height);
   --diffs-font-family: "JetBrains Mono Variable", "SF Mono", Monaco, Consolas, "Ubuntu Mono", "Liberation Mono", "Courier New", monospace;
 }
 
@@ -2179,3 +2187,35 @@ body {
   animation: l3 1s infinite linear;
 }
 @keyframes l3 {to{transform: rotate(1turn)}}
+
+/* Discrete reasoning-effort control used by the compact model capability card. */
+.model-picker-effort-slider {
+  appearance: none;
+  height: 24px;
+  margin: 0;
+  cursor: pointer;
+  background: transparent;
+}
+
+.model-picker-effort-slider::-webkit-slider-runnable-track {
+  height: 24px;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.model-picker-effort-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -2px;
+  border: 1px solid color-mix(in oklch, black 8%, transparent);
+  border-radius: 9999px;
+  background: #f8fafc;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 24%);
+}
+
+.model-picker-effort-slider:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 9999px;
+}
