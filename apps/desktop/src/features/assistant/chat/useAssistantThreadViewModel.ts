@@ -8,15 +8,15 @@ import {
   findLatestProposedPlan,
   hasActionableProposedPlan,
   isLatestTurnSettled,
-} from "@/features/assistant/chat/timelineDerivations"
-import type { PendingUserInput } from "@/features/assistant/chat/pendingRequests"
+  inferCheckpointTurnCountByTurnId,
+  type PendingUserInput,
+} from "@/features/assistant/chat/session-logic"
 import {
   buildRevertTurnCountByUserMessageId,
   buildTurnDiffSummaryByAssistantMessageId,
   deriveCompletionDividerBeforeEntryId,
   deriveCompletionSummariesByMessageId,
-  inferCheckpointTurnCountByTurnId,
-} from "@/features/assistant/chat/turnDiffDerivations"
+} from "@/features/assistant/chat/threadTimelineDerivations"
 import { deriveWorkLogEntries } from "@/features/assistant/chat/workLogDerivations"
 import {
   deriveActiveWorkStartedAt,

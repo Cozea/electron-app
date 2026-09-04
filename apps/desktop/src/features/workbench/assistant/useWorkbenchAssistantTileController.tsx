@@ -109,7 +109,7 @@ import { resolvePlanFollowUpSubmission } from "@/features/assistant/proposedPlan
 import {
   findLatestProposedPlan,
   hasActionableProposedPlan,
-} from "@/features/assistant/chat/timelineDerivations"
+} from "@/features/assistant/chat/session-logic"
 import {
   type DiffDialogState,
   basenameFromPath,

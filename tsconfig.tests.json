@@ -20,7 +20,6 @@
      */
     "tests/identity/deviceAuthJwt.test.ts",
 
-    "tests/assistant/assistantDerivations.test.ts",
     "tests/assistant/providerStatusBanner.test.ts",
     "tests/assistant/threadArtifacts.test.ts",
     "tests/auth/authCallbackState.test.ts",

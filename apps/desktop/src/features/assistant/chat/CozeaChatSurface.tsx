@@ -62,7 +62,7 @@ import { ThreadRuntimeBanner } from "@/features/assistant/chat/ThreadRuntimeBann
 import type {
   PendingApproval,
   PendingUserInput,
-} from "@/features/assistant/chat/pendingRequests"
+} from "@/features/assistant/chat/session-logic"
 import { useAssistantThreadViewModel } from "@/features/assistant/chat/useAssistantThreadViewModel"
 import { ComposerPromptEditor } from "@/features/assistant/chat/ComposerPromptEditor"
 import { ComposerPreviewAnnotationCards } from "@/features/assistant/chat/ComposerPreviewAnnotationCards"
