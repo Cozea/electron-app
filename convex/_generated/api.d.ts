@@ -43,6 +43,7 @@ import type * as projects from "../projects.js";
 import type * as users from "../users.js";
 import type * as yjs from "../yjs.js";
 import type * as yjsAwareness from "../yjsAwareness.js";
+import type * as yjsMaintenance from "../yjsMaintenance.js";
 
 import type {
   ApiFromModules,
@@ -86,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   users: typeof users;
   yjs: typeof yjs;
   yjsAwareness: typeof yjsAwareness;
+  yjsMaintenance: typeof yjsMaintenance;
 }>;
 
 /**
