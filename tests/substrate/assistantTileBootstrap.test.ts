@@ -5,7 +5,7 @@ import {
   resolveModelSelectionProvider,
   resolveRememberedModelSelection,
 } from "../../apps/desktop/src/features/workbench/assistant/workbenchAssistantShared";
-import { flushWorkbenchStorage } from "@/features/workbench/model/workbenchStore";
+import { flushWorkbenchStorage } from "@/lib/workbenchStore";
 import { ProviderInstanceId, type ServerConfig } from "@cozea/assistant-contracts"
 
 describe("assistantTileBootstrap", () => {

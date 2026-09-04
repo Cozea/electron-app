@@ -33,6 +33,28 @@ export type WorkbenchTileType =
 
 export type RenderableWorkbenchTileType = Exclude<WorkbenchTileType, "tasks">
 
+/**
+ * The name a tile carries before anything renames it.
+ *
+ * These sit with the tile types rather than in the shell registry because
+ * creating a tile needs a title and nothing else the registry knows. The
+ * registry still owns everything about how a tile is presented and reads its
+ * titles from here, so there is one spelling of "Dev Server".
+ */
+export const WORKBENCH_TILE_DEFAULT_TITLES: Record<WorkbenchTileType, string> = {
+  browser: "Browser",
+  terminal: "Terminal",
+  devServer: "Dev Server",
+  memory: "Memory",
+  llama: "Llama",
+  mobileSimulator: "Mobile Simulator",
+  orgDevApp: "DevApp",
+  devAppPreview: "DevApp (development)",
+  selection: "Add DevApp",
+  tasks: "Tasks",
+  assistantChat: "AI Agent",
+}
+
 export type WorkbenchRuntimePreviewViewMode = "preview" | "code"
 
 export type WorkbenchSelectionTileMode =

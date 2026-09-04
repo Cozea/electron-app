@@ -64,7 +64,7 @@ import {
 import { type WorkbenchDevAppPreviewTile, type WorkbenchOrgDevAppTile } from "@/lib/workbenchTileContract"
 import {
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 const SUPPORTED_OPERATIONS = [
   "status",

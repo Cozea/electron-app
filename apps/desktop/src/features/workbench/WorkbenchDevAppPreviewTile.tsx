@@ -14,7 +14,7 @@ import {
   publishDevAppPreviewRuntime,
   releaseDevAppPreviewRuntime,
 } from "@/features/devapps/preview/devAppPreviewRuntimeStore";
-import type { WorkbenchDevAppPreviewTile as PreviewTileRecord } from "@/features/workbench/model/workbenchStore";
+import type { WorkbenchDevAppPreviewTile as PreviewTileRecord } from "@/lib/workbenchStore";
 import { usePublishTileActivity } from "@/features/workbench/model/tileActivityStore";
 import { Button } from "@/components/ui/button";
 import { HugeiconsIcon } from "@hugeicons/react";

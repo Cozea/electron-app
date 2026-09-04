@@ -15,7 +15,7 @@ import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceSt
 import { useAuth } from "@/contexts/AuthContext"
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode"
-import type { WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord } from "@/features/workbench/model/workbenchStore"
+import type { WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord } from "@/lib/workbenchStore"
 import { usePublishTileActivity } from "@/features/workbench/model/tileActivityStore"
 import { useTranslation } from "@/lib/i18n"
 import { getDeviceSession } from "@/lib/deviceSession"

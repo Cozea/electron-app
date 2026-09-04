@@ -10,7 +10,7 @@ import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import {
   endProjectSwitch,
   markProjectSwitchPhase,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { migratePersistedWorkbenchState } from "@/features/workbench/model/workbenchStore"
+import { migratePersistedWorkbenchState } from "@/lib/workbenchStore"
 
 function bench(input: {
   projectId: string

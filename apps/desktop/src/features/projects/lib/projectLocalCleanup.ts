@@ -17,7 +17,7 @@ import { clearRecentProjectOpenSync } from "@/features/projects/lib/recentProjec
 import { clearPersistedWorkbenchLayoutsForProject } from "@/features/workbench/model/workbenchLayoutPersistence"
 import { clearSyncFeedSeen } from "@/features/source-control/syncFeedSeen"
 import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
-import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
+import { useProjectWorkbenchStore } from "@/lib/workbenchStore"
 import { useQueryCache } from "@/app/model/queryCache"
 import { useTerminalStore } from "@/features/terminal/model/terminalStore"
 import { useThreadDetailStore } from "@/features/assistant/model/threadDetailStore"

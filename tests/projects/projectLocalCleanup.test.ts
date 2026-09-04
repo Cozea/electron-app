@@ -130,8 +130,8 @@ const mockWorkbenchStore = {
   },
 }
 
-vi.mock("@/features/workbench/model/workbenchStore", () => mockWorkbenchStore)
-vi.mock("@/features/workbench/model/workbenchStore", () => mockWorkbenchStore)
+vi.mock("@/lib/workbenchStore", () => mockWorkbenchStore)
+vi.mock("@/lib/workbenchStore", () => mockWorkbenchStore)
 
 vi.mock("@/app/model/queryCache", () => ({
   useQueryCache: {

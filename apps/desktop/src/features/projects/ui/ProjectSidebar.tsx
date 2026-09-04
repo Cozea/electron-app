@@ -82,7 +82,7 @@ import {
   selectProjectWorkbench,
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore";
+} from "@/lib/workbenchStore";
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext";
 import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";

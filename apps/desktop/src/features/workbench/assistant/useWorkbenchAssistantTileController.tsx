@@ -101,7 +101,7 @@ import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
   flushWorkbenchStorage,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig"
 import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"

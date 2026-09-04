@@ -42,17 +42,12 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
     pair: ["browser", "workbench"],
     thinEdge: "browser -> workbench",
-    reaches: ["WorkbenchDockRuntimeContext", "model/workbenchStore"],
+    reaches: ["WorkbenchDockRuntimeContext"],
   },
   {
     pair: ["devapps", "projects"],
     thinEdge: "devapps -> projects",
     reaches: ["hooks/useProjectHeader", "model/createProjectDialogStore"],
-  },
-  {
-    pair: ["project-memory", "workbench"],
-    thinEdge: "project-memory -> workbench",
-    reaches: ["model/workbenchStore"],
   },
   {
     pair: ["projects", "settings"],
@@ -63,11 +58,6 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     pair: ["projects", "workbench"],
     thinEdge: "workbench -> projects",
     reaches: ["ui/ProjectPixelInvaderIcon"],
-  },
-  {
-    pair: ["settings", "workbench"],
-    thinEdge: "settings -> workbench",
-    reaches: ["model/workbenchStore"],
   },
   {
     pair: ["workbench", "workspace"],

@@ -14,7 +14,7 @@ import {
 } from "@/features/source-control/model/projectBranchSessionStore"
 import { clearCachedProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
 import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/workbench/model/workbenchLayoutPersistence"
-import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
+import { useProjectWorkbenchStore } from "@/lib/workbenchStore"
 import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { evictTerminalViewsForWorkspace } from "@/features/terminal/terminalViewKeepAlive"

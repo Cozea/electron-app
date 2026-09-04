@@ -23,7 +23,7 @@ const tileSource = fs.readFileSync(
   "utf8",
 )
 const storeSource = fs.readFileSync(
-  path.join(root, "apps/desktop/src/features/workbench/model/workbenchStore.ts"),
+  path.join(root, "apps/desktop/src/lib/workbenchStore.ts"),
   "utf8",
 )
 const tileContractSource = fs.readFileSync(

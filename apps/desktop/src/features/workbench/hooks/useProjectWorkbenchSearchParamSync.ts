@@ -5,7 +5,7 @@ import { type WorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore"
 
 function normalizeOpenTargetParam(

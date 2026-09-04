@@ -42,7 +42,7 @@ import type { CreateProjectDialogMode } from "@/features/projects/model/createPr
 import { DEFAULT_WORKBENCH_LANE_ID } from "@/lib/workbenchScopeKey"
 import {
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { useTranslation } from "@/lib/i18n"
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 

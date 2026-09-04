@@ -16,7 +16,7 @@ import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLoc
 import { DEFAULT_WORKBENCH_LANE_ID } from "@/lib/workbenchScopeKey"
 import {
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 export type LocalProjectImportOutcome =
   | "cancelled"

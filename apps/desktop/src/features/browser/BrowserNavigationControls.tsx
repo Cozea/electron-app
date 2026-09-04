@@ -19,7 +19,7 @@ import {
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore";
+} from "@/lib/workbenchStore";
 import { cn } from "@/lib/utils";
 
 import { browserAddressDisplayValue, resolveBrowserAddressSubmission } from "./browserAddressState";

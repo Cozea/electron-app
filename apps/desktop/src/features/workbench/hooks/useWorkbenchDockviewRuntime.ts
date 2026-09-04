@@ -7,7 +7,7 @@ import {
   selectProjectWorkbench,
   type WorkbenchProjectState,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore";
+} from "@/lib/workbenchStore";
 import { useTerminalStore } from "@/features/terminal/model/terminalStore";
 import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore";
 import {

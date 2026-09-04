@@ -26,7 +26,7 @@ import {
   isBrowserBackedWorkbenchTile,
 } from "@/features/workbench/model/workbenchTileRegistry"
 import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
-import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
+import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/lib/workbenchStore"
 import { cn } from "@/lib/utils"
 import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"

@@ -28,7 +28,7 @@ import {
   selectProjectWorkbench,
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 export interface DiffDialogState {
   title: string

@@ -67,7 +67,7 @@ import {
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,

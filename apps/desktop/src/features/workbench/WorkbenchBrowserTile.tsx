@@ -18,8 +18,8 @@ import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegist
 import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
-import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore";
-import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/features/workbench/model/workbenchStore";
+import { useProjectWorkbenchStore } from "@/lib/workbenchStore";
+import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/lib/workbenchStore";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 
 interface WorkbenchBrowserTileProps {

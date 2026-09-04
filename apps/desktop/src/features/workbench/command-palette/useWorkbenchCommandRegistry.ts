@@ -9,7 +9,7 @@ import { type WorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { commandLabel } from "./commandLabels"
 import type { CommandPaletteCommand } from "./CommandPalette.logic"
 import { toggleCommandPalette } from "./commandPaletteBus"

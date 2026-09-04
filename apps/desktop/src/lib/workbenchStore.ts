@@ -1,3 +1,18 @@
+/**
+ * Tile state for every open workbench, keyed by project, lane and workspace.
+ *
+ * This is the shell's state, not one feature's. The workbench renders it, but
+ * the sidebar lists tiles from it, settings opens a published DevApp into it,
+ * the memory tile asks it which agents are on screen, and the browser tile
+ * writes its own URL back to it. While the store lived inside features/workbench
+ * every one of those callers had to import the feature that hosts them, which is
+ * a cycle: the workbench builds its tiles out of those same capabilities.
+ *
+ * Nothing here may import from `features/`. Tile shapes and their default titles
+ * come from `workbenchTileContract`; how a tile is presented stays in the
+ * workbench's own registry, which this file no longer needs to know about.
+ */
+
 import type {
   ProviderInteractionMode,
   ProviderInstanceId,
@@ -17,9 +32,9 @@ import {
   normalizeLaneId,
 } from "@/lib/workbenchScopeKey"
 import {
-  getWorkbenchTileDefinition,
+  WORKBENCH_TILE_DEFAULT_TITLES,
   type WorkbenchTileType,
-} from "@/features/workbench/model/workbenchTileRegistry"
+} from "@/lib/workbenchTileContract"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 import type {
   WorkbenchAssistantChatTile,
@@ -33,7 +48,7 @@ import type {
   WorkbenchTile,
 } from "@/lib/workbenchTileContract"
 
-export type { WorkbenchTileType } from "@/features/workbench/model/workbenchTileRegistry"
+export type { WorkbenchTileType } from "@/lib/workbenchTileContract"
 
 const PERSIST_DEBOUNCE_MS = 500
 
@@ -508,7 +523,7 @@ function applyDevAppMetadata(
     delete tile.devAppPort
     delete tile.autoStart
     tile.title =
-      normalizeOptionalString(options.title) ?? getWorkbenchTileDefinition("devServer").defaultTitle
+      normalizeOptionalString(options.title) ?? WORKBENCH_TILE_DEFAULT_TITLES.devServer
     return
   }
 
@@ -532,7 +547,7 @@ function applyDevAppMetadata(
 function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): WorkbenchTile {
   const createdAt = Date.now()
   const id = createTileId(type)
-  const title = options.title?.trim() || getWorkbenchTileDefinition(type).defaultTitle
+  const title = options.title?.trim() || WORKBENCH_TILE_DEFAULT_TITLES[type]
 
   switch (type) {
     case "browser":
@@ -646,7 +661,7 @@ function buildAssistantTileTitle(
     return workbench.tiles[tileId]?.type === "assistantChat" ? count + 1 : count
   }, 0)
 
-  const assistantTitle = getWorkbenchTileDefinition("assistantChat").defaultTitle
+  const assistantTitle = WORKBENCH_TILE_DEFAULT_TITLES.assistantChat
   return assistantCount <= 0 ? assistantTitle : `${assistantTitle} ${assistantCount + 1}`
 }
 
@@ -658,7 +673,7 @@ function createDefaultWorkbenchState(
   const normalizedLaneId = normalizeLaneId(laneId)
   const selectionTile = createTile("selection", {
     selectionMode: "emptyState",
-    title: getWorkbenchTileDefinition("selection").defaultTitle,
+    title: WORKBENCH_TILE_DEFAULT_TITLES.selection,
   })
 
   return {

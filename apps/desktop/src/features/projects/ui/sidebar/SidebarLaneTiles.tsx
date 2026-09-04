@@ -45,7 +45,7 @@ import type {
   WorkbenchLaneSidebarSummary,
   WorkbenchSidebarAssistantTileSummary,
   WorkbenchSidebarSurfaceTileSummary,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { useTileActivityStore } from "@/features/workbench/model/tileActivityStore"
 import { getWorkbenchTileDefinition } from "@/features/workbench/model/workbenchTileRegistry"
 

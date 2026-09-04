@@ -33,7 +33,7 @@ import {
   buildWorkbenchLaneSidebarSummary,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import {
   isSidebarActivityLive,
   resolveProjectRowActivity,
