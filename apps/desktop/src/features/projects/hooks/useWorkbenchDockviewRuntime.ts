@@ -27,7 +27,9 @@ import { isBrowserBackedWorkbenchTile } from "@/features/projects/lib/workbenchT
 import type { WorkbenchSelectionLaunchRequest } from "@/features/projects/lib/workbenchSelectionLaunch";
 import {
   clearPersistedWorkbenchLayout,
+  isWorkbenchLayoutWriteStillValid,
   writePersistedWorkbenchLayout,
+  type PendingWorkbenchLayoutWrite,
 } from "@/features/projects/lib/workbenchLayoutPersistence";
 import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/projects/lib/changesTileSizing";
 import { resolveProjectDevAppRuntimeTarget } from "@/features/projects/lib/projectDevAppRuntime";
@@ -141,7 +143,9 @@ export function useWorkbenchDockviewRuntime(
   const dockviewHostRef = useRef<HTMLDivElement | null>(null);
   const hydratedProjectKeyRef = useRef<string | null>(null);
   const layoutSaveFrameRef = useRef<number | null>(null);
-  const layoutSnapshotDebouncerRef = useRef<Debouncer<(layout: SerializedDockview) => void> | null>(
+  const layoutSnapshotDebouncerRef = useRef<Debouncer<
+    (pending: PendingWorkbenchLayoutWrite) => void
+  > | null>(
     null,
   );
   const transientSelectionTileIdRef = useRef<string | null>(null);
@@ -248,6 +252,7 @@ export function useWorkbenchDockviewRuntime(
 
         api.clear();
 
+
         if (input.persistedLayout) {
           try {
             api.fromJSON(input.persistedLayout, { reuseExistingPanels: false });
@@ -302,18 +307,36 @@ export function useWorkbenchDockviewRuntime(
     if (Object.keys(selectionPreviewTilesRef.current).length > 0) {
       return;
     }
+    // Captured now, not read back in the frame or the debounce: by then the
+    // scope may have settled to a different workbench, and this snapshot
+    // describes the one on screen at *this* moment.
+    const capturedScopeKey = workbenchScopeKeyRef.current;
+    const capturedLayoutResetKey = layoutResetKeyRef.current;
+    if (!capturedScopeKey) return;
+
     if (layoutSaveFrameRef.current !== null) {
       cancelAnimationFrame(layoutSaveFrameRef.current);
     }
     layoutSaveFrameRef.current = requestAnimationFrame(() => {
       layoutSaveFrameRef.current = null;
       const api = dockviewApiRef.current;
-      const scopeKey = workbenchScopeKeyRef.current;
-      if (!api || !scopeKey) {
+      if (!api) return;
+      if (
+        !isWorkbenchLayoutWriteStillValid(
+          { scopeKey: capturedScopeKey, layoutResetKey: capturedLayoutResetKey },
+          {
+            scopeKey: workbenchScopeKeyRef.current,
+            layoutResetKey: layoutResetKeyRef.current,
+          },
+        )
+      ) {
         return;
       }
-      const snapshot = api.toJSON() as SerializedDockview;
-      layoutSnapshotDebouncerRef.current?.maybeExecute(snapshot);
+      layoutSnapshotDebouncerRef.current?.maybeExecute({
+        scopeKey: capturedScopeKey,
+        layoutResetKey: capturedLayoutResetKey,
+        layout: api.toJSON() as SerializedDockview,
+      });
     });
   }, [input.projectId]);
 
@@ -1009,6 +1032,20 @@ export function useWorkbenchDockviewRuntime(
   const handleDockviewReady = useCallback(
     (event: DockviewReadyEvent) => {
       dockviewApiRef.current = event.api;
+      /*
+       * A ready event means a *new, empty* dockview instance. Hydration is
+       * gated on `hydratedProjectKeyRef`, which is keyed by scope and reset key
+       * only — neither changes when the canvas remounts. So the second instance
+       * was considered already hydrated, skipped its restore, and the reconcile
+       * pass then found an empty grid and re-added every tile with
+       * `direction: "right"` — the user's splits flattened into a row of equal
+       * columns, which was then persisted.
+       *
+       * Nothing has been hydrated into this instance yet, so say so. Rebuilding
+       * a live dock is still prevented inside `hydrateDockviewPanels`, which
+       * returns early when the dock already holds panels.
+       */
+      hydratedProjectKeyRef.current = null;
       setDockviewReadyScopeKey(input.workbenchScopeKey ?? "workbench");
       if (import.meta.env.DEV && typeof window !== "undefined") {
         // Exposed for layout diagnostics (panel move/bounds verification).
@@ -1019,10 +1056,12 @@ export function useWorkbenchDockviewRuntime(
 
       layoutSnapshotDebouncerRef.current?.cancel();
       layoutSnapshotDebouncerRef.current = new Debouncer(
-        (layout: SerializedDockview) => {
-          const scopeKey = workbenchScopeKeyRef.current;
-          if (!scopeKey) return;
-          writePersistedWorkbenchLayout(scopeKey, layoutResetKeyRef.current, layout);
+        (pending: PendingWorkbenchLayoutWrite) => {
+          // Deliberately writes the identity the snapshot was captured with
+          // rather than whatever is current. This is flushed on scope change,
+          // where the outgoing workbench's last layout is still worth saving —
+          // to its own key, which is exactly what the snapshot carries.
+          writePersistedWorkbenchLayout(pending.scopeKey, pending.layoutResetKey, pending.layout);
         },
         { wait: 400 },
       );
