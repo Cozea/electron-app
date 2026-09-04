@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -81,7 +82,7 @@ enabled: persisted.providers?.opencode?.enabled ?? usedProviders.has("opencode")
 
   it("removes pnpm deploy self-links that escape the packaged runtime", () => {
     const temporaryRoot = fs.mkdtempSync(
-      path.join(repositoryRoot, ".agent", "t3-runtime-link-test-"),
+      path.join(os.tmpdir(), "cozea-t3-runtime-link-test-"),
     );
     const runtimeRoot = path.join(temporaryRoot, "runtime");
     const linkDirectory = path.join(runtimeRoot, "node_modules", "pnpm-store", "node_modules");
@@ -102,7 +103,7 @@ enabled: persisted.providers?.opencode?.enabled ?? usedProviders.has("opencode")
 
   it("rejects unexpected symlinks that escape the packaged runtime", () => {
     const temporaryRoot = fs.mkdtempSync(
-      path.join(repositoryRoot, ".agent", "t3-runtime-link-test-"),
+      path.join(os.tmpdir(), "cozea-t3-runtime-link-test-"),
     );
     const runtimeRoot = path.join(temporaryRoot, "runtime");
     const linkDirectory = path.join(runtimeRoot, "node_modules");

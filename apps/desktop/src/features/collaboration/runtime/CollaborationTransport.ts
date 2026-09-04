@@ -374,8 +374,17 @@ export class CollabWsProvider {
       if (id && this.pendingUpdates.has(id)) {
         this.pendingUpdates.delete(id)
         await this.outbox.acknowledge(id)
+
+        // An acknowledgement proves only that this local update was assigned a
+        // server sequence. It does not prove that every earlier remote update
+        // has been applied locally, so advancing knownSeq here could skip a gap.
+        // Treat the acknowledged sequence as a catch-up target and advance only
+        // after the contiguous sync.delta range has actually been decoded.
         const seq = finiteSequence(payload.seq)
-        if (seq !== null) this.knownSeq = Math.max(this.knownSeq, seq)
+        if (seq !== null) {
+          this.targetHeadSeq = Math.max(this.targetHeadSeq, seq)
+          if (this.knownSeq < this.targetHeadSeq) this.requestSync()
+        }
       }
       return
     }
