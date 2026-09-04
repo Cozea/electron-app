@@ -75,9 +75,6 @@ export async function handleCollaborationRepositoryCredential(
     userId: authorization.userId,
     operation,
     outcome: 'issued',
-    sessionId: 'sessionDocumentId' in authorization
-      ? authorization.sessionDocumentId
-      : undefined,
     tokenExpiresAt: credential.expiresAt,
   })
 
@@ -136,7 +133,6 @@ export async function handleVerifyCollaborationPush(
     userId: authorization.userId,
     operation: 'write',
     outcome: 'verified',
-    sessionId: authorization.sessionDocumentId,
     commitSha,
   })
 
