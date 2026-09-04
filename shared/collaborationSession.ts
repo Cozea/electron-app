@@ -33,6 +33,9 @@ export interface CollaborationSessionDescriptor {
   createdByUserId: string
   commitLeaseUserId: string | null
   commitLeaseExpiresAt: number | null
+  pendingCommitSha: string | null
+  pendingCommitThroughSequence: number | null
+  pendingCommitCreatedAt: number | null
   status: CollaborationSessionStatus
   createdAt: number
   updatedAt: number
@@ -230,14 +233,55 @@ export function validateCollaborationSession(
     throw new Error("Session update time cannot precede creation time")
   }
 
-  if (session.commitLeaseUserId !== null) {
-    requireCanonicalTrimmed(session.commitLeaseUserId, "Commit lease user ID")
+  const hasLease = session.commitLeaseUserId !== null
+  if (hasLease) {
+    requireCanonicalTrimmed(session.commitLeaseUserId!, "Commit lease user ID")
     if (session.commitLeaseExpiresAt === null) {
       throw new Error("An active commit lease must have an expiry")
     }
     normalizeTimestamp(session.commitLeaseExpiresAt, "Commit lease expiry")
   } else if (session.commitLeaseExpiresAt !== null) {
     throw new Error("A commit lease expiry requires a lease holder")
+  }
+
+  const hasPendingCommit = session.pendingCommitSha !== null
+  const pendingFields = [
+    hasPendingCommit,
+    session.pendingCommitThroughSequence !== null,
+    session.pendingCommitCreatedAt !== null,
+  ]
+  if (pendingFields.some(Boolean) && !pendingFields.every(Boolean)) {
+    throw new Error("Prepared commit metadata must be recorded atomically")
+  }
+
+  if (hasPendingCommit) {
+    assertGitCommitSha(session.pendingCommitSha!, "Prepared commit SHA")
+    const pendingSequence = normalizeSequence(
+      session.pendingCommitThroughSequence!,
+      "Prepared commit sequence",
+    )
+    normalizeTimestamp(session.pendingCommitCreatedAt!, "Prepared commit time")
+
+    if (pendingSequence < publishedThroughSequence || pendingSequence > roomHeadSequence) {
+      throw new Error("Prepared commit sequence must be within the unpublished room range")
+    }
+    if (session.status !== "local_commit_ready" && session.status !== "pushing") {
+      throw new Error("Prepared commit metadata requires a ready or pushing session")
+    }
+  } else if (session.status === "local_commit_ready" || session.status === "pushing") {
+    throw new Error("A ready or pushing session requires prepared commit metadata")
+  }
+
+  const leaseStatuses: CollaborationSessionStatus[] = [
+    "commit_preparing",
+    "local_commit_ready",
+    "pushing",
+  ]
+  if (leaseStatuses.includes(session.status) && !hasLease) {
+    throw new Error(`${session.status} requires an active commit lease`)
+  }
+  if (!leaseStatuses.includes(session.status) && hasLease) {
+    throw new Error(`A ${session.status} session cannot retain a commit lease`)
   }
 
   if (session.closedAt !== null) {
@@ -309,6 +353,13 @@ export function advancePublishedCollaborationBase(
   }
 
   if (
+    session.pendingCommitSha !== commitSha ||
+    session.pendingCommitThroughSequence !== coveredThroughSequence
+  ) {
+    throw new Error("Published commit must match the prepared local commit boundary")
+  }
+
+  if (
     coveredThroughSequence === session.publishedThroughSequence &&
     session.publishedCommitSha &&
     session.publishedCommitSha !== commitSha
@@ -323,6 +374,9 @@ export function advancePublishedCollaborationBase(
     publishedThroughSequence: coveredThroughSequence,
     commitLeaseUserId: null,
     commitLeaseExpiresAt: null,
+    pendingCommitSha: null,
+    pendingCommitThroughSequence: null,
+    pendingCommitCreatedAt: null,
     status: "active",
     updatedAt: publishedAt,
   }
