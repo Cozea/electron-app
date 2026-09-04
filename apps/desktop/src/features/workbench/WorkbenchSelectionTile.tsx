@@ -1,53 +1,70 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
-import { useQuery } from "convex/react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { useQuery } from "convex/react";
 
-import { api } from "../../../../../convex/_generated/api"
-import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
-import { buildInstalledDevAppManifest, buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
-import { useOrgDevAppInstallations } from "@/features/devapps/useOrgDevAppInstallations"
-import { buildDevelopmentDevAppManifest } from "@/features/devapps/developmentDevAppManifest"
-import { listLauncherApps } from "@/features/devapps/registry"
+import { api } from "../../../../../convex/_generated/api";
+import { DevAppIcon } from "@/features/devapps/components/DevAppIcon";
+import {
+  buildInstalledDevAppManifest,
+  buildPublishedDevAppManifest,
+} from "@/features/devapps/orgDevAppManifest";
+import { useOrgDevAppInstallations } from "@/features/devapps/useOrgDevAppInstallations";
+import { buildDevelopmentDevAppManifest } from "@/features/devapps/developmentDevAppManifest";
+import { buildInstalledDevAppManifests } from "@/features/devapps/installedDevAppManifest";
+import { useDevAppInstallations } from "@/features/devapps/useDevAppInstallations";
+import { listLauncherApps } from "@/features/devapps/registry";
 import {
   DEV_APP_REF_SCHEME,
   parseDevAppRef,
   resolveBuiltinRef,
-} from "@/features/devapps/registry/ref"
-import { featureFlags } from "@/lib/featureFlags"
-import { useAuth } from "@/contexts/AuthContext"
+} from "@/features/devapps/registry/ref";
+import { featureFlags } from "@/lib/featureFlags";
+import { useAuth } from "@/contexts/AuthContext";
 import type {
   DevAppManifest,
   DevelopmentDevAppLaunchSpec,
+  InstalledDevAppLaunchSpec,
   PublishedDevAppLaunchSpec,
-} from "@/features/devapps/registry/types"
-import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
-import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
-import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
-import { Kbd } from "@/components/ui/kbd"
-import { cn } from "@/lib/utils"
-import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
-import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+} from "@/features/devapps/registry/types";
+import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes";
+import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract";
+import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon";
+import { Kbd } from "@/components/ui/kbd";
+import { cn } from "@/lib/utils";
+import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig";
+import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch";
+import { useViewTransitionNavigate } from "@/lib/navigation";
 import {
   computeWorkbenchSelectionLauncherLayout,
   type WorkbenchSelectionLauncherLayout,
-} from "@/features/workbench/workbenchSelectionLauncherLayout"
-import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders"
-import { useTranslation } from "@/lib/i18n"
+} from "@/features/workbench/workbenchSelectionLauncherLayout";
+import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders";
+import { useTranslation } from "@/lib/i18n";
 import {
   filterWorkbenchSelectionApps,
   getWorkbenchSelectionCategories,
   resolveWorkbenchSelectionCategory,
   type WorkbenchSelectionCategory,
-} from "@/features/workbench/model/workbenchSelectionCategories"
+} from "@/features/workbench/model/workbenchSelectionCategories";
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Search01Icon as __SearchHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Search01Icon as __SearchHugeIcon,
+  ShoppingBag01Icon as __ShoppingBagHugeIcon,
+} from "@hugeicons/core-free-icons";
 
-type CategoryTab = WorkbenchSelectionCategory
+type CategoryTab = WorkbenchSelectionCategory;
 
-const SPACIOUS_MIN_W = 720
-const SPACIOUS_MIN_H = 480
-const WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH = 680
+const SPACIOUS_MIN_W = 720;
+const SPACIOUS_MIN_H = 480;
+const WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH = 680;
 
 const LAUNCHER_CONFIG = {
   tileWidth: 96,
@@ -61,55 +78,53 @@ const LAUNCHER_CONFIG = {
   maxColumns: 6,
   maxRows: 2,
   labelClassName: "text-[12px]",
-} as const
+} as const;
 
 function isSpaciousSelectionSurface(width: number, height: number) {
-  return width >= SPACIOUS_MIN_W && height >= SPACIOUS_MIN_H
+  return width >= SPACIOUS_MIN_W && height >= SPACIOUS_MIN_H;
 }
 
 interface WorkbenchSelectionTileProps {
-  tile: WorkbenchSelectionTile
+  tile: WorkbenchSelectionTile;
   /** True when this is the only tile and the workbench is in empty state (no tools opened yet). */
-  singletonEmptyWorkbench?: boolean
-  projectId?: string | null
-  projectName?: string | null
-  workspaceId?: string | null
-  onChoose: (request: WorkbenchSelectionLaunchRequest) => void
+  singletonEmptyWorkbench?: boolean;
+  projectId?: string | null;
+  projectName?: string | null;
+  workspaceId?: string | null;
+  onChoose: (request: WorkbenchSelectionLaunchRequest) => void;
   /**
    * Extra classes for the root surface. Defaults to an opaque `bg-content-surface`
    * (correct inside a tile's rounded chrome). The empty-lane watermark passes
    * `bg-transparent` so the launcher renders directly on the dock canvas instead
    * of as a square-cornered opaque panel.
    */
-  className?: string
+  className?: string;
 }
 
 function WelcomeHero({
   projectName,
   workspaceId: _workspaceId,
 }: {
-  projectName?: string | null
-  workspaceId?: string | null
+  projectName?: string | null;
+  workspaceId?: string | null;
 }) {
-  const { t } = useTranslation()
-  const normalizedProjectName = projectName?.trim() || "this project"
+  const { t } = useTranslation();
+  const normalizedProjectName = projectName?.trim() || "this project";
 
   return (
     <div className="mb-6 flex w-full max-w-4xl items-center justify-center">
       <div className="inline-flex max-w-full items-center justify-center gap-2.5 text-center text-2xl tracking-tight md:text-3xl">
         <span className="shrink-0 text-muted-foreground">
-          {t('workbench.selection.letsWorkOn')}
+          {t("workbench.selection.letsWorkOn")}
         </span>
         <ProjectPixelInvaderIcon
           name={normalizedProjectName}
           className="size-6 shrink-0 md:size-7"
         />
-        <span className="truncate font-medium text-foreground">
-          {normalizedProjectName}
-        </span>
+        <span className="truncate font-medium text-foreground">{normalizedProjectName}</span>
       </div>
     </div>
-  )
+  );
 }
 
 function SelectionFilterBar({
@@ -123,33 +138,26 @@ function SelectionFilterBar({
   contentWidth,
   flush = false,
 }: {
-  isMac: boolean
-  activeCategory: CategoryTab
-  onCategoryChange: (category: CategoryTab) => void
-  searchQuery: string
-  onSearchQueryChange: (query: string) => void
-  searchInputRef: RefObject<HTMLInputElement | null>
-  categories: CategoryTab[]
-  contentWidth?: number
-  flush?: boolean
+  isMac: boolean;
+  activeCategory: CategoryTab;
+  onCategoryChange: (category: CategoryTab) => void;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  categories: CategoryTab[];
+  contentWidth?: number;
+  flush?: boolean;
 }) {
-  const { t } = useTranslation()
-  const shortcut = isMac ? "⌘P" : "Ctrl+P"
+  const { t } = useTranslation();
+  const shortcut = isMac ? "⌘P" : "Ctrl+P";
 
   return (
-    <div
-      className={cn(
-        "w-full shrink-0 bg-transparent py-2",
-        flush ? "px-0" : "px-2 md:px-0",
-      )}
-    >
+    <div className={cn("w-full shrink-0 bg-transparent py-2", flush ? "px-0" : "px-2 md:px-0")}>
       <div
         className="mx-auto flex w-full flex-col gap-2.5 pb-2"
         style={contentWidth ? { maxWidth: `${contentWidth}px` } : undefined}
       >
-        <div
-          className="flex min-w-0 items-end overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
+        <div className="flex min-w-0 items-end overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {categories.map((cat, index, array) => (
             <div key={cat} className="flex shrink-0 items-stretch">
               <button
@@ -162,8 +170,12 @@ function SelectionFilterBar({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3.5" aria-hidden /> : null}
-                {cat === "Explore DevApps Store" ? t('workbench.selection.exploreStore') : ((t as any)(`devApp.category.${cat}`) ?? cat)}
+                {cat === "Explore DevApps Store" ? (
+                  <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3.5" aria-hidden />
+                ) : null}
+                {cat === "Explore DevApps Store"
+                  ? t("workbench.selection.exploreStore")
+                  : ((t as any)(`devApp.category.${cat}`) ?? cat)}
               </button>
               {index < array.length - 1 ? (
                 <span aria-hidden className="mx-0.5 my-2 w-px shrink-0 bg-border/70 sm:mx-1" />
@@ -178,15 +190,19 @@ function SelectionFilterBar({
             "ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
           )}
         >
-          <span className="sr-only">{t('workbench.selection.searchTools')}</span>
+          <span className="sr-only">{t("workbench.selection.searchTools")}</span>
           <span className="flex w-full shrink-0 items-center gap-2">
-            <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <HugeiconsIcon
+              icon={__SearchHugeIcon}
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
             <input
               ref={searchInputRef}
               type="search"
               value={searchQuery}
               onChange={(event) => onSearchQueryChange(event.target.value)}
-              placeholder={t('workbench.selection.searchPlaceholder')}
+              placeholder={t("workbench.selection.searchPlaceholder")}
               className={cn(
                 "min-w-0 flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground",
                 "outline-none",
@@ -198,36 +214,36 @@ function SelectionFilterBar({
         </label>
       </div>
     </div>
-  )
+  );
 }
 
 function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolean] {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [spacious, setSpacious] = useState(false)
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [spacious, setSpacious] = useState(false);
 
   useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const { width, height } = el.getBoundingClientRect()
-    setSpacious(isSpaciousSelectionSurface(width, height))
-  }, [])
+    const el = ref.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    setSpacious(isSpaciousSelectionSurface(width, height));
+  }, []);
 
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
+    const el = ref.current;
+    if (!el) return;
 
     const ro = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      const { width, height } = entry.contentRect
-      setSpacious(isSpaciousSelectionSurface(width, height))
-    })
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setSpacious(isSpaciousSelectionSurface(width, height));
+    });
 
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-  return [ref, spacious]
+  return [ref, spacious];
 }
 
 function useLauncherGridLayout(
@@ -235,7 +251,7 @@ function useLauncherGridLayout(
   containerRef?: RefObject<HTMLDivElement | null>,
   isSingletonEmpty: boolean = false,
 ): [RefObject<HTMLDivElement | null>, WorkbenchSelectionLauncherLayout] {
-  const ref = useRef<HTMLDivElement | null>(null)
+  const ref = useRef<HTMLDivElement | null>(null);
   const [layout, setLayout] = useState<WorkbenchSelectionLauncherLayout>(() =>
     computeWorkbenchSelectionLauncherLayout({
       width: 0,
@@ -248,20 +264,20 @@ function useLauncherGridLayout(
       maxColumns: LAUNCHER_CONFIG.maxColumns,
       maxRows: isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY,
     }),
-  )
+  );
 
   const recalculate = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    const container = containerRef?.current ?? el
-    const containerRect = container.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    const width = elRect.width || containerRect.width
+    const el = ref.current;
+    if (!el) return;
+    const container = containerRef?.current ?? el;
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const width = elRect.width || containerRect.width;
     // When singleton empty, hero + filter bar take ~220px. In compact/multi-tile mode,
     // there is no hero, so only the ~90px filter bar overhead applies.
-    const overhead = isSingletonEmpty ? 220 : 90
-    const availableHeight = Math.max(elRect.height, containerRect.height - overhead)
-    const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
+    const overhead = isSingletonEmpty ? 220 : 90;
+    const availableHeight = Math.max(elRect.height, containerRect.height - overhead);
+    const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY;
     setLayout(
       computeWorkbenchSelectionLauncherLayout({
         width,
@@ -274,40 +290,39 @@ function useLauncherGridLayout(
         maxColumns: LAUNCHER_CONFIG.maxColumns,
         maxRows: effectiveMaxRows,
       }),
-    )
-  }, [containerRef, isSingletonEmpty, itemCount])
+    );
+  }, [containerRef, isSingletonEmpty, itemCount]);
 
   useLayoutEffect(() => {
-    recalculate()
-  }, [recalculate])
+    recalculate();
+  }, [recalculate]);
 
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
+    const el = ref.current;
+    if (!el) return;
 
     const ro = new ResizeObserver(() => {
-      recalculate()
-    })
+      recalculate();
+    });
 
-    ro.observe(el)
+    ro.observe(el);
     if (containerRef?.current && containerRef.current !== el) {
-      ro.observe(containerRef.current)
+      ro.observe(containerRef.current);
     }
-    return () => ro.disconnect()
-  }, [containerRef, recalculate])
+    return () => ro.disconnect();
+  }, [containerRef, recalculate]);
 
-  return [ref, layout]
+  return [ref, layout];
 }
 
 function SelectionLauncherButton({
   option,
   onSelect,
 }: {
-  option: DevAppManifest
-  onSelect: (option: DevAppManifest) => void
+  option: DevAppManifest;
+  onSelect: (option: DevAppManifest) => void;
 }) {
-
-  const localizedName = option.name
+  const localizedName = option.name;
 
   return (
     <button
@@ -339,21 +354,20 @@ function SelectionLauncherButton({
         {localizedName}
       </span>
     </button>
-  )
+  );
 }
 
 function SelectionListButton({
   option,
   onSelect,
 }: {
-  option: DevAppManifest
-  onSelect: (option: DevAppManifest) => void
+  option: DevAppManifest;
+  onSelect: (option: DevAppManifest) => void;
 }) {
+  const iconSize = 42;
+  const iconRadius = 42 * 0.22265625; // macOS standard: width * 0.22265625
 
-  const iconSize = 42
-  const iconRadius = 42 * 0.22265625 // macOS standard: width * 0.22265625
-
-  const localizedName = option.name
+  const localizedName = option.name;
 
   return (
     <button
@@ -380,7 +394,7 @@ function SelectionListButton({
         <div className="truncate text-xs text-muted-foreground">{option.description}</div>
       </div>
     </button>
-  )
+  );
 }
 
 export function WorkbenchSelectionTile({
@@ -392,226 +406,271 @@ export function WorkbenchSelectionTile({
   onChoose,
   className,
 }: WorkbenchSelectionTileProps) {
-  const { t } = useTranslation()
-  const navigate = useViewTransitionNavigate()
-  const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
-  const { config } = useAssistantServerConfig(true)
-  const densityConfig = LAUNCHER_CONFIG
+  const { t } = useTranslation();
+  const navigate = useViewTransitionNavigate();
+  const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), []);
+  const { config } = useAssistantServerConfig(true);
+  const densityConfig = LAUNCHER_CONFIG;
 
-  const [rootRef, spacious] = useSelectionSurfaceDensity()
-  const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
-  const [searchQuery, setSearchQuery] = useState("")
-  const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const { convexUserId } = useAuth()
-  const [developmentSources, setDevelopmentSources] = useState<DevAppDevelopmentSource[]>([])
-  const normalizedRefSearch = searchQuery.trim()
-  const parsedRef = useMemo(() => parseDevAppRef(normalizedRefSearch), [normalizedRefSearch])
-  const isDevAppRefInput = normalizedRefSearch.startsWith(`${DEV_APP_REF_SCHEME}:`)
-  const canResolvePublicationRef = featureFlags.projectDevApps && Boolean(convexUserId)
-  const { installations } = useOrgDevAppInstallations()
+  const [rootRef, spacious] = useSelectionSurfaceDensity();
+  const [activeCategory, setActiveCategory] = useState<CategoryTab>("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const { convexUserId } = useAuth();
+  const [developmentSources, setDevelopmentSources] = useState<DevAppDevelopmentSource[]>([]);
+  const normalizedRefSearch = searchQuery.trim();
+  const parsedRef = useMemo(() => parseDevAppRef(normalizedRefSearch), [normalizedRefSearch]);
+  const isDevAppRefInput = normalizedRefSearch.startsWith(`${DEV_APP_REF_SCHEME}:`);
+  const canResolvePublicationRef = featureFlags.projectDevApps && Boolean(convexUserId);
+  const { installations } = useOrgDevAppInstallations();
+  const { installations: installedDevApps } = useDevAppInstallations();
   const resolvedPublicationRef = useQuery(
     api.devApps.resolveReference,
     canResolvePublicationRef && parsedRef?.kind === "publication"
       ? { ref: normalizedRefSearch }
       : "skip",
-  )
+  );
 
   useEffect(() => {
-    let cancelled = false
-    void window.electronAPI.devAppAuthoring.listDevelopmentSources().then((result) => {
-      if (!cancelled && result.success) setDevelopmentSources(result.sources)
-    }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [])
+    let cancelled = false;
+    void window.electronAPI.devAppAuthoring
+      .listDevelopmentSources()
+      .then((result) => {
+        if (!cancelled && result.success) setDevelopmentSources(result.sources);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const orgDevAppOptions = useMemo(
     () => installations.filter((entry) => entry.active).map(buildInstalledDevAppManifest),
     [installations],
-  )
+  );
   const developmentDevAppOptions = useMemo(
     () => developmentSources.map(buildDevelopmentDevAppManifest),
     [developmentSources],
-  )
+  );
+  const installedDevAppOptions = useMemo(
+    () => buildInstalledDevAppManifests(installedDevApps),
+    [installedDevApps],
+  );
   const resolvedRefOptions = useMemo<DevAppManifest[]>(() => {
     if (parsedRef?.kind === "builtin") {
-      const manifest = resolveBuiltinRef(parsedRef)
-      return manifest ? [manifest] : []
+      const manifest = resolveBuiltinRef(parsedRef);
+      return manifest ? [manifest] : [];
     }
     if (parsedRef?.kind === "publication" && resolvedPublicationRef) {
-      return [buildPublishedDevAppManifest(resolvedPublicationRef, normalizedRefSearch)]
+      return [buildPublishedDevAppManifest(resolvedPublicationRef, normalizedRefSearch)];
     }
     if (parsedRef?.kind === "development") {
-      const source = developmentSources.find((candidate) => candidate.sourceId === parsedRef.sourceId)
-      return source ? [buildDevelopmentDevAppManifest(source)] : []
+      const source = developmentSources.find(
+        (candidate) => candidate.sourceId === parsedRef.sourceId,
+      );
+      return source ? [buildDevelopmentDevAppManifest(source)] : [];
     }
-    return []
-  }, [developmentSources, normalizedRefSearch, parsedRef, resolvedPublicationRef])
-  const hasOrgDevApps = orgDevAppOptions.length > 0
-  const categories = useMemo(
-    () => getWorkbenchSelectionCategories(hasOrgDevApps),
-    [hasOrgDevApps],
-  )
-  const resolvedActiveCategory = resolveWorkbenchSelectionCategory(
-    activeCategory,
-    hasOrgDevApps,
-  )
+    return [];
+  }, [developmentSources, normalizedRefSearch, parsedRef, resolvedPublicationRef]);
+  const hasOrgDevApps = orgDevAppOptions.length > 0;
+  const categories = useMemo(() => getWorkbenchSelectionCategories(hasOrgDevApps), [hasOrgDevApps]);
+  const resolvedActiveCategory = resolveWorkbenchSelectionCategory(activeCategory, hasOrgDevApps);
 
   useEffect(() => {
-    if (activeCategory === resolvedActiveCategory) return
-    setActiveCategory(resolvedActiveCategory)
-  }, [activeCategory, resolvedActiveCategory])
+    if (activeCategory === resolvedActiveCategory) return;
+    setActiveCategory(resolvedActiveCategory);
+  }, [activeCategory, resolvedActiveCategory]);
 
   const enabledAssistantProviders = useMemo(() => {
-    return resolveEnabledWorkbenchAssistantProviders(config?.providers ?? null)
-  }, [config])
+    return resolveEnabledWorkbenchAssistantProviders(config?.providers ?? null);
+  }, [config]);
 
   const allOptions = useMemo(
     () =>
       listLauncherApps({
-        additionalApps: [...developmentDevAppOptions, ...orgDevAppOptions],
+        additionalApps: [
+          ...installedDevAppOptions,
+          ...developmentDevAppOptions,
+          ...orgDevAppOptions,
+        ],
         enabledAssistantProviders,
       }),
-    [developmentDevAppOptions, enabledAssistantProviders, orgDevAppOptions],
-  )
+    [developmentDevAppOptions, enabledAssistantProviders, installedDevAppOptions, orgDevAppOptions],
+  );
   const searchedOptions = useMemo(
     () =>
       parsedRef
         ? resolvedRefOptions
         : searchQuery.trim()
           ? listLauncherApps({
-            additionalApps: [...developmentDevAppOptions, ...orgDevAppOptions],
-            enabledAssistantProviders,
-            query: searchQuery,
-          })
+              additionalApps: [
+                ...installedDevAppOptions,
+                ...developmentDevAppOptions,
+                ...orgDevAppOptions,
+              ],
+              enabledAssistantProviders,
+              query: searchQuery,
+            })
           : allOptions,
-    [allOptions, developmentDevAppOptions, enabledAssistantProviders, orgDevAppOptions, parsedRef, resolvedRefOptions, searchQuery],
-  )
+    [
+      allOptions,
+      developmentDevAppOptions,
+      enabledAssistantProviders,
+      installedDevAppOptions,
+      orgDevAppOptions,
+      parsedRef,
+      resolvedRefOptions,
+      searchQuery,
+    ],
+  );
   const filteredOptions = useMemo(
     () =>
       parsedRef
         ? searchedOptions
         : filterWorkbenchSelectionApps(searchedOptions, resolvedActiveCategory),
     [parsedRef, resolvedActiveCategory, searchedOptions],
-  )
+  );
   const emptyResultsMessage = useMemo(() => {
-    if (isDevAppRefInput && !parsedRef) return t("workbench.selection.invalidDevAppRef")
+    if (isDevAppRefInput && !parsedRef) return t("workbench.selection.invalidDevAppRef");
     if (
       parsedRef?.kind === "publication" &&
       canResolvePublicationRef &&
       resolvedPublicationRef === undefined
     ) {
-      return t("workbench.selection.resolvingDevAppRef")
+      return t("workbench.selection.resolvingDevAppRef");
     }
     if (parsedRef && resolvedRefOptions.length === 0) {
-      return t("workbench.selection.unavailableDevAppRef")
+      return t("workbench.selection.unavailableDevAppRef");
     }
-    return `${t("workbench.selection.noResults")} "${searchQuery.trim()}".`
-  }, [canResolvePublicationRef, isDevAppRefInput, parsedRef, resolvedPublicationRef, resolvedRefOptions.length, searchQuery, t])
-  const isSingletonEmpty = singletonEmptyWorkbench && spacious
-  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, rootRef, isSingletonEmpty)
-  const launcherPagerRef = useRef<HTMLDivElement | null>(null)
-  const [currentPage, setCurrentPage] = useState(0)
-  const useListView = launcherLayout.fittingColumns <= 2
+    return `${t("workbench.selection.noResults")} "${searchQuery.trim()}".`;
+  }, [
+    canResolvePublicationRef,
+    isDevAppRefInput,
+    parsedRef,
+    resolvedPublicationRef,
+    resolvedRefOptions.length,
+    searchQuery,
+    t,
+  ]);
+  const isSingletonEmpty = singletonEmptyWorkbench && spacious;
+  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(
+    allOptions.length,
+    rootRef,
+    isSingletonEmpty,
+  );
+  const launcherPagerRef = useRef<HTMLDivElement | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const useListView = launcherLayout.fittingColumns <= 2;
 
   const launcherContentWidth = useMemo(() => {
     // Keep filter bar and launcher content width tied to available layout columns,
     // not to current result count (prevents width jitter while searching).
-    const visibleColumns = Math.max(1, launcherLayout.columns)
+    const visibleColumns = Math.max(1, launcherLayout.columns);
     return (
       visibleColumns * densityConfig.cellWidth +
       Math.max(0, visibleColumns - 1) * densityConfig.columnGap
-    )
-  }, [densityConfig.cellWidth, densityConfig.columnGap, launcherLayout.columns])
+    );
+  }, [densityConfig.cellWidth, densityConfig.columnGap, launcherLayout.columns]);
 
   const pagedOptions = useMemo(() => {
-    const pages: DevAppManifest[][] = []
+    const pages: DevAppManifest[][] = [];
     for (let index = 0; index < filteredOptions.length; index += launcherLayout.itemsPerPage) {
-      pages.push(filteredOptions.slice(index, index + launcherLayout.itemsPerPage))
+      pages.push(filteredOptions.slice(index, index + launcherLayout.itemsPerPage));
     }
-    return pages.length > 0 ? pages : [[]]
-  }, [filteredOptions, launcherLayout.itemsPerPage])
+    return pages.length > 0 ? pages : [[]];
+  }, [filteredOptions, launcherLayout.itemsPerPage]);
 
-  const showHero = isSingletonEmpty
-  const centerSingletonSelectionLayout = showHero && !useListView
+  const showHero = isSingletonEmpty;
+  const centerSingletonSelectionLayout = showHero && !useListView;
 
   useEffect(() => {
-    setCurrentPage(0)
-    if (useListView) return
-    const pager = launcherPagerRef.current
-    if (!pager) return
-    pager.scrollTo({ left: 0, top: 0, behavior: "auto" })
-  }, [launcherLayout.columns, launcherLayout.itemsPerPage, launcherLayout.rows, resolvedActiveCategory, searchQuery, useListView])
+    setCurrentPage(0);
+    if (useListView) return;
+    const pager = launcherPagerRef.current;
+    if (!pager) return;
+    pager.scrollTo({ left: 0, top: 0, behavior: "auto" });
+  }, [
+    launcherLayout.columns,
+    launcherLayout.itemsPerPage,
+    launcherLayout.rows,
+    resolvedActiveCategory,
+    searchQuery,
+    useListView,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const pressedShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p"
-      if (!pressedShortcut) return
-      event.preventDefault()
-      const input = searchInputRef.current
-      if (!input) return
-      input.focus()
-      input.select()
-    }
-    window.addEventListener("keydown", handleKeyDown, { capture: true })
-    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true })
-  }, [])
+      const pressedShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p";
+      if (!pressedShortcut) return;
+      event.preventDefault();
+      const input = searchInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    };
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, []);
 
   useEffect(() => {
-    if (useListView) return
-    const pager = launcherPagerRef.current
-    if (!pager) return
+    if (useListView) return;
+    const pager = launcherPagerRef.current;
+    if (!pager) return;
 
     const handleScroll = () => {
-      const nextPage = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth))
-      setCurrentPage(Math.max(0, Math.min(nextPage, pagedOptions.length - 1)))
-    }
+      const nextPage = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth));
+      setCurrentPage(Math.max(0, Math.min(nextPage, pagedOptions.length - 1)));
+    };
 
-    handleScroll()
-    pager.addEventListener("scroll", handleScroll, { passive: true })
-    return () => pager.removeEventListener("scroll", handleScroll)
-  }, [pagedOptions.length, useListView])
+    handleScroll();
+    pager.addEventListener("scroll", handleScroll, { passive: true });
+    return () => pager.removeEventListener("scroll", handleScroll);
+  }, [pagedOptions.length, useListView]);
 
   const handlePageSelect = useCallback(
     (pageIndex: number) => {
-      const pager = launcherPagerRef.current
-      if (!pager) return
+      const pager = launcherPagerRef.current;
+      if (!pager) return;
       pager.scrollTo({
         left: pageIndex * pager.clientWidth,
         top: 0,
         behavior: "smooth",
-      })
-      setCurrentPage(pageIndex)
+      });
+      setCurrentPage(pageIndex);
     },
     [launcherPagerRef],
-  )
+  );
 
   const filterContentWidth = useListView
     ? WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH
-    : launcherContentWidth
+    : launcherContentWidth;
   const handleCategoryChange = useCallback(
     (category: CategoryTab) => {
       if (category === "Explore DevApps Store") {
-        navigate("/projects/store")
-        return
+        navigate("/projects/store");
+        return;
       }
-      setActiveCategory(category)
+      setActiveCategory(category);
     },
     [navigate],
-  )
+  );
   const handleChooseOption = useCallback(
     (option: DevAppManifest) => {
       const publishedDevApp: PublishedDevAppLaunchSpec | undefined =
-        option.launch.kind === "publishedDevApp" ? option.launch : undefined
+        option.launch.kind === "publishedDevApp" ? option.launch : undefined;
       const developmentDevApp: DevelopmentDevAppLaunchSpec | undefined =
-        option.launch.kind === "developmentDevApp" ? option.launch : undefined
+        option.launch.kind === "developmentDevApp" ? option.launch : undefined;
+      const installedDevApp: InstalledDevAppLaunchSpec | undefined =
+        option.launch.kind === "installedDevApp" ? option.launch : undefined;
       onChoose({
         appId: option.id,
         ...(publishedDevApp ? { publishedDevApp } : {}),
         ...(developmentDevApp ? { developmentDevApp } : {}),
-      })
+        ...(installedDevApp ? { installedDevApp } : {}),
+      });
     },
     [onChoose],
-  )
+  );
   const sharedFilterBar = (
     <SelectionFilterBar
       isMac={isMac}
@@ -624,14 +683,19 @@ export function WorkbenchSelectionTile({
       contentWidth={useListView ? undefined : filterContentWidth}
       flush={useListView}
     />
-  )
+  );
 
   return (
-    <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
+    <div
+      ref={rootRef}
+      className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}
+    >
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          centerSingletonSelectionLayout ? "overflow-hidden justify-center items-center py-2" : "overflow-y-auto pb-6",
+          centerSingletonSelectionLayout
+            ? "overflow-hidden justify-center items-center py-2"
+            : "overflow-y-auto pb-6",
         )}
       >
         {showHero ? (
@@ -689,7 +753,7 @@ export function WorkbenchSelectionTile({
                   >
                     <div className="flex h-full">
                       {pagedOptions.map((page, pageIndex) => {
-                        const pageColumns = Math.max(1, launcherLayout.columns)
+                        const pageColumns = Math.max(1, launcherLayout.columns);
                         return (
                           <div
                             key={`selection-page-${pageIndex}`}
@@ -716,7 +780,7 @@ export function WorkbenchSelectionTile({
                               ))}
                             </div>
                           </div>
-                        )
+                        );
                       })}
                     </div>
                   </div>
@@ -750,7 +814,9 @@ export function WorkbenchSelectionTile({
                       <span
                         className={cn(
                           "h-2 w-2 rounded-full transition-all",
-                          pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
+                          pageIndex === currentPage
+                            ? "bg-foreground scale-110"
+                            : "bg-border hover:bg-muted-foreground/50",
                         )}
                       />
                     </button>
@@ -772,7 +838,9 @@ export function WorkbenchSelectionTile({
                   <span
                     className={cn(
                       "h-2 w-2 rounded-full transition-all",
-                      pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
+                      pageIndex === currentPage
+                        ? "bg-foreground scale-110"
+                        : "bg-border hover:bg-muted-foreground/50",
                     )}
                   />
                 </button>
@@ -782,5 +850,5 @@ export function WorkbenchSelectionTile({
         </div>
       </div>
     </div>
-  )
+  );
 }
