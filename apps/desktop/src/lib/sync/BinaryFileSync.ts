@@ -2,8 +2,9 @@ import type { ConvexReactClient } from 'convex/react'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 /**
- * Binary file extensions that should be synced via LFS-like blob storage
- * instead of text-based Yjs CRDT.
+ * Binary files are intentionally outside the Yjs text transport. In
+ * collaboration v2 they become shared only after an explicit Git commit and
+ * push, unless a future opt-in encrypted live-transfer layer is added.
  */
 const BINARY_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff',
@@ -15,136 +16,100 @@ const BINARY_EXTENSIONS = new Set([
   'wasm', 'exe', 'dll', 'so', 'dylib',
 ])
 
-/**
- * Check if a file should be treated as binary based on its extension.
- */
+export const BINARY_SYNC_REQUIRES_GIT_PUSH = 'requires-git-push' as const
+
+export type BinaryFileSyncResult = typeof BINARY_SYNC_REQUIRES_GIT_PUSH
+
+interface LegacyQueuedBinaryUpload {
+  projectId?: string
+  filePath?: string
+}
+
+const LEGACY_UPLOAD_QUEUE_KEY = 'cozea:binary-upload-queue'
+
 export function isBinaryFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
   return BINARY_EXTENSIONS.has(ext)
 }
 
 /**
- * Queued binary file upload for offline retry.
- */
-interface QueuedBinaryUpload {
-  id: string
-  projectId: string
-  filePath: string
-  timestamp: number
-  attempts: number
-}
-
-const UPLOAD_QUEUE_KEY = 'cozea:binary-upload-queue'
-const MAX_RETRIES = 3
-
-/**
- * BinaryFileSync - Tracks binary file changes for later Cozea-native durability.
+ * Compatibility surface for callers that still observe binary filesystem
+ * changes.
+ *
+ * The former implementation returned the literal string `queued` without
+ * reading or uploading the file. That made the product report a successful
+ * synchronization path that did not exist. The current implementation is
+ * deliberately honest: the file remains local until a user explicitly commits
+ * and pushes it through Git.
  */
 export class BinaryFileSync {
-  private projectId: Id<'projects'>
+  private readonly projectId: Id<'projects'>
+  private readonly warnedPaths = new Set<string>()
 
   constructor(
     projectId: Id<'projects'>,
     _projectPath: string,
     _convex: ConvexReactClient,
-    _userId: Id<'users'>
+    _userId: Id<'users'>,
   ) {
     this.projectId = projectId
   }
 
   destroy(): void {
+    this.warnedPaths.clear()
   }
 
-  /**
-   * Schedule Git durability for a changed binary file.
-   */
-  async uploadBinaryFile(relativePath: string): Promise<string | null> {
-    try {
-      console.log(`[BinaryFileSync] Observed binary change: ${relativePath}`)
-      return 'queued'
-    } catch (err) {
-      console.error(`[BinaryFileSync] Upload failed for ${relativePath}:`, err)
-      this.enqueueUpload(relativePath)
-      return null
-    }
-  }
-
-  /**
-   * Queue a failed upload for retry when online.
-   */
-  private enqueueUpload(filePath: string): void {
-    const queue = this.loadUploadQueue()
-    const projectId = String(this.projectId)
-
-    if (queue.some((q) => q.filePath === filePath && q.projectId === projectId)) {
-      return
+  async uploadBinaryFile(relativePath: string): Promise<BinaryFileSyncResult> {
+    const normalizedPath = relativePath.replace(/\\/g, '/').replace(/^\/+/, '').trim()
+    if (normalizedPath && !this.warnedPaths.has(normalizedPath)) {
+      this.warnedPaths.add(normalizedPath)
+      console.warn(
+        `[BinaryFileSync] ${normalizedPath} remains local. ` +
+          'Binary collaboration requires an explicit Git commit and push.',
+      )
     }
 
-    queue.push({
-      id: crypto.randomUUID(),
-      projectId,
-      filePath,
-      timestamp: Date.now(),
-      attempts: 0,
-    })
-
-    this.saveUploadQueue(queue)
-    console.log(`[BinaryFileSync] Queued upload for retry: ${filePath}`)
+    return BINARY_SYNC_REQUIRES_GIT_PUSH
   }
 
   /**
-   * Process queued uploads (call when online).
+   * Clear entries produced by the former no-op upload queue. Retaining or
+   * retrying them would imply that an upload could eventually occur.
    */
   async processQueue(): Promise<void> {
-    const queue = this.loadUploadQueue()
-    const remaining: QueuedBinaryUpload[] = []
-    const projectId = String(this.projectId)
+    try {
+      const raw = localStorage.getItem(LEGACY_UPLOAD_QUEUE_KEY)
+      if (!raw) return
 
-    for (const item of queue) {
-      if (item.projectId !== projectId) {
-        remaining.push(item)
-        continue
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) {
+        localStorage.removeItem(LEGACY_UPLOAD_QUEUE_KEY)
+        return
       }
 
-      const result = await this.uploadBinaryFile(item.filePath)
-      if (!result) {
-        item.attempts += 1
-        if (item.attempts < MAX_RETRIES) {
-          remaining.push(item)
-        } else {
-          console.error(
-            `[BinaryFileSync] Dropping upload after ${MAX_RETRIES} retries: ${item.filePath}`
-          )
-        }
+      const projectId = String(this.projectId)
+      const retained = parsed.filter((entry): entry is LegacyQueuedBinaryUpload => {
+        return !entry || typeof entry !== 'object' ||
+          (entry as LegacyQueuedBinaryUpload).projectId !== projectId
+      })
+
+      if (retained.length === parsed.length) return
+
+      if (retained.length === 0) {
+        localStorage.removeItem(LEGACY_UPLOAD_QUEUE_KEY)
+      } else {
+        localStorage.setItem(LEGACY_UPLOAD_QUEUE_KEY, JSON.stringify(retained))
       }
+
+      console.warn(
+        '[BinaryFileSync] Removed legacy binary upload entries because no binary upload transport exists.',
+      )
+    } catch (error) {
+      console.warn('[BinaryFileSync] Failed to clear the legacy binary upload queue:', error)
     }
-
-    this.saveUploadQueue(remaining)
   }
 
-  /**
-   * Get count of pending uploads.
-   */
   getPendingCount(): number {
-    const queue = this.loadUploadQueue()
-    const projectId = String(this.projectId)
-    return queue.filter((q) => q.projectId === projectId).length
-  }
-
-  private loadUploadQueue(): QueuedBinaryUpload[] {
-    try {
-      const raw = localStorage.getItem(UPLOAD_QUEUE_KEY)
-      return raw ? JSON.parse(raw) : []
-    } catch {
-      return []
-    }
-  }
-
-  private saveUploadQueue(queue: QueuedBinaryUpload[]): void {
-    try {
-      localStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(queue))
-    } catch (err) {
-      console.error('[BinaryFileSync] Failed to save upload queue:', err)
-    }
+    return 0
   }
 }
