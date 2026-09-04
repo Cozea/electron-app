@@ -6,7 +6,7 @@ import {
   showDesktopContextMenu,
 } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
-import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/features/projects/model/createProjectDialogStore"
+import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
 
 type ProjectCreationMenuAction = CreateProjectDialogMode

@@ -28,13 +28,13 @@ import {
   type AppStoreScope,
   type AppStoreSectionId,
 } from "@/features/devapps/model/appStoreSections"
-import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader"
+import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
 import { featureFlags } from "@/lib/featureFlags"
 import { useSearchParams } from "@/lib/router"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
-import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
+import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
 
 import { HugeiconsIcon } from "@hugeicons/react"

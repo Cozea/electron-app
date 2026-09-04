@@ -38,7 +38,7 @@ import {
   resolveImportedProjectName,
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
-import type { CreateProjectDialogMode } from "@/features/projects/model/createProjectDialogStore"
+import type { CreateProjectDialogMode } from "@/lib/createProjectDialogStore"
 import { DEFAULT_WORKBENCH_LANE_ID } from "@/lib/workbenchScopeKey"
 import {
   useProjectWorkbenchStore,

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useAuth } from "@/contexts/AuthContext";
-import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader";
+import { useProjectHeader } from "@/lib/useProjectHeader";
 import { useActiveWorkbenchScope } from "@/contexts/project/useActiveWorkbenchScope"
 import { type WorkbenchTileType } from "@/lib/workbenchTileContract"
 import {

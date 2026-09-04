@@ -1,3 +1,11 @@
+/**
+ * Open state for the app-wide create-project dialog.
+ *
+ * Anything may ask for the dialog — the projects hub, the new-project page, the
+ * DevApps store, DevApp settings — so the request cannot live inside the
+ * feature that happens to render it.
+ */
+
 import { create } from "zustand"
 
 export type CreateProjectDialogMode = "empty" | "local" | "devapp" | "devapp-local"

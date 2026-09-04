@@ -29,7 +29,10 @@ const NEUTRAL_ROOTS = ["apps/desktop/src/contexts"];
 const NEUTRAL_MODULES = [
   "apps/desktop/src/components/ProjectPixelInvaderIcon.tsx",
   "apps/desktop/src/lib/browseForDirectory.ts",
+  "apps/desktop/src/lib/createProjectDialogStore.ts",
+  "apps/desktop/src/lib/projectHeaderStore.ts",
   "apps/desktop/src/lib/projectIconSets.ts",
+  "apps/desktop/src/lib/useProjectHeader.ts",
   "apps/desktop/src/lib/sidebarActivity.ts",
   "apps/desktop/src/lib/workbenchScopeKey.ts",
   "apps/desktop/src/lib/workbenchStore.ts",

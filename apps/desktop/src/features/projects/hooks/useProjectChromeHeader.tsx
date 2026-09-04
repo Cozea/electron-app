@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
-import { useProjectHeaderStore } from "@/features/projects/model/projectHeaderStore";
+import { useProjectHeaderStore } from "@/lib/projectHeaderStore";
 
 interface UseProjectChromeHeaderArgs {
   isSettingsModeRoute: boolean;

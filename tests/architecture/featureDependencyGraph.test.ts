@@ -40,11 +40,6 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     reaches: ["WorkbenchDockRuntimeContext"],
   },
   {
-    pair: ["devapps", "projects"],
-    thinEdge: "devapps -> projects",
-    reaches: ["hooks/useProjectHeader", "model/createProjectDialogStore"],
-  },
-  {
     pair: ["projects", "settings"],
     thinEdge: "projects -> settings",
     reaches: ["pages/ProjectSettingsPage", "ui/SettingsChrome", "ui/SettingsSidebar"],
