@@ -87,6 +87,9 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
     case "publishedDevApp":
       throw new Error("Published DevApp parts must come from the immutable release record")
 
+    case "installedDevApp":
+      throw new Error("Installed DevApp parts must come from the immutable installed release")
+
     case "developmentDevApp":
       throw new Error("Development DevApp parts must come from the authored package")
 
