@@ -33,6 +33,7 @@ const sharedContractFiles = [
   "devAppToolInputValidation.ts",
   "devAppViewBridge.ts",
   "devAppWorkerProtocol.ts",
+  "nativeDevAppRuntime.ts",
 ];
 const generatedContractCopies = await Promise.all(
   sharedContractFiles.map(async (filename) => ({
