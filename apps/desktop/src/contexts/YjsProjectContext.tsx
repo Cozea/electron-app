@@ -71,7 +71,7 @@ interface YjsProjectProviderProps {
 
 const SNAPSHOT_DEBOUNCE_MS = 1_200
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1_000
-const UPDATE_RETENTION_MS = 5 * 60 * 1_000
+const SNAPSHOT_CLEANUP_BATCH_SIZE = 128
 
 function generateColor(id: string): string {
   const colors = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#818cf8", "#e879f9"]
@@ -644,9 +644,10 @@ export function YjsProjectProvider({
         snapshotBaseSeq,
         createdByClientId: yjsDoc.doc.clientID.toString(),
       })
-      await convex.mutation(api.yjs.cleanupOldUpdates, {
+      await convex.mutation(api.yjsMaintenance.cleanupUpdatesThroughSeq, {
         projectId,
-        olderThan: Date.now() - UPDATE_RETENTION_MS,
+        throughSeq: snapshotBaseSeq,
+        limit: SNAPSHOT_CLEANUP_BATCH_SIZE,
       })
     }
 
