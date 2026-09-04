@@ -244,6 +244,17 @@ type PersistedWorkbenchRecord = WorkbenchProjectState & {
 }
 
 interface ProjectWorkbenchState extends PersistedWorkbenchState {
+  /**
+   * The bench most recently brought on screen, as a scope key.
+   *
+   * Deliberately outside `partialize`, so it is session state: on a cold start
+   * nobody has been anywhere yet, and a remembered answer from last week would
+   * be a worse guess than admitting there isn't one. It exists so a surface
+   * that sits above every project — the standalone settings page — can still
+   * name a bench the user was actually in, instead of taking whichever one the
+   * persisted record happens to list first.
+   */
+  lastActiveScopeKey: string | null
   actions: {
     ensureWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
     resetWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
@@ -1180,6 +1191,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
   persist(
     immer((set) => ({
       workbenches: {},
+      lastActiveScopeKey: null,
       actions: {
         ensureWorkbench: (projectId, laneId, workspaceId) => {
           if (!projectId) return
@@ -1191,7 +1203,18 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             // migratePersistedWorkbenchState), so reassigning a rebuilt object
             // here would notify every store subscriber on every call — e.g.
             // each sidebar click re-rendered all workbench tiles.
-            resolveMutableWorkbenchState(state.workbenches, projectId, laneId, workspaceId)
+            const { scopeKey } = resolveMutableWorkbenchState(
+              state.workbenches,
+              projectId,
+              laneId,
+              workspaceId,
+            )
+            // Written only on a genuine change, for the same reason: this runs
+            // on every sidebar click, and an unconditional assignment would
+            // make each one a state change for every subscriber.
+            if (state.lastActiveScopeKey !== scopeKey) {
+              state.lastActiveScopeKey = scopeKey
+            }
           })
         },
         resetWorkbench: (projectId, laneId, workspaceId) => {
