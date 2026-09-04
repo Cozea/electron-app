@@ -64,7 +64,7 @@ jobs:
 
       - name: Format changed sources
         run: |
-          bunx --bun oxfmt -w \
+          bunx --bun oxfmt --write \
             apps/desktop/src/features/devapps/useDevAppInstallations.ts \
             apps/desktop/src/features/devapps/installedDevAppManifest.ts \
             apps/desktop/src/features/devapps/registry/types.ts \
