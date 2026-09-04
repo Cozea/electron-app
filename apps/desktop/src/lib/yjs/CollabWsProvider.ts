@@ -212,7 +212,6 @@ export class CollabWsProvider {
   private readonly onPermanentFailure?: (reason: string) => void
   private readonly refreshSession?: () => Promise<CollabSessionDescriptor | null>
   private readonly encryption?: { roomKeyBase64: string; keyVersion: number } | null
-  private readonly providerInstanceId = randomId('collab_provider')
 
   private socket: WebSocket | null = null
   private reconnectTimer: number | null = null
@@ -299,6 +298,7 @@ export class CollabWsProvider {
     return 'idle'
   }
 
+  /** Highest contiguous server sequence decoded and applied to this Y.Doc. */
   getKnownSeq(): number {
     return this.knownSeq
   }
@@ -319,12 +319,6 @@ export class CollabWsProvider {
       window.clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
-  }
-
-  private log(event: string, details?: Record<string, unknown>): void {
-    void event
-    void details
-    void this.providerInstanceId
   }
 
   private isCurrentSocket(socket: WebSocket, socketInstanceId: string): boolean {
@@ -822,6 +816,28 @@ export class CollabWsProvider {
     }
 
     if (message.type === 'sync.delta') {
+      const fromSeq = finiteSequence(message.payload?.fromSeq)
+      const toSeq = finiteSequence(message.payload?.toSeq)
+      const advertisedHeadSeq = finiteSequence(message.payload?.headSeq)
+
+      if (advertisedHeadSeq !== null) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, advertisedHeadSeq)
+      }
+      if (toSeq !== null) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, toSeq)
+      }
+
+      if (fromSeq !== null && fromSeq > this.knownSeq) {
+        // A live delta can overtake an initial catch-up response. Do not mark the
+        // gap as applied; ask for the contiguous range from the current head.
+        this.requestInitialSync()
+        return
+      }
+
+      if (toSeq !== null && toSeq <= this.knownSeq) {
+        return
+      }
+
       this.requestedCatchUpAtSeq = null
       const updates = Array.isArray(message.payload?.updatesBinary)
         ? message.payload.updatesBinary
@@ -832,16 +848,7 @@ export class CollabWsProvider {
         this.applyRemoteUpdate(decoded.bytes, decoded.metadata, null)
       }
 
-      const toSeq = finiteSequence(message.payload?.toSeq)
       if (toSeq !== null) this.advanceKnownSeq(toSeq)
-
-      const advertisedHeadSeq = finiteSequence(message.payload?.headSeq)
-      if (advertisedHeadSeq !== null) {
-        this.targetHeadSeq = Math.max(this.targetHeadSeq, advertisedHeadSeq)
-      }
-      if (toSeq !== null) {
-        this.targetHeadSeq = Math.max(this.targetHeadSeq, toSeq)
-      }
 
       const shouldContinueCatchUp =
         message.payload?.hasMore === true ||
@@ -856,13 +863,20 @@ export class CollabWsProvider {
       const encoded = message.payload?.updateBinary
       if (typeof encoded !== 'string' || encoded.length === 0) return
 
+      const sequence = finiteSequence(message.payload?.seq)
+      if (sequence !== null && sequence > this.knownSeq + 1) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, sequence)
+        this.requestInitialSync()
+        return
+      }
+
       const decoded = await this.decodeInboundBytes(encoded, 'yjs_update')
       this.applyRemoteUpdate(
         decoded.bytes,
         decoded.metadata,
         finiteSequence(message.payload?.timestamp),
       )
-      this.advanceKnownSeq(message.payload?.seq)
+      if (sequence !== null) this.advanceKnownSeq(sequence)
       return
     }
 
@@ -890,6 +904,11 @@ export class CollabWsProvider {
     }
 
     if (message.type === 'update.ack') {
+      const sequence = finiteSequence(message.payload?.seq)
+      if (sequence !== null) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, sequence)
+      }
+
       const idempotencyKey = message.payload?.idempotencyKey
       if (
         message.payload?.persisted !== false &&
@@ -897,8 +916,9 @@ export class CollabWsProvider {
         this.localUpdatesById.delete(idempotencyKey)
       ) {
         this.removePendingUpdate(idempotencyKey)
-        this.advanceKnownSeq(message.payload?.seq)
       }
+      // Acknowledged means durable, not necessarily contiguous and applied.
+      // The following sync.delta is what advances knownSeq.
       return
     }
 
