@@ -88,43 +88,25 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     [onSelectOption, onAdvance],
   );
 
-  // Keyboard shortcut: number keys 1-9 select corresponding option and auto-advance.
-  // Works even when the Lexical composer (contenteditable) has focus — the composer
-  // doubles as a custom-answer field during user input, and when it's empty the digit
-  // keys should pick options instead of typing into the editor.
-  useEffect(() => {
-    if (!activeQuestion || isResponding) return;
-    const handler = (event: globalThis.KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        return;
-      }
-      // If the user has started typing a custom answer in the contenteditable
-      // composer, let digit keys pass through so they can type numbers.
-      if (target instanceof HTMLElement && target.isContentEditable) {
-        const hasCustomText = progress.customAnswer.length > 0;
-        if (hasCustomText) return;
-      }
-      const digit = Number.parseInt(event.key, 10);
-      if (Number.isNaN(digit) || digit < 1 || digit > 9) return;
-      const optionIndex = digit - 1;
-      if (optionIndex >= activeQuestion.options.length) return;
-      const option = activeQuestion.options[optionIndex];
-      if (!option) return;
-      event.preventDefault();
-      selectOptionAndAutoAdvance(activeQuestion.id, option.label);
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [activeQuestion, isResponding, selectOptionAndAutoAdvance, progress.customAnswer.length]);
+  // Shortcuts belong to this question card, never another tile's editor.
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!activeQuestion || isResponding || event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea"))) return;
+    if (!/^[1-9]$/.test(event.key)) return;
+    const option = activeQuestion.options[Number(event.key) - 1];
+    if (!option) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectOptionAndAutoAdvance(activeQuestion.id, option.value ?? option.label);
+  };
 
   if (!activeQuestion) {
     return null;
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5">
+    <div tabIndex={0} onKeyDown={handleKeyDown} className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           {prompt.questions.length > 1 ? (
@@ -140,14 +122,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       <p className="mt-1.5 text-sm text-foreground/90">{activeQuestion.question}</p>
       <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
         {activeQuestion.options.map((option, index) => {
-          const isSelected = progress.selectedOptionLabel === option.label;
+          const isSelected = progress.activeDraft?.selectedOptionValue !== undefined ? progress.activeDraft.selectedOptionValue === (option.value ?? option.label) : progress.selectedOptionLabel === option.label;
           const shortcutKey = index < 9 ? index + 1 : null;
           return (
             <button
               key={`${activeQuestion.id}:${option.label}`}
               type="button"
               disabled={isResponding}
-              onClick={() => selectOptionAndAutoAdvance(activeQuestion.id, option.label)}
+              onClick={() => selectOptionAndAutoAdvance(activeQuestion.id, option.value ?? option.label)}
               className={cn(
                 "group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all duration-150",
                 isSelected

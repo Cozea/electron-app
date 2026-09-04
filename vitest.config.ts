@@ -11,6 +11,7 @@ export default defineConfig({
       "@shared": path.resolve(repoRoot, "./shared"),
       "@cozea/assistant-contracts": path.resolve(repoRoot, "./shared/assistant-contracts/index.ts"),
       "@cozea/assistant-shared": path.resolve(repoRoot, "./shared/assistant-shared"),
+      "@cozea/contracts/t3/providerSetup": path.resolve(repoRoot, "./packages/contracts/src/t3/providerSetup.ts"),
       "@cozea/contracts/t3/rpc": path.resolve(repoRoot, "./packages/contracts/src/t3/rpc.ts"),
       "@cozea/contracts/t3/preview": path.resolve(repoRoot, "./packages/contracts/src/t3/preview.ts"),
       "@cozea/contracts/t3/previewAutomation": path.resolve(repoRoot, "./packages/contracts/src/t3/previewAutomation.ts"),

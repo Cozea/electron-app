@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+import { ProviderApprovalDecision } from "@cozea/assistant-contracts";
 import {
   ApprovalRequestId,
   type OrchestrationLatestTurn,
@@ -29,6 +31,7 @@ export const PROVIDER_OPTIONS: ReadonlyArray<{
   { value: "claudeAgent", label: "Claude" },
   { value: "cursor", label: "Cursor" },
   { value: "opencode", label: "OpenCode" },
+  { value: "antigravity", label: "Antigravity" },
 ];
 
 export interface WorkLogEntry {
@@ -68,12 +71,14 @@ export interface WorkLogEntry {
 
 export interface PendingApproval {
   requestId: ApprovalRequestId;
-  requestKind: "command" | "file-read" | "file-change";
+  requestKind: "command" | "file-read" | "file-change" | "mcp-elicitation" | "other";
+  options?: ReadonlyArray<{ decision: ProviderApprovalDecision; label: string; warning?: string }>;
   createdAt: string;
   detail?: string;
 }
 
 export interface PendingUserInput {
+  responseMode?: "message";
   requestId: ApprovalRequestId;
   createdAt: string;
   questions: ReadonlyArray<UserInputQuestion>;
@@ -169,6 +174,8 @@ export function requestKindFromRequestType(requestType: unknown): PendingApprova
     case "command_execution_approval":
     case "exec_command_approval":
       return "command";
+    case "mcp_elicitation_approval":
+      return "mcp-elicitation";
     case "file_read_approval":
       return "file-read";
     case "file_change_approval":
@@ -213,17 +220,22 @@ export function derivePendingApprovals(
       payload &&
       (payload.requestKind === "command" ||
         payload.requestKind === "file-read" ||
-        payload.requestKind === "file-change")
+        payload.requestKind === "file-change" || payload.requestKind === "mcp-elicitation")
         ? payload.requestKind
         : payload
           ? requestKindFromRequestType(payload.requestType)
           : null;
     const detail = payload && typeof payload.detail === "string" ? payload.detail : undefined;
 
-    if (activity.kind === "approval.requested" && requestId && requestKind) {
+    if (activity.kind === "approval.requested" && requestId) {
+      const options = Array.isArray(payload?.options) ? payload.options.flatMap((option): NonNullable<PendingApproval["options"]> => {
+        if (!option || typeof option !== "object" || !Schema.is(ProviderApprovalDecision)(option.decision) || typeof option.label !== "string" || !option.label.trim()) return [];
+        return [{ decision: option.decision, label: option.label, ...(typeof option.warning === "string" ? { warning: option.warning } : {}) }];
+      }) : undefined;
       openByRequestId.set(requestId, {
         requestId,
-        requestKind,
+        requestKind: requestKind ?? "other",
+        ...(options ? { options } : {}),
         createdAt: activity.createdAt,
         ...(detail ? { detail } : {}),
       });
@@ -282,17 +294,17 @@ function parseUserInputQuestions(
           return {
             label: optionRecord.label,
             description: optionRecord.description,
+            ...(typeof optionRecord.value === "string" ? { value: optionRecord.value } : {}),
           };
         })
         .filter((option): option is UserInputQuestion["options"][number] => option !== null);
-      if (options.length === 0) {
-        return null;
-      }
       return {
         id: question.id,
         header: question.header,
         question: question.question,
         options,
+        ...(typeof question.allowCustomAnswer === "boolean" ? { allowCustomAnswer: question.allowCustomAnswer } : {}),
+        ...(typeof question.multiSelect === "boolean" ? { multiSelect: question.multiSelect } : {}),
       };
     })
     .filter((question): question is UserInputQuestion => question !== null);
@@ -325,6 +337,7 @@ export function derivePendingUserInputs(
         requestId,
         createdAt: activity.createdAt,
         questions,
+        ...(payload?.responseMode === "message" ? { responseMode: "message" as const } : {}),
       });
       continue;
     }
@@ -337,6 +350,7 @@ export function derivePendingUserInputs(
     if (
       activity.kind === "provider.user-input.respond.failed" &&
       requestId &&
+      openByRequestId.get(requestId)?.responseMode !== "message" &&
       isStalePendingRequestFailureDetail(detail)
     ) {
       openByRequestId.delete(requestId);

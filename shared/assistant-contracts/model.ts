@@ -189,6 +189,7 @@ export const ModelCapabilities = Schema.Struct({
 export type ModelCapabilities = typeof ModelCapabilities.Type;
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
+  antigravity: "antigravity-default",
   codex: "gpt-5.6-sol",
   claudeAgent: "claude-sonnet-4-6",
   /** Cursor Agent CLI expects a bracketed token (e.g. `default[]`), not bare `auto`. */
@@ -200,6 +201,7 @@ export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
 
 /** Per-provider text generation model defaults. */
 export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
+  antigravity: "antigravity-default",
   codex: "gpt-5.6-luna",
   claudeAgent: "claude-haiku-4-5",
   cursor: "composer-2",
@@ -207,6 +209,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
 };
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, string>> = {
+  antigravity: {},
   codex: {
     "5.6": "gpt-5.6-sol",
     "gpt-5.6": "gpt-5.6-sol",
@@ -250,6 +253,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
 };
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
+  antigravity: "Antigravity",
   codex: "Codex",
   claudeAgent: "Claude",
   cursor: "Cursor",

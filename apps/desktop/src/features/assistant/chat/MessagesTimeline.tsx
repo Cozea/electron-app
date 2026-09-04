@@ -1,3 +1,4 @@
+import { nonImageAttachmentLabels } from "./historyAttachments";
 import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant-contracts";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -899,7 +900,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       {row.kind === "message" &&
         row.message.role === "user" &&
         (() => {
-          const userImages = row.message.attachments ?? [];
+          const userImages = (row.message.attachments ?? []).filter((attachment) => attachment.type === "image");
+          const otherAttachments = nonImageAttachmentLabels(row.message.attachments);
           const previewAnnotations = extractTrailingPreviewAnnotations(row.message.text);
           const displayedUserMessage = deriveDisplayedUserMessageState(
             previewAnnotations.promptText,
@@ -920,6 +922,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <div className="flex w-full min-w-0 justify-end">
               <div className="group relative flex max-w-[85%] sm:max-w-[75%] min-w-0 flex-col items-end gap-1">
+                {otherAttachments.length ? <div className="mb-1 flex flex-wrap gap-1">{otherAttachments.map((label, index) => <span key={index} className="rounded-md border border-border px-2 py-1 text-xs">{label}</span>)}</div> : null}
                 {userImages.length > 0 && (
                   <div className="mb-1 flex w-full flex-wrap justify-end gap-2">
                     {userImages.map(

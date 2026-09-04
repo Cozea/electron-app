@@ -1,3 +1,6 @@
+import { providerImageRejection } from "@/features/assistant/chat/providerInputCapabilities"
+import { compactionUnavailableReason } from "@/features/assistant/chat/contextCompaction"
+import { questionDraftKey, submitQuestionOnce, useQuestionDraftStore } from "@/features/assistant/questionDraftStore"
 import {
   useCallback,
   useEffect,
@@ -10,6 +13,7 @@ import {
 
 import {
   ApprovalRequestId,
+  CommandId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ModelSelection,
@@ -396,7 +400,7 @@ export function useWorkbenchAssistantTileController(
 
   const selectedRuntimeMode =
     composerDraft?.runtimeMode ?? savedContentDraft?.runtimeMode ?? thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
-  const selectedInteractionMode =
+  const selectedInteractionMode = selectedProvider === "antigravity" ? "default" :
     composerDraft?.interactionMode ?? savedContentDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
   const [verifiedContextBranch, setVerifiedContextBranch] = useState<string | null>(null)
   const [contextVerified, setContextVerified] = useState(false)
@@ -451,6 +455,7 @@ export function useWorkbenchAssistantTileController(
       claudeAgent: getProviderModelOptions(config, "claudeAgent"),
       cursor: getProviderModelOptions(config, "cursor"),
       opencode: getProviderModelOptions(config, "opencode"),
+      antigravity: getProviderModelOptions(config, "antigravity"),
     }),
     [config],
   )
@@ -567,6 +572,19 @@ export function useWorkbenchAssistantTileController(
     () => derivePendingUserInputs(visibleThread?.activities ?? []),
     [visibleThread?.activities],
   )
+  useEffect(() => {
+    if (!visibleThread) return
+    const resolved = new Set(visibleThread.activities.filter((activity) => activity.kind === "user-input.resolved").flatMap((activity) => {
+      const payload = activity.payload
+      return payload && typeof payload === "object" && "requestId" in payload && typeof payload.requestId === "string" ? [payload.requestId] : []
+    }))
+    for (const activity of visibleThread.activities) {
+      if (activity.kind !== "user-input.requested") continue
+      const payload = activity.payload
+      if (!payload || typeof payload !== "object" || !("requestId" in payload) || typeof payload.requestId !== "string" || !resolved.has(payload.requestId)) continue
+      useQuestionDraftStore.getState().remove(questionDraftKey(visibleThread.id, { requestId: ApprovalRequestId.makeUnsafe(payload.requestId), createdAt: activity.createdAt }))
+    }
+  }, [visibleThread?.id, visibleThread?.activities])
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(visibleThread?.activities ?? []),
     [visibleThread?.activities],
@@ -627,7 +645,7 @@ export function useWorkbenchAssistantTileController(
   )
   const latestTurnSettled = !isRunning && !isTurnStartPending && !isInterrupting
   const showPlanFollowUpPrompt =
-    pendingUserInputs.length === 0 &&
+    !pendingUserInputs.some((request) => request.responseMode !== "message") &&
     selectedInteractionMode === "plan" &&
     latestTurnSettled &&
     hasActionableProposedPlan(activeProposedPlan)
@@ -1155,6 +1173,7 @@ export function useWorkbenchAssistantTileController(
   }
 
   const handleInteractionModeChange = async (nextValue: string) => {
+    if (selectedProvider === "antigravity" || providerSnapshot?.showInteractionModeToggle === false) return
     const nextInteractionMode = nextValue as ProviderInteractionMode
     upsertComposerDraft(draftTargetKey, {
       interactionMode: nextInteractionMode,
@@ -1329,6 +1348,8 @@ export function useWorkbenchAssistantTileController(
   }
 
   const sendTurn = async (overridePrompt?: string) => {
+    const imageRejection = providerImageRejection(selectedProvider, composerImages)
+    if (imageRejection) { setSendError(imageRejection); return }
     // Capture the revision belonging to this click, before any asynchronous preflight.
     const submittedRevision = assistantDrafts.store.getState().drafts[assistantDrafts.resolveKey(contentDraftKey)]?.revision
     if (sendInFlightRef.current) {
@@ -1692,7 +1713,30 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
+  const compactUnavailable = compactionUnavailableReason({
+    provider: providerSnapshot, thread, ready: isChatReady && canUseProvider,
+    busy: isRunning || isSending || isPreparingSend || isTurnStartPending || isInterrupting || isRevertingCheckpoint || threadOperationCount > 0,
+    hasPendingRequests: pendingApprovals.length > 0 || pendingUserInputs.length > 0,
+  })
+  const compactInFlightRef = useRef(false)
+  const handleCompact = async () => {
+    if (compactInFlightRef.current) return
+    if (compactUnavailable || !thread) { setSendError(compactUnavailable); return }
+    compactInFlightRef.current = true
+    try {
+      await runMetaSync(async () => {
+        await getOrchestration().dispatchCommand({
+          type: "thread.turn.start", commandId: newCommandId(), threadId: thread.id,
+          message: { messageId: newMessageId(), role: "user", text: "/compact", attachments: [] },
+          modelSelection: selectedDispatchModelSelection, runtimeMode: selectedRuntimeMode,
+          interactionMode: selectedInteractionMode, createdAt: new Date().toISOString(),
+        })
+      })
+    } finally { compactInFlightRef.current = false }
+  }
+
   const handleSend = async (overridePrompt?: string) => {
+    if ((overridePrompt ?? composer).trim().toLowerCase() === "/compact") { await handleCompact(); return }
     if (preparingSendRef.current) return
     preparingSendRef.current = true
     setIsPreparingSend(true)
@@ -1846,6 +1890,18 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
+    const request = pendingUserInputs.find((entry) => String(entry.requestId) === requestId)
+    if (request?.responseMode === "message") {
+      await runMetaSync(() => submitQuestionOnce(thread.id, request, async (submission) => {
+        await getOrchestration().dispatchCommand({
+          type: "thread.user-input.respond", commandId: CommandId.makeUnsafe(submission.commandId),
+          threadId: thread.id, requestId: ApprovalRequestId.makeUnsafe(requestId),
+          answers: submission.answers, createdAt: submission.createdAt,
+        })
+      }), { requestKey: requestId })
+      return
+    }
+
     const answers = userInputDrafts[requestId]
     if (!answers) {
       return
@@ -1931,7 +1987,7 @@ export function useWorkbenchAssistantTileController(
   const addComposerImages = useCallback(
     (files: File[]) => {
       if (files.length === 0) return
-      if (pendingUserInputs.length > 0) {
+      if (pendingUserInputs.some((request) => request.responseMode !== "message")) {
         setSendError("Attach images after answering pending questions.")
         return
       }
@@ -1945,6 +2001,8 @@ export function useWorkbenchAssistantTileController(
           error = `Unsupported file type for '${file.name}'. Attach image files only.`
           continue
         }
+        const rejection = providerImageRejection(selectedProvider, [...composerImages, ...nextImages, { mimeType: file.type, sizeBytes: file.size }])
+        if (rejection) { error = rejection; continue }
         if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
           const maxMb = Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))
           error = `'${file.name}' exceeds the ${maxMb}MB attachment limit.`
@@ -1972,7 +2030,7 @@ export function useWorkbenchAssistantTileController(
         setSendError(error)
       }
     },
-    [composerImages.length, pendingUserInputs.length],
+    [composerImages, pendingUserInputs, selectedProvider],
   )
 
   const removeComposerImage = useCallback((imageId: string) => {
@@ -2112,6 +2170,7 @@ export function useWorkbenchAssistantTileController(
   }
 
   const handleRevertToTurnCount = async (turnCount: number) => {
+    if (selectedProvider === "antigravity" || providerSnapshot?.supportsConversationRollback === false) return
     if (!thread) {
       return
     }
@@ -2198,7 +2257,7 @@ export function useWorkbenchAssistantTileController(
       setDiffDialog(null)
     },
     handleDeleteThread,
-    historyBusy: shellNeedsAttention || threadOperationCount > 0 || isBinding || memoryUpdateInFlight || isRunning || isSending || isPreparingSend || isTurnStartPending || isInterrupting || isRevertingCheckpoint || Boolean(activeRequestKey) || pendingApprovals.length > 0 || pendingUserInputs.length > 0,
+    historyBusy: shellNeedsAttention || threadOperationCount > 0 || isBinding || memoryUpdateInFlight || isRunning || isSending || isPreparingSend || isTurnStartPending || isInterrupting || isRevertingCheckpoint || Boolean(activeRequestKey) || pendingApprovals.length > 0 || pendingUserInputs.some((request) => request.responseMode !== "message"),
     flushDraft: assistantDrafts.flush,
     onHistoryError: setSendError,
     artifacts,
@@ -2268,6 +2327,8 @@ export function useWorkbenchAssistantTileController(
       onAttachFiles: addComposerImages,
       onRemoveComposerImage: removeComposerImage,
       onRemovePreviewAnnotation: removePreviewAnnotation,
+      compactUnavailableReason: compactUnavailable,
+      onCompact: handleCompact,
       onSend: (overridePrompt?: string) => {
         void handleSend(overridePrompt)
       },
@@ -2279,7 +2340,7 @@ export function useWorkbenchAssistantTileController(
       onSubmitUserInput: handleSubmitUserInput,
       onOpenTurnDiff: handleOpenTurnDiff,
       onDismissThreadError: handleDismissThreadError,
-      onRevertToTurnCount: handleRevertToTurnCount,
+      onRevertToTurnCount: selectedProvider === "antigravity" || providerSnapshot?.supportsConversationRollback === false ? undefined : handleRevertToTurnCount,
     },
   }
 }

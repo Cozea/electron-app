@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-04T23:37:28Z",
+  "adapterRevision": "59e1f1749a90912a5d68eedf026c4ba7fdcfb204",
+  "upstreamRevision": "0a590fa01af66ec135d2ebf2d5542b08a37dc275",
+  "providers": [
+    {
+      "driver": "codex",
+      "testedRuntimeVersions": [],
+      "observedRuntimeVersions": [
+        "0.153.2"
+      ],
+      "adapterRevision": "59e1f1749a90912a5d68eedf026c4ba7fdcfb204",
+      "verification": "automated protocol fixtures; native runtime qualification recorded separately",
+      "fixtureFeatures": [
+        "saved-history",
+        "async-questions",
+        "compaction",
+        "stop",
+        "approvals"
+      ],
+      "nativeSmoke": {
+        "version": "0.153.2",
+        "model": "gpt-5.6-luna",
+        "features": [
+          "new-chat",
+          "subsequent-turn",
+          "catalog",
+          "streamed-result"
+        ],
+        "result": "passed",
+        "fullMatrixQualified": false
+      }
+    },
+    {
+      "driver": "claudeAgent",
+      "testedRuntimeVersions": [],
+      "observedRuntimeVersions": [
+        "2.1.260"
+      ],
+      "adapterRevision": "59e1f1749a90912a5d68eedf026c4ba7fdcfb204",
+      "verification": "automated protocol fixtures; native runtime qualification recorded separately",
+      "fixtureFeatures": [
+        "resume",
+        "streaming",
+        "stop",
+        "approvals",
+        "skills"
+      ],
+      "nativeSmoke": {
+        "version": "2.1.260",
+        "features": [
+          "catalog",
+          "authentication-error-display"
+        ],
+        "result": "chat blocked by provider account rejection",
+        "fullMatrixQualified": false
+      }
+    },
+    {
+      "driver": "cursor",
+      "testedRuntimeVersions": [],
+      "observedRuntimeVersions": [],
+      "adapterRevision": "59e1f1749a90912a5d68eedf026c4ba7fdcfb204",
+      "verification": "automated protocol fixtures; native runtime qualification recorded separately",
+      "fixtureFeatures": [
+        "resume",
+        "stop",
+        "native-option-ids"
+      ]
+    },
+    {
+      "driver": "opencode",
+      "testedRuntimeVersions": [],
+      "observedRuntimeVersions": [
+        "1.18.28"
+      ],
+      "adapterRevision": "59e1f1749a90912a5d68eedf026c4ba7fdcfb204",
+      "verification": "automated protocol fixtures; native runtime qualification recorded separately",
+      "fixtureFeatures": [
+        "permission-retry",
+        "workspace-scope-label",
+        "process-isolation",
+        "stop",
+        "progress"
+      ]
+    },
+    {
+      "driver": "antigravity",
+      "testedRuntimeVersions": [],
+      "observedRuntimeVersions": [],
+      "adapterRevision": "59e1f1749a90912a5d68eedf026c4ba7fdcfb204",
+      "verification": "automated protocol fixtures; native runtime qualification recorded separately",
+      "fixtureFeatures": [
+        "account-isolation",
+        "auth-callbacks",
+        "installation-leases",
+        "native-option-ids",
+        "attachment-limits",
+        "skills"
+      ]
+    }
+  ]
+}

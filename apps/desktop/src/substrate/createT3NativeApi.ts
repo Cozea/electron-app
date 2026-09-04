@@ -1,3 +1,4 @@
+import { createT3ProviderSetupApi } from "./createT3ProviderSetupApi";
 import type {
   ContextMenuItem,
   NativeApi,
@@ -25,7 +26,7 @@ function readDesktopBridge() {
  * Build a full NativeApi surface backed by one T3 RPC session (Phase T5).
  * Desktop-only affordances (dialogs, context menu) stay on desktopBridge.
  */
-export function createT3NativeApi(session: T3RpcSessionHandle): NativeApi {
+export function createT3NativeApi(session: T3RpcSessionHandle, options?: { localProviderSetup?: boolean }): NativeApi {
   const orchestrationHandle = createT3OrchestrationApiFromClient(session.orchestration);
 
   const vcsListeners = new Set<Parameters<NativeApi["vcs"]["onActionProgress"]>[0]>();
@@ -63,6 +64,7 @@ export function createT3NativeApi(session: T3RpcSessionHandle): NativeApi {
   };
 
   return {
+    ...(options?.localProviderSetup ? { providerSetup: createT3ProviderSetupApi(session.client) } : {}),
     dialogs: {
       pickFolder: async () => readDesktopBridge()?.pickFolder?.() ?? null,
       confirm: async (message) => {
@@ -128,6 +130,7 @@ export function createT3NativeApi(session: T3RpcSessionHandle): NativeApi {
     },
     server: {
       getConfig: () => session.serverConfig.getConfig(),
+      onConfigUpdated: (listener) => session.serverConfig.subscribeServerConfig(listener),
       refreshProviders: async () => {
         await session.serverConfig.refreshProviders();
         const config = await session.serverConfig.getConfig();

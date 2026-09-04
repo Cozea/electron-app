@@ -145,3 +145,29 @@ describe("deriveActiveWorkStartedAt", () => {
     expect(startedAt).toBe("2026-02-23T00:00:07.000Z");
   });
 });
+ it("retains old async questions and native option IDs through turn completion and transient resume failure", () => {
+   const activities = [makeActivity({ kind: "user-input.requested", sequence: 1, payload: {
+     requestId: "async", responseMode: "message", questions: [{ id: "choice", header: "Choice", question: "Which?", options: [{ label: "First", description: "", value: "native-1" }], allowCustomAnswer: false }, { id: "text", header: "Text", question: "Why?", options: [] }],
+   } }), ...Array.from({ length: 600 }, (_, index) => makeActivity({ sequence: index + 2 })),
+   makeActivity({ kind: "turn.completed", sequence: 603 }),
+   makeActivity({ kind: "provider.user-input.respond.failed", sequence: 604, payload: { requestId: "async", detail: "No active provider session is bound to this thread." } })];
+   const pending = derivePendingUserInputs(activities);
+   expect(pending).toHaveLength(1);
+   expect(pending[0]?.responseMode).toBe("message");
+   expect(pending[0]?.questions[0]?.options[0]?.value).toBe("native-1");
+   expect(pending[0]?.questions[0]?.allowCustomAnswer).toBe(false);
+   expect(pending[0]?.questions[1]?.options).toEqual([]);
+   expect(derivePendingUserInputs([...activities, makeActivity({ kind: "user-input.resolved", sequence: 605, payload: { requestId: "async" } })])).toEqual([]);
+ });
+
+it("preserves OpenCode workspace-grant labels and warnings through a failed reply", () => {
+  const options = [{ decision: "accept", label: "Allow once" }, { decision: "acceptForSession", label: "Allow for workspace", warning: "Applies to other sessions in this workspace." }, { decision: "decline", label: "Deny" }];
+  const activities = [makeActivity({ kind: "approval.requested", sequence: 1, payload: { requestId: "permission", requestKind: "command", detail: "bash", options } }), makeActivity({ kind: "provider.approval.respond.failed", sequence: 2, payload: { requestId: "permission", detail: "Connection lost" } })];
+  expect(derivePendingApprovals(activities)[0]?.options).toEqual(options);
+  expect(derivePendingApprovals([...activities, makeActivity({ kind: "approval.resolved", sequence: 3, payload: { requestId: "permission" } })])).toEqual([]);
+});
+it("keeps unknown approval kinds visible without inventing permission options", () => {
+  const result = derivePendingApprovals([makeActivity({ kind: "approval.requested", payload: { requestId: "new-permission", requestType: "future_security_prompt", options: [{ decision: "unknown-grant", label: "Grant" }] } })]);
+  expect(result[0]?.requestKind).toBe("other");
+  expect(result[0]?.options).toEqual([]);
+});
