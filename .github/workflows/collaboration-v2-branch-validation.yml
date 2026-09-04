@@ -22,8 +22,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
           fetch-depth: 0
+
+      - name: Initialize T3 vendor
+        run: git submodule update --init --depth 1 vendor/t3code
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -53,25 +56,6 @@ jobs:
 
       - name: Build
         run: bun run build
-
-      - name: Package source snapshot
-        if: always()
-        run: |
-          tar \
-            --exclude=.git \
-            --exclude=node_modules \
-            --exclude='**/node_modules' \
-            --exclude=dist \
-            --exclude=out \
-            -czf cozea-collaboration-v2-source.tgz .
-
-      - name: Upload source snapshot
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cozea-collaboration-v2-source-${{ github.sha }}
-          path: cozea-collaboration-v2-source.tgz
-          retention-days: 3
 
       - name: Upload validation logs
         if: failure()
