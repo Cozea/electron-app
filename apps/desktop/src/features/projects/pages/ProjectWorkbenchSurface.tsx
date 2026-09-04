@@ -12,8 +12,8 @@ import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader";
 import { DEFAULT_WORKBENCH_LANE_ID, buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
+import { type WorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
-  type WorkbenchTileType,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/features/workbench/model/workbenchStore"

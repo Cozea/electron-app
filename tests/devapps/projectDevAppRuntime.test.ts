@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { WorkbenchDevServerTile } from "@/features/workbench/model/workbenchStore";
+import type { WorkbenchDevServerTile } from "@/lib/workbenchTileContract"
 import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime";
 
 function tile(overrides: Partial<WorkbenchDevServerTile> = {}): WorkbenchDevServerTile {

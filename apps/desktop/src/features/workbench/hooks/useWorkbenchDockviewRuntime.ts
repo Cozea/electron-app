@@ -2,7 +2,7 @@ import { Debouncer } from "@tanstack/react-pacer";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DockviewApi, DockviewReadyEvent, SerializedDockview } from "dockview-react";
 
-import type { WorkbenchSelectionTile, WorkbenchTile } from "@/features/workbench/model/workbenchStore";
+import type { WorkbenchSelectionTile, WorkbenchTile } from "@/lib/workbenchTileContract"
 import {
   selectProjectWorkbench,
   type WorkbenchProjectState,

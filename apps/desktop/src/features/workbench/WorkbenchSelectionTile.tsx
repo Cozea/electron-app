@@ -20,9 +20,7 @@ import type {
   PublishedDevAppLaunchSpec,
 } from "@/features/devapps/registry/types"
 import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
-import type {
-  WorkbenchSelectionTile,
-} from "@/features/workbench/model/workbenchStore"
+import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
 import { ProjectPixelInvaderIcon } from "@/features/projects/ui/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
@@ -97,16 +95,16 @@ function WelcomeHero({
   const normalizedProjectName = projectName?.trim() || "this project"
 
   return (
-    <div className="mb-6 flex w-full max-w-4xl flex-col items-center">
-      <div className="flex flex-col items-center gap-1">
-        <span className="text-center text-2xl text-muted-foreground md:text-3xl">
+    <div className="mb-6 flex w-full max-w-4xl items-center justify-center">
+      <div className="inline-flex max-w-full items-center justify-center gap-2.5 text-center text-2xl tracking-tight md:text-3xl">
+        <span className="shrink-0 text-muted-foreground">
           {t('workbench.selection.letsWorkOn')}
         </span>
-        <span className="inline-flex items-center gap-3 text-center text-2xl font-medium tracking-tight text-foreground md:text-4xl">
-          <ProjectPixelInvaderIcon
-            name={normalizedProjectName}
-            className="size-7 md:size-8.5 shrink-0"
-          />
+        <ProjectPixelInvaderIcon
+          name={normalizedProjectName}
+          className="size-6 shrink-0 md:size-7"
+        />
+        <span className="truncate font-medium text-foreground">
           {normalizedProjectName}
         </span>
       </div>
@@ -176,7 +174,7 @@ function SelectionFilterBar({
 
         <label
           className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-md border border-sidebar-border/50 bg-secondary px-3 text-sm transition-[color,box-shadow]",
+            "flex h-9 w-full items-center gap-2 rounded-search border border-sidebar-border/50 bg-secondary px-3 text-sm transition-[color,box-shadow]",
             "ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
           )}
         >

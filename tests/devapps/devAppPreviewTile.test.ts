@@ -81,7 +81,7 @@ describe("Preview tile — renders the host's decisions", () => {
 
   it("always shows a development badge, whatever the trust state", () => {
     expect(tileSource).toContain("function DevelopmentBadge")
-    expect(tileSource).toContain('badge?.label ?? "Development"')
+    expect(tileSource).toContain("DEV")
   })
 
   it("tells the user the grant is not saved", () => {

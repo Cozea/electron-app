@@ -13,6 +13,7 @@
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
   --radius: 0.625rem;
+  --search-radius: var(--radius-lg, var(--radius));
   /* Renderer-wide presentation order. Keep in sync with lib/appLayers.ts. */
   --cozea-layer-browser-docked: 30;
   --cozea-layer-dockview-float-base: 1000;
@@ -414,6 +415,10 @@ body {
 .cozea-live-shimmer-aligned {
   width: calc(100% - 2 * var(--cozea-live-shimmer-width));
   margin-left: var(--cozea-live-shimmer-width);
+}
+
+.rounded-search {
+  border-radius: var(--search-radius, var(--radius-lg, 0.625rem));
 }
 
 /* ---------------------------------------------------------------------------

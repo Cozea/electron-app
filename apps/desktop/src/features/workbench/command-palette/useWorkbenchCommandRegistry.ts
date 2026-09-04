@@ -5,10 +5,10 @@ import type { KeybindingCommand } from "@cozea/assistant-contracts"
 import { resolveDevAppPreviewManifestPath } from "@/features/devapps/model/devAppPreviewSelection"
 import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useNavigate } from "@/lib/router"
+import { type WorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-  type WorkbenchTileType,
 } from "@/features/workbench/model/workbenchStore"
 import { commandLabel } from "./commandLabels"
 import type { CommandPaletteCommand } from "./CommandPalette.logic"

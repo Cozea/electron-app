@@ -370,7 +370,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("appStore.searchPlaceholder")}
-              className="h-8 rounded-full bg-muted/60 pl-8 pr-3 text-xs"
+              className="h-8 rounded-search bg-muted/60 pl-8 pr-3 text-xs"
             />
           </div>
         </div>

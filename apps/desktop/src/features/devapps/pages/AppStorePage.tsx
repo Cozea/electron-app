@@ -495,7 +495,7 @@ export function AppStorePage() {
               setParam("q", event.target.value.trim() ? event.target.value : null, { replace: true })
             }
             placeholder={t("appStore.searchPlaceholder")}
-            className="h-11 rounded-full bg-muted pl-9 text-sm"
+            className="h-11 rounded-search bg-muted pl-9 text-sm"
           />
         </div>
         {/* Soft edge fade right under the search bar matching assistant fade */}

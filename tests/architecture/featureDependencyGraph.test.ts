@@ -50,11 +50,6 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     reaches: ["hooks/useProjectHeader", "model/createProjectDialogStore"],
   },
   {
-    pair: ["devapps", "workbench"],
-    thinEdge: "devapps -> workbench",
-    reaches: ["model/workbenchStore", "model/workbenchTileRegistry"],
-  },
-  {
     pair: ["project-memory", "workbench"],
     thinEdge: "project-memory -> workbench",
     reaches: ["model/workbenchStore"],

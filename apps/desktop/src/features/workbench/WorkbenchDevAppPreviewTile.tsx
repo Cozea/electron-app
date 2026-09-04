@@ -297,10 +297,10 @@ function DevelopmentBadge({
   return (
     <span className="flex items-center gap-1.5">
       <span
-        className="rounded-[4px] bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400"
+        className="rounded-search bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400"
         title={badge?.detail ?? "Unpublished code running from this project."}
       >
-        {badge?.label ?? "Development"}
+        DEV
       </span>
       {hotReload ? null : (
         <span className="text-[10px] text-muted-foreground" title="Changes will not reload on their own.">
@@ -385,8 +385,8 @@ function PreviewApproval({
           <h2 className="font-semibold tracking-tight text-foreground truncate max-w-[200px]">
             {status.name}
           </h2>
-          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
-            dev
+          <span className="shrink-0 rounded-search bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+            DEV
           </span>
           <span className="shrink-0 text-muted-foreground">
             {hasAccessRequests ? "needs access to:" : "needs permission to run"}

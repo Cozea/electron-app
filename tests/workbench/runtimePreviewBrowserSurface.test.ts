@@ -8,7 +8,7 @@ import {
   runtimePreviewBrowserSurfaceKind,
   runtimePreviewBrowserSurfaceTabId,
 } from "@/features/browser/runtimePreviewBrowserSurface";
-import type { WorkbenchDevServerTile } from "@/features/workbench/model/workbenchStore";
+import type { WorkbenchDevServerTile } from "@/lib/workbenchTileContract"
 
 function devServerTile(overrides: Partial<WorkbenchDevServerTile> = {}): WorkbenchDevServerTile {
   return {
