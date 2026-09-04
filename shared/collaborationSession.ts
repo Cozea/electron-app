@@ -66,12 +66,14 @@ export interface CollaborationJoinPlan {
 export interface CollaborationPublication {
   commitSha: string
   coveredThroughSequence: number
+  publishedByUserId: string
   publishedAt: number
 }
 
 const GIT_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i
 const GIT_REF_UNSAFE_PATTERN = /[^a-zA-Z0-9._-]+/g
 const GIT_REF_EDGE_PATTERN = /^[._-]+|[._-]+$/g
+const GIT_REF_REPEATED_DOT_PATTERN = /\.{2,}/g
 
 function requiredTrimmed(value: string, label: string): string {
   const normalized = value.trim()
@@ -79,6 +81,13 @@ function requiredTrimmed(value: string, label: string): string {
     throw new Error(`${label} is required`)
   }
   return normalized
+}
+
+function normalizeTimestamp(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative finite timestamp`)
+  }
+  return Math.floor(value)
 }
 
 export function isGitCommitSha(value: string): boolean {
@@ -94,10 +103,16 @@ export function assertGitCommitSha(value: string, label = "Git commit SHA"): str
 }
 
 export function normalizeCollaborationSessionId(sessionId: string): string {
-  const normalized = requiredTrimmed(sessionId, "Collaboration session ID")
+  let normalized = requiredTrimmed(sessionId, "Collaboration session ID")
     .replace(GIT_REF_UNSAFE_PATTERN, "-")
+    .replace(GIT_REF_REPEATED_DOT_PATTERN, "-")
     .replace(GIT_REF_EDGE_PATTERN, "")
     .slice(0, 96)
+    .replace(GIT_REF_EDGE_PATTERN, "")
+
+  if (/\.lock$/i.test(normalized)) {
+    normalized = `${normalized.slice(0, -5)}-session`
+  }
 
   if (!normalized) {
     throw new Error("Collaboration session ID does not contain a Git-safe character")
@@ -112,27 +127,31 @@ export function buildCollaborationSessionBranch(sessionId: string): string {
 
 export function isCollaborationSessionBranch(branch: string): boolean {
   const normalized = branch.trim()
-  return normalized.startsWith(COLLABORATION_BRANCH_PREFIX) &&
-    normalized.length > COLLABORATION_BRANCH_PREFIX.length
+  if (!normalized.startsWith(COLLABORATION_BRANCH_PREFIX)) return false
+
+  const suffix = normalized.slice(COLLABORATION_BRANCH_PREFIX.length)
+  if (!suffix) return false
+
+  try {
+    return buildCollaborationSessionBranch(suffix) === normalized
+  } catch {
+    return false
+  }
 }
 
 export function canAccessCollaborationProject(input: CollaborationProjectAccessInput): boolean {
-  if (!input.isActiveOrganizationMember) {
-    return false
-  }
-
-  return input.policy === "organization" || input.isExplicitProjectMember
+  return input.policy === "organization"
+    ? input.isActiveOrganizationMember
+    : input.isExplicitProjectMember
 }
 
 export function resolveCollaborationJoinPlan(
   session: CollaborationSessionDescriptor,
 ): CollaborationJoinPlan {
+  validateCollaborationSession(session)
+
   if (session.status === "closed" || session.status === "failed") {
     throw new Error(`Cannot join a collaboration session in ${session.status} state`)
-  }
-
-  if (!isCollaborationSessionBranch(session.sessionBranch)) {
-    throw new Error("Collaboration session branch is invalid")
   }
 
   const publishedCommitSha = session.publishedCommitSha
@@ -164,10 +183,15 @@ export function validateCollaborationSession(
   requiredTrimmed(session.projectId, "Project ID")
   requiredTrimmed(session.repositoryId, "Repository ID")
   requiredTrimmed(session.targetBranch, "Target branch")
+  requiredTrimmed(session.createdByUserId, "Creating user ID")
   assertGitCommitSha(session.baseCommitSha, "Base commit SHA")
 
   if (session.sessionBranch !== buildCollaborationSessionBranch(session.id)) {
     throw new Error("Session branch must be derived from the collaboration session ID")
+  }
+
+  if (session.targetBranch === session.sessionBranch) {
+    throw new Error("Target branch and collaboration session branch must be different")
   }
 
   const publishedThroughSequence = normalizeSequence(
@@ -181,7 +205,13 @@ export function validateCollaborationSession(
   }
 
   if (session.publishedCommitSha) {
-    assertGitCommitSha(session.publishedCommitSha, "Published commit SHA")
+    const publishedCommitSha = assertGitCommitSha(
+      session.publishedCommitSha,
+      "Published commit SHA",
+    )
+    if (publishedCommitSha !== session.baseCommitSha.toLowerCase()) {
+      throw new Error("The shared base must equal the latest published commit")
+    }
   } else if (publishedThroughSequence !== 0) {
     throw new Error("A session without a published commit cannot have a published sequence")
   }
@@ -192,6 +222,24 @@ export function validateCollaborationSession(
 
   if (!session.commitLeaseUserId && session.commitLeaseExpiresAt) {
     throw new Error("A commit lease expiry requires a lease holder")
+  }
+
+  const createdAt = normalizeTimestamp(session.createdAt, "Session creation time")
+  const updatedAt = normalizeTimestamp(session.updatedAt, "Session update time")
+  if (updatedAt < createdAt) {
+    throw new Error("Session update time cannot precede creation time")
+  }
+
+  if (session.closedAt !== null) {
+    const closedAt = normalizeTimestamp(session.closedAt, "Session close time")
+    if (closedAt < createdAt) {
+      throw new Error("Session close time cannot precede creation time")
+    }
+    if (session.status !== "closed" && session.status !== "failed") {
+      throw new Error("Only closed or failed sessions may have a close time")
+    }
+  } else if (session.status === "closed") {
+    throw new Error("A closed session must record its close time")
   }
 
   return session
@@ -214,8 +262,25 @@ export function advancePublishedCollaborationBase(
 ): CollaborationSessionDescriptor {
   validateCollaborationSession(session)
 
-  if (session.status !== "pushing" && session.status !== "local_commit_ready") {
-    throw new Error("A collaboration base can advance only from a prepared or pushing state")
+  if (session.status !== "pushing") {
+    throw new Error("A collaboration base can advance only after an explicit push")
+  }
+
+  const publishedByUserId = requiredTrimmed(
+    publication.publishedByUserId,
+    "Publishing user ID",
+  )
+  const publishedAt = normalizeTimestamp(publication.publishedAt, "Publication time")
+
+  if (
+    session.commitLeaseUserId !== publishedByUserId ||
+    !hasActiveCommitLease(session, publishedAt)
+  ) {
+    throw new Error("Only the active commit lease holder may publish the collaboration base")
+  }
+
+  if (publishedAt < session.updatedAt) {
+    throw new Error("Publication time cannot precede the current session state")
   }
 
   const commitSha = assertGitCommitSha(publication.commitSha, "Published commit SHA")
@@ -248,6 +313,6 @@ export function advancePublishedCollaborationBase(
     commitLeaseUserId: null,
     commitLeaseExpiresAt: null,
     status: "active",
-    updatedAt: publication.publishedAt,
+    updatedAt: publishedAt,
   }
 }
