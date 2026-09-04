@@ -1,0 +1,237 @@
+import type { DevAppCapability } from "./devAppCapabilities"
+
+/**
+ * Contract for the next DevApp platform. Native React is the preferred surface;
+ * existing full-stack applications remain first-class through the web-app adapter.
+ */
+export const DEV_APP_MANIFEST_V3 = 3 as const
+export const DEV_APP_NATIVE_API_VERSION = 1 as const
+export const DEV_APP_RELEASE_MANIFEST_VERSION = 1 as const
+export const DEV_APP_V3_FILENAME = "cozea-devapp.json"
+
+export type DevAppRuntimeLocation = "device" | "hosted"
+export type DevAppStateScope = "none" | "instance" | "device" | "project" | "organization"
+export type DevAppSurfaceRendererKind = "native-react" | "web-app"
+
+export interface DevAppEngineRequirementsV3 {
+  cozea: string
+  nativeApi: number
+}
+
+export interface DevAppRendererModuleSpecV3 {
+  /** TypeScript/TSX entry relative to the package root. */
+  entry: string
+  /** Optional source stylesheet imported/scoped by the Cozea builder. */
+  styles?: string
+}
+
+export interface DevAppStaticWebApplicationSpecV3 {
+  kind: "static"
+  /** Published static entry relative to the package root or build output. */
+  entry: string
+  dev?: {
+    command?: string
+    url?: string
+  }
+}
+
+export interface DevAppServiceWebApplicationSpecV3 {
+  kind: "service"
+  service: string
+  path?: string
+}
+
+export type DevAppWebApplicationSpecV3 =
+  | DevAppStaticWebApplicationSpecV3
+  | DevAppServiceWebApplicationSpecV3
+
+export interface DevAppExtensionSpecV3 {
+  /** TypeScript entry compiled for the per-app extension host. */
+  entry: string
+}
+
+export interface DevAppServiceSpecV3 {
+  runtime: "node"
+  entry: string
+  location: DevAppRuntimeLocation
+  state: DevAppStateScope
+  healthCheck?: string
+  dev?: {
+    command?: string
+    url?: string
+  }
+}
+
+export interface DevAppBuildTargetSpecV3 {
+  root?: string
+  command: string
+  outputs: string[]
+}
+
+export interface DevAppSurfacePlacementV3 {
+  group?: "Assistant" | "Development" | "Utility"
+  minimumWidth?: number
+  minimumHeight?: number
+  defaultWidth?: number
+  defaultHeight?: number
+}
+
+interface DevAppSurfaceContributionBaseV3 {
+  id: string
+  title: string
+  description?: string
+  default?: boolean
+  singleton?: boolean
+  placement?: DevAppSurfacePlacementV3
+}
+
+export interface DevAppNativeReactSurfaceContributionV3
+  extends DevAppSurfaceContributionBaseV3 {
+  renderer: {
+    kind: "native-react"
+    module: string
+    component: string
+  }
+}
+
+export interface DevAppWebSurfaceContributionV3 extends DevAppSurfaceContributionBaseV3 {
+  renderer: {
+    kind: "web-app"
+    application: string
+  }
+}
+
+export type DevAppSurfaceContributionV3 =
+  | DevAppNativeReactSurfaceContributionV3
+  | DevAppWebSurfaceContributionV3
+
+export interface DevAppCommandContributionV3 {
+  id: string
+  title: string
+  description?: string
+}
+
+export interface DevAppSkillContributionV3 {
+  id: string
+  entry: string
+  providers?: Array<"codex" | "claude" | "cursor" | "opencode">
+}
+
+export interface DevAppSettingContributionV3 {
+  id: string
+  title: string
+  description?: string
+  type: "string" | "number" | "boolean"
+  default?: string | number | boolean
+}
+
+export interface DevAppContributionsV3 {
+  surfaces: DevAppSurfaceContributionV3[]
+  commands?: DevAppCommandContributionV3[]
+  skills?: DevAppSkillContributionV3[]
+  settings?: DevAppSettingContributionV3[]
+}
+
+export interface DevAppPermissionRequestV3 {
+  required?: DevAppCapability[]
+  optional?: DevAppCapability[]
+}
+
+export interface DevAppAuthoringManifestV3 {
+  manifestVersion: typeof DEV_APP_MANIFEST_V3
+  id: string
+  name: string
+  version: string
+  description?: string
+  engines: DevAppEngineRequirementsV3
+  rendererModules?: Record<string, DevAppRendererModuleSpecV3>
+  webApplications?: Record<string, DevAppWebApplicationSpecV3>
+  extension?: DevAppExtensionSpecV3
+  services?: Record<string, DevAppServiceSpecV3>
+  permissions?: DevAppPermissionRequestV3
+  build?: {
+    targets: Record<string, DevAppBuildTargetSpecV3>
+  }
+  contributes: DevAppContributionsV3
+}
+
+export interface DevAppReleaseRendererModuleV1 {
+  entry: string
+  styles?: string
+  contentHash: string
+}
+
+export interface DevAppReleaseStaticWebApplicationV1 {
+  kind: "static"
+  entry: string
+  contentHash: string
+}
+
+export interface DevAppReleaseServiceWebApplicationV1 {
+  kind: "service"
+  service: string
+  path?: string
+}
+
+export type DevAppReleaseWebApplicationV1 =
+  | DevAppReleaseStaticWebApplicationV1
+  | DevAppReleaseServiceWebApplicationV1
+
+export interface DevAppReleaseExtensionV1 {
+  entry: string
+  contentHash: string
+}
+
+export interface DevAppReleaseServiceV1 {
+  runtime: "node"
+  entry: string
+  location: DevAppRuntimeLocation
+  state: DevAppStateScope
+  healthCheck?: string
+  contentHash: string
+  runtimeImage?: {
+    platform: string
+    architecture: string
+    digest: string
+  }
+}
+
+/** Immutable consumer contract generated by the builder; contains no source commands. */
+export interface DevAppReleaseManifestV1 {
+  releaseManifestVersion: typeof DEV_APP_RELEASE_MANIFEST_VERSION
+  appId: string
+  appVersion: string
+  nativeApi: number
+  description?: string
+  rendererModules?: Record<string, DevAppReleaseRendererModuleV1>
+  webApplications?: Record<string, DevAppReleaseWebApplicationV1>
+  extension?: DevAppReleaseExtensionV1
+  services?: Record<string, DevAppReleaseServiceV1>
+  permissions: {
+    required: DevAppCapability[]
+    optional: DevAppCapability[]
+  }
+  contributes: DevAppContributionsV3
+}
+
+export type DevAppManifestV3DiagnosticCode =
+  | "manifest-unparsable"
+  | "manifest-not-object"
+  | "manifest-version-unsupported"
+  | "manifest-field-invalid"
+  | "manifest-unknown-field"
+  | "manifest-reference-missing"
+  | "manifest-duplicate-contribution"
+  | "manifest-no-surfaces"
+
+export interface DevAppManifestV3Diagnostic {
+  code: DevAppManifestV3DiagnosticCode
+  severity: "blocker"
+  message: string
+  field?: string
+}
+
+export interface DevAppManifestV3ParseResult {
+  manifest: DevAppAuthoringManifestV3 | null
+  diagnostics: DevAppManifestV3Diagnostic[]
+}
