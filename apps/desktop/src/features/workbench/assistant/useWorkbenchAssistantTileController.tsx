@@ -1289,7 +1289,7 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
-  const handleSend = async () => {
+  const handleSend = async (overridePrompt?: string) => {
     if (sendInFlightRef.current) {
       return
     }
@@ -1462,7 +1462,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations]
-    let nextPrompt = composer.trim()
+    let nextPrompt = (overridePrompt !== undefined ? overridePrompt : composer).trim()
     for (const annotation of composerPreviewAnnotationsSnapshot) {
       nextPrompt = appendPreviewAnnotationPrompt(nextPrompt, annotation)
     }
@@ -2179,8 +2179,8 @@ export function useWorkbenchAssistantTileController(
       onAttachFiles: addComposerImages,
       onRemoveComposerImage: removeComposerImage,
       onRemovePreviewAnnotation: removePreviewAnnotation,
-      onSend: () => {
-        void handleSend()
+      onSend: (overridePrompt?: string) => {
+        void handleSend(overridePrompt)
       },
       onInterrupt: () => {
         void handleInterrupt()

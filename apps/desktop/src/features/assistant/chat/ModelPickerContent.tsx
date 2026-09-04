@@ -602,7 +602,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   })();
 
   if (activeOptionDescriptor) {
-    const maxHeight = Math.max(80, Math.min(260, (props.maxAvailableHeightPx ?? 260) - 10));
+    const maxHeight = Math.max(80, Math.min(360, (props.maxAvailableHeightPx ?? 320) - 10));
     const currentVal = getProviderOptionCurrentValue(activeOptionDescriptor);
     return (
       <div
@@ -656,7 +656,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     );
   }
 
-  const modelsViewHeight = Math.max(90, Math.min(260, props.maxAvailableHeightPx ?? 240));
+  const modelsViewHeight = Math.max(120, Math.min(360, props.maxAvailableHeightPx ?? 320));
 
   return (
     <TooltipProvider delayDuration={0}>

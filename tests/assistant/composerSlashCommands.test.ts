@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectComposerTrigger,
   filterSlashItems,
+  parseStandaloneComposerSlashCommand,
 } from "../../apps/desktop/src/features/assistant/composer-logic";
 import {
   splitPromptIntoComposerSegments,
@@ -44,5 +45,15 @@ describe("composer triggers and slash commands", () => {
     expect(segments[0]).toEqual({ type: "text", text: "Look at " });
     expect(segments[1]).toEqual({ type: "mention", path: "src/main.ts" });
     expect(segments[2]).toEqual({ type: "text", text: " and fix the bug" });
+  });
+
+  it("parses standalone slash commands including debug, ask, plan, and default", () => {
+    expect(parseStandaloneComposerSlashCommand("/debug")).toBe("debug");
+    expect(parseStandaloneComposerSlashCommand("/ask")).toBe("ask");
+    expect(parseStandaloneComposerSlashCommand("/plan")).toBe("plan");
+    expect(parseStandaloneComposerSlashCommand("/default")).toBe("default");
+    expect(parseStandaloneComposerSlashCommand("/clear")).toBe("clear");
+    expect(parseStandaloneComposerSlashCommand("/help")).toBe("help");
+    expect(parseStandaloneComposerSlashCommand("/unknown")).toBeNull();
   });
 });
