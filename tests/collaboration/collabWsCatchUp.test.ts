@@ -106,7 +106,7 @@ describe("CollabWsProvider catch-up", () => {
     const { provider, doc, awareness } = createProvider()
     const testProvider = internals(provider)
 
-    let releaseDecode: (() => void) | null = null
+    let releaseDecode!: () => void
     const decodeGate = new Promise<void>((resolve) => {
       releaseDecode = resolve
     })
@@ -130,7 +130,7 @@ describe("CollabWsProvider catch-up", () => {
     await Promise.resolve()
     expect(provider.getKnownSeq()).toBe(0)
 
-    releaseDecode?.()
+    releaseDecode()
     await handling
     expect(provider.getKnownSeq()).toBe(1)
 
