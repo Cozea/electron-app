@@ -2,8 +2,15 @@ import type { BrowserWindow, IpcMain } from 'electron'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 import { ensureRuntimeInstalled } from '../runtime/runtimeInstaller'
 import { resolveCommandWithRuntime } from '../runtime/runtimeResolver'
-import type { DevServerStartOptions as SharedDevServerStartOptions, DevServerStartResult } from '../../../../shared/electronApiTypes'
-import { DevServerService } from '../services/DevServerService'
+import type {
+  DevServerAuxiliaryProcessConfig,
+  DevServerStartOptions as SharedDevServerStartOptions,
+  DevServerStartResult,
+} from '../../../../shared/electronApiTypes'
+import {
+  DevServerService,
+  type DevServerAuxiliaryProcessOptions,
+} from '../services/DevServerService'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 import { LocalAutomationResolverService } from '../runtime/LocalAutomationResolverService'
 
@@ -11,6 +18,20 @@ import { LocalAutomationResolverService } from '../runtime/LocalAutomationResolv
 
 interface RegisterDevServerHandlersDeps {
   getMainWindow: () => BrowserWindow | null
+}
+
+const MAX_AUXILIARY_PROCESSES = 6
+
+function normalizeAuxiliaryProcess(
+  value: unknown,
+): DevServerAuxiliaryProcessConfig | null {
+  if (!value || typeof value !== 'object') return null
+  const process = value as Partial<DevServerAuxiliaryProcessConfig>
+  const id = typeof process.id === 'string' ? process.id.trim().slice(0, 80) : ''
+  const name = typeof process.name === 'string' ? process.name.trim().slice(0, 48) : ''
+  const command = typeof process.command === 'string' ? process.command.trim().slice(0, 1_000) : ''
+  if (!id || !name || !command) return null
+  return { id, name, command }
 }
 
 function createRunId(): string {
@@ -61,6 +82,7 @@ export function registerDevServerHandlers(
       laneId,
       command,
       bootstrapCommand,
+      auxiliaryProcesses,
       port,
       sessionKey,
       framework,
@@ -140,6 +162,75 @@ export function registerDevServerHandlers(
     const finalCommand = resolved.status === 'completed' && resolved.command
       ? resolved.command
       : command
+    const normalizedAuxiliaryProcesses: DevServerAuxiliaryProcessConfig[] = []
+    const seenAuxiliaryIds = new Set<string>()
+    for (const candidate of (Array.isArray(auxiliaryProcesses) ? auxiliaryProcesses : []).slice(
+      0,
+      MAX_AUXILIARY_PROCESSES,
+    )) {
+      const normalized = normalizeAuxiliaryProcess(candidate)
+      if (!normalized) {
+        return { success: false, error: 'Each additional process needs a name and command.' }
+      }
+      if (seenAuxiliaryIds.has(normalized.id)) {
+        return { success: false, error: 'Additional process identifiers must be unique.' }
+      }
+      seenAuxiliaryIds.add(normalized.id)
+      normalizedAuxiliaryProcesses.push(normalized)
+    }
+
+    const finalAuxiliaryProcesses: DevServerAuxiliaryProcessOptions[] = []
+    for (const process of normalizedAuxiliaryProcesses) {
+      const resolvedAuxiliaryCommand = resolveCommandWithRuntime(process.command)
+      if (resolvedAuxiliaryCommand.status === 'failed') {
+        return {
+          success: false,
+          error: `${process.name}: ${
+            resolvedAuxiliaryCommand.error || 'this command is not supported in this release.'
+          }`,
+        }
+      }
+      // Unlike the auto-detected frontend command, additional processes are
+      // typed by the user in the Dev Server processes dialog — authoring the
+      // command there *is* the approval, and the runtime catalog does not know
+      // backend runners (uvicorn, rails, php, make, `cd api && ...`). Run them
+      // as written and let the terminal report an unknown binary.
+      if (resolvedAuxiliaryCommand.status !== 'needs_user_approval' && resolvedAuxiliaryCommand.runtime) {
+        const ensured = await ensureRuntimeInstalled(resolvedAuxiliaryCommand.runtime)
+        if (!ensured.success) {
+          return {
+            success: false,
+            error: ensured.error || `Failed to install the runtime required by ${process.name}.`,
+          }
+        }
+      }
+
+      let access: Awaited<ReturnType<typeof resolveAuthorizedWorkspaceAccess>>
+      try {
+        access = await resolveAuthorizedWorkspaceAccess({
+          workspaceId,
+          laneId,
+          operation: 'dev-server-start',
+          cwd: { kind: 'projectRoot' },
+        })
+      } catch (error) {
+        return {
+          success: false,
+          error: `${process.name}: ${error instanceof Error ? error.message : String(error)}`,
+        }
+      }
+
+      finalAuxiliaryProcesses.push({
+        ...process,
+        command:
+          resolvedAuxiliaryCommand.status === 'completed' && resolvedAuxiliaryCommand.command
+            ? resolvedAuxiliaryCommand.command
+            : process.command,
+        cwd: access.cwd ?? access.projectRootPath,
+        projectRootPath: access.projectRootPath,
+        gitCwd: access.gitRootPath ?? access.projectRootPath,
+      })
+    }
     const resolvedRunId = typeof runId === 'string' && runId.trim().length > 0
       ? runId.trim()
       : createRunId()
@@ -148,6 +239,7 @@ export function registerDevServerHandlers(
       laneId,
       command: finalCommand,
       bootstrapCommand: finalBootstrapCommand,
+      auxiliaryProcesses: finalAuxiliaryProcesses,
       preferredPort: port,
       sessionKey,
       framework,
@@ -176,6 +268,7 @@ export function registerDevServerHandlers(
         })
         emitState(workspaceId, laneId)
       },
+      onStateChange: () => emitState(workspaceId, laneId),
     }
 
     const result = mode === 'ensure'
@@ -300,7 +393,16 @@ export function registerDevServerHandlers(
         await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
         return service.getState(workspaceId, laneId)
       } catch {
-        return { running: false, ready: false, port: null, runId: null, phase: null, headless: false, terminalId: null }
+        return {
+          running: false,
+          ready: false,
+          port: null,
+          runId: null,
+          phase: null,
+          headless: false,
+          terminalId: null,
+          processes: [],
+        }
       }
     }
   )

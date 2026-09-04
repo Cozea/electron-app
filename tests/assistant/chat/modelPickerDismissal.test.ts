@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { shouldDismissModelPickerOnPointerDown } from "../../../apps/desktop/src/features/projects/components/assistant/chat/modelPickerDismissal"
+import { shouldDismissModelPickerOnPointerDown } from "../../../apps/desktop/src/features/assistant/chat/modelPickerDismissal"
 
 describe("model picker outside-pointer dismissal", () => {
   const panel = new EventTarget()

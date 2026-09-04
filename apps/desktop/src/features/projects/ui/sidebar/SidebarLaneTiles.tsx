@@ -30,19 +30,19 @@ import {
   SIDEBAR_PILL_ACTIVE_CLASS,
   SIDEBAR_PILL_NESTED_ROW_CLASS,
   SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS,
-} from "@/features/projects/components/sidebar/projectSidebarShared"
+} from "@/features/projects/ui/sidebar/projectSidebarShared"
 import { createAssistantThreadSelectorById, useStore } from "@/stores/assistant-store"
 import type { Thread as AssistantThread } from "@/stores/types"
 import type {
   WorkbenchLaneSidebarSummary,
   WorkbenchSidebarSurfaceTileSummary,
-} from "@/stores/useProjectWorkbenchStore"
-import { getWorkbenchTileDefinition } from "@/features/projects/lib/workbenchTileRegistry"
+} from "@/features/workbench/model/workbenchStore"
+import { getWorkbenchTileDefinition } from "@/features/workbench/model/workbenchTileRegistry"
 
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
+import { BrainCircuitIcon as __BrainCircuitHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
 const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[4px]"
 const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
@@ -127,6 +127,15 @@ function SurfaceTileGlyph(props: {
         )
       }
       return <SiOllama className={className} aria-hidden />
+    case "memory":
+      if (devApp) {
+        return (
+          <span className={SIDEBAR_APP_ICON_CLASS}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
+      return <HugeiconsIcon icon={__BrainCircuitHugeIcon} className={className} aria-hidden />
     case "terminal":
     default:
       if (devApp) {

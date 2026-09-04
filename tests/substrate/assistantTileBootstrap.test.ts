@@ -4,7 +4,7 @@ import {
   deriveTitleSeed,
   resolveModelSelectionProvider,
   resolveRememberedModelSelection,
-} from "../../apps/desktop/src/features/projects/components/workbench/assistant/workbenchAssistantShared";
+} from "../../apps/desktop/src/features/workbench/assistant/workbenchAssistantShared";
 import { flushWorkbenchStorage } from "../../apps/desktop/src/stores/useProjectWorkbenchStore";
 import { ProviderInstanceId, type ServerConfig } from "@cozea/assistant-contracts"
 

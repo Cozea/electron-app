@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react"
-import type { ActiveWorkspaceContextValue } from "../../../../../../shared/workspaceTypes"
+import type { ActiveWorkspaceContextValue } from "@shared/workspaceTypes"
 
 export const ActiveWorkspaceContext = createContext<ActiveWorkspaceContextValue | null>(null)
 

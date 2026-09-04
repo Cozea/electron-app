@@ -1,4 +1,4 @@
-import type { GitRemoteSnapshot } from "./connectionStatusModel"
+import type { GitRemoteSnapshot } from "@/features/collaboration/model/connectionStatusModel"
 
 interface CachedGitRemoteStatus {
   workspaceId: string

@@ -25,19 +25,23 @@ import {
   runtimePreviewBrowserSurfaceTabId,
 } from "@/features/projects/browser/runtimePreviewBrowserSurface"
 import { IosSimulatorViewport } from "@/features/projects/components/previews/IosSimulatorViewport"
-import { WorkbenchTileChrome } from "@/features/projects/components/workbench/WorkbenchTileChrome"
-import { useWorkbenchPanelActivityMode } from "@/features/projects/components/workbench/useWorkbenchPanelActivityMode"
+import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
+import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode"
 import {
   buildLocalDevServerUrl,
   DEV_SERVER_TILE_COMMAND_EVENT,
   isSameDevServerPreviewUrl,
   type DevServerTileCommand,
-} from "@/features/projects/devserver/devServerTileCommands"
+} from "@/features/dev-server/devServerTileCommands"
 import {
   buildDevServerRunKey,
   startDevServerRun,
-} from "@/features/projects/devserver/devServerRunStore"
-import { interruptDevServerSurfaceLease } from "@/features/projects/devserver/devServerSurfaceController"
+} from "@/features/dev-server/devServerRunStore"
+import {
+  EMPTY_DEV_SERVER_AUXILIARY_PROCESSES,
+  useDevServerProcessConfigStore,
+} from "@/features/dev-server/devServerProcessConfigStore"
+import { interruptDevServerSurfaceLease } from "@/features/dev-server/devServerSurfaceController"
 import { useIosNativePreview } from "@/features/projects/hooks/useIosNativePreview"
 import { KeepAliveTerminalView } from "@/features/projects/terminals/KeepAliveTerminalView"
 import { useWorkbenchSessionTerminal } from "@/features/projects/terminals/useWorkbenchSessionTerminal"
@@ -51,7 +55,7 @@ import {
   type PreviewDestination,
   resolvePreferredExternalBrowserId,
 } from "@/features/projects/lib/externalBrowserPreference"
-import { type DevServerStatus, useDevServerManager } from "@/hooks/useDevServerManager"
+import { type DevServerStatus, useDevServerManager } from "@/features/dev-server/hooks/useDevServerManager"
 import { cn } from "@/lib/utils"
 import {
   buildWorkbenchRuntimeTargetIdentity,
@@ -64,7 +68,7 @@ import {
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   useProjectWorkbenchStore,
-} from "@/stores/useProjectWorkbenchStore"
+} from "@/features/workbench/model/workbenchStore"
 import { useTerminalStore } from "@/stores/useTerminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 
@@ -113,7 +117,6 @@ const NATIVE_PREVIEW_ROUTE: PageRoute = {
 // real key is required for any native-preview activity — fabricated
 // `projectId::laneId::unbound` scopes collided across workspaces.
 const NATIVE_PREVIEW_PENDING_SCOPE = "cozea::native-preview::pending"
-
 function RuntimePreviewStartState({
   status,
   error,
@@ -431,6 +434,7 @@ function WorkbenchRuntimePreviewTile({
   )
 
   const [terminalRetryKey, setTerminalRetryKey] = useState(0)
+  const [selectedProcessId, setSelectedProcessId] = useState("primary")
   const { terminalId, error: terminalError } = useWorkbenchSessionTerminal({
     workspaceId: runtimeWorkspaceId,
     workbenchSessionKey: runtimeSessionKey,
@@ -442,6 +446,11 @@ function WorkbenchRuntimePreviewTile({
     visible: panelActivity.visible,
     retryKey: terminalRetryKey,
   })
+  const auxiliaryProcesses = useDevServerProcessConfigStore((state) =>
+    runtimeWorkspaceId && tile.type === "devServer" && !tile.devAppId
+      ? (state.byWorkspace[runtimeWorkspaceId] ?? EMPTY_DEV_SERVER_AUXILIARY_PROCESSES)
+      : EMPTY_DEV_SERVER_AUXILIARY_PROCESSES,
+  )
 
   const devServer = useDevServerManager({
     workspaceId: runtimeWorkspaceId,
@@ -456,6 +465,7 @@ function WorkbenchRuntimePreviewTile({
     storedCommandSource,
     previewMode: usesNativePreview ? "native" : "web",
     nativePlatform: usesNativePreview ? nativePreviewPlatform : null,
+    auxiliaryProcesses,
   })
   const previousDevAppReleaseIdRef = useRef(devAppReleaseId)
   const previousRuntimeRunKeyRef = useRef(runtimeRunKey)
@@ -548,6 +558,49 @@ function WorkbenchRuntimePreviewTile({
     workbenchSessionKey,
     workspaceId,
   ])
+
+  useEffect(() => {
+    for (const process of devServer.processes) {
+      updateTerminalDisplay(process.terminalId, {
+        title: process.name,
+        label: process.kind === "primary" ? (storedDevCommand ?? "Frontend") : process.name,
+        kind: "dev-server",
+        surface: "panel",
+        workspaceId: runtimeWorkspaceId ?? undefined,
+        port: process.kind === "primary" ? (devServer.port ?? undefined) : undefined,
+      })
+    }
+  }, [
+    devServer.port,
+    devServer.processes,
+    runtimeWorkspaceId,
+    storedDevCommand,
+    updateTerminalDisplay,
+  ])
+
+  const logProcesses =
+    devServer.processes.length > 0
+      ? devServer.processes
+      : terminalId
+        ? [
+            {
+              id: "primary",
+              name: "Frontend",
+              terminalId,
+              kind: "primary" as const,
+              running: devServer.isRunning,
+            },
+          ]
+        : []
+  const selectedLogProcess =
+    logProcesses.find((process) => process.id === selectedProcessId) ?? logProcesses[0] ?? null
+
+  useEffect(() => {
+    if (!selectedLogProcess) return
+    if (selectedProcessId !== selectedLogProcess.id) {
+      setSelectedProcessId(selectedLogProcess.id)
+    }
+  }, [selectedLogProcess, selectedProcessId])
   useHostedBrowserSurface(browserSurfaceDescriptor)
   const browserSurfaceState = useBrowserSurfaceStateStore((state) =>
     runtimeTabId ? state.byTabId[runtimeTabId] : undefined,
@@ -843,14 +896,47 @@ function WorkbenchRuntimePreviewTile({
         Retry
       </Button>
     </div>
-  ) : !terminalId || viewMode !== "code" || !panelActivity.visible ? (
+  ) : !selectedLogProcess || viewMode !== "code" || !panelActivity.visible ? (
     terminalShell
   ) : (
-    <KeepAliveTerminalView
-      terminalId={terminalId}
-      workspaceId={runtimeWorkspaceId}
-      focused={panelActivity.focused}
-    />
+    <div className="flex h-full min-h-0 flex-col">
+      {logProcesses.length > 1 ? (
+        <div
+          className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 bg-content-surface px-2"
+          aria-label="Dev Server process logs"
+        >
+          {logProcesses.map((process) => (
+            <button
+              key={process.id}
+              type="button"
+              className={cn(
+                "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                process.id === selectedLogProcess.id
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+              onClick={() => setSelectedProcessId(process.id)}
+            >
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  process.running ? "bg-emerald-500" : "bg-muted-foreground/50",
+                )}
+                aria-hidden="true"
+              />
+              {process.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        <KeepAliveTerminalView
+          terminalId={selectedLogProcess.terminalId}
+          workspaceId={runtimeWorkspaceId}
+          focused={panelActivity.focused}
+        />
+      </div>
+    </div>
   )
 
   const externalPreviewBody = (
