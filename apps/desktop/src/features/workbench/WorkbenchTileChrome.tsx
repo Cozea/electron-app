@@ -22,9 +22,9 @@ import {
 } from "@/features/assistant/Icons"
 import { useRegisterWorkbenchDockHeaderControls } from "@/features/workbench/workbenchDockHeaderControls"
 import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
+import { type RenderableWorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
   getWorkbenchTileDefinition,
-  type RenderableWorkbenchTileType,
 } from "@/features/workbench/model/workbenchTileRegistry"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"

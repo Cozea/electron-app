@@ -67,7 +67,7 @@ import {
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { useTerminalStore } from "@/features/terminal/model/terminalStore"
 import { getFrameworkInfo, type Framework } from "@/utils/projectDetector"
 

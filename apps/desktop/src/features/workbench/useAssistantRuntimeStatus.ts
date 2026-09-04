@@ -3,7 +3,7 @@ import type {
   AssistantRuntimePhase,
 } from "@/lib/desktopBridgeClient"
 
-import { useAssistantRuntimeMetadata } from "@/features/workbench/assistant/assistantRuntimeMetadataStore"
+import { useAssistantRuntimeMetadata } from "@/features/assistant/model/assistantRuntimeMetadataStore"
 
 export type { AssistantRuntimePhase, AssistantRuntimeStatus }
 

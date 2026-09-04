@@ -1,3 +1,18 @@
+/**
+ * Tile state for every open workbench, keyed by project, lane and workspace.
+ *
+ * This is the shell's state, not one feature's. The workbench renders it, but
+ * the sidebar lists tiles from it, settings opens a published DevApp into it,
+ * the memory tile asks it which agents are on screen, and the browser tile
+ * writes its own URL back to it. While the store lived inside features/workbench
+ * every one of those callers had to import the feature that hosts them, which is
+ * a cycle: the workbench builds its tiles out of those same capabilities.
+ *
+ * Nothing here may import from `features/`. Tile shapes and their default titles
+ * come from `workbenchTileContract`; how a tile is presented stays in the
+ * workbench's own registry, which this file no longer needs to know about.
+ */
+
 import type {
   ProviderInteractionMode,
   ProviderInstanceId,
@@ -17,12 +32,23 @@ import {
   normalizeLaneId,
 } from "@/lib/workbenchScopeKey"
 import {
-  getWorkbenchTileDefinition,
+  WORKBENCH_TILE_DEFAULT_TITLES,
   type WorkbenchTileType,
-} from "@/features/workbench/model/workbenchTileRegistry"
+} from "@/lib/workbenchTileContract"
 import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
+import type {
+  WorkbenchAssistantChatTile,
+  WorkbenchBrowserTile,
+  WorkbenchDevServerTile,
+  WorkbenchRuntimePreviewViewMode,
+  WorkbenchSelectionPreviewScope,
+  WorkbenchSelectionPreviewTargetKind,
+  WorkbenchSelectionTileEdge,
+  WorkbenchSelectionTileMode,
+  WorkbenchTile,
+} from "@/lib/workbenchTileContract"
 
-export type { WorkbenchTileType } from "@/features/workbench/model/workbenchTileRegistry"
+export type { WorkbenchTileType } from "@/lib/workbenchTileContract"
 
 const PERSIST_DEBOUNCE_MS = 500
 
@@ -98,148 +124,30 @@ const workbenchStorage =
     ? createMemoryStorage()
     : createDebouncedStorage(window.localStorage)
 
-export type WorkbenchRuntimePreviewViewMode = "preview" | "code"
-
-export type WorkbenchSelectionTileMode =
-  | "emptyState"
-  | "edgePreview"
-  | "seamPreview"
-  | "junctionPreview"
-export type WorkbenchSelectionTileEdge = "left" | "right" | "top" | "bottom"
-export type WorkbenchSelectionPreviewScope = "local" | "full-span"
-export type WorkbenchSelectionPreviewTargetKind = "edge" | "seam" | "junction"
-
-interface WorkbenchBaseTile {
-  id: string
-  type: WorkbenchTileType
-  title: string
-  createdAt: number
-}
-
-export interface WorkbenchBrowserTile extends WorkbenchBaseTile {
-  type: "browser"
-  url: string
-  favicon?: string | null
-  storageScope?: BrowserStorageScope
-}
-
-export interface WorkbenchOrgDevAppTile extends WorkbenchBaseTile {
-  type: "orgDevApp"
-  url: string
-  /** Durable publication identity. Empty legacy values fail closed and must be reopened. */
-  devAppRef: string
-  publicationId: string
-  organizationId?: string
-  contentHash: string
-  entryPath: string
-  runtimeKind?: "static" | "service"
-  logoDataUrl?: string | null
-  storageScope?: BrowserStorageScope
-}
-
 /**
- * An unpublished DevApp being developed in this project.
- *
- * Carries only the path relative to the workspace root. The absolute location is never
- * persisted and never crosses to the renderer: main joins this against the root that
- * authorization returns, so a tile restored from stored state cannot name a directory
- * outside the project it belongs to.
+ * Tile shapes live in `@/lib/workbenchTileContract` so a capability can describe
+ * a tile without importing this store. They are re-exported here because the
+ * store is where most call sites already look for them.
  */
-export interface WorkbenchDevAppPreviewTile extends WorkbenchBaseTile {
-  type: "devAppPreview"
-  relativePath: string
-  /** Source identity for cross-project integration testing; never an absolute path. */
-  sourceProjectId?: string | null
-  sourceWorkspaceId?: string | null
-  devAppRef?: string | null
-  /** Assigned by the host on open; absent until then. */
-  sourceId?: string | null
-}
-
-export interface WorkbenchTerminalTile extends WorkbenchBaseTile {
-  type: "terminal"
-}
-
-export interface WorkbenchDevServerTile extends WorkbenchBaseTile {
-  type: "devServer"
-  viewMode?: WorkbenchRuntimePreviewViewMode
-  /** Surface created for agent preview automation; the runtime remains workspace/lane-scoped. */
-  agentManaged?: boolean
-  /**
-   * URL the user navigated the embedded preview to, when it differs from the
-   * dev server's own URL. Persisted intent: survives remounts, cleared
-   * explicitly ("back to server URL") or by navigating back to the base.
-   */
-  previewOverrideUrl?: string | null
-  /** Private project DevApp identity and immutable release snapshot. */
-  devAppId?: string
-  devAppReleaseId?: string
-  devAppReleaseVersion?: number
-  /** Source runtime retained when this local DevApp is opened from another project. */
-  devAppProjectId?: string
-  devAppWorkspaceId?: string
-  devAppLaneId?: string
-  /** Launch-context overrides captured when the DevApp release was created. */
-  devAppFramework?: string
-  devAppCommand?: string
-  devAppPort?: number
-  autoStart?: boolean
-}
-
-export interface WorkbenchMobileSimulatorTile extends WorkbenchBaseTile {
-  type: "mobileSimulator"
-  viewMode?: WorkbenchRuntimePreviewViewMode
-}
-
-export interface WorkbenchLlamaTile extends WorkbenchBaseTile {
-  type: "llama"
-}
-
-export interface WorkbenchMemoryTile extends WorkbenchBaseTile {
-  type: "memory"
-}
-
-export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
-  type: "selection"
-  mode: WorkbenchSelectionTileMode
-  edge?: WorkbenchSelectionTileEdge | null
-  referenceTileId?: string | null
-  adjacentTileId?: string | null
-  previewScope?: WorkbenchSelectionPreviewScope | null
-  previewTargetKind?: WorkbenchSelectionPreviewTargetKind | null
-  previewTargetId?: string | null
-}
-
-export interface WorkbenchTasksTile extends WorkbenchBaseTile {
-  type: "tasks"
-}
-
-export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
-  type: "assistantChat"
-  viewMode?: "chat" | "artifacts"
-  assistantProjectId?: string | null
-  threadId?: string | null
-  provider?: ProviderKind
-  providerInstanceId?: ProviderInstanceId
-  model?: string | null
-  runtimeMode?: RuntimeMode
-  interactionMode?: ProviderInteractionMode
-  agentLabel?: string | null
-  laneBinding?: "sessionWorkspace" | "threadWorktree"
-}
-
-export type WorkbenchTile =
-  | WorkbenchBrowserTile
-  | WorkbenchTerminalTile
-  | WorkbenchDevServerTile
-  | WorkbenchLlamaTile
-  | WorkbenchMemoryTile
-  | WorkbenchMobileSimulatorTile
-  | WorkbenchOrgDevAppTile
-  | WorkbenchDevAppPreviewTile
-  | WorkbenchSelectionTile
-  | WorkbenchTasksTile
-  | WorkbenchAssistantChatTile
+export type {
+  WorkbenchAssistantChatTile,
+  WorkbenchBrowserTile,
+  WorkbenchDevAppPreviewTile,
+  WorkbenchDevServerTile,
+  WorkbenchLlamaTile,
+  WorkbenchMemoryTile,
+  WorkbenchMobileSimulatorTile,
+  WorkbenchOrgDevAppTile,
+  WorkbenchRuntimePreviewViewMode,
+  WorkbenchSelectionPreviewScope,
+  WorkbenchSelectionPreviewTargetKind,
+  WorkbenchSelectionTile,
+  WorkbenchSelectionTileEdge,
+  WorkbenchSelectionTileMode,
+  WorkbenchTasksTile,
+  WorkbenchTerminalTile,
+  WorkbenchTile,
+} from "@/lib/workbenchTileContract"
 
 export interface WorkbenchProjectState {
   projectId: string
@@ -336,6 +244,17 @@ type PersistedWorkbenchRecord = WorkbenchProjectState & {
 }
 
 interface ProjectWorkbenchState extends PersistedWorkbenchState {
+  /**
+   * The bench most recently brought on screen, as a scope key.
+   *
+   * Deliberately outside `partialize`, so it is session state: on a cold start
+   * nobody has been anywhere yet, and a remembered answer from last week would
+   * be a worse guess than admitting there isn't one. It exists so a surface
+   * that sits above every project — the standalone settings page — can still
+   * name a bench the user was actually in, instead of taking whichever one the
+   * persisted record happens to list first.
+   */
+  lastActiveScopeKey: string | null
   actions: {
     ensureWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
     resetWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
@@ -615,7 +534,7 @@ function applyDevAppMetadata(
     delete tile.devAppPort
     delete tile.autoStart
     tile.title =
-      normalizeOptionalString(options.title) ?? getWorkbenchTileDefinition("devServer").defaultTitle
+      normalizeOptionalString(options.title) ?? WORKBENCH_TILE_DEFAULT_TITLES.devServer
     return
   }
 
@@ -639,7 +558,7 @@ function applyDevAppMetadata(
 function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): WorkbenchTile {
   const createdAt = Date.now()
   const id = createTileId(type)
-  const title = options.title?.trim() || getWorkbenchTileDefinition(type).defaultTitle
+  const title = options.title?.trim() || WORKBENCH_TILE_DEFAULT_TITLES[type]
 
   switch (type) {
     case "browser":
@@ -753,7 +672,7 @@ function buildAssistantTileTitle(
     return workbench.tiles[tileId]?.type === "assistantChat" ? count + 1 : count
   }, 0)
 
-  const assistantTitle = getWorkbenchTileDefinition("assistantChat").defaultTitle
+  const assistantTitle = WORKBENCH_TILE_DEFAULT_TITLES.assistantChat
   return assistantCount <= 0 ? assistantTitle : `${assistantTitle} ${assistantCount + 1}`
 }
 
@@ -765,7 +684,7 @@ function createDefaultWorkbenchState(
   const normalizedLaneId = normalizeLaneId(laneId)
   const selectionTile = createTile("selection", {
     selectionMode: "emptyState",
-    title: getWorkbenchTileDefinition("selection").defaultTitle,
+    title: WORKBENCH_TILE_DEFAULT_TITLES.selection,
   })
 
   return {
@@ -1272,6 +1191,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
   persist(
     immer((set) => ({
       workbenches: {},
+      lastActiveScopeKey: null,
       actions: {
         ensureWorkbench: (projectId, laneId, workspaceId) => {
           if (!projectId) return
@@ -1283,7 +1203,18 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             // migratePersistedWorkbenchState), so reassigning a rebuilt object
             // here would notify every store subscriber on every call — e.g.
             // each sidebar click re-rendered all workbench tiles.
-            resolveMutableWorkbenchState(state.workbenches, projectId, laneId, workspaceId)
+            const { scopeKey } = resolveMutableWorkbenchState(
+              state.workbenches,
+              projectId,
+              laneId,
+              workspaceId,
+            )
+            // Written only on a genuine change, for the same reason: this runs
+            // on every sidebar click, and an unconditional assignment would
+            // make each one a state change for every subscriber.
+            if (state.lastActiveScopeKey !== scopeKey) {
+              state.lastActiveScopeKey = scopeKey
+            }
           })
         },
         resetWorkbench: (projectId, laneId, workspaceId) => {

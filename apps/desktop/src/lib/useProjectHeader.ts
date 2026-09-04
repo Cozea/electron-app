@@ -1,6 +1,11 @@
+/**
+ * Publish a route's chrome into the project shell header for as long as it is
+ * mounted. See `projectHeaderStore` for why this is not project domain.
+ */
+
 import { useEffect } from "react"
 import type { ReactNode } from "react"
-import { useProjectHeaderStore } from "@/features/projects/model/projectHeaderStore"
+import { useProjectHeaderStore } from "@/lib/projectHeaderStore"
 
 interface ProjectHeaderOptions {
   insetLeft?: number

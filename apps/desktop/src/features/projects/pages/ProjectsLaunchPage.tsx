@@ -24,7 +24,7 @@ import { browseForDirectory } from "@/lib/browseForDirectory"
 import { resolveDroppedLocalFolderPath } from "@/features/projects/lib/resolveDroppedLocalFolderPath"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
+import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 
 export function ProjectsLaunchPage() {
   const { convexUserId, user } = useAuth()

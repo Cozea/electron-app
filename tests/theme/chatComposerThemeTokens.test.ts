@@ -39,8 +39,18 @@ describe("agent chat composer theme surface", () => {
     expect(chatSurface).not.toContain("dark:bg-surface-raised")
     expect(chatSurface).toContain("bg-primary text-primary-foreground")
     expect(chatSurface).not.toContain("bg-zinc-800 text-white")
-    expect(promptEditor).toContain("leading-relaxed text-muted-foreground")
-    expect(promptEditor).not.toContain("text-muted-foreground/35")
+    // The placeholder is checked by what it has to be, not by how it is spelled:
+    // pinning the exact utility string made a density change look like a theme
+    // regression. It must stay on the muted token so every theme picks its own
+    // tone, and must stay legible — it was once faded to /35, which read as an
+    // empty composer. Choosing an opacity is design; disappearing is a bug.
+    const mutedTones = [...promptEditor.matchAll(/text-muted-foreground(?:\/(\d+))?(?=[\s"'`])/g)]
+    expect(mutedTones.length, "the composer placeholder left the muted-foreground token")
+      .toBeGreaterThan(0)
+    for (const [utility, opacity] of mutedTones) {
+      expect(Number(opacity ?? 100), `${utility} is too faint to read`).toBeGreaterThanOrEqual(50)
+    }
+    expect(promptEditor).not.toMatch(/text-(?:zinc|slate|gray|neutral|white|black)[-\s"']/)
   })
 
   it("maps the semantic surface for Light, Dark, and all chromatic themes", () => {

@@ -15,6 +15,11 @@ accounted for three of the graph's mutual dependencies.
 this question once. The route and navigation helpers live here too, beside the
 context they serve, rather than being split across two top-level directories.
 
-Nothing here may import from `features/`. That is the whole point.
+Nothing here may import from `features/`. That is the whole point, and it is
+measured rather than asserted: `ProjectSyncProviderRuntime` still reaches for
+the collab session and checkpoint cleanup, because it composes the capabilities
+the context exposes rather than being ambient itself, and belongs in app
+composition. Both imports are pinned so the exception stays visible.
 
-See `tests/architecture/featureDependencyGraph.test.ts` for the invariant.
+See `tests/architecture/featureDependencyGraph.test.ts` for the cycles and
+`tests/architecture/neutralGround.test.ts` for the pins.

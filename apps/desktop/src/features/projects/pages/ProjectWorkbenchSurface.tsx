@@ -10,13 +10,13 @@ import {
 } from "react";
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useAuth } from "@/contexts/AuthContext";
-import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader";
-import { DEFAULT_WORKBENCH_LANE_ID, buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
+import { useProjectHeader } from "@/lib/useProjectHeader";
+import { useActiveWorkbenchScope } from "@/contexts/project/useActiveWorkbenchScope"
+import { type WorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
-  type WorkbenchTileType,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { WorkbenchKeepAliveHost } from "@/features/workbench/WorkbenchKeepAliveHost";
 import type { WorkbenchKeepAliveSession } from "@/features/workbench/workbenchKeepAlive";
 import {
@@ -41,9 +41,9 @@ import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteC
 import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,
-} from "@/features/workspace/useWorkspaceRuntimeStore";
-import { useActiveWorkspaceOrNull } from "@/features/workspace/ActiveWorkspaceContext";
-import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
+} from "@/lib/workspaceRuntimeStore";
+import { useActiveWorkspaceOrNull } from "@/contexts/workspace/ActiveWorkspaceContext";
+import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
 import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -78,10 +78,9 @@ function getTaskOverlayKey(task: TaskOverlayPayload): string {
 export function ProjectWorkbenchSurface() {
   const { t } = useTranslation();
   const projectRouteContext = useOptionalProjectRouteContext();
-  const { project, projectIdParam } = useAccessibleProject();
+  const { project } = useAccessibleProject();
   const activeWorkspace = useActiveWorkspaceOrNull();
   const {
-    workspaceId,
     projectRootPath: identityProjectRootPath,
     gitRootPath: identityGitRootPath,
   } = useWorkspaceIdentity();
@@ -90,7 +89,17 @@ export function ProjectWorkbenchSurface() {
     select: (location) => (location.state as TaskOverlayLocationState | null)?.taskOverlay ?? null,
   });
   const [searchParams, setSearchParams] = useSearchParams();
-  const projectId = project?._id ? String(project._id) : projectIdParam ?? null;
+  const {
+    projectId,
+    laneId: activeLaneId,
+    workspaceId: activeWorkbenchId,
+    scopeKey: workbenchScopeKey,
+    // Until lane state resolves, activeLaneId is the "collab" placeholder, NOT a
+    // real lane. Keying or ensuring a bench from it created (and switched to) an
+    // empty sibling bench whenever resolution was slow — the "came back to an
+    // empty workspace" bug. While pending: render a holding state, write nothing.
+    laneResolutionPending,
+  } = useActiveWorkbenchScope();
   const { theme } = useTheme();
   const { user } = useAuth();
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
@@ -98,25 +107,9 @@ export function ProjectWorkbenchSurface() {
   );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const collabBranch = projectRouteContext?.collabBranch ?? "main";
-  const laneState = projectRouteContext?.laneState ?? null;
-  const activeLane = projectRouteContext?.activeLane ?? null;
   const refreshLaneState = projectRouteContext?.refreshLaneState;
-  const activeLaneId =
-    activeLane?.id ??
-    laneState?.activeLaneId ??
-    laneState?.collabLaneId ??
-    DEFAULT_WORKBENCH_LANE_ID;
-  const activeWorkbenchId = activeLane?.workspaceId ?? workspaceId;
-  // Until lane state resolves, activeLaneId is the "collab" placeholder, NOT a
-  // real lane. Keying or ensuring a bench from it created (and switched to) an
-  // empty sibling bench whenever resolution was slow — the "came back to an
-  // empty workspace" bug. While pending: render a holding state, write nothing.
-  const laneResolutionPending = Boolean(activeWorkbenchId) && !activeLane && !laneState;
   const projectRootPath = identityProjectRootPath;
   const gitRootPath = identityGitRootPath;
-  const workbenchScopeKey = projectId
-    ? buildWorkbenchScopeKey(projectId, activeLaneId, activeWorkbenchId)
-    : null;
   const projectWorkbench = useProjectWorkbenchStore(
     useMemo(
       () => selectProjectWorkbench(projectId, activeLaneId, activeWorkbenchId),

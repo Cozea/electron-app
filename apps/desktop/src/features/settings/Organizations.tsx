@@ -31,7 +31,12 @@ import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useTranslation } from "@/lib/i18n"
 import { useSearchParams } from "@/lib/router"
-import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
+import { useProjectWorkbenchStore } from "@/lib/workbenchStore"
+import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
+import {
+  useActiveWorkbenchScope,
+  type ActiveWorkbenchScope,
+} from "@/contexts/project/useActiveWorkbenchScope"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import { formatDevAppRef } from "@shared/devAppRef"
 import { cn } from "@/lib/utils"
@@ -197,10 +202,50 @@ function cleanConvexError(error: unknown, fallback: string): string {
   return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
 }
 
+interface WorkbenchTarget {
+  projectId: string
+  laneId: string
+  workspaceId: string | null
+}
+
+/**
+ * Which bench a published DevApp opens into.
+ *
+ * Opened from the settings drawer there is a project on screen, and that is the
+ * answer — this used to take the first entry of the persisted record instead,
+ * which is insertion order, so with two projects open the DevApp could land in
+ * the one the user was not looking at and appear to do nothing.
+ *
+ * The standalone settings page sits above any project, so there is no scope to
+ * read. The bench the user was last in is the next best answer and an honest
+ * one; a single open bench after that is unambiguous. Beyond those it is a
+ * guess, and the button does nothing rather than opening somewhere invisible.
+ */
+export function resolveWorkbenchTarget(
+  scope: ActiveWorkbenchScope,
+  open: readonly WorkbenchTarget[],
+  lastActiveScopeKey: string | null,
+): WorkbenchTarget | null {
+  if (scope.projectId && !scope.laneResolutionPending) {
+    return { projectId: scope.projectId, laneId: scope.laneId, workspaceId: scope.workspaceId }
+  }
+
+  const lastActive = lastActiveScopeKey
+    ? open.find(
+        (bench) =>
+          buildWorkbenchScopeKey(bench.projectId, bench.laneId, bench.workspaceId) ===
+          lastActiveScopeKey,
+      )
+    : undefined
+
+  return lastActive ?? (open.length === 1 ? (open[0] ?? null) : null)
+}
+
 export function Organizations({ surface = "page", route: _route }: OrganizationsProps) {
   const { convexUserId } = useAuth()
   const { t } = useTranslation()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
+  const activeWorkbench = useActiveWorkbenchScope()
   const [isCreatingOrg, setIsCreatingOrg] = useState(false)
   const [isInvitingDevice, setIsInvitingDevice] = useState(false)
   const [orgName, setOrgName] = useState("")
@@ -857,12 +902,16 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                             size="sm"
                             className="h-7 text-[11px]"
                             onClick={() => {
-                              const workbenches = useProjectWorkbenchStore.getState().workbenches
-                              const current = Object.values(workbenches)[0]
-                              if (!current) return
+                              const workbench = useProjectWorkbenchStore.getState()
+                              const target = resolveWorkbenchTarget(
+                                activeWorkbench,
+                                Object.values(workbench.workbenches),
+                                workbench.lastActiveScopeKey,
+                              )
+                              if (!target) return
                               workbenchActions.addTile(
-                                current.projectId,
-                                current.laneId,
+                                target.projectId,
+                                target.laneId,
                                 "orgDevApp",
                                 {
                                   title: app.name,
@@ -880,7 +929,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                                   orgDevAppLogoDataUrl: app.logoDataUrl,
                                   storageScope: "orgDevApp",
                                 },
-                                current.workspaceId,
+                                target.workspaceId,
                               )
                             }}
                           >

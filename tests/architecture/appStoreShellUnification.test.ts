@@ -80,7 +80,7 @@ describe("DevApps Store shell unification", () => {
     expect(page).toContain("hideShare: true")
     expect(page).not.toContain('className="flex items-center justify-end gap-2"')
 
-    const hook = read("apps/desktop/src/features/projects/hooks/useProjectHeader.ts")
+    const hook = read("apps/desktop/src/lib/useProjectHeader.ts")
     expect(hook).toContain("rightAddon")
     expect(hook).toContain("hideShare")
 

@@ -21,7 +21,7 @@ import {
   FinderIcon,
   VisualStudioCodeIcon,
   ZedIcon,
-} from "@/features/workbench/WorkbenchEditorIcons"
+} from "@/components/EditorBrandIcons"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDown01Icon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'

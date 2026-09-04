@@ -13,11 +13,19 @@ import { describe, expect, it } from "vitest";
  * I in, which lane is selected) that the caller already knew and could have
  * passed down.
  *
- * Every mutual pair below is pinned with the thin edge and the modules it
- * reaches for, so the fix is legible from the failure. The list may only
- * shrink: a new pair fails as a regression, and a resolved one fails until it
- * is deleted from here, which keeps the count honest instead of letting one
- * cycle be traded for another.
+ * Every mutual pair below is pinned with the thin edge, the modules it reaches
+ * for, and the judgement passed on it, so the fix — or the decision not to fix
+ * — is legible from the failure. The list may only shrink: a new pair fails as
+ * a regression, and a resolved one fails until it is deleted from here, which
+ * keeps the count honest instead of letting one cycle be traded for another.
+ *
+ * Fourteen pairs became two. Every one that went was the same mistake — a
+ * shared atom, an ambient store or a shell concern filed inside the feature
+ * whose name it happened to carry — and the fix was always to move it to
+ * neutral ground rather than to rewire a caller. The two that remain are not
+ * that. They are peers that genuinely reference each other, and they are
+ * expected to stay; `verdict` on each says why, so the next reader inherits the
+ * decision instead of re-deriving it.
  */
 
 const REPO_ROOT = process.cwd();
@@ -31,53 +39,24 @@ interface PinnedCycle {
   readonly thinEdge: string;
   /** Modules the thin edge reaches for, relative to the imported feature. */
   readonly reaches: readonly string[];
+  /** Why this pair stands, or what it is waiting on. */
+  readonly verdict: string;
 }
 
 const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
-    pair: ["assistant", "workbench"],
-    thinEdge: "assistant -> workbench",
-    reaches: ["WorkbenchEditorIcons", "assistant/assistantRuntimeMetadataStore"],
-  },
-  {
     pair: ["browser", "workbench"],
     thinEdge: "browser -> workbench",
-    reaches: ["WorkbenchDockRuntimeContext", "model/workbenchStore"],
-  },
-  {
-    pair: ["devapps", "projects"],
-    thinEdge: "devapps -> projects",
-    reaches: ["hooks/useProjectHeader", "model/createProjectDialogStore"],
-  },
-  {
-    pair: ["devapps", "workbench"],
-    thinEdge: "devapps -> workbench",
-    reaches: ["model/workbenchStore", "model/workbenchTileRegistry"],
-  },
-  {
-    pair: ["project-memory", "workbench"],
-    thinEdge: "project-memory -> workbench",
-    reaches: ["model/workbenchStore"],
+    reaches: ["WorkbenchDockRuntimeContext"],
+    verdict:
+      "Accepted. The browser tile is mounted by the workbench and reads the dock's runtime handle for the scope it was mounted in — which is not the route's scope, and must not be, for a floating or popped-out panel or a bench kept alive behind another project. Host provides, guest consumes. The context could be lifted to neutral ground, but its selection-launch callback is typed on a devapps request, so the move trades this cycle for a pinned import and buys nothing.",
   },
   {
     pair: ["projects", "settings"],
     thinEdge: "projects -> settings",
     reaches: ["pages/ProjectSettingsPage", "ui/SettingsChrome", "ui/SettingsSidebar"],
-  },
-  {
-    pair: ["projects", "workbench"],
-    thinEdge: "workbench -> projects",
-    reaches: ["ui/ProjectPixelInvaderIcon"],
-  },
-  {
-    pair: ["settings", "workbench"],
-    thinEdge: "settings -> workbench",
-    reaches: ["model/workbenchStore"],
-  },
-  {
-    pair: ["workbench", "workspace"],
-    thinEdge: "workbench -> workspace",
-    reaches: ["useWorkspaceIdentity", "useWorkspaceRuntimeStore"],
+    verdict:
+      "Accepted. Dense in both directions and specific in both: the settings page owns project deletion, local cleanup and the delete dialog, while the drawer and sidebar share the project sidebar's chrome. Peers that collaborate, not a capability reaching for ambient state.",
   },
 ];
 
@@ -174,15 +153,16 @@ describe("feature dependency graph", () => {
     expect(actual).toEqual(pinned);
   });
 
-  it("pins each cycle with the edge to delete and what it reaches for", () => {
+  it("pins each cycle with the edge, what it reaches for, and the verdict", () => {
     const modules = readEdgeModules();
 
-    for (const { pair, thinEdge, reaches } of PINNED_CYCLES) {
+    for (const { pair, thinEdge, reaches, verdict } of PINNED_CYCLES) {
       const [importer, imported] = thinEdge.split(" -> ");
 
       expect(pair, `${thinEdge} names a feature outside its own pair`).toContain(importer);
       expect(pair, `${thinEdge} names a feature outside its own pair`).toContain(imported);
       expect(reaches.length, `${thinEdge} records no modules to delete`).toBeGreaterThan(0);
+      expect(verdict.length, `${thinEdge} records no judgement`).toBeGreaterThan(0);
 
       // Without this the recorded modules rot silently: a call site can swap
       // one import for another and leave the plan pointing at the wrong fix.

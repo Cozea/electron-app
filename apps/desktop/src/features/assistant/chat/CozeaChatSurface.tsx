@@ -31,6 +31,13 @@ import {
 } from "react"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { AppOverlayPortal } from "@/components/ui/app-overlay-portal"
 import { ComposerPendingApprovalActions } from "@/features/assistant/chat/ComposerPendingApprovalActions"
 import { ComposerPendingApprovalPanel } from "@/features/assistant/chat/ComposerPendingApprovalPanel"
@@ -96,6 +103,35 @@ import {
 
 export type UserInputAnswerDrafts = Record<string, Record<string, string>>
 
+export type ComposerMode = "debug" | "plan" | "ask" | "default" | null
+
+function DebugBugIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={cn("size-3.5 shrink-0", className)}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m8 2 1.88 1.88" />
+      <path d="M14.12 3.88 16 2" />
+      <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
+      <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
+      <path d="M12 20v-9" />
+      <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
+      <path d="M6 13H2" />
+      <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
+      <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
+      <path d="M22 13h-4" />
+      <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+    </svg>
+  )
+}
+
 export interface ProviderModelOptionsByProvider {
   codex: ReadonlyArray<{ slug: string; name: string }>
   claudeAgent: ReadonlyArray<{ slug: string; name: string }>
@@ -124,7 +160,7 @@ type ComposerSlashMenuItem =
   | {
       id: string
       type: "slash-command"
-      command: "model" | "plan" | "default" | "clear" | "help"
+      command: "model" | "plan" | "default" | "clear" | "help" | "debug" | "ask"
       label: string
       description: string
     }
@@ -298,7 +334,7 @@ interface CozeaChatSurfaceProps {
   onAttachFiles: (files: File[]) => void
   onRemoveComposerImage: (imageId: string) => void
   onRemovePreviewAnnotation: (annotationId: string) => void
-  onSend: () => void | Promise<void>
+  onSend: (overridePrompt?: string) => void | Promise<void>
   onInterrupt: () => void | Promise<void>
   onApprovalDecision: (
     requestId: string,
@@ -447,6 +483,33 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const resolvedTheme = resolveTimelineTheme()
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null)
+  const [composerMode, setComposerMode] = useState<ComposerMode>(null)
+  const activeMode: "debug" | "plan" | "ask" | null =
+    composerMode === "default"
+      ? null
+      : (composerMode ?? (props.selectedInteractionMode === "plan" ? "plan" : null))
+
+  const updateComposerMode = useCallback(
+    (nextMode: "debug" | "plan" | "ask" | null) => {
+      if (nextMode === null) {
+        setComposerMode("default")
+        if (props.selectedInteractionMode === "plan") {
+          void props.onToggleInteractionMode()
+        }
+      } else if (nextMode === "plan") {
+        setComposerMode("plan")
+        if (props.selectedInteractionMode !== "plan") {
+          void props.onToggleInteractionMode()
+        }
+      } else {
+        setComposerMode(nextMode)
+        if (props.selectedInteractionMode === "plan") {
+          void props.onToggleInteractionMode()
+        }
+      }
+    },
+    [props.selectedInteractionMode, props.onToggleInteractionMode],
+  )
   const [pendingQuestionIndexByRequestId, setPendingQuestionIndexByRequestId] = useState<
     Record<string, number>
   >({})
@@ -581,6 +644,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         description: "Switch response model for this thread",
       },
       {
+        id: "slash:debug",
+        type: "slash-command",
+        command: "debug",
+        label: "/debug",
+        description: "Debug and troubleshoot issues",
+      },
+      {
         id: "slash:plan",
         type: "slash-command",
         command: "plan",
@@ -588,11 +658,18 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         description: "Switch this thread into plan mode",
       },
       {
+        id: "slash:ask",
+        type: "slash-command",
+        command: "ask",
+        label: "/ask",
+        description: "Ask questions without modifying files",
+      },
+      {
         id: "slash:default",
         type: "slash-command",
         command: "default",
         label: "/default",
-        description: "Switch this thread back to chat mode",
+        description: "Switch this thread back to normal mode",
       },
       {
         id: "slash:clear",
@@ -858,10 +935,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   }, [])
 
   const maxModelPickerHeightPx = useMemo(() => {
-    if (surfaceHeightPx <= 0) return 260
-    // Reserved space for prompt editor (~48px) + footer (~40px) + bottom padding (~20px) + top clearance (~80px) = ~188px
-    const available = surfaceHeightPx - 188
-    return Math.max(90, Math.min(260, Math.floor(available)))
+    if (surfaceHeightPx <= 0) return 360
+    const available = surfaceHeightPx - 80
+    return Math.max(240, Math.min(420, Math.floor(available)))
   }, [surfaceHeightPx])
 
   useEffect(() => {
@@ -1158,11 +1234,25 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         return
       }
 
-      if (item.command === "plan" && props.selectedInteractionMode !== "plan") {
-        void props.onToggleInteractionMode()
+      if (item.command === "debug") {
+        updateComposerMode("debug")
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
+        return
       }
-      if (item.command === "default" && props.selectedInteractionMode === "plan") {
-        void props.onToggleInteractionMode()
+      if (item.command === "ask") {
+        updateComposerMode("ask")
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
+        return
+      }
+      if (item.command === "plan") {
+        updateComposerMode("plan")
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
+        return
+      }
+      if (item.command === "default") {
+        updateComposerMode(null)
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
+        return
       }
       clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
       return
@@ -1209,6 +1299,27 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     applyComposerSlashItem(item)
   }
 
+  const handleSendWithMode = useCallback(async () => {
+    const trimmed = composerValue.trim()
+    if (activeMode === "debug") {
+      const promptToSend =
+        trimmed && !trimmed.toLowerCase().startsWith("[debug") && !trimmed.toLowerCase().startsWith("/debug")
+          ? `[Debug Mode: Troubleshoot and diagnose this issue]\n${trimmed}`
+          : trimmed
+      await props.onSend(promptToSend)
+      return
+    }
+    if (activeMode === "ask") {
+      const promptToSend =
+        trimmed && !trimmed.toLowerCase().startsWith("[ask") && !trimmed.toLowerCase().startsWith("/ask")
+          ? `[Ask Mode: Answer questions and explain without making file changes]\n${trimmed}`
+          : trimmed
+      await props.onSend(promptToSend)
+      return
+    }
+    await props.onSend()
+  }, [activeMode, composerValue, props])
+
   const handleComposerCommandKey = (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
@@ -1236,6 +1347,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         }
       }
     }
+    if (key === "Enter" && !event.shiftKey) {
+      if (activePendingProgress) {
+        if (activePendingProgress.isLastQuestion) {
+          handleSubmitPendingUserInput()
+        } else {
+          handleAdvancePendingQuestion()
+        }
+        return true
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      void handleSendWithMode()
+      return true
+    }
     return props.onComposerCommandKey(key, event)
   }
 
@@ -1261,263 +1386,469 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     event.currentTarget.value = ""
   }
 
-  const handleComposerShellBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
-    const next = event.relatedTarget as Node | null
-    if (next && event.currentTarget.contains(next)) {
-      return
+  const hasActiveComposerHeader = Boolean(
+    hasComposerHeader ||
+    threadRuntimeBannerState ||
+    (showPlanFollowUpPrompt && activeProposedPlan),
+  )
+
+  const hasAttachments = Boolean(
+    props.previewAnnotations.length > 0 || regularComposerImages.length > 0,
+  )
+
+  const isExpanded = Boolean(
+    composerValue.includes("\n") ||
+    composerValue.length > 110 ||
+    hasAttachments ||
+    hasActiveComposerHeader ||
+    props.composerStatus,
+  )
+
+  const resolvedPlaceholder = useMemo(() => {
+    if (isComposerApprovalState) {
+      return (
+        activePendingApproval?.detail ??
+        (t as any)("assistant.chat.placeholder.resolveApproval")
+      )
     }
-    setIsModelPickerOpen(false)
-  }, [])
+    if (activePendingProgress) {
+      return (t as any)("assistant.chat.placeholder.customAnswer")
+    }
+    if (showPlanFollowUpPrompt) {
+      return (t as any)("assistant.chat.placeholder.planFeedback")
+    }
+    if (props.isInterrupting) {
+      return props.isForceStopAvailable
+        ? (t as any)("assistant.chat.placeholder.forceStop")
+        : (t as any)("assistant.chat.placeholder.stopping")
+    }
+    if (props.runtimeErrorMessage) {
+      return (t as any)("assistant.chat.placeholder.runtimeUnavailable")
+    }
+    if (phase === "error") return (t as any)("assistant.chat.placeholder.error")
+    if (phase === "interrupted") return (t as any)("assistant.chat.placeholder.interrupted")
+    if (phase === "stopped") return (t as any)("assistant.chat.placeholder.stopped")
+    if (phase === "disconnected") return (t as any)("assistant.chat.placeholder.disconnected")
+    if (activeMode === "debug") {
+      return "Debug and troubleshoot issues..."
+    }
+    if (activeMode === "plan") {
+      return "Create an implementation plan..."
+    }
+    if (activeMode === "ask") {
+      return "Ask anything about this project..."
+    }
+    return (t as any)("assistant.chat.placeholder.default")
+  }, [
+    isComposerApprovalState,
+    activePendingApproval?.detail,
+    activePendingProgress,
+    showPlanFollowUpPrompt,
+    props.isInterrupting,
+    props.isForceStopAvailable,
+    props.runtimeErrorMessage,
+    phase,
+    activeMode,
+    t,
+  ])
+
+  const renderModeChip = () => {
+    if (activeMode === "debug") {
+      return (
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-rose-500/12 text-rose-600 dark:bg-[#3a1820]/90 dark:text-rose-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
+          <DebugBugIcon className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+          <span>Debug</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              updateComposerMode(null)
+            }}
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-rose-600/70 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-400/80 dark:hover:bg-rose-500/25 dark:hover:text-rose-200 transition-colors cursor-pointer"
+            aria-label="Remove debug mode"
+            title="Remove debug mode"
+          >
+            <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
+          </button>
+        </div>
+      )
+    }
+    if (activeMode === "plan") {
+      return (
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
+          <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
+          <span>Plan</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              updateComposerMode(null)
+            }}
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-amber-700/70 hover:bg-amber-500/25 hover:text-amber-800 dark:text-amber-400/80 dark:hover:bg-amber-500/25 dark:hover:text-amber-200 transition-colors cursor-pointer"
+            aria-label="Remove plan mode"
+            title="Remove plan mode"
+          >
+            <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
+          </button>
+        </div>
+      )
+    }
+    if (activeMode === "ask") {
+      return (
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
+          <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-3.5 shrink-0 text-sky-700 dark:text-sky-400" />
+          <span>Ask</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              updateComposerMode(null)
+            }}
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-sky-700/70 hover:bg-sky-500/25 hover:text-sky-800 dark:text-sky-400/80 dark:hover:bg-sky-500/25 dark:hover:text-sky-200 transition-colors cursor-pointer"
+            aria-label="Remove ask mode"
+            title="Remove ask mode"
+          >
+            <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
+          </button>
+        </div>
+      )
+    }
+    return null
+  }
+
+  const renderPlusDropdown = () => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="size-8 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/80 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-white/10 transition-colors cursor-pointer outline-none"
+          title="Add context or change mode"
+          aria-label="Add context or change mode"
+        >
+          <HugeiconsIcon icon={__PlusIconHugeIcon} className="size-4 stroke-[2]" />
+          {props.composerImages.length > 0 ? (
+            <span className="ml-0.5 text-[10px] font-bold text-primary">
+              {props.composerImages.length}
+            </span>
+          ) : null}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" className="w-56 p-1">
+        <DropdownMenuItem
+          disabled={attachDisabled}
+          onClick={() => composerFileInputRef.current?.click()}
+          title={`Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`}
+        >
+          <HugeiconsIcon icon={__ImageAdd01IconHugeIcon} className="size-4 mr-2 text-muted-foreground" />
+          Attach Images
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => updateComposerMode(activeMode === "debug" ? null : "debug")}
+          className={cn(activeMode === "debug" && "bg-rose-500/10 text-rose-400")}
+        >
+          <DebugBugIcon className="size-4 mr-2 text-rose-400" />
+          <span className="flex-1">Debug Mode</span>
+          {activeMode === "debug" && <span className="text-xs text-rose-400">✓</span>}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => updateComposerMode(activeMode === "plan" ? null : "plan")}
+          className={cn(activeMode === "plan" && "bg-amber-500/10 text-amber-400")}
+        >
+          <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 mr-2 text-amber-400" />
+          <span className="flex-1">Plan Mode</span>
+          {activeMode === "plan" && <span className="text-xs text-amber-400">✓</span>}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => updateComposerMode(activeMode === "ask" ? null : "ask")}
+          className={cn(activeMode === "ask" && "bg-sky-500/10 text-sky-400")}
+        >
+          <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4 mr-2 text-sky-400" />
+          <span className="flex-1">Ask Mode</span>
+          {activeMode === "ask" && <span className="text-xs text-sky-400">✓</span>}
+        </DropdownMenuItem>
+        {activeMode !== null && (
+          <DropdownMenuItem
+            onClick={() => updateComposerMode(null)}
+          >
+            <HugeiconsIcon icon={__XIconHugeIcon} className="size-4 mr-2 text-muted-foreground" />
+            Clear Mode
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => void props.onToggleRuntimeMode()}>
+          <HugeiconsIcon
+            icon={props.selectedRuntimeMode === "full-access" ? __CircleAlertIconHugeIcon : __LockIconHugeIcon}
+            className="size-4 mr-2"
+          />
+          <span>Runtime: {props.selectedRuntimeMode === "full-access" ? "Full access" : "Approval required"}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  const renderSendOrStopButton = () => {
+    if (activePendingProgress) {
+      return (
+        <div className="flex items-center gap-1.5">
+          {activePendingProgress.questionIndex > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-full text-xs px-2.5"
+              type="button"
+              onClick={handlePreviousPendingQuestion}
+              disabled={activePendingIsResponding}
+            >
+              Prev
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 rounded-full px-3 text-xs"
+            onClick={() => {
+              if (activePendingProgress.isLastQuestion) {
+                handleSubmitPendingUserInput()
+                return
+              }
+              handleAdvancePendingQuestion()
+            }}
+            disabled={
+              activePendingIsResponding ||
+              (activePendingProgress.isLastQuestion
+                ? !activePendingResolvedAnswers
+                : !activePendingProgress.canAdvance)
+            }
+          >
+            {activePendingIsResponding
+              ? "..."
+              : activePendingProgress.isLastQuestion
+                ? "Submit"
+                : "Next"}
+          </Button>
+        </div>
+      )
+    }
+
+    const hasContextRing = Boolean(props.activeContextWindow)
+    const buttonSizeClass = hasContextRing ? "size-6.5" : "size-8"
+
+    const isSendDisabled =
+      !isChatReady ||
+      (props.composer.trim().length === 0 &&
+        props.composerImages.length === 0 &&
+        props.previewAnnotations.length === 0) ||
+      props.isSending ||
+      props.isBinding
+
+    const shouldShowContextTooltip = !props.isRunning && !activePendingProgress && isSendDisabled
+
+    const buttonElement = props.isRunning ? (
+      <button
+        type="button"
+        className={cn(
+          "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 shadow-xs transition-all duration-150 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50",
+          buttonSizeClass,
+        )}
+        onClick={() => {
+          void props.onInterrupt()
+        }}
+        aria-label={stopButtonLabel}
+        title={stopButtonLabel}
+        disabled={!isChatReady || (props.isInterrupting && !props.isForceStopAvailable)}
+      >
+        {props.isInterrupting && !props.isForceStopAvailable ? (
+          <div className="loader" />
+        ) : (
+          <span className="size-2 rounded-[1px] bg-primary-foreground" />
+        )}
+      </button>
+    ) : (
+      <button
+        type="submit"
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full transition-all duration-150",
+          buttonSizeClass,
+          isSendDisabled
+            ? "bg-foreground/[0.08] text-foreground/30 dark:bg-white/10 dark:text-zinc-500/50 cursor-not-allowed"
+            : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs hover:scale-105 active:scale-95 cursor-pointer",
+        )}
+        disabled={isSendDisabled}
+        aria-label={
+          !isChatReady
+            ? "Local runtime unavailable"
+            : props.isBinding
+              ? "Binding agent"
+              : props.isSending
+                ? "Sending"
+                : "Send message"
+        }
+      >
+        {renderSendIcon(props.isSending)}
+      </button>
+    )
+
+    if (hasContextRing && props.activeContextWindow) {
+      return (
+        <ContextWindowMeter
+          usage={props.activeContextWindow}
+          accountUsage={props.activeAccountUsage}
+          disableTooltip={!shouldShowContextTooltip}
+        >
+          {buttonElement}
+        </ContextWindowMeter>
+      )
+    }
+
+    return buttonElement
+  }
+
   const composerForm = (
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        void props.onSend()
+        void handleSendWithMode()
       }}
       className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl flex-col"
     >
-      <div
-        className={cn(
-          "mt-3 flex flex-col rounded-2xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
-          composerMenuOpen ? "overflow-visible" : "overflow-hidden",
-        )}
-        onBlurCapture={handleComposerShellBlurCapture}
-      >
-        {props.composerStatus ? <div className="shrink-0">{props.composerStatus}</div> : null}
-        {threadRuntimeBannerState ? (
-          <ThreadRuntimeBanner
-            state={threadRuntimeBannerState}
-            detail={threadRuntimeDetail}
-            isForceStopAvailable={props.isForceStopAvailable}
-            action={
-              <ProviderRemediationAction
-                provider={props.selectedProvider}
-                message={threadRuntimeDetail}
-                authenticationRequired={props.providerSnapshot?.auth.status === "unauthenticated"}
-              />
-            }
-          />
-        ) : null}
-        {activePendingApproval ? (
-          <div className="border-b border-border/30 bg-background/10">
-            <ComposerPendingApprovalPanel
-              approval={activePendingApproval}
-              pendingCount={props.pendingApprovals.length}
-            />
+      {/* Autocomplete Menu (floating above) */}
+      {composerMenuOpen ? (
+        <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 w-[min(34rem,100%)] max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl p-1.5 transition-all duration-150 dark:border-white/[0.08]">
+          <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
+            {composerPathTrigger
+              ? "Files & Folders"
+              : composerModelTrigger
+                ? "Models"
+                : composerSkillTrigger
+                  ? "Skills"
+                  : "Commands"}
           </div>
-        ) : activePendingUserInput ? (
-          <div className="min-h-0 flex-1 overflow-hidden border-b border-border/30 bg-background/10">
-            <ComposerPendingUserInputPanel
-              pendingUserInputs={props.pendingUserInputs}
-              respondingRequestIds={
-                activePendingIsResponding && activePendingUserInput
-                  ? [ApprovalRequestId.makeUnsafe(String(activePendingUserInput.requestId))]
-                  : []
-              }
-              answers={activePendingDraftAnswers}
-              questionIndex={activePendingQuestionIndex}
-              onSelectOption={handleSelectPendingUserInputOption}
-              onAdvance={handleAdvancePendingQuestion}
-            />
-          </div>
-        ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-          <div className="border-b border-border/30 bg-background/10">
-            <ComposerPlanFollowUpBanner
-              key={activeProposedPlan.id}
-              planTitle={planTitleFromMarkdown(activeProposedPlan.planMarkdown)}
-            />
-          </div>
-        ) : null}
-
-        {composerMenuOpen ? (
-          <div className="shrink-0 border-b border-border/30 bg-background/10 py-1 pl-1 pr-8">
-            <div className="w-[min(34rem,calc(100%-2rem))]">
-              <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
-                {composerPathTrigger
-                  ? "Files & Folders"
-                  : composerModelTrigger
-                    ? "Models"
-                    : composerSkillTrigger
-                      ? "Skills"
-                      : "Commands"}
-              </div>
-              {isComposerMenuLoading ? (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching files...</div>
-              ) : composerMenuItems.length === 0 ? (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                  {composerPathTrigger
-                    ? "No matching files or folders."
-                    : composerModelTrigger
-                      ? "No matching models."
-                      : composerSkillTrigger
-                        ? "No matching skills."
-                        : "No matching commands."}
-                </div>
-              ) : (
-                <>
-                  {visibleComposerMenuItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={cn(
-                        "flex w-full cursor-default items-start gap-3 rounded-sm px-2 py-1.5 text-left outline-none",
-                        composerHighlightedItemId === item.id
-                          ? "bg-accent text-accent-foreground"
-                          : "text-foreground hover:bg-accent hover:text-accent-foreground",
-                      )}
-                      onMouseEnter={() => {
-                        setComposerHighlightedItemId(item.id)
-                      }}
-                      onClick={() => {
-                        applyComposerMenuItem(item)
-                      }}
-                    >
-                      {item.type === "path" ? (
-                        <img
-                          src={getVscodeIconUrlForEntry(item.path, item.kind, resolvedTheme)}
-                          alt=""
-                          aria-hidden="true"
-                          className="mt-0.5 size-4 shrink-0"
-                        />
-                      ) : item.type === "model" ? (
-                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border border-border/70 text-[9px] text-muted-foreground">
-                          M
-                        </span>
-                      ) : item.type === "skill" ? (
-                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-                          <SkillGlyph className="size-3.5" />
-                        </span>
-                      ) : item.type === "provider-slash-command" ? (
-                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-                          <SkillGlyph className="size-3.5" />
-                        </span>
-                      ) : (
-                        <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-                          <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4" />
-                        </span>
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-medium text-foreground">
-                          {item.type === "path" ? basenameOfPath(item.path) : item.label}
-                        </span>
-                        <span className="block truncate text-[11px] text-muted-foreground">
-                          {item.type === "path" ? item.description || item.path : item.description}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                  {hiddenComposerMenuItemCount > 0 ? (
-                    <div className="px-2 pt-1 text-[11px] text-muted-foreground/80">
-                      Show {hiddenComposerMenuItemCount} more
-                    </div>
-                  ) : null}
-                </>
-              )}
+          {isComposerMenuLoading ? (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching files...</div>
+          ) : composerMenuItems.length === 0 ? (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              {composerPathTrigger
+                ? "No matching files or folders."
+                : composerModelTrigger
+                  ? "No matching models."
+                  : composerSkillTrigger
+                    ? "No matching skills."
+                    : "No matching commands."}
             </div>
-          </div>
-        ) : null}
+          ) : (
+            <>
+              {visibleComposerMenuItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    "flex w-full cursor-default items-start gap-3 rounded-sm px-2 py-1.5 text-left outline-none",
+                    composerHighlightedItemId === item.id
+                      ? "bg-accent text-accent-foreground"
+                      : "text-foreground hover:bg-accent hover:text-accent-foreground",
+                  )}
+                  onMouseEnter={() => {
+                    setComposerHighlightedItemId(item.id)
+                  }}
+                  onClick={() => {
+                    applyComposerMenuItem(item)
+                  }}
+                >
+                  {item.type === "path" ? (
+                    <img
+                      src={getVscodeIconUrlForEntry(item.path, item.kind, resolvedTheme)}
+                      alt=""
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0"
+                    />
+                  ) : item.type === "model" ? (
+                    <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded border border-border/70 text-[9px] text-muted-foreground">
+                      M
+                    </span>
+                  ) : item.type === "skill" ? (
+                    <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                      <SkillGlyph className="size-3.5" />
+                    </span>
+                  ) : item.type === "provider-slash-command" ? (
+                    <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                      <SkillGlyph className="size-3.5" />
+                    </span>
+                  ) : (
+                    <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                      <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4" />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-foreground">
+                      {item.type === "path" ? basenameOfPath(item.path) : item.label}
+                    </span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {item.type === "path" ? item.description || item.path : item.description}
+                    </span>
+                  </span>
+                </button>
+              ))}
+              {hiddenComposerMenuItemCount > 0 ? (
+                <div className="px-2 pt-1 text-[11px] text-muted-foreground/80">
+                  Show {hiddenComposerMenuItemCount} more
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
 
+      {/* Floating Model Picker */}
+      {isModelPickerVisible && shouldRenderModelPicker ? (
         <div
           ref={modelPickerPanelRef}
-          className={cn(
-            "shrink-0 overflow-hidden border-b bg-background/10 transition-all duration-200 ease-out",
-            isModelPickerVisible
-              ? "translate-y-0 border-border/30 opacity-100"
-              : "pointer-events-none max-h-0 -translate-y-1 border-transparent opacity-0",
-          )}
-          style={isModelPickerVisible ? { maxHeight: `${maxModelPickerHeightPx}px` } : undefined}
+          className="absolute bottom-[calc(100%+8px)] right-0 z-50 w-[420px] max-w-[95vw] rounded-2xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl overflow-hidden p-2 transition-all duration-200 dark:border-white/[0.08]"
+          style={{ maxHeight: `${maxModelPickerHeightPx}px` }}
         >
-          {shouldRenderModelPicker ? (
-            <div className="w-full" style={{ maxHeight: `${maxModelPickerHeightPx}px` }}>
-              <ModelPickerContent
-                maxAvailableHeightPx={maxModelPickerHeightPx}
-                provider={props.selectedProvider}
-                activeInstanceId={props.selectedModelSelection.instanceId}
-                model={props.selectedModelSelection.model}
-                lockedProvider={props.selectedProvider}
-                providers={props.providers}
-                modelOptionsByProvider={props.modelOptionsByProvider}
-                optionDescriptors={props.modelOptionDescriptors}
-                onOptionChange={props.onModelOptionChange}
-                terminalOpen={false}
-                onRequestClose={() => setIsModelPickerOpen(false)}
-                onProviderModelChange={(provider, model, instanceId) => {
-                  void props.onProviderModelChange(provider, model, instanceId)
-                  setIsModelPickerOpen(false)
-                }}
-              />
-            </div>
-          ) : null}
-        </div>
-
-        {!isComposerApprovalState &&
-        !activePendingUserInput &&
-        props.previewAnnotations.length > 0 ? (
-          <div className="px-3 pt-3">
-            <ComposerPreviewAnnotationCards
-              annotations={props.previewAnnotations}
-              images={props.composerImages}
-              onRemove={props.onRemovePreviewAnnotation}
-              onExpandImage={(imageId) => {
-                const preview = buildExpandedImagePreview(props.composerImages, imageId)
-                if (preview) handleExpandImage(preview)
+          <div className="w-full" style={{ maxHeight: `${maxModelPickerHeightPx}px` }}>
+            <ModelPickerContent
+              maxAvailableHeightPx={maxModelPickerHeightPx}
+              provider={props.selectedProvider}
+              activeInstanceId={props.selectedModelSelection.instanceId}
+              model={props.selectedModelSelection.model}
+              lockedProvider={props.selectedProvider}
+              providers={props.providers}
+              modelOptionsByProvider={props.modelOptionsByProvider}
+              optionDescriptors={props.modelOptionDescriptors}
+              onOptionChange={props.onModelOptionChange}
+              terminalOpen={false}
+              onRequestClose={() => setIsModelPickerOpen(false)}
+              onProviderModelChange={(provider, model, instanceId) => {
+                void props.onProviderModelChange(provider, model, instanceId)
+                setIsModelPickerOpen(false)
               }}
             />
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {!isComposerApprovalState && !activePendingUserInput && regularComposerImages.length > 0 ? (
-          <div className="px-3 pt-3">
-            <div className="flex flex-wrap gap-2">
-              {regularComposerImages.map((image) => (
-                <div
-                  key={image.id}
-                  className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
-                >
-                  <button
-                    type="button"
-                    className="h-full w-full cursor-zoom-in"
-                    aria-label={`Preview ${image.name}`}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(regularComposerImages, image.id)
-                      if (!preview) return
-                      handleExpandImage(preview)
-                    }}
-                  >
-                    <img
-                      src={image.previewUrl}
-                      alt={image.name}
-                      className="h-full w-full object-cover"
-                    />
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90"
-                    onClick={() => {
-                      props.onRemoveComposerImage(image.id)
-                    }}
-                    aria-label={`Remove ${image.name}`}
-                  >
-                    <HugeiconsIcon icon={__XIconHugeIcon} className="size-3" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
+      <input
+        ref={composerFileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleComposerFileInputChange}
+        tabIndex={-1}
+      />
 
-        <div className={cn("relative shrink-0 px-3 pb-2", hasComposerHeader ? "pt-2.5" : "pt-3")}>
-          <input
-            ref={composerFileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={handleComposerFileInputChange}
-            tabIndex={-1}
-          />
-          <div className={cn("px-3 py-2", composerDisabled && "opacity-70")}>
+      {!isExpanded ? (
+        /* Cursor Glass single-line capsule */
+        <div
+          className="relative flex items-center gap-1.5 rounded-full border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)] p-1.5"
+        >
+          {renderPlusDropdown()}
+          {renderModeChip()}
+          <div className="flex-1 min-w-0 px-1 flex items-center">
             <ComposerPromptEditor
               value={composerValue}
               cursor={props.composerCursor}
@@ -1527,229 +1858,231 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               onChange={handleComposerChange}
               onCommandKeyDown={handleComposerCommandKey}
               onPaste={props.onComposerPaste}
-              placeholder={
-                isComposerApprovalState
-                  ? (activePendingApproval?.detail ??
-                    (t as any)("assistant.chat.placeholder.resolveApproval"))
-                  : activePendingProgress
-                    ? (t as any)("assistant.chat.placeholder.customAnswer")
-                    : showPlanFollowUpPrompt
-                      ? (t as any)("assistant.chat.placeholder.planFeedback")
-                      : props.isInterrupting
-                        ? props.isForceStopAvailable
-                          ? (t as any)("assistant.chat.placeholder.forceStop")
-                          : (t as any)("assistant.chat.placeholder.stopping")
-                        : props.runtimeErrorMessage
-                          ? (t as any)("assistant.chat.placeholder.runtimeUnavailable")
-                          : phase === "error"
-                            ? (t as any)("assistant.chat.placeholder.error")
-                            : phase === "interrupted"
-                              ? (t as any)("assistant.chat.placeholder.interrupted")
-                              : phase === "stopped"
-                                ? (t as any)("assistant.chat.placeholder.stopped")
-                                : phase === "disconnected"
-                                  ? (t as any)("assistant.chat.placeholder.disconnected")
-                                  : (t as any)("assistant.chat.placeholder.default")
-              }
-              className="min-h-6 max-h-[25vh] p-0 text-sm leading-6"
+              placeholder={resolvedPlaceholder}
+              className="min-h-[22px] max-h-[22px] leading-[22px] py-0 text-[13px] overflow-hidden"
               disabled={composerDisabled}
             />
           </div>
-        </div>
-
-        {activePendingApproval ? (
-          <div className="mb-2 shrink-0 flex items-center justify-end gap-2 px-2">
-            <ComposerPendingApprovalActions
-              requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
-              isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
-              onRespondToApproval={async (requestId, decision) => {
-                await props.onApprovalDecision(String(requestId), decision)
-              }}
+          <div className="shrink-0 flex items-center gap-1.5">
+            <ProviderModelPicker
+              triggerRef={modelPickerTriggerRef}
+              provider={props.selectedProvider}
+              activeInstanceId={props.selectedModelSelection.instanceId}
+              model={props.selectedModelSelection.model}
+              lockedProvider={props.selectedProvider}
+              providers={props.providers}
+              modelOptionsByProvider={props.modelOptionsByProvider}
+              optionDescriptors={props.modelOptionDescriptors}
+              showProviderIcon={false}
+              disabled={!isChatReady || props.isRunning}
+              triggerClassName="h-7 rounded-full border-0 px-2 text-xs font-normal leading-none text-foreground/80 hover:text-foreground hover:bg-accent/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer"
+              onProviderModelChange={props.onProviderModelChange}
+              open={isModelPickerOpen}
+              onOpenChange={setIsModelPickerOpen}
             />
+            {renderSendOrStopButton()}
           </div>
-        ) : (
-          <div
-            data-chat-composer-footer="true"
-            className="mb-2.5 shrink-0 flex flex-nowrap items-center justify-between gap-2 px-3 pb-0.5"
-          >
-            <div className="flex min-w-0 shrink-0 items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-muted-foreground transition-colors hover:border-border/60 hover:bg-accent/80 hover:text-foreground sm:text-xs"
-                disabled={attachDisabled}
-                onClick={() => {
-                  composerFileInputRef.current?.click()
-                }}
-                title={`Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`}
-              >
-                <HugeiconsIcon
-                  icon={__PlusIconHugeIcon}
-                  className="size-3.5 shrink-0 stroke-[2.25]"
-                  strokeWidth={2.25}
-                />
-                {props.composerImages.length > 0 ? (
-                  <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[10px] leading-none text-primary">
-                    {props.composerImages.length}
-                  </span>
-                ) : null}
-              </Button>
-              <button
-                type="button"
-                onClick={() => void props.onToggleRuntimeMode()}
-                className={cn(
-                  "inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-2 text-xs font-normal cursor-pointer transition-colors",
-                  props.selectedRuntimeMode === "full-access"
-                    ? "text-amber-600 hover:bg-accent/60 dark:text-amber-500"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                )}
-                title={`Runtime mode: ${props.selectedRuntimeMode === "full-access" ? "Full access (runs tools without approval)" : "Approval required (asks before running tools)"}. Click to toggle.`}
-              >
-                <HugeiconsIcon
-                  icon={
-                    props.selectedRuntimeMode === "full-access"
-                      ? __CircleAlertIconHugeIcon
-                      : __LockIconHugeIcon
-                  }
-                  className="size-3.5 shrink-0"
-                />
-                <span className="whitespace-nowrap">
-                  {props.selectedRuntimeMode === "full-access" ? "Full" : "Approval"}
-                </span>
-              </button>
-            </div>
-
-            <div
-              data-chat-composer-actions="right"
-              className="flex min-w-0 max-w-[calc(100%-48px)] shrink items-center gap-1.5"
-            >
-              <ProviderModelPicker
-                triggerRef={modelPickerTriggerRef}
-                provider={props.selectedProvider}
-                activeInstanceId={props.selectedModelSelection.instanceId}
-                model={props.selectedModelSelection.model}
-                lockedProvider={props.selectedProvider}
-                providers={props.providers}
-                modelOptionsByProvider={props.modelOptionsByProvider}
-                optionDescriptors={props.modelOptionDescriptors}
-                showProviderIcon={false}
-                disabled={!isChatReady || props.isRunning}
-                triggerClassName="h-7 rounded-full border border-transparent px-2 text-xs font-normal leading-none text-foreground hover:bg-accent sm:text-xs"
-                onProviderModelChange={props.onProviderModelChange}
-                open={isModelPickerOpen}
-                onOpenChange={setIsModelPickerOpen}
+        </div>
+      ) : (
+        /* Multi-line / expanded container */
+        <div
+          className="relative flex flex-col rounded-2xl border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)] p-2.5"
+        >
+          {props.composerStatus ? <div className="shrink-0 mb-2">{props.composerStatus}</div> : null}
+          {threadRuntimeBannerState ? (
+            <div className="mb-2">
+              <ThreadRuntimeBanner
+                state={threadRuntimeBannerState}
+                detail={threadRuntimeDetail}
+                isForceStopAvailable={props.isForceStopAvailable}
+                action={
+                  <ProviderRemediationAction
+                    provider={props.selectedProvider}
+                    message={threadRuntimeDetail}
+                    authenticationRequired={props.providerSnapshot?.auth.status === "unauthenticated"}
+                  />
+                }
               />
-              {!activePendingProgress && props.activeContextWindow ? (
-                <ContextWindowMeter
-                  usage={props.activeContextWindow}
-                  accountUsage={props.activeAccountUsage}
-                  hidePercentage
-                  className="px-0.5"
+            </div>
+          ) : null}
+          {activePendingApproval ? (
+            <div className="border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
+              <ComposerPendingApprovalPanel
+                approval={activePendingApproval}
+                pendingCount={props.pendingApprovals.length}
+              />
+              <div className="p-2 flex items-center justify-end gap-2">
+                <ComposerPendingApprovalActions
+                  requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
+                  isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
+                  onRespondToApproval={async (requestId, decision) => {
+                    await props.onApprovalDecision(String(requestId), decision)
+                  }}
                 />
-              ) : null}
-              <button
-                type="button"
-                disabled
-                className="flex size-7 items-center justify-center rounded-full text-muted-foreground/50 transition-colors cursor-pointer"
-                title="Voice input (coming soon)"
-                aria-label="Voice input"
-              >
-                <HugeiconsIcon icon={__Mic01IconHugeIcon} className="size-4" />
-              </button>
-              {activePendingProgress ? (
-                <div className="flex items-center gap-2">
-                  {activePendingProgress.questionIndex > 0 ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-full"
-                      type="button"
-                      onClick={handlePreviousPendingQuestion}
-                      disabled={activePendingIsResponding}
-                    >
-                      Previous
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="rounded-full px-4"
-                    onClick={() => {
-                      if (activePendingProgress.isLastQuestion) {
-                        handleSubmitPendingUserInput()
-                        return
-                      }
-                      handleAdvancePendingQuestion()
-                    }}
-                    disabled={
-                      activePendingIsResponding ||
-                      (activePendingProgress.isLastQuestion
-                        ? !activePendingResolvedAnswers
-                        : !activePendingProgress.canAdvance)
-                    }
+              </div>
+            </div>
+          ) : activePendingUserInput ? (
+            <div className="border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
+              <ComposerPendingUserInputPanel
+                pendingUserInputs={props.pendingUserInputs}
+                respondingRequestIds={
+                  activePendingIsResponding && activePendingUserInput
+                    ? [ApprovalRequestId.makeUnsafe(String(activePendingUserInput.requestId))]
+                    : []
+                }
+                answers={activePendingDraftAnswers}
+                questionIndex={activePendingQuestionIndex}
+                onSelectOption={handleSelectPendingUserInputOption}
+                onAdvance={handleAdvancePendingQuestion}
+              />
+            </div>
+          ) : showPlanFollowUpPrompt && activeProposedPlan ? (
+            <div className="border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
+              <ComposerPlanFollowUpBanner
+                key={activeProposedPlan.id}
+                planTitle={planTitleFromMarkdown(activeProposedPlan.planMarkdown)}
+              />
+            </div>
+          ) : null}
+
+          {!isComposerApprovalState &&
+          !activePendingUserInput &&
+          props.previewAnnotations.length > 0 ? (
+            <div className="mb-2">
+              <ComposerPreviewAnnotationCards
+                annotations={props.previewAnnotations}
+                images={props.composerImages}
+                onRemove={props.onRemovePreviewAnnotation}
+                onExpandImage={(imageId) => {
+                  const preview = buildExpandedImagePreview(props.composerImages, imageId)
+                  if (preview) handleExpandImage(preview)
+                }}
+              />
+            </div>
+          ) : null}
+
+          {!isComposerApprovalState && !activePendingUserInput && regularComposerImages.length > 0 ? (
+            <div className="mb-2">
+              <div className="flex flex-wrap gap-2">
+                {regularComposerImages.map((image) => (
+                  <div
+                    key={image.id}
+                    className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-background"
                   >
-                    {activePendingIsResponding
-                      ? "Submitting..."
-                      : activePendingProgress.isLastQuestion
-                        ? "Submit answers"
-                        : "Next question"}
-                  </Button>
-                </div>
-              ) : props.isRunning ? (
+                    <button
+                      type="button"
+                      className="h-full w-full cursor-zoom-in"
+                      aria-label={`Preview ${image.name}`}
+                      onClick={() => {
+                        const preview = buildExpandedImagePreview(regularComposerImages, image.id)
+                        if (!preview) return
+                        handleExpandImage(preview)
+                      }}
+                    >
+                      <img
+                        src={image.previewUrl}
+                        alt={image.name}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90"
+                      onClick={() => {
+                        props.onRemoveComposerImage(image.id)
+                      }}
+                      aria-label={`Remove ${image.name}`}
+                    >
+                      <HugeiconsIcon icon={__XIconHugeIcon} className="size-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-1.5 px-1 py-1">
+            {renderModeChip() ? (
+              <div className="flex items-center gap-1.5">
+                {renderModeChip()}
+              </div>
+            ) : null}
+            <div className={cn(composerDisabled && "opacity-70")}>
+              <ComposerPromptEditor
+                value={composerValue}
+                cursor={props.composerCursor}
+                skills={props.providerSnapshot?.skills ?? []}
+                terminalContexts={props.terminalContexts}
+                onRemoveTerminalContext={props.onRemoveTerminalContext}
+                onChange={handleComposerChange}
+                onCommandKeyDown={handleComposerCommandKey}
+                onPaste={props.onComposerPaste}
+                placeholder={resolvedPlaceholder}
+                className="min-h-[56px] max-h-[220px] leading-relaxed py-0 text-[13px] overflow-y-auto"
+                disabled={composerDisabled}
+              />
+            </div>
+          </div>
+
+          {!activePendingApproval ? (
+            <div
+              data-chat-composer-footer="true"
+              className="mt-1 flex flex-nowrap items-center justify-between gap-2 pt-1.5 border-t border-white/[0.06]"
+            >
+              <div className="flex min-w-0 shrink-0 items-center gap-1">
+                {renderPlusDropdown()}
                 <button
                   type="button"
-                  className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/25 transition-all duration-150 hover:scale-105 hover:bg-destructive active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-                  onClick={() => {
-                    void props.onInterrupt()
-                  }}
-                  aria-label={stopButtonLabel}
-                  title={stopButtonLabel}
-                  disabled={!isChatReady || (props.isInterrupting && !props.isForceStopAvailable)}
-                >
-                  {props.isInterrupting && !props.isForceStopAvailable ? (
-                    <div className="loader" />
-                  ) : (
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 12 12"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <rect x="2" y="2" width="8" height="8" rx="1.5" />
-                    </svg>
+                  onClick={() => void props.onToggleRuntimeMode()}
+                  className={cn(
+                    "inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-2 text-xs font-normal cursor-pointer transition-colors",
+                    props.selectedRuntimeMode === "full-access"
+                      ? "text-amber-500 hover:bg-white/5"
+                      : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200",
                   )}
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:hover:scale-105 enabled:hover:bg-primary/90 enabled:active:scale-95 disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none"
-                  disabled={
-                    !isChatReady ||
-                    (props.composer.trim().length === 0 &&
-                      props.composerImages.length === 0 &&
-                      props.previewAnnotations.length === 0) ||
-                    props.isSending ||
-                    props.isBinding
-                  }
-                  aria-label={
-                    !isChatReady
-                      ? "Local runtime unavailable"
-                      : props.isBinding
-                        ? "Binding agent"
-                        : props.isSending
-                          ? "Sending"
-                          : "Send message"
-                  }
+                  title={`Runtime mode: ${props.selectedRuntimeMode === "full-access" ? "Full access" : "Approval required"}. Click to toggle.`}
                 >
-                  {renderSendIcon(props.isSending)}
+                  <HugeiconsIcon
+                    icon={
+                      props.selectedRuntimeMode === "full-access"
+                        ? __CircleAlertIconHugeIcon
+                        : __LockIconHugeIcon
+                    }
+                    className="size-3.5 shrink-0"
+                  />
+                  <span className="whitespace-nowrap">
+                    {props.selectedRuntimeMode === "full-access" ? "Full" : "Approval"}
+                  </span>
                 </button>
-              )}
+              </div>
+
+              <div
+                data-chat-composer-actions="right"
+                className="flex min-w-0 max-w-[calc(100%-48px)] shrink items-center gap-1.5"
+              >
+                <ProviderModelPicker
+                  triggerRef={modelPickerTriggerRef}
+                  provider={props.selectedProvider}
+                  activeInstanceId={props.selectedModelSelection.instanceId}
+                  model={props.selectedModelSelection.model}
+                  lockedProvider={props.selectedProvider}
+                  providers={props.providers}
+                  modelOptionsByProvider={props.modelOptionsByProvider}
+                  optionDescriptors={props.modelOptionDescriptors}
+                  showProviderIcon={false}
+                  disabled={!isChatReady || props.isRunning}
+                  triggerClassName="h-7 rounded-full border-0 px-2 text-xs font-normal leading-none text-foreground/80 hover:text-foreground hover:bg-accent/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer sm:text-xs"
+                  onProviderModelChange={props.onProviderModelChange}
+                  open={isModelPickerOpen}
+                  onOpenChange={setIsModelPickerOpen}
+                />
+                {renderSendOrStopButton()}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          ) : null}
+        </div>
+      )}
     </form>
   )
 

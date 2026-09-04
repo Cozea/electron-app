@@ -18,8 +18,8 @@ import type { Theme } from "@/lib/theme";
 import { cn } from "../../lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { useLanguage, useTranslation, LANGUAGES, type Language } from "@/lib/i18n";
-import { PROJECT_ICON_SETS, useProjectIconSetsStore } from "@/features/projects/model/projectIconSetsStore";
-import { ProjectPixelInvaderIcon } from "@/features/projects/ui/ProjectPixelInvaderIcon";
+import { PROJECT_ICON_SETS, useProjectIconSetsStore } from "@/lib/projectIconSets";
+import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckHugeIcon } from '@hugeicons/core-free-icons'

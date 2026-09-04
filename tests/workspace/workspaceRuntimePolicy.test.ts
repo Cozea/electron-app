@@ -9,7 +9,7 @@ import type {
   WorkspaceRuntimeLifecycle,
   WorkspaceRuntimeRecord,
   WorkspaceRuntimeSignals,
-} from "@/features/workspace/useWorkspaceRuntimeStore"
+} from "@/lib/workspaceRuntimeStore"
 
 const baseSignals: WorkspaceRuntimeSignals = {
   hasConnectedCollab: false,

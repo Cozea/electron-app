@@ -1,5 +1,5 @@
 import { useQueryCache } from "@/app/model/queryCache"
-import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
+import { useWorkspaceRuntimeStore } from "@/lib/workspaceRuntimeStore"
 
 /**
  * Immediately tear the deleted project out of the renderer so the workbench

@@ -9,7 +9,7 @@ import {
 import { getProviderOptionCurrentValue } from "@cozea/assistant-shared/model";
 import { memo, useMemo, type Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon as __ChevronDownIconHugeIcon, ZapIcon as __ZapIconHugeIcon } from "@hugeicons/core-free-icons";
+import { ZapIcon as __ZapIconHugeIcon } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -166,7 +166,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
                 </span>
               ) : null}
               {currentEffortLabel ? (
-                <span className="shrink-0 text-muted-foreground/60 font-normal text-xs">
+                <span className="shrink-0 text-muted-foreground font-normal text-xs">
                   {currentEffortLabel}
                 </span>
               ) : null}
@@ -181,15 +181,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
           </TooltipTrigger>
           {overflowTitle && <TooltipContent side="top">{overflowTitle}</TooltipContent>}
         </Tooltip>
-        <HugeiconsIcon
-          icon={__ChevronDownIconHugeIcon}
-          aria-hidden="true"
-          strokeWidth={2.25}
-          className={cn(
-            "size-4 shrink-0 opacity-80 stroke-[2.25] transition-transform duration-200",
-            props.open && "rotate-180",
-          )}
-        />
       </span>
     </button>
   );

@@ -14,7 +14,7 @@ import { DevAppIcon } from "@/features/devapps/components/DevAppIcon";
 import { getDevAppForAssistantProvider } from "@/features/devapps/registry";
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
 import { Button } from "@/components/ui/button";
-import { updateAssistantProvider } from "@/features/workbench/assistant/assistantRuntimeMetadataStore";
+import { updateAssistantProvider } from "@/features/assistant/model/assistantRuntimeMetadataStore";
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
@@ -111,9 +111,9 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
             {updateFeedback.message ?? "The provider version did not change."}
           </p>
           {updateFeedback.output ? (
-            <details className="text-xs text-muted-foreground">
+            <details className="relative text-xs text-muted-foreground">
               <summary className="cursor-pointer select-none">Update details</summary>
-              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono text-[11px]">
+              <pre className="absolute left-0 right-0 top-full z-10 mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-secondary/95 p-2.5 font-mono text-[11px] shadow-lg backdrop-blur-md">
                 {updateFeedback.output}
               </pre>
             </details>

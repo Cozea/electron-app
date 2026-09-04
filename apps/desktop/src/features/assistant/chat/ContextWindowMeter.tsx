@@ -5,6 +5,7 @@ import {
   type AccountUsageLimitWindow,
   formatUsageLimitReset,
 } from "../lib/usageLimits";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 
 function formatPercentage(value: number | null): string | null {
@@ -22,11 +23,20 @@ export function ContextWindowMeter(props: {
   accountUsage?: AccountUsageLimitSnapshot | null;
   hidePercentage?: boolean;
   className?: string;
+  children?: React.ReactNode;
+  disableTooltip?: boolean;
 }) {
-  const { usage, accountUsage = null, hidePercentage = false, className } = props;
+  const {
+    usage,
+    accountUsage = null,
+    hidePercentage = false,
+    className,
+    children,
+    disableTooltip = false,
+  } = props;
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
-  const radius = 8.25;
+  const radius = children ? 14 : 8.25;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (normalizedPercentage / 100) * circumference;
 
@@ -35,7 +45,7 @@ export function ContextWindowMeter(props: {
       ? "text-rose-500"
       : normalizedPercentage >= 75
         ? "text-amber-500"
-        : "text-foreground/80";
+        : "text-foreground/80 dark:text-white/80";
   const contextValue =
     usage.maxTokens !== null && usedPercentage
       ? `${usedPercentage} used · ${formatContextWindowTokens(usage.usedTokens)}/${formatContextWindowTokens(usage.maxTokens ?? null)}`
@@ -51,6 +61,99 @@ export function ContextWindowMeter(props: {
     .filter((window) => window.resetsAt !== null)
     .toSorted((left, right) => String(left.resetsAt).localeCompare(String(right.resetsAt)))[0];
   const nextReset = nextResetWindow ? formatUsageLimitReset(nextResetWindow.resetsAt) : null;
+
+  if (children) {
+    const ringContent = (
+      <div
+        className={cn(
+          "group relative inline-flex size-8 shrink-0 items-center justify-center cursor-pointer",
+          className,
+        )}
+        aria-label={`Context window ${contextValue}. AI usage left ${accountUsageValue}`}
+      >
+        <svg
+          viewBox="0 0 32 32"
+          className="pointer-events-none -rotate-90 absolute inset-0 h-full w-full transform-gpu"
+          aria-hidden="true"
+        >
+          <circle
+            cx="16"
+            cy="16"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            className="text-foreground/15 dark:text-white/10 transition-colors duration-200 group-hover:text-foreground/25 dark:group-hover:text-white/25"
+          />
+          <circle
+            cx="16"
+            cy="16"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+            className={cn(
+              "transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:transition-none group-hover:brightness-125",
+              progressColorClass,
+            )}
+          />
+        </svg>
+        {children}
+      </div>
+    );
+
+    if (disableTooltip) {
+      return ringContent;
+    }
+
+    return (
+      <Tooltip>
+        <TooltipTrigger render={ringContent} />
+        <TooltipPopup
+          side="top"
+          align="end"
+          sideOffset={8}
+          className="w-[16.5rem] max-w-[calc(100vw-1rem)] p-3 rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl text-popover-foreground pointer-events-none dark:border-white/[0.08]"
+        >
+          <div className="space-y-2 text-xs leading-tight">
+            <div
+              data-usage-row="context"
+              className="flex items-start justify-between gap-4"
+            >
+              <span className="shrink-0 text-muted-foreground">Context</span>
+              <span className="min-w-0 text-right font-medium tabular-nums text-foreground">
+                {contextValue}
+              </span>
+            </div>
+            <div
+              data-usage-row="account"
+              className="flex items-start justify-between gap-4 border-t border-border/60 pt-2"
+            >
+              <span className="shrink-0 text-muted-foreground">AI usage left</span>
+              <span className="min-w-0 text-right tabular-nums">
+                <span
+                  className={cn(
+                    "font-medium",
+                    hasAccountUsage ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {accountUsageValue}
+                </span>
+                {nextReset ? (
+                  <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                    {nextResetWindow?.label} {nextReset.toLowerCase()}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+          </div>
+        </TooltipPopup>
+      </Tooltip>
+    );
+  }
 
   return (
     <Popover>

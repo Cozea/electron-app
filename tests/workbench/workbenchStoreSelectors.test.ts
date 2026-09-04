@@ -7,7 +7,7 @@ import {
   selectProjectWorkbench,
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 describe("workbench store selectors", () => {
   beforeEach(() => {
@@ -415,5 +415,33 @@ describe("workbench store selectors", () => {
     );
 
     expect(readTile()).not.toHaveProperty("autoStart");
+  });
+});
+
+describe("workbench store recency", () => {
+  beforeEach(() => {
+    useProjectWorkbenchStore.setState({ workbenches: {}, lastActiveScopeKey: null });
+  });
+
+  it("names the bench most recently brought on screen", () => {
+    const actions = useProjectWorkbenchStore.getState().actions;
+    actions.ensureWorkbench("project-1", "collab", "workspace-1");
+    actions.ensureWorkbench("project-2", "feature", "workspace-2");
+
+    expect(useProjectWorkbenchStore.getState().lastActiveScopeKey).toBe(
+      buildWorkbenchScopeKey("project-2", "feature", "workspace-2"),
+    );
+
+    actions.ensureWorkbench("project-1", "collab", "workspace-1");
+
+    expect(useProjectWorkbenchStore.getState().lastActiveScopeKey).toBe(
+      buildWorkbenchScopeKey("project-1", "collab", "workspace-1"),
+    );
+  });
+
+  it("starts with no answer rather than a stale one", () => {
+    // Session state, deliberately outside partialize: on a cold start nobody
+    // has been anywhere, and last week's bench is a worse guess than none.
+    expect(useProjectWorkbenchStore.getState().lastActiveScopeKey).toBeNull();
   });
 });

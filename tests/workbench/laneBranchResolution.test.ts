@@ -5,7 +5,7 @@ import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
   migratePersistedWorkbenchState,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 describe('resolveLaneBranchKnowledge', () => {
   it('uses a fresh git branch and asks to persist it', () => {

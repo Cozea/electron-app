@@ -1,3 +1,12 @@
+/**
+ * The project shell's title-bar slots, filled by whichever route is mounted.
+ *
+ * App-shell state rather than project domain: the workbench surface, the team
+ * page, the DevApps store and DevApp settings all publish into it, and it knows
+ * nothing about a project beyond having "Project" in its name. That name is why
+ * the DevApps store had to import the projects feature to render its own header.
+ */
+
 import { create } from "zustand"
 import type { ReactNode } from "react"
 

@@ -7,7 +7,7 @@ import {
 
 import type {
   WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 

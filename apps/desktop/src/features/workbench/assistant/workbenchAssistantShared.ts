@@ -28,7 +28,9 @@ import {
   selectProjectWorkbench,
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
+
+export { toErrorMessage } from "@/features/assistant/lib/assistantErrors"
 
 export interface DiffDialogState {
   title: string
@@ -51,18 +53,6 @@ export function basenameFromPath(value: string | null): string {
 
   const segments = value.split(/[\\/]/).filter(Boolean)
   return segments.at(-1) ?? value
-}
-
-export function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-
-  if (typeof error === "string" && error.trim()) {
-    return error
-  }
-
-  return "Something went wrong while talking to the local assistant runtime."
 }
 
 export function deriveAssistantTurnRunning(input: {

@@ -10,12 +10,12 @@ import { useWorkbenchAssistantTileController } from "@/features/workbench/assist
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { registerPreviewAnnotationComposerTarget } from "@/features/browser/previewAnnotationComposerRegistry"
-import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/features/workbench/model/workbenchStore"
+import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/lib/workbenchStore"
 import {
   flushWorkbenchStorage,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from "@hugeicons/react"

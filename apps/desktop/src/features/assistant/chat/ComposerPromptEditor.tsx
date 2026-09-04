@@ -1274,12 +1274,12 @@ function ComposerPromptEditorInner({
 
   return (
     <ComposerTerminalContextActionsContext.Provider value={terminalContextActions}>
-      <div className="relative">
+      <div className="relative w-full">
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
               className={cn(
-                "block max-h-[200px] min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[14px] leading-relaxed text-foreground focus:outline-none",
+                "block max-h-[200px] min-h-[22px] w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[13px] leading-[22px] text-foreground focus:outline-none",
                 className,
               )}
               data-testid="composer-editor"
@@ -1290,7 +1290,7 @@ function ComposerPromptEditorInner({
           }
           placeholder={
             terminalContexts.length > 0 ? null : (
-              <div className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] leading-relaxed text-muted-foreground">
+              <div className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-[22px] text-muted-foreground/60 select-none">
                 {placeholder}
               </div>
             )

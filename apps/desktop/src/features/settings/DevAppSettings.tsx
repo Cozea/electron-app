@@ -18,9 +18,9 @@ import { formatDevAppRef } from "@shared/devAppRef"
 import { featureFlags } from "@/lib/featureFlags"
 import { useTranslation } from "@/lib/i18n"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
+import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
-import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader"
+import { useProjectHeader } from "@/lib/useProjectHeader"
 import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
@@ -370,7 +370,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("appStore.searchPlaceholder")}
-              className="h-8 rounded-full bg-muted/60 pl-8 pr-3 text-xs"
+              className="h-8 rounded-search bg-muted/60 pl-8 pr-3 text-xs"
             />
           </div>
         </div>

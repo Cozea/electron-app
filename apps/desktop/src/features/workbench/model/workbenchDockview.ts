@@ -4,17 +4,15 @@ import type {
   IDockviewPanel,
 } from "dockview-react"
 
+import type { WorkbenchSelectionTile, WorkbenchTile, WorkbenchTileType } from "@/lib/workbenchTileContract"
 import type {
   WorkbenchProjectState,
-  WorkbenchSelectionTile,
-  WorkbenchTile,
-  WorkbenchTileType,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
+import { type RenderableWorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
   CHANGES_DOCK_DEFINITION,
   getWorkbenchDockDefinition,
   getWorkbenchTileDefinition,
-  type RenderableWorkbenchTileType,
   type WorkbenchTabGroupPreset,
 } from "@/features/workbench/model/workbenchTileRegistry"
 import type { WorkbenchDockPanelParams } from "@/features/workbench/WorkbenchDockRuntimeContext"

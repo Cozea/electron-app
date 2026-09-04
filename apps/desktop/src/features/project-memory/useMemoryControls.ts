@@ -28,7 +28,7 @@ import {
 import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 /**
  * State shared by the Memory tile body and its header controls.

@@ -14,7 +14,7 @@ import {
   selectAssistantThreadById,
   useStore,
 } from "@/features/assistant/model/assistantStore"
-import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/features/workbench/model/workbenchStore"
+import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/lib/workbenchStore"
 
 import {
   basenameFromPath,

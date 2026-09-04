@@ -5,7 +5,7 @@ import {
   CursorIcon as WorkbenchCursorIcon,
   VisualStudioCodeIcon,
   ZedIcon,
-} from "@/features/workbench/WorkbenchEditorIcons"
+} from "@/components/EditorBrandIcons"
 
 export type Icon = React.FC<SVGProps<SVGSVGElement>>
 

@@ -19,7 +19,7 @@ import {
   onServerProvidersUpdated,
 } from "@/lib/wsNativeApi"
 
-import { toErrorMessage } from "./workbenchAssistantShared"
+import { toErrorMessage } from "@/features/assistant/lib/assistantErrors"
 
 export type AssistantRuntimePhase = "idle" | "starting" | "ready" | "error"
 

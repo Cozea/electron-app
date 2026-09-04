@@ -1,4 +1,4 @@
-import type { WorkbenchDevServerTile } from "@/features/workbench/model/workbenchStore";
+import type { WorkbenchDevServerTile } from "@/lib/workbenchTileContract"
 
 export interface WorkbenchRuntimeTarget {
   projectId: string;

@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/contexts/project/projectRoutes"
-import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/features/projects/model/createProjectDialogStore"
+import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
 import { useTranslation } from "@/lib/i18n"
 
