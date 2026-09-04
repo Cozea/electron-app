@@ -1,16 +1,21 @@
-import type { CollabWsProvider } from "@/features/collaboration/runtime/CollaborationTransport"
-import type { YjsProjectDoc } from "@/lib/yjs/YjsProjectDoc"
+import type * as Y from "yjs"
 
 export interface CollaborationCommitSnapshot {
   sequence: number
   files: Array<{ path: string; content: string }>
 }
 
+export interface CollaborationTransportHandle {
+  requestBarrier(timeoutMs?: number): Promise<number>
+  sendMediaSignal(targetClientId: string, signal: unknown): void
+  setMediaState(state: { audio: boolean; screenShare: boolean }): void
+}
+
 export interface CollaborationRuntimeEntry {
   projectId: string
   sessionId: string
-  provider: CollabWsProvider
-  document: YjsProjectDoc
+  provider: CollaborationTransportHandle
+  document: Y.Doc
 }
 
 const entries = new Map<string, CollaborationRuntimeEntry>()
@@ -47,7 +52,8 @@ export async function captureCollaborationCommitSnapshot(
   if (!entry) throw new Error("The live collaboration runtime is not connected")
 
   const sequence = await entry.provider.requestBarrier()
-  const files = [...entry.document.files.entries()]
+  const fileMap = entry.document.getMap<Y.Text>("files")
+  const files = [...fileMap.entries()]
     .map(([path, text]) => ({ path, content: text.toString() }))
     .sort((left, right) => left.path.localeCompare(right.path))
   return { sequence, files }
