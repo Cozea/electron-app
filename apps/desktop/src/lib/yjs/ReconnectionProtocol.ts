@@ -89,19 +89,11 @@ export class ReconnectionProtocol {
         const localContent = localFile.toString()
         if (localContent.length === 0) continue
 
-        let deletedBy: string | null = null
-        if (tombstone.deletedBy) {
-          const user = await this.convex.query(api.users.getById, {
-            userId: tombstone.deletedBy,
-          })
-          if (user) {
-            deletedBy =
-              `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
-              user.email
-          }
-        } else if (tombstone.deletedByAgent) {
-          deletedBy = tombstone.deletedByAgent
-        }
+        // `userId` is already the machine-backed principal. Conflict recovery
+        // does not need a second account/profile lookup, and that lookup may be
+        // forbidden when inspecting another collaborator's tombstone.
+        const deletedBy = tombstone.deletedByAgent ??
+          (tombstone.deletedBy ? String(tombstone.deletedBy) : null)
 
         conflicts.push({
           filePath: tombstone.filePath,
