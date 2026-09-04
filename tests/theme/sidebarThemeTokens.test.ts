@@ -117,5 +117,6 @@ describe('left sidebar theme tokens', () => {
     // Every sprite rule carries the base class, so one rule disables them all.
     expect(reducedMotionContent).toContain('.cozea-sprite-active')
     expect(reducedMotionContent).toContain('animation: none !important')
+    expect(reducedMotionContent).toMatch(/\.assistant-text-enter,\s*\.assistant-tool-enter\s*\{\s*animation: none;/)
   })
 })

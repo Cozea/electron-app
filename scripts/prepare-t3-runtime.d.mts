@@ -8,3 +8,7 @@ export function patchT3ServerBundleProviderDefaults(source: string): {
   source: string;
   changed: boolean;
 };
+export function patchT3ServerBundleProviderUpdates(source: string): {
+  source: string;
+  changed: boolean;
+};

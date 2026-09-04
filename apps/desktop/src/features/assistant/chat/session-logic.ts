@@ -34,6 +34,8 @@ export const PROVIDER_OPTIONS: ReadonlyArray<{
 export interface WorkLogEntry {
   id: string;
   createdAt: string;
+  /** First lifecycle event anchors presentation; id/createdAt still describe the latest event. */
+  timelineOrigin?: { id: string; createdAt: string };
   turnId?: TurnId | null;
   label: string;
   detail?: string;
@@ -546,9 +548,9 @@ export function deriveTimelineEntries(
     proposedPlan,
   }));
   const workRows: TimelineEntry[] = workEntries.map((entry) => ({
-    id: entry.id,
+    id: entry.timelineOrigin?.id ?? entry.id,
     kind: "work",
-    createdAt: entry.createdAt,
+    createdAt: entry.timelineOrigin?.createdAt ?? entry.createdAt,
     entry,
   }));
   return [...messageRows, ...proposedPlanRows, ...workRows].sort((a, b) =>

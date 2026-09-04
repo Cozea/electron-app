@@ -296,6 +296,7 @@ function mergeDerivedWorkLogEntries(
   return {
     ...previous,
     ...next,
+    timelineOrigin: previous.timelineOrigin ?? { id: previous.id, createdAt: previous.createdAt },
     ...(detail ? { detail } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),

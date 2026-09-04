@@ -2,6 +2,7 @@ import { type OrchestrationThreadActivity, TurnId } from "@cozea/assistant-contr
 import { describe, expect, it } from "vitest";
 
 import { deriveWorkLogEntries } from "@/features/assistant/chat/workLogDerivations";
+import { deriveTimelineEntries } from "@/features/assistant/chat/session-logic";
 
 import { makeActivity } from "./activityFixture";
 
@@ -45,6 +46,42 @@ if (typeof globalWithCanvas.OffscreenCanvas === "undefined") {
 }
 
 describe("deriveWorkLogEntries", () => {
+  it("keeps lifecycle presentation anchored while adopting the latest tool payload", () => {
+    const started = makeActivity({ id: "start", createdAt: "2026-09-05T00:00:00Z",
+      kind: "tool.started", turnId: "turn", payload: { toolCallId: "call", itemType: "mcp_tool_call", status: "inProgress" } });
+    const narration = makeActivity({ id: "narration", createdAt: "2026-09-05T00:00:01Z",
+      kind: "work.log", tone: "info", summary: "Progress report" });
+    const updated = makeActivity({ id: "update", createdAt: "2026-09-05T00:00:02Z",
+      kind: "tool.updated", turnId: "turn", payload: { toolCallId: "call", itemType: "mcp_tool_call", status: "inProgress", detail: "Still running" } });
+    const completed = makeActivity({ id: "complete", createdAt: "2026-09-05T00:00:03Z",
+      kind: "tool.completed", turnId: "turn", payload: { toolCallId: "call", itemType: "mcp_tool_call", status: "completed", detail: "Finished" } });
+
+    for (const activities of [[started, narration], [started, narration, updated], [started, narration, updated, completed]]) {
+      const entries = deriveWorkLogEntries(activities, undefined);
+      const timeline = deriveTimelineEntries([], [], entries);
+      expect(timeline.map((row) => row.id)).toEqual(["start", "narration"]);
+      expect(timeline[0]?.createdAt).toBe(started.createdAt);
+    }
+    const completedEntry = deriveWorkLogEntries([started, updated, completed], undefined)[0];
+    expect(completedEntry).toMatchObject({
+      id: "complete", createdAt: completed.createdAt, detail: "Finished",
+      timelineOrigin: { id: "start", createdAt: started.createdAt },
+    });
+  });
+
+  it("does not reorder parallel tools when the first one receives an update", () => {
+    const activities = [
+      makeActivity({ id: "first", createdAt: "2026-09-05T00:00:00Z", turnId: "turn",
+        payload: { toolCallId: "a", itemType: "mcp_tool_call", status: "inProgress" } }),
+      makeActivity({ id: "second", createdAt: "2026-09-05T00:00:01Z", turnId: "turn",
+        payload: { toolCallId: "b", itemType: "mcp_tool_call", status: "inProgress" } }),
+      makeActivity({ id: "first-update", createdAt: "2026-09-05T00:00:02Z", kind: "tool.updated", turnId: "turn",
+        payload: { toolCallId: "a", itemType: "mcp_tool_call", status: "inProgress" } }),
+    ];
+    expect(deriveTimelineEntries([], [], deriveWorkLogEntries(activities, undefined)).map((row) => row.id))
+      .toEqual(["first", "second"]);
+  });
+
   it("folds image generation lifecycle rows and adopts the provider prompt title on completion", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
