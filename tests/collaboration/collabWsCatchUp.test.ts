@@ -68,16 +68,19 @@ function internals(provider: CollabWsProvider): ProviderInternals {
   return provider as unknown as ProviderInternals
 }
 
+function mockDecodedUpdates(testProvider: ProviderInternals): void {
+  vi.spyOn(testProvider, "decodeInboundBytes").mockResolvedValue({
+    bytes: new Uint8Array(),
+    metadata: {},
+  })
+  vi.spyOn(testProvider, "applyRemoteUpdate").mockImplementation(() => undefined)
+}
+
 describe("CollabWsProvider catch-up", () => {
   it("requests another page after a full 128-update delta", async () => {
     const { provider, doc, awareness } = createProvider()
     const testProvider = internals(provider)
-
-    vi.spyOn(testProvider, "decodeInboundBytes").mockResolvedValue({
-      bytes: new Uint8Array(),
-      metadata: {},
-    })
-    vi.spyOn(testProvider, "applyRemoteUpdate").mockImplementation(() => undefined)
+    mockDecodedUpdates(testProvider)
     const requestNextPage = vi
       .spyOn(testProvider, "requestInitialSync")
       .mockImplementation(() => undefined)
@@ -138,12 +141,7 @@ describe("CollabWsProvider catch-up", () => {
   it("continues catch-up when the room advertises a later head", async () => {
     const { provider, doc, awareness } = createProvider()
     const testProvider = internals(provider)
-
-    vi.spyOn(testProvider, "decodeInboundBytes").mockResolvedValue({
-      bytes: new Uint8Array(),
-      metadata: {},
-    })
-    vi.spyOn(testProvider, "applyRemoteUpdate").mockImplementation(() => undefined)
+    mockDecodedUpdates(testProvider)
     const requestNextPage = vi
       .spyOn(testProvider, "requestInitialSync")
       .mockImplementation(() => undefined)
@@ -162,6 +160,32 @@ describe("CollabWsProvider catch-up", () => {
 
     expect(provider.getKnownSeq()).toBe(25)
     expect(requestNextPage).toHaveBeenCalledTimes(1)
+
+    awareness.destroy()
+    doc.destroy()
+  })
+
+  it("refuses an out-of-order live delta and requests the missing contiguous range", async () => {
+    const { provider, doc, awareness } = createProvider()
+    const testProvider = internals(provider)
+    mockDecodedUpdates(testProvider)
+    const requestMissingRange = vi
+      .spyOn(testProvider, "requestInitialSync")
+      .mockImplementation(() => undefined)
+
+    await testProvider.handleIncoming(JSON.stringify({
+      type: "sync.delta",
+      payload: {
+        roomId: "project:project_1",
+        fromSeq: 8,
+        toSeq: 9,
+        updatesBinary: ["update-9"],
+      },
+    }))
+
+    expect(provider.getKnownSeq()).toBe(0)
+    expect(testProvider.decodeInboundBytes).not.toHaveBeenCalled()
+    expect(requestMissingRange).toHaveBeenCalledTimes(1)
 
     awareness.destroy()
     doc.destroy()
@@ -186,7 +210,7 @@ describe("CollabWsProvider catch-up", () => {
     doc.destroy()
   })
 
-  it("advances on an acknowledgement for a locally applied update", async () => {
+  it("clears a durable local update without pretending its global sequence is applied", async () => {
     const { provider, doc, awareness } = createProvider()
     const testProvider = internals(provider)
     const localUpdate: TestPendingUpdate = {
@@ -207,7 +231,7 @@ describe("CollabWsProvider catch-up", () => {
       },
     }))
 
-    expect(provider.getKnownSeq()).toBe(9)
+    expect(provider.getKnownSeq()).toBe(0)
     expect(testProvider.localUpdatesById.has(localUpdate.idempotencyKey)).toBe(false)
     expect(testProvider.pendingUpdates).toHaveLength(0)
 
