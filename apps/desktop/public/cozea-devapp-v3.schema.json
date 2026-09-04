@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.cozea.dev/schemas/cozea-devapp-v3.schema.json",
+  "title": "Cozea DevApp manifest v3",
+  "description": "A Cozea DevApp with native React surfaces, optional web applications, services, and extension-host contributions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "id",
+    "name",
+    "version",
+    "engines",
+    "contributes"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "const": 3
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$",
+      "maxLength": 128
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cozea",
+        "nativeApi"
+      ],
+      "properties": {
+        "cozea": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "nativeApi": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "rendererModules": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entry"
+        ],
+        "properties": {
+          "entry": {
+            "$ref": "#/$defs/packagePath"
+          },
+          "styles": {
+            "$ref": "#/$defs/packagePath"
+          }
+        }
+      }
+    },
+    "webApplications": {
+      "type": "object"
+    },
+    "extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry"
+      ],
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/packagePath"
+        }
+      }
+    },
+    "services": {
+      "type": "object"
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "project.read",
+              "project.write",
+              "project.metadata",
+              "git.read",
+              "git.write",
+              "fs.read",
+              "fs.write",
+              "terminal.spawn",
+              "process.spawn",
+              "net.outbound",
+              "shell.open",
+              "shell.reveal"
+            ]
+          }
+        },
+        "optional": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "project.read",
+              "project.write",
+              "project.metadata",
+              "git.read",
+              "git.write",
+              "fs.read",
+              "fs.write",
+              "terminal.spawn",
+              "process.spawn",
+              "net.outbound",
+              "shell.open",
+              "shell.reveal"
+            ]
+          }
+        }
+      }
+    },
+    "build": {
+      "type": "object"
+    },
+    "contributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "surfaces"
+      ],
+      "properties": {
+        "surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object"
+          }
+        },
+        "commands": {
+          "type": "array"
+        },
+        "skills": {
+          "type": "array"
+        },
+        "settings": {
+          "type": "array"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "packagePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?![\\\\/])(?![A-Za-z]:)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+$"
+    }
+  }
+}
