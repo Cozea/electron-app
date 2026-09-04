@@ -11,6 +11,7 @@ an extension-host module, commands, settings, agent skills, and background servi
 ```ts
 import { createDevAppClient, createDevAppWorker } from "@cozea/devapp-api"
 import { defineNativeDevApp, useDevAppContext } from "@cozea/devapp-api/native"
+import { Button, Panel, PanelToolbar } from "@cozea/devapp-api/ui"
 import { defineDevAppExtension } from "@cozea/devapp-api/extension"
 import { parseDevAppManifestV3 } from "@cozea/devapp-api/manifest"
 ```
@@ -19,6 +20,8 @@ import { parseDevAppManifestV3 } from "@cozea/devapp-api/manifest"
   web-backed packages during the platform transition.
 - `native` is the renderer ABI. Cozea supplies React, the host context, theme, settings, storage,
   and capability-scoped requests. Native bundles must externalize React and this entry point.
+- `ui` is the stable host-component surface. It deliberately exposes a small set rather than
+  private Cozea components, so applications do not bind themselves to the repository layout.
 - `extension` is the device extension-host ABI. It does not expose Electron or Node directly;
   privileged operations are authorized by Cozea main.
 - `manifest` exposes the version-3 authoring/release contracts and fail-closed parser.
@@ -33,14 +36,14 @@ import {
   useDevAppContext,
   type NativeDevAppSurfaceProps,
 } from "@cozea/devapp-api/native"
+import { Button } from "@cozea/devapp-api/ui"
 
 function Counter({ instanceState, setInstanceState }: NativeDevAppSurfaceProps) {
   const host = useDevAppContext()
   const [count, setCount] = useState(0)
 
   return (
-    <button
-      type="button"
+    <Button
       onClick={() => {
         const next = count + 1
         setCount(next)
@@ -49,7 +52,7 @@ function Counter({ instanceState, setInstanceState }: NativeDevAppSurfaceProps) 
       }}
     >
       Count: {count}
-    </button>
+    </Button>
   )
 }
 

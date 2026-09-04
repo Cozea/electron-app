@@ -5,6 +5,7 @@ import {
   type DevAppJsonValue,
   type NativeDevAppSurfaceProps,
 } from "@cozea/devapp-api/native";
+import { Button, Panel, PanelToolbar } from "@cozea/devapp-api/ui";
 
 function countFromState(value: DevAppJsonValue | undefined): number {
   if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
@@ -45,25 +46,19 @@ export function Counter({
   );
 
   return (
-    <section data-native-counter>
+    <Panel data-native-counter>
+      <PanelToolbar
+        title="Counter"
+        description={`${host.identity.appId} · ${host.surface.instanceId}`}
+      />
       <p className="counter-eyebrow">COZEA NATIVE DEVAPP</p>
-      <h1>Counter</h1>
       <output aria-live="polite">{count}</output>
       <div className="counter-actions">
-        <button type="button" onClick={() => commitCount(count - step)}>
-          Subtract {step}
-        </button>
-        <button type="button" onClick={() => commitCount(0)}>
-          Reset
-        </button>
-        <button type="button" onClick={() => commitCount(count + step)}>
-          Add {step}
-        </button>
+        <Button onClick={() => commitCount(count - step)}>Subtract {step}</Button>
+        <Button onClick={() => commitCount(0)}>Reset</Button>
+        <Button onClick={() => commitCount(count + step)}>Add {step}</Button>
       </div>
-      <small>
-        {host.identity.appId} · {host.surface.instanceId}
-      </small>
-    </section>
+    </Panel>
   );
 }
 

@@ -9,17 +9,30 @@
   background: var(--content-surface);
 }
 
+[data-cozea-devapp="dev.cozea.examples.counter"] [data-cozea-devapp-toolbar] {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] [data-cozea-devapp-toolbar-copy] {
+  display: grid;
+  gap: 0.25rem;
+}
+
+[data-cozea-devapp="dev.cozea.examples.counter"] [data-cozea-devapp-toolbar-copy] span {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
 [data-cozea-devapp="dev.cozea.examples.counter"] .counter-eyebrow {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.16em;
-}
-
-[data-cozea-devapp="dev.cozea.examples.counter"] h1 {
-  margin: 0;
-  font-size: 2rem;
 }
 
 [data-cozea-devapp="dev.cozea.examples.counter"] output {
@@ -35,7 +48,7 @@
   gap: 0.5rem;
 }
 
-[data-cozea-devapp="dev.cozea.examples.counter"] button {
+[data-cozea-devapp="dev.cozea.examples.counter"] [data-cozea-devapp-button] {
   min-height: 2.25rem;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
@@ -45,10 +58,6 @@
   cursor: pointer;
 }
 
-[data-cozea-devapp="dev.cozea.examples.counter"] button:hover {
+[data-cozea-devapp="dev.cozea.examples.counter"] [data-cozea-devapp-button]:hover {
   background: var(--accent);
-}
-
-[data-cozea-devapp="dev.cozea.examples.counter"] small {
-  color: var(--muted-foreground);
 }
