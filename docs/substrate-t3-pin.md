@@ -1,11 +1,11 @@
 # T3 substrate pin
 
-Date: 2026-09-02
+Date: 2026-09-05
 
 | Field | Value |
 | --- | --- |
 | Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Required pin SHA | `46c3f1217730a819fc79e95b7684784312269602` (`46c3f121`) |
+| Required pin SHA | `7df4f790351db6075d3334f2d29646c97ddbcfe9` (`7df4f790`) |
 | Recorded by | Parent repository `vendor/t3code` gitlink |
 | Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
@@ -31,3 +31,12 @@ The patch is intentionally maintained in the parent repository so a clean clone,
 CI build, or packaged app does not depend on local settings or an unpublished
 submodule commit. `bun run prepare:t3-runtime:check` validates every bundle anchor
 and fails loudly after a T3 repin until the policy patch is reviewed and refreshed.
+
+## Codex history compatibility
+
+This pin accepts completed sub-agent activity, newer collaboration tools/statuses,
+account plans, and rate-limit errors in saved Codex history. Generator overrides
+and generated schemas come from upstream fixes #8346, #8447, and #8897. Decode
+failures preserve the native thread binding and surface an actionable compatibility
+message. The broader upstream provider integration is tracked in
+`docs/upstream-provider-integration-plan.md`.
