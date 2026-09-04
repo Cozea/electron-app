@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
-import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
 import { useProjectWorkspaceResolution } from '@/features/workspace/useProjectWorkspaceResolution'
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { CodeMirrorMergeViewer } from '@/features/source-control/components/changes/CodeMirrorMergeViewer'

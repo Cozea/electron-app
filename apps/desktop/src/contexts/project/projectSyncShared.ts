@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { Id } from "../../../../../../convex/_generated/dataModel";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import type { CollabEncryptionBootstrap } from "@/features/collaboration/hooks/useCollabSession";
 import type { SyncProgress } from "@/lib/sync/types";
 

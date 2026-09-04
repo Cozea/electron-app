@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react"
 
-import type { Id } from "../../../../../../convex/_generated/dataModel"
+import type { Id } from "../../../../../convex/_generated/dataModel"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
 import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
@@ -19,7 +19,7 @@ import {
   IDLE_SYNC_PROGRESS,
   ProjectSyncContext,
   type ProjectSyncProviderProps,
-} from "@/features/projects/contexts/projectSyncShared"
+} from "@/contexts/project/projectSyncShared"
 import { useProjectCheckpointCleanup } from "@/features/source-control/hooks/useProjectCheckpointCleanup"
 import type { SyncProgress } from "@/lib/sync/types"
 

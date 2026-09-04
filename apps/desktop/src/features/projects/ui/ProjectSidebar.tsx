@@ -21,7 +21,7 @@ import {
   publishOrgDevAppFromWorkspace,
   type OrgDevAppPublishStage,
 } from "@/features/devapps/orgDevAppPublishing";
-import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
+import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState";

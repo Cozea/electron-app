@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
+import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectHeader } from "@/features/projects/hooks/useProjectHeader";
 import {

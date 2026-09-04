@@ -17,7 +17,7 @@ import type { ContextMenuItem } from '@cozea/assistant-contracts'
 
 import { api } from '../../../../../../convex/_generated/api'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
-import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
 import { useOptionalProjectRouteContext } from '@/features/projects/contexts/ProjectRouteContext'
 import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
 import { markSyncFeedAsSeen } from '../syncFeedSeen'

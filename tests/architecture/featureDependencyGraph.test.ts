@@ -76,11 +76,7 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
     pair: ["projects", "source-control"],
     thinEdge: "source-control -> projects",
-    reaches: [
-      "hooks/useAccessibleProject",
-      "contexts/ProjectRouteContext",
-      "contexts/ProjectSyncContext",
-    ],
+    reaches: ["contexts/ProjectRouteContext", "contexts/ProjectSyncContext"],
   },
   {
     pair: ["projects", "tasks"],
@@ -103,8 +99,6 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     reaches: [
       "contexts/ProjectRouteContext",
       "contexts/ProjectSyncContext",
-      "contexts/ProjectSyncProviderRuntime",
-      "contexts/projectSyncShared",
       "lib/projectRoutes",
       "lib/localProjectImport",
       "lib/projectNavigationState",

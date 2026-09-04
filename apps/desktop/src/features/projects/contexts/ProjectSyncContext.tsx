@@ -9,7 +9,7 @@ export {
   type CollabSessionStatus,
   type ProjectSyncContextValue,
   type ProjectSyncProviderProps,
-} from "@/features/projects/contexts/projectSyncShared"
+} from "@/contexts/project/projectSyncShared"
 
 import {
   EMPTY_YJS_PROJECT_CONTEXT_VALUE,
@@ -18,7 +18,7 @@ import {
 import {
   ProjectSyncContext,
   type ProjectSyncProviderProps,
-} from "@/features/projects/contexts/projectSyncShared"
+} from "@/contexts/project/projectSyncShared"
 import {
   resolveWorkspaceRuntimeId,
   useWorkspaceRuntimeStore,

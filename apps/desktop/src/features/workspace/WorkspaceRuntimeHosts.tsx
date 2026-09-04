@@ -4,7 +4,7 @@ import {
   useYjsProject,
 } from "@/contexts/YjsProjectContextValue"
 import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
-import { ProjectSyncProviderRuntime } from "@/features/projects/contexts/ProjectSyncProviderRuntime"
+import { ProjectSyncProviderRuntime } from "@/contexts/project/ProjectSyncProviderRuntime"
 import {
   useWorkspaceRuntimeStore,
   type WorkspaceRuntimeRecord,

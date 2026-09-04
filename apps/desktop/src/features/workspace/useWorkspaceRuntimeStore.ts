@@ -5,7 +5,7 @@ import {
   EMPTY_YJS_PROJECT_CONTEXT_VALUE,
   type YjsProjectContextValue,
 } from "@/contexts/YjsProjectContextValue"
-import type { ProjectSyncContextValue } from "@/features/projects/contexts/projectSyncShared"
+import type { ProjectSyncContextValue } from "@/contexts/project/projectSyncShared"
 import { buildWorkspaceIdentityKey, normalizeWorkspaceLaneId } from "@/features/workspace/workspaceIdentity"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
