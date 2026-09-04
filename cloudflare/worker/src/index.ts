@@ -3,6 +3,10 @@ import { ContainerProxy, proxyToSandbox } from '@cloudflare/sandbox'
 import { handleHealth } from './routes/health'
 import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
+import {
+  handleCollaborationRepositoryCredential,
+  handleVerifyCollaborationPush,
+} from './routes/collaborationRepositories'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
 import { DevAppRuntimeBuild } from './durableObjects/DevAppRuntimeBuild'
@@ -115,6 +119,34 @@ export default {
             'BAD_REQUEST',
             error instanceof Error ? error.message : 'Invalid collaboration session request',
             { status: 400 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/collab/repository/credential') {
+        try {
+          return await handleCollaborationRepositoryCredential(request, env)
+        } catch (error) {
+          return protocolError(
+            'REPOSITORY_ACCESS_REJECTED',
+            error instanceof Error ? error.message : 'Repository access failed',
+            { status: 403 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/collab/repository/verify-push') {
+        try {
+          return await handleVerifyCollaborationPush(request, env)
+        } catch (error) {
+          return protocolError(
+            'PUSH_VERIFICATION_REJECTED',
+            error instanceof Error ? error.message : 'Push verification failed',
+            { status: 409 },
             false,
             origin,
           )
