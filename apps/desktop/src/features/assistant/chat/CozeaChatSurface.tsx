@@ -58,6 +58,7 @@ import {
 } from "@/features/assistant/chat/ModelPickerContent"
 import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner"
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction"
+import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation"
 import { ThreadRuntimeBanner } from "@/features/assistant/chat/ThreadRuntimeBanner"
 import type {
   PendingApproval,
@@ -278,6 +279,7 @@ function filterSlashItems<T extends { label: string; description: string }>(
 }
 
 interface CozeaChatSurfaceProps {
+  isChatVisible?: boolean
   isRuntimeReady: boolean
   /** When set, gates composer/send/model picker. Defaults to `isRuntimeReady`. */
   isChatReady?: boolean
@@ -806,15 +808,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.isSending ||
     props.isInterrupting
 
-  // No workspace / provider unavailable: the banner replaces the timeline and
-  // sending is impossible — hide the composer entirely (hover included).
-  const composerSuppressed =
-    !props.workspaceId ||
-    Boolean(
-      props.providerSnapshot &&
-      props.providerSnapshot.status !== "ready" &&
-      props.providerSnapshot.status !== "disabled",
-    )
+  const hasProviderBanner = hasBlockingProviderBanner(props.providerSnapshot)
+
+  // The provider banner replaces the timeline and sending is impossible, so
+  // the composer must follow the same derived condition (hover included).
+  const composerSuppressed = !props.workspaceId || hasProviderBanner
 
   // Empty thread: keep the composer visible so new sessions have an obvious input.
   const showComposerDockChrome =
@@ -2086,11 +2084,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     </form>
   )
 
-  const hasProviderBanner =
-    props.providerSnapshot &&
-    (props.providerSnapshot.versionAdvisory?.status === "behind_latest" ||
-      (props.providerSnapshot.status !== "ready" && props.providerSnapshot.status !== "disabled"))
-
   return (
     <div
       ref={surfaceRef}
@@ -2120,19 +2113,26 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         onPointerLeave={dockComposerOnHover ? composerDockHoverState.onPointerLeave : undefined}
         onPointerMove={dockComposerOnHover ? composerDockHoverState.onPointerMove : undefined}
       >
-        {!props.workspaceId ? (
+        {hasProviderBanner && timelineEntries.length > 0 ? (
+          <div role="status" className="shrink-0 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
+            This provider is unavailable. Saved history is still readable; reconnect or update the provider to continue.
+          </div>
+        ) : null}
+        {!props.workspaceId && timelineEntries.length === 0 ? (
           <div className="px-3 py-3 sm:px-5 sm:py-4">
             <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/20 p-6 text-sm text-muted-foreground">
               This agent tile needs a local project path before it can start a thread.
             </div>
           </div>
-        ) : hasProviderBanner ? (
+        ) : hasProviderBanner && timelineEntries.length === 0 ? (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-12 overflow-y-auto px-6 py-8 pb-24">
             <ProviderStatusBanner status={props.providerSnapshot} />
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
             <MessagesTimeline
+              isChatVisible={props.isChatVisible}
+              revealImmediately={props.isInterrupting || phase === "error" || phase === "interrupted" || phase === "stopped" || phase === "disconnected"}
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
               hasMessages={timelineEntries.length > 0}
               isWorking={isWorking}

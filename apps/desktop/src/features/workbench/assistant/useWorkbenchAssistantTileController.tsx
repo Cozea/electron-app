@@ -51,6 +51,11 @@ import {
   subscribeMemoryUpdateRequests,
 } from "@/features/project-memory/memoryUpdateBus"
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction"
+import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation"
+import { assistantDrafts, threadDraftKey, unboundDraftKey } from "@/features/assistant/history/assistantDraftRepository"
+import { historyHasPendingRequests } from "@/features/assistant/history/assistantHistory"
+import { useAssistantContentDraft } from "@/features/assistant/history/useAssistantContentDraft"
+import { useAssistantHistoryStore, conversationContextMatches } from "@/features/assistant/history/assistantHistoryStore"
 import {
   deriveThreadImageArtifacts,
   type ThreadImageArtifact,
@@ -113,15 +118,14 @@ import {
 import {
   type DiffDialogState,
   basenameFromPath,
-  cloneComposerImageForRetry,
   deriveAssistantTurnRunning,
   deriveTitleSeed,
   getLiveAssistantTile,
   getProviderModelOptions,
   getProviderSnapshot,
   normalizeModelSelection,
-  resolveModelSelectionProvider,
   resolveInteractionMode,
+  resolveModelSelectionProvider,
   resolvePreferredModelSelection,
   resolveRememberedModelSelection,
   resolveRuntimeMode,
@@ -148,6 +152,9 @@ interface WorkbenchAssistantTileControllerResult {
   diffDialog: DiffDialogState | null
   closeDiffDialog: () => void
   handleDeleteThread: () => Promise<boolean>
+  historyBusy: boolean
+  flushDraft: () => Promise<void>
+  onHistoryError: (message: string) => void
   artifacts: ReadonlyArray<ThreadImageArtifact>
   artifactMedia: ThreadArtifactMediaState
   attachPreviewAnnotation: (
@@ -229,21 +236,18 @@ export function useWorkbenchAssistantTileController(
     error: configError,
     isLoading: isConfigLoading,
   } = useAssistantServerConfig(isChatReady)
-  const [composer, setComposer] = useState("")
   const [pendingMemoryUpdateAt, setPendingMemoryUpdateAt] = useState<number | null>(null)
   /** Set while a memory rebuild we were asked to run is still outstanding. */
   const [memoryUpdateInFlight, setMemoryUpdateInFlight] = useState(false)
-  const [composerCursor, setComposerCursor] = useState(0)
   const [sendError, setSendError] = useState<string | null>(null)
-  const [composerImages, setComposerImages] = useState<ComposerImageDraft[]>([])
-  const [composerPreviewAnnotations, setComposerPreviewAnnotations] = useState<
-    PreviewAnnotationPayload[]
-  >([])
   const [autoSendAnnotationId, setAutoSendAnnotationId] = useState<string | null>(null)
   const [bindingError, setBindingError] = useState<string | null>(null)
   const [isBinding, setIsBinding] = useState(false)
   const [bindingRevision, setBindingRevision] = useState(0)
   const [isSending, setIsSending] = useState(false)
+  const [isPreparingSend, setIsPreparingSend] = useState(false)
+  const [threadOperationCount, setThreadOperationCount] = useState(0)
+  const preparingSendRef = useRef(false)
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false)
   const [activeRequestKey, setActiveRequestKey] = useState<string | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
@@ -277,7 +281,10 @@ export function useWorkbenchAssistantTileController(
   const assistantProject = useStore(assistantProjectSelector)
   const thread = useStore(threadSelector)
   const threadStream = useTileThreadStream(input.tile.threadId)
-  const draftTargetKey = thread?.id ?? input.tile.id
+  const shellNeedsAttention = useStore((state) => Boolean(input.tile.threadId && historyHasPendingRequests(state, input.tile.threadId)))
+  const draftTargetKey = input.tile.threadId ?? input.tile.draftId ?? input.tile.id
+  const contentDraftKey = input.tile.threadId ? threadDraftKey(input.tile.threadId) : unboundDraftKey(input.tile.draftId ?? input.tile.id)
+  const savedContentDraft = assistantDrafts.store((state) => state.drafts[contentDraftKey])
   const composerDraft = useAssistantComposerDraftStore(
     useCallback((state) => state.draftsByTargetKey[draftTargetKey] ?? null, [draftTargetKey]),
   )
@@ -320,17 +327,11 @@ export function useWorkbenchAssistantTileController(
     if (!thread?.id) {
       return
     }
-    adoptComposerDraft(input.tile.id, thread.id)
-  }, [adoptComposerDraft, input.tile.id, thread?.id])
+    adoptComposerDraft(input.tile.draftId ?? input.tile.id, thread.id)
+  }, [adoptComposerDraft, input.tile.id, input.tile.draftId, thread?.id])
 
   useEffect(() => {
     setOptimisticUserMessages([])
-    setComposerImages((current) => {
-      for (const image of current) {
-        revokeBlobPreviewUrl(image.previewUrl)
-      }
-      return []
-    })
   }, [thread?.id])
 
   useEffect(() => {
@@ -377,13 +378,10 @@ export function useWorkbenchAssistantTileController(
     input.tile,
     lastModelSelectionByInstanceId,
   ])
-  const selectedModelSelection =
-    composerDraft?.modelSelection ?? thread?.modelSelection ?? fallbackModelSelection
-  const selectedProvider = resolveModelSelectionProvider({
-    config,
-    selection: selectedModelSelection,
-    fallbackProvider: input.tile.provider,
-  })
+  const unresolvedModelSelection =
+    composerDraft?.modelSelection ?? savedContentDraft?.modelSelection ?? thread?.modelSelection ?? fallbackModelSelection
+  const selectedProvider = resolveModelSelectionProvider({ config, selection: unresolvedModelSelection, fallbackProvider: input.tile.provider })
+  const selectedModelSelection = useMemo(() => ({ ...unresolvedModelSelection, provider: selectedProvider }), [unresolvedModelSelection, selectedProvider])
   const selectedProviderInstanceId = selectedModelSelection.instanceId
   const selectedDispatchModelSelection = useMemo(
     () =>
@@ -397,10 +395,56 @@ export function useWorkbenchAssistantTileController(
   )
 
   const selectedRuntimeMode =
-    composerDraft?.runtimeMode ?? thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
+    composerDraft?.runtimeMode ?? savedContentDraft?.runtimeMode ?? thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
   const selectedInteractionMode =
-    composerDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
-  const providerSnapshot = getProviderSnapshot(config, selectedProvider, selectedProviderInstanceId)
+    composerDraft?.interactionMode ?? savedContentDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
+  const [verifiedContextBranch, setVerifiedContextBranch] = useState<string | null>(null)
+  const [contextVerified, setContextVerified] = useState(false)
+  const {
+    composer, setComposer, composerCursor, setComposerCursor,
+    composerImages, setComposerImages, composerPreviewAnnotations, setComposerPreviewAnnotations,
+    draftReady, draftError,
+  } = useAssistantContentDraft({
+    key: contentDraftKey, threadId: input.tile.threadId ?? null,
+    assistantProjectId: input.tile.assistantProjectId ?? null,
+    projectId: input.projectId, workspaceId: input.workspaceId ?? "", laneId: input.laneId,
+    rootPath: input.projectRootPath ?? "", branch: thread?.branch ?? verifiedContextBranch,
+    modelSelection: selectedModelSelection, runtimeMode: selectedRuntimeMode, interactionMode: selectedInteractionMode,
+  })
+  const [contextError, setContextError] = useState<string | null>(null)
+  const verifiedBranchRef = useRef<string | null>(null)
+  const validateConversationContext = useCallback(async () => {
+    const origin = (input.tile.threadId ? useAssistantHistoryStore.getState().conversations[input.tile.threadId] : null) ??
+      assistantDrafts.store.getState().drafts[contentDraftKey]
+    const rootPath = input.workspaceId ? await projectAnalysisDesktopClient.resolveRoot(input.workspaceId) : null
+    if (!rootPath) throw new Error("The original workspace folder is unavailable. Resolve its local folder using the workbench controls to continue.")
+    const git = input.workspaceId ? await window.electronAPI.workspaceSync.gitStatus({ workspaceId: input.workspaceId }).catch(() => null) : null
+    const current = { projectId: input.projectId, workspaceId: input.workspaceId ?? "", laneId: input.laneId, rootPath: rootPath ?? "", branch: git?.success ? git.currentBranch ?? null : null }
+    verifiedBranchRef.current = current.branch
+    if (origin && !conversationContextMatches(origin, current)) {
+      throw new Error("This conversation belongs to another workspace or checkout. Open its original workspace/branch using the workbench controls to continue.")
+    }
+    return current
+  }, [contentDraftKey, input.projectId, input.workspaceId, input.laneId, input.tile.threadId])
+  useEffect(() => {
+    let cancelled = false
+    setContextVerified(false)
+    void validateConversationContext().then((current) => {
+      if (!cancelled) { setContextError(null); setVerifiedContextBranch(current.branch); setContextVerified(true) }
+    }).catch((error: unknown) => { if (!cancelled) { setContextError(toErrorMessage(error)); setContextVerified(true) } })
+    return () => { cancelled = true }
+  }, [validateConversationContext])
+  useEffect(() => {
+    if (!assistantProject || !input.workspaceId || !input.projectRootPath) return
+    const association = { projectId: input.projectId, workspaceId: input.workspaceId, laneId: input.laneId, rootPath: input.projectRootPath, branch: thread?.branch ?? null, assistantProjectId: assistantProject.id }
+    const history = useAssistantHistoryStore.getState()
+    // Viewing an already-associated chat must not reassign its origin.
+    if (assistantProject.cwd !== input.projectRootPath) return
+    history.rememberProject(association)
+    if (thread) history.rememberConversation(thread.id, { ...association, provider: selectedProvider, branch: thread.branch ?? verifiedBranchRef.current })
+  }, [assistantProject, input.projectId, input.workspaceId, input.laneId, input.projectRootPath, thread?.id, thread?.branch, selectedProvider])
+  const providerSnapshot = config?.providers.find((entry) => entry.instanceId === selectedProviderInstanceId && (entry.provider ?? entry.driver) === selectedProvider) ?? null
+  const canUseProvider = Boolean(providerSnapshot?.enabled && providerSnapshot.availability !== "unavailable" && !hasBlockingProviderBanner(providerSnapshot))
   const modelOptionsByProvider = useMemo<ProviderModelOptionsByProvider>(
     () => ({
       codex: getProviderModelOptions(config, "codex"),
@@ -587,7 +631,7 @@ export function useWorkbenchAssistantTileController(
     selectedInteractionMode === "plan" &&
     latestTurnSettled &&
     hasActionableProposedPlan(activeProposedPlan)
-  const hasBoundThread = Boolean(input.tile.threadId && (thread || mergedThread))
+  const hasBoundThread = Boolean(input.tile.threadId && thread)
   const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding
   const chatTitle =
     visibleThread?.title?.trim() ||
@@ -626,8 +670,9 @@ export function useWorkbenchAssistantTileController(
     if (input.tile.title !== thread.title) {
       patch.title = thread.title
     }
-    if (input.tile.provider !== thread.modelSelection.provider) {
-      patch.provider = thread.modelSelection.provider
+    const threadProvider = resolveModelSelectionProvider({ config, selection: thread.modelSelection, fallbackProvider: input.tile.provider })
+    if (input.tile.provider !== threadProvider) {
+      patch.provider = threadProvider
     }
     if (input.tile.model !== thread.modelSelection.model) {
       patch.model = thread.modelSelection.model
@@ -644,7 +689,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId)
-  }, [input.laneId, input.projectId, input.workspaceId, input.tile, thread, updateAssistantTile])
+  }, [input.laneId, input.projectId, input.workspaceId, input.tile, thread, updateAssistantTile, config])
 
   useEffect(() => {
     const timeline = timelineRef.current
@@ -727,10 +772,14 @@ export function useWorkbenchAssistantTileController(
           // project; otherwise project.create is rejected as a duplicate and
           // the tile can remain stuck in its binding state.
           const currentSnapshot = await getOrchestration().getSnapshot()
+          if (cancelled) return
           useStore.getState().syncServerReadModel(currentSnapshot)
 
           const currentTile = liveTile()
           const currentAssistantState = useStore.getState()
+          if (currentTile.threadId && !selectAssistantThreadById(currentAssistantState, currentTile.threadId)) {
+            throw new Error("This saved conversation is unavailable. Retry to refresh history; no replacement conversation has been created.")
+          }
           let nextProject =
             (currentTile.assistantProjectId
               ? selectAssistantProjectById(currentAssistantState, currentTile.assistantProjectId)
@@ -804,39 +853,15 @@ export function useWorkbenchAssistantTileController(
           }
 
           if (isResumingExistingThread) {
-            // Resuming an existing thread: create if needed (same as before)
+            // Explicit resume never creates a replacement for a missing conversation.
             const resolvedTile = liveTile()
-            let nextThread =
+            const nextThread =
               (resolvedTile.threadId
                 ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
                 : null) ?? null
 
             if (!nextThread || nextThread.projectId !== nextProject.id) {
-              const threadId = newThreadId()
-              const threadDraft = getAssistantComposerDraft(resolvedTile.id)
-              const modelSelection = normalizeDraftModelSelection(
-                threadDraft?.modelSelection ??
-                  resolvePreferredModelSelection({
-                    config: liveConfig,
-                    tile: resolvedTile,
-                    projectModelSelection: nextProject.defaultModelSelection,
-                  }),
-              )
-              await getOrchestration().dispatchCommand({
-                type: "thread.create",
-                commandId: newCommandId(),
-                threadId,
-                projectId: nextProject.id,
-                title: resolvedTile.agentLabel?.trim() || resolvedTile.title.trim() || "AI Agent",
-                modelSelection,
-                runtimeMode: threadDraft?.runtimeMode ?? resolveRuntimeMode(resolvedTile),
-                interactionMode:
-                  threadDraft?.interactionMode ?? resolveInteractionMode(resolvedTile),
-                branch: null,
-                worktreePath: null,
-                createdAt: new Date().toISOString(),
-              })
-              nextThread = selectAssistantThreadById(useStore.getState(), threadId) ?? null
+              throw new Error("This saved conversation does not belong to the selected assistant project.")
             }
 
             const latestTile = liveTile()
@@ -921,15 +946,18 @@ export function useWorkbenchAssistantTileController(
   ])
 
   const runMetaSync = async (mutate: () => Promise<void>, options?: { requestKey?: string }) => {
+    setThreadOperationCount((count) => count + 1)
     if (options?.requestKey) {
       setActiveRequestKey(options.requestKey)
     }
     setRequestError(null)
     try {
+      await validateConversationContext()
       await mutate()
     } catch (error) {
       setRequestError(toErrorMessage(error))
     } finally {
+      setThreadOperationCount((count) => count - 1)
       if (options?.requestKey) {
         setActiveRequestKey(null)
       }
@@ -986,11 +1014,19 @@ export function useWorkbenchAssistantTileController(
           : null) ?? preferredModelSelection.model,
       ),
     )
-    upsertComposerDraft(draftTargetKey, {
+    const isDifferentProvider = Boolean(thread && (selectedProvider !== nextProvider || thread.modelSelection.instanceId !== nextModelSelection.instanceId))
+    if (isDifferentProvider && (isRunning || isSending || preparingSendRef.current || activeRequestKey || pendingApprovals.length || pendingUserInputs.length)) {
+      setSendError("Open a new chat to change provider while this conversation is busy.")
+      return
+    }
+    if (isDifferentProvider) {
+      try { await assistantDrafts.flush() } catch (error) { setSendError(toErrorMessage(error)); return }
+    }
+    const nextDraftId = isDifferentProvider ? crypto.randomUUID() : null
+    upsertComposerDraft(nextDraftId ?? draftTargetKey, {
       modelSelection: nextModelSelection,
     })
 
-    const isDifferentProvider = Boolean(thread && thread.modelSelection.provider !== nextProvider)
     updateAssistantTile(
       input.projectId,
       input.laneId,
@@ -999,7 +1035,7 @@ export function useWorkbenchAssistantTileController(
         provider: nextModelSelection.provider,
         providerInstanceId: nextModelSelection.instanceId,
         model: nextModelSelection.model,
-        ...(isDifferentProvider ? { threadId: null } : {}),
+        ...(isDifferentProvider ? { threadId: null, draftId: nextDraftId, title: "AI Agent", agentLabel: null } : {}),
       },
       input.workspaceId,
     )
@@ -1195,7 +1231,7 @@ export function useWorkbenchAssistantTileController(
   }
 
   // --- Fix 1: Plan follow-up submission flow ---
-  const handlePlanFollowUpSend = async () => {
+  const handlePlanFollowUpSend = async (submittedRevision: number | undefined) => {
     if (!thread || !activeProposedPlan) {
       return
     }
@@ -1218,11 +1254,10 @@ export function useWorkbenchAssistantTileController(
     sendInFlightRef.current = true
     setIsSending(true)
     setSendError(null)
-    setComposer("")
-    setComposerCursor(0)
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
     notePendingTurnStart(messageId, thread.id, messageCreatedAt)
 
+    let acknowledged = false
     try {
       ensureNativeApi()
 
@@ -1277,11 +1312,15 @@ export function useWorkbenchAssistantTileController(
           : {}),
         createdAt: messageCreatedAt,
       })
+      acknowledged = true
+      if (submittedRevision !== undefined) await assistantDrafts.clearSubmitted(contentDraftKey, submittedRevision)
     } catch (error) {
+      if (acknowledged) {
+        setSendError(`Message sent, but the saved draft could not be cleared: ${toErrorMessage(error)}. Do not resend it.`)
+        return
+      }
       clearPendingTurnStart()
       setOptimisticUserMessages((current) => current.filter((message) => message.id !== messageId))
-      setComposer(draftText)
-      setComposerCursor(draftText.length)
       setSendError(toErrorMessage(error))
     } finally {
       sendInFlightRef.current = false
@@ -1289,8 +1328,26 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
-  const handleSend = async (overridePrompt?: string) => {
+  const sendTurn = async (overridePrompt?: string) => {
+    // Capture the revision belonging to this click, before any asynchronous preflight.
+    const submittedRevision = assistantDrafts.store.getState().drafts[assistantDrafts.resolveKey(contentDraftKey)]?.revision
     if (sendInFlightRef.current) {
+      return
+    }
+    if (!draftReady || (input.tile.threadId && !thread)) {
+      setSendError("This conversation is still loading or is unavailable. Retry opening it from Chat history.")
+      return
+    }
+    if (!canUseProvider) {
+      setSendError("The original provider instance is unavailable. Reconnect it to continue this conversation.")
+      return
+    }
+    if (!(overridePrompt ?? composer).trim() && !composerImages.length && !composerPreviewAnnotations.length && !showPlanFollowUpPrompt) return
+    try {
+      await validateConversationContext()
+      await assistantDrafts.flush()
+    } catch (error) {
+      setSendError(toErrorMessage(error))
       return
     }
 
@@ -1315,7 +1372,7 @@ export function useWorkbenchAssistantTileController(
       try {
         const threadTitle = input.tile.agentLabel?.trim() || input.tile.title.trim() || "AI Agent"
         const threadId = newThreadId()
-        const threadDraft = getAssistantComposerDraft(input.tile.id)
+        const threadDraft = getAssistantComposerDraft(draftTargetKey)
         ensureNativeApi()
 
         // Resolve the project
@@ -1404,11 +1461,12 @@ export function useWorkbenchAssistantTileController(
           modelSelection: resolvedModelSelection,
           runtimeMode: resolvedRuntimeMode,
           interactionMode: resolvedInteractionMode,
-          branch: null,
+          branch: verifiedBranchRef.current,
           worktreePath: null,
           createdAt,
         })
 
+        const adoption = assistantDrafts.adopt(contentDraftKey, threadDraftKey(threadId), threadId, currentProject.id)
         updateAssistantTile(
           input.projectId,
           input.laneId,
@@ -1419,6 +1477,15 @@ export function useWorkbenchAssistantTileController(
           },
           input.workspaceId,
         )
+        // Bind the acknowledged runtime identity even if local persistence fails.
+        // Retrying must never manufacture a second conversation.
+        flushWorkbenchStorage()
+        await adoption
+        useAssistantHistoryStore.getState().rememberConversation(threadId, {
+          projectId: input.projectId, workspaceId: input.workspaceId, laneId: input.laneId,
+          rootPath: workspaceRoot, branch: verifiedBranchRef.current, assistantProjectId: currentProject.id,
+          provider: selectedProvider,
+        })
 
         // Build a minimal thread-like object from the data we just sent.
         // We can't read from the store yet because the domain event hasn't
@@ -1457,7 +1524,7 @@ export function useWorkbenchAssistantTileController(
 
     // --- Fix 1: Intercept plan follow-up ---
     if (showPlanFollowUpPrompt && activeProposedPlan) {
-      await handlePlanFollowUpSend()
+      await handlePlanFollowUpSend(submittedRevision)
       return
     }
 
@@ -1492,7 +1559,7 @@ export function useWorkbenchAssistantTileController(
               name: image.name,
               mimeType: image.mimeType,
               sizeBytes: image.sizeBytes,
-              previewUrl: image.previewUrl,
+              previewUrl: image.file ? URL.createObjectURL(image.file) : image.previewUrl,
             })),
           }
         : {}),
@@ -1504,14 +1571,12 @@ export function useWorkbenchAssistantTileController(
     sendInFlightRef.current = true
     setIsSending(true)
     setSendError(null)
-    setComposer("")
-    setComposerCursor(0)
-    setComposerImages([])
-    setComposerPreviewAnnotations([])
     setOptimisticUserMessages((current) => [...current, optimisticMessage])
     notePendingTurnStart(messageId, resolvedThread.id, messageCreatedAt)
 
+    let acknowledged = false
     try {
+      const submittedKey = threadDraftKey(resolvedThread.id)
       const useSubstrateRpcFallback =
         substrateTransport.active && !isRuntimeReady && !t3CutoverActive
       if (useSubstrateRpcFallback) {
@@ -1525,6 +1590,7 @@ export function useWorkbenchAssistantTileController(
           providerId: selectedDispatchModelSelection?.provider,
           modelSelection: selectedDispatchModelSelection,
         })
+        acknowledged = true
         if (turn.assistantText.trim().length > 0) {
           setOptimisticUserMessages((current) => [
             ...current,
@@ -1538,6 +1604,7 @@ export function useWorkbenchAssistantTileController(
           ])
         }
         clearPendingTurnStart()
+        if (submittedRevision !== undefined) await assistantDrafts.clearSubmitted(submittedKey, submittedRevision)
         return
       }
 
@@ -1602,7 +1669,13 @@ export function useWorkbenchAssistantTileController(
         skills,
         createdAt: messageCreatedAt,
       })
+      acknowledged = true
+      if (submittedRevision !== undefined) await assistantDrafts.clearSubmitted(submittedKey, submittedRevision)
     } catch (error) {
+      if (acknowledged) {
+        setSendError(`Message sent, but the saved draft could not be cleared: ${toErrorMessage(error)}. Do not resend it.`)
+        return
+      }
       // --- Fix 3: Properly handle blob URLs on failed sends ---
       clearPendingTurnStart()
       setOptimisticUserMessages((current) => {
@@ -1612,11 +1685,6 @@ export function useWorkbenchAssistantTileController(
         }
         return current.filter((message) => message.id !== messageId)
       })
-      setComposer(nextPrompt)
-      setComposerCursor(nextPrompt.length)
-      // Deep-clone images with fresh blob URLs so the originals are safely revoked
-      setComposerImages(composerImagesSnapshot.map(cloneComposerImageForRetry))
-      setComposerPreviewAnnotations(composerPreviewAnnotationsSnapshot)
       setSendError(toErrorMessage(error))
     } finally {
       sendInFlightRef.current = false
@@ -1624,6 +1692,13 @@ export function useWorkbenchAssistantTileController(
     }
   }
 
+  const handleSend = async (overridePrompt?: string) => {
+    if (preparingSendRef.current) return
+    preparingSendRef.current = true
+    setIsPreparingSend(true)
+    try { await sendTurn(overridePrompt) }
+    finally { preparingSendRef.current = false; setIsPreparingSend(false) }
+  }
   handleSendRef.current = handleSend
 
   /*
@@ -1884,7 +1959,7 @@ export function useWorkbenchAssistantTileController(
           name: file.name || "image",
           mimeType: file.type,
           sizeBytes: file.size,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: "", // The durable-draft hook owns the preview URL lifecycle.
           file,
         })
         nextImageCount += 1
@@ -1993,6 +2068,7 @@ export function useWorkbenchAssistantTileController(
       selectAssistantProjectByCwd(assistantState, input.projectRootPath)
 
     setSendError(null)
+    setThreadOperationCount((count) => count + 1)
     try {
       const result = await deleteAssistantThread({
         threadId: thread.id,
@@ -2011,6 +2087,11 @@ export function useWorkbenchAssistantTileController(
           closeTerminals: (threadId) => api.terminal.close({ threadId, deleteHistory: true }),
         },
       })
+      if (result.status !== "cancelled") {
+        await assistantDrafts.remove([threadDraftKey(thread.id)])
+        useAssistantComposerDraftStore.getState().clearDraft(thread.id)
+        useAssistantHistoryStore.getState().forgetConversation(thread.id)
+      }
 
       if (result.status === "deleted_worktree_failed") {
         const detail =
@@ -2025,6 +2106,8 @@ export function useWorkbenchAssistantTileController(
     } catch (error) {
       setSendError(toErrorMessage(error))
       return false
+    } finally {
+      setThreadOperationCount((count) => count - 1)
     }
   }
 
@@ -2045,6 +2128,7 @@ export function useWorkbenchAssistantTileController(
     setSendError(null)
 
     try {
+      await validateConversationContext()
       await getOrchestration().dispatchCommand({
         type: "thread.checkpoint.revert",
         commandId: newCommandId(),
@@ -2060,6 +2144,8 @@ export function useWorkbenchAssistantTileController(
   }
 
   const composerStatus = (() => {
+    const historyError = draftError ?? contextError ?? (config && !canUseProvider ? "The original provider instance is unavailable. Reconnect or update it to continue." : null)
+    if (historyError) return <div role="status" className="px-4 py-2 text-xs text-destructive">{historyError}</div>
     if (bindingError) {
       return (
         <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
@@ -2112,13 +2198,16 @@ export function useWorkbenchAssistantTileController(
       setDiffDialog(null)
     },
     handleDeleteThread,
+    historyBusy: shellNeedsAttention || threadOperationCount > 0 || isBinding || memoryUpdateInFlight || isRunning || isSending || isPreparingSend || isTurnStartPending || isInterrupting || isRevertingCheckpoint || Boolean(activeRequestKey) || pendingApprovals.length > 0 || pendingUserInputs.length > 0,
+    flushDraft: assistantDrafts.flush,
+    onHistoryError: setSendError,
     artifacts,
     artifactMedia,
     attachPreviewAnnotation,
     surfaceProps: {
       dockComposerOnHover: true,
       isRuntimeReady,
-      isChatReady,
+      isChatReady: isChatReady && draftReady && contextVerified && !contextError && canUseProvider && (!input.tile.threadId || Boolean(thread)),
       runtimeErrorMessage,
       workspaceId: input.workspaceId,
       workspaceRoot: resolvedWorkspaceRoot,
@@ -2142,7 +2231,7 @@ export function useWorkbenchAssistantTileController(
       previewAnnotations: composerPreviewAnnotations,
       terminalContexts: [],
       onRemoveTerminalContext: () => {},
-      isSending: isSending || isTurnStartPending,
+      isSending: isSending || isPreparingSend || isTurnStartPending,
       pendingTurnStartStartedAtIso,
       isInterrupting,
       isForceStopAvailable,

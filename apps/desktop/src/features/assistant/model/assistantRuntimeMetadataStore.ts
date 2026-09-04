@@ -64,7 +64,7 @@ export async function updateAssistantProvider(
   instanceId?: ProviderInstanceId,
 ): Promise<NonNullable<ServerProvider["updateState"]> | null> {
   if (!t3ConfigBridge?.updateProvider) {
-    throw new Error("Provider updates require the local T3 runtime.")
+    throw new Error("Provider updates are unavailable while the local agent runtime is offline.")
   }
   const result = await t3ConfigBridge.updateProvider(provider, instanceId)
   await maybeLoadServerConfig({ showLoading: false })

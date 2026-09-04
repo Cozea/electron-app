@@ -176,6 +176,7 @@ export interface WorkbenchAssistantChatTile extends WorkbenchBaseTile {
   viewMode?: "chat" | "artifacts"
   assistantProjectId?: string | null
   threadId?: string | null
+  draftId?: string | null
   provider?: ProviderKind
   providerInstanceId?: ProviderInstanceId
   model?: string | null

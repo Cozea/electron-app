@@ -47,7 +47,8 @@ import {
 import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/features/assistant/model/types";
-import ChatMarkdown from "./ChatMarkdown";
+import { AssistantMessageBody } from "./AssistantMessageBody";
+import { useTimelineTextReveal } from "./useTextReveal";
 import {
   Empty,
   EmptyDescription,
@@ -143,6 +144,8 @@ function formatMessageRelativeTime(timestamp: string | number | undefined): stri
 }
 
 interface MessagesTimelineProps {
+  isChatVisible?: boolean;
+  revealImmediately?: boolean;
   hasMessages: boolean;
   isWorking: boolean;
   selectedProvider: ProviderKind | null;
@@ -214,6 +217,8 @@ function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined)
 }
 
 export const MessagesTimeline = memo(function MessagesTimeline({
+  isChatVisible = true,
+  revealImmediately = false,
   hasMessages,
   isWorking,
   selectedProvider,
@@ -242,6 +247,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenArtifact,
 }: MessagesTimelineProps) {
   const { t } = useTranslation();
+  const revealMessages = useMemo(
+    () => timelineEntries.flatMap((entry) => entry.kind === "message" ? [entry.message] : []),
+    [timelineEntries],
+  );
+  const textReveal = useTimelineTextReveal(revealMessages, isChatVisible, revealImmediately);
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const legendListRef = useRef<LegendListRef | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
@@ -1171,58 +1181,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           );
         })()}
 
-      {row.kind === "message" &&
-        row.message.role === "assistant" &&
-        (() => {
-          const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-          return (
-            <>
-              <div className="group min-w-0 px-1 py-0.5">
-                <ChatMarkdown
-                  text={messageText}
-                  cwd={markdownCwd}
-                  isStreaming={Boolean(row.message.streaming)}
-                  variant="timeline"
-                />
-                <ProviderAuthenticationHelp
-                  provider={selectedProvider}
-                  message={row.message.text}
-                  messageId={String(row.message.id)}
-                  isStreaming={Boolean(row.message.streaming)}
-                  isSuperseded={row.message.id !== latestAssistantMessageId}
-                />
-                {(() => {
-                  const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
-                  if (!turnSummary) return null;
-                  const checkpointFiles = turnSummary.files;
-                  if (checkpointFiles.length === 0) return null;
-                  const allDirectoriesExpanded =
-                    allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
-                  // Small, recent turns open themselves; anything larger stays
-                  // collapsed behind the scope summary until asked for.
-                  const expanded =
-                    changedFilesExpandedByTurnId[turnSummary.turnId] ??
-                    shouldAutoExpandChangedFiles(
-                      checkpointFiles,
-                      turnSummary.turnId === latestTurnDiffTurnId,
-                    );
-                  return (
-                    <ChangedFilesCard
-                      turnId={turnSummary.turnId}
-                      files={checkpointFiles}
-                      expanded={expanded}
-                      allDirectoriesExpanded={allDirectoriesExpanded}
-                      resolvedTheme={resolvedTheme}
-                      onExpandedChange={(next) =>
-                        onToggleChangedFilesExpanded(turnSummary.turnId, next)
-                      }
-                      onToggleAllDirectories={() => onToggleAllDirectories(turnSummary.turnId)}
-                      onOpenTurnDiff={onOpenTurnDiff}
-                    />
-                  );
-                })()}
-
-                {!row.message.streaming && messageText && messageText !== "(empty response)" ? (
+      {row.kind === "message" && row.message.role === "assistant" && (
+        <AssistantMessageBody
+          message={row.message}
+          controller={textReveal}
+          cwd={markdownCwd}
+          actions={
                   <div className="mt-1 flex items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
                     <div className="flex items-center gap-1.5">
                       <MessageCopyButton text={row.message.text} />
@@ -1262,11 +1226,49 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       </span>
                     ) : null}
                   </div>
-                ) : null}
-              </div>
-            </>
-          );
-        })()}
+          }
+        >
+                <ProviderAuthenticationHelp
+                  provider={selectedProvider}
+                  message={row.message.text}
+                  messageId={String(row.message.id)}
+                  isStreaming={Boolean(row.message.streaming)}
+                  isSuperseded={row.message.id !== latestAssistantMessageId}
+                />
+                {(() => {
+                  const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
+                  if (!turnSummary) return null;
+                  const checkpointFiles = turnSummary.files;
+                  if (checkpointFiles.length === 0) return null;
+                  const allDirectoriesExpanded =
+                    allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
+                  // Small, recent turns open themselves; anything larger stays
+                  // collapsed behind the scope summary until asked for.
+                  const expanded =
+                    changedFilesExpandedByTurnId[turnSummary.turnId] ??
+                    shouldAutoExpandChangedFiles(
+                      checkpointFiles,
+                      turnSummary.turnId === latestTurnDiffTurnId,
+                    );
+                  return (
+                    <ChangedFilesCard
+                      turnId={turnSummary.turnId}
+                      files={checkpointFiles}
+                      expanded={expanded}
+                      allDirectoriesExpanded={allDirectoriesExpanded}
+                      resolvedTheme={resolvedTheme}
+                      onExpandedChange={(next) =>
+                        onToggleChangedFilesExpanded(turnSummary.turnId, next)
+                      }
+                      onToggleAllDirectories={() => onToggleAllDirectories(turnSummary.turnId)}
+                      onOpenTurnDiff={onOpenTurnDiff}
+                    />
+                  );
+                })()}
+
+
+        </AssistantMessageBody>
+      )}
 
       {row.kind === "proposed-plan" && (
         <div className="min-w-0 px-1 py-0.5">

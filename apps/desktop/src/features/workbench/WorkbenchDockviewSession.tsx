@@ -76,6 +76,7 @@ export function WorkbenchDockviewSession({
     getSelectionPreviewTile,
     handleResolveSelectionTile,
     handleDuplicateAssistantTile,
+    handleOpenAssistantConversation,
     handleSplitTile,
     handleDockviewReady,
   } = useWorkbenchDockviewRuntime({
@@ -149,6 +150,7 @@ export function WorkbenchDockviewSession({
       getWorkbenchSession={getWorkbenchSession}
       getSelectionPreviewTile={getSelectionPreviewTile}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
+      onOpenAssistantConversation={handleOpenAssistantConversation}
       onResolveSelectionTile={handleResolveSelectionTile}
       onSplitTile={handleSplitTile}
     >

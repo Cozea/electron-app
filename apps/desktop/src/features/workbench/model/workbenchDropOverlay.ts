@@ -17,6 +17,10 @@ interface WorkbenchDropOverlayTarget {
   position: WorkbenchDropPosition;
 }
 
+export function shouldPreventWholeGroupDrag(panelCount: number): boolean {
+  return panelCount <= 1;
+}
+
 /**
  * Dockview offers every in-instance content target before its drop handler decides
  * whether moving there would do anything. Keep the preview aligned with the drop:

@@ -15,6 +15,7 @@ import { getDevAppForAssistantProvider } from "@/features/devapps/registry";
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
 import { Button } from "@/components/ui/button";
 import { updateAssistantProvider } from "@/features/assistant/model/assistantRuntimeMetadataStore";
+import { presentProviderStatusMessage } from "@/features/assistant/chat/providerStatusPresentation";
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
@@ -39,6 +40,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     : status.status === "error"
       ? `${providerLabel} provider is unavailable.`
       : `${providerLabel} provider has limited availability.`;
+  const statusMessage = status.message ?? defaultMessage;
   const title = updateAvailable ? `${providerLabel} update available` : `${providerLabel} provider status`;
   const isError = status.status === "error";
   const devApp = getDevAppForAssistantProvider(provider);
@@ -71,12 +73,12 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
       <div className="space-y-1">
         <h3 className="text-sm font-medium">{title}</h3>
         <p className="text-sm text-muted-foreground">
-          {status.message ?? defaultMessage}
+          {presentProviderStatusMessage(statusMessage)}
         </p>
       </div>
       <ProviderRemediationAction
         provider={provider}
-        message={status.message ?? defaultMessage}
+        message={statusMessage}
         authenticationRequired={status.auth.status === "unauthenticated"}
       />
       {updateAvailable && status.versionAdvisory?.canUpdate ? (
@@ -108,7 +110,9 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
           <p
             className={`text-xs ${updateFeedback.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}
           >
-            {updateFeedback.message ?? "The provider version did not change."}
+            {presentProviderStatusMessage(
+              updateFeedback.message ?? "The provider version did not change.",
+            )}
           </p>
           {updateFeedback.output ? (
             <details className="relative text-xs text-muted-foreground">

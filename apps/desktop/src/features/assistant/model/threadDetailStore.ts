@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { markLiveText, markSnapshotText } from "./messageTextArrival";
 import type {
   MessageId,
   OrchestrationEvent,
@@ -196,6 +197,8 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
         return state;
       }
 
+      markSnapshotText(messages);
+
       return {
         byThreadId: {
           ...state.byThreadId,
@@ -255,8 +258,10 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
                 ? { attachments: incomingMessage.attachments }
                 : {}),
             };
+            markLiveText(updated, existing);
             nextMessages = current.messages.map((m, idx) => (idx === existingIndex ? updated : m));
           } else {
+            markLiveText(incomingMessage);
             nextMessages = [...current.messages, incomingMessage];
           }
 

@@ -221,6 +221,7 @@ export interface CreateTileOptions {
   selectionPreviewTargetId?: string | null
   assistantProjectId?: string | null
   threadId?: string | null
+  draftId?: string | null
   provider?: ProviderKind
   providerInstanceId?: ProviderInstanceId
   model?: string | null
@@ -297,6 +298,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
           | "viewMode"
           | "assistantProjectId"
           | "threadId"
+          | "draftId"
           | "provider"
           | "providerInstanceId"
           | "model"
@@ -645,6 +647,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
         createdAt,
         assistantProjectId: options.assistantProjectId ?? null,
         threadId: options.threadId ?? null,
+        draftId: options.draftId ?? id,
         provider: options.provider,
         providerInstanceId: options.providerInstanceId,
         model: options.model ?? null,
@@ -749,6 +752,7 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
         ...tile,
         assistantProjectId: tile.assistantProjectId ?? null,
         threadId: tile.threadId ?? null,
+        draftId: tile.draftId ?? tile.id,
         providerInstanceId: tile.providerInstanceId,
         model: tile.model ?? null,
         runtimeMode: tile.runtimeMode ?? "full-access",
@@ -1463,7 +1467,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
 
             let changed = false
             for (const key of [
-              "title", "viewMode", "assistantProjectId", "threadId", "provider",
+              "title", "viewMode", "assistantProjectId", "threadId", "draftId", "provider",
               "providerInstanceId", "model", "runtimeMode", "interactionMode", "agentLabel", "laneBinding",
             ] as const) {
               if (patch[key] !== undefined && patch[key] !== tile[key]) {

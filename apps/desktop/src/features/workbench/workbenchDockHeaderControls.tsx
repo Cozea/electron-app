@@ -53,7 +53,7 @@ function emitHeaderControlsChange(panelId: string) {
 }
 
 const noopSubscribe = () => () => {}
-const zeroSnapshot = () => 0
+const emptySnapshot = () => null
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   // Exposed for CDP diagnostics (missing URL bar = missing registration).
@@ -86,21 +86,17 @@ export function useWorkbenchDockHeaderControls(
     [panelId],
   )
   const getSnapshot = useCallback(
-    () => (panelId ? (versionByPanelId.get(panelId) ?? 0) : 0),
+    () => (panelId ? headerControlsByPanelId.get(panelId) ?? null : null),
     [panelId],
   )
 
-  useSyncExternalStore(
+  // Return the subscribed value itself. Reading the map after discarding a
+  // numeric version lets React Compiler memoize that read by panelId alone.
+  return useSyncExternalStore(
     panelId ? subscribe : noopSubscribe,
-    panelId ? getSnapshot : zeroSnapshot,
-    panelId ? getSnapshot : zeroSnapshot,
+    panelId ? getSnapshot : emptySnapshot,
+    panelId ? getSnapshot : emptySnapshot,
   )
-
-  if (!panelId) {
-    return null
-  }
-
-  return headerControlsByPanelId.get(panelId) ?? null
 }
 
 export function useRegisterWorkbenchDockHeaderControls(

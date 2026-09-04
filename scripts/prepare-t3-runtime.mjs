@@ -42,6 +42,58 @@ const COZEA_PROVIDER_DEFAULT_PATCHES = [
   },
 ];
 
+const COZEA_PROVIDER_UPDATE_PATCHES = [
+  {
+    label: "npm updater accepts the selected installation prefix",
+    original: "function makeNpmGlobalProviderMaintenanceCapabilities(definition) {",
+    patched: "function makeNpmGlobalProviderMaintenanceCapabilities(definition, prefix = null) {",
+  },
+  {
+    label: "npm updater targets the selected installation prefix",
+    original:
+      '\t\t\t"-g",\n\t\t\t`--allow-scripts=${definition.npmPackageName}`,',
+    patched:
+      '\t\t\t"-g",\n\t\t\t...prefix ? [`--prefix=${prefix}`] : [],\n\t\t\t`--allow-scripts=${definition.npmPackageName}`,',
+  },
+  {
+    label: "npm global-prefix inference",
+    original: `function normalizeCommandPath(commandPath) {
+\treturn commandPath.replaceAll("\\\\", "/").toLowerCase();
+}
+function isBunGlobalCommandPath(commandPath) {`,
+    patched: `function normalizeCommandPath(commandPath) {
+\treturn commandPath.replaceAll("\\\\", "/").toLowerCase();
+}
+function npmGlobalPrefixFromCommandPath(commandPath) {
+\tconst normalized = normalizeCommandPath(commandPath);
+\tconst posixMarker = "/lib/node_modules/";
+\tconst posixIndex = normalized.indexOf(posixMarker);
+\tif (posixIndex > 0) return commandPath.slice(0, posixIndex);
+\tconst windowsMarker = "/npm/node_modules/";
+\tconst windowsIndex = normalized.indexOf(windowsMarker);
+\tif (windowsIndex > 0) return commandPath.slice(0, windowsIndex + "/npm".length);
+\treturn null;
+}
+function isBunGlobalCommandPath(commandPath) {`,
+  },
+  {
+    label: "resolved npm installation takes precedence over launcher shape",
+    original: `\t\tconst commandPaths = [resolvedCommandPath, ...options?.realCommandPath ? [options.realCommandPath] : []];
+\t\tconst nativeUpdate = definition.nativeUpdate;`,
+    patched: `\t\tconst commandPaths = [resolvedCommandPath, ...options?.realCommandPath ? [options.realCommandPath] : []];
+\t\tconst npmCommandPath = [options?.realCommandPath, resolvedCommandPath].filter(Boolean).find(isNpmGlobalCommandPath);
+\t\tif (npmCommandPath) return makeNpmGlobalProviderMaintenanceCapabilities(definition, npmGlobalPrefixFromCommandPath(npmCommandPath));
+\t\tconst nativeUpdate = definition.nativeUpdate;`,
+  },
+  {
+    label: "provider update result uses Cozea-neutral copy",
+    original:
+      'message: couldNotVerify ? "Update command completed, but T3 Code could not verify the provider version." : stillOutdated ? "Update command completed, but T3 Code still detects an outdated provider version." : "Provider updated.",',
+    patched:
+      'message: couldNotVerify ? "Update completed, but the installed version could not be verified." : stillOutdated ? "Update completed, but the selected installation is still out of date." : "Provider updated.",',
+  },
+];
+
 function fail(message) {
   throw new Error(`[prepare-t3-runtime] ${message}`);
 }
@@ -64,15 +116,35 @@ export function patchT3ServerBundleProviderDefaults(source) {
   return { source: patchedSource, changed };
 }
 
+export function patchT3ServerBundleProviderUpdates(source) {
+  let patchedSource = source;
+  let changed = false;
+
+  for (const patch of COZEA_PROVIDER_UPDATE_PATCHES) {
+    if (patchedSource.includes(patch.patched)) {
+      continue;
+    }
+    if (!patchedSource.includes(patch.original)) {
+      fail(`${patch.label} patch anchor is missing; refresh the Cozea T3 runtime patch.`);
+    }
+    patchedSource = patchedSource.replace(patch.original, patch.patched);
+    changed = true;
+  }
+
+  return { source: patchedSource, changed };
+}
+
 function applyCozeaT3RuntimePatches({ checkOnly }) {
   const source = fs.readFileSync(serverBundle, "utf8");
-  const patched = patchT3ServerBundleProviderDefaults(source);
-  if (checkOnly && patched.changed) {
-    fail("T3 server bundle is missing the Cozea provider-default patch.");
+  const providerDefaults = patchT3ServerBundleProviderDefaults(source);
+  const providerUpdates = patchT3ServerBundleProviderUpdates(providerDefaults.source);
+  const changed = providerDefaults.changed || providerUpdates.changed;
+  if (checkOnly && changed) {
+    fail("T3 server bundle is missing a Cozea runtime patch.");
   }
-  if (!checkOnly && patched.changed) {
-    fs.writeFileSync(serverBundle, patched.source);
-    console.log("[prepare-t3-runtime] Applied Cozea provider defaults to the T3 bundle.");
+  if (!checkOnly && changed) {
+    fs.writeFileSync(serverBundle, providerUpdates.source);
+    console.log("[prepare-t3-runtime] Applied Cozea policies to the T3 bundle.");
   }
 }
 

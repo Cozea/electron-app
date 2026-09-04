@@ -17,8 +17,15 @@ revision they were generated from and change only when contracts are regenerated
 
 `scripts/prepare-t3-runtime.mjs` applies Cozea-owned policy patches to the built
 server bundle after every fresh build and before development or distribution use.
-The current patch enables Cursor and OpenCode for fresh or sparse settings while
-leaving Grok opt-in and preserving an explicit persisted `enabled: false`.
+The current patches:
+
+- enable Cursor and OpenCode for fresh or sparse settings while leaving Grok
+  opt-in and preserving an explicit persisted `enabled: false`;
+- make provider CLI updates target the npm prefix that owns the selected
+  executable, including a `~/.local/bin` launcher backed by
+  `~/.local/lib/node_modules`, instead of whichever npm prefix happens to be
+  active in the server process; and
+- keep upstream product branding out of provider-update result copy.
 
 The patch is intentionally maintained in the parent repository so a clean clone,
 CI build, or packaged app does not depend on local settings or an unpublished

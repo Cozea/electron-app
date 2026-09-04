@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { shouldSuppressNoOpSelfDropOverlay } from '@/features/workbench/model/workbenchDropOverlay'
+import {
+  shouldPreventWholeGroupDrag,
+  shouldSuppressNoOpSelfDropOverlay,
+} from '@/features/workbench/model/workbenchDropOverlay'
 
 const panelDrag = {
   viewId: 'workbench',
@@ -23,6 +26,12 @@ function shouldSuppress(
 }
 
 describe('workbench drop overlay', () => {
+  it('permits whole-group dragging only when the group contains multiple panels', () => {
+    expect(shouldPreventWholeGroupDrag(0)).toBe(true)
+    expect(shouldPreventWholeGroupDrag(1)).toBe(true)
+    expect(shouldPreventWholeGroupDrag(2)).toBe(false)
+  })
+
   it('suppresses the center overlay over the panel being dragged', () => {
     expect(shouldSuppress()).toBe(true)
   })

@@ -3,10 +3,17 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { DockviewApi, DockviewReadyEvent, SerializedDockview } from "dockview-react";
 
 import type { WorkbenchSelectionTile, WorkbenchTile } from "@/lib/workbenchTileContract"
+import { useViewTransitionNavigate } from "@/lib/navigation"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
+import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
+import { historyPlacement, type AssistantHistoryEntry } from "@/features/assistant/history/assistantHistory"
+import { useAssistantComposerDraftStore } from "@/features/assistant/chat/composerDraftStore"
 import {
   selectProjectWorkbench,
   type WorkbenchProjectState,
   useProjectWorkbenchStore,
+  flushWorkbenchStorage,
 } from "@/lib/workbenchStore";
 import { useTerminalStore } from "@/features/terminal/model/terminalStore";
 import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore";
@@ -31,7 +38,10 @@ import {
   isWorkbenchLayoutWriteStillValid,
   type PendingWorkbenchLayoutWrite,
 } from "@/features/workbench/model/workbenchLayoutPersistence";
-import { shouldSuppressNoOpSelfDropOverlay } from "@/features/workbench/model/workbenchDropOverlay";
+import {
+  shouldPreventWholeGroupDrag,
+  shouldSuppressNoOpSelfDropOverlay,
+} from "@/features/workbench/model/workbenchDropOverlay";
 import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/source-control/model/changesTileSizing";
 import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime";
 import { releaseProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntimeLifecycle";
@@ -130,6 +140,7 @@ interface UseWorkbenchDockviewRuntimeResult {
     request: WorkbenchSelectionLaunchRequest,
   ) => void;
   handleDuplicateAssistantTile: (sourceTileId: string) => void;
+  handleOpenAssistantConversation: (sourceTileId: string, entry: AssistantHistoryEntry, busy: boolean) => void;
   handleSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void;
   handleDockviewReady: (event: DockviewReadyEvent) => void;
 }
@@ -139,6 +150,7 @@ import { useTranslation } from "@/lib/i18n";
 export function useWorkbenchDockviewRuntime(
   input: UseWorkbenchDockviewRuntimeInput,
 ): UseWorkbenchDockviewRuntimeResult {
+  const navigate = useViewTransitionNavigate()
   const { t } = useTranslation();
   const dockviewApiRef = useRef<DockviewApi | null>(null);
   const dockviewHostRef = useRef<HTMLDivElement | null>(null);
@@ -921,6 +933,49 @@ export function useWorkbenchDockviewRuntime(
     [getLiveWorkbench, input.activeLaneId, input.projectId, input.workspaceId, workbenchActions],
   );
 
+  const handleOpenAssistantConversation = useCallback((sourceTileId: string, entry: AssistantHistoryEntry, busy: boolean) => {
+    const api = dockviewApiRef.current
+    const bench = getLiveWorkbench()
+    const source = bench?.tiles[sourceTileId]
+    if (!api || !bench || source?.type !== "assistantChat" || !input.projectId || entry.context.projectId !== input.projectId) return
+    const existing = Object.values(bench.tiles).find((tile) => tile.type === "assistantChat" &&
+      (entry.threadId ? tile.threadId === entry.threadId : !tile.threadId && (tile.draftId ?? tile.id) === entry.draftId))
+    const placement = historyPlacement({ currentThreadId: source.threadId ?? null, currentDraftId: source.draftId ?? source.id, target: entry, existingTileId: existing?.id ?? null, busy })
+    if (placement === "current") return
+    if (placement === "focus" && existing) { api.getPanel(existing.id)?.api.setActive(); workbenchActions.setActiveTile(input.projectId, input.activeLaneId, existing.id, input.workspaceId); return }
+    const otherOpen = Object.values(useProjectWorkbenchStore.getState().workbenches)
+      .filter((candidate) => candidate !== bench && candidate.projectId === input.projectId)
+      .flatMap((candidate) => Object.values(candidate.tiles).flatMap((tile) => tile.type === "assistantChat" &&
+        (entry.threadId ? tile.threadId === entry.threadId : !tile.threadId && (tile.draftId ?? tile.id) === entry.draftId)
+        ? [{ bench: candidate, tile }] : []))[0]
+    if (otherOpen) {
+      workbenchActions.setActiveTile(input.projectId, otherOpen.bench.laneId, otherOpen.tile.id, otherOpen.bench.workspaceId)
+      navigate(buildProjectPath(input.projectId, "workbench"), { state: {
+        ...buildProjectRouteNavigationState({ projectId: input.projectId, preferredWorkspaceId: otherOpen.bench.workspaceId }),
+        ...buildWorkbenchIntentState({ laneId: otherOpen.bench.laneId, focusTileId: otherOpen.tile.id }),
+      } })
+      return
+    }
+    useAssistantComposerDraftStore.getState().upsertDraft(entry.threadId ?? entry.draftId, {
+      modelSelection: entry.modelSelection, runtimeMode: entry.runtimeMode, interactionMode: entry.interactionMode,
+    })
+    const patch = {
+      title: entry.title, assistantProjectId: entry.assistantProjectId, threadId: entry.threadId,
+      draftId: entry.draftId, provider: entry.modelSelection.provider, providerInstanceId: entry.modelSelection.instanceId,
+      model: entry.modelSelection.model, runtimeMode: entry.runtimeMode, interactionMode: entry.interactionMode,
+      agentLabel: null, viewMode: "chat" as const,
+    }
+    if (placement === "replace") {
+      workbenchActions.updateAssistantTile(input.projectId, input.activeLaneId, sourceTileId, patch, input.workspaceId)
+    } else {
+      const tileId = workbenchActions.addTile(input.projectId, input.activeLaneId, "assistantChat", patch, input.workspaceId)
+      const tile = getLiveWorkbench()?.tiles[tileId]
+      if (tile) api.addPanel({ id: tile.id, title: tile.title, component: getDockComponentName(tile.type), params: getPanelParams(input.projectId, input.activeLaneId, tile.id), renderer: getPanelRendererForTile(tile.type), ...getPanelConstraintsForTile(tile.type), position: { referencePanel: sourceTileId, direction: "within" } })
+      workbenchActions.setActiveTile(input.projectId, input.activeLaneId, tileId, input.workspaceId)
+    }
+    flushWorkbenchStorage()
+  }, [getLiveWorkbench, input.projectId, input.activeLaneId, input.workspaceId, workbenchActions, navigate])
+
   const handleDuplicateAssistantTile = useCallback(
     (sourceTileId: string) => {
       if (!input.projectId) return;
@@ -1064,6 +1119,12 @@ export function useWorkbenchDockviewRuntime(
 
       event.api.onWillDragPanel((dragEvent) => {
         if (dragEvent.panel.api.component === "changes") {
+          dragEvent.nativeEvent.preventDefault();
+        }
+      });
+
+      event.api.onWillDragGroup((dragEvent) => {
+        if (shouldPreventWholeGroupDrag(dragEvent.group.panels.length)) {
           dragEvent.nativeEvent.preventDefault();
         }
       });
@@ -1382,6 +1443,7 @@ export function useWorkbenchDockviewRuntime(
     getSelectionPreviewTile,
     handleResolveSelectionTile,
     handleDuplicateAssistantTile,
+    handleOpenAssistantConversation,
     handleSplitTile,
     handleDockviewReady,
   };

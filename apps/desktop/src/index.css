@@ -121,6 +121,19 @@ body {
 }
 
 /* Chat markdown rendering (t3 parity; link color uses --primary — no --info-foreground in theme) */
+@keyframes assistant-text-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.assistant-text-enter {
+  animation: assistant-text-enter 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-text-enter { animation: none; }
+}
+
 .chat-markdown {
   min-width: 0;
   overflow-wrap: anywhere;
