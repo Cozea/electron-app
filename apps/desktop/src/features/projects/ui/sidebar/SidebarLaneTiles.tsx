@@ -441,8 +441,8 @@ function TileRowLabel(props: {
       <LiveShimmerText
         className="min-w-0 flex-1"
         title={props.overflowTitle}
-        baseClassName="text-sidebar-foreground"
-        sweepClassName="text-muted-foreground"
+        baseClassName="text-sidebar-foreground/45"
+        sweepClassName="text-sidebar-foreground"
       >
         {props.title}
       </LiveShimmerText>

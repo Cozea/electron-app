@@ -7,10 +7,13 @@ import { cn } from "@/lib/utils"
  * currently running.
  *
  * The effect is two stacked copies of the same string: a base, and a second one
- * masked to a moving window and drawn over it. The overlay covers the base
- * glyph for glyph, so the sweep reads as whatever colour it paints — which is
- * why the two tones are opaque colours rather than opacities. Nothing here can
- * lighten the base by fading; it can only repaint it.
+ * masked to a moving window and drawn over it.
+ *
+ * The mask only reaches full opacity at a thin peak — most of the band paints at
+ * about 55% — so the sweep has to be the *stronger* of the two tones to survive
+ * that blend. Pair a faded base with the full-strength colour on top and the
+ * band reads clearly; invert it (opaque base, weaker sweep) and the sweep is
+ * invisible, which is exactly how the light-mode sidebar lost its shimmer.
  *
  * The nested `focus`/`counter`/`aligned` spans keep the overlay pinned over the
  * base while its mask sweeps — the widths in `index.css` depend on that
@@ -20,9 +23,9 @@ export const LiveShimmerText = memo(function LiveShimmerText(props: {
   children: ReactNode
   className?: string
   title?: string
-  /** Resting colour. */
+  /** Resting colour; must be the faded one, or the band will not show. */
   baseClassName?: string
-  /** Colour of the travelling band; must be opaque to show against the base. */
+  /** Colour of the travelling band; must be stronger than the base. */
   sweepClassName?: string
 }) {
   const {

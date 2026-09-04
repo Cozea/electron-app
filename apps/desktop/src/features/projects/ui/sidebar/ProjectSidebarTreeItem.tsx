@@ -414,8 +414,8 @@ export const ProjectSidebarTreeItem = React.memo(
                 <LiveShimmerText
                   className="font-normal"
                   title={projectNameTitle}
-                  baseClassName="text-sidebar-foreground"
-                  sweepClassName="text-muted-foreground"
+                  baseClassName="text-sidebar-foreground/45"
+                  sweepClassName="text-sidebar-foreground"
                 >
                   {project.name}
                 </LiveShimmerText>
