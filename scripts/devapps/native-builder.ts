@@ -25,16 +25,11 @@ import {
   parseDevAppManifestV3,
   requestedDevAppCapabilitiesV3,
 } from "../../shared/devAppManifestV3Parser";
+import {
+  nativeDevAppRuntimeProxySource,
+  nativeDevAppRuntimeVirtualId,
+} from "../../shared/nativeDevAppRuntime";
 
-export const NATIVE_DEV_APP_RUNTIME_IMPORTS = {
-  react: "cozea-native-runtime://runtime/react.mjs",
-  "react/jsx-runtime": "cozea-native-runtime://runtime/jsx-runtime.mjs",
-  "react/jsx-dev-runtime": "cozea-native-runtime://runtime/jsx-dev-runtime.mjs",
-  "@cozea/devapp-api/native": "cozea-native-runtime://runtime/native.mjs",
-  "@cozea/devapp-api/ui": "cozea-native-runtime://runtime/ui.mjs",
-} as const;
-
-export type NativeDevAppRuntimeImport = keyof typeof NATIVE_DEV_APP_RUNTIME_IMPORTS;
 export type NativeDevAppImportClassification = "host-runtime" | "bundled" | "forbidden";
 
 const NODE_IMPORTS = new Set(
@@ -103,9 +98,7 @@ export class NativeDevAppBuildError extends Error {
 export function classifyNativeDevAppImport(
   source: string,
 ): NativeDevAppImportClassification {
-  if (Object.prototype.hasOwnProperty.call(NATIVE_DEV_APP_RUNTIME_IMPORTS, source)) {
-    return "host-runtime";
-  }
+  if (nativeDevAppRuntimeVirtualId(source)) return "host-runtime";
   if (
     NODE_IMPORTS.has(source) ||
     FORBIDDEN_EXACT_IMPORTS.has(source) ||
@@ -116,8 +109,8 @@ export function classifyNativeDevAppImport(
   return "bundled";
 }
 
-export function nativeDevAppRuntimeImportUrl(source: string): string | null {
-  return NATIVE_DEV_APP_RUNTIME_IMPORTS[source as NativeDevAppRuntimeImport] ?? null;
+export function nativeDevAppRuntimeModuleId(source: string): string | null {
+  return nativeDevAppRuntimeVirtualId(source);
 }
 
 function isInside(parent: string, candidate: string): boolean {
@@ -277,11 +270,9 @@ function createRendererBoundaryPlugin(plan: NativeDevAppBuildPlan): Plugin {
       if (source.startsWith(PUBLIC_ENTRY_PREFIX)) {
         return `${ENTRY_PREFIX}${source.slice(PUBLIC_ENTRY_PREFIX.length)}`;
       }
-      const classification = classifyNativeDevAppImport(source);
-      if (classification === "host-runtime") {
-        return { id: source, external: true };
-      }
-      if (classification === "forbidden") {
+      const runtimeId = nativeDevAppRuntimeVirtualId(source);
+      if (runtimeId) return runtimeId;
+      if (classifyNativeDevAppImport(source) === "forbidden") {
         throw new NativeDevAppBuildError(
           `Native renderer code may not import ${JSON.stringify(source)}.`,
         );
@@ -298,6 +289,8 @@ function createRendererBoundaryPlugin(plan: NativeDevAppBuildPlan): Plugin {
       return resolved;
     },
     load(id) {
+      const runtimeProxy = nativeDevAppRuntimeProxySource(id);
+      if (runtimeProxy) return runtimeProxy;
       const module = entries.get(id);
       if (!module) return null;
       const imports = module.stylePath
@@ -400,12 +393,10 @@ async function buildRendererModules(
       cssCodeSplit: false,
       rollupOptions: {
         input: inputs,
-        external: (source) => classifyNativeDevAppImport(source) === "host-runtime",
         output: {
           entryFileNames: "[name].mjs",
           chunkFileNames: "chunks/[name]-[hash].mjs",
           assetFileNames: "assets/[name]-[hash][extname]",
-          paths: (source) => nativeDevAppRuntimeImportUrl(source) ?? source,
         },
       },
     },
