@@ -1,0 +1,58 @@
+name: Apply collaboration v2 PR fixes
+
+on:
+  push:
+    branches:
+      - refactor/collaboration-v2-end-to-end
+    paths:
+      - .github/patches/collaboration-v2-green.patch
+      - .github/workflows/apply-collaboration-v2-green.yml
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: apply-collaboration-v2-green
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+          ref: refactor/collaboration-v2-end-to-end
+
+      - name: Apply reviewed patch
+        run: |
+          git apply --check .github/patches/collaboration-v2-green.patch
+          git apply .github/patches/collaboration-v2-green.patch
+          rm .github/patches/collaboration-v2-green.patch
+          rm .github/workflows/apply-collaboration-v2-green.yml
+
+      - name: Commit and push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(collaboration): close PR validation gaps'
+          git push origin HEAD:refactor/collaboration-v2-end-to-end
+
+      - name: Dispatch final validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/Cozea/electron-app/actions/workflows/collaboration-v2-branch-validation.yml/dispatches \
+            --data '{"ref":"refactor/collaboration-v2-end-to-end"}'
