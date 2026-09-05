@@ -785,7 +785,7 @@ const en = {
   "agentSkills.searchPlaceholder": "Search skills...",
   "agentSkills.filter.managed": "My library",
   "agentSkills.providers": "Enabled in",
-  "nav.agentSkills": "Agent Skills",
+  "nav.agentSkills": "Agent Builds",
 } as const
 
 export type TranslationKey = keyof typeof en

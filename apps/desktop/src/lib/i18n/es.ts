@@ -796,7 +796,7 @@ const es: Record<TranslationKey, string> = {
   "agentSkills.searchPlaceholder": "Buscar habilidades...",
   "agentSkills.filter.managed": "Mi biblioteca",
   "agentSkills.providers": "Activadas en",
-  "nav.agentSkills": "Habilidades de agentes",
+  "nav.agentSkills": "Builds de agentes",
 } as const
 
 export default es
