@@ -1,6 +1,10 @@
 import * as Y from 'yjs'
 import type { Awareness } from 'y-protocols/awareness'
-import { applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
+import {
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+  removeAwarenessStates,
+} from 'y-protocols/awareness'
 import {
   bytesToEnvelope,
   decryptPayload,
@@ -40,6 +44,8 @@ interface SyncDeltaMessage {
     fromSeq: number
     toSeq: number
     updatesBinary: string[]
+    headSeq?: number
+    hasMore?: boolean
   }
 }
 
@@ -115,19 +121,26 @@ type IncomingWireMessage =
   | UpdateAckMessage
   | ErrorMessage
 
+interface PendingUpdate {
+  updateBinary: string
+  idempotencyKey: string
+  timestamp: number
+}
+
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 10_000
 const RECONNECT_FACTOR = 2
 const INITIAL_CONNECT_FAILURE_LIMIT = 6
 const INITIAL_CONNECT_FAILURE_WINDOW_MS = 2_500
 const SESSION_REFRESH_BUFFER_MS = 2 * 60 * 1000
+const SYNC_PAGE_SIZE = 128
 const AUTH_RECOVERY_ERROR_CODES = new Set(['INVALID_SESSION_TOKEN', 'SESSION_MISMATCH'])
 const SESSION_INVALIDATION_ERROR_CODES = new Set(['ENCRYPTION_KEY_STALE', 'DEVICE_REVOKED'])
 
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
-  for (let i = 0; i < bytes.byteLength; i += 1) {
-    binary += String.fromCharCode(bytes[i])
+  for (let index = 0; index < bytes.byteLength; index += 1) {
+    binary += String.fromCharCode(bytes[index])
   }
   return btoa(binary)
 }
@@ -135,8 +148,8 @@ function toBase64(bytes: Uint8Array): string {
 function fromBase64(base64: string): Uint8Array {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
   }
   return bytes
 }
@@ -157,7 +170,7 @@ function parseEnvelopeMetadata(envelope: { aad: string }): Record<string, unknow
 
 function resolveWsUrl(base: string): string {
   const trimmed = base.trim()
-  if (!trimmed) throw new Error('Collab websocket URL is empty')
+  if (!trimmed) throw new Error('Collaboration websocket URL is empty')
   const parsed = new URL(trimmed)
   if (parsed.protocol === 'https:') parsed.protocol = 'wss:'
   if (parsed.protocol === 'http:') parsed.protocol = 'ws:'
@@ -182,6 +195,13 @@ function decodeJwtExpMs(token: string): number | null {
   }
 }
 
+function finiteSequence(value: unknown): number | null {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) && numberValue >= 0
+    ? Math.floor(numberValue)
+    : null
+}
+
 export class CollabWsProvider {
   private readonly doc: Y.Doc
   private readonly awareness: Awareness
@@ -192,7 +212,7 @@ export class CollabWsProvider {
   private readonly onPermanentFailure?: (reason: string) => void
   private readonly refreshSession?: () => Promise<CollabSessionDescriptor | null>
   private readonly encryption?: { roomKeyBase64: string; keyVersion: number } | null
-  private readonly providerInstanceId = randomId('collab_provider')
+
   private socket: WebSocket | null = null
   private reconnectTimer: number | null = null
   private reconnectAttempt = 0
@@ -200,18 +220,19 @@ export class CollabWsProvider {
   private hasConnectedOnce = false
   private consecutiveInitialFailures = 0
   private knownSeq: number
+  private targetHeadSeq: number
   private isDestroyed = false
   private lastServerErrorCode: string | null = null
   private lastServerErrorMessage: string | null = null
   private sessionRefreshInFlight: Promise<boolean> | null = null
   private hasHandshakeAcknowledged = false
   private activeSocketInstanceId: string | null = null
-  private readonly pendingUpdates: Array<{
-    updateBinary: string
-    idempotencyKey: string
-    timestamp: number
-  }> = []
+  private readonly pendingUpdates: PendingUpdate[] = []
+  private readonly localUpdatesById = new Map<string, PendingUpdate>()
   private hasPendingAwarenessPublish = false
+  private requestedCatchUpAtSeq: number | null = null
+  private incomingMessageQueue: Promise<void> = Promise.resolve()
+  private outboundUpdateQueue: Promise<void> = Promise.resolve()
 
   constructor(args: {
     doc: Y.Doc
@@ -229,10 +250,8 @@ export class CollabWsProvider {
     this.session = args.session
     this.clientType = args.clientType ?? 'electron'
     this.clientId = String(this.doc.clientID)
-    this.knownSeq =
-      typeof args.initialKnownSeq === 'number' && Number.isFinite(args.initialKnownSeq)
-        ? Math.max(0, Math.floor(args.initialKnownSeq))
-        : 0
+    this.knownSeq = finiteSequence(args.initialKnownSeq) ?? 0
+    this.targetHeadSeq = this.knownSeq
     this.onStateChange = args.onStateChange
     this.onPermanentFailure = args.onPermanentFailure
     this.refreshSession = args.refreshSession
@@ -240,32 +259,31 @@ export class CollabWsProvider {
   }
 
   start(): void {
-    void this.connect()
     this.doc.on('update', this.handleLocalUpdate)
     this.awareness.on('update', this.handleAwarenessUpdate)
+    void this.connect()
   }
 
   destroy(): void {
     this.isDestroyed = true
     this.hasHandshakeAcknowledged = false
     this.hasPendingAwarenessPublish = false
+    this.requestedCatchUpAtSeq = null
     this.doc.off('update', this.handleLocalUpdate)
     this.awareness.off('update', this.handleAwarenessUpdate)
     this.clearReconnectTimer()
+
     const socket = this.socket
     this.socket = null
+    this.activeSocketInstanceId = null
     if (!socket) return
 
     socket.onmessage = null
     socket.onerror = null
     socket.onclose = null
 
-    // Closing a CONNECTING socket triggers noisy browser warnings in dev.
-    // Defer close until after open to avoid false-positive "connection failed" noise.
     if (socket.readyState === WebSocket.CONNECTING) {
-      socket.onopen = () => {
-        socket.close(1000, 'Provider destroyed')
-      }
+      socket.onopen = () => socket.close(1000, 'Provider destroyed')
       return
     }
 
@@ -280,8 +298,20 @@ export class CollabWsProvider {
     return 'idle'
   }
 
+  /** Highest contiguous server sequence decoded and applied to this Y.Doc. */
+  getKnownSeq(): number {
+    return this.knownSeq
+  }
+
   updateSession(session: CollabSessionDescriptor): void {
     this.session = session
+  }
+
+  private advanceKnownSeq(value: unknown): void {
+    const sequence = finiteSequence(value)
+    if (sequence !== null) {
+      this.knownSeq = Math.max(this.knownSeq, sequence)
+    }
   }
 
   private clearReconnectTimer(): void {
@@ -291,14 +321,32 @@ export class CollabWsProvider {
     }
   }
 
-  private log(event: string, details?: Record<string, unknown>): void {
-    void event
-    void details
-    void this.providerInstanceId
+  private isCurrentSocket(socket: WebSocket, socketInstanceId: string): boolean {
+    return this.socket === socket &&
+      this.activeSocketInstanceId === socketInstanceId &&
+      !this.isDestroyed
   }
 
-  private isCurrentSocket(socket: WebSocket, socketInstanceId: string): boolean {
-    return this.socket === socket && this.activeSocketInstanceId === socketInstanceId && !this.isDestroyed
+  private queuePendingUpdate(update: PendingUpdate): void {
+    if (this.pendingUpdates.some((entry) => entry.idempotencyKey === update.idempotencyKey)) {
+      return
+    }
+    this.pendingUpdates.push(update)
+  }
+
+  private queueUnacknowledgedUpdatesForRetry(): void {
+    for (const update of this.localUpdatesById.values()) {
+      this.queuePendingUpdate(update)
+    }
+  }
+
+  private removePendingUpdate(idempotencyKey: string): void {
+    const index = this.pendingUpdates.findIndex(
+      (update) => update.idempotencyKey === idempotencyKey,
+    )
+    if (index >= 0) {
+      this.pendingUpdates.splice(index, 1)
+    }
   }
 
   private scheduleReconnect(errorMessage?: string): void {
@@ -307,15 +355,8 @@ export class CollabWsProvider {
     this.onStateChange?.('reconnecting', errorMessage ?? null)
     const delay = Math.min(
       RECONNECT_MAX_MS,
-      RECONNECT_BASE_MS * Math.pow(RECONNECT_FACTOR, this.reconnectAttempt)
+      RECONNECT_BASE_MS * Math.pow(RECONNECT_FACTOR, this.reconnectAttempt),
     )
-    console.warn('[CollabWsProvider] Scheduling reconnect', {
-      projectId: this.session.projectId,
-      roomId: this.session.roomId,
-      attempt: this.reconnectAttempt + 1,
-      delayMs: delay,
-      reason: errorMessage ?? null,
-    })
     this.reconnectAttempt += 1
     this.reconnectTimer = window.setTimeout(() => {
       void this.connect()
@@ -324,15 +365,12 @@ export class CollabWsProvider {
 
   private shouldRefreshSessionBeforeConnect(): boolean {
     const expirationMs = decodeJwtExpMs(this.session.token)
-    if (!expirationMs) return false
-    return expirationMs - Date.now() <= SESSION_REFRESH_BUFFER_MS
+    return expirationMs !== null && expirationMs - Date.now() <= SESSION_REFRESH_BUFFER_MS
   }
 
   private async maybeRefreshSession(): Promise<boolean> {
     if (!this.refreshSession) return false
-    if (this.sessionRefreshInFlight) {
-      return await this.sessionRefreshInFlight
-    }
+    if (this.sessionRefreshInFlight) return await this.sessionRefreshInFlight
 
     const refreshPromise = (async () => {
       try {
@@ -343,7 +381,7 @@ export class CollabWsProvider {
         this.consecutiveInitialFailures = 0
         return true
       } catch (error) {
-        console.warn('[CollabWsProvider] Failed to refresh collab session:', error)
+        console.warn('[CollabWsProvider] Failed to refresh collaboration session:', error)
         return false
       } finally {
         this.sessionRefreshInFlight = null
@@ -375,23 +413,40 @@ export class CollabWsProvider {
     invalidateCollabSession(this.session.projectId)
   }
 
+  private enqueueIncomingMessage(raw: unknown): void {
+    this.incomingMessageQueue = this.incomingMessageQueue
+      .then(async () => {
+        await this.handleIncoming(raw)
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        console.warn('[CollabWsProvider] Failed to process collaboration frame:', error)
+        this.onStateChange?.('error', message)
+        if (this.socket?.readyState === WebSocket.OPEN) {
+          this.socket.close(1011, 'Collaboration frame processing failed')
+        }
+      })
+  }
+
   private async connect(): Promise<void> {
     if (this.isDestroyed) return
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) return
-    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) return
+    if (
+      this.socket &&
+      (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)
+    ) {
+      return
+    }
 
     this.clearReconnectTimer()
     if (this.shouldRefreshSessionBeforeConnect()) {
       await this.maybeRefreshSession()
       if (this.isDestroyed) return
-      if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
-        return
-      }
     }
 
     this.currentConnectStartedAt = Date.now()
     this.hasHandshakeAcknowledged = false
     this.hasPendingAwarenessPublish = false
+    this.requestedCatchUpAtSeq = null
     this.lastServerErrorCode = null
     this.lastServerErrorMessage = null
     this.onStateChange?.('connecting', null)
@@ -400,71 +455,46 @@ export class CollabWsProvider {
     const socketInstanceId = randomId('collab_socket')
     this.socket = socket
     this.activeSocketInstanceId = socketInstanceId
-    this.log('connect-start', { socketInstanceId })
-
-    // console.info('[CollabWsProvider] Opening collaboration websocket', {
-    //   projectId: this.session.projectId,
-    //   roomId: this.session.roomId,
-    //   reconnectAttempt: this.reconnectAttempt,
-    // })
 
     socket.onopen = () => {
       if (!this.isCurrentSocket(socket, socketInstanceId)) {
-        this.log('stale-socket-open-ignored', { socketInstanceId })
         socket.close(1000, 'Stale socket')
         return
       }
-      this.log('hello-send', { socketInstanceId })
-      socket.send(
-        JSON.stringify({
-          type: 'hello',
-          payload: {
-            protocolVersion: this.session.protocolVersion,
-            clientType: this.clientType,
-            projectId: this.session.projectId,
-            roomId: this.session.roomId,
-            sessionToken: this.session.token,
-            clientId: this.clientId,
-            knownSeq: this.knownSeq,
-          },
-        })
-      )
+
+      socket.send(JSON.stringify({
+        type: 'hello',
+        payload: {
+          protocolVersion: this.session.protocolVersion,
+          clientType: this.clientType,
+          projectId: this.session.projectId,
+          roomId: this.session.roomId,
+          sessionToken: this.session.token,
+          clientId: this.clientId,
+          knownSeq: this.knownSeq,
+        },
+      }))
     }
 
     socket.onmessage = (event) => {
-      if (!this.isCurrentSocket(socket, socketInstanceId)) {
-        this.log('stale-socket-message-ignored', { socketInstanceId })
-        return
-      }
-      this.handleIncoming(event.data)
+      if (!this.isCurrentSocket(socket, socketInstanceId)) return
+      this.enqueueIncomingMessage(event.data)
     }
 
     socket.onerror = () => {
-      if (!this.isCurrentSocket(socket, socketInstanceId)) {
-        return
-      }
-      console.warn('[CollabWsProvider] Collaboration websocket transport error', {
-        projectId: this.session.projectId,
-        roomId: this.session.roomId,
-      })
+      if (!this.isCurrentSocket(socket, socketInstanceId)) return
       this.onStateChange?.('error', 'Collaboration websocket error')
     }
 
     socket.onclose = (event) => {
-      if (this.socket !== socket || this.activeSocketInstanceId !== socketInstanceId) {
-        this.log('stale-socket-close-ignored', {
-          socketInstanceId,
-          code: event.code,
-          reason: event.reason || null,
-        })
-        return
-      }
+      if (!this.isCurrentSocket(socket, socketInstanceId)) return
       if (this.isDestroyed) return
-      if (this.socket === socket) {
-        this.socket = null
-        this.activeSocketInstanceId = null
-      }
+
+      this.socket = null
+      this.activeSocketInstanceId = null
       this.hasHandshakeAcknowledged = false
+      this.requestedCatchUpAtSeq = null
+      this.queueUnacknowledgedUpdatesForRetry()
 
       const connectLifetimeMs = Date.now() - this.currentConnectStartedAt
       const initialHandshakeFailure =
@@ -476,22 +506,8 @@ export class CollabWsProvider {
         this.consecutiveInitialFailures = 0
       }
 
-      const closeDetails =
-        this.lastServerErrorMessage ??
-        (typeof event.code === 'number'
-          ? `Collaboration websocket disconnected (code ${event.code})`
-          : 'Collaboration websocket disconnected')
-
-      console.warn('[CollabWsProvider] Collaboration websocket closed', {
-        projectId: this.session.projectId,
-        roomId: this.session.roomId,
-        code: event.code,
-        reason: event.reason || null,
-        serverErrorCode: this.lastServerErrorCode,
-        message: closeDetails,
-        connectLifetimeMs,
-        consecutiveInitialFailures: this.consecutiveInitialFailures,
-      })
+      const closeDetails = this.lastServerErrorMessage ??
+        `Collaboration websocket disconnected (code ${event.code})`
 
       if (AUTH_RECOVERY_ERROR_CODES.has(this.lastServerErrorCode ?? '')) {
         void this.handleAuthRecovery(closeDetails)
@@ -504,8 +520,7 @@ export class CollabWsProvider {
       }
 
       if (this.consecutiveInitialFailures >= INITIAL_CONNECT_FAILURE_LIMIT) {
-        const message =
-          'Collaboration websocket is unavailable after repeated failed handshakes. Switching to fallback sync transport.'
+        const message = 'Collaboration websocket is unavailable after repeated failed handshakes.'
         this.onStateChange?.('error', message)
         this.onPermanentFailure?.(message)
         return
@@ -515,29 +530,25 @@ export class CollabWsProvider {
     }
   }
 
-  private sendUpdate(updateBinary: string, idempotencyKey: string, timestamp: number): void {
+  private sendUpdate(update: PendingUpdate): void {
     const payload = {
       type: 'update.push',
       payload: {
         roomId: this.session.roomId,
-        idempotencyKey,
-        updateBinary,
+        idempotencyKey: update.idempotencyKey,
+        updateBinary: update.updateBinary,
         authorType: 'user',
         authorId: this.clientId,
-        timestamp,
+        timestamp: update.timestamp,
       },
     }
 
     if (this.socket?.readyState === WebSocket.OPEN && this.hasHandshakeAcknowledged) {
-      this.log('update-push-send', {
-        idempotencyKey,
-        timestamp,
-        socketInstanceId: this.activeSocketInstanceId,
-      })
       this.socket.send(JSON.stringify(payload))
       return
     }
-    this.pendingUpdates.push({ updateBinary, idempotencyKey, timestamp })
+
+    this.queuePendingUpdate(update)
   }
 
   private async encodeOutboundBytes(
@@ -567,8 +578,7 @@ export class CollabWsProvider {
       throw new Error('Encrypted collaboration transport requires a room key')
     }
 
-    const bytes = fromBase64(encoded)
-    const envelope = bytesToEnvelope(bytes)
+    const envelope = bytesToEnvelope(fromBase64(encoded))
     return {
       bytes: await decryptPayload({
         roomKeyBase64: this.encryption.roomKeyBase64,
@@ -595,18 +605,23 @@ export class CollabWsProvider {
           metadata.origin === 'remote'
             ? metadata.origin
             : 'remote',
-        sourceOrigin: typeof metadata.sourceOrigin === 'string' ? metadata.sourceOrigin : (
-          typeof metadata.origin === 'string' ? metadata.origin : 'remote'
-        ),
+        sourceOrigin: typeof metadata.sourceOrigin === 'string'
+          ? metadata.sourceOrigin
+          : typeof metadata.origin === 'string'
+            ? metadata.origin
+            : 'remote',
         actorType:
-          metadata.actorType === 'user' || metadata.actorType === 'agent' || metadata.actorType === 'system'
+          metadata.actorType === 'user' ||
+          metadata.actorType === 'agent' ||
+          metadata.actorType === 'system'
             ? metadata.actorType
             : undefined,
         actorId: typeof metadata.actorId === 'string' ? metadata.actorId : null,
         userId: typeof metadata.userId === 'string' ? metadata.userId : null,
         userName: typeof metadata.userName === 'string' ? metadata.userName : null,
-        checkpointGroupId:
-          typeof metadata.checkpointGroupId === 'string' ? metadata.checkpointGroupId : null,
+        checkpointGroupId: typeof metadata.checkpointGroupId === 'string'
+          ? metadata.checkpointGroupId
+          : null,
         clientId: typeof metadata.clientId === 'string' ? metadata.clientId : null,
         terminalId: typeof metadata.terminalId === 'string' ? metadata.terminalId : null,
         terminalTitle: typeof metadata.terminalTitle === 'string' ? metadata.terminalTitle : null,
@@ -624,11 +639,13 @@ export class CollabWsProvider {
   }
 
   private flushPendingUpdates(): void {
-    if (this.socket?.readyState !== WebSocket.OPEN) return
-    while (this.pendingUpdates.length > 0) {
+    while (
+      this.pendingUpdates.length > 0 &&
+      this.socket?.readyState === WebSocket.OPEN &&
+      this.hasHandshakeAcknowledged
+    ) {
       const next = this.pendingUpdates.shift()
-      if (!next) continue
-      this.sendUpdate(next.updateBinary, next.idempotencyKey, next.timestamp)
+      if (next) this.sendUpdate(next)
     }
   }
 
@@ -641,45 +658,60 @@ export class CollabWsProvider {
     ) {
       return
     }
+
     const idempotencyKey = randomId(`upd_${this.clientId}`)
     const checkpointGroupId = ensureActiveCheckpointGroup(this.session.projectId)
     const attribution = extractAttributionOrigin(origin)
-    void this.encodeOutboundBytes(update, 'yjs_update', {
-      projectId: this.session.projectId,
-      roomId: this.session.roomId,
-      clientId: this.clientId,
-      idempotencyKey,
-      checkpointGroupId,
-      origin:
-        attribution?.origin ??
-        (typeof origin === 'string' ? origin : 'user'),
-      sourceOrigin: attribution?.sourceOrigin,
-      actorType: attribution?.actorType,
-      actorId: attribution?.actorId,
-      userId: attribution?.userId,
-      userName: attribution?.userName,
-      terminalId: attribution?.terminalId,
-      terminalTitle: attribution?.terminalTitle,
-      terminalKind: attribution?.terminalKind,
-      commandId: attribution?.commandId,
-      commandText: attribution?.commandText,
-      runId: attribution?.runId,
-      sessionKey: attribution?.sessionKey,
-      laneId: attribution?.laneId,
-      workspaceId: attribution?.workspaceId,
-      gitCwd: attribution?.gitCwd,
-    })
-      .then((encoded) => {
-        this.sendUpdate(encoded, idempotencyKey, Date.now())
+
+    this.outboundUpdateQueue = this.outboundUpdateQueue
+      .then(async () => {
+        const encoded = await this.encodeOutboundBytes(update, 'yjs_update', {
+          projectId: this.session.projectId,
+          roomId: this.session.roomId,
+          clientId: this.clientId,
+          idempotencyKey,
+          checkpointGroupId,
+          origin: attribution?.origin ?? (typeof origin === 'string' ? origin : 'user'),
+          sourceOrigin: attribution?.sourceOrigin,
+          actorType: attribution?.actorType,
+          actorId: attribution?.actorId,
+          userId: attribution?.userId,
+          userName: attribution?.userName,
+          terminalId: attribution?.terminalId,
+          terminalTitle: attribution?.terminalTitle,
+          terminalKind: attribution?.terminalKind,
+          commandId: attribution?.commandId,
+          commandText: attribution?.commandText,
+          runId: attribution?.runId,
+          sessionKey: attribution?.sessionKey,
+          laneId: attribution?.laneId,
+          workspaceId: attribution?.workspaceId,
+          gitCwd: attribution?.gitCwd,
+        })
+
+        const pendingUpdate: PendingUpdate = {
+          updateBinary: encoded,
+          idempotencyKey,
+          timestamp: Date.now(),
+        }
+        this.localUpdatesById.set(idempotencyKey, pendingUpdate)
+        this.sendUpdate(pendingUpdate)
       })
       .catch((error) => {
         console.warn('[CollabWsProvider] Failed to encrypt local update:', error)
       })
   }
 
-  private readonly handleAwarenessUpdate = ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }) => {
-    const changed = [...added, ...updated, ...removed]
-    if (changed.length === 0) return
+  private readonly handleAwarenessUpdate = ({
+    added,
+    updated,
+    removed,
+  }: {
+    added: number[]
+    updated: number[]
+    removed: number[]
+  }): void => {
+    if (added.length + updated.length + removed.length === 0) return
     if (!this.hasHandshakeAcknowledged || this.socket?.readyState !== WebSocket.OPEN) {
       this.hasPendingAwarenessPublish = true
       return
@@ -692,21 +724,20 @@ export class CollabWsProvider {
       this.hasPendingAwarenessPublish = true
       return
     }
+
     this.hasPendingAwarenessPublish = false
-    // A publish queued before teardown can run after removeAwarenessStates
-    // dropped the local entry; encodeAwarenessUpdate throws on missing states.
-    if (!this.awareness.getStates().has(this.doc.clientID)) {
-      return
-    }
+    if (!this.awareness.getStates().has(this.doc.clientID)) return
+
     try {
       const update = encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
       const targetSocket = this.socket
       const targetSocketInstanceId = this.activeSocketInstanceId
+
       void this.encodeOutboundBytes(update, 'yjs_awareness', {
         projectId: this.session.projectId,
         roomId: this.session.roomId,
         clientId: this.clientId,
-        })
+      })
         .then((encoded) => {
           if (
             this.socket !== targetSocket ||
@@ -715,26 +746,18 @@ export class CollabWsProvider {
             !this.hasHandshakeAcknowledged
           ) {
             this.hasPendingAwarenessPublish = true
-            this.log('presence-push-deferred', {
-              targetSocketInstanceId,
-              currentSocketInstanceId: this.activeSocketInstanceId,
-              handshakeAcknowledged: this.hasHandshakeAcknowledged,
-              targetSocketReadyState: targetSocket?.readyState ?? null,
-            })
             return
           }
-          this.log('presence-push-send', { socketInstanceId: targetSocketInstanceId })
-          this.socket.send(
-            JSON.stringify({
-              type: 'presence.push',
-              payload: {
-                roomId: this.session.roomId,
-                clientId: this.clientId,
-                awarenessBinary: encoded,
-                ttlMs: 30_000,
-              },
-            })
-          )
+
+          targetSocket.send(JSON.stringify({
+            type: 'presence.push',
+            payload: {
+              roomId: this.session.roomId,
+              clientId: this.clientId,
+              awarenessBinary: encoded,
+              ttlMs: 30_000,
+            },
+          }))
         })
         .catch((error) => {
           console.warn('[CollabWsProvider] Failed to encrypt awareness:', error)
@@ -746,20 +769,21 @@ export class CollabWsProvider {
 
   private requestInitialSync(): void {
     if (this.socket?.readyState !== WebSocket.OPEN || !this.hasHandshakeAcknowledged) return
-    this.log('sync-request-send', { socketInstanceId: this.activeSocketInstanceId, knownSeq: this.knownSeq })
-    this.socket.send(
-      JSON.stringify({
-        type: 'sync.request',
-        payload: {
-          roomId: this.session.roomId,
-          knownSeq: this.knownSeq,
-        },
-      })
-    )
+    if (this.requestedCatchUpAtSeq === this.knownSeq) return
+
+    this.requestedCatchUpAtSeq = this.knownSeq
+    this.socket.send(JSON.stringify({
+      type: 'sync.request',
+      payload: {
+        roomId: this.session.roomId,
+        knownSeq: this.knownSeq,
+      },
+    }))
   }
 
-  private handleIncoming(raw: unknown): void {
+  private async handleIncoming(raw: unknown): Promise<void> {
     if (typeof raw !== 'string') return
+
     let message: IncomingWireMessage
     try {
       message = JSON.parse(raw) as IncomingWireMessage
@@ -768,77 +792,102 @@ export class CollabWsProvider {
     }
 
     if (!message || typeof message !== 'object' || !('type' in message)) return
+
     if (message.type === 'ready') {
-      this.log('ready-received', { socketInstanceId: this.activeSocketInstanceId })
-      const headSeq = Number(message.payload?.headSeq)
-      if (Number.isFinite(headSeq)) {
-        this.knownSeq = Math.max(this.knownSeq, headSeq)
+      const headSeq = finiteSequence(message.payload?.headSeq)
+      if (headSeq !== null) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, headSeq)
       }
+
       if (!this.hasHandshakeAcknowledged) {
         this.hasHandshakeAcknowledged = true
         this.reconnectAttempt = 0
         this.hasConnectedOnce = true
         this.consecutiveInitialFailures = 0
         this.onStateChange?.('connected', null)
-        this.requestInitialSync()
         this.flushPendingUpdates()
-        if (this.hasPendingAwarenessPublish) {
-          this.publishLocalAwareness()
-        }
+        if (this.hasPendingAwarenessPublish) this.publishLocalAwareness()
+      }
+
+      if (message.payload?.resyncRequired || this.knownSeq < this.targetHeadSeq) {
+        this.requestInitialSync()
       }
       return
     }
 
     if (message.type === 'sync.delta') {
-      const updates = Array.isArray(message.payload?.updatesBinary) ? message.payload.updatesBinary : []
-      void (async () => {
-        for (const encoded of updates) {
-          const decoded = await this.decodeInboundBytes(encoded, 'yjs_update')
-          this.applyRemoteUpdate(decoded.bytes, decoded.metadata, null)
-        }
-      })().catch((error) => {
-        console.warn('[CollabWsProvider] Failed to apply sync delta update:', error)
-      })
-      const toSeq = Number(message.payload?.toSeq)
-      if (Number.isFinite(toSeq)) {
-        this.knownSeq = Math.max(this.knownSeq, toSeq)
+      const fromSeq = finiteSequence(message.payload?.fromSeq)
+      const toSeq = finiteSequence(message.payload?.toSeq)
+      const advertisedHeadSeq = finiteSequence(message.payload?.headSeq)
+
+      if (advertisedHeadSeq !== null) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, advertisedHeadSeq)
       }
+      if (toSeq !== null) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, toSeq)
+      }
+
+      if (fromSeq !== null && fromSeq > this.knownSeq) {
+        // A live delta can overtake an initial catch-up response. Do not mark the
+        // gap as applied; ask for the contiguous range from the current head.
+        this.requestInitialSync()
+        return
+      }
+
+      if (toSeq !== null && toSeq <= this.knownSeq) {
+        return
+      }
+
+      this.requestedCatchUpAtSeq = null
+      const updates = Array.isArray(message.payload?.updatesBinary)
+        ? message.payload.updatesBinary
+        : []
+
+      for (const encoded of updates) {
+        const decoded = await this.decodeInboundBytes(encoded, 'yjs_update')
+        this.applyRemoteUpdate(decoded.bytes, decoded.metadata, null)
+      }
+
+      if (toSeq !== null) this.advanceKnownSeq(toSeq)
+
+      const shouldContinueCatchUp =
+        message.payload?.hasMore === true ||
+        this.knownSeq < this.targetHeadSeq ||
+        updates.length >= SYNC_PAGE_SIZE
+
+      if (shouldContinueCatchUp) this.requestInitialSync()
       return
     }
 
     if (message.type === 'update.push') {
-      const seq = Number(message.payload?.seq)
-      if (Number.isFinite(seq)) {
-        this.knownSeq = Math.max(this.knownSeq, seq)
-      }
       const encoded = message.payload?.updateBinary
       if (typeof encoded !== 'string' || encoded.length === 0) return
-      void this.decodeInboundBytes(encoded, 'yjs_update')
-        .then((decoded) => {
-          this.applyRemoteUpdate(
-            decoded.bytes,
-            decoded.metadata,
-            Number.isFinite(message.payload?.timestamp) ? Number(message.payload.timestamp) : null,
-          )
-        })
-        .catch((error) => {
-          console.warn('[CollabWsProvider] Failed to apply update_push:', error)
-        })
+
+      const sequence = finiteSequence(message.payload?.seq)
+      if (sequence !== null && sequence > this.knownSeq + 1) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, sequence)
+        this.requestInitialSync()
+        return
+      }
+
+      const decoded = await this.decodeInboundBytes(encoded, 'yjs_update')
+      this.applyRemoteUpdate(
+        decoded.bytes,
+        decoded.metadata,
+        finiteSequence(message.payload?.timestamp),
+      )
+      if (sequence !== null) this.advanceKnownSeq(sequence)
       return
     }
 
     if (message.type === 'presence.snapshot') {
       const entries = Array.isArray(message.payload?.entries) ? message.payload.entries : []
-      void (async () => {
-        for (const entry of entries) {
-          const encoded = entry?.awarenessBinary
-          if (typeof encoded !== 'string' || encoded.length === 0) continue
-          const decoded = await this.decodeInboundBytes(encoded, 'yjs_awareness')
-          applyAwarenessUpdate(this.awareness, decoded.bytes, 'remote')
-        }
-      })().catch((error) => {
-        console.warn('[CollabWsProvider] Failed to apply presence snapshot:', error)
-      })
+      for (const entry of entries) {
+        const encoded = entry?.awarenessBinary
+        if (typeof encoded !== 'string' || encoded.length === 0) continue
+        const decoded = await this.decodeInboundBytes(encoded, 'yjs_awareness')
+        applyAwarenessUpdate(this.awareness, decoded.bytes, 'remote')
+      }
       return
     }
 
@@ -849,37 +898,38 @@ export class CollabWsProvider {
             .filter((clientId) => Number.isFinite(clientId))
         : []
       if (clientIds.length > 0) {
-        applyAwarenessUpdate(this.awareness, encodeAwarenessUpdate(this.awareness, clientIds, new Map()), 'remote')
+        removeAwarenessStates(this.awareness, clientIds, 'remote')
       }
       return
     }
 
     if (message.type === 'update.ack') {
-      const seq = Number(message.payload?.seq)
-      if (Number.isFinite(seq)) {
-        this.knownSeq = Math.max(this.knownSeq, seq)
+      const sequence = finiteSequence(message.payload?.seq)
+      if (sequence !== null) {
+        this.targetHeadSeq = Math.max(this.targetHeadSeq, sequence)
       }
+
+      const idempotencyKey = message.payload?.idempotencyKey
+      if (
+        message.payload?.persisted !== false &&
+        typeof idempotencyKey === 'string' &&
+        this.localUpdatesById.delete(idempotencyKey)
+      ) {
+        this.removePendingUpdate(idempotencyKey)
+      }
+      // Acknowledged means durable, not necessarily contiguous and applied.
+      // The following sync.delta is what advances knownSeq.
       return
     }
 
     if (message.type === 'error') {
-      this.lastServerErrorCode =
-        typeof message.payload?.code === 'string' ? message.payload.code : null
-      const messageText =
-        typeof message.payload?.message === 'string'
-          ? message.payload.message
-          : 'Collaboration protocol error'
+      this.lastServerErrorCode = typeof message.payload?.code === 'string'
+        ? message.payload.code
+        : null
+      const messageText = typeof message.payload?.message === 'string'
+        ? message.payload.message
+        : 'Collaboration protocol error'
       this.lastServerErrorMessage = messageText
-      console.warn('[CollabWsProvider] Collaboration protocol error', {
-        projectId: this.session.projectId,
-        roomId: this.session.roomId,
-        code: this.lastServerErrorCode,
-        recoverable:
-          typeof message.payload?.recoverable === 'boolean' ? message.payload.recoverable : null,
-        retryAfterMs:
-          typeof message.payload?.retryAfterMs === 'number' ? message.payload.retryAfterMs : null,
-        message: messageText,
-      })
       this.onStateChange?.('error', messageText)
 
       if (SESSION_INVALIDATION_ERROR_CODES.has(this.lastServerErrorCode ?? '')) {

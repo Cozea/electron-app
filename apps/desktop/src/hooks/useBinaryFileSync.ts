@@ -22,48 +22,42 @@ function relativePathFromExternalEvent(data: {
 }
 
 /**
- * useBinaryFileSync - Syncs binary files (images, videos, etc.) via replica LFS APIs.
+ * Compatibility observer for binary file changes.
  *
- * This hook:
- * 1. Listens for local binary file changes via Electron file watcher
- * 2. Uploads changed binary files to replica object storage
- * 3. Enqueues a Git replica snapshot for reconciliation
- * 4. Processes queued uploads when connection is restored
- *
- * Binary files are synced separately from text files because:
- * - They can't be meaningfully merged as CRDTs
- * - They're often large and would bloat the Y.Doc
- * - Conflict handling is done at replica merge/apply stage
+ * Binary files are deliberately not put into the Yjs text transport. The
+ * current collaboration-v2 policy leaves them local until a user explicitly
+ * commits and pushes through Git. This hook detects those changes so the
+ * limitation is visible and clears records from the former no-op upload queue;
+ * it does not claim to upload or synchronize bytes.
  */
 export function useBinaryFileSync(
   projectId: Id<'projects'> | null,
   workspaceId: string | null,
-  userId: Id<'users'> | null
+  userId: Id<'users'> | null,
 ): { pendingUploads: number } {
   const convex = useConvex()
   const binarySyncRef = useRef<BinaryFileSync | null>(null)
 
-  // Initialize BinaryFileSync
   useEffect(() => {
     if (!projectId || !workspaceId || !userId) {
       binarySyncRef.current = null
       return
     }
 
-    binarySyncRef.current = new BinaryFileSync(projectId, workspaceId, convex, userId)
-
-    // Process any queued uploads from previous sessions
-    void binarySyncRef.current.processQueue()
+    const binarySync = new BinaryFileSync(projectId, workspaceId, convex, userId)
+    binarySyncRef.current = binarySync
+    void binarySync.processQueue()
 
     return () => {
-      binarySyncRef.current?.destroy()
-      binarySyncRef.current = null
+      binarySync.destroy()
+      if (binarySyncRef.current === binarySync) {
+        binarySyncRef.current = null
+      }
     }
   }, [convex, projectId, workspaceId, userId])
 
-  // Handle local binary file changes
   useEffect(() => {
-    if (!workspaceId || !binarySyncRef.current) return
+    if (!workspaceId) return
 
     const handleExternalFileChange = (data: {
       filePath: string
@@ -77,11 +71,8 @@ export function useBinaryFileSync(
       if (data.isDirectory) return
       const relativePath = relativePathFromExternalEvent(data, workspaceId)
       if (!relativePath) return
-
-      // Only handle binary files
       if (!data.isBinary && !isBinaryFile(relativePath)) return
 
-      // Don't re-upload files we just downloaded
       if (
         data.origin === 'remote' ||
         data.origin === 'sync' ||
@@ -90,33 +81,11 @@ export function useBinaryFileSync(
         return
       }
 
-      console.log(`[BinaryFileSync] Local binary file changed: ${relativePath}`)
-      binarySyncRef.current?.uploadBinaryFile(relativePath)
+      void binarySyncRef.current?.uploadBinaryFile(relativePath)
     }
 
-    // Subscribe to local file changes via Electron
-    const unsubscribe = window.electronAPI.yjs.onExternalFileMetaChange(
-      handleExternalFileChange
-    )
-
-    return () => {
-      unsubscribe()
-    }
+    return window.electronAPI.yjs.onExternalFileMetaChange(handleExternalFileChange)
   }, [workspaceId])
-
-  // Handle reconnection - process queued uploads
-  useEffect(() => {
-    const handleOnline = () => {
-      console.log('[BinaryFileSync] Online, processing upload queue...')
-      binarySyncRef.current?.processQueue()
-    }
-
-    window.addEventListener('online', handleOnline)
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [])
 
   return {
     pendingUploads: 0,
