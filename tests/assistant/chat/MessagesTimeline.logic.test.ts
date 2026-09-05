@@ -248,6 +248,15 @@ describe("deriveGenerationStatusPhase", () => {
       "working",
     );
   });
+  it("does not let child-agent reasoning start or settle the parent's Thinking phase", () => {
+    for (const payload of [{ agentId: "child" }, { timelineBypass: true }]) {
+      expect(deriveGenerationStatusPhase([{ ...marker("reasoning.started", 1), payload }], "turn-1")).toBe("working");
+      expect(deriveGenerationStatusPhase([
+        marker("reasoning.started", 1),
+        { ...marker("reasoning.completed", 2), payload },
+      ], "turn-1")).toBe("thinking");
+    }
+  });
 
   it("shows Working after explicit reasoning completes", () => {
     expect(

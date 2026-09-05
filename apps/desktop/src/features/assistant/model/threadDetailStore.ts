@@ -1,4 +1,20 @@
 import { create } from "zustand";
+import { Schema } from "effect";
+import {
+  OrchestrationThread as ThreadSchema,
+  OrchestrationMessage as MessageSchema,
+  OrchestrationSession as SessionSchema,
+  OrchestrationLatestTurn as LatestTurnSchema,
+  type OrchestrationMessage,
+  type OrchestrationSession,
+  type OrchestrationEvent as NativeEvent,
+} from "@cozea/contracts/t3";
+import {
+  applyThreadDetailEvent,
+  settleMessageStreams,
+  type ThreadDetailState,
+  type DetailCheckpoint,
+} from "../../../../../../packages/client-runtime/src/state/threadReducer";
 import { markLiveText, markSnapshotText } from "./messageTextArrival";
 import type {
   MessageId,
@@ -7,14 +23,13 @@ import type {
   ThreadId,
   TurnId,
 } from "@cozea/assistant-contracts";
-import type {
-  ChatMessage,
-  ProposedPlan,
-  TurnDiffSummary,
-} from "./types";
+import type { ChatMessage, ProposedPlan, TurnDiffSummary } from "./types";
 
 export interface ThreadDetailRecord {
   readonly threadId: string;
+  readonly loaded: boolean;
+  readonly snapshotSequence: number | null;
+  readonly canonical: ThreadDetailState;
   readonly lastSequence: number;
   readonly messages: ChatMessage[];
   readonly activities: OrchestrationThreadActivity[];
@@ -27,15 +42,26 @@ export interface ThreadDetailRecord {
 
 interface ThreadDetailStoreState {
   readonly byThreadId: Record<string, ThreadDetailRecord>;
+  readonly deletedSequenceByThreadId: Record<string, number>;
   getThreadDetail: (threadId: string | null | undefined) => ThreadDetailRecord | null;
   ingestSnapshot: (threadId: string, snapshot: unknown) => void;
-  applyEvent: (threadId: string, event: OrchestrationEvent) => void;
+  applyEvent: (threadId: string, event: NativeEvent | OrchestrationEvent) => void;
   resetThread: (threadId: string) => void;
 }
 
 const EMPTY_THREAD_DETAIL: ThreadDetailRecord = {
   threadId: "",
   lastSequence: 0,
+  loaded: false,
+  snapshotSequence: null,
+  canonical: {
+    messages: [],
+    activities: [],
+    proposedPlans: [],
+    checkpoints: [],
+    session: null,
+    latestTurn: null,
+  },
   messages: [],
   activities: [],
   proposedPlans: [],
@@ -45,15 +71,11 @@ const EMPTY_THREAD_DETAIL: ThreadDetailRecord = {
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : null;
+  return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
 function readSequence(value: unknown): number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : 0;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 function sessionIsStreaming(snapshot: Record<string, unknown>, messages: ChatMessage[]): boolean {
@@ -82,12 +104,18 @@ function mapMessage(raw: unknown): ChatMessage {
     ? m.attachments.map((a: unknown) => {
         const item = a as Record<string, unknown>;
         return {
-          type: "image" as const,
+          ...(item.type === "image" || item.type === undefined
+            ? { type: "image" as const }
+            : item.type === "file"
+              ? { type: "file" as const }
+              : { type: "unsupported" as const, originalType: String(item.type) }),
           id: String(item.id ?? ""),
           name: String(item.name ?? ""),
           mimeType: String(item.mimeType ?? "image/png"),
           sizeBytes: Number(item.sizeBytes ?? 0),
-          previewUrl: typeof item.previewUrl === "string" ? item.previewUrl : undefined,
+          ...(item.type === "image" || item.type === undefined
+            ? { previewUrl: typeof item.previewUrl === "string" ? item.previewUrl : undefined }
+            : {}),
         };
       })
     : undefined;
@@ -96,10 +124,14 @@ function mapMessage(raw: unknown): ChatMessage {
     id: String(m.id ?? m.messageId ?? "") as MessageId,
     role: (m.role ?? "assistant") as "user" | "assistant" | "system",
     text: String(m.text ?? ""),
-    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+    ...(attachments !== undefined ? { attachments } : {}),
     turnId: (m.turnId as TurnId | null) ?? null,
     createdAt: String(m.createdAt ?? new Date().toISOString()),
-    completedAt: m.streaming ? undefined : typeof m.updatedAt === "string" ? m.updatedAt : undefined,
+    completedAt: m.streaming
+      ? undefined
+      : typeof m.updatedAt === "string"
+        ? m.updatedAt
+        : undefined,
     streaming: Boolean(m.streaming),
   };
 }
@@ -137,7 +169,8 @@ function mapProposedPlan(raw: unknown): ProposedPlan {
     turnId: (p.turnId as TurnId | null) ?? null,
     planMarkdown: String(p.planMarkdown ?? ""),
     implementedAt: typeof p.implementedAt === "string" ? p.implementedAt : null,
-    implementationThreadId: typeof p.implementationThreadId === "string" ? (p.implementationThreadId as ThreadId) : null,
+    implementationThreadId:
+      typeof p.implementationThreadId === "string" ? (p.implementationThreadId as ThreadId) : null,
     createdAt: String(p.createdAt ?? new Date().toISOString()),
     updatedAt: String(p.updatedAt ?? new Date().toISOString()),
   };
@@ -160,238 +193,331 @@ function mapTurnDiffSummary(raw: unknown): TurnDiffSummary {
     turnId: String(c.turnId ?? "") as TurnId,
     completedAt: String(c.completedAt ?? new Date().toISOString()),
     status: typeof c.status === "string" ? c.status : undefined,
-    assistantMessageId: typeof c.assistantMessageId === "string" ? (c.assistantMessageId as MessageId) : undefined,
-    checkpointTurnCount: typeof c.checkpointTurnCount === "number" ? c.checkpointTurnCount : undefined,
+    assistantMessageId:
+      typeof c.assistantMessageId === "string" ? (c.assistantMessageId as MessageId) : undefined,
+    checkpointTurnCount:
+      typeof c.checkpointTurnCount === "number" ? c.checkpointTurnCount : undefined,
     checkpointRef: typeof c.checkpointRef === "string" ? (c.checkpointRef as any) : undefined,
     files,
   };
 }
 
+function normalizeMessage(raw: unknown): OrchestrationMessage {
+  const m = asRecord(raw) ?? {};
+  const parsed = Schema.decodeUnknownSync(MessageSchema)({
+    ...m,
+    id: m.id ?? m.messageId,
+    role: m.role ?? "assistant",
+    text: m.text ?? "",
+    turnId: m.turnId ?? null,
+    streaming: Boolean(m.streaming),
+    createdAt: m.createdAt ?? "1970-01-01T00:00:00.000Z",
+    updatedAt: m.updatedAt ?? m.createdAt ?? "1970-01-01T00:00:00.000Z",
+  });
+  return {
+    ...parsed,
+    ...(parsed.attachments
+      ? {
+          attachments: parsed.attachments.map((a, i) => {
+            const previewUrl = asRecord(
+              Array.isArray(m.attachments) ? m.attachments[i] : null,
+            )?.previewUrl;
+            return a.type === "image" && typeof previewUrl === "string" ? { ...a, previewUrl } : a;
+          }),
+        }
+      : {}),
+  };
+}
+
+function normalizeSession(raw: unknown, threadId: string): OrchestrationSession | null {
+  if (raw == null) return null;
+  const session = asRecord(raw) ?? {};
+  const error =
+    typeof session.lastError === "string"
+      ? session.lastError
+      : asRecord(session.lastError)?.message;
+  return Schema.decodeUnknownSync(SessionSchema)({
+    ...session,
+    threadId: session.threadId ?? threadId,
+    providerName: session.providerName ?? null,
+    activeTurnId: session.activeTurnId ?? null,
+    lastError: error ?? null,
+    updatedAt: session.updatedAt ?? "1970-01-01T00:00:00.000Z",
+  });
+}
+
+function normalizeCheckpoint(raw: unknown): DetailCheckpoint {
+  const checkpoint = mapTurnDiffSummary(raw);
+  return {
+    ...checkpoint,
+    status:
+      checkpoint.status === "error" || checkpoint.status === "missing"
+        ? checkpoint.status
+        : "ready",
+    assistantMessageId: checkpoint.assistantMessageId ?? null,
+    files: checkpoint.files.map((file) => ({
+      ...file,
+      kind: file.kind ?? "modified",
+      additions: file.additions ?? 0,
+      deletions: file.deletions ?? 0,
+    })),
+  };
+}
+
+function normalizeSnapshot(raw: Record<string, unknown>, threadId: string): ThreadDetailState {
+  // Native snapshots keep their complete typed shell/detail metadata. The
+  // explicit legacy branch accepts detail-only snapshots without inventing
+  // project/model metadata or checkpoint turn counts.
+  if (raw.id !== undefined && raw.projectId !== undefined && raw.modelSelection !== undefined) {
+    return Schema.decodeUnknownSync(ThreadSchema)(raw);
+  } else {
+    return {
+      messages: Array.isArray(raw.messages) ? raw.messages.map(normalizeMessage) : [],
+      activities: Array.isArray(raw.activities) ? raw.activities.map(mapActivity) : [],
+      proposedPlans: Array.isArray(raw.proposedPlans) ? raw.proposedPlans.map(mapProposedPlan) : [],
+      checkpoints: Array.isArray(raw.checkpoints)
+        ? raw.checkpoints.map(normalizeCheckpoint)
+        : Array.isArray(raw.turnDiffSummaries)
+          ? raw.turnDiffSummaries.map(normalizeCheckpoint)
+          : [],
+      session: normalizeSession(raw.session, threadId),
+      latestTurn:
+        raw.latestTurn == null ? null : Schema.decodeUnknownSync(LatestTurnSchema)(raw.latestTurn),
+    };
+  }
+}
+
+function project(canonical: ThreadDetailState, current?: ThreadDetailRecord, snapshot = false) {
+  const unchangedMessages =
+    !snapshot && current && canonical.messages === current.canonical.messages;
+  const previous = new Map(
+    !unchangedMessages && current
+      ? current.canonical.messages.map((m, i) => [m, current.messages[i]!])
+      : [],
+  );
+  const previousById = new Map(
+    !unchangedMessages && current ? current.messages.map((m) => [m.id, m]) : [],
+  );
+  const messages = unchangedMessages
+    ? current.messages
+    : canonical.messages.map((m) => {
+        const reused = !snapshot && previous.get(m);
+        if (reused) return reused;
+        const mapped = mapMessage(m);
+        if (!snapshot) markLiveText(mapped, previousById.get(mapped.id));
+        return mapped;
+      });
+  if (snapshot) markSnapshotText(messages);
+  return {
+    messages,
+    activities:
+      current && canonical.activities === current.canonical.activities
+        ? current.activities
+        : [...canonical.activities],
+    proposedPlans:
+      current && canonical.proposedPlans === current.canonical.proposedPlans
+        ? current.proposedPlans
+        : [...canonical.proposedPlans],
+    turnDiffSummaries:
+      current && canonical.checkpoints === current.canonical.checkpoints
+        ? current.turnDiffSummaries
+        : canonical.checkpoints.map(mapTurnDiffSummary),
+  };
+}
+
 export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) => ({
   byThreadId: {},
-
-  getThreadDetail: (threadId) => {
-    if (!threadId) return null;
-    return get().byThreadId[threadId] ?? null;
-  },
-
+  deletedSequenceByThreadId: {},
+  getThreadDetail: (threadId) => (threadId ? (get().byThreadId[threadId] ?? null) : null),
   ingestSnapshot: (threadId, snapshot) => {
     if (!snapshot || typeof snapshot !== "object") return;
-    const envelope = snapshot as Record<string, unknown>;
-    // T3 wraps thread detail as { snapshotSequence, thread }. Accept the old
-    // direct-thread shape too so the store remains compatible with substrate.
-    const snap = asRecord(envelope.thread) ?? envelope;
-    const hasSnapshotSequence = typeof envelope.snapshotSequence === "number";
-    const snapshotSequence = readSequence(envelope.snapshotSequence);
-
-    const messages = Array.isArray(snap.messages) ? snap.messages.map(mapMessage) : [];
-    const activities = Array.isArray(snap.activities) ? snap.activities.map(mapActivity) : [];
-    const proposedPlans = Array.isArray(snap.proposedPlans) ? snap.proposedPlans.map(mapProposedPlan) : [];
-    const turnDiffSummaries = Array.isArray(snap.checkpoints)
-      ? snap.checkpoints.map(mapTurnDiffSummary)
-      : Array.isArray(snap.turnDiffSummaries)
-        ? snap.turnDiffSummaries.map(mapTurnDiffSummary)
-        : [];
-
+    const envelope = asRecord(snapshot)!;
+    const snapshotSequence =
+      typeof envelope.snapshotSequence === "number"
+        ? readSequence(envelope.snapshotSequence)
+        : null;
     set((state) => {
       const current = state.byThreadId[threadId];
-      if (current && hasSnapshotSequence && snapshotSequence < current.lastSequence) {
+      if (current && snapshotSequence !== null && snapshotSequence < current.lastSequence)
         return state;
+      const deletedSequence = state.deletedSequenceByThreadId[threadId];
+      if (
+        deletedSequence !== undefined &&
+        (snapshotSequence === null || snapshotSequence <= deletedSequence)
+      )
+        return state;
+      if ("thread" in envelope && envelope.thread === null) {
+        const next = { ...state.byThreadId };
+        delete next[threadId];
+        return {
+          byThreadId: next,
+          deletedSequenceByThreadId: {
+            ...state.deletedSequenceByThreadId,
+            [threadId]: snapshotSequence ?? current?.lastSequence ?? 0,
+          },
+        };
       }
-
-      markSnapshotText(messages);
-
+      const raw = asRecord(envelope.thread) ?? envelope;
+      if (typeof raw.id === "string" && raw.id !== threadId) return state;
+      let canonical = normalizeSnapshot(raw, threadId);
+      if (canonical.session && !["starting", "running"].includes(canonical.session.status)) {
+        const latestTurn = canonical.latestTurn?.state === "running"
+          ? { ...canonical.latestTurn,
+              state: canonical.session.status === "error" ? "error" as const
+                : canonical.session.status === "interrupted" || canonical.session.status === "stopped"
+                  ? "interrupted" as const : "completed" as const,
+              completedAt: canonical.session.updatedAt }
+          : canonical.latestTurn;
+        canonical = { ...canonical, latestTurn, messages: settleMessageStreams(canonical.messages, null,
+          latestTurn?.completedAt ?? canonical.session.updatedAt) };
+      }
+      const projected = project(canonical, current, true);
+      const isStreaming = sessionIsStreaming(raw, projected.messages);
+      const deletedSequenceByThreadId = { ...state.deletedSequenceByThreadId };
+      delete deletedSequenceByThreadId[threadId];
       return {
+        deletedSequenceByThreadId,
         byThreadId: {
           ...state.byThreadId,
           [threadId]: {
             threadId,
-            lastSequence: hasSnapshotSequence
-              ? snapshotSequence
-              : (current?.lastSequence ?? 0),
-            messages,
-            activities,
-            proposedPlans,
-            turnDiffSummaries,
-            isStreaming: sessionIsStreaming(snap, messages),
-            turnSettled: typeof asRecord(snap.session)?.status === "string" && !sessionIsStreaming(snap, messages),
-            error: sessionError(snap),
+            loaded: true,
+            snapshotSequence,
+            lastSequence: snapshotSequence ?? current?.lastSequence ?? 0,
+            canonical,
+            ...projected,
+            isStreaming,
+            turnSettled: canonical.session !== null && !isStreaming,
+            error: sessionError(raw),
           },
         },
       };
     });
   },
-
-  applyEvent: (threadId, event) => {
+  applyEvent: (threadId, incoming) =>
     set((state) => {
-      const current = state.byThreadId[threadId] ?? {
-        ...EMPTY_THREAD_DETAIL,
-        threadId,
-      };
-      const eventSequence = readSequence(event.sequence);
-      if (eventSequence > 0 && eventSequence <= current.lastSequence) {
+      const current = state.byThreadId[threadId] ?? { ...EMPTY_THREAD_DETAIL, threadId };
+      const eventSequence = readSequence(incoming.sequence);
+      if (eventSequence > 0 && eventSequence <= current.lastSequence) return state;
+      const deletedSequence = state.deletedSequenceByThreadId[threadId];
+      if (
+        deletedSequence !== undefined &&
+        (incoming.type !== "thread.created" || eventSequence <= deletedSequence)
+      )
         return state;
-      }
-
-      const payload = (event as unknown as { payload: Record<string, unknown> }).payload ?? {};
-      const lastSequence = Math.max(current.lastSequence, eventSequence);
-
+      if (incoming.aggregateId && incoming.aggregateId !== threadId) return state;
+      let canonical = current.canonical;
+      let event = incoming;
+      // Explicit compatibility defaults for the old substrate's partial events.
       switch (event.type) {
+        case "thread.archived":
+          event = {
+            ...event,
+            payload: {
+              ...event.payload,
+              updatedAt:
+                "updatedAt" in event.payload ? event.payload.updatedAt : event.payload.archivedAt,
+            },
+          };
+          break;
+        case "thread.unarchived":
+          event = {
+            ...event,
+            payload: {
+              ...event.payload,
+              updatedAt: "updatedAt" in event.payload ? event.payload.updatedAt : event.occurredAt,
+            },
+          };
+          break;
         case "thread.message-sent": {
-          const messageId = String(payload.messageId ?? "");
-          // Native providers can flush buffered text after the terminal session
-          // event. Keep that text without resurrecting the stopped turn.
-          const isStreaming = Boolean(payload.streaming) && !current.turnSettled;
-          const chunkText = String(payload.text ?? "");
-          const incomingMessage = mapMessage({ ...payload, streaming: isStreaming, id: messageId });
-
-          const existingIndex = current.messages.findIndex((m) => m.id === messageId);
-
-          let nextMessages: ChatMessage[];
-          if (existingIndex >= 0) {
-            const existing = current.messages[existingIndex]!;
-            const updated: ChatMessage = {
-              ...existing,
-              text: payload.streaming
-                ? existing.text + chunkText
-                : chunkText.length > 0
-                  ? chunkText
-                  : existing.text,
-              streaming: isStreaming,
-              completedAt: isStreaming ? undefined : typeof payload.updatedAt === "string" ? payload.updatedAt : existing.completedAt,
-              ...(incomingMessage.attachments !== undefined
-                ? { attachments: incomingMessage.attachments }
-                : {}),
-            };
-            markLiveText(updated, existing);
-            nextMessages = current.messages.map((m, idx) => (idx === existingIndex ? updated : m));
-          } else {
-            markLiveText(incomingMessage);
-            nextMessages = [...current.messages, incomingMessage];
-          }
-
-          return {
-            byThreadId: {
-              ...state.byThreadId,
-              [threadId]: {
-                ...current,
-                lastSequence,
-                messages: nextMessages,
-                // `streaming` belongs to this individual message segment, not
-                // the whole turn. T3 can finalize an assistant preamble and
-                // then keep the turn alive while a tool runs. Only terminal
-                // turn/session events should clear the aggregate busy state.
-                isStreaming: current.isStreaming || isStreaming,
-              },
+          const message = normalizeMessage(event.payload);
+          event = { ...event, payload: { ...event.payload, ...message, messageId: message.id } };
+          break;
+        }
+        case "thread.activity-appended":
+          event = {
+            ...event,
+            payload: {
+              ...event.payload,
+              activity: mapActivity(event.payload.activity ?? event.payload),
             },
           };
-        }
-
-        case "thread.activity-appended": {
-          const activity = mapActivity(payload.activity ?? payload);
-          return {
-            byThreadId: {
-              ...state.byThreadId,
-              [threadId]: {
-                ...current,
-                lastSequence,
-                activities: [...current.activities, activity],
-              },
+          break;
+        case "thread.session-set":
+          event = {
+            ...event,
+            payload: {
+              ...event.payload,
+              session: normalizeSession(event.payload.session, threadId)!,
             },
           };
-        }
-
-        case "thread.turn-diff-completed": {
-          const diffSummary = mapTurnDiffSummary(payload);
-          return {
-            byThreadId: {
-              ...state.byThreadId,
-              [threadId]: {
-                ...current,
-                lastSequence,
-                turnDiffSummaries: [
-                  ...current.turnDiffSummaries.filter((d) => d.turnId !== diffSummary.turnId),
-                  diffSummary,
-                ],
-              },
-            },
-          };
-        }
-
-        case "thread.turn-start-requested": {
-          return {
-            byThreadId: {
-              ...state.byThreadId,
-              [threadId]: {
-                ...current,
-                lastSequence,
-                isStreaming: true,
-                turnSettled: false,
-                error: null,
-              },
-            },
-          };
-        }
-
-        case "thread.session-set": {
-          const session = asRecord(payload.session);
-          const status = session?.status;
-          const lastError = session?.lastError;
-          const errorRecord = asRecord(lastError);
-          const error = typeof lastError === "string"
-            ? lastError
-            : typeof errorRecord?.message === "string"
-              ? errorRecord.message
-              : null;
-          return {
-            byThreadId: {
-              ...state.byThreadId,
-              [threadId]: {
-                ...current,
-                lastSequence,
-                isStreaming: status === "starting" || status === "running",
-                turnSettled: status !== "starting" && status !== "running",
-                error,
-              },
-            },
-          };
-        }
-
-        case "thread.session-stop-requested": {
-          return {
-            byThreadId: {
-              ...state.byThreadId,
-              [threadId]: {
-                ...current,
-                lastSequence,
-                isStreaming: false,
-                turnSettled: true,
-              },
-            },
-          };
-        }
-
-        default:
-          return eventSequence > current.lastSequence
-            ? {
-                byThreadId: {
-                  ...state.byThreadId,
-                  [threadId]: {
-                    ...current,
-                    lastSequence,
-                  },
-                },
-              }
-            : state;
+          break;
       }
-    });
-  },
-
-  resetThread: (threadId) => {
+      const result = applyThreadDetailEvent(canonical, event);
+      if (result.kind === "deleted") {
+        const next = { ...state.byThreadId };
+        delete next[threadId];
+        return {
+          byThreadId: next,
+          deletedSequenceByThreadId: {
+            ...state.deletedSequenceByThreadId,
+            [threadId]: eventSequence,
+          },
+        };
+      }
+      if (result.kind === "updated") canonical = result.thread;
+      let { isStreaming, turnSettled, error } = current;
+      if (event.type === "thread.turn-start-requested") {
+        isStreaming = true;
+        turnSettled = false;
+        error = null;
+        // Only legacy sessions lack turn identity; native ownership remains intact.
+        if (canonical.session?.activeTurnId == null) canonical = { ...canonical, session: null };
+      } else if (event.type === "thread.session-set") {
+        isStreaming =
+          event.payload.session.status === "starting" || event.payload.session.status === "running";
+        turnSettled = !isStreaming;
+        error = event.payload.session.lastError;
+      } else if (
+        event.type === "thread.session-stop-requested" ||
+        (event.type === "thread.turn-interrupt-requested" &&
+          canonical.latestTurn?.state === "interrupted")
+      ) {
+        isStreaming = false;
+        turnSettled = true;
+      } else if (event.type === "thread.message-sent") {
+        if (turnSettled && canonical.messages.some((m) => m.streaming)) {
+          canonical = {
+            ...canonical,
+            messages: canonical.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+          };
+        }
+        isStreaming ||= !turnSettled && canonical.messages.some((m) => m.streaming);
+      }
+      const deletedSequenceByThreadId = { ...state.deletedSequenceByThreadId };
+      delete deletedSequenceByThreadId[threadId];
+      return {
+        deletedSequenceByThreadId,
+        byThreadId: {
+          ...state.byThreadId,
+          [threadId]: {
+            ...current,
+            canonical,
+            ...project(canonical, current),
+            lastSequence: Math.max(current.lastSequence, eventSequence),
+            isStreaming,
+            turnSettled,
+            error,
+          },
+        },
+      };
+    }),
+  resetThread: (threadId) =>
     set((state) => {
       const next = { ...state.byThreadId };
       delete next[threadId];
-      return { byThreadId: next };
-    });
-  },
+      const deletedSequenceByThreadId = { ...state.deletedSequenceByThreadId };
+      delete deletedSequenceByThreadId[threadId];
+      return { byThreadId: next, deletedSequenceByThreadId };
+    }),
 }));

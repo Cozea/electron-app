@@ -97,6 +97,11 @@ export function deriveGenerationStatusPhase(
   if (!activeTurnId) return "working";
   const markers = activities
     .filter((activity) => activity.turnId === activeTurnId)
+    .filter((activity) => {
+      const payload = activity.payload as Record<string, unknown> | null;
+      return payload?.timelineBypass !== true &&
+        !(typeof payload?.agentId === "string" && payload.agentId.trim().length > 0);
+    })
     .filter(
       (activity) =>
         activity.kind === "reasoning.started" || activity.kind === "reasoning.completed",
@@ -313,7 +318,9 @@ export function workGroupId(timelineEntryId: string, entry: WorkLogEntry): strin
  * catch tool rows that arrive as plain info.
  */
 export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
-  if (entry.tone === "tool" || entry.tone === "thinking" || entry.tone === "error") {
+  const kind = entry.sourceActivityKind ?? entry.activityKind ?? "";
+  if (kind.startsWith("task.") || kind.startsWith("reasoning.") || kind.startsWith("approval.") || kind.startsWith("runtime.") || kind.startsWith("user-input.")) return false;
+  if (entry.tone === "tool" || kind.startsWith("tool.") || entry.toolCallId) {
     return true;
   }
   if (entry.command !== undefined && entry.command.trim().length > 0) {

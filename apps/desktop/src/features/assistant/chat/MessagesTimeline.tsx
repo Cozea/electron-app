@@ -1,5 +1,5 @@
-import { nonImageAttachmentLabels } from "./historyAttachments";
-import { type MessageId, type ProviderKind, type TurnId } from "@cozea/assistant-contracts";
+import { MessageAttachments } from "./MessageAttachments";
+import { type MessageId, type ProviderKind, type TurnId, type OrchestrationThreadActivity } from "@cozea/assistant-contracts";
 import { useTranslation } from "@/lib/i18n";
 import {
   createContext,
@@ -51,8 +51,16 @@ import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/features/assistant/model/types";
 import { AssistantMessageBody } from "./AssistantMessageBody";
+import { AssistantResponseActions } from "./AssistantResponseActions";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
+import { conversationRowsEqual, stableWorkIdentity, type ConversationRow as TimelineRow } from "./conversationRows";
+import { createConversationRowProjector } from "./conversationRowProjector";
+import type { ConversationTurn } from "./conversationProjection";
+import { projectActivityEntries, mergeActivityEntries } from "./conversationActivityEntries";
+import { ProviderTaskRow } from "./ProviderTaskRow";
+import { ProviderPlanSteps } from "./ProviderPlanSteps";
 import { ToolGroupSummary } from "./ToolGroupSummary";
-import { deriveToolPhase, isDiagnosticWorkEntry, summarizeToolPhase, toolRowId } from "./toolPhase";
+import { toolRowId } from "./toolPhase";
 import { useTimelineTextReveal } from "./useTextReveal";
 import {
   Empty,
@@ -66,7 +74,6 @@ import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
-import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
@@ -82,13 +89,8 @@ import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { ProviderAuthenticationHelp } from "./ProviderRemediationAction";
 import {
-  computeMessageDurationStart,
-  deriveActiveTurnHeaderIndex,
-  deriveTurnHeaderIndex,
   normalizeCompactToolLabel,
-  omitSupersededLifecycleMarkers,
   toolGroupAction,
-  workLogEntryIsToolLike,
   type GenerationStatusPhase,
 } from "./MessagesTimeline.logic";
 import { PersistedFilesList } from "./PersistedFilesList";
@@ -119,7 +121,6 @@ const HammerIcon = asHugeIcon(__HammerIconHugeIcon);
 const WrenchIcon = asHugeIcon(__WrenchIconHugeIcon);
 const ImageIcon = asHugeIcon(__ImageIconHugeIcon);
 
-const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 /** Long user bubbles: collapse with expand control (same pattern as work log overflow). */
 const USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD = 420;
@@ -145,6 +146,8 @@ function formatMessageRelativeTime(timestamp: string | number | undefined): stri
 }
 
 interface MessagesTimelineProps {
+  waitingFor?: "approval" | "question" | null;
+  activities?: readonly OrchestrationThreadActivity[];
   isChatVisible?: boolean;
   revealImmediately?: boolean;
   hasMessages: boolean;
@@ -152,18 +155,18 @@ interface MessagesTimelineProps {
   selectedProvider: ProviderKind | null;
   activeTurnInProgress: boolean;
   activeTurnId?: TurnId | null;
+  latestTurn?: ConversationTurn | null;
+  runningTurnId?: TurnId | null;
   activeWorkStartedAt: string | null;
   isWorkActive: boolean;
   generationStatusPhase: GenerationStatusPhase;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
-  completionSummary: string | null;
-  completionSummariesByMessageId: ReadonlyMap<MessageId, string>;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  revertTurnCountByUserMessageId: Map<MessageId, number>;
+  revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -218,6 +221,8 @@ function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined)
 }
 
 export const MessagesTimeline = memo(function MessagesTimeline({
+  waitingFor,
+  activities,
   isChatVisible = true,
   revealImmediately = false,
   hasMessages,
@@ -225,13 +230,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   selectedProvider,
   activeTurnInProgress,
   activeTurnId,
+  latestTurn,
+  runningTurnId,
   activeWorkStartedAt,
   isWorkActive,
   generationStatusPhase,
   scrollContainerRef,
   timelineEntries,
-  completionSummary,
-  completionSummariesByMessageId,
   turnDiffSummaryByAssistantMessageId,
   expandedWorkGroups,
   onToggleWorkGroup,
@@ -279,7 +284,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     Record<string, boolean>
   >({});
   const [expandedUserMessageIds, setExpandedUserMessageIds] = useState<Record<string, boolean>>({});
-  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(new Set());
   const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
 
   useLayoutEffect(() => {
@@ -315,221 +319,32 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [hasMessages, isWorking]);
 
-  const rows = useMemo<TimelineRow[]>(() => {
-    const toolPhase = deriveToolPhase(timelineEntries, isWorkActive, activeTurnId);
-    const nextRows: TimelineRow[] = [];
-    const completedStatuses = new Map<
-      string,
-      { turnId: TurnId; summary: string; createdAt: string }
-    >();
-    for (const [messageId, summary] of completionSummariesByMessageId) {
-      const terminalEntry = timelineEntries.find(
-        (entry) => entry.kind === "message" && entry.message.id === messageId,
-      );
-      if (
-        terminalEntry?.kind !== "message" ||
-        terminalEntry.message.role !== "assistant" ||
-        !terminalEntry.message.turnId
-      ) {
-        continue;
-      }
-      completedStatuses.set(String(terminalEntry.message.turnId), {
-        turnId: terminalEntry.message.turnId,
-        summary,
-        createdAt: terminalEntry.message.completedAt ?? terminalEntry.message.createdAt,
-      });
-    }
-    if (completionSummary && activeTurnId && !completedStatuses.has(String(activeTurnId))) {
-      completedStatuses.set(String(activeTurnId), {
-        turnId: activeTurnId,
-        summary: completionSummary,
-        createdAt: activeWorkStartedAt ?? "",
-      });
-    }
-
-    const turnStatusRowsByIndex = new Map<number, TimelineRow[]>();
-    const addTurnStatusRow = (index: number, row: TimelineRow) => {
-      const existing = turnStatusRowsByIndex.get(index);
-      if (existing) {
-        existing.push(row);
-      } else {
-        turnStatusRowsByIndex.set(index, [row]);
-      }
-    };
-    for (const status of completedStatuses.values()) {
-      addTurnStatusRow(deriveTurnHeaderIndex(timelineEntries, status.turnId), {
-        kind: "turn-status",
-        id: `turn-status:${status.turnId}`,
-        createdAt: status.createdAt,
-        startedAt: null,
-        summary: status.summary,
-      });
-    }
-    if (isWorkActive && !toolPhase.active) {
-      const statusId = activeTurnId ? `turn-status:${activeTurnId}` : "turn-status:pending";
-      for (const rowsAtIndex of turnStatusRowsByIndex.values()) {
-        const completedIndex = rowsAtIndex.findIndex((row) => row.id === statusId);
-        if (completedIndex >= 0) rowsAtIndex.splice(completedIndex, 1);
-      }
-      addTurnStatusRow(deriveActiveTurnHeaderIndex(timelineEntries, activeTurnId), {
-        kind: "turn-status",
-        id: statusId,
-        createdAt: activeWorkStartedAt ?? "",
-        startedAt: activeWorkStartedAt,
-        summary: null,
-      });
-    }
-
-    const durationStartByMessageId = computeMessageDurationStart(
-      timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
-    );
-    const appendTurnStatusRows = (index: number) => {
-      nextRows.push(...(turnStatusRowsByIndex.get(index) ?? []));
-    };
-
-    for (let index = 0; index < timelineEntries.length; index += 1) {
-      const timelineEntry = timelineEntries[index];
-      if (!timelineEntry) {
-        continue;
-      }
-
-      appendTurnStatusRows(index);
-
-      if (timelineEntry.kind === "work") {
-        const groupedEntries = [timelineEntry.entry];
-        let cursor = index + 1;
-        while (cursor < timelineEntries.length) {
-          const nextEntry = timelineEntries[cursor];
-          if (!nextEntry || nextEntry.kind !== "work") break;
-          groupedEntries.push(nextEntry.entry);
-          cursor += 1;
-        }
-        // Providers without stable tool-call ids emit a start marker and a
-        // terminal marker for the same call. Collapse them before segmenting so
-        // one tool call renders as one row.
-        const dedupedEntries = omitSupersededLifecycleMarkers(
-          groupedEntries,
-          (workEntry) => workEntry,
-        );
-        // Session diagnostics (runtime/config warnings, non-fatal provider
-        // errors) fold into quiet collapsed "notices" rows instead of red
-        // entries inline with the turn's work; turn failures surface through
-        // the thread error state, not these activities. Order is preserved by
-        // splitting the run into consecutive same-kind segments.
-        let segmentStart = 0;
-        for (let cut = 1; cut <= dedupedEntries.length; cut += 1) {
-          const boundary =
-            cut === dedupedEntries.length ||
-            isDiagnosticWorkEntry(dedupedEntries[cut]!) !==
-              isDiagnosticWorkEntry(dedupedEntries[segmentStart]!) ||
-            workLogEntryIsToolLike(dedupedEntries[cut]!) !==
-              workLogEntryIsToolLike(dedupedEntries[segmentStart]!) ||
-            dedupedEntries[cut]!.turnId !== dedupedEntries[segmentStart]!.turnId;
-          if (!boundary) continue;
-          const segment = dedupedEntries.slice(segmentStart, cut);
-          const first = segment[0]!;
-          const segmentId = segmentStart === 0 ? timelineEntry.id : toolRowId(first);
-          const segmentCreatedAt =
-            first.timelineOrigin?.createdAt ?? first.createdAt ?? timelineEntry.createdAt;
-
-          if (isDiagnosticWorkEntry(first)) {
-            nextRows.push({
-              kind: "notices",
-              id: segmentId,
-              createdAt: segmentCreatedAt,
-              groupedEntries: segment,
-            });
-            segmentStart = cut;
-            continue;
-          }
-
-          // All lifecycle states share one accordion. Narration and notices
-          // remain separate segments and never inflate the action count.
-          const onlyToolEntries = segment.every(workLogEntryIsToolLike);
-          if (!onlyToolEntries) {
-            nextRows.push({
-              kind: "work",
-              id: segmentId,
-              createdAt: segmentCreatedAt,
-              groupedEntries: segment,
-            });
-            segmentStart = cut;
-            continue;
-          }
-
-          const groupId = `work-group:${segmentId}`;
-          const expanded = expandedWorkGroups[groupId] ?? false;
-          const active = segment.some(
-            (entry) =>
-              toolPhase.liveIds.has(toolRowId(entry)) || toolRowId(entry) === toolPhase.trailingId,
-          );
-          nextRows.push({
-            kind: "work-toggle",
-            id: `work-toggle:${segmentId}`,
-            createdAt: segmentCreatedAt,
-            groupId,
-            hiddenCount: segment.length,
-            expanded,
-            summary: summarizeToolPhase(segment, active),
-            active,
-            liveIds: toolPhase.liveIds,
-            groupedEntries: segment,
-          });
-          segmentStart = cut;
-        }
-        index = cursor - 1;
-        continue;
-      }
-
-      if (timelineEntry.kind === "proposed-plan") {
-        nextRows.push({
-          kind: "proposed-plan",
-          id: timelineEntry.id,
-          createdAt: timelineEntry.createdAt,
-          proposedPlan: timelineEntry.proposedPlan,
-        });
-        continue;
-      }
-
-      nextRows.push({
-        kind: "message",
-        id: timelineEntry.id,
-        createdAt: timelineEntry.createdAt,
-        message: timelineEntry.message,
-        durationStart:
-          durationStartByMessageId.get(timelineEntry.message.id) ?? timelineEntry.message.createdAt,
-      });
-    }
-    if (isWorkActive && !toolPhase.active && generationStatusPhase === "thinking") {
-      nextRows.push({
-        kind: "thinking",
-        id: "thinking-indicator-row",
-        createdAt: activeWorkStartedAt ?? "",
-      });
-    }
-    appendTurnStatusRows(timelineEntries.length);
-
-    return nextRows;
-  }, [
-    activeWorkStartedAt,
+  const [rowProjector] = useState(() => createConversationRowProjector());
+  const activity = useMemo(() => projectActivityEntries(activities ?? []), [activities]);
+  const projectedEntries = useMemo(() => mergeActivityEntries(timelineEntries, activity), [timelineEntries, activity]);
+  const rows = useMemo(() => rowProjector.project({
+    entries: projectedEntries,
+    activity,
+    waitingFor,
+    latestTurn,
+    runningTurnId,
     activeTurnId,
-    completionSummariesByMessageId,
-    completionSummary,
-    // Expansion changes a single group's measured height, not the list's row count.
-    expandedWorkGroups,
-    isWorkActive,
+    isWorking: isWorkActive,
+    activeWorkStartedAt,
     generationStatusPhase,
-    timelineEntries,
-  ]);
+    expanded: expandedWorkGroups,
+  }), [rowProjector, projectedEntries, activity, waitingFor, latestTurn, runningTurnId, activeTurnId, isWorkActive, activeWorkStartedAt, generationStatusPhase, expandedWorkGroups]);
+  useEffect(() => () => rowProjector.clear(), [rowProjector]);
 
   const [seenToolSummaryRows] = useState(
     () => new Set(rows.filter((row) => row.kind === "work-toggle").map((row) => row.id)),
   );
+  const [seenExpandedFoldRows] = useState(() => new Set<string>());
   useLayoutEffect(() => {
     const ids = new Set(rows.filter((row) => row.kind === "work-toggle").map((row) => row.id));
-    for (const id of seenToolSummaryRows) {
-      if (!ids.has(id)) seenToolSummaryRows.delete(id);
-    }
+    // A disclosure or recycled viewport can omit an existing row. Keep its
+    // one-shot entrance consumed for this timeline's lifetime, not just while
+    // it is in the top-level row array. Thread-keyed unmount releases both sets.
     if (!isChatVisible || !isWorkActive || document.hidden) {
       for (const id of ids) seenToolSummaryRows.add(id);
     }
@@ -590,7 +405,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       if (row) keys.add(row.id);
     }
     for (const row of rows) {
-      if (row.kind === "turn-status" || row.kind === "thinking") {
+      // Keep the disclosure label available to virtualized child groups.
+      if (row.kind === "turn-fold" && row.virtualized && row.expanded) keys.add(row.id);
+      if (row.kind === "turn-status" || row.kind === "thinking" || row.kind === "input-waiting") {
         keys.add(row.id);
       }
       if (row.kind === "message" && row.message.streaming) {
@@ -626,17 +443,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       lastRow?.kind ?? "none",
       activeTurnInProgress ? "active" : "idle",
       isWorking ? "working" : "settled",
-      completionSummariesByMessageId.size,
     ].join(":");
-  }, [activeTurnInProgress, completionSummariesByMessageId.size, isWorking, rows]);
+  }, [activeTurnInProgress, isWorking, rows]);
   const legendListExtraData = useMemo(
     () => ({
       allDirectoriesExpandedByTurnId,
-      completionSummary,
-      // Size only. This memo recomputes every streaming frame (activeTurn and
-      // thread.messages both change per token upstream), so materializing every
-      // summary's full text here rebuilt the whole string at frame rate.
-      completionSummaryVersion: completionSummariesByMessageId.size,
       expandedUserMessageIds,
       expandedWorkGroups,
       isRevertingCheckpoint,
@@ -647,8 +458,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }),
     [
       allDirectoriesExpandedByTurnId,
-      completionSummary,
-      completionSummariesByMessageId,
       expandedUserMessageIds,
       expandedWorkGroups,
       isRevertingCheckpoint,
@@ -670,19 +479,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const itemsAreEqual = useCallback(
     (previousRow: TimelineRow, nextRow: TimelineRow) =>
-      areTimelineRowsEquivalent(previousRow, nextRow),
+      conversationRowsEqual(previousRow, nextRow),
     [],
   );
-  const onTimelineImageLoad = useCallback(() => {
-    // Legend List measures row size with ResizeObserver; this hook preserves the old image load contract.
-  }, []);
-  const onTimelineImageError = useCallback((imageId: string) => {
-    setFailedImageIds((prev) => {
-      const next = new Set(prev);
-      next.add(imageId);
-      return next;
-    });
-  }, []);
 
   // LegendList types `onLoad` as an intersection with the DOM handler, so accept both shapes.
   const onLegendListLoad = useCallback(
@@ -747,87 +546,52 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }));
   }, []);
 
-  const renderRowContent = (row: TimelineRow) => (
+  const renderRowContent = useCallback(function renderRowContent(row: TimelineRow): ReactNode { const content = (
     <div
-      className="pb-4"
+      className={row.kind === "turn-fold-content" ? "" : "pb-4"}
       data-timeline-row-kind={row.kind}
       data-message-id={row.kind === "message" ? row.message.id : undefined}
       data-message-role={row.kind === "message" ? row.message.role : undefined}
+      data-expanded-fold-id={row.expandedFoldId}
+      aria-labelledby={row.expandedFoldId ? `disclosure:${row.expandedFoldId}` : undefined}
+      role={row.expandedFoldId ? "group" : undefined}
     >
-      {row.kind === "work" &&
-        (() => {
-          const groupId = row.id;
-          const groupedEntries = row.groupedEntries;
-
-          const isExpanded = expandedWorkGroups[groupId] ?? false;
-          const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-          const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
-          // A `work` row is a mixed run by construction: all-tool runs are
-          // routed to work-toggle, which owns the whole tool accordion.
-          const showHeader = hasOverflow || !onlyToolEntries;
-
-          return (
-            <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
-              {showHeader && (
-                <div className="mb-1.5 flex items-center justify-between gap-2 -mx-1 -mt-0.5">
-                  <p
-                    className="inline-flex min-h-5 shrink-0 items-center justify-center rounded-full bg-muted/90 px-2.5 py-1 text-sm font-medium tabular-nums leading-none text-muted-foreground"
-                    aria-label={`${groupedEntries.length} work log entries`}
-                  >
-                    {groupedEntries.length}
-                  </p>
-                  {hasOverflow && (
-                    <button
-                      type="button"
-                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/90 text-muted-foreground/65 transition-colors duration-150 hover:bg-muted hover:text-foreground/80"
-                      aria-expanded={isExpanded}
-                      aria-label={
-                        isExpanded
-                          ? "Collapse work log"
-                          : `Expand to show all ${onlyToolEntries ? "tool calls" : "entries"}`
-                      }
-                      title={isExpanded ? "Show less" : `Show all`}
-                      onClick={() => onToggleWorkGroup(groupId)}
-                    >
-                      <HugeiconsIcon
-                        icon={isExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
-                        className="size-4 stroke-[2.2]"
-                        aria-hidden="true"
-                      />
-                    </button>
-                  )}
-                </div>
-              )}
-              <div
-                className={cn(
-                  "space-y-0.5 overflow-y-auto flex flex-col [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
-                  !isExpanded && hasOverflow
-                    ? "max-h-[160px] [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)] [-webkit-mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]"
-                    : "max-h-none",
-                )}
-                ref={(node) => {
-                  if (node && !isExpanded) {
-                    node.scrollTop = node.scrollHeight;
-                  }
-                }}
-              >
-                {groupedEntries.map((workEntry) => (
-                  <SimpleWorkEntryRow
-                    key={`work-row:${workEntry.id}`}
-                    workEntry={workEntry}
-                    workspaceRoot={workspaceRoot}
-                    resolvedTheme={resolvedTheme}
-                    artifactUrl={
-                      workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined
-                    }
-                    onOpenArtifact={onOpenArtifact}
-                    onOpenTurnDiff={onOpenTurnDiff}
-                  />
-                ))}
-              </div>
+      {row.kind === "turn-fold" && row.virtualized ? (
+        <button type="button" id={`disclosure:${row.id}`} aria-expanded={row.expanded}
+          data-turn-fold-id={row.turnId} onClick={() => onToggleWorkGroup(row.id)}
+          className="group/fold flex h-7 w-full items-center gap-2 px-1 text-left text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <span>{row.label}</span>
+          <HugeiconsIcon icon={__WorkLogExpandHugeIcon} aria-hidden="true" className={cn("size-3.5 transition-transform duration-200 motion-reduce:transition-none", row.expanded && "rotate-180")} />
+        </button>
+      ) : null}
+      {(row.kind === "turn-fold-content" || (row.kind === "turn-fold" && !row.virtualized)) && (
+        <Collapsible open={row.expanded} onOpenChange={() => onToggleWorkGroup(`turn-fold:${row.turnId}`)}>
+          {row.kind === "turn-fold" ? (
+          <CollapsibleTrigger className="group/fold flex h-7 w-full items-center gap-2 px-1 text-left text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={row.label} data-turn-fold-id={row.turnId}>
+            <span>{row.label}</span>
+            <HugeiconsIcon icon={__WorkLogExpandHugeIcon} aria-hidden="true" className={cn("size-3.5 transition-transform duration-200 motion-reduce:transition-none", row.expanded && "rotate-180")} />
+          </CollapsibleTrigger>
+          ) : null}
+          <CollapsiblePanel className="motion-reduce:transition-none">
+            <div className="pt-2" data-turn-fold-content={row.turnId}>
+              {row.children.map((child) => <div key={child.id}>{renderRowContent(child)}</div>)}
             </div>
-          );
-        })()}
+          </CollapsiblePanel>
+        </Collapsible>
+      )}
+      {row.kind === "assistant-meta" && <AssistantResponseActions message={row.message} controller={textReveal} relativeTime={formatMessageRelativeTime(row.message.completedAt ?? row.message.createdAt)} />}
+      {row.kind === "provider-task" && <ProviderTaskRow task={row.task} expanded={row.expanded} onToggle={(taskId) => onToggleWorkGroup(`provider-task:${taskId}`)} isActive={isChatVisible} />}
+      {row.kind === "provider-plan" && <ProviderPlanSteps plan={row.plan} isActive={isChatVisible && isWorkActive && row.plan.turnId === (runningTurnId ?? activeTurnId)} />}
+      {row.kind === "work" && (
+        <div className="flex min-w-0 flex-col">
+          {row.groupedEntries.map((entry) => (
+            <SimpleWorkEntryRow key={stableWorkIdentity(entry)} compact workEntry={entry}
+              workspaceRoot={workspaceRoot} resolvedTheme={resolvedTheme}
+              artifactUrl={entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined}
+              onOpenArtifact={onOpenArtifact} onOpenTurnDiff={onOpenTurnDiff} />
+          ))}
+        </div>
+      )}
 
       {row.kind === "work-toggle" && (
         <ToolGroupSummary
@@ -843,7 +607,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         >
           {row.groupedEntries.map((entry) => (
             <SimpleWorkEntryRow
-              key={toolRowId(entry)}
+              key={stableWorkIdentity(entry)}
               compact
               active={row.active && row.liveIds.has(toolRowId(entry))}
               workEntry={entry}
@@ -900,8 +664,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       {row.kind === "message" &&
         row.message.role === "user" &&
         (() => {
-          const userImages = (row.message.attachments ?? []).filter((attachment) => attachment.type === "image");
-          const otherAttachments = nonImageAttachmentLabels(row.message.attachments);
           const previewAnnotations = extractTrailingPreviewAnnotations(row.message.text);
           const displayedUserMessage = deriveDisplayedUserMessageState(
             previewAnnotations.promptText,
@@ -922,50 +684,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <div className="flex w-full min-w-0 justify-end">
               <div className="group relative flex max-w-[85%] sm:max-w-[75%] min-w-0 flex-col items-end gap-1">
-                {otherAttachments.length ? <div className="mb-1 flex flex-wrap gap-1">{otherAttachments.map((label, index) => <span key={index} className="rounded-md border border-border px-2 py-1 text-xs">{label}</span>)}</div> : null}
-                {userImages.length > 0 && (
-                  <div className="mb-1 flex w-full flex-wrap justify-end gap-2">
-                    {userImages.map(
-                      (image: NonNullable<TimelineMessage["attachments"]>[number]) => {
-                        const isFailed = failedImageIds.has(image.id);
-                        return (
-                          <div
-                            key={image.id}
-                            className="relative overflow-hidden rounded-xl border border-border/40 bg-transparent h-24 w-32 shrink-0"
-                          >
-                            {image.previewUrl && !isFailed ? (
-                              <button
-                                type="button"
-                                className="h-full w-full cursor-zoom-in"
-                                aria-label={`Preview ${image.name}`}
-                                onClick={() => {
-                                  const preview = buildExpandedImagePreview(userImages, image.id);
-                                  if (!preview) return;
-                                  onImageExpand(preview);
-                                }}
-                              >
-                                <img
-                                  src={image.previewUrl}
-                                  alt={image.name}
-                                  className="h-full w-full object-cover"
-                                  onLoad={onTimelineImageLoad}
-                                  onError={() => onTimelineImageError(image.id)}
-                                />
-                              </button>
-                            ) : (
-                              <div className="flex h-full w-full flex-col items-center justify-center border border-dashed border-border/70 bg-secondary/30 px-2 py-2 text-center text-muted-foreground">
-                                <ImageIcon className="mb-1.5 size-5 opacity-50" />
-                                <span className="truncate w-full text-[9px] font-medium leading-tight">
-                                  {image.name}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      },
-                    )}
-                  </div>
-                )}
+                {row.message.attachments?.length ? <MessageAttachments attachments={row.message.attachments} onExpand={onImageExpand} /> : null}
                 {previewAnnotations.annotations.length > 0 ? (
                   <div className="mb-1 flex w-full flex-wrap justify-end gap-1.5">
                     {previewAnnotations.annotations.map((annotation) => (
@@ -1094,46 +813,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           message={row.message}
           controller={textReveal}
           cwd={markdownCwd}
-          actions={
-            <div className="mt-1 flex items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
-              <div className="flex items-center gap-1.5">
-                <MessageCopyButton text={row.message.text} />
-                <button
-                  type="button"
-                  disabled
-                  className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                  title="Branch (coming soon)"
-                  aria-label="Branch thread"
-                >
-                  <HugeiconsIcon icon={__GitForkIconHugeIcon} className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                  title="Pin (coming soon)"
-                  aria-label="Pin message"
-                >
-                  <HugeiconsIcon icon={__PinIconHugeIcon} className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                  title="Read aloud (coming soon)"
-                  aria-label="Read aloud"
-                >
-                  <HugeiconsIcon icon={__VolumeIconHugeIcon} className="size-3.5" />
-                </button>
-              </div>
-              {row.message.completedAt || row.message.createdAt ? (
-                <span className="select-none tabular-nums">
-                  {formatMessageRelativeTime(row.message.completedAt ?? row.message.createdAt)}
-                </span>
-              ) : null}
-            </div>
-          }
+          actions={row.showActions ? <AssistantResponseActions message={row.message} controller={textReveal} relativeTime={formatMessageRelativeTime(row.message.completedAt ?? row.message.createdAt)} /> : null}
         >
+          {row.message.attachments?.length ? <MessageAttachments attachments={row.message.attachments} onExpand={onImageExpand} align="start" /> : null}
           <ProviderAuthenticationHelp
             provider={selectedProvider}
             message={row.message.text}
@@ -1186,8 +868,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         <TurnStatusRow startedAtIso={row.startedAt} summary={row.summary} />
       )}
       {row.kind === "thinking" && <ThinkingIndicatorRow />}
+      {row.kind === "input-waiting" && <div role="status" className="px-1 py-1 text-sm text-muted-foreground">{row.requestKind === "approval" ? "Waiting for approval" : "Waiting for your response"}</div>}
     </div>
-  );
+  ); return row.expandedFoldId ? <ExpandedFoldRowEntrance identity={`${row.expandedFoldId}:${row.id}`} seen={seenExpandedFoldRows} visible={isChatVisible}>{content}</ExpandedFoldRowEntrance> : content; }, [onToggleWorkGroup, textReveal, isChatVisible, isWorkActive, runningTurnId, activeTurnId,
+    expandedWorkGroups, workspaceRoot, resolvedTheme, artifactUrlsById, onOpenArtifact, onOpenTurnDiff,
+    seenToolSummaryRows, seenExpandedFoldRows, revertTurnCountByUserMessageId, expandedUserMessageIds, onImageExpand,
+    toggleUserMessageExpanded, isRevertingCheckpoint, isWorking, onRevertUserMessage, markdownCwd,
+    selectedProvider, latestAssistantMessageId, turnDiffSummaryByAssistantMessageId,
+    allDirectoriesExpandedByTurnId, changedFilesExpandedByTurnId, latestTurnDiffTurnId,
+    onToggleChangedFilesExpanded, onToggleAllDirectories]);
 
   if (!hasMessages && !isWorking) {
     return (
@@ -1282,61 +971,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 });
 
 type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
-type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
 type TimelineProposedPlan = Extract<TimelineEntry, { kind: "proposed-plan" }>["proposedPlan"];
 type TimelineWorkEntry = Extract<TimelineEntry, { kind: "work" }>["entry"];
-type TimelineRow =
-  | {
-      kind: "work";
-      id: string;
-      createdAt: string;
-      groupedEntries: TimelineWorkEntry[];
-    }
-  | {
-      /** Collapsed summary standing in for a finished run of tool calls. */
-      kind: "work-toggle";
-      id: string;
-      createdAt: string;
-      groupId: string;
-      hiddenCount: number;
-      expanded: boolean;
-      summary: string;
-      active: boolean;
-      liveIds: Set<string>;
-      groupedEntries: TimelineWorkEntry[];
-    }
-  | {
-      kind: "notices";
-      id: string;
-      createdAt: string;
-      groupedEntries: TimelineWorkEntry[];
-    }
-  | {
-      kind: "message";
-      id: string;
-      createdAt: string;
-      message: TimelineMessage;
-      durationStart: string;
-    }
-  | {
-      kind: "proposed-plan";
-      id: string;
-      createdAt: string;
-      proposedPlan: TimelineProposedPlan;
-    }
-  | {
-      kind: "turn-status";
-      id: string;
-      createdAt: string;
-      startedAt: string | null;
-      summary: string | null;
-    }
-  | {
-      kind: "thinking";
-      id: string;
-      createdAt: string;
-    };
-
 // LegendList renders renderItem as a React component, not an ordinary callback.
 // A fresh inline function remounts every row when a tool/count changes.
 const TimelineRowRenderContext = createContext<((row: TimelineRow) => ReactNode) | null>(null);
@@ -1353,16 +989,9 @@ function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan):
 
 function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | null): number {
   switch (row.kind) {
-    case "work": {
-      const entriesHeight = row.groupedEntries.reduce(
-        (total, entry) => total + estimateWorkEntryHeight(entry),
-        0,
-      );
-      const hasOverflow = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-      const overflowHeaderHeight = hasOverflow ? 24 : 0;
-      const variableHeight = hasOverflow ? 160 : entriesHeight;
-      return 24 + overflowHeaderHeight + variableHeight;
-    }
+    case "work":
+      // Compact one-line rows; open secondary details are measured by LegendList.
+      return 16 + row.groupedEntries.length * 24;
     case "work-toggle":
       // Fixed 28px summary plus the shared 16px row spacing.
       return 44 + (row.expanded ? 2 + row.groupedEntries.length * 24 : 0);
@@ -1371,88 +1000,24 @@ function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | n
       return 28;
     case "message":
       return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
+    case "assistant-meta":
+      return 40;
+    case "provider-task":
+      return row.expanded ? 160 : 44;
+    case "provider-plan":
+      return 48 + row.plan.steps.length * 24;
+    case "turn-fold":
+      return 44 + (row.expanded ? row.children.reduce((sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx), 0) : 0);
+    case "turn-fold-content":
+      return row.expanded ? row.children.reduce((sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx), 0) : 0;
     case "proposed-plan":
       return estimateTimelineProposedPlanHeight(row.proposedPlan);
     case "turn-status":
       return 40;
     case "thinking":
+    case "input-waiting":
       return 32;
   }
-}
-
-function areTimelineRowsEquivalent(previousRow: TimelineRow, nextRow: TimelineRow): boolean {
-  if (previousRow.kind !== nextRow.kind || previousRow.id !== nextRow.id) {
-    return false;
-  }
-
-  if (previousRow.kind === "work" && nextRow.kind === "work") {
-    if (previousRow.groupedEntries.length !== nextRow.groupedEntries.length) {
-      return false;
-    }
-    const previousLastEntry = previousRow.groupedEntries.at(-1);
-    const nextLastEntry = nextRow.groupedEntries.at(-1);
-    return (
-      previousRow.createdAt === nextRow.createdAt &&
-      previousLastEntry?.id === nextLastEntry?.id &&
-      previousLastEntry?.label === nextLastEntry?.label &&
-      previousLastEntry?.detail === nextLastEntry?.detail &&
-      previousLastEntry?.command === nextLastEntry?.command &&
-      previousLastEntry?.tone === nextLastEntry?.tone
-    );
-  }
-
-  if (previousRow.kind === "work-toggle" && nextRow.kind === "work-toggle") {
-    return (
-      previousRow.createdAt === nextRow.createdAt &&
-      previousRow.expanded === nextRow.expanded &&
-      previousRow.hiddenCount === nextRow.hiddenCount &&
-      previousRow.summary === nextRow.summary &&
-      previousRow.active === nextRow.active &&
-      previousRow.groupedEntries === nextRow.groupedEntries &&
-      previousRow.liveIds === nextRow.liveIds
-    );
-  }
-
-  if (previousRow.kind === "notices" && nextRow.kind === "notices") {
-    return (
-      previousRow.createdAt === nextRow.createdAt &&
-      previousRow.groupedEntries.length === nextRow.groupedEntries.length &&
-      previousRow.groupedEntries.at(-1)?.id === nextRow.groupedEntries.at(-1)?.id
-    );
-  }
-
-  if (previousRow.kind === "message" && nextRow.kind === "message") {
-    return (
-      previousRow.createdAt === nextRow.createdAt &&
-      previousRow.durationStart === nextRow.durationStart &&
-      previousRow.message.id === nextRow.message.id &&
-      previousRow.message.role === nextRow.message.role &&
-      previousRow.message.text === nextRow.message.text &&
-      previousRow.message.streaming === nextRow.message.streaming &&
-      (previousRow.message.attachments?.length ?? 0) === (nextRow.message.attachments?.length ?? 0)
-    );
-  }
-
-  if (previousRow.kind === "proposed-plan" && nextRow.kind === "proposed-plan") {
-    return (
-      previousRow.createdAt === nextRow.createdAt &&
-      previousRow.proposedPlan.planMarkdown === nextRow.proposedPlan.planMarkdown
-    );
-  }
-
-  if (previousRow.kind === "turn-status" && nextRow.kind === "turn-status") {
-    return (
-      previousRow.createdAt === nextRow.createdAt &&
-      previousRow.startedAt === nextRow.startedAt &&
-      previousRow.summary === nextRow.summary
-    );
-  }
-
-  if (previousRow.kind === "thinking" && nextRow.kind === "thinking") {
-    return true;
-  }
-
-  return false;
 }
 
 function formatLiveElapsed(startIso: string, nowMs: number): string | null {
@@ -1461,6 +1026,22 @@ function formatLiveElapsed(startIso: string, nowMs: number): string | null {
     return null;
   }
   return formatDuration(Math.max(0, nowMs - startedAtMs));
+}
+
+function ExpandedFoldRowEntrance({ identity, seen, visible, children }: { identity: string; seen: Set<string>; visible: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (seen.has(identity)) return;
+    seen.add(identity);
+    const node = ref.current;
+    if (!node || !visible || document.hidden || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const rect = node.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
+    node.classList.add("assistant-tool-enter");
+    const timer = setTimeout(() => node.classList.remove("assistant-tool-enter"), 180);
+    return () => { clearTimeout(timer); node.classList.remove("assistant-tool-enter"); };
+  }, [identity, seen, visible]);
+  return <div ref={ref}>{children}</div>;
 }
 
 const WorkingTimer = memo(function WorkingTimer(props: { startedAtIso: string }) {
@@ -1527,23 +1108,6 @@ const ThinkingIndicatorRow = memo(function ThinkingIndicatorRow() {
     </div>
   );
 });
-
-function estimateWorkEntryHeight(workEntry: TimelineWorkEntry): number {
-  let height = 28;
-  const changedFileCount = workEntry.changedFiles?.length ?? 0;
-  const persistedFileCount =
-    (workEntry.savedFiles?.length ?? 0) + (workEntry.failedFiles?.length ?? 0);
-  if (changedFileCount > 0) {
-    height += workEntry.activityKind === "files.persisted" ? 28 : 20;
-  }
-  if (persistedFileCount > 3) {
-    height += 18;
-  }
-  if (workEntry.status === "cancelled" || workEntry.status === "failed") {
-    height += 4;
-  }
-  return height;
-}
 
 const UserMessageTerminalContextInlineLabel = memo(
   function UserMessageTerminalContextInlineLabel(props: { context: ParsedTerminalContextEntry }) {

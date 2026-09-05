@@ -8,11 +8,14 @@ import { memo, useCallback, useEffect, useRef } from "react";
 import { type PendingUserInput } from "./session-logic";
 import {
   derivePendingUserInputProgress,
+  pendingUserInputShortcutValue,
+  shouldAutoAdvancePendingUserInput,
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
 import { cn } from "@/lib/utils";
 
 interface PendingUserInputPanelProps {
+  isVisible?: boolean;
   pendingUserInputs: PendingUserInput[];
   respondingRequestIds: ApprovalRequestId[];
   answers: Record<string, PendingUserInputDraftAnswer>;
@@ -22,6 +25,7 @@ interface PendingUserInputPanelProps {
 }
 
 export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserInputPanel({
+  isVisible = true,
   pendingUserInputs,
   respondingRequestIds,
   answers,
@@ -36,6 +40,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
   return (
     <ComposerPendingUserInputCard
       key={activePrompt.requestId}
+      isVisible={isVisible}
       prompt={activePrompt}
       isResponding={respondingRequestIds.includes(activePrompt.requestId)}
       answers={answers}
@@ -47,6 +52,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
 });
 
 const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard({
+  isVisible,
   prompt,
   isResponding,
   answers,
@@ -54,6 +60,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   onSelectOption,
   onAdvance,
 }: {
+  isVisible: boolean;
   prompt: PendingUserInput;
   isResponding: boolean;
   answers: Record<string, PendingUserInputDraftAnswer>;
@@ -72,33 +79,38 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
     };
-  }, []);
+  }, [isVisible, questionIndex, isResponding]);
 
   const selectOptionAndAutoAdvance = useCallback(
     (questionId: string, optionLabel: string) => {
+      if (!isVisible || isResponding) return;
       onSelectOption(questionId, optionLabel);
       if (autoAdvanceTimerRef.current !== null) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
+      if (!shouldAutoAdvancePendingUserInput(activeQuestion)) return;
       autoAdvanceTimerRef.current = window.setTimeout(() => {
         autoAdvanceTimerRef.current = null;
         onAdvance();
       }, 200);
     },
-    [onSelectOption, onAdvance],
+    [onSelectOption, onAdvance, activeQuestion?.multiSelect, isVisible, isResponding],
   );
 
   // Shortcuts belong to this question card, never another tile's editor.
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!activeQuestion || isResponding || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!activeQuestion) return;
     const target = event.target;
-    if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea"))) return;
-    if (!/^[1-9]$/.test(event.key)) return;
-    const option = activeQuestion.options[Number(event.key) - 1];
-    if (!option) return;
+    const value = pendingUserInputShortcutValue(activeQuestion, event.key, {
+      visible: isVisible,
+      responding: isResponding,
+      editing: target instanceof HTMLElement && (target.isContentEditable || Boolean(target.closest("input, textarea"))),
+      modified: event.metaKey || event.ctrlKey || event.altKey,
+    });
+    if (value === null) return;
     event.preventDefault();
     event.stopPropagation();
-    selectOptionAndAutoAdvance(activeQuestion.id, option.value ?? option.label);
+    selectOptionAndAutoAdvance(activeQuestion.id, value);
   };
 
   if (!activeQuestion) {
@@ -122,11 +134,12 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       <p className="mt-1.5 text-sm text-foreground/90">{activeQuestion.question}</p>
       <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
         {activeQuestion.options.map((option, index) => {
-          const isSelected = progress.activeDraft?.selectedOptionValue !== undefined ? progress.activeDraft.selectedOptionValue === (option.value ?? option.label) : progress.selectedOptionLabel === option.label;
+          const isSelected = progress.selectedOptionValues.includes(option.value ?? option.label);
           const shortcutKey = index < 9 ? index + 1 : null;
           return (
             <button
-              key={`${activeQuestion.id}:${option.label}`}
+              key={`${activeQuestion.id}:${option.value ?? option.label}:${index}`}
+              aria-pressed={isSelected}
               type="button"
               disabled={isResponding}
               onClick={() => selectOptionAndAutoAdvance(activeQuestion.id, option.value ?? option.label)}

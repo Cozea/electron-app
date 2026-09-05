@@ -41,6 +41,8 @@ export class T3EffectRpcClient {
   private readonly requestTimeoutMs: number;
   private ws: WebSocket | null = null;
   private connectPromise: Promise<WebSocket> | null = null;
+  private closed = false;
+  private disposeSocket: (() => void) | null = null;
   private readonly exitWaiters = new Map<
     string,
     {
@@ -51,6 +53,13 @@ export class T3EffectRpcClient {
   >();
   private readonly chunkListeners = new Map<string, Set<(value: unknown) => void>>();
   private readonly streamDisconnectListeners = new Map<string, () => void>();
+  private readonly disconnectListeners = new Set<() => void>();
+
+  /** Session owners may reacquire credentials; this never replays a command. */
+  onDisconnect(listener: () => void): () => void {
+    if (!this.closed) this.disconnectListeners.add(listener);
+    return () => { this.disconnectListeners.delete(listener); };
+  }
 
   constructor(options: T3EffectRpcClientOptions) {
     const url = new URL("/ws", options.baseUrl);
@@ -62,6 +71,11 @@ export class T3EffectRpcClient {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
+    this.streamDisconnectListeners.clear();
+    this.disconnectListeners.clear();
+    this.disposeSocket?.();
+    this.disposeSocket = null;
     this.connectPromise = null;
     if (this.ws) {
       this.ws.close();
@@ -76,6 +90,7 @@ export class T3EffectRpcClient {
   }
 
   private async connect(): Promise<WebSocket> {
+    if (this.closed) throw new Error("T3 RPC client closed");
     if (this.ws && this.ws.readyState === this.WebSocketImpl.OPEN) {
       return this.ws;
     }
@@ -85,33 +100,56 @@ export class T3EffectRpcClient {
 
     this.connectPromise = new Promise<WebSocket>((resolve, reject) => {
       const ws = new this.WebSocketImpl(this.wsUrl);
+      this.ws = ws;
+      const dispose = () => {
+        clearTimeout(timer);
+        ws.removeEventListener("open", onOpen);
+        ws.removeEventListener("error", onError);
+        ws.removeEventListener("message", onMessage);
+        ws.removeEventListener("close", onClose);
+        reject(new Error("T3 WebSocket disconnected"));
+      };
       const timer = setTimeout(() => {
+        dispose();
         ws.close();
         reject(new Error(`T3 WebSocket connect timed out after ${this.requestTimeoutMs}ms`));
       }, this.requestTimeoutMs);
 
-      ws.addEventListener("open", () => {
+      const onOpen = () => {
         clearTimeout(timer);
         this.ws = ws;
         resolve(ws);
-      });
-      ws.addEventListener("error", () => {
+      };
+      const onError = () => {
         clearTimeout(timer);
         reject(new Error("T3 WebSocket connection error"));
-      });
-      ws.addEventListener("message", (event) => {
+        onClose();
+        ws.close();
+      };
+      const onMessage = (event: MessageEvent) => {
         this.handleMessage(event.data);
-      });
-      ws.addEventListener("close", () => {
+      };
+      const onClose = () => {
+        dispose();
         this.ws = null;
         this.connectPromise = null;
-        const disconnectListeners = [...this.streamDisconnectListeners.values()];
+        const disconnectListeners = [...this.disconnectListeners, ...this.streamDisconnectListeners.values()];
         this.streamDisconnectListeners.clear();
         this.chunkListeners.clear();
+        for (const waiter of this.exitWaiters.values()) {
+          clearTimeout(waiter.timer);
+          waiter.reject(new Error("T3 WebSocket disconnected"));
+        }
+        this.exitWaiters.clear();
         for (const listener of disconnectListeners) {
           listener();
         }
-      });
+      };
+      this.disposeSocket = dispose;
+      ws.addEventListener("open", onOpen);
+      ws.addEventListener("error", onError);
+      ws.addEventListener("message", onMessage);
+      ws.addEventListener("close", onClose);
     });
 
     try {
@@ -188,6 +226,8 @@ export class T3EffectRpcClient {
     options?: { readonly timeoutMs?: number },
   ): Promise<unknown> {
     const ws = await this.connect();
+    if (this.closed || ws.readyState !== this.WebSocketImpl.OPEN)
+      throw new Error("T3 RPC client disconnected");
     const requestId = createRequestId();
     const timeoutMs = options?.timeoutMs ?? this.requestTimeoutMs;
     return await new Promise<unknown>((resolve, reject) => {
@@ -196,7 +236,13 @@ export class T3EffectRpcClient {
         reject(new Error(`T3 RPC ${tag} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       this.exitWaiters.set(requestId, { resolve, reject, timer });
-      ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
+      try {
+        ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
+      } catch (error) {
+        clearTimeout(timer);
+        this.exitWaiters.delete(requestId);
+        reject(error);
+      }
     });
   }
 
@@ -207,18 +253,27 @@ export class T3EffectRpcClient {
     onDisconnect?: () => void,
   ): Promise<() => Promise<void>> {
     const ws = await this.connect();
+    if (this.closed || ws.readyState !== this.WebSocketImpl.OPEN)
+      throw new Error("T3 RPC client disconnected");
     const requestId = createRequestId();
     const listeners = new Set<(value: unknown) => void>([onValue]);
     this.chunkListeners.set(requestId, listeners);
     if (onDisconnect) {
       this.streamDisconnectListeners.set(requestId, onDisconnect);
     }
-    ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
-
-    return async () => {
+    try {
+      ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
+    } catch (error) {
       this.chunkListeners.delete(requestId);
       this.streamDisconnectListeners.delete(requestId);
-      if (ws.readyState === this.WebSocketImpl.OPEN) {
+      throw error;
+    }
+
+    return async () => {
+      const active = this.chunkListeners.has(requestId);
+      this.chunkListeners.delete(requestId);
+      this.streamDisconnectListeners.delete(requestId);
+      if (active && ws.readyState === this.WebSocketImpl.OPEN) {
         ws.send(JSON.stringify({ _tag: "Interrupt", requestId }));
       }
     };

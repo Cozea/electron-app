@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { superviseSubscription } from "../../apps/desktop/src/substrate/subscriptionSupervisor";
 
 import {
   T3EffectRpcClient,
@@ -35,6 +36,13 @@ class FakeWebSocket {
     this.listeners.set(type, listeners);
   }
 
+  removeEventListener(type: SocketEventType, listener: SocketListener): void {
+    this.listeners.set(
+      type,
+      (this.listeners.get(type) ?? []).filter((entry) => entry !== listener),
+    );
+  }
+
   send(data: string): void {
     this.sent.push(data);
   }
@@ -56,6 +64,60 @@ class FakeWebSocket {
 }
 
 describe("T3EffectRpcClient stream protocol", () => {
+  it("notifies session owners without a stream and disposes their listeners", async () => {
+    FakeWebSocket.instances = [];
+    const client = new T3EffectRpcClient({ baseUrl: "http://localhost", wsTicket: "ticket", WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket });
+    const listener = vi.fn();
+    const removed = vi.fn();
+    client.onDisconnect(listener);
+    client.onDisconnect(removed)();
+    const pending = client.callUnary("fixture.read", {}).catch(error => error);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    FakeWebSocket.instances[0]!.close();
+    await pending;
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(removed).not.toHaveBeenCalled();
+    await client.close();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+  it("rejects outstanding unary calls on disconnect without replaying mutations", async () => {
+    FakeWebSocket.instances = [];
+    const client = new T3EffectRpcClient({
+      baseUrl: "http://localhost",
+      wsTicket: "ticket",
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    const result = client.callUnary("orchestration.dispatchCommand", {}).catch((error) => error);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const socket = FakeWebSocket.instances[0]!;
+    expect(socket.sent).toHaveLength(1);
+    socket.close();
+    expect(await result).toBeInstanceOf(Error);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(socket.sent).toHaveLength(1);
+    await client.close();
+  });
+
+  it("cancels an opening socket without resurrecting streams after close", async () => {
+    FakeWebSocket.instances = [];
+    const client = new T3EffectRpcClient({
+      baseUrl: "http://localhost",
+      wsTicket: "ticket",
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    const onDisconnect = vi.fn();
+    const pending = client
+      .openStream("orchestration.subscribeThread", {}, () => {}, onDisconnect)
+      .catch((error) => error);
+    await client.close();
+    expect(await pending).toBeInstanceOf(Error);
+    expect(FakeWebSocket.instances[0]!.sent).toHaveLength(0);
+    expect(onDisconnect).not.toHaveBeenCalled();
+    await expect(client.openStream("orchestration.subscribeThread", {}, () => {})).rejects.toThrow(
+      "closed",
+    );
+  });
+
   it("allows a slow provider update while ordinary requests retain their deadline", async () => {
     vi.useFakeTimers();
     FakeWebSocket.instances = [];
@@ -172,6 +234,72 @@ describe("T3EffectRpcClient stream protocol", () => {
 });
 
 describe("T3OrchestrationClient snapshots", () => {
+  it("recovers shell snapshots with fresh credentials and suppresses retired socket callbacks", async () => {
+    vi.useFakeTimers();
+    FakeWebSocket.instances = [];
+    let tickets = 0;
+    const snapshots: unknown[] = [];
+    const stop = superviseSubscription({
+      status: () => {},
+      connect: async (attempt) => {
+        const client = new T3OrchestrationClient({
+          baseUrl: "http://localhost",
+          wsTicket: `ticket-${++tickets}`,
+          WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+        });
+        attempt.own(() => client.close());
+        attempt.own(client.onDisconnect(attempt.disconnected));
+        attempt.own(
+          await client.onSnapshot((snapshot) => {
+            if (!attempt.isCurrent()) return;
+            snapshots.push(snapshot);
+            attempt.ready();
+          }),
+        );
+      },
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      const first = FakeWebSocket.instances[0]!;
+      const initialRequest = JSON.parse(first.sent[0]!) as { id: string };
+      const initial = {
+        snapshotSequence: 10,
+        projects: [],
+        threads: [{ id: "removed" }],
+        updatedAt: "now",
+      };
+      first.receive({
+        _tag: "Chunk",
+        requestId: initialRequest.id,
+        values: [{ kind: "snapshot", snapshot: initial }],
+      });
+      first.close();
+      await vi.advanceTimersByTimeAsync(500);
+      const second = FakeWebSocket.instances[1]!;
+      expect(new URL(second.url).searchParams.get("wsTicket")).toBe("ticket-2");
+      const request = JSON.parse(second.sent[0]!) as { id: string; payload: unknown };
+      expect(request.payload).toEqual({ requestCompletionMarker: true });
+      const authoritative = { ...initial, snapshotSequence: 90, threads: [] };
+      second.receive({
+        _tag: "Chunk",
+        requestId: request.id,
+        values: [{ kind: "snapshot", snapshot: authoritative }],
+      });
+      first.receive({
+        _tag: "Chunk",
+        requestId: initialRequest.id,
+        values: [{ kind: "snapshot", snapshot: initial }],
+      });
+      expect(snapshots).toEqual([initial, authoritative]);
+      stop();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+    } finally {
+      stop();
+      vi.useRealTimers();
+    }
+  });
+
   it("applies sparse shell updates, preserves other rows and never fabricates domain events", async () => {
     FakeWebSocket.instances = [];
     const client = new T3OrchestrationClient({

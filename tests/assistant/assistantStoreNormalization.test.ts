@@ -14,6 +14,20 @@ import { mergeT3ShellSnapshot } from "@/features/assistant/model/t3ShellSnapshot
 
 const NOW = "2026-04-25T00:00:00.000Z"
 
+it("preserves native file and unsupported attachment variants in legacy snapshots", () => {
+  const model = createReadModel();
+  model.threads[0].messages[0].attachments = [
+    { type: "file", id: "pdf", name: "notes.pdf", mimeType: "application/pdf", sizeBytes: 1 },
+    { type: "audio", id: "audio", name: "voice", mimeType: "audio/wav", sizeBytes: 1 },
+  ];
+  const state = syncServerReadModel(createBaseState(), model);
+  const thread = selectAssistantThreadById(state, "thread-1");
+  expect(thread?.messages[0]?.attachments).toMatchObject([
+    { type: "file", name: "notes.pdf" },
+    { type: "unsupported", originalType: "audio" },
+  ]);
+});
+
 function createBaseState(): AppState {
   return {
     projects: [],

@@ -92,3 +92,15 @@ describe("tool activity phase", () => {
     expect(summarizeToolPhase([entry("a", "failed")], false)).toBe("1 action failed");
   });
 });
+it("never summarizes unfinished, declined or cancelled actions as successful after the phase ends", () => {
+  expect(summarizeToolPhase([entry("running", "inProgress")], false)).toBe("1 action unfinished");
+  expect(summarizeToolPhase([entry("declined", "declined")], false)).toBe("1 action declined");
+  expect(summarizeToolPhase([entry("cancelled", "cancelled")], false)).toBe("1 action stopped");
+});
+it("does not count reasoning, task activity or diagnostics as tools", () => {
+  const rows = ["reasoning.started", "task.progress", "runtime.error"].map(activityKind => ({
+    ...entry(activityKind), activityKind, tone: "thinking" as const,
+  }));
+  expect(deriveToolPhase(deriveTimelineEntries([], [], rows), true, turn).active).toBe(false);
+  expect(summarizeToolPhase([...rows, entry("real")], false)).toBe("Read 1 file");
+});

@@ -36,3 +36,9 @@ export {
   type T3TerminalClientOptions,
   type T3VcsClientOptions,
 } from "./t3";
+export {
+  applyThreadDetailEvent,
+  type ThreadDetailReducerResult,
+  type ThreadDetailState,
+} from "./state/threadReducer";
+export { remarkCodexDirectives } from "./richOutput";

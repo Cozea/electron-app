@@ -1,6 +1,7 @@
 import { providerImageRejection } from "@/features/assistant/chat/providerInputCapabilities"
 import { compactionUnavailableReason } from "@/features/assistant/chat/contextCompaction"
 import { questionDraftKey, submitQuestionOnce, useQuestionDraftStore } from "@/features/assistant/questionDraftStore"
+import { buildPendingUserInputAnswers, pendingUserInputDraftFromAnswer } from "@/features/assistant/pendingUserInput"
 import {
   useCallback,
   useEffect,
@@ -89,6 +90,7 @@ import { useT3CutoverActive } from "@/substrate/t3CutoverStore"
 import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
 import { deleteAssistantThread } from "@/features/assistant/services/deleteAssistantThread"
 import { useTileThreadStream } from "@/substrate/useTileThreadStream"
+import { useT3ConnectionStatus, t3ThreadConnectionKey, t3ShellConnectionKey } from "@/substrate/t3ConnectionStatus"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
 import {
@@ -200,6 +202,10 @@ export function useWorkbenchAssistantTileController(
   const substrateRpcChat = useSubstrateRpcChat()
   const substrateTransport = useSubstrateChatTransport()
   const t3CutoverActive = useT3CutoverActive()
+  const mediaBaseUrl = substrateTransport.active && t3CutoverActive ? substrateTransport.shadowBaseUrl ?? null : null
+  const detailConnection = useT3ConnectionStatus(mediaBaseUrl && input.tile.threadId ? t3ThreadConnectionKey(mediaBaseUrl, input.tile.threadId) : null)
+  const shellConnection = useT3ConnectionStatus(mediaBaseUrl ? t3ShellConnectionKey(mediaBaseUrl) : null)
+  const connectionStatus = detailConnection && detailConnection.phase !== "connected" ? detailConnection : shellConnection
   const getOrchestration = useCallback(
     () => resolveOrchestrationApi(t3CutoverActive ? ensureNativeApi().orchestration : null),
     [t3CutoverActive],
@@ -484,13 +490,13 @@ export function useWorkbenchAssistantTileController(
       activities: [],
     }
 
-    const streamMessages = threadStream.messages.length > 0 ? threadStream.messages : base.messages
+    const streamMessages = threadStream.loaded ? threadStream.messages : base.messages
     const streamActivities =
-      threadStream.activities.length > 0 ? threadStream.activities : base.activities
+      threadStream.loaded ? threadStream.activities : base.activities
     const streamPlans =
-      threadStream.proposedPlans.length > 0 ? threadStream.proposedPlans : base.proposedPlans
+      threadStream.loaded ? threadStream.proposedPlans : base.proposedPlans
     const streamDiffs =
-      threadStream.turnDiffSummaries.length > 0
+      threadStream.loaded
         ? threadStream.turnDiffSummaries
         : base.turnDiffSummaries
 
@@ -1870,8 +1876,7 @@ export function useWorkbenchAssistantTileController(
   const handleUserInputDraftChange = (
     requestId: string,
     questionId: string,
-    value: string,
-    cursor?: number,
+    value: string | string[],
   ) => {
     setUserInputDrafts((current) => ({
       ...current,
@@ -1880,9 +1885,6 @@ export function useWorkbenchAssistantTileController(
         [questionId]: value,
       },
     }))
-    if (cursor !== undefined) {
-      setComposerCursor(cursor)
-    }
   }
 
   const handleSubmitUserInput = async (requestId: string) => {
@@ -1891,6 +1893,7 @@ export function useWorkbenchAssistantTileController(
     }
 
     const request = pendingUserInputs.find((entry) => String(entry.requestId) === requestId)
+    if (!request) return
     if (request?.responseMode === "message") {
       await runMetaSync(() => submitQuestionOnce(thread.id, request, async (submission) => {
         await getOrchestration().dispatchCommand({
@@ -1907,13 +1910,14 @@ export function useWorkbenchAssistantTileController(
       return
     }
 
-    const normalizedAnswers = Object.fromEntries(
-      Object.entries(answers)
-        .map(([questionId, answer]) => [questionId, answer.trim()])
-        .filter((entry) => entry[1].length > 0),
+    const normalizedAnswers = buildPendingUserInputAnswers(
+      request.questions,
+      Object.fromEntries(request.questions.map((question) => [
+        question.id, pendingUserInputDraftFromAnswer(question, answers[question.id]),
+      ])),
     )
 
-    if (Object.keys(normalizedAnswers).length === 0) {
+    if (normalizedAnswers === null) {
       return
     }
 
@@ -2264,6 +2268,8 @@ export function useWorkbenchAssistantTileController(
     artifactMedia,
     attachPreviewAnnotation,
     surfaceProps: {
+      mediaBaseUrl,
+      connectionStatus,
       dockComposerOnHover: true,
       isRuntimeReady,
       isChatReady: isChatReady && draftReady && contextVerified && !contextError && canUseProvider && (!input.tile.threadId || Boolean(thread)),

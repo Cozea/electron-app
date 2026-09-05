@@ -1,8 +1,7 @@
 import type { UserInputQuestion } from "@cozea/assistant-contracts";
 
 export interface PendingUserInputDraftAnswer {
-  selectedOptionLabel?: string;
-  selectedOptionValue?: string;
+  selectedOptionValues?: string[];
   customAnswer?: string;
 }
 
@@ -10,9 +9,9 @@ export interface PendingUserInputProgress {
   questionIndex: number;
   activeQuestion: UserInputQuestion | null;
   activeDraft: PendingUserInputDraftAnswer | undefined;
-  selectedOptionLabel: string | undefined;
+  selectedOptionValues: string[];
   customAnswer: string;
-  resolvedAnswer: string | null;
+  resolvedAnswer: string | string[] | null;
   usingCustomAnswer: boolean;
   answeredQuestionCount: number;
   isLastQuestion: boolean;
@@ -29,39 +28,84 @@ function normalizeDraftAnswer(value: string | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeSelectedOptionValues(value: string[] | undefined): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  // Provider option IDs must stay unchanged, including whitespace.
+  return Array.from(new Set(value.filter((entry) => typeof entry === "string")));
+}
+
 export function resolvePendingUserInputAnswer(
+  question: UserInputQuestion,
   draft: PendingUserInputDraftAnswer | undefined,
-): string | null {
-  const customAnswer = normalizeDraftAnswer(draft?.customAnswer);
+): string | string[] | null {
+  const customAnswer =
+    question.allowCustomAnswer === false ? null : normalizeDraftAnswer(draft?.customAnswer);
   if (customAnswer) {
     return customAnswer;
   }
 
-  return normalizeDraftAnswer(draft?.selectedOptionLabel);
+  const selectedOptionValues = normalizeSelectedOptionValues(draft?.selectedOptionValues).filter(
+    (value) => question.options.some((option) => (option.value ?? option.label) === value),
+  );
+  if (question.multiSelect) {
+    return selectedOptionValues.length > 0 ? selectedOptionValues : null;
+  }
+
+  return selectedOptionValues[0] ?? null;
 }
 
 export function setPendingUserInputCustomAnswer(
   draft: PendingUserInputDraftAnswer | undefined,
   customAnswer: string,
 ): PendingUserInputDraftAnswer {
-  const selectedOptionLabel =
-    customAnswer.trim().length > 0 ? undefined : draft?.selectedOptionLabel;
+  const selectedOptionValues =
+    customAnswer.trim().length > 0
+      ? undefined
+      : normalizeSelectedOptionValues(draft?.selectedOptionValues);
 
   return {
     customAnswer,
-    ...(selectedOptionLabel ? { selectedOptionLabel } : {}),
+    ...(selectedOptionValues && selectedOptionValues.length > 0 ? { selectedOptionValues } : {}),
+  };
+}
+
+export function togglePendingUserInputOptionSelection(
+  question: UserInputQuestion,
+  draft: PendingUserInputDraftAnswer | undefined,
+  optionValue: string,
+): PendingUserInputDraftAnswer {
+  if (question.multiSelect) {
+    const selectedOptionValues = normalizeSelectedOptionValues(draft?.selectedOptionValues);
+    const nextSelectedOptionValues = selectedOptionValues.includes(optionValue)
+      ? selectedOptionValues.filter((value) => value !== optionValue)
+      : [...selectedOptionValues, optionValue];
+
+    return {
+      customAnswer: "",
+      ...(nextSelectedOptionValues.length > 0
+        ? { selectedOptionValues: nextSelectedOptionValues }
+        : {}),
+    };
+  }
+
+  return {
+    customAnswer: "",
+    selectedOptionValues: [optionValue],
   };
 }
 
 export function buildPendingUserInputAnswers(
   questions: ReadonlyArray<UserInputQuestion>,
   draftAnswers: Record<string, PendingUserInputDraftAnswer>,
-): Record<string, string> | null {
-  const answers: Record<string, string> = {};
+): Record<string, string | string[]> | null {
+  const answers: Record<string, string | string[]> = {};
 
   for (const question of questions) {
-    const answer = resolvePendingUserInputAnswer(draftAnswers[question.id]);
-    if (!answer) {
+    const answer = resolvePendingUserInputAnswer(question, draftAnswers[question.id]);
+    if (answer === null) {
       return null;
     }
     answers[question.id] = answer;
@@ -75,19 +119,10 @@ export function countAnsweredPendingUserInputQuestions(
   draftAnswers: Record<string, PendingUserInputDraftAnswer>,
 ): number {
   return questions.reduce((count, question) => {
-    return resolvePendingUserInputAnswer(draftAnswers[question.id]) ? count + 1 : count;
+    return resolvePendingUserInputAnswer(question, draftAnswers[question.id]) !== null
+      ? count + 1
+      : count;
   }, 0);
-}
-
-export function findFirstUnansweredPendingUserInputQuestionIndex(
-  questions: ReadonlyArray<UserInputQuestion>,
-  draftAnswers: Record<string, PendingUserInputDraftAnswer>,
-): number {
-  const unansweredIndex = questions.findIndex(
-    (question) => !resolvePendingUserInputAnswer(draftAnswers[question.id]),
-  );
-
-  return unansweredIndex === -1 ? Math.max(questions.length - 1, 0) : unansweredIndex;
 }
 
 export function derivePendingUserInputProgress(
@@ -99,8 +134,11 @@ export function derivePendingUserInputProgress(
     questions.length === 0 ? 0 : Math.max(0, Math.min(questionIndex, questions.length - 1));
   const activeQuestion = questions[normalizedQuestionIndex] ?? null;
   const activeDraft = activeQuestion ? draftAnswers[activeQuestion.id] : undefined;
-  const resolvedAnswer = resolvePendingUserInputAnswer(activeDraft);
-  const customAnswer = activeDraft?.customAnswer ?? "";
+  const resolvedAnswer = activeQuestion
+    ? resolvePendingUserInputAnswer(activeQuestion, activeDraft)
+    : null;
+  const customAnswer =
+    activeQuestion?.allowCustomAnswer === false ? "" : (activeDraft?.customAnswer ?? "");
   const answeredQuestionCount = countAnsweredPendingUserInputQuestions(questions, draftAnswers);
   const isLastQuestion =
     questions.length === 0 ? true : normalizedQuestionIndex >= questions.length - 1;
@@ -109,13 +147,41 @@ export function derivePendingUserInputProgress(
     questionIndex: normalizedQuestionIndex,
     activeQuestion,
     activeDraft,
-    selectedOptionLabel: activeDraft?.selectedOptionLabel,
+    selectedOptionValues: normalizeSelectedOptionValues(activeDraft?.selectedOptionValues),
     customAnswer,
     resolvedAnswer,
     usingCustomAnswer: customAnswer.trim().length > 0,
     answeredQuestionCount,
     isLastQuestion,
     isComplete: buildPendingUserInputAnswers(questions, draftAnswers) !== null,
-    canAdvance: Boolean(resolvedAnswer),
+    canAdvance: resolvedAnswer !== null,
   };
+}
+
+/** Recover native wire answers without treating duplicate labels as identities. */
+export function pendingUserInputDraftFromAnswer(question: UserInputQuestion, answer: string | string[] | undefined): PendingUserInputDraftAnswer {
+  if (Array.isArray(answer)) return { selectedOptionValues: answer };
+  if (answer === undefined) return {};
+  return question.options.some(option => (option.value ?? option.label) === answer)
+    ? { selectedOptionValues: [answer] } : { customAnswer: answer };
+}
+
+export function findFirstUnansweredPendingUserInputQuestionIndex(questions: ReadonlyArray<UserInputQuestion>, drafts: Record<string, PendingUserInputDraftAnswer>): number {
+  const index = questions.findIndex(question => resolvePendingUserInputAnswer(question, drafts[question.id]) === null);
+  return index < 0 ? Math.max(questions.length - 1, 0) : index;
+}
+
+/** Card-scoped shortcuts must never consume typing or hidden-tile input. */
+export function pendingUserInputShortcutValue(
+  question: UserInputQuestion,
+  key: string,
+  context: { visible: boolean; responding: boolean; editing: boolean; modified: boolean },
+): string | null {
+  if (!context.visible || context.responding || context.editing || context.modified || !/^[1-9]$/.test(key)) return null;
+  const option = question.options[Number(key) - 1];
+  return option ? (option.value ?? option.label) : null;
+}
+
+export function shouldAutoAdvancePendingUserInput(question: UserInputQuestion | null): boolean {
+  return question !== null && !question.multiSelect;
 }

@@ -3,8 +3,9 @@
 New assistant messages use a short, adaptive reveal before reaching the existing
 Markdown renderer. Canonical provider text is stored immediately; display timing
 never changes persisted content, provider state, approvals, or turn completion.
-User messages, plans, and typography retain their existing behavior. The follow-up
-tool-summary presentation changes are described below.
+Typography and the existing Markdown renderer are retained. Turn projection,
+provider task/plan rows, native attachments and tool presentation are described
+below; the broader acceptance matrix is in `chat-rendering-refactor-progress.md`.
 
 ## Timing and ownership
 
@@ -50,23 +51,97 @@ buffer and the CSS animation.
 The memoized assistant body passes displayed text into `ChatMarkdown` and keeps
 its streaming mode enabled until both provider streaming and reveal have settled.
 This postpones syntax highlighting until the code is ready, while retaining GFM,
-tables, file links, and code-copy controls. Message actions wait for reveal to
-settle and copy canonical text. Existing runtime status and approval UI do not
+tables, file links, and code-copy controls. Only the terminal assistant message
+of a settled response receives actions. Those actions wait for reveal to
+settle, appear after visible trailing tools, and copy canonical text. Existing runtime status and approval UI do not
 wait for animation. The response is not an atomic live region announcing the full
 text every frame.
 
 LegendList still owns measurement, virtualization, near-bottom following, and
 visible-position preservation. There is no additional scroll animation loop.
+Completed folds with at most 24 child rows use the animated accordion. Larger
+folds expose children as individually virtualized rows, keeping the original
+IDs/order and a persistent accessible disclosure header. Large folds do not
+animate a giant container height; newly visible children get the existing 180ms
+fade once per timeline. Recycling or collapse/reopen never repeats it.
 
 The active `Working` row at the bottom of a generating turn has no bottom divider.
-Its shimmer and elapsed timer remain active outside tool phases. Completed `Worked` rows retain their
-divider; this styling follows the existing status state without extra React state.
+Its shimmer and elapsed timer remain active outside tool or explicit Thinking
+phases. Thinking replaces Working rather than adding a second status row.
+Blocking questions or approvals show an input-waiting status and pause live
+tool/Thinking/Working presentation. Async questions do not block generation.
+Completed work uses a borderless animated turn disclosure, not a divider for
+each assistant message.
+
+`conversationProjection` owns native turn precedence, promptless response
+continuity, terminal-message eligibility, compaction exceptions and fold
+membership. `conversationRows` keeps expanded entries in chronological position,
+including trailing work after final text. Tasks that outlive their launching
+turn remain visible. A per-timeline incremental projector patches text and
+attachment replacements without rebuilding unchanged turn/tool structure.
+See `conversation-projection-performance.md` for measured scope and limitations.
+
+The legacy full-read-model event path uses the same canonical detail reducer as
+native thread streams. Finishing a commentary message or receiving a checkpoint
+cannot settle a still-running turn. Shell/project metadata stays at the legacy
+adapter boundary; native detail arrays use explicit loaded-snapshot authority.
+
+## Native activity, requests and rich output
+
+Provider task identity comes from native `taskId`; `agentId` identifies an owning
+agent, not a Cozea tile. Child-owned tools/background work are retained in task
+disclosures and excluded from parent tool totals. Nested agent spawn anchors
+remain visible. Orphan/bypassed events have explicit presentation-only Activity
+groups rather than disappearing or acquiring an invented task lifecycle. Owned
+reasoning and plans cannot replace the parent's Thinking/plan state. Compact
+secondary disclosures retain original event payloads, including failures.
+
+Questions keep native option values, multi-select arrays and free-text policy.
+Ordinary composer text/caret stay separate from pending answers; Enter follows
+the same validation as Next/Submit. Async lost-ack retries retain their original
+command identity and answer payload. Approvals retain the provider's choices,
+app identity, warnings and native details.
+
+Images/files keep their attachment variants. Signed media URLs share a cancellable
+cache, refresh before expiry and retry failures; unknown variants stay explicitly
+unsupported. Workspace Markdown media uses the existing authorized asset RPC.
+Cozea's image gallery, file/editor routing and generated-artifact actions remain.
+
+Codex file citations and artifact-template directives use the exact pinned pure
+Markdown grammar through `packages/client-runtime/src/richOutput.ts`, including
+mixed Markdown, escaping and entities. It uses the vendor's already-locked
+dependencies (`bun run bootstrap` / `prepare:t3-runtime`); the production renderer
+bundles the parser, with no runtime source-checkout dependency. Template cards
+append a validated skill prompt to the existing ordinary draft and focus it;
+they never install a skill, auto-submit, or overwrite a question response.
+Copy actions intentionally retain canonical provider text.
+
+Assistant quotations remain readable, including comments, but source navigation
+is unavailable: Cozea has no environment/thread/range citation-target route.
+Likewise native task IDs cannot safely be substituted for Cozea workbench tile IDs;
+task inspection uses disclosures, not an invented native Agents-panel link.
+
+## Connection lifecycle
+
+Native shell/detail subscribers are refcounted and recreated with fresh tickets
+after disconnect, using snapshot-first recovery, stale revision rejection and
+capped retry delays. Transport errors never mean "use legacy"; only a successful
+readiness response can choose that path. Legacy mode bootstraps a full snapshot
+and replays later events. The command/config overlay is removed on disconnect;
+commands are never automatically replayed.
+
+One shared serialized bridge-status watcher per renderer checks every three
+seconds while available, backing off failed/unavailable reads up to 30 seconds.
+This detects restarted shadow endpoints without a timer per tile. Equal status
+snapshots do not broadcast. Final subscription release cancels outstanding work
+and stale callbacks cannot resurrect an old owner.
 
 ## Tool activity accordion
 
 Tool groups use a plain, fixed-height 28px summary button, not a bordered or filled
 pill. Counts use tabular numerals; keyboard focus and expansion remain available.
-During a tool phase this summary replaces generic Working/Thinking rows. Completed
+During a tool phase this summary replaces generic Working; an explicit provider
+reasoning phase can take over with Thinking. Completed
 actions contribute counts such as `Read 2 files, changed 1 file, and ran 1 command`;
 before any action finishes the label is `Working`. Failures append `N actions failed`
 (singular for one), without success checkmarks or failure badges.
@@ -74,8 +149,9 @@ before any action finishes the label is `Working`. Failures append `N actions fa
 The collapsed active summary uses the same `LiveShimmerText` as the sidebar.
 Expanding removes its shimmer; only currently running action rows shimmer. The
 group stays active between tool completion and the next assistant text message.
-A subsequent message, turn completion, or interruption settles it, including
-providers that omitted a terminal tool marker. Explicit older-turn entries and
+A subsequent message, turn completion, or interruption ends the presentation
+phase but never changes the tool's reported outcome. Unfinished, stopped,
+declined and failed actions remain distinct. Explicit older-turn entries and
 session diagnostic notices do not take ownership of the busy indicator.
 
 All lifecycle states stay inside one shared `Collapsible` with a 200ms height
@@ -92,8 +168,9 @@ it. The effect supports React StrictMode's setup/cleanup/setup cycle.
 Two identity fixes prevent avoidable jumping:
 
 - Collapsed lifecycle entries retain a renderer-only `timelineOrigin` (first
-  event ID and timestamp). Timeline ordering and row/group keys use this anchor,
-  while the entry's latest event ID, timestamp, status, and payload remain intact.
+  event ID and timestamp). Timeline ordering uses this anchor; row/group keys use
+  native `(turnId, toolCallId)` when present, surviving completion-only snapshots.
+  The entry's latest event ID, timestamp, status, and payload remain intact.
 - LegendList treats `renderItem` as a React component. It now receives a stable
   module-level component and current rendering context, rather than an inline
   function that remounted rows whenever count data changed. This preserves DOM
@@ -112,6 +189,10 @@ production build passed. No renderer errors were captured. These are ephemeral
 Electron renderer fixtures, not new provider runs or persisted conversations.
 
 ## Verification
+
+Historical verification below describes the original reveal implementation.
+The current refactor's tests, isolated Electron fixtures and remaining gates are
+recorded separately in `chat-rendering-refactor-progress.md`.
 
 ### Text reveal coverage
 

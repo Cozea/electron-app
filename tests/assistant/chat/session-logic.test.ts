@@ -171,3 +171,11 @@ it("keeps unknown approval kinds visible without inventing permission options", 
   expect(result[0]?.requestKind).toBe("other");
   expect(result[0]?.options).toEqual([]);
 });
+it("retains app identity, exact approval choices, warnings, and full details", () => {
+  const options = [{ decision: "accept" as const, label: "Allow this request", warning: "Access to private files" }];
+  const approvals = derivePendingApprovals([makeActivity({ kind: "approval.requested", payload: {
+    requestId: "app-permission", requestKind: "mcp-elicitation", appName: "Connected Drive",
+    detail: "Read the selected folder\nIncluding nested files", options,
+  } })]);
+  expect(approvals[0]).toMatchObject({ appName: "Connected Drive", detail: "Read the selected folder\nIncluding nested files", options });
+});
