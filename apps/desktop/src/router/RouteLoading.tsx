@@ -7,8 +7,20 @@ interface RouteLoadingProps {
   labelKey?: TranslationKey
 }
 
+// Token-bound invite flows can genuinely be blocked while their route code is
+// resolving. Ordinary desktop surfaces are prewarmed and keep the persistent
+// shell mounted instead of replacing it with a browser-style loading page.
+const VISIBLE_BLOCKING_ROUTE_LOADERS = new Set<TranslationKey>([
+  "routeLoading.projectInvite",
+])
+
 export function RouteLoading({ className, labelKey }: RouteLoadingProps) {
   const { t } = useTranslation()
+  const resolvedLabelKey = labelKey ?? "routeLoading.default"
+
+  if (!VISIBLE_BLOCKING_ROUTE_LOADERS.has(resolvedLabelKey)) {
+    return null
+  }
 
   return (
     <div
@@ -19,7 +31,7 @@ export function RouteLoading({ className, labelKey }: RouteLoadingProps) {
     >
       <div className="flex items-center gap-2">
         <div className="loader" />
-        <span>{t(labelKey ?? "routeLoading.default")}</span>
+        <span>{t(resolvedLabelKey)}</span>
       </div>
     </div>
   )
