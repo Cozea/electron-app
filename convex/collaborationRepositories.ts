@@ -113,6 +113,8 @@ async function canReadBinding(
   userId: Id<"users">,
 ): Promise<boolean> {
   if (!binding.enabled || !binding.organizationId) return false
+  const project = await ctx.db.get(binding.projectId)
+  if (!project || project.status === "deleted" || project.organizationId !== binding.organizationId) return false
   const verified = await ctx.db.query("collaborationVerifiedRepositories")
     .withIndex("by_organization_and_repository", (q) =>
       q.eq("organizationId", binding.organizationId!).eq("repositoryNumericId", binding.repositoryNumericId))

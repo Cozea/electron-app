@@ -9,6 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
+import { verifiedInstallationIsCurrent } from "./lib/collaborationInstallationAccess"
 import {
   canAccessProject,
   canEditProject,
@@ -338,7 +339,7 @@ export const createSession = mutation({
       if (
         existingForRequest.repositoryId !== repositoryId ||
         existingForRequest.targetBranch !== targetBranch ||
-        existingForRequest.baseCommitSha !== baseCommitSha
+        (existingForRequest.targetCommitSha ?? existingForRequest.baseCommitSha) !== baseCommitSha
       ) {
         throw new ConvexError("Creation token was already used with different session parameters")
       }
@@ -349,13 +350,15 @@ export const createSession = mutation({
     // Only the gateway can attest a commit read from an authorized installation.
     const resolution = await ctx.db.get(args.resolutionId)
     const binding = resolution ? await ctx.db.get(resolution.bindingId) : null
+    const project = await ctx.db.get(args.projectId)
     const repository = binding?.organizationId ? await ctx.db.query("collaborationVerifiedRepositories")
       .withIndex("by_organization_and_repository", q => q.eq("organizationId", binding.organizationId!).eq("repositoryNumericId", binding.repositoryNumericId)).unique() : null
     if (!resolution || resolution.userId !== user._id || resolution.projectId !== args.projectId ||
       resolution.expiresAt <= Date.now() || resolution.consumedBySessionId || resolution.repositoryId !== repositoryId ||
       resolution.branch !== targetBranch || resolution.commitSha !== baseCommitSha ||
-      !binding?.enabled || binding.projectId !== args.projectId || !repository || repository.revokedAt !== undefined ||
-      repository.installationId !== binding.installationId) throw new ConvexError("Resolve the authorized GitHub branch again before starting")
+      !binding?.enabled || binding.projectId !== args.projectId || binding.repositoryId !== repositoryId || binding.organizationId !== project?.organizationId ||
+      !repository || repository.revokedAt !== undefined || repository.owner !== binding.owner || repository.name !== binding.name ||
+      repository.installationId !== binding.installationId || !await verifiedInstallationIsCurrent(ctx, repository)) throw new ConvexError("Resolve the authorized GitHub branch again before starting")
 
     const sessionsForTarget = await ctx.db
       .query("collaborationSessions")

@@ -24,8 +24,10 @@ export async function authorizeCollaborationParticipant(ctx: QueryCtx, userId: I
   if (!participant || participant.leftAt !== undefined) return { allowed: false as const }
   const binding = await ctx.db.query("collaborationRepositoryBindings").withIndex("by_project", q => q.eq("projectId", session.projectId)).unique()
   if (!binding?.enabled || binding.repositoryId !== session.repositoryId || !binding.organizationId) return { allowed: false as const }
+  const project = await ctx.db.get(session.projectId)
+  if (!project || project.organizationId !== binding.organizationId) return { allowed: false as const }
   const repository = await ctx.db.query("collaborationVerifiedRepositories").withIndex("by_organization_and_repository", q => q.eq("organizationId", binding.organizationId!).eq("repositoryNumericId", binding.repositoryNumericId)).unique()
-  if (!repository || repository.revokedAt !== undefined || repository.installationId !== binding.installationId || !await verifiedInstallationIsCurrent(ctx, repository)) return { allowed: false as const }
+  if (!repository || repository.revokedAt !== undefined || repository.owner !== binding.owner || repository.name !== binding.name || repository.installationId !== binding.installationId || !await verifiedInstallationIsCurrent(ctx, repository)) return { allowed: false as const }
   const keys = await ctx.db.query("projectCollabRoomKeys")
     .withIndex("by_project_and_room", q => q.eq("projectId", session.projectId).eq("roomId", `session:${session.sessionId}`)).collect()
   const activeKey = keys.filter(key => key.status === "active").sort((a, b) => b.keyVersion - a.keyVersion)[0]

@@ -12,11 +12,12 @@ const invoke = (fn: unknown, ctx: unknown, args: unknown): Promise<unknown> => (
 interface Row { _id: string; [key: string]: unknown }
 function fixture() {
   const rows: Record<string, Row[]> = {
+    projects: [{ _id: "p", organizationId: "org", status: "active" }],
     users: ["alice", "bob", "carol"].map(id => ({ _id: id, identityKey: `czd_${id}`, encryptionPublicKeyJwk: `public-${id}` })),
     collaborationSessions: [{ _id: "session", sessionId: "s", projectId: "p", repositoryId: "github:1", generation: 3, status: "active", revision: 1 }],
     collaborationParticipants: ["alice", "bob", "carol"].map(id => ({ _id: `participant-${id}`, sessionId: "session", userId: id, role: "editor" })),
-    collaborationRepositoryBindings: [{ _id: "binding", projectId: "p", repositoryId: "github:1", repositoryNumericId: "1", organizationId: "org", installationId: "install", enabled: true }],
-    collaborationVerifiedRepositories: [{ _id: "repo", organizationId: "org", repositoryNumericId: "1", installationId: "install", verifiedAt: 1 }],
+    collaborationRepositoryBindings: [{ _id: "binding", projectId: "p", repositoryId: "github:1", repositoryNumericId: "1", organizationId: "org", installationId: "install", owner: "Cozea", name: "repo", enabled: true }],
+    collaborationVerifiedRepositories: [{ _id: "repo", organizationId: "org", repositoryNumericId: "1", installationId: "install", owner: "Cozea", name: "repo", verifiedAt: 1 }],
     projectCollabRoomKeys: [{ _id: "key-1", projectId: "p", roomId: "session:s", keyVersion: 1, status: "active" }],
     projectCollabWrappedKeys: ["alice", "bob"].map(id => ({ _id: `wrap-${id}`, projectId: "p", roomId: "session:s", keyVersion: 1, recipientUserId: id, recipientDeviceId: `czd_${id}` })),
   }
