@@ -830,18 +830,24 @@ function ProviderHub({
                 {/* Both rings, each entered at the top and bottom vertices
                     and split down the two edges either side, so the core is
                     fed the way the plates are rather than chased round. */}
-                {HUB_CORE_CHARGE_EDGES.map((d) => (
+                {HUB_CORE_CHARGE_EDGES.map((edge) => (
                   <path
-                    key={d}
-                    d={d}
+                    key={edge.d}
+                    d={edge.d}
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
                     pathLength={100}
-                    strokeDasharray="26 74"
-                    style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.core}s` }}
+                    // Longer than the wiring's dash: the core is the arrival.
+                    strokeDasharray="42 58"
+                    style={{
+                      animationDelay: `${
+                        HUB_CHARGE_STAGE_DELAY_S.core +
+                        (edge.ring === "inner" ? HUB_CHARGE_CYCLE_S / 2 : 0)
+                      }s`,
+                    }}
                     className="cozea-hub-charge text-foreground/85 drop-shadow-[0_0_6px_color-mix(in_oklch,var(--foreground)_65%,transparent)]"
                   />
                 ))}
@@ -934,19 +940,28 @@ const HUB_CHARGE_STUBS = [
  * rotated 45 degrees, so their corners reach the half-diagonal rather than the
  * box edge; a diamond inscribed in the box traces neither ring.
  */
-const HUB_CORE_CHARGE_EDGES = [
+const HUB_CORE_CHARGE_EDGES: ReadonlyArray<{ d: string; ring: "outer" | "inner" }> = [
   // Outer ring: a square at inset 0, so its corners swing out to the
   // half-diagonal, 50 * sqrt(2) = 70.71, not to the box edge at 50.
-  "M50 -20.71 L-20.71 50",
-  "M50 -20.71 L120.71 50",
-  "M50 120.71 L-20.71 50",
-  "M50 120.71 L120.71 50",
+  { d: "M50 -20.71 L-20.71 50", ring: "outer" },
+  { d: "M50 -20.71 L120.71 50", ring: "outer" },
+  { d: "M50 120.71 L-20.71 50", ring: "outer" },
+  { d: "M50 120.71 L120.71 50", ring: "outer" },
   // Inner ring: inset 12%, so half-side 38 and half-diagonal 53.74.
-  "M50 -3.74 L-3.74 50",
-  "M50 -3.74 L103.74 50",
-  "M50 103.74 L-3.74 50",
-  "M50 103.74 L103.74 50",
-] as const;
+  { d: "M50 -3.74 L-3.74 50", ring: "inner" },
+  { d: "M50 -3.74 L103.74 50", ring: "inner" },
+  { d: "M50 103.74 L-3.74 50", ring: "inner" },
+  { d: "M50 103.74 L103.74 50", ring: "inner" },
+];
+
+/**
+ * The charge's loop length, matching `.cozea-hub-charge` in index.css.
+ *
+ * The core's two rings are offset by half of it, so a direction shows one pair
+ * at a time: the outer edges run, then the inner ones, rather than both rings
+ * firing together and putting two pairs on screen at once.
+ */
+const HUB_CHARGE_CYCLE_S = 2.6;
 
 /** The diagonals that carry the charge the last stretch to the diamond. */
 const HUB_CHARGE_DIAGONALS = [

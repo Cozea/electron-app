@@ -728,7 +728,7 @@ describe("the hub's wiring", () => {
 
   it("enters both of the core's rings at the top and bottom, splitting each way", () => {
     const block = source.slice(source.indexOf("const HUB_CORE_CHARGE_EDGES"));
-    const paths = block.slice(0, block.indexOf("] as const")).match(/"M[^"]+"/g) ?? [];
+    const paths = block.slice(0, block.indexOf("];")).match(/"M[^"]+"/g) ?? [];
     // Four edges per ring: two entries, each splitting in two.
     expect(paths).toHaveLength(8);
     // No closed ring, which would send one dash chasing round the whole shape.
@@ -743,7 +743,7 @@ describe("the hub's wiring", () => {
     // half-diagonal, not the box edge. Inscribing a diamond in the box put the
     // outer charge on top of the inner ring and the inner charge on nothing.
     const block = source.slice(source.indexOf("const HUB_CORE_CHARGE_EDGES"));
-    const paths = block.slice(0, block.indexOf("] as const")).match(/"M[^"]+"/g) ?? [];
+    const paths = block.slice(0, block.indexOf("];")).match(/"M[^"]+"/g) ?? [];
     const radii = paths.map((d) => {
       const [, y] = d.match(/M([-\d.]+) ([-\d.]+)/)!.slice(1, 3).map(Number);
       return Math.abs(y - 50);
@@ -766,5 +766,34 @@ describe("the hub's wiring", () => {
     const css = fs.readFileSync(path.join(ROOT, "apps/desktop/src/index.css"), "utf8");
     const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reduced).toContain(".cozea-hub-charge");
+  });
+});
+
+/**
+ * A direction should show one pair of core edges at a time. Both rings firing
+ * on the same beat put two pairs on screen at once.
+ */
+describe("the core's two rings", () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx"),
+    "utf8",
+  );
+
+  it("offsets the inner ring by half the loop, so the rings alternate", () => {
+    expect(source).toContain("HUB_CHARGE_CYCLE_S / 2");
+    const cycle = Number(source.match(/HUB_CHARGE_CYCLE_S = ([\d.]+)/)![1]);
+    const css = fs.readFileSync(path.join(ROOT, "apps/desktop/src/index.css"), "utf8");
+    const declared = Number(css.match(/cozea-hub-charge ([\d.]+)s linear/)![1]);
+    // The offset is only half a loop if the constant matches the stylesheet.
+    expect(cycle).toBe(declared);
+  });
+
+  it("draws a longer dash at the core than along the wiring", () => {
+    const coreDash = Number(source.match(/strokeDasharray="(\d+) \d+"\s*\n\s*\/\/ Longer/)?.[1] ?? 0)
+      || Number(source.slice(source.indexOf("the core is the arrival")).match(/strokeDasharray="(\d+)/)![1]);
+    const wiringDash = Number(
+      source.slice(source.indexOf("HUB_CHARGE_STUBS.map")).match(/strokeDasharray="(\d+)/)![1],
+    );
+    expect(coreDash).toBeGreaterThan(wiringDash);
   });
 });
