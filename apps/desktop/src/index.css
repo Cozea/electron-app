@@ -409,11 +409,6 @@ body {
   animation: cozea-hub-charge 2.6s linear infinite;
 }
 
-/* Plate outlines are longer, so they carry the charge more slowly. */
-.cozea-hub-charge-plate {
-  animation: cozea-hub-charge 4.2s linear infinite;
-}
-
 @keyframes cozea-live-shimmer-focus {
   0% {
     transform: translateX(0);
@@ -699,8 +694,7 @@ body {
     will-change: auto;
   }
   /* The hub's charge is decoration; the lit border already says "active". */
-  .cozea-hub-charge,
-  .cozea-hub-charge-plate {
+  .cozea-hub-charge {
     animation: none;
     opacity: 0;
   }

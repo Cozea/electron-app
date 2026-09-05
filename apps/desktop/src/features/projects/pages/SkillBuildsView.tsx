@@ -638,14 +638,60 @@ interface HubSlot {
   x: number;
   y: number;
   edge: "top" | "left" | "right" | "bottom";
+  /**
+   * The outline cut in two at the edge facing away from the core, so a single
+   * charge arriving at a plate runs down both of its sides and meets again at
+   * the edge that feeds the wiring.
+   */
+  halves: [string, string];
 }
 
 const HUB_SLOTS: HubSlot[] = [
-  { edge: "top", w: 300, h: 120, x: 450, y: 68, d: "M40 1 H260 L299 27 V119 H1 V27 Z" },
-  { edge: "left", w: 280, h: 132, x: 145, y: 280, d: "M40 1 H279 V101 L239 131 H1 V31 Z" },
-  { edge: "right", w: 280, h: 132, x: 755, y: 280, d: "M1 1 H239 L279 31 V131 H41 L1 101 Z" },
-  { edge: "bottom", w: 300, h: 120, x: 450, y: 492, d: "M1 1 H299 V93 L260 119 H40 L1 93 Z" },
+  {
+    edge: "top",
+    w: 300,
+    h: 120,
+    x: 450,
+    y: 68,
+    d: "M40 1 H260 L299 27 V119 H1 V27 Z",
+    halves: ["M150 1 H40 L1 27 V119 H150", "M150 1 H260 L299 27 V119 H150"],
+  },
+  {
+    edge: "left",
+    w: 280,
+    h: 132,
+    x: 145,
+    y: 280,
+    d: "M40 1 H279 V101 L239 131 H1 V31 Z",
+    halves: ["M1 81 V31 L40 1 H279 V51", "M1 81 V131 H239 L279 101 V51"],
+  },
+  {
+    edge: "right",
+    w: 280,
+    h: 132,
+    x: 755,
+    y: 280,
+    d: "M1 1 H239 L279 31 V131 H41 L1 101 Z",
+    halves: ["M279 81 V31 L239 1 H1 V51", "M279 81 V131 H41 L1 101 V51"],
+  },
+  {
+    edge: "bottom",
+    w: 300,
+    h: 120,
+    x: 450,
+    y: 492,
+    d: "M1 1 H299 V93 L260 119 H40 L1 93 Z",
+    halves: ["M150 119 H40 L1 93 V1 H150", "M150 119 H260 L299 93 V1 H150"],
+  },
 ];
+
+/**
+ * The charge crosses the diagram in stages, each starting a beat after the
+ * one that feeds it: a plate's two sides, then the three stubs leaving its
+ * inner edge, then the diagonals, then the core's two diamonds. Every stage
+ * shares one duration, so the offsets alone make the cascade.
+ */
+export const HUB_CHARGE_STAGE_DELAY_S = { plate: 0, stub: 0.42, diagonal: 0.82, core: 1.18 };
 
 /** Decorative part codes, the way a machined panel carries a stamp. */
 const HUB_STAMP = "8W7F1 1A1T1 21TRG";
@@ -781,17 +827,22 @@ function ProviderHub({
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 size-full overflow-visible"
               >
-                <path
-                  d="M50 0 L100 50 L50 100 L0 50 Z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                  pathLength={100}
-                  strokeDasharray="12 88"
-                  className="cozea-hub-charge-plate text-foreground/75 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
-                />
+                {/* Both rings: the outer diamond and the inset one. */}
+                {["M50 0 L100 50 L50 100 L0 50 Z", "M50 12 L88 50 L50 88 L12 50 Z"].map((d) => (
+                  <path
+                    key={d}
+                    d={d}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    pathLength={100}
+                    strokeDasharray="26 74"
+                    style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.core}s` }}
+                    className="cozea-hub-charge text-foreground/85 drop-shadow-[0_0_6px_color-mix(in_oklch,var(--foreground)_65%,transparent)]"
+                  />
+                ))}
               </svg>
             ) : null}
             {/* Same arrangement as a provider plate — name, then mark and
@@ -849,11 +900,32 @@ const HUB_TRACE_PATHS = [
  * follows its stub's axis and ends on the diamond, so all four start together
  * and arrive together.
  */
-const HUB_CHARGE_PATHS = [
-  "M450 128 V187",
-  "M450 432 V373",
-  "M285 264 H373",
-  "M615 264 H527",
+/**
+ * The three stubs leaving each plate's inner edge, every one drawn away from
+ * the plate. A dash travels the way its path was drawn, so the decorative
+ * wiring cannot be reused: some of those routes run core to plate.
+ */
+const HUB_CHARGE_STUBS = [
+  "M450 128 V150",
+  "M436 128 V142 H406",
+  "M464 128 V142 H494",
+  "M450 432 V410",
+  "M436 432 V418 H406",
+  "M464 432 V418 H494",
+  "M285 264 H316",
+  "M285 246 H300 V226",
+  "M285 298 H300 V318",
+  "M615 264 H584",
+  "M615 246 H600 V226",
+  "M615 298 H600 V318",
+] as const;
+
+/** The diagonals that carry the charge the last stretch to the diamond. */
+const HUB_CHARGE_DIAGONALS = [
+  "M300 188 H352 L390 150",
+  "M600 188 H548 L510 150",
+  "M300 374 H352 L390 412",
+  "M600 374 H548 L510 412",
 ] as const;
 
 /** Circuit routes from the core out to each plate, drawn behind them. */
@@ -871,8 +943,8 @@ function HubTraces({ charged }: { charged: boolean }) {
         ))}
       </g>
 
-      {/* The charge: four dashes leaving their plates together and meeting
-          at the core. No stagger, so the arrival reads as one beat. */}
+      {/* Stage two and three: out of each plate along its three stubs, then
+          on down the diagonals. Each stage starts a beat after its feeder. */}
       {charged ? (
         <g
           stroke="currentColor"
@@ -882,12 +954,23 @@ function HubTraces({ charged }: { charged: boolean }) {
           vectorEffect="non-scaling-stroke"
           className="text-foreground/80 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
         >
-          {HUB_CHARGE_PATHS.map((d) => (
+          {HUB_CHARGE_STUBS.map((d) => (
             <path
               key={d}
               d={d}
               pathLength={100}
-              strokeDasharray="22 78"
+              strokeDasharray="26 74"
+              style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.stub}s` }}
+              className="cozea-hub-charge"
+            />
+          ))}
+          {HUB_CHARGE_DIAGONALS.map((d) => (
+            <path
+              key={d}
+              d={d}
+              pathLength={100}
+              strokeDasharray="26 74"
+              style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.diagonal}s` }}
               className="cozea-hub-charge"
             />
           ))}
@@ -950,19 +1033,23 @@ function ProviderNode({
           vectorEffect="non-scaling-stroke"
           className="transition-[fill,stroke] duration-150 group-hover:fill-[var(--hub-fill-hi)] group-hover:stroke-[var(--hub-ln-hi)]"
         />
-        {charged ? (
-          <path
-            d={slot.d}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-            pathLength={100}
-            strokeDasharray="14 86"
-            className="cozea-hub-charge-plate text-foreground/70 drop-shadow-[0_0_4px_color-mix(in_oklch,var(--foreground)_55%,transparent)]"
-          />
-        ) : null}
+        {charged
+          ? slot.halves.map((half) => (
+              <path
+                key={half}
+                d={half}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+                pathLength={100}
+                strokeDasharray="26 74"
+                style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.plate}s` }}
+                className="cozea-hub-charge text-foreground/80 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
+              />
+            ))
+          : null}
       </svg>
 
       <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">

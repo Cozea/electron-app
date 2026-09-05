@@ -704,20 +704,31 @@ describe("the hub's wiring", () => {
     expect(source.match(/HUB_TRACE_PATHS\.map/g)).toHaveLength(1);
   });
 
-  it("gives the charge its own inward spokes, one per side", () => {
-    // A dash travels the way its path was drawn, and the decorative routes
-    // run in whichever direction suited the picture, so reusing them would
-    // send half the charge outwards.
-    const block = source.slice(source.indexOf("const HUB_CHARGE_PATHS"));
-    const paths = block.slice(0, block.indexOf("]")).match(/"M[^"]+"/g) ?? [];
-    expect(paths).toHaveLength(4);
-    // Each ends on the core: the diamond spans 187.3..372.7 about (450, 280).
-    expect(paths).toEqual(["\"M450 128 V187\"", "\"M450 432 V373\"", "\"M285 264 H373\"", "\"M615 264 H527\""]);
+  it("carries the charge in stages, each after the one that feeds it", () => {
+    const delays = source.slice(source.indexOf("HUB_CHARGE_STAGE_DELAY_S = {"));
+    const line = delays.slice(0, delays.indexOf("}"));
+    const values = (line.match(/[-\d.]+/g) ?? []).map(Number);
+    expect(values).toHaveLength(4);
+    // Plate, then stubs, then diagonals, then the core: strictly increasing.
+    expect([...values].sort((a, b) => a - b)).toEqual(values);
   });
 
-  it("starts every spoke together, with no stagger", () => {
-    const block = source.slice(source.indexOf("HUB_CHARGE_PATHS.map"));
-    expect(block.slice(0, 400)).not.toContain("animationDelay");
+  it("splits at a plate and rejoins before the wiring", () => {
+    // Both halves leave the outer edge together and meet at the inner one.
+    expect(source).toContain("halves: [");
+    expect(source).toContain("slot.halves.map");
+  });
+
+  it("gives the charge stubs drawn away from their plate", () => {
+    const block = source.slice(source.indexOf("const HUB_CHARGE_STUBS"));
+    const paths = block.slice(0, block.indexOf("]")).match(/"M[^"]+"/g) ?? [];
+    // Three per plate, four plates.
+    expect(paths).toHaveLength(12);
+  });
+
+  it("ends on both of the core's rings", () => {
+    expect(source).toContain("M50 0 L100 50 L50 100 L0 50 Z");
+    expect(source).toContain("M50 12 L88 50 L50 88 L12 50 Z");
   });
 
   it("normalises path length so a short route is not faster than a long one", () => {
