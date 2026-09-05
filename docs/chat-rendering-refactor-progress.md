@@ -178,3 +178,11 @@ optional Antigravity mappings. They exercise the normalized renderer boundary,
 not the native adapters themselves. Snapshot parity reloads canonical replay
 state, not an independently captured native snapshot. An explicit skipped live
 variant prevents these fixtures being mistaken for runtime qualification.
+
+## Delivery
+
+Implementation commit: `aebf7a46` on `codex/conversation-rendering-parity`.
+[PR #142](https://github.com/Cozea/electron-app/pull/142) is open for review against
+`main`, not draft. GitHub reported it mergeable at the initial delivery check;
+CodeRabbit was pending. Local verification above is not a claim that remote CI
+or automated review has completed. Nothing was merged or deployed.
