@@ -30,6 +30,8 @@ afterEach(() => fs.rmSync(testRoot, { recursive: true, force: true }));
 
 const service = () => new AgentSkillService({ dataRoot, homeRoot });
 
+const ROOT = path.resolve(import.meta.dirname, "../..");
+
 async function makeSkill(name: string) {
   const created = await service().save({
     name,
@@ -683,5 +685,53 @@ describe("the mark standing in for a skill", () => {
       expect(mark.length).toBeGreaterThan(0);
       expect(mark.length).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+/**
+ * The hub carries a running charge while a build is active. The routes are
+ * shared by the static wiring and the animated copy, so they cannot drift
+ * apart and leave a charge travelling a line that is not drawn.
+ */
+describe("the hub's wiring", () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx"),
+    "utf8",
+  );
+
+  it("draws the decorative wiring from one list", () => {
+    expect(source).toContain("HUB_TRACE_PATHS");
+    expect(source.match(/HUB_TRACE_PATHS\.map/g)).toHaveLength(1);
+  });
+
+  it("gives the charge its own inward spokes, one per side", () => {
+    // A dash travels the way its path was drawn, and the decorative routes
+    // run in whichever direction suited the picture, so reusing them would
+    // send half the charge outwards.
+    const block = source.slice(source.indexOf("const HUB_CHARGE_PATHS"));
+    const paths = block.slice(0, block.indexOf("]")).match(/"M[^"]+"/g) ?? [];
+    expect(paths).toHaveLength(4);
+    // Each ends on the core: the diamond spans 187.3..372.7 about (450, 280).
+    expect(paths).toEqual(["\"M450 128 V187\"", "\"M450 432 V373\"", "\"M285 264 H373\"", "\"M615 264 H527\""]);
+  });
+
+  it("starts every spoke together, with no stagger", () => {
+    const block = source.slice(source.indexOf("HUB_CHARGE_PATHS.map"));
+    expect(block.slice(0, 400)).not.toContain("animationDelay");
+  });
+
+  it("normalises path length so a short route is not faster than a long one", () => {
+    expect(source).toContain("pathLength={100}");
+  });
+
+  it("only charges an active build", () => {
+    expect(source).toContain("<HubTraces charged={isActive} />");
+    expect(source).toContain("charged={isActive}");
+  });
+
+  it("stands down for reduced motion", () => {
+    const css = fs.readFileSync(path.join(ROOT, "apps/desktop/src/index.css"), "utf8");
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toContain(".cozea-hub-charge");
   });
 });

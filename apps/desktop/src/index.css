@@ -390,6 +390,30 @@ body {
   }
 }
 
+/**
+ * A charge running the build hub's wiring while a build is active.
+ *
+ * Every animated copy sets `pathLength: 100`, so the dash pattern is in
+ * normalised units and a short trace travels at the same speed as a long one.
+ */
+@keyframes cozea-hub-charge {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.cozea-hub-charge {
+  animation: cozea-hub-charge 2.6s linear infinite;
+}
+
+/* Plate outlines are longer, so they carry the charge more slowly. */
+.cozea-hub-charge-plate {
+  animation: cozea-hub-charge 4.2s linear infinite;
+}
+
 @keyframes cozea-live-shimmer-focus {
   0% {
     transform: translateX(0);
@@ -673,6 +697,12 @@ body {
   .cozea-live-shimmer-counter {
     animation: none;
     will-change: auto;
+  }
+  /* The hub's charge is decoration; the lit border already says "active". */
+  .cozea-hub-charge,
+  .cozea-hub-charge-plate {
+    animation: none;
+    opacity: 0;
   }
   /* One rule covers every per-sprite animation: they all carry the base class,
      and !important beats each sprite rule's equal specificity. */

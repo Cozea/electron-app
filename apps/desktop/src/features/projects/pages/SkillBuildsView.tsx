@@ -739,7 +739,7 @@ function ProviderHub({
             "aspect-[900/560]",
           )}
         >
-          <HubTraces />
+          <HubTraces charged={isActive} />
 
           {counts.map((node, index) => {
             const slot = HUB_SLOTS[index];
@@ -749,6 +749,7 @@ function ProviderHub({
                 key={node.provider}
                 node={node}
                 slot={slot}
+                charged={isActive}
                 essential={providerEssentialCount(skills, node.provider)}
                 onClick={onOpenProvider}
               />
@@ -771,6 +772,28 @@ function ProviderHub({
               )}
             />
             <span className="absolute inset-[12%] rotate-45 rounded-[2px] border border-[var(--hub-ln)] opacity-55" />
+            {/* The core is CSS boxes, so the charge needs a path of its own.
+                A rotated square is a diamond in the SVG's own coordinates. */}
+            {isActive ? (
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 size-full overflow-visible"
+              >
+                <path
+                  d="M50 0 L100 50 L50 100 L0 50 Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                  pathLength={100}
+                  strokeDasharray="12 88"
+                  className="cozea-hub-charge-plate text-foreground/75 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
+                />
+              </svg>
+            ) : null}
             {/* Same arrangement as a provider plate — name, then mark and
                 count — so the core reads as one of the family, just bigger. */}
             <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-[8%]">
@@ -796,8 +819,45 @@ function ProviderHub({
   );
 }
 
+/** The routes themselves, shared by the static wiring and the live charge. */
+const HUB_TRACE_PATHS = [
+  "M450 128 V150",
+  "M436 128 V142 H406",
+  "M464 128 V142 H494",
+  "M450 410 V432",
+  "M436 432 V418 H406",
+  "M464 432 V418 H494",
+  "M285 264 H316",
+  "M285 246 H300 V226",
+  "M285 298 H300 V318",
+  "M615 264 H584",
+  "M615 246 H600 V226",
+  "M615 298 H600 V318",
+  "M300 188 H352 L390 150",
+  "M600 188 H548 L510 150",
+  "M300 374 H352 L390 412",
+  "M600 374 H548 L510 412",
+] as const;
+
+/**
+ * The four spokes the charge runs along, each drawn from its plate's inner
+ * edge to the core.
+ *
+ * Separate from the decorative wiring on purpose: those routes are drawn in
+ * whichever direction suited the picture, and a dash travels the way its path
+ * was drawn, so reusing them would send half the charge outwards. Each spoke
+ * follows its stub's axis and ends on the diamond, so all four start together
+ * and arrive together.
+ */
+const HUB_CHARGE_PATHS = [
+  "M450 128 V187",
+  "M450 432 V373",
+  "M285 264 H373",
+  "M615 264 H527",
+] as const;
+
 /** Circuit routes from the core out to each plate, drawn behind them. */
-function HubTraces() {
+function HubTraces({ charged }: { charged: boolean }) {
   return (
     <svg
       viewBox={`0 0 ${HUB_W} ${HUB_H}`}
@@ -806,23 +866,33 @@ function HubTraces() {
       className="absolute inset-0 z-[1] size-full"
     >
       <g stroke="var(--hub-trace)" strokeWidth="1.1" fill="none" vectorEffect="non-scaling-stroke">
-        <path d="M450 128 V150" />
-        <path d="M436 128 V142 H406" />
-        <path d="M464 128 V142 H494" />
-        <path d="M450 410 V432" />
-        <path d="M436 432 V418 H406" />
-        <path d="M464 432 V418 H494" />
-        <path d="M285 264 H316" />
-        <path d="M285 246 H300 V226" />
-        <path d="M285 298 H300 V318" />
-        <path d="M615 264 H584" />
-        <path d="M615 246 H600 V226" />
-        <path d="M615 298 H600 V318" />
-        <path d="M300 188 H352 L390 150" />
-        <path d="M600 188 H548 L510 150" />
-        <path d="M300 374 H352 L390 412" />
-        <path d="M600 374 H548 L510 412" />
+        {HUB_TRACE_PATHS.map((d) => (
+          <path key={d} d={d} />
+        ))}
       </g>
+
+      {/* The charge: four dashes leaving their plates together and meeting
+          at the core. No stagger, so the arrival reads as one beat. */}
+      {charged ? (
+        <g
+          stroke="currentColor"
+          strokeWidth="1.8"
+          fill="none"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          className="text-foreground/80 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
+        >
+          {HUB_CHARGE_PATHS.map((d) => (
+            <path
+              key={d}
+              d={d}
+              pathLength={100}
+              strokeDasharray="22 78"
+              className="cozea-hub-charge"
+            />
+          ))}
+        </g>
+      ) : null}
       <g fill="var(--hub-trace)">
         <rect x="402" y="139" width="9" height="5" />
         <rect x="491" y="139" width="9" height="5" />
@@ -841,11 +911,13 @@ function ProviderNode({
   node,
   slot,
   essential,
+  charged,
   onClick,
 }: {
   node: { provider: AgentSkillProvider; label: string; count: number };
   slot: HubSlot;
   essential: number;
+  charged: boolean;
   onClick: (provider: AgentSkillProvider) => void;
 }) {
   const isEmpty = node.count === 0;
@@ -878,6 +950,19 @@ function ProviderNode({
           vectorEffect="non-scaling-stroke"
           className="transition-[fill,stroke] duration-150 group-hover:fill-[var(--hub-fill-hi)] group-hover:stroke-[var(--hub-ln-hi)]"
         />
+        {charged ? (
+          <path
+            d={slot.d}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            pathLength={100}
+            strokeDasharray="14 86"
+            className="cozea-hub-charge-plate text-foreground/70 drop-shadow-[0_0_4px_color-mix(in_oklch,var(--foreground)_55%,transparent)]"
+          />
+        ) : null}
       </svg>
 
       <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
