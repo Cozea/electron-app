@@ -7,6 +7,9 @@ export interface LastWorkbenchRouteEntry {
   projectId: string
   laneId: string
   focusTileId: string | null
+  workspaceId?: string | null
+  projectName?: string | null
+  collabBranch?: string | null
   updatedAt: number
 }
 
@@ -93,7 +96,10 @@ export function readLastWorkbenchRoute(
   if (
     typeof entry.projectId !== "string" ||
     typeof entry.laneId !== "string" ||
-    (entry.focusTileId !== null && typeof entry.focusTileId !== "string")
+    (entry.focusTileId !== null && typeof entry.focusTileId !== "string") ||
+    (entry.workspaceId !== undefined && entry.workspaceId !== null && typeof entry.workspaceId !== "string") ||
+    (entry.projectName !== undefined && entry.projectName !== null && typeof entry.projectName !== "string") ||
+    (entry.collabBranch !== undefined && entry.collabBranch !== null && typeof entry.collabBranch !== "string")
   ) {
     return null
   }
