@@ -1765,8 +1765,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       props.isSending ||
       props.isBinding
 
-    const shouldShowContextTooltip = !props.isRunning && !activePendingProgress && isSendDisabled
-
     const buttonElement = props.isRunning ? (
       <button
         type="button"
@@ -1813,11 +1811,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     )
 
     if (hasContextRing && props.activeContextWindow) {
+      // Always on hover, including while the agent is running: the ring is
+      // where usage is shown, so hiding the numbers behind "nothing to send"
+      // made them unreachable exactly when they are asked for.
       return (
         <ContextWindowMeter
           usage={props.activeContextWindow}
           accountUsage={props.activeAccountUsage}
-          disableTooltip={!shouldShowContextTooltip}
         >
           {buttonElement}
         </ContextWindowMeter>

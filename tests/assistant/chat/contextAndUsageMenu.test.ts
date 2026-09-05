@@ -22,3 +22,18 @@ describe("compact context and usage menu", () => {
     expect(meterSource).not.toContain("Automatically compacts")
   })
 })
+
+/**
+ * The ring around the send button is where usage is shown, so hovering it has
+ * to report the numbers in every state, including while the agent is running.
+ */
+it("does not gate the usage tooltip on the send button being idle", () => {
+  const surface = readFileSync(
+    resolve(process.cwd(), "apps/desktop/src/features/assistant/chat/CozeaChatSurface.tsx"),
+    "utf8",
+  );
+  expect(surface).not.toContain("shouldShowContextTooltip");
+  expect(surface).not.toContain("disableTooltip=");
+  // The meter still wraps the button, so there is something to hover.
+  expect(surface).toContain("<ContextWindowMeter");
+})
