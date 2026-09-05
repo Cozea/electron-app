@@ -13,7 +13,7 @@ function replace(file, before, after) {
 
 const prepare = "scripts/prepare-t3-runtime.mjs";
 replace(prepare, 'import { fileURLToPath } from "node:url";', 'import { fileURLToPath } from "node:url";\nimport { applyCozeaWorkspaceSourcePatches } from "./patch-t3-workspace-authority.mjs";');
-replace(prepare, "  ensureVendorCheckout(expectedPin, checkOnly);", "  ensureVendorCheckout(expectedPin, checkOnly);\n  applyCozeaWorkspaceSourcePatches({ vendorRoot, checkOnly });");
+replace(prepare, "  ensureVendorCheckout(expectedPin, options.checkOnly);", "  ensureVendorCheckout(expectedPin, options.checkOnly);\n  applyCozeaWorkspaceSourcePatches({ vendorRoot, checkOnly: options.checkOnly });");
 
 const manager = "apps/desktop/electron/substrate/ShadowServerManager.ts";
 replace(manager, 'import fs from "node:fs";', 'import fs from "node:fs";\nimport { trackNativeWorkspaceEndpoint } from "../collaboration/NativeWorkspaceBridge";');
