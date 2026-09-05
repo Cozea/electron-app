@@ -41,14 +41,26 @@ function sessionFixture(): DesktopBootstrapSession {
     convexUserId: 'user_1',
     user: {
       id: 'device-user-1',
+      deviceId: 'device-1',
       email: 'test@example.com',
       firstName: 'Test',
       lastName: 'User',
+      profileImageUrl: null,
     },
     personalWorkspace: {
+      id: 'membership-1',
       workspaceId: 'workspace_personal_1',
+      workspaceName: 'Personal',
+      organizationId: 'org-personal-1',
+      organizationName: 'Personal',
+      role: 'admin',
+      status: 'active',
+      workspaceType: 'personal',
+      iconKey: null,
+      iconColor: null,
+      logoUrl: null,
     },
-  } as unknown as DesktopBootstrapSession
+  }
 }
 
 function routeFixture(): DesktopWorkbenchLocator {
@@ -98,6 +110,20 @@ describe('DesktopBootstrapStore', () => {
 
     expect(snapshot.session).toBeNull()
     expect(snapshot.lastWorkbenchRoute).toBeNull()
+  })
+
+  it('rejects encrypted session payloads that no longer match the runtime contract', async () => {
+    const malformed = {
+      ...sessionFixture(),
+      user: { id: 'device-user-1' },
+    }
+    const encrypted = Buffer.from(
+      `enc:${Buffer.from(JSON.stringify(malformed), 'utf8').toString('base64')}`,
+      'utf8',
+    )
+    fs.writeFileSync(path.join(electronState.root, 'desktop-bootstrap-session.v1.enc'), encrypted)
+
+    expect((await new DesktopBootstrapStore().getInitialSnapshot()).session).toBeNull()
   })
 
   it('refuses plaintext session persistence when secure storage is unavailable', async () => {
