@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron'
+import { performance } from 'node:perf_hooks'
 
 import {
   isApplicationQuitting,
@@ -7,11 +8,35 @@ import {
 } from './appLifecycleState'
 
 const MAIN_WINDOW_ARGUMENT = '--cozea-window=main'
+const processEntryAt =
+  (globalThis as { __COZEA_MAIN_ENTRY_AT__?: number }).__COZEA_MAIN_ENTRY_AT__ ?? performance.now()
 
 function isCozeaMainWindow(window: BrowserWindow): boolean {
   const args = window.webContents.getLastWebPreferences().additionalArguments ?? []
   return args.includes(MAIN_WINDOW_ARGUMENT)
 }
+
+function shouldLogBootTimings(): boolean {
+  return !app.isPackaged || process.env.COZEA_BOOT_TIMINGS === '1'
+}
+
+function logProcessEntryMilestone(label: string): void {
+  if (!shouldLogBootTimings()) return
+  console.info('[BootTiming]', label, {
+    elapsedMs: Number((performance.now() - processEntryAt).toFixed(1)),
+  })
+}
+
+// These listeners are registered before main.ts loads, so unlike main.ts's
+// historical MAIN_BOOT_STARTED_AT they include static main-module resolution
+// and evaluation in the measured interval.
+app.once('ready', () => {
+  logProcessEntryMilestone('process-entry-to-app-ready')
+})
+app.on('browser-window-created', (_event, window) => {
+  if (!isCozeaMainWindow(window)) return
+  logProcessEntryMilestone('process-entry-to-main-window-created')
+})
 
 // mainEntry imports this module before main.ts, so the application-lifetime
 // marker is installed before feature/window teardown listeners are registered.
