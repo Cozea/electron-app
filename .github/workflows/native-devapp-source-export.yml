@@ -1,0 +1,26 @@
+name: Native DevApp source export
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out proposed branch
+        uses: actions/checkout@v4
+      - name: Export exact source tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-devapp-source-${{ github.sha }}
+          path: |
+            .
+            !.git
+            !node_modules
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1

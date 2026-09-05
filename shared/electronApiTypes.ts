@@ -1655,6 +1655,33 @@ export interface ElectronAPI {
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
     openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
+  devApp: {
+    listInstallations: () => Promise<import('./devAppInstallationV3').DevAppInstallationListResultV3>
+    getInstallation: (options: { installationId: string }) => Promise<
+      | { success: true; installation: import('./devAppInstallationV3').DevAppInstallationV3 | null }
+      | { success: false; error: string }
+    >
+    installDevelopment: (options: {
+      workspaceId: string
+      laneId?: string | null
+      relativePath: string
+    }) => Promise<import('./devAppInstallationV3').DevAppInstallDevelopmentResultV3>
+    prepareSurface: (options: {
+      installationId: string
+      surfaceId?: string | null
+    }) => Promise<import('./devAppInstallationV3').DevAppPrepareSurfaceResultV3>
+    activateRelease: (options: {
+      installationId: string
+      releaseId: string
+    }) => Promise<import('./devAppInstallationV3').DevAppActivateReleaseResultV3>
+    uninstall: (options: {
+      installationId: string
+      removeData?: boolean
+    }) => Promise<import('./devAppInstallationV3').DevAppUninstallResultV3>
+    onInstallationsChanged: (
+      listener: (installations: import('./devAppInstallationV3').DevAppInstallationV3[]) => void,
+    ) => () => void
+  }
   orgDevApp: {
     listInstallations: () => Promise<
       | { success: true; installations: import('./orgDevAppInstallation').OrgDevAppInstallation[] }

@@ -37,6 +37,7 @@ export type WorkbenchPanelRendererKey =
   | "devServer"
   | "llama"
   | "mobileSimulator"
+  | "devApp"
   | "orgDevApp"
   | "selection"
   | "terminal"
@@ -192,6 +193,14 @@ export const WORKBENCH_TILE_REGISTRY = {
     fallbackIcon: "mobileSimulator",
     panelRenderer: "mobileSimulator",
     dock: dockDefinition({ headerControls: "runtimePreview" }),
+  },
+  devApp: {
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.devApp,
+    tabLabel: "DevApp",
+    manifestSource: "published",
+    fallbackIcon: "published",
+    panelRenderer: "devApp",
+    dock: dockDefinition(),
   },
   orgDevApp: {
     defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.orgDevApp,

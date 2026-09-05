@@ -112,18 +112,18 @@ function makeService() {
 const open = (service: DevAppPreviewService, relativePath = "apps/inventory") =>
   service.open({ workspaceId: "ws_1", workspaceRoot, relativePath, leaseId: "tile_1" })
 
-describe("Preview service — reads a real package off disk", () => {
-  it("opens a package and reports it needs no approval when it asks for nothing", () => {
+describe("Preview service — reads a real package off disk", async () => {
+  it("opens a package and reports it needs no approval when it asks for nothing", async () => {
     const { service } = makeService()
-    const status = open(service)
+    const status = await open(service)
     expect(status.status).toBe("running")
     expect(status.status === "running" && status.name).toBe("Inventory")
     service.dispose()
   })
 
-  it("serves the built output that actually exists", () => {
+  it("serves the built output that actually exists", async () => {
     const { service } = makeService()
-    const status = open(service)
+    const status = await open(service)
     expect(status.status === "running" && status.view).toEqual({
       kind: "builtOutput",
       entryPath: "dist/index.html",
@@ -132,22 +132,22 @@ describe("Preview service — reads a real package off disk", () => {
     service.dispose()
   })
 
-  it("reports a real preflight verdict rather than a placeholder", () => {
+  it("reports a real preflight verdict rather than a placeholder", async () => {
     const { service } = makeService()
-    const status = open(service)
+    const status = await open(service)
     expect(status.status === "running" && typeof status.preflight.framework).toBe("string")
     service.dispose()
   })
 
-  it("starts watching, and says so", () => {
+  it("starts watching, and says so", async () => {
     const { service } = makeService()
-    expect(open(service).hotReload).toBe(true)
+    expect((await open(service)).hotReload).toBe(true)
     service.dispose()
   })
 
   it("registers one source-bound protocol per isolated preview session", async () => {
     const { service } = makeService()
-    const status = open(service)
+    const status = await open(service)
     expect(status.status).toBe("running")
     if (status.status !== "running") throw new Error("Expected a running preview")
 
@@ -180,12 +180,12 @@ describe("Preview service — reads a real package off disk", () => {
   })
 })
 
-describe("Preview service — the renderer cannot name a directory", () => {
-  it("refuses a relative path that climbs out of the workspace", () => {
+describe("Preview service — the renderer cannot name a directory", async () => {
+  it("refuses a relative path that climbs out of the workspace", async () => {
     // The renderer only ever sends a relative path; this is what it would have to send
     // to reach outside, and joining still lands it back under scrutiny.
     const { service } = makeService()
-    const status = service.open({
+    const status = await service.open({
       workspaceId: "ws_1",
       workspaceRoot,
       relativePath: "../../../../etc",
@@ -195,9 +195,9 @@ describe("Preview service — the renderer cannot name a directory", () => {
     service.dispose()
   })
 
-  it("refuses an absolute path smuggled in as the relative one", () => {
+  it("refuses an absolute path smuggled in as the relative one", async () => {
     const { service } = makeService()
-    const status = service.open({
+    const status = await service.open({
       workspaceId: "ws_1",
       workspaceRoot,
       relativePath: "/etc",
@@ -207,7 +207,7 @@ describe("Preview service — the renderer cannot name a directory", () => {
     service.dispose()
   })
 
-  it("refuses a package symlink that resolves outside the workspace", () => {
+  it("refuses a package symlink that resolves outside the workspace", async () => {
     const outside = path.join(root, "outside")
     fs.mkdirSync(path.join(outside, "dist"), { recursive: true })
     fs.writeFileSync(path.join(outside, "cozea-devapp.json"), manifest())
@@ -215,7 +215,7 @@ describe("Preview service — the renderer cannot name a directory", () => {
     const linked = path.join(workspaceRoot, "linked")
     fs.symlinkSync(outside, linked, "dir")
     const { service } = makeService()
-    const status = service.open({
+    const status = await service.open({
       workspaceId: "ws_1",
       workspaceRoot,
       relativePath: "linked",
@@ -225,10 +225,10 @@ describe("Preview service — the renderer cannot name a directory", () => {
     service.dispose()
   })
 
-  it("reports a folder with no manifest as a diagnostic", () => {
+  it("reports a folder with no manifest as a diagnostic", async () => {
     const { service } = makeService()
     fs.mkdirSync(path.join(workspaceRoot, "empty"), { recursive: true })
-    const status = service.open({
+    const status = await service.open({
       workspaceId: "ws_1",
       workspaceRoot,
       relativePath: "empty",
@@ -238,19 +238,19 @@ describe("Preview service — the renderer cannot name a directory", () => {
     service.dispose()
   })
 
-  it("refuses an oversized manifest without reading it into main-process memory", () => {
+  it("refuses an oversized manifest without reading it into main-process memory", async () => {
     fs.writeFileSync(path.join(sourcePath, "cozea-devapp.json"), " ".repeat(1024 * 1024 + 1))
     const { service } = makeService()
-    const status = open(service)
+    const status = await open(service)
     expect(status.status).toBe("invalid")
     service.dispose()
   })
 })
 
-describe("Preview service — hot reload", () => {
+describe("Preview service — hot reload", async () => {
   it("re-reads the manifest and broadcasts after the tree settles", async () => {
     const { service, broadcasts, touch } = makeService()
-    open(service)
+    await open(service)
     fs.writeFileSync(path.join(sourcePath, "cozea-devapp.json"), manifest({ name: "Renamed" }))
     touch("cozea-devapp.json")
 
@@ -262,7 +262,7 @@ describe("Preview service — hot reload", () => {
 
   it("reloads when the built output changes", async () => {
     const { service, broadcasts, touch } = makeService()
-    open(service)
+    await open(service)
     fs.writeFileSync(path.join(sourcePath, "dist", "index.html"), "<html>changed</html>")
     touch("dist/index.html")
 
@@ -274,7 +274,7 @@ describe("Preview service — hot reload", () => {
 
   it("does not broadcast for a change in an ignored directory", async () => {
     const { service, broadcasts, touch } = makeService()
-    open(service)
+    await open(service)
     touch("node_modules/react/index.js")
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(broadcasts).toEqual([])
@@ -283,7 +283,7 @@ describe("Preview service — hot reload", () => {
 
   it("stops watching once the preview is closed", async () => {
     const { service, broadcasts, touch } = makeService()
-    const status = open(service)
+    const status = await open(service)
     const sourceId = status.status === "running" ? status.sourceId : ""
     service.close(sourceId, "tile_1")
     touch("cozea-devapp.json")
@@ -293,20 +293,20 @@ describe("Preview service — hot reload", () => {
   })
 })
 
-describe("Preview service — approval", () => {
-  it("holds a worker back until approved, then starts it", () => {
+describe("Preview service — approval", async () => {
+  it("holds a worker back until approved, then starts it", async () => {
     fs.writeFileSync(path.join(sourcePath, "worker.js"), "//")
     fs.writeFileSync(
       path.join(sourcePath, "cozea-devapp.json"),
       manifest({ worker: { entry: "worker.js", capabilities: ["project.read"], tools: [] } }),
     )
     const { service, worker } = makeService()
-    const status = open(service)
+    const status = await open(service)
     expect(status.status).toBe("needsApproval")
     expect(worker.start).not.toHaveBeenCalled()
 
     if (status.status !== "needsApproval") throw new Error("Expected approval")
-    const approved = service.approve(status.sourceId, status.approvalFingerprint)
+    const approved = await service.approve(status.sourceId, status.approvalFingerprint)
     expect(approved?.status).toBe("running")
     expect(worker.start).toHaveBeenCalledOnce()
 
@@ -327,7 +327,7 @@ describe("Preview service — approval", () => {
     service.dispose()
   })
 
-  it("forwards only development-worker lifecycle events to bridge owners", () => {
+  it("forwards only development-worker lifecycle events to bridge owners", async () => {
     const { service, emitWorkerState } = makeService()
     const changes: Array<{ sourceId: string; status: string }> = []
     service.onWorkerStateChange((sourceId, state) => {
@@ -347,20 +347,20 @@ describe("Preview service — approval", () => {
     service.dispose()
   })
 
-  it("refuses to approve a preview that was never opened", () => {
+  it("refuses to approve a preview that was never opened", async () => {
     const { service } = makeService()
-    expect(service.approve("0".repeat(32), "v1;;agent=0")).toBeNull()
+    expect(await service.approve("0".repeat(32), "v1;;agent=0")).toBeNull()
     service.dispose()
   })
 
-  it("does not approve capabilities added after the prompt was rendered", () => {
+  it("does not approve capabilities added after the prompt was rendered", async () => {
     fs.writeFileSync(path.join(sourcePath, "worker.js"), "//")
     fs.writeFileSync(
       path.join(sourcePath, "cozea-devapp.json"),
       manifest({ worker: { entry: "worker.js", capabilities: ["project.read"], tools: [] } }),
     )
     const { service, worker, touch } = makeService()
-    const shown = open(service)
+    const shown = await open(service)
     expect(shown.status).toBe("needsApproval")
     if (shown.status !== "needsApproval") throw new Error("Expected approval")
 
@@ -375,7 +375,7 @@ describe("Preview service — approval", () => {
       }),
     )
     touch("cozea-devapp.json")
-    const result = service.approve(shown.sourceId, shown.approvalFingerprint)
+    const result = await service.approve(shown.sourceId, shown.approvalFingerprint)
     expect(result?.status).toBe("needsApproval")
     expect(worker.start).not.toHaveBeenCalled()
     service.dispose()

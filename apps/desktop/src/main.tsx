@@ -18,6 +18,7 @@ import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
 import { ElectronBrowserHost } from './features/browser/ElectronBrowserHost'
+import { installNativeDevAppRuntimeBridge } from './features/devapps/native-runtime/nativeDevAppRuntimeBridge'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -46,6 +47,7 @@ function applyBootstrapRouteFromSearch(): void {
 ;(globalThis as { __COZEA_OFFSCREEN_SCREENSHOT_FLAG__?: string }).__COZEA_OFFSCREEN_SCREENSHOT_FLAG__ =
   import.meta.env.VITE_FF_OFFSCREEN_SCREENSHOT
 
+installNativeDevAppRuntimeBridge()
 initJankDiagnostics()
 applyBootstrapRouteFromSearch()
 

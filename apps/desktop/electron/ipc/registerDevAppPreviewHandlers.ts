@@ -69,7 +69,7 @@ export function registerDevAppPreviewHandlers(
         })
         return {
           success: true as const,
-          preview: service.open({
+          preview: await service.open({
             workspaceId: options.workspaceId,
             workspaceRoot: access.projectRootPath,
             relativePath: options.relativePath,
@@ -95,7 +95,7 @@ export function registerDevAppPreviewHandlers(
       return { success: false as const, error: "The approval request is invalid." }
     }
     try {
-      const status = service.approve(options.sourceId, options.approvalFingerprint)
+      const status = await service.approve(options.sourceId, options.approvalFingerprint)
       return status
         ? { success: true as const, preview: status }
         : { success: false as const, error: "That preview is no longer open." }

@@ -133,6 +133,7 @@ export type {
   WorkbenchAssistantChatTile,
   WorkbenchBrowserTile,
   WorkbenchDevAppPreviewTile,
+  WorkbenchDevAppTile,
   WorkbenchDevServerTile,
   WorkbenchLlamaTile,
   WorkbenchMemoryTile,
@@ -198,6 +199,11 @@ export interface CreateTileOptions {
   devAppCommand?: string | null
   devAppPort?: number | null
   devAppRef?: string | null
+  devAppInstallationId?: string | null
+  installedDevAppId?: string | null
+  installedDevAppVersion?: string | null
+  installedDevAppReleaseId?: string | null
+  installedDevAppSurfaceId?: string | null
   orgDevAppPublicationId?: string | null
   orgDevAppOrganizationId?: string | null
   orgDevAppContentHash?: string | null
@@ -590,6 +596,18 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     case "llama":
     case "memory":
       return { id, type, title, createdAt }
+    case "devApp":
+      return {
+        id,
+        type,
+        title,
+        createdAt,
+        installationId: normalizeOptionalString(options.devAppInstallationId) || "",
+        appId: normalizeOptionalString(options.installedDevAppId) || "",
+        appVersion: normalizeOptionalString(options.installedDevAppVersion) || "",
+        releaseId: normalizeOptionalString(options.installedDevAppReleaseId) || "",
+        surfaceId: normalizeOptionalString(options.installedDevAppSurfaceId) || "",
+      }
     case "devAppPreview":
       return {
         id,
@@ -760,6 +778,24 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
         agentLabel: tile.agentLabel ?? null,
         laneBinding: normalizedLaneBinding,
         viewMode: tile.viewMode === "artifacts" ? "artifacts" : "chat",
+      }
+      continue
+    }
+
+    if (tile.type === "devApp") {
+      const installationId = normalizeOptionalString(tile.installationId)
+      const surfaceId = normalizeOptionalString(tile.surfaceId)
+      if (!installationId || !surfaceId) {
+        removedObsoleteTile = true
+        continue
+      }
+      sanitizedTiles[tileId] = {
+        ...tile,
+        installationId,
+        appId: normalizeOptionalString(tile.appId) || "",
+        appVersion: normalizeOptionalString(tile.appVersion) || "",
+        releaseId: normalizeOptionalString(tile.releaseId) || "",
+        surfaceId,
       }
       continue
     }
@@ -1157,7 +1193,9 @@ export function buildWorkbenchLaneSidebarSummary(
         ? { devAppId: tile.devAppId }
         : tile.type === "orgDevApp" && tile.publicationId
           ? { devAppId: tile.publicationId }
-          : {}),
+          : tile.type === "devApp" && tile.appId
+            ? { devAppId: tile.appId }
+            : {}),
       ...(tile.type === "orgDevApp" ? { logoDataUrl: tile.logoDataUrl ?? null } : {}),
     })
   }

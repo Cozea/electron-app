@@ -1,0 +1,97 @@
+name: Native DevApp validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/native-devapp-validation.yml"
+      - "apps/desktop/electron/**"
+      - "apps/desktop/src/features/devapps/**"
+      - "apps/desktop/src/features/workbench/**"
+      - "apps/desktop/src/lib/workbench*"
+      - "examples/native-devapps/**"
+      - "packages/devapp-api/**"
+      - "scripts/devapps/**"
+      - "shared/devApp*"
+      - "shared/nativeDevApp*"
+      - "tests/devapps/**"
+  push:
+    branches:
+      - feat/native-devapp-platform
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-devapps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Initialize T3 substrate
+        run: git submodule update --init vendor/t3code
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install T3 source dependencies
+        run: bun x pnpm@11.10.0 --dir vendor/t3code install --frozen-lockfile --ignore-scripts
+
+      - name: Typecheck renderer
+        run: bun run typecheck
+
+      - name: Typecheck Electron
+        run: bun run typecheck:electron
+
+      - name: Typecheck tests
+        run: bun run typecheck:tests
+
+      - name: Native DevApp tests
+        run: >-
+          bunx vitest run
+          tests/devapps/devAppManifestV3.test.ts
+          tests/devapps/nativeDevAppBuilder.test.ts
+          tests/devapps/nativeDevAppRuntime.test.tsx
+          tests/devapps/nativeDevAppPreviewSession.test.ts
+          tests/devapps/devAppPreviewService.test.ts
+          tests/devapps/devAppPreviewTile.test.ts
+          tests/devapps/devAppInstallationService.test.ts
+          tests/devapps/workbenchTileRegistry.test.ts
+
+      - name: Lint changed platform areas
+        run: >-
+          bunx --bun oxlint
+          apps/desktop/electron/services/NativeDevAppBuildService.ts
+          apps/desktop/electron/services/NativeDevAppModuleService.ts
+          apps/desktop/electron/services/NativeDevAppPreviewSession.ts
+          apps/desktop/electron/services/DevAppInstallationService.ts
+          apps/desktop/electron/services/DevAppPreviewService.ts
+          apps/desktop/electron/ipc/registerDevAppInstallationHandlers.ts
+          apps/desktop/electron/ipc/registerDevAppPreviewHandlers.ts
+          apps/desktop/src/features/devapps/native-runtime
+          apps/desktop/src/features/workbench/WorkbenchDevAppPreviewTile.tsx
+          apps/desktop/src/features/workbench/WorkbenchDevAppTile.tsx
+          apps/desktop/src/features/workbench/model/workbenchTileRegistry.ts
+          apps/desktop/src/lib/workbenchStore.ts
+          apps/desktop/src/lib/workbenchTileContract.ts
+          shared/devAppInstallationV3.ts
+          shared/devAppPreviewTypes.ts
+          tests/devapps/nativeDevAppPreviewSession.test.ts
+          tests/devapps/devAppInstallationService.test.ts
+          tests/devapps/workbenchTileRegistry.test.ts
+
+      - name: Production build
+        run: bun run build

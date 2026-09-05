@@ -20,6 +20,7 @@ describe("Workbench tile registry — one shell contract", () => {
     expect(Object.keys(WORKBENCH_TILE_REGISTRY).sort()).toEqual([
       "assistantChat",
       "browser",
+      "devApp",
       "devAppPreview",
       "devServer",
       "llama",

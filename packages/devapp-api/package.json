@@ -1,11 +1,12 @@
 {
   "name": "@cozea/devapp-api",
   "version": "0.1.0",
-  "description": "Typed view-to-worker client and authoring contract for native Cozea DevApps.",
+  "description": "Typed native renderer, extension-host, worker, manifest, and UI contracts for Cozea DevApps.",
   "keywords": [
     "cozea",
     "devapp",
-    "electron"
+    "electron",
+    "react"
   ],
   "repository": {
     "type": "git",
@@ -23,13 +24,30 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./schema": "./schema/cozea-devapp.schema.json"
+    "./native": {
+      "types": "./dist/native.d.ts",
+      "import": "./dist/native.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "import": "./dist/extension.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "import": "./dist/manifest.js"
+    },
+    "./schema": "./schema/cozea-devapp.schema.json",
+    "./schema/v3": "./schema/cozea-devapp-v3.schema.json"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --format esm --target browser && bunx tsc -p tsconfig.build.json",
+    "build": "bun build src/index.ts src/native.ts src/ui.ts src/extension.ts src/manifest.ts --outdir dist --format esm --target browser --external react --external react-dom --external react/jsx-runtime && bunx tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build"
   }
 }

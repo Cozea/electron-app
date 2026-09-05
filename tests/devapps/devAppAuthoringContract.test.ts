@@ -5,10 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import { buildDevelopmentDevAppManifest } from "../../apps/desktop/src/features/devapps/developmentDevAppManifest";
 import { resolveWorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch";
+import { DEV_APP_MANIFEST_V3_JSON_SCHEMA } from "../../shared/devAppManifestV3Schema";
 import { DEV_APP_PACKAGE_JSON_SCHEMA } from "../../shared/devAppPackage";
 
 describe("native DevApp authoring contract", () => {
-  it("keeps generated public schemas synchronized with the runtime contract", () => {
+  it("keeps generated public schemas synchronized with the runtime contracts", () => {
     for (const relativePath of [
       "packages/devapp-api/schema/cozea-devapp.schema.json",
       "apps/desktop/public/cozea-devapp.schema.json",
@@ -17,9 +18,21 @@ describe("native DevApp authoring contract", () => {
       expect(schema).toEqual(DEV_APP_PACKAGE_JSON_SCHEMA);
     }
 
+    for (const relativePath of [
+      "packages/devapp-api/schema/cozea-devapp-v3.schema.json",
+      "apps/desktop/public/cozea-devapp-v3.schema.json",
+    ]) {
+      const schema = JSON.parse(readFileSync(path.resolve(relativePath), "utf8"));
+      expect(schema).toEqual(DEV_APP_MANIFEST_V3_JSON_SCHEMA);
+    }
+
     for (const filename of [
       "devAppCapabilities.ts",
+      "devAppManifestV3.ts",
+      "devAppManifestV3Parser.ts",
+      "devAppManifestV3Schema.ts",
       "devAppPackage.ts",
+      "devAppToolInputValidation.ts",
       "devAppViewBridge.ts",
       "devAppWorkerProtocol.ts",
     ]) {
@@ -35,6 +48,12 @@ describe("native DevApp authoring contract", () => {
       types: "./dist/index.d.ts",
       import: "./dist/index.js",
     });
+    for (const entry of ["./native", "./ui", "./extension", "./manifest"]) {
+      expect(packageJson.exports[entry]).toEqual({
+        types: `./dist/${entry.slice(2)}.d.ts`,
+        import: `./dist/${entry.slice(2)}.js`,
+      });
+    }
     expect(readFileSync(path.resolve("packages/devapp-api/src/index.ts"), "utf8")).not.toContain(
       "../../../shared",
     );
