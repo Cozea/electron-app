@@ -49,11 +49,16 @@ export function deriveToolPhase(
 }
 
 export function summarizeToolPhase(entries: readonly WorkLogEntry[], active: boolean): string {
+  entries = entries.filter(workLogEntryIsToolLike);
   const failures = entries.filter(workEntryIndicatesFailure).length;
-  const completed = entries.filter(
-    (entry) => !workEntryIndicatesFailure(entry) && (!active || !toolIsRunning(entry)),
-  );
+  const completed = entries.filter((entry) => !workEntryIndicatesFailure(entry) && (entry.toolLifecycleStatus ?? entry.status) === "completed");
+  const stopped = entries.filter(entry => ["cancelled", "stopped"].includes(entry.toolLifecycleStatus ?? entry.status ?? "")).length;
+  const declined = entries.filter(entry => (entry.toolLifecycleStatus ?? entry.status) === "declined").length;
+  const unresolved = entries.length - completed.length - failures - stopped - declined;
   const actions = completed.length ? summarizeToolGroup(completed) : active ? "Working" : "";
   const failed = failures ? `${failures} ${failures === 1 ? "action" : "actions"} failed` : "";
-  return [actions, failed].filter(Boolean).join(" · ") || "Used tools";
+  const interrupted = stopped ? `${stopped} ${stopped === 1 ? "action" : "actions"} stopped` : "";
+  const rejected = declined ? `${declined} ${declined === 1 ? "action" : "actions"} declined` : "";
+  const unfinished = !active && unresolved ? `${unresolved} ${unresolved === 1 ? "action" : "actions"} unfinished` : "";
+  return [actions, failed, interrupted, rejected, unfinished].filter(Boolean).join(" · ") || "Used tools";
 }

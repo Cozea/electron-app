@@ -94,6 +94,15 @@ export class T3OrchestrationClient {
   private readonly snapshotListeners = new Set<(snapshot: OrchestrationShellSnapshot) => void>();
   private shellSnapshot: OrchestrationShellSnapshot | null = null;
   private shellConnecting: Promise<void> | null = null;
+  private closed = false;
+  private readonly disconnectListeners = new Set<() => void>();
+
+  onDisconnect(listener: () => void): () => void {
+    this.disconnectListeners.add(listener);
+    return () => {
+      this.disconnectListeners.delete(listener);
+    };
+  }
 
   constructor(options: T3OrchestrationClientOptions) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 60_000;
@@ -112,6 +121,8 @@ export class T3OrchestrationClient {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
+    this.disconnectListeners.clear();
     this.shellListeners.clear();
     this.snapshotListeners.clear();
     if (this.shellUnsubscribe) {
@@ -209,10 +220,11 @@ export class T3OrchestrationClient {
   }
 
   private async openShellSubscription(): Promise<void> {
-    this.shellUnsubscribe = await this.client.openStream(
+    const unsubscribe = await this.client.openStream(
       ORCHESTRATION_WS_METHODS.subscribeShell,
       { requestCompletionMarker: true },
       (item) => {
+        if (this.closed) return;
         const row = asRecord(item);
         if (!row || row.kind === "synchronized") {
           return;
@@ -230,7 +242,13 @@ export class T3OrchestrationClient {
           listener(mapped);
         }
       },
+      () => {
+        this.shellUnsubscribe = null;
+        for (const listener of this.disconnectListeners) listener();
+      },
     );
+    if (this.closed) await unsubscribe();
+    else this.shellUnsubscribe = unsubscribe;
   }
 
   async subscribeShellEvents(listener: (event: OrchestrationEvent) => void): Promise<() => void> {
@@ -253,11 +271,13 @@ export class T3OrchestrationClient {
   async subscribeThread(
     threadId: string,
     listener: (item: unknown) => void,
+    onDisconnect?: () => void,
   ): Promise<() => Promise<void>> {
     return this.client.openStream(
       ORCHESTRATION_WS_METHODS.subscribeThread,
       { threadId, requestCompletionMarker: true },
       listener,
+      onDisconnect,
     );
   }
 }

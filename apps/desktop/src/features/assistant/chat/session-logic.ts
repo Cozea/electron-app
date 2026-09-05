@@ -70,6 +70,7 @@ export interface WorkLogEntry {
 }
 
 export interface PendingApproval {
+  appName?: string;
   requestId: ApprovalRequestId;
   requestKind: "command" | "file-read" | "file-change" | "mcp-elicitation" | "other";
   options?: ReadonlyArray<{ decision: ProviderApprovalDecision; label: string; warning?: string }>;
@@ -235,6 +236,7 @@ export function derivePendingApprovals(
       openByRequestId.set(requestId, {
         requestId,
         requestKind: requestKind ?? "other",
+        ...(typeof payload?.appName === "string" ? { appName: payload.appName } : {}),
         ...(options ? { options } : {}),
         createdAt: activity.createdAt,
         ...(detail ? { detail } : {}),

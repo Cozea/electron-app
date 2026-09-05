@@ -84,3 +84,15 @@ it("does not send incomplete answers", async () => {
   );
   expect(dispatch).not.toHaveBeenCalled();
 });
+it("persists and submits native multi-select arrays without trimming option identities", async () => {
+  const multiRequest = { ...request, questions: [{ ...request.questions[0]!, multiSelect: true, options: [
+    { label: "Same", description: "", value: " first\t" },
+    { label: "Same", description: "", value: "second" },
+  ] }] };
+  store.getState().setAnswer(key, "scope", [" first\t", "second"]);
+  store.setState({ drafts: {} });
+  reloadQuestionDrafts();
+  const dispatch = vi.fn(async () => undefined);
+  await submitQuestionOnce("thread", multiRequest, dispatch);
+  expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ answers: { scope: [" first\t", "second"] } }));
+});

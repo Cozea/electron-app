@@ -14,17 +14,14 @@ import {
 import {
   buildRevertTurnCountByUserMessageId,
   buildTurnDiffSummaryByAssistantMessageId,
-  deriveCompletionDividerBeforeEntryId,
-  deriveCompletionSummariesByMessageId,
 } from "@/features/assistant/chat/threadTimelineDerivations"
 import { deriveWorkLogEntries } from "@/features/assistant/chat/workLogDerivations"
 import {
   deriveActiveWorkStartedAt,
-  formatElapsed,
-  hasToolActivityForTurn,
 } from "@/features/assistant/chat/session-logic"
 import { deriveGenerationStatusPhase } from "@/features/assistant/chat/MessagesTimeline.logic"
 import type { Thread } from "@/features/assistant/model/types"
+import { useStableChatMap } from "./useChatRenderStability"
 
 interface UseAssistantThreadViewModelInput {
   thread: Thread | null
@@ -51,10 +48,6 @@ export function useAssistantThreadViewModel({
   const latestTurnSettled = isLatestTurnSettled(activeTurn, thread?.session ?? null)
   const phase = thread ? derivePhase(thread.session ?? null) : "disconnected"
   const isWorking = isRunning || isSending || isInterrupting || Boolean(isRevertingCheckpoint)
-  // The merged live-running signal spans message checkpoints and provider
-  // generations. Once it is idle, historical timeline boundaries can safely
-  // produce one completion fold even if latestTurn/session projection lags.
-  const completionTurnSettled = !isWorking
   const threadActivities = thread?.activities ?? []
   const generationStatusPhase = useMemo(
     () =>
@@ -67,10 +60,6 @@ export function useAssistantThreadViewModel({
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, undefined),
     [threadActivities],
-  )
-  const latestTurnHasToolActivity = useMemo(
-    () => hasToolActivityForTurn(threadActivities, activeTurn?.turnId),
-    [activeTurn?.turnId, threadActivities],
   )
   const activeWorkStartedAt = useMemo(
     () =>
@@ -96,7 +85,7 @@ export function useAssistantThreadViewModel({
     () => buildTurnDiffSummaryByAssistantMessageId(thread?.turnDiffSummaries ?? []),
     [thread?.turnDiffSummaries],
   )
-  const revertTurnCountByUserMessageId = useMemo(
+  const revertTurnCountByUserMessageId = useStableChatMap(useMemo(
     () =>
       buildRevertTurnCountByUserMessageId({
         timelineEntries,
@@ -104,57 +93,7 @@ export function useAssistantThreadViewModel({
         inferredCheckpointTurnCountByTurnId,
       }),
     [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId],
-  )
-  const completionSummary = useMemo(() => {
-    if (!completionTurnSettled) return null
-    if (!latestTurnHasToolActivity) return null
-    if (!activeTurn?.startedAt || !activeTurn.completedAt) return null
-
-    const elapsed = formatElapsed(activeTurn.startedAt, activeTurn.completedAt)
-    if (!elapsed) return null
-    if (activeTurn?.state === "interrupted") {
-      return `Stopped after ${elapsed}`
-    }
-    if (activeTurn?.state === "error") {
-      return `Failed after ${elapsed}`
-    }
-    return `Worked for ${elapsed}`
-  }, [
-    activeTurn?.completedAt,
-    activeTurn?.startedAt,
-    activeTurn?.state,
-    latestTurnHasToolActivity,
-    completionTurnSettled,
-  ])
-  const completionSummariesByMessageId = useMemo(
-    () =>
-      deriveCompletionSummariesByMessageId({
-        messages: thread?.messages ?? [],
-        activities: threadActivities,
-        activeTurn,
-        latestTurnSettled: completionTurnSettled,
-      }),
-    [activeTurn, completionTurnSettled, thread?.messages, threadActivities],
-  )
-  const completionDividerBeforeEntryId = useMemo(
-    () =>
-      deriveCompletionDividerBeforeEntryId({
-        latestTurnSettled: completionTurnSettled,
-        activeTurnStartedAt: activeTurn?.startedAt ?? null,
-        activeTurnCompletedAt: activeTurn?.completedAt ?? null,
-        assistantMessageId: activeTurn?.assistantMessageId ?? null,
-        completionSummary,
-        timelineEntries,
-      }),
-    [
-      activeTurn?.assistantMessageId,
-      activeTurn?.completedAt,
-      activeTurn?.startedAt,
-      completionSummary,
-      completionTurnSettled,
-      timelineEntries,
-    ],
-  )
+  ))
   const activeProposedPlan = useMemo(
     () => findLatestProposedPlan(thread?.proposedPlans ?? [], activeTurn?.turnId ?? null),
     [activeTurn?.turnId, thread?.proposedPlans],
@@ -171,7 +110,6 @@ export function useAssistantThreadViewModel({
     phase,
     isWorking,
     activeWorkStartedAt,
-    activeWorkCompletedAt: completionSummary ? (activeTurn?.completedAt ?? null) : null,
     // A newly submitted turn starts before the shell projection replaces the
     // previous settled latestTurn. Treat every explicit busy state as active
     // so the timeline shows feedback immediately instead of waiting for that
@@ -179,9 +117,6 @@ export function useAssistantThreadViewModel({
     isWorkActive: isWorking,
     generationStatusPhase,
     timelineEntries,
-    completionDividerBeforeEntryId,
-    completionSummary,
-    completionSummariesByMessageId,
     turnDiffSummaryByAssistantMessageId,
     revertTurnCountByUserMessageId,
     activeProposedPlan,
