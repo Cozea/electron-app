@@ -57,7 +57,6 @@ const LazyPresenceAvatarGroup = lazy(() =>
   })),
 );
 
-
 function SidebarModeFallback() {
   // Content-only: the persistent AppSidebarShell already paints the surface.
   return <div className="min-h-0 flex-1" />;
@@ -248,8 +247,6 @@ function ProjectPresenceHeaderAddon({
   );
 }
 
-
-
 export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
@@ -335,8 +332,13 @@ export function ProjectLayout({
         ? buildLegacyProjectPath(projectSlug)
         : null;
 
+  // Local workspace identity is safe to resolve from the stable route project
+  // id before Convex has returned the project entity. This lets a returning
+  // user reconnect to their local workbench while offline. Cloud authority is
+  // still gated below on the authoritative `project?._id` value.
+  const workspaceProjectId = project?._id ? String(project._id) : routeProjectId ?? null;
   const { result: rawWorkspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
-    featureFlags.localWorkspaceCatalog && project?._id ? String(project._id) : null,
+    featureFlags.localWorkspaceCatalog ? workspaceProjectId : null,
     projectSlug,
     null,
     trustedNavigationState?.preferredWorkspaceId ?? null,
@@ -344,9 +346,9 @@ export function ProjectLayout({
   );
   // Never act on a resolution for a different project. A stale window here
   // once created workbenches for project B keyed with project A's workspace
-  // id; the hook is now render-time key-scoped, this is cheap insurance.
+  // id; the hook is render-time key-scoped, this is cheap insurance.
   const workspaceResolution =
-    rawWorkspaceResolution && project?._id && rawWorkspaceResolution.projectId !== String(project._id)
+    rawWorkspaceResolution && workspaceProjectId && rawWorkspaceResolution.projectId !== workspaceProjectId
       ? null
       : rawWorkspaceResolution;
 
@@ -380,7 +382,7 @@ export function ProjectLayout({
     () => resolveProjectSharedBranch(project),
     [project],
   );
-  const routeProjectIdentity = project?._id ? String(project._id) : routeProjectId ?? null;
+  const routeProjectIdentity = workspaceProjectId;
   const {
     laneState,
     activeLane,
@@ -393,7 +395,7 @@ export function ProjectLayout({
   });
   const activeBranch = activeLane?.branch ?? collabBranch;
   const collaborationEnabled =
-    shouldEnableProjectRuntime && Boolean(runtimeWorkspaceId) && activeBranch === collabBranch;
+    shouldEnableProjectRuntime && Boolean(runtimeWorkspaceId) && Boolean(project?._id) && activeBranch === collabBranch;
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;
@@ -502,16 +504,16 @@ export function ProjectLayout({
 
   const handleRepairAction = useCallback(
     async (action: WorkspaceResolutionAction) => {
-      if (!project?._id) return;
-      const projectId = String(project._id);
-      const slug = project.slug ?? routeSlug ?? projectId;
+      if (!workspaceProjectId) return;
+      const projectId = workspaceProjectId;
+      const slug = project?.slug ?? routeSlug ?? projectId;
       const repoUrl =
-        (project as { repoSource?: { repoUrl?: string | null } | null }).repoSource?.repoUrl ??
-        (project as { sourceControl?: { repoUrl?: string | null } | null }).sourceControl?.repoUrl ??
+        (project as { repoSource?: { repoUrl?: string | null } | null } | null | undefined)?.repoSource?.repoUrl ??
+        (project as { sourceControl?: { repoUrl?: string | null } | null } | null | undefined)?.sourceControl?.repoUrl ??
         null;
       const branch =
-        (project as { repoSource?: { branch?: string | null } | null }).repoSource?.branch ??
-        (project as { sourceControl?: { defaultBranch?: string | null } | null }).sourceControl?.defaultBranch ??
+        (project as { repoSource?: { branch?: string | null } | null } | null | undefined)?.repoSource?.branch ??
+        (project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ??
         undefined;
 
       try {
@@ -606,7 +608,7 @@ export function ProjectLayout({
         });
       }
     },
-    [project, refreshWorkspace, routeSlug, t],
+    [project, refreshWorkspace, routeSlug, t, workspaceProjectId],
   );
 
   const layoutContent = (
@@ -639,25 +641,37 @@ export function ProjectLayout({
                 className={cn(
                   // `min-w-0` prevents the main content from overflowing under the right panels
                   // when it contains wide children (iframes, editors, etc.).
-                  "flex flex-1 flex-col min-h-0 min-w-0",
+                  "relative flex flex-1 flex-col min-h-0 min-w-0",
                   shouldRemovePadding ? "p-0" : "p-4",
                   shouldRemovePadding
                     ? "overflow-hidden"
                     : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
-                {featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-                  </div>
-                ) : featureFlags.localWorkspaceCatalog && project?._id && workspaceResolution?.status !== "ready" ? (
+                {featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
                   <WorkspaceRepairScreen
-                    result={workspaceResolution!}
-                    project={{ _id: String(project._id), slug: project.slug, name: project.name }}
+                    result={workspaceResolution}
+                    project={{
+                      _id: workspaceProjectId,
+                      slug: projectSlug,
+                      name: effectiveProjectName,
+                    }}
                     onAction={handleRepairAction}
                   />
                 ) : (
-                  children || <Outlet />
+                  <>
+                    {children || <Outlet />}
+                    {featureFlags.localWorkspaceCatalog && workspaceProjectId && !workspaceResolution ? (
+                      <div
+                        className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
+                        role="status"
+                        aria-live="polite"
+                        data-workspace-resolution="refreshing"
+                      >
+                        Reconnecting workspace…
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
               <TerminalEventBridge />
@@ -714,19 +728,19 @@ export function ProjectLayout({
   // element type at this slot, which remounted the entire shell (sidebar,
   // header, workbench keep-alive host) on every cold switch.
   const activeWorkspaceValue = useMemo(() => {
-    if (!project?._id || workspaceResolution?.status !== "ready") {
+    if (!routeProjectIdentity || workspaceResolution?.status !== "ready") {
       return null;
     }
     return {
-      projectId: String(project._id),
-      projectSlug: project.slug,
+      projectId: routeProjectIdentity,
+      projectSlug: project?.slug ?? routeSlug ?? routeProjectIdentity,
       projectName: effectiveProjectName,
       workspace: workspaceResolution.workspace,
       lane: workspaceResolution.lane,
       runtime: workspaceResolution.runtimeIdentity,
       collaborationScopeId: workspaceResolution.collaborationScopeId,
     };
-  }, [effectiveProjectName, project?._id, project?.slug, workspaceResolution]);
+  }, [effectiveProjectName, project?.slug, routeProjectIdentity, routeSlug, workspaceResolution]);
 
   // Only block on project loading when we're actually on a project-specific
   // route. Routes like /projects/ (launch page) have no routeProjectId or

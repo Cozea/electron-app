@@ -10,6 +10,7 @@ import type {
   TerminalOutputEvent,
   TerminalSnapshot,
 } from '../../../../shared/electronApiTypes'
+import { shouldPreserveWindowlessRuntime } from '../appLifecycleState'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 import { TerminalProvenanceService } from './TerminalProvenanceService'
 import type {
@@ -651,6 +652,10 @@ export class TerminalService {
   }
 
   killAll(): void {
+    if (shouldPreserveWindowlessRuntime()) {
+      return
+    }
+
     void this.runtimeClient.request<{ success: boolean }>('terminal.killAll', {}).catch(() => {})
     // Clear every per-terminal cache, not just the two that were cleared
     // before — snapshots/infos/output buffers/workspace ids/observers all

@@ -25,6 +25,7 @@ import { resolveDroppedLocalFolderPath } from "@/lib/resolveDroppedLocalFolderPa
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
+import { featureFlags } from "@/lib/featureFlags"
 
 export function ProjectsLaunchPage() {
   const { convexUserId, user } = useAuth()
@@ -34,23 +35,28 @@ export function ProjectsLaunchPage() {
   const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
   const [isSelectingFolder, setIsSelectingFolder] = useState(false)
-  const lastWorkbenchRoute =
+  const legacyLastWorkbenchRoute =
     ignoredWorkspaceSelectionId === workspaceSelectionId
       ? null
       : readLastWorkbenchRoute(workspaceSelectionId)
 
+  // Desktop-bootstrap builds restore the previous workbench before React mounts,
+  // so /projects must be a real stable destination if authoritative validation
+  // redirects here. Keep the old server-validated restore path only as the
+  // rollback behavior when the new bootstrap flag is explicitly disabled.
+  const shouldUseLegacyRestore = !featureFlags.desktopBootstrap && Boolean(legacyLastWorkbenchRoute)
   const restoredProject = useQuery(
     api.projects.getAccessibleById,
-    lastWorkbenchRoute?.projectId && convexUserId
+    shouldUseLegacyRestore && legacyLastWorkbenchRoute?.projectId && convexUserId
       ? {
-          projectId: lastWorkbenchRoute.projectId as Id<"projects">,
+          projectId: legacyLastWorkbenchRoute.projectId as Id<"projects">,
         }
       : "skip",
   )
 
   const projectsPage = useQuery(
     api.projects.listPageForCurrentUser,
-    !lastWorkbenchRoute && convexUserId
+    !shouldUseLegacyRestore && convexUserId
       ? {
           userId: convexUserId,
           statusFilter: "all",
@@ -62,16 +68,12 @@ export function ProjectsLaunchPage() {
   )
 
   useEffect(() => {
-    if (!workspaceSelectionId || !lastWorkbenchRoute) {
-      return
-    }
-    if (restoredProject !== null) {
-      return
-    }
+    if (!shouldUseLegacyRestore || !legacyLastWorkbenchRoute) return
+    if (restoredProject !== null) return
 
     clearLastWorkbenchRoute(workspaceSelectionId)
     setIgnoredWorkspaceSelectionId(workspaceSelectionId)
-  }, [lastWorkbenchRoute, restoredProject, workspaceSelectionId])
+  }, [legacyLastWorkbenchRoute, restoredProject, shouldUseLegacyRestore, workspaceSelectionId])
 
   const showDropError = useCallback(async (detail: string) => {
     await window.electronAPI.dialog.showMessageBox({
@@ -163,21 +165,18 @@ export function ProjectsLaunchPage() {
     [isSelectingFolder, openCreateProjectDialog, showDropError],
   )
 
-  if (lastWorkbenchRoute) {
-    if (restoredProject) {
-      return (
-        <Navigate
-          to={buildWorkbenchHref(lastWorkbenchRoute.projectId, lastWorkbenchRoute.laneId, {
-            focusTileId: lastWorkbenchRoute.focusTileId,
-          })}
-          replace
-        />
-      )
-    }
+  if (shouldUseLegacyRestore && legacyLastWorkbenchRoute && restoredProject) {
+    return (
+      <Navigate
+        to={buildWorkbenchHref(legacyLastWorkbenchRoute.projectId, legacyLastWorkbenchRoute.laneId, {
+          focusTileId: legacyLastWorkbenchRoute.focusTileId,
+        })}
+        replace
+      />
+    )
   }
 
   const fallbackProject = projectsPage?.items?.[0] ?? null
-
   const hasProjects = Boolean(fallbackProject?._id)
 
   return (

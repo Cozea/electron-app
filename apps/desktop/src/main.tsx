@@ -17,7 +17,12 @@ import { applyStoredLanguage } from './lib/i18n'
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
-import { ElectronBrowserHost } from './features/browser/ElectronBrowserHost'
+import { ElectronBrowserHostGate } from './features/browser/ElectronBrowserHostGate'
+import {
+  applyDesktopBootstrapRoute,
+  initializeDesktopBootstrap,
+} from './app/bootstrap/desktopBootstrap'
+import { featureFlags } from './lib/featureFlags'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -46,34 +51,60 @@ function applyBootstrapRouteFromSearch(): void {
 ;(globalThis as { __COZEA_OFFSCREEN_SCREENSHOT_FLAG__?: string }).__COZEA_OFFSCREEN_SCREENSHOT_FLAG__ =
   import.meta.env.VITE_FF_OFFSCREEN_SCREENSHOT
 
-initJankDiagnostics()
-applyBootstrapRouteFromSearch()
+async function startRenderer(): Promise<void> {
+  initJankDiagnostics()
+  applyBootstrapRouteFromSearch()
 
-const platform = window.electronAPI?.platform
-if (platform) {
-  document.documentElement.dataset.platform = platform
-  document.documentElement.classList.add(`platform-${platform}`)
+  const bootstrapStartMark = markCozeaPerformance('renderer:desktop-bootstrap-start')
+  const bootstrap = await initializeDesktopBootstrap()
+  const bootstrapEndMark = markCozeaPerformance('renderer:desktop-bootstrap-ready')
+  measureCozeaPerformance('renderer:desktop-bootstrap', bootstrapStartMark, bootstrapEndMark)
+  applyDesktopBootstrapRoute(bootstrap)
+
+  if (
+    featureFlags.commonRoutePrewarm &&
+    window.location.pathname.endsWith('/workbench')
+  ) {
+    const workbenchWarmStart = markCozeaPerformance('renderer:workbench-code-prewarm-start')
+    await import('./features/projects/pages/ProjectWorkbenchPage')
+    const workbenchWarmEnd = markCozeaPerformance('renderer:workbench-code-prewarm-end')
+    measureCozeaPerformance('renderer:workbench-code-prewarm', workbenchWarmStart, workbenchWarmEnd)
+  }
+
+  const platform = window.electronAPI?.platform
+  if (platform) {
+    document.documentElement.dataset.platform = platform
+    document.documentElement.classList.add(`platform-${platform}`)
+  }
+
+  applyThemeClass(getStoredThemePreference())
+  applyStoredLanguage()
+
+  const rootRenderStartMark = markCozeaPerformance('renderer:root-render-start')
+  createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <ConvexProvider>
+        <ToastProvider>
+          <RouterProvider router={appRouter} />
+          <ElectronBrowserHostGate />
+        </ToastProvider>
+      </ConvexProvider>
+    </React.StrictMode>,
+  )
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      const firstFrameMark = markCozeaPerformance('renderer:first-frame')
+      measureCozeaPerformance('renderer:entry-to-root-render-start', rendererEntryMark, rootRenderStartMark)
+      measureCozeaPerformance('renderer:entry-to-first-frame', rendererEntryMark, firstFrameMark)
+    })
+  })
 }
 
-applyThemeClass(getStoredThemePreference())
-applyStoredLanguage()
-
-const rootRenderStartMark = markCozeaPerformance('renderer:root-render-start')
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ConvexProvider>
-      <ToastProvider>
-        <RouterProvider router={appRouter} />
-        <ElectronBrowserHost />
-      </ToastProvider>
-    </ConvexProvider>
-  </React.StrictMode>,
-)
-
-window.requestAnimationFrame(() => {
-  window.requestAnimationFrame(() => {
-    const firstFrameMark = markCozeaPerformance('renderer:first-frame')
-    measureCozeaPerformance('renderer:entry-to-root-render-start', rendererEntryMark, rootRenderStartMark)
-    measureCozeaPerformance('renderer:entry-to-first-frame', rendererEntryMark, firstFrameMark)
-  })
+void startRenderer().catch((error) => {
+  console.error('[Renderer] Failed to initialize the desktop bootstrap.', error)
+  const root = document.getElementById('root')
+  if (root) {
+    root.textContent = 'Cozea could not initialize its local desktop state. Restart the application to retry.'
+  }
 })

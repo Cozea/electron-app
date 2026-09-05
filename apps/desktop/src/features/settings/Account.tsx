@@ -200,7 +200,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                           await revokeCurrentDevice({ reason: "local_identity_reset" });
                           const result = await window.electronAPI.collab.deleteDeviceIdentity();
                           if (!result.success) throw new Error(result.error || "Could not delete the local device identity");
-                          clearDeviceSession();
+                          await clearDeviceSession();
                           window.location.reload();
                         } finally {
                           setResetting(false);
