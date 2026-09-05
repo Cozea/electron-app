@@ -181,6 +181,26 @@ export class SessionWorkspaceCoordinator {
     return Boolean(stat?.isFile() && !stat.isSymbolicLink())
   }
 
+  async externalChanges(sessionId: string): Promise<import("../../../../shared/collaborationRuntime").ExternalWorkspaceChanges> {
+    const workspace = await this.workspaceForSession(sessionId)
+    const raw = await this.git(workspace.projectRootPath, ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--renames"])
+    const fields = raw.split("\0"), paths: string[] = [], renames: Array<{ from: string; to: string; score: number }> = []
+    for (let index = 0; index < fields.length; index++) {
+      const row = fields[index]!
+      if (row.startsWith("? ")) paths.push(row.slice(2))
+      else if (row.startsWith("1 ")) paths.push(row.split(" ").slice(8).join(" "))
+      else if (row.startsWith("2 ")) {
+        const parts = row.split(" "), target = parts.slice(9).join(" "), source = fields[++index]
+        if (!source) throw new Error("Incomplete Git rename status; local files retained")
+        paths.push(source, target)
+        if (parts[8]?.startsWith("R")) renames.push({ from: source, to: target, score: Number(parts[8].slice(1)) })
+      } else if (row.startsWith("u ")) throw new Error("Resolve Git index conflicts before synchronizing external files")
+    }
+    if (paths.length > MAX_FILES) throw new Error("Too many external changes; local files retained")
+    for (const relative of paths) assertCollaborationPath(relative)
+    return { paths: [...new Set(paths)], renames }
+  }
+
   async changedPaths(sessionId: string): Promise<string[]> {
     const workspace = await this.workspaceForSession(sessionId)
     const tracked = await this.git(workspace.projectRootPath, ["diff", "--name-only", "-z", "HEAD", "--"])
@@ -366,6 +386,14 @@ export class SessionWorkspaceCoordinator {
       await this.deps.setActive(source.workspaceId, binding.projectId)
       return next
     })
+  }
+
+  async restoreSourceFocus(sessionId: string): Promise<void> {
+    const binding = await this.getBinding(sessionId)
+    if (!binding) throw new Error("No local session workspace exists")
+    const source = await this.deps.getWorkspace(binding.sourceWorkspaceId)
+    if (!source || source.projectId !== binding.projectId) throw new Error("Original workspace is unavailable; session files were retained")
+    await this.deps.setActive(source.workspaceId, binding.projectId)
   }
 
   async suspendActions(sessionId: string): Promise<string> {

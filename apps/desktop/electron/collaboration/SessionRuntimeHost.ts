@@ -1,6 +1,7 @@
 import path from "node:path"
 import { inventoryRecoveryStorage } from "./RecoveryStorageBudget"
 import { compactVerifiedRecoveryStore } from "./RecoveryStorageCleanup"
+import { compactQuiescentInitializationBases } from "./InitializationBasisCleanup"
 import { COLLABORATION_RECOVERY_LIMIT_BYTES, COLLABORATION_ROOM_RECOVERY_LIMIT_BYTES, type CollaborationRecoveryInventory, type CollaborationRecoveryCleanupResult } from "../../../../shared/collaborationRecovery"
 import type { CollaborationBinarySelection } from "../../../../shared/collaborationCommitReview"
 import { safeStorage } from "electron"
@@ -46,7 +47,7 @@ export class SessionRuntimeHost {
   constructor(coordinator: SessionWorkspaceCoordinator, root: string, changed: (sessionId: string) => void, stopWorkspaceActions: (workspaceId: string) => Promise<void>) {
     this.coordinator = coordinator; this.root = root; this.changed = changed
     this.stopWorkspaceActions = stopWorkspaceActions
-    this.keys = new SessionKeyManager(this.gateway, new SessionKeyCache(path.join(root, "device-keys"), safeStorage))
+    this.keys = new SessionKeyManager(this.gateway, new SessionKeyCache(path.join(root, "device-keys"), safeStorage, root))
   }
   control<T>(operation: string, args: Record<string, unknown>): Promise<T> { return this.gateway.post("/collab/v2/control", { operation, args }) }
   setup(organizationId: string): ReturnType<CollaborationRuntimeAPI["setup"]> { return this.gateway.post("/collab/github/setup", { organizationId }) }
@@ -117,6 +118,7 @@ export class SessionRuntimeHost {
       readBaseFile: relative => this.coordinator.readBaseFile(sessionId, relative),
       shouldTrackExternal: relative => this.coordinator.shouldTrackExternal(sessionId, relative),
       changedPaths: () => this.coordinator.changedPaths(sessionId),
+      externalChanges: () => this.coordinator.externalChanges(sessionId),
       beforeReplay: async (acknowledgedUpdate, canonicalState) => {
         const previous = []
         for (const version of await this.keys.versions(sessionId)) {
@@ -141,7 +143,7 @@ export class SessionRuntimeHost {
         })
         void hosted.publication.catch(error => runtime.reportRecoveryError(error))
       },
-      onAuthorityFailure: () => { void this.leave(sessionId, false).catch(() => this.changed(sessionId)) },
+      onAuthorityFailure: () => { void this.suspendLocal(sessionId).catch(error => runtime.reportRecoveryError(error)) },
       onRecoveryRequired: () => { const hosted = this.sessions.get(sessionId); if (hosted) hosted.recoveryRequired = true },
     })
     const hosted: HostedSession = { runtime, projectId: binding.projectId, unsubscribe: runtime.subscribe(() => this.changed(sessionId)),
@@ -193,7 +195,7 @@ export class SessionRuntimeHost {
     this.sessions.set(sessionId, hosted)
     try {
       const ready = await runtime.start()
-      if (!ready) { await this.leave(sessionId, false); return false }
+      if (!ready) { await this.suspendLocal(sessionId); return false }
       await runtime.readyForWorkspace()
       if (offline) await this.coordinator.resumeOffline(sessionId, sourceWorkspaceId, true)
       else {
@@ -204,7 +206,7 @@ export class SessionRuntimeHost {
       await activateNativeWorkspaceRoot(workspace.projectRootPath)
       hosted.ready = true
       return true
-    } catch (error) { await this.leave(sessionId, false); throw error }
+    } catch (error) { await this.suspendLocal(sessionId); throw error }
   }
 
   private async restartSession(sessionId: string, sourceWorkspaceId: string): Promise<void> {
@@ -213,6 +215,8 @@ export class SessionRuntimeHost {
     hosted.ready = false
     clearInterval(hosted.timer)
     await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
+    await hosted.maintenance?.catch(() => {})
+    await hosted.publication.catch(() => {})
     await hosted.runtime.stop()
     hosted.unsubscribe(); this.sessions.delete(sessionId)
     this.changed(sessionId)
@@ -264,6 +268,28 @@ export class SessionRuntimeHost {
     this.changed(sessionId)
   }
 
+  private readonly suspending = new Map<string, Promise<void>>()
+  private suspendLocal(sessionId: string): Promise<void> {
+    const previous = this.suspending.get(sessionId)
+    if (previous) return previous
+    const operation = (async () => {
+      const hosted = this.sessions.get(sessionId)
+      if (hosted) { hosted.ready = false; clearInterval(hosted.timer) }
+      await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
+      if (hosted) {
+        await hosted.maintenance?.catch(() => {})
+        await hosted.publication.catch(() => {})
+        await hosted.runtime.stop()
+        hosted.unsubscribe()
+        if (this.sessions.get(sessionId) === hosted) this.sessions.delete(sessionId)
+      }
+      await this.coordinator.restoreSourceFocus(sessionId)
+      this.changed(sessionId)
+    })().finally(() => this.suspending.delete(sessionId))
+    this.suspending.set(sessionId, operation)
+    return operation
+  }
+
   async leave(sessionId: string, end: boolean): Promise<void> {
     if (end) await this.control("closeSession", { sessionId })
     const hosted = this.sessions.get(sessionId)
@@ -273,6 +299,8 @@ export class SessionRuntimeHost {
     catch (error) { hosted?.runtime.reportRecoveryError(error); throw error }
     if (hosted) {
       clearInterval(hosted.timer)
+      await hosted.maintenance?.catch(() => {})
+      await hosted.publication.catch(() => {})
       await hosted.runtime.stop()
       hosted.unsubscribe(); this.sessions.delete(sessionId)
     }
@@ -285,7 +313,15 @@ export class SessionRuntimeHost {
     return { ...await inventoryRecoveryStorage(this.root), limitBytes: COLLABORATION_RECOVERY_LIMIT_BYTES, roomLimitBytes: COLLABORATION_ROOM_RECOVERY_LIMIT_BYTES }
   }
 
-  async cleanupRecovery(sessionId: string): Promise<CollaborationRecoveryCleanupResult> {
+  cleanupRecovery(sessionId: string): Promise<CollaborationRecoveryCleanupResult> {
+    if (this.shuttingDown) return Promise.reject(new Error("Session recovery is being saved before quit"))
+    // A queued Start cannot persist a new basis between inventory and deletion.
+    const operation = this.openTail.catch(() => {}).then(() => this.compactRecovery(sessionId))
+    this.openTail = operation
+    return operation
+  }
+
+  private async compactRecovery(sessionId: string): Promise<CollaborationRecoveryCleanupResult> {
     const binding = await this.coordinator.getBinding(sessionId)
     if (!binding || binding.generation !== 3) throw new Error("Catalog-owned session recovery is unavailable")
     const policy = await this.coordinator.bindingForWorkspace(binding.workspaceId)
@@ -293,11 +329,23 @@ export class SessionRuntimeHost {
     const versions = await this.keys.versions(sessionId)
     if (versions.length > 64) throw new Error("Recovery cleanup exceeds its bounded key inventory; all data was retained")
     const result = { files: 0, bytes: 0 }
+    const keys = []
     for (const version of versions) {
       const key = await this.keys.recoverKey(binding.projectId, sessionId, version)
       if (!key) continue
+      keys.push(key)
       const cleaned = await compactVerifiedRecoveryStore({ root: this.root, roomId: key.session.roomId, projectId: binding.projectId, sessionId, keyVersion: key.keyVersion, roomKeyBase64: key.roomKeyBase64 })
       result.files += cleaned.files; result.bytes += cleaned.bytes
+    }
+    // Failed owners remain in sessions until fully stopped, so they also pin bases.
+    if (!this.sessions.has(sessionId) && keys.length === versions.length) {
+      const current = await this.keys.recoverKey(binding.projectId, sessionId)
+      if (current) {
+        const cleaned = await compactQuiescentInitializationBases({ root: this.root, projectId: binding.projectId, sessionId, current, keys })
+        result.files += cleaned.files; result.bytes += cleaned.bytes
+        const retired = await this.keys.retireUnusedVersions(sessionId, current.keyVersion, cleaned.unusedKeyVersions)
+        result.files += retired.files; result.bytes += retired.bytes
+      }
     }
     return result
   }
@@ -317,7 +365,8 @@ export class SessionRuntimeHost {
     const operation = (async () => {
       // A join already in flight must finish before taking the shutdown census.
       // No new open or maintenance-triggered restart may enter after this fence.
-      await Promise.allSettled([...this.opening.values()])
+      await this.openTail.catch(() => {})
+      await Promise.allSettled(this.opening.values())
       for (const hosted of this.sessions.values()) { hosted.ready = false; clearInterval(hosted.timer) }
       await Promise.allSettled([...this.sessions.values()].flatMap(hosted => hosted.maintenance ? [hosted.maintenance] : []))
       for (const [sessionId, hosted] of this.sessions) {

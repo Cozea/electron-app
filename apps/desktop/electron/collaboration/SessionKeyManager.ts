@@ -45,6 +45,9 @@ export class SessionKeyManager {
   }
 
   versions(sessionId: string): Promise<number[]> { return this.cache?.versions(sessionId) ?? Promise.resolve([]) }
+  retireUnusedVersions(sessionId: string, currentVersion: number, versions: number[]): Promise<{ files: number; bytes: number }> {
+    return this.cache?.retireUnusedVersions(sessionId, currentVersion, versions) ?? Promise.resolve({ files: 0, bytes: 0 })
+  }
   async recoverKey(projectId: string, sessionId: string, keyVersion?: number): Promise<{ roomKeyBase64: string; keyVersion: number; session: CollabSessionDescriptor } | null> {
     const identity = await ensureCollabDeviceIdentity()
     const value = await this.cache?.recover(projectId, sessionId, identity.deviceId, keyVersion)

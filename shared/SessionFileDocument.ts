@@ -19,6 +19,7 @@ export interface SharedSessionFile {
  */
 export class SessionFileDocument {
   readonly doc: Y.Doc
+  private readonly renameIntents: Y.Map<{ fileId: string; from: string; to: string }>
   private readonly paths: Y.Map<string>
   private readonly originalPaths: Y.Map<string>
   private readonly deleted: Y.Map<boolean>
@@ -29,6 +30,7 @@ export class SessionFileDocument {
     this.doc = doc ?? new Y.Doc({ guid: `cozea:g3:${sessionId}`, gc: false })
     this.doc.gc = false
     this.paths = this.doc.getMap("file-paths")
+    this.renameIntents = this.doc.getMap("file-rename-intents")
     this.originalPaths = this.doc.getMap("file-origins")
     this.deleted = this.doc.getMap("file-tombstones")
     this.executable = this.doc.getMap("file-modes")
@@ -74,7 +76,24 @@ export class SessionFileDocument {
     assertSharedFilePath(targetPath)
     const collision = this.files().find(file => !file.deleted && file.id !== id && sharedPathComparisonKey(file.path) === sharedPathComparisonKey(targetPath))
     if (collision) throw new Error("Rename would overwrite another shared file")
-    this.paths.set(id, targetPath)
+    const from = this.paths.get(id)!
+    this.doc.transact(() => {
+      for (const [key, intent] of this.renameIntents) if (intent.fileId === id) this.renameIntents.delete(key)
+      this.renameIntents.set(globalThis.crypto.randomUUID(), { fileId: id, from, to: targetPath })
+      this.paths.set(id, targetPath)
+    })
+  }
+
+  renameConflicts(): Array<{ fileId: string; paths: string[] }> {
+    const grouped = new Map<string, Set<string>>()
+    for (const intent of this.renameIntents.values()) {
+      if (!intent || typeof intent.fileId !== "string" || typeof intent.from !== "string" || typeof intent.to !== "string" || !this.paths.has(intent.fileId)) throw new Error("Invalid shared rename intent")
+      assertSharedFilePath(intent.from); assertSharedFilePath(intent.to)
+      const paths = grouped.get(intent.fileId) ?? new Set<string>()
+      paths.add(intent.to); grouped.set(intent.fileId, paths)
+      if (paths.size > 128) throw new Error("Too many competing shared rename targets; history retained")
+    }
+    return [...grouped].filter(([, paths]) => paths.size > 1).map(([fileId, paths]) => ({ fileId, paths: [...paths].sort() }))
   }
 
   deleteFile(id: string): void {
@@ -90,11 +109,12 @@ export class SessionFileDocument {
   restoreFile(id: string, targetPath?: string): void {
     const file = this.file(id)
     if (!file) throw new Error("Deleted shared file not found")
+    if (targetPath === undefined && this.renameConflicts().some(conflict => conflict.fileId === id)) throw new Error("Choose a path to restore competing shared renames")
     const target = targetPath ?? file.path
     const collision = this.resolvePath(target)
     if (collision && collision.id !== id) throw new Error("Choose a different path to recover this file")
     this.doc.transact(() => {
-      this.paths.set(id, assertSharedFilePath(target))
+      this.renameFile(id, target)
       this.deleted.set(id, false)
     }, "restore-file")
   }
@@ -146,6 +166,7 @@ export class SessionFileDocument {
   }
 
   snapshotChanges(): CollaborationTextChange[] {
+    if (this.renameConflicts().length) throw new Error("Resolve competing shared renames before committing or projecting files")
     if (this.pathConflicts().length) throw new Error("Resolve shared path collisions before committing or projecting files")
     const files = this.files()
     const changes = new Map<string, CollaborationTextChange>()

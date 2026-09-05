@@ -93,7 +93,7 @@ describe("Electron session runtime through an isolated encrypted room", () => {
       expect(committed.textChanges[0]?.content).toBe(alice.files.file(file.id)?.content)
       expect(committed.textChanges[0]?.content).toContain("base")
       expect(committed.sequence).toBe(3)
-      await eventually(async () => expect(await fs.readFile(path.join(root, "bob", "workspace", "a.ts"), "utf8")).toBe(alice.files.file(file.id)?.content))
+      await eventually(async () => expect(await fs.readFile(path.join(root, "bob", "workspace", "a.ts"), "utf8"), JSON.stringify(bob.snapshot())).toBe(alice.files.file(file.id)?.content))
       await fs.writeFile(path.join(root, "alice", "workspace", "agent.ts"), "export const fromAgent = true\n")
       await eventually(async () => expect(await fs.readFile(path.join(root, "bob", "workspace", "agent.ts"), "utf8")).toBe("export const fromAgent = true\n"))
       await fs.writeFile(path.join(root, "alice", "workspace", "image.bin"), Buffer.from([0, 255]))

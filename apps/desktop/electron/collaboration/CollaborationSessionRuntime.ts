@@ -34,6 +34,7 @@ interface SessionRuntimeOptions {
   projection?: { root: string; recoveryRoot: string }
   shouldTrackExternal?: (filePath: string) => Promise<boolean>
   changedPaths?: () => Promise<string[]>
+  externalChanges?: () => Promise<import("../../../../shared/collaborationRuntime").ExternalWorkspaceChanges>
   offline?: boolean
   beforeReplay?: (acknowledgedUpdate: Uint8Array, canonicalState: (sequence?: number) => Promise<Uint8Array>) => Promise<void>
 }
@@ -62,9 +63,12 @@ export class CollaborationSessionRuntime {
   private watcher: FSWatcher | null = null
   private projectionTimer: ReturnType<typeof setTimeout> | null = null
   private projectionPaused = false
+  private projectionDirty = false
+  private renameConflictPaused = false
   private externalQueue: Promise<void> = Promise.resolve()
   private readonly gitOnlyPaths = new Set<string>()
   private observingExternal = false
+  private readonly externalHints = new Set<string>()
   private readonly externalTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(options: SessionRuntimeOptions) {
@@ -80,11 +84,26 @@ export class CollaborationSessionRuntime {
     return () => this.listeners.delete(listener)
   }
 
-  snapshot(): SessionRuntimeSnapshot {
-    return { sessionId: this.options.sessionId, role: this.options.role, connection: this.connection, error: this.error, sequence: this.provider?.getKnownSeq() ?? 0,
-      files: this.files.files().map(({ content: _content, ...file }) => file), conflicts: this.files.pathConflicts(), gitOnlyPaths: [...this.gitOnlyPaths] }
+  private safeRenameConflicts(): Array<{ fileId: string; paths: string[] }> {
+    try { return this.files.renameConflicts() }
+    catch (error) {
+      this.projectionPaused = true
+      this.error = error instanceof Error ? error.message : "Invalid shared rename history; synchronization paused"
+      return []
+    }
   }
-  private readonly emit = (): void => { const snapshot = this.snapshot(); for (const listener of this.listeners) listener(snapshot) }
+
+  snapshot(): SessionRuntimeSnapshot {
+    const renameConflicts = this.safeRenameConflicts()
+    return { sessionId: this.options.sessionId, role: this.options.role, connection: this.connection, error: this.error, sequence: this.provider?.getKnownSeq() ?? 0,
+      files: this.files.files().map(({ content: _content, ...file }) => file), conflicts: this.files.pathConflicts(), renameConflicts, gitOnlyPaths: [...this.gitOnlyPaths] }
+  }
+  private readonly emit = (): void => {
+    if (this.renameConflictPaused) {
+      try { if (!this.files.renameConflicts().length) { this.renameConflictPaused = false; this.projectionPaused = false; this.error = null } }
+      catch { this.safeRenameConflicts() }
+    }
+    const snapshot = this.snapshot(); for (const listener of this.listeners) listener(snapshot) }
 
   async start(): Promise<boolean> {
     if (this.stopped || this.stopping) throw new Error("Session runtime has stopped")
@@ -111,7 +130,7 @@ export class CollaborationSessionRuntime {
             const records = await this.options.store.list(roomId, keyVersion)
             const excluded = new Set(this.recovery.entries.flatMap(entry => entry.sources.filter(source => source.keyVersion === keyVersion && !source.kind).map(source => source.id)))
             for (const record of records) if (record.migratedFrom?.keyVersion === keyVersion && !record.migratedFrom.kind) excluded.add(record.migratedFrom.id)
-            return records.filter(record => !excluded.has(record.id))
+            return records.filter(record => record.externalAdmission !== "held" && !excluded.has(record.id))
           },
         },
         refreshSession: this.options.refreshSession,
@@ -148,29 +167,25 @@ export class CollaborationSessionRuntime {
         this.projection = new SessionFileProjection({ ...this.options.projection, sessionId: this.options.sessionId,
           files: this.files, role: this.options.role, ...this.options.encryption, store: this.options.store,
           readBase: this.options.readBaseFile, persistEdits: () => this.provider!.flushLocalPersistence(),
+          applyExternal: (id, update, beforePath, file, beforeContent) => this.persistExternalOperation(id, update, beforePath, file, beforeContent),
+          retainConflict: (file, update, reason) => this.retainExternalConflict(file, update, reason),
+          retainRecovered: (file, projection) => this.retainProjectionVariant(file, projection),
+          markGitOnly: relative => this.gitOnlyPaths.add(relative),
         })
         const recoveryEntries = this.recovery.entries
-        if (recoveryEntries.length) await this.projection.prepareRecoveredFiles(new Set(recoveryEntries.flatMap(entry => entry.files.map(file => file.id))), async (file, projection) => {
-          await this.mutateRecovery(next => {
-          if (projection) for (const entry of next.entries) if (!entry.projection) entry.projection = projection
-          if (file && !next.entries.some(entry => entry.files.some(saved => saved.id === file.id && saved.content === file.content && saved.path === file.path && saved.executable === file.executable && saved.deleted === file.deleted))) {
-            const id = createHash("sha256").update(`disk\0${file.id}\0${file.path}\0${file.content}\0${file.executable}\0${file.deleted}`).digest("hex")
-            const sources = [...new Map(recoveryEntries.flatMap(entry => entry.sources).map(source => [recoverySourceId(source), source])).values()]
-            next.entries.push({ id, incomplete: false, sources, branch: Buffer.from(new Uint8Array([0, 0])).toString("base64"), files: [file], resolved: [], saves: {} })
-          }
-          })
-        }, relative => this.gitOnlyPaths.add(relative), recoveryEntries.flatMap(entry => entry.files))
+        if (recoveryEntries.length) await this.projection.prepareRecoveredFiles(new Set(recoveryEntries.flatMap(entry => entry.files.map(file => file.id))), (file, projection) => this.retainProjectionVariant(file, projection), relative => this.gitOnlyPaths.add(relative), recoveryEntries.flatMap(entry => entry.files))
         this.watcher = watch(this.options.projection.root, { recursive: true }, (_event, filename) => {
           if (this.stopping || this.stopped) return
           if (!filename) { this.scheduleProjection(); return }
           const relative = filename.toString().replaceAll("\\", "/")
           if (relative.split("/").includes(".git")) return
-          const timer = this.externalTimers.get(relative)
+          this.externalHints.add(relative)
+          if (this.projectionTimer) { clearTimeout(this.projectionTimer); this.projectionTimer = null }
+          const timer = this.externalTimers.get("workspace")
           if (timer) clearTimeout(timer)
-          this.externalTimers.set(relative, setTimeout(() => {
-            this.externalTimers.delete(relative)
-            this.externalQueue = this.externalQueue.catch(() => {}).then(() => this.observeExternalPath(relative))
-            void this.externalQueue.catch(error => { this.projectionPaused = true; this.error = error instanceof Error ? error.message : "External file synchronization paused"; this.emit() })
+          this.externalTimers.set("workspace", setTimeout(() => {
+            this.externalTimers.delete("workspace")
+            void this.projectFiles().catch(() => {})
           }, 80))
         })
         this.watcher.on("error", () => { this.projectionPaused = true; this.error = "Session file watcher stopped; local files are retained. Retry synchronization."; this.emit() })
@@ -187,6 +202,7 @@ export class CollaborationSessionRuntime {
   }
 
   private readonly scheduleProjection = (): void => {
+    if (this.observingExternal) { this.projectionDirty = true; return }
     if (!this.recovered || !this.projection || this.stopped || this.stopping || this.projectionPaused || this.projectionTimer || this.observingExternal || this.fileOperations.size) return
     this.projectionTimer = setTimeout(() => {
       this.projectionTimer = null
@@ -195,13 +211,87 @@ export class CollaborationSessionRuntime {
   }
 
   async projectFiles(): Promise<void> {
-    if (!this.recovered || this.stopped || this.stopping || this.observingExternal || this.fileOperations.size) return
-    try { await this.projection?.reconcile() }
-    catch (error) {
-      this.projectionPaused = true
-      this.error = error instanceof Error ? error.message : "Shared file projection paused"
-      this.emit(); throw error
+    if (!this.recovered || this.stopped || this.stopping || this.fileOperations.size) return
+    const operation = this.externalQueue.catch(() => {}).then(async () => {
+      if (this.stopped || this.stopping || !this.projection) return
+      this.observingExternal = true
+      this.projectionDirty = false
+      try {
+        await this.projection.flush()
+        const changes = await this.options.externalChanges?.() ?? { paths: await this.options.changedPaths?.() ?? [], renames: [] }
+        changes.paths = [...new Set([...changes.paths, ...this.externalHints])]
+        this.externalHints.clear()
+        const excluded = new Set(this.recovery.entries.flatMap(entry => entry.files.flatMap(file => [file.path, ...(file.originalPath ? [file.originalPath] : [])])).map(sharedPathComparisonKey))
+        const consumed = await this.projection.scanExternal(changes, excluded)
+        for (const relative of changes.paths) if (!consumed.has(relative)) await this.reconcileExternalPath(relative)
+        await this.projection.reconcile()
+      } catch (error) {
+        this.projectionPaused = true
+        this.renameConflictPaused = this.safeRenameConflicts().length > 0
+        this.error = error instanceof Error ? error.message : "Shared file projection paused"
+        this.emit(); throw error
+      } finally { this.observingExternal = false; if (this.externalHints.size || this.projectionDirty) this.scheduleProjection() }
+    })
+    this.externalQueue = operation
+    return operation
+  }
+
+  private async persistExternalOperation(id: string, update: Uint8Array, beforePath: string, nextFile: SharedSessionFile, beforeContent: string): Promise<boolean> {
+    const provider = this.assertEditor(), recordId = `external_${id}`
+    const canonical = new Y.Doc({ gc: false })
+    try {
+      Y.applyUpdate(canonical, provider.acknowledgedCheckpoint().update)
+      let missing = false
+      canonical.on("update", () => { missing = true })
+      Y.applyUpdate(canonical, update)
+      if (!missing) return true // Accepted operation survived a crash before its projection receipt.
+    } finally { canonical.destroy() }
+    const conflicted = () => {
+      const current = this.files.file(nextFile.id)
+      return !current || current.deleted || current.path !== beforePath && current.path !== nextFile.path || nextFile.deleted && current.content !== beforeContent
     }
+    if (conflicted()) {
+      await this.retainExternalConflict(nextFile, Buffer.from(update).toString("base64"), "Shared rename or deletion arrived during external rename preparation")
+      return false
+    }
+    const previous = (await this.options.store.list(this.options.session.roomId, this.options.encryption.keyVersion)).find(record => record.id === recordId || record.externalOperationId === recordId)
+    const admittedId = previous?.id ?? recordId
+    if (!previous) {
+      const envelope = await encryptPayload({ ...this.options.encryption, kind: "yjs_update", plaintext: update,
+        metadata: { roomId: this.options.session.roomId, projectId: this.options.session.projectId, sessionId: this.options.sessionId, idempotencyKey: recordId } })
+      this.assertEditor()
+      await this.options.store.enqueue({ id: recordId, externalAdmission: "held", externalOperationId: recordId, roomId: this.options.session.roomId, projectId: this.options.session.projectId, keyVersion: this.options.encryption.keyVersion, updateBinary: Buffer.from(envelopeToBytes(envelope)).toString("base64"), timestamp: Date.now() })
+    }
+    this.assertEditor()
+    if (conflicted()) {
+      await this.retainExternalConflict(nextFile, Buffer.from(update).toString("base64"), "Shared rename or deletion arrived during external rename persistence", [{ keyVersion: this.options.encryption.keyVersion, id: admittedId }])
+      return false
+    }
+    // The admitted metadata update is applied synchronously after the last
+    // authority/path check; its ciphertext is already durable in the outbox.
+    Y.applyUpdate(this.files.doc, update, "remote")
+    if (!previous || previous.externalAdmission) await this.options.store.admitExternal(admittedId)
+    await provider.resumeLocalRecovery()
+    return true
+  }
+
+  private async retainProjectionVariant(file: SharedSessionFile | null, projection: string | null): Promise<void> {
+    await this.mutateRecovery(next => {
+      if (projection) for (const entry of next.entries) if (!entry.projection) entry.projection = projection
+      if (file && !next.entries.some(entry => entry.files.some(saved => saved.id === file.id && saved.content === file.content && saved.path === file.path && saved.executable === file.executable && saved.deleted === file.deleted))) {
+        const id = createHash("sha256").update(`disk\0${file.id}\0${file.path}\0${file.content}\0${file.executable}\0${file.deleted}`).digest("hex")
+        const sources = [...new Map(next.entries.flatMap(entry => entry.sources).map(source => [recoverySourceId(source), source])).values()]
+        next.entries.push({ id, ...(sources.length ? {} : { kind: "external" as const }), incomplete: false, sources, branch: Buffer.from(new Uint8Array([0, 0])).toString("base64"), files: [file], resolved: [], saves: {} })
+      }
+    })
+  }
+
+  private async retainExternalConflict(file: SharedSessionFile, update: string, reason: string, sources: import("./SessionOfflineRecovery").RecoverySource[] = []): Promise<void> {
+    const id = createHash("sha256").update(`external\0${JSON.stringify(file)}\0${reason}`).digest("hex")
+    await this.mutateRecovery(journal => {
+      if (!journal.entries.some(entry => entry.id === id)) journal.entries.push({ id, kind: "external", reason, incomplete: false, sources, branch: update, files: [file], resolved: [], saves: {} })
+    })
+    this.emit()
   }
 
   async retryProjection(): Promise<void> { this.projectionPaused = false; this.error = null; await this.projectFiles(); this.emit() }
@@ -214,7 +304,7 @@ export class CollaborationSessionRuntime {
 
   recoveryEntries(): import("../../../../shared/collaborationRuntime").RecoveredOfflineEntry[] {
     return this.recovery.entries.filter(entry => entry.incomplete || entry.files.some(file => !entry.resolved.includes(file.id))).map(entry => ({
-      id: entry.id, incomplete: entry.incomplete, retainedRecords: entry.sources.length, unresolvedFiles: entry.files.filter(file => !entry.resolved.includes(file.id)).length,
+      id: entry.id, reason: entry.reason, incomplete: entry.incomplete, retainedRecords: entry.sources.length, unresolvedFiles: entry.files.filter(file => !entry.resolved.includes(file.id)).length,
     }))
   }
   private mutateRecovery(change: (journal: typeof this.recovery) => void, retire = false): Promise<void> {
@@ -310,8 +400,10 @@ export class CollaborationSessionRuntime {
     if (!file) throw new Error("Shared file not found")
     if (targetPath !== file.path && await this.options.readBaseFile(targetPath)) throw new Error("A Git file already occupies the target path")
     this.assertEditor() // Recheck after the asynchronous target-base lookup.
-    this.files.renameFile(id, targetPath)
-    await provider.flushLocalPersistence()
+    if (this.projection) await this.projection.renameFile(id, targetPath)
+    else { this.files.renameFile(id, targetPath); await provider.flushLocalPersistence() }
+    this.projectionPaused = false; this.error = null
+    this.emit(); this.scheduleProjection()
   }
 
   async deleteFile(id: string): Promise<void> { const provider = this.assertEditor(); this.files.deleteFile(id); await provider.flushLocalPersistence() }
@@ -370,25 +462,13 @@ export class CollaborationSessionRuntime {
     return initialized
   }
 
-  private async observeExternalPath(relative: string): Promise<void> {
-    this.observingExternal = true
-    try {
-      // A projection already queued before this watcher event must finish
-      // before a newly discovered file enters the CRDT. Otherwise that older
-      // projection can see the new file before its disk baseline is recorded.
-      await this.projection?.flush()
-      await this.reconcileExternalPath(relative)
-    }
-    finally { this.observingExternal = false; this.scheduleProjection() }
-  }
-
   private async reconcileExternalPath(relative: string): Promise<void> {
     if (this.stopped || this.stopping || this.projectionPaused || !this.projection) return
     assertSharedFilePath(relative)
     if (this.files.files().some(file => file.path === relative || file.originalPath === relative)) {
       try { await this.projection.readExternalText(relative) }
       catch { this.gitOnlyPaths.add(relative); throw new Error("A shared file now contains unsupported bytes; retain the local file and resolve it before committing") }
-      this.scheduleProjection(); return
+      return
     }
     // Recovery dispositions retain ownership of their original disk paths even
     // after explicit discard. A watcher must never publish them as new files.
@@ -413,7 +493,6 @@ export class CollaborationSessionRuntime {
       await this.provider!.flushLocalPersistence()
       await this.projection.trackCanonicalFile(file.id)
     }
-    this.scheduleProjection()
   }
 
   /** Editor bindings receive canonical CRDT bytes, never room keys or Git credentials. */
@@ -465,7 +544,6 @@ export class CollaborationSessionRuntime {
   async readyForWorkspace(): Promise<void> {
     if (!this.provider) throw new Error("Encrypted session is not initialized")
     if (!this.options.offline) await this.provider.waitForCatchUp()
-    for (const relative of await this.options.changedPaths?.() ?? []) await this.observeExternalPath(relative)
     await this.projectFiles()
   }
 

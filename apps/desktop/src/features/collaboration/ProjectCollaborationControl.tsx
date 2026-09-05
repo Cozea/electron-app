@@ -8,6 +8,7 @@ import { CollaborationBinaryPicker } from "./CollaborationBinaryPicker"
 import { CollaborationRecoveryPanel } from "./CollaborationRecoveryPanel"
 import { CollaborationCommitReview } from "./CollaborationCommitReview"
 import { CollaborationTargetBranch } from "./CollaborationTargetBranch"
+import { RetainedSessionWorkspaces } from "./RetainedSessionWorkspaces"
 import { endCollaborationForRestart, type CollaborationRestartSelection } from "@shared/collaborationTargetBranch"
 import type { CollaborationBinarySelection } from "@shared/collaborationCommitReview"
 import { sessionEditorBridge } from "./runtime/SessionEditorBridge"
@@ -136,6 +137,7 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
         <DialogHeader><DialogTitle>Code collaboration</DialogTitle><DialogDescription>Work together in an isolated GitHub session. Your ordinary workspace stays separate.</DialogDescription></DialogHeader>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <CollaborationRecoveryPanel sessionId={sessionId ?? retainedId} disabled={busy} />
+        <RetainedSessionWorkspaces projectId={projectId} activeSessionId={sessionId} disabled={busy} onResume={id => void run(() => join(id))} />
         {snapshot?.error && <p role="alert" className="text-sm text-destructive">{snapshot.error}</p>}
         {!sessionId && <div className="space-y-3">
           {restart && <p role="status" className="text-sm">The previous session has ended. Review the starting branch below, then start a new session. Start resolves its latest remote commit. Previous shared work remains in the retained workspace.</p>}

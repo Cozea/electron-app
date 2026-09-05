@@ -10,6 +10,12 @@ constraint. Its concrete object type now satisfies that constraint, and both the
 branch-validation and release workflows run the dedicated Convex typecheck.
 Generated API bindings were refreshed by the actual production deploy.
 
+The immutable target-branch baseline from `7e1e7137` subsequently deployed using
+`bunx convex deploy --typecheck enable`. Schema validation succeeded and no indexes
+were deleted. Its immutable CI run `33953619145` passed all branch-validation
+steps. Production creation remained disabled. Deployment log:
+`/tmp/cozea-convex-target-production-deploy.log`.
+
 The Worker compatibility deploy from `f2bea013` produced version
 `da53da1c-9411-4599-8e2e-a29c8b9b41c3`. Adding the webhook secret produced version
 `6fd3c21c-8122-4bb4-bea9-1a7f93f34e3f`. The webhook response correction from

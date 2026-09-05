@@ -25,6 +25,38 @@ describe("session file CRDT identities", () => {
     p.a.destroy(); p.b.destroy()
   })
 
+  it("collapses same-target and sequential rename intents while retaining distinct concurrent targets", () => {
+    const p = pair()
+    p.a.renameFile("file1", "same.txt"); p.b.renameFile("file1", "same.txt"); p.merge()
+    expect(p.a.renameConflicts()).toEqual([])
+    p.a.renameFile("file1", "next.txt"); p.merge()
+    expect(p.b.renameConflicts()).toEqual([])
+    p.a.renameFile("file1", "left.txt"); p.b.renameFile("file1", "right.txt"); p.merge()
+    expect(p.a.renameConflicts()).toEqual([{ fileId: "file1", paths: ["left.txt", "right.txt"] }])
+    expect(() => p.a.snapshotChanges()).toThrow("competing shared renames")
+    p.a.deleteFile("file1")
+    expect(() => p.a.restoreFile("file1")).toThrow("Choose a path")
+    p.a.restoreFile("file1", "left.txt"); p.merge()
+    expect(p.b.renameConflicts()).toEqual([])
+    expect(p.b.file("file1")?.deleted).toBe(false)
+    p.a.renameFile("file1", "chosen.txt"); p.merge()
+    expect(p.a.renameConflicts()).toEqual([])
+    expect(p.b.file("file1")?.path).toBe("chosen.txt")
+    expect(p.b.file("file1")?.content).toBe("hello world")
+    p.a.destroy(); p.b.destroy()
+  })
+
+  it("rejects unknown and malformed rename intent history from commit snapshots", () => {
+    const p = pair()
+    const intents = p.a.doc.getMap("file-rename-intents")
+    intents.set("unknown", { fileId: "missing", from: "a.txt", to: "b.txt" })
+    expect(() => p.a.snapshotChanges()).toThrow("Invalid shared rename intent")
+    intents.delete("unknown")
+    intents.set("malformed", { fileId: "file1", from: "a.txt", to: "../escape" })
+    expect(() => p.a.snapshotChanges()).toThrow()
+    p.a.destroy(); p.b.destroy()
+  })
+
   it("retains a concurrent edit after deletion for explicit recovery", () => {
     const p = pair()
     p.a.deleteFile("file1")

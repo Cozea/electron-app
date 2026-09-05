@@ -11,9 +11,10 @@ export interface SessionRuntimeSnapshot {
   sequence: number
   files: Array<Omit<SharedSessionFile, "content">>
   conflicts: Array<{ path: string; fileIds: string[] }>
+  renameConflicts?: Array<{ fileId: string; paths: string[] }>
   gitOnlyPaths: string[]
 }
-export interface RecoveredOfflineEntry { id: string; incomplete: boolean; retainedRecords: number; unresolvedFiles: number }
+export interface RecoveredOfflineEntry { id: string; reason?: string; incomplete: boolean; retainedRecords: number; unresolvedFiles: number }
 export interface RecoveredOfflineFile extends SharedSessionFile { recoveryId: string; canonicalContent: string | null; savingPath: string | null }
 export interface CollaborationRuntimeAPI {
   recoveryEntries(sessionId: string): Promise<RecoveredOfflineEntry[]>
@@ -45,3 +46,5 @@ export interface CollaborationRuntimeAPI {
   retry(sessionId: string): Promise<void>
   onChanged(listener: (sessionId: string) => void): () => void
 }
+
+export interface ExternalWorkspaceChanges { paths: string[]; renames: Array<{ from: string; to: string; score: number }> }

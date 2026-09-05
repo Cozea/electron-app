@@ -8,6 +8,8 @@ import { DurableSessionStore } from "./DurableSessionStore"
 export interface RecoverySource { keyVersion: number; id: string; kind?: "ingress" }
 export interface OfflineRecoveryEntry {
   id: string
+  kind?: "external"
+  reason?: string
   projection?: string
   incomplete: boolean
   sources: RecoverySource[]
@@ -32,7 +34,7 @@ function validateJournal(value: unknown, keyVersion: number): asserts value is O
   const entryIds = new Set<string>()
   for (const entry of entries) {
     if (!object(entry) || !identity(entry.id) || entryIds.has(entry.id) || typeof entry.incomplete !== "boolean" || entry.projection !== undefined && !binary(entry.projection) || !binary(entry.branch) ||
-      !Array.isArray(entry.sources) || !entry.sources.length || entry.sources.length > 100_000 || !Array.isArray(entry.files) || entry.files.length > 10_000 || !Array.isArray(entry.resolved) || !object(entry.saves)) throw fail()
+      !Array.isArray(entry.sources) || !entry.sources.length && entry.kind !== "external" || entry.kind !== undefined && entry.kind !== "external" || entry.reason !== undefined && (typeof entry.reason !== "string" || entry.reason.length > 1024) || entry.sources.length > 100_000 || !Array.isArray(entry.files) || entry.files.length > 10_000 || !Array.isArray(entry.resolved) || !object(entry.saves)) throw fail()
     entryIds.add(entry.id as string)
     try { Y.decodeUpdate(Buffer.from(entry.branch as string, "base64")) } catch { fail() }
     const sources = new Set<string>()

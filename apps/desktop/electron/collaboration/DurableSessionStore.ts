@@ -95,15 +95,70 @@ export class DurableSessionStore implements CollaborationOutbox {
     })
   }
 
+  listInitializationBases(): Promise<Array<{ id: string; encoded: string }>> {
+    return this.serial(async () => {
+      await this.ensure()
+      const records: Array<{ id: string; encoded: string }> = []
+      for (const name of (await fs.readdir(this.directory)).sort()) {
+        const match = /^initialization-basis-([A-Za-z0-9_-]{1,160})\.json$/.exec(name)
+        if (!match) continue
+        const encoded = await this.read<string>(name)
+        if (typeof encoded !== "string") throw new Error("Initialization basis is unreadable; all recovery data was retained")
+        records.push({ id: match[1]!, encoded })
+        if (records.length === 128) break
+      }
+      return records
+    })
+  }
+
+  /** Only the quiescent Host compactor may supply authenticated covered bases. */
+  retireInitializationBases(verified: Array<{ id: string; encoded: string }>): Promise<CollaborationRecoveryCleanupResult> {
+    return this.serial(async () => {
+      if (verified.length > 128) throw new Error("Initialization cleanup exceeds its batch limit")
+      const candidates: Array<{ filename: string; bytes: number }> = []
+      for (const record of verified) {
+        if (!idPattern.test(record.id)) throw new Error("Invalid initialization cleanup identity")
+        const name = `initialization-basis-${record.id}.json`
+        const current = await this.read<string>(name)
+        if (current === null) continue
+        if (current !== record.encoded) throw new Error("Initialization recovery changed; retry cleanup")
+        const filename = path.join(this.directory, name)
+        candidates.push({ filename, bytes: (await fs.lstat(filename)).size })
+      }
+      for (const candidate of candidates) await fs.rm(candidate.filename)
+      if (candidates.length) {
+        const directory = await fs.open(this.directory, "r")
+        try { await directory.sync() } finally { await directory.close() }
+      }
+      return { files: candidates.length, bytes: candidates.reduce((sum, record) => sum + record.bytes, 0) }
+    })
+  }
+
   readRecoveryJournal(): Promise<string | null> { return this.serial(() => this.read<string>("offline-recovery.json")) }
   saveRecoveryJournal(encrypted: string): Promise<void> { return this.serial(() => this.write("offline-recovery.json", encrypted)) }
 
+  private validateExternalAdmission(record: CollaborationOutboxRecord): void {
+    const present = record.externalAdmission !== undefined || record.externalOperationId !== undefined
+    if (present && (record.externalAdmission !== "held" && record.externalAdmission !== "admitted" || typeof record.externalOperationId !== "string" || !idPattern.test(record.externalOperationId))) throw new Error("External admission metadata is invalid; recovery was retained")
+  }
+
   async enqueue(record: CollaborationOutboxRecord): Promise<void> {
+    this.validateExternalAdmission(record)
     if (!idPattern.test(record.id) || record.roomId !== this.roomId || !record.updateBinary || !Number.isSafeInteger(record.keyVersion) || record.keyVersion !== this.keyVersion) throw new Error("Invalid encrypted outbox record")
     await this.serial(async () => {
       const previous = await this.read<CollaborationOutboxRecord>(`outbox-${record.id}.json`)
       if (previous && previous.updateBinary !== record.updateBinary) throw new Error("Outbox identity was reused for different encrypted bytes")
       if (!previous) await this.write(`outbox-${record.id}.json`, record)
+    })
+  }
+
+  async admitExternal(id: string): Promise<void> {
+    if (!idPattern.test(id)) throw new Error("Invalid external operation identity")
+    await this.serial(async () => {
+      const name = `outbox-${id}.json`
+      const record = await this.read<CollaborationOutboxRecord>(name)
+      if (!record || !record.externalOperationId || record.externalAdmission !== "held" && record.externalAdmission !== "admitted") throw new Error("External admission record is unavailable")
+      if (record.externalAdmission === "held") await this.write(name, { ...record, externalAdmission: "admitted" })
     })
   }
 
@@ -134,6 +189,7 @@ export class DurableSessionStore implements CollaborationOutbox {
         if (!name.startsWith(`${prefix}-`) || !name.endsWith(".json")) continue
         const record = await this.read<CollaborationOutboxRecord>(name)
         if (!record || record.roomId !== roomId || !idPattern.test(record.id) || typeof record.updateBinary !== "string") throw new Error("Encrypted outbox is corrupt; local recovery data was retained")
+        this.validateExternalAdmission(record)
         // Never silently hide pending work after a key rotation.
         if (record.keyVersion !== keyVersion) throw new Error("Pending edits use a previous room key and require recovery before rejoining")
         records.push(record)

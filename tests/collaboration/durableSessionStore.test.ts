@@ -32,6 +32,16 @@ describe("durable encrypted session recovery", () => {
     await expect(store.list("session:s", 2)).rejects.toThrow("previous room key")
     expect(await store.list("session:s", 1)).toEqual([pending])
   })
+  it("requires external operation identity and admission together on enqueue and recovery", async () => {
+    const store = new DurableSessionStore(root, "session:s")
+    await expect(store.enqueue({ ...pending, externalOperationId: "external_1" })).rejects.toThrow()
+    await expect(store.enqueue({ ...pending, externalAdmission: "held" })).rejects.toThrow()
+    await store.enqueue(pending)
+    const filename = path.join(store.directory, "outbox-pending.json")
+    const record = JSON.parse(await fs.readFile(filename, "utf8"))
+    await fs.writeFile(filename, JSON.stringify({ ...record, externalOperationId: "external_1" }))
+    await expect(store.list("session:s", 1)).rejects.toThrow()
+  })
   it("retains corrupt records and reports sequence gaps instead of inventing a receive cursor", async () => {
     const store = new DurableSessionStore(root, "session:s")
     await store.saveAcknowledged(2, "gap")

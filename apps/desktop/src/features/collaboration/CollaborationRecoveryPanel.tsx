@@ -13,7 +13,7 @@ export function CollaborationRecoveryPanel({ sessionId, disabled }: Collaboratio
     try {
       if (cleanup && sessionId) {
         const result = await window.electronAPI.collaboration.runtime.cleanupRecovery(sessionId)
-        setMessage(`Removed ${result.files} checkpoint-covered receive-log records. Unpublished edits, keys and recovery backups were retained.`)
+        setMessage(`Removed ${result.files} recovery records proven safe to retire. Unpublished edits, required keys and recovery backups were retained.`)
       }
       setInventory(await window.electronAPI.collaboration.runtime.recoveryInventory())
     } catch { setError("Recovery storage could not be fully inspected or compacted. No unpublished edits were discarded; retry after resolving storage or key availability.") }
@@ -27,7 +27,8 @@ export function CollaborationRecoveryPanel({ sessionId, disabled }: Collaboratio
       {inventory && <p>{mib(inventory.bytes)} / {mib(inventory.limitBytes)} MiB · {inventory.files} files · {inventory.outboxRecords} pending sends · {inventory.editorIngressRecords} accepted editor records · {inventory.projectionBackups} retained backups. Each room is limited to {mib(inventory.roomLimitBytes)} MiB across key versions.</p>}
       {message && <p role="status">{message}</p>}
       {error && <p role="alert" className="text-destructive">{error}</p>}
-      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => void inspect(false)}>Inspect recovery storage</Button><Button size="sm" variant="outline" disabled={disabled || busy || !sessionId} onClick={() => void inspect(true)}>Clean checkpoint-covered logs</Button></div>
+      <p className="text-muted-foreground">Active sessions clean covered receive logs. After leaving, cleanup can also retire initialization histories contained in the durable checkpoint and older keys with no remaining dependencies.</p>
+      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => void inspect(false)}>Inspect recovery storage</Button><Button size="sm" variant="outline" disabled={disabled || busy || !sessionId} onClick={() => void inspect(true)}>Clean covered recovery</Button></div>
     </div>
   </details>
 }

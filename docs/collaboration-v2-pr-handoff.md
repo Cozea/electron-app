@@ -85,7 +85,8 @@ ingress, pending checkpoint uploads, sealed keys, prepared Git objects, retained
 workspaces, unknown temporary files and projection backups are not deletion targets.
 Server checkpoint replacement now records durable cleanup cursors, and closed
 rooms retire bounded receipt metadata while retaining encrypted recovery. Local
-sealed-key/basis retention still requires completion. See
+sealed-key/basis retention now uses conservative dependency proofs and bounded
+storage admission. See [local key retention](current/collaboration-local-key-retention.md) and
 [checkpoint retention](current/collaboration-checkpoint-retention.md).
 
 ### Initializer, projection and offline recovery
@@ -168,9 +169,9 @@ provider/PTY process termination, full WebSocket routing, or packaged acceptance
    external rename detection.
 2. Complete the full retry/leave/onboarding
    matrix after runtime restart or authorization failures.
-3. Finish sealed-key/basis retention. Preserve unpublished and unknown recovery;
-   do not broaden cleanup into blind directory/row deletion. Repeat the completed
-   production/local inventory before rollout.
+3. Complete in-app reading/export of encrypted-only retained recovery after End;
+   folder discovery and safe cleanup are available. Preserve unpublished and unknown
+   recovery; repeat the completed production/local inventory before rollout.
 4. Validate OAuth end to end and activate/verify actual GitHub webhook delivery.
    Deploy subsequent compatible changes with creation disabled, then execute the
    complete independently authenticated packaged acceptance worksheet.

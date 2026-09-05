@@ -1,4 +1,7 @@
 export interface CollaborationOutboxRecord {
+  /** External operations remain invisible until their final local admission. */
+  externalAdmission?: "held" | "admitted"
+  externalOperationId?: string
   id: string
   projectId: string
   roomId: string
