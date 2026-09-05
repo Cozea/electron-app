@@ -68,6 +68,16 @@ export function ProjectsLaunchPage() {
   )
 
   useEffect(() => {
+    if (!featureFlags.desktopBootstrap || !legacyLastWorkbenchRoute) return
+
+    // If /projects actually mounted, it is now the user's authoritative local
+    // navigation intent (including the deleted/revoked-project correction
+    // path). Clear the old restore target so next launch does not bounce back.
+    clearLastWorkbenchRoute(workspaceSelectionId)
+    setIgnoredWorkspaceSelectionId(workspaceSelectionId)
+  }, [legacyLastWorkbenchRoute, workspaceSelectionId])
+
+  useEffect(() => {
     if (!shouldUseLegacyRestore || !legacyLastWorkbenchRoute) return
     if (restoredProject !== null) return
 
