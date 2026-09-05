@@ -85,7 +85,7 @@ const sharedAliases: Alias[] = [
   },
   {
     find: '@cozea/assistant-contracts',
-    replacement: path.resolve(repoRoot, './shared/assistant-contracts/index.ts'),
+    replacement: path.resolve(repoRoot, './shared/assistant-contracts'),
   },
   {
     find: /^@cozea\/assistant-shared\/(.*)$/,
@@ -93,7 +93,7 @@ const sharedAliases: Alias[] = [
   },
   {
     find: '@cozea/assistant-shared',
-    replacement: path.resolve(repoRoot, './shared/assistant-shared/index.ts'),
+    replacement: path.resolve(repoRoot, './shared/assistant-shared'),
   },
   {
     find: /^@cozea\/effect-acp\/(.*)$/,
