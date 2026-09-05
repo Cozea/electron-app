@@ -1,13 +1,6 @@
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   SettingsFooterActions,
@@ -34,6 +27,9 @@ import { cn } from "@/lib/utils";
 import { useProjectHeader } from "@/lib/useProjectHeader";
 import { SkillBuildsView } from "@/features/projects/pages/SkillBuildsView";
 import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects/model/agentSkillsSnapshot";
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient";
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons";
+import type { ContextMenuItem } from "@cozea/assistant-contracts";
 import {
   AgentSkillCategoryCarousel,
   type AgentSkillCategoryGroup,
@@ -1174,88 +1170,91 @@ export function AgentSkillsPage() {
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Refresh library"
-              onClick={() => void loadSnapshot()}
-            >
-              <HugeiconsIcon icon={__RefreshHugeIcon} className="size-4" aria-hidden />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh library</TooltipContent>
-        </Tooltip>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
               aria-label="More library actions"
+              onClick={async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const rect = event.currentTarget.getBoundingClientRect();
+                const position = {
+                  x: Math.round(rect.left),
+                  y: Math.round(rect.bottom + 4),
+                };
+                const items: ContextMenuItem<string>[] = [
+                  {
+                    id: "refresh",
+                    label: "Refresh library",
+                    icon: getNativeMenuIcon("sync"),
+                  },
+                  {
+                    id: "import",
+                    label: "Import folder",
+                    icon: getNativeMenuIcon("open-folder"),
+                    enabled: busyKey !== "import",
+                  },
+                  {
+                    id: "sep-1",
+                    label: "",
+                    type: "separator",
+                  },
+                  {
+                    id: "open-setup",
+                    label: "Open shared setup",
+                    icon: getNativeMenuIcon("package"),
+                  },
+                  {
+                    id: "export-setup",
+                    label: "Export setup",
+                    icon: getNativeMenuIcon("copy"),
+                  },
+                ];
+                const action = await showDesktopContextMenu(items, position);
+                if (!action) return;
+                if (action === "refresh") {
+                  void loadSnapshot();
+                } else if (action === "import") {
+                  void runMutation(
+                    "import",
+                    () => window.electronAPI.agentSkills.importDirectory(),
+                    "Skill imported",
+                  );
+                } else if (action === "open-setup") {
+                  void window.electronAPI.agentSkills.openSetupPack().then((result) => {
+                    if (!result.success || !result.pack) {
+                      if (result.error && !/canceled/i.test(result.error)) {
+                        appToast.error({
+                          title: "Could not open setup",
+                          description: result.error,
+                        });
+                      }
+                      return;
+                    }
+                    setSetupPack(result.pack);
+                    setSelectedPackSkillId(null);
+                  });
+                } else if (action === "export-setup") {
+                  void window.electronAPI.agentSkills
+                    .exportSetupPack({ setupName: "My agent setup", authorName: displayName })
+                    .then((result) => {
+                      if (result.success) {
+                        appToast.success({
+                          title: "Setup pack exported",
+                          description: result.filePath,
+                        });
+                      } else if (result.error && !/canceled/i.test(result.error)) {
+                        appToast.error({
+                          title: "Could not export setup",
+                          description: result.error,
+                        });
+                      }
+                    });
+                }
+              }}
             >
               <HugeiconsIcon icon={__SettingsHugeIcon} className="size-4" aria-hidden />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem onClick={() => void loadSnapshot()}>
-              <HugeiconsIcon icon={__RefreshHugeIcon} />
-              Refresh library
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={busyKey === "import"}
-              onClick={() =>
-                void runMutation(
-                  "import",
-                  () => window.electronAPI.agentSkills.importDirectory(),
-                  "Skill imported",
-                )
-              }
-            >
-              <HugeiconsIcon icon={__FolderAddHugeIcon} />
-              Import folder
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                void window.electronAPI.agentSkills.openSetupPack().then((result) => {
-                  if (!result.success || !result.pack) {
-                    if (result.error && !/canceled/i.test(result.error)) {
-                      appToast.error({
-                        title: "Could not open setup",
-                        description: result.error,
-                      });
-                    }
-                    return;
-                  }
-                  setSetupPack(result.pack);
-                  setSelectedPackSkillId(null);
-                });
-              }}
-            >
-              <HugeiconsIcon icon={__ShareHugeIcon} />
-              Open shared setup
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                void window.electronAPI.agentSkills
-                  .exportSetupPack({ setupName: "My agent setup", authorName: displayName })
-                  .then((result) => {
-                    if (result.success) {
-                      appToast.success({
-                        title: "Setup pack exported",
-                        description: result.filePath,
-                      });
-                    } else if (result.error && !/canceled/i.test(result.error)) {
-                      appToast.error({
-                        title: "Could not export setup",
-                        description: result.error,
-                      });
-                    }
-                  });
-              }}
-            >
-              <HugeiconsIcon icon={__DownloadHugeIcon} />
-              Export setup
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </TooltipTrigger>
+          <TooltipContent>More library actions</TooltipContent>
+        </Tooltip>
         <Button
           type="button"
           size="sm"
@@ -1359,16 +1358,10 @@ export function AgentSkillsPage() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mx-auto w-full max-w-[960px] shrink-0 space-y-6 px-6 pt-4 pb-2">
-        <header className="space-y-1">
+        <header>
           <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
             Agent Skills
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {describeSkillsView(source, snapshot, {
-              visible: visibleSkills.length,
-              available: statusCounts.available,
-            })}
-          </p>
         </header>
 
         <div className="sticky top-[-1rem] z-20 -mx-6 bg-background/95 px-6 pt-3 pb-2 backdrop-blur-md">
@@ -1410,17 +1403,17 @@ export function AgentSkillsPage() {
         </div>
       </div>
 
-      <section aria-label="Skill library" className="min-h-0 flex-1 pb-2">
+      <section aria-label="Skill library" className="flex min-h-0 flex-1 flex-col pb-2">
         {loadError && snapshot ? <p role="status" className="px-6 py-2 text-sm text-destructive">{loadError} — showing the last local snapshot.</p> : null}
         {loadError && !snapshot ? (
-          <div className="mx-auto w-full max-w-3xl px-8 sm:px-10">
-            <SettingsGroup>
+          <div className="mx-auto flex w-full max-w-3xl flex-1 items-center justify-center px-8 sm:px-10">
+            <SettingsGroup className="w-full">
               <div className="px-6 py-4 text-sm text-destructive">{loadError}</div>
             </SettingsGroup>
           </div>
         ) : !snapshot ? (
-          <div className="mx-auto w-full max-w-3xl px-8 sm:px-10">
-            <SettingsGroup>
+          <div className="mx-auto flex w-full max-w-3xl flex-1 items-center justify-center px-8 sm:px-10">
+            <SettingsGroup className="w-full">
               {[0, 1, 2].map((item) => (
                 <div key={item} className="flex min-h-[72px] items-center px-6 py-4">
                   <div className="h-9 w-full animate-pulse rounded-lg bg-muted" />
@@ -1429,8 +1422,8 @@ export function AgentSkillsPage() {
             </SettingsGroup>
           </div>
         ) : visibleSkills.length === 0 ? (
-          <div className="mx-auto w-full max-w-3xl px-8 sm:px-10">
-            <SettingsGroup>
+          <div className="mx-auto flex w-full max-w-3xl flex-1 items-center justify-center px-8 pb-16 sm:px-10">
+            <SettingsGroup className="w-full">
               <div className="px-6 py-10 text-center">
                 <HugeiconsIcon
                   icon={__FolderLibraryHugeIcon}
