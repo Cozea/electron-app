@@ -1,5 +1,6 @@
 import { acceptFileInitialization } from '../lib/collaborationFileInitialization'
 import { handleCheckpointOperation } from '../lib/collaborationCheckpoints'
+import { retainActiveCheckpoint } from '../lib/collaborationRetention'
 import { collaborationDigest, splitCollaborationUpdate, validateEncryptedCollaborationEnvelope, COLLABORATION_CHUNK_CHARS } from '../../../../shared/collaborationWire'
 import { acceptDurableCollaborationChunk, discardDurableCollaborationChunks } from '../lib/durableCollaborationChunks'
 import type { Env } from '../types'
@@ -131,6 +132,7 @@ export class CollabRoom implements DurableObject {
       if (!this.env.AI_GATEWAY_SECRET || request.headers.get('authorization') !== `Bearer ${this.env.AI_GATEWAY_SECRET}`) return new Response('Unauthorized', { status: 403 })
       const body = await request.json() as { authority: Parameters<typeof handleCheckpointOperation>[1]; request: Record<string, unknown> }
       const operation = this.messageQueue.then(async () => {
+        let verifiedAuthority: Awaited<ReturnType<typeof authorizeRoomConnection>> | undefined
         if (await this.state.storage.get('session-closed')) throw new Error('Session is closed')
         if (body.authority.sessionId) {
           const fresh = await authorizeRoomConnection(this.env, body.authority.userId, body.authority.sessionId)
@@ -138,12 +140,17 @@ export class CollabRoom implements DurableObject {
             (body.authority.previousKeyVersion ? fresh.pendingKeyVersion !== body.authority.keyVersion : fresh.keyVersion !== body.authority.keyVersion)) throw new Error('Checkpoint authority changed; retry after reconnecting')
           body.authority.role = fresh.role === 'editor' ? 'editor' : 'observer'
           body.authority.rotationRequired = fresh.rotationRequired
+          verifiedAuthority = fresh
         }
         const result = await handleCheckpointOperation(this.state.storage, body.authority, body.request)
         if (body.request.operation === 'finalize') {
           const published = await this.state.storage.get<{ coveredThroughSequence: number }>('published-base')
           const checkpoint = await this.state.storage.get<{ sequence: number }>('encrypted-checkpoint')
           if (published && checkpoint && checkpoint.sequence >= published.coveredThroughSequence) await this.pruneThrough(published.coveredThroughSequence)
+        }
+        if (verifiedAuthority && ['inspect', 'finalize'].includes(String(body.request.operation))) {
+          try { await retainActiveCheckpoint(this.state.storage, verifiedAuthority) }
+          catch { console.warn('[CollabRoom] checkpoint_retention_deferred') }
         }
         return result
       })
@@ -776,7 +783,9 @@ export class CollabRoom implements DurableObject {
       const removedBytes = removable.reduce((total, [, update]) =>
         total + (update.retainedBytes ?? (update.updateBinary?.length ?? 0) + update.idempotencyKey.length * 2 + 1024), 0)
       await this.state.storage.transaction(async (storage) => {
-        await storage.delete(keys)
+        // Cloudflare accepts at most 128 keys in one KV delete call. A page
+        // containing chunked updates can exceed that even with fewer updates.
+        for (let offset = 0; offset < keys.length; offset += 128) await storage.delete(keys.slice(offset, offset + 128))
         await storage.put(RETAINED_USAGE_KEY, {
           bytes: Math.max(0, usage.bytes - removedBytes),
           count: Math.max(0, usage.count - removable.length),

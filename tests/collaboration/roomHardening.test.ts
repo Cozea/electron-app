@@ -1,4 +1,4 @@
-import { splitCollaborationUpdate, CollaborationChunkReceiver } from "../../shared/collaborationWire"
+import { splitCollaborationUpdate, CollaborationChunkReceiver, collaborationDigest } from "../../shared/collaborationWire"
 import { encryptPayload, envelopeToBytes } from "../../apps/desktop/src/lib/collab/cipherEnvelope"
 /// <reference path="../../cloudflare/worker/src/cloudflare-runtime.d.ts" />
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -32,7 +32,11 @@ function fixture() {
       else for (const [key, next] of Object.entries(keyOrValues)) records.set(key, structuredClone(next))
     }),
     list: vi.fn(async (options: DurableObjectStorageListOptions = {}) => new Map([...records].sort(([a], [b]) => a.localeCompare(b)).filter(([key]) => (!options.prefix || key.startsWith(options.prefix)) && (!options.start || key >= options.start) && (!options.end || key < options.end)).slice(0, options.limit ?? records.size))),
-    delete: vi.fn(async (keys: string | string[]) => { for (const key of Array.isArray(keys) ? keys : [keys]) records.delete(key); return true }),
+    delete: vi.fn(async (keys: string | string[]) => {
+      const names = Array.isArray(keys) ? keys : [keys]
+      if (names.length > 128) throw new Error('Cloudflare KV deletion supports at most 128 keys')
+      return names.reduce((count, key) => count + Number(records.delete(key)), 0)
+    }),
     deleteAll: vi.fn(async () => records.clear()),
     transaction: vi.fn(async (run: (s: DurableObjectStorage) => Promise<unknown>) => run(storage as unknown as DurableObjectStorage)),
   }
@@ -55,6 +59,59 @@ function fixture() {
 beforeEach(() => { vi.clearAllMocks(); mocks.authority.mockResolvedValue({ allowed: true, roomId: "session:s", projectId: "p", role: "editor", keyVersion: 1 }) })
 
 describe("Durable Object room boundary and recovery", () => {
+  it("runs checkpoint retention only after fresh room authority confirms key activation", async () => {
+    const f = fixture()
+    const encrypted = Buffer.from(envelopeToBytes(await encryptPayload({ roomKeyBase64: Buffer.alloc(32).toString('base64'),
+      kind: 'yjs_snapshot', keyVersion: 3, plaintext: new Uint8Array([0, 0]),
+      metadata: { roomId: 'session:s', projectId: 'p', snapshotBaseSeq: 2 },
+    }))).toString('base64')
+    const current = { generation: 3, id: 'current', roomId: 'session:s', projectId: 'p', keyVersion: 3, sequence: 2,
+      chunkCount: 1, totalChars: encrypted.length, digest: await collaborationDigest(encrypted), createdAt: 1 }
+    f.records.set('head-sequence', 2)
+    f.records.set('encrypted-checkpoint', current)
+    f.records.set('checkpoint-piece:current:0', encrypted)
+    f.records.set('checkpoint-history:1', { ...current, id: 'previous', keyVersion: 1 })
+    f.records.set('checkpoint-piece:previous:0', 'retained old encrypted state')
+    const inspect = (authorized = true) => f.room.fetch(new Request('https://internal/internal/checkpoint', {
+      method: 'POST', headers: authorized ? { authorization: 'Bearer test-room-secret' } : {},
+      body: JSON.stringify({ authority: { userId: 'u1', sessionId: 's', roomId: 'session:s', projectId: 'p', keyVersion: 3, role: 'editor' }, request: { operation: 'inspect' } }),
+    }))
+    expect((await inspect(false)).status).toBe(403)
+    expect((await inspect()).status).toBe(409) // Caller-selected version disagrees with fresh authority.
+    expect(f.records.has('checkpoint-history:1')).toBe(true)
+    mocks.authority.mockResolvedValue({ allowed: true, roomId: 'session:s', projectId: 'p', keyVersion: 3, role: 'editor', rotationRequired: true })
+    expect((await inspect()).status).toBe(200)
+    expect(f.records.has('checkpoint-history:1')).toBe(true)
+    mocks.authority.mockResolvedValue({ allowed: true, roomId: 'session:s', projectId: 'p', keyVersion: 3, role: 'editor', rotationRequired: false })
+    expect(await (await inspect()).json()).toMatchObject({ checkpoint: current })
+    expect(f.records.has('checkpoint-history:1')).toBe(false)
+    expect(f.records.has('checkpoint-piece:current:0')).toBe(true)
+  })
+
+  it("compacts a published page of chunked updates within the platform deletion limit", async () => {
+    const f = fixture()
+    for (let seq = 1; seq <= 130; seq++) {
+      f.records.set(`update:${String(seq).padStart(16, '0')}`, { seq, chunkCount: 2, retainedBytes: 2048, idempotencyKey: `operation-${seq}`, clientId: 'client', timestamp: seq })
+      for (let index = 0; index < 2; index++) f.records.set(`update-piece:${seq}:${index}`, 'encrypted-piece')
+      f.records.set(`idempotency:operation-${seq}`, { seq, digest: 'deduplication-receipt' })
+    }
+    f.records.set('head-sequence', 131)
+    f.records.set('encrypted-checkpoint', { sequence: 130 })
+    f.records.set('retained-usage', { bytes: 130 * 2048 + 7, count: 131 })
+    const newer = { seq: 131, retainedBytes: 7, updateBinary: 'newer', idempotencyKey: 'pending', clientId: 'other', timestamp: 131 }
+    f.records.set('update:0000000000000131', newer)
+    const response = await f.room.fetch(new Request('https://internal/internal/base-advanced', { method: 'POST',
+      headers: { authorization: 'Bearer test-room-secret' },
+      body: JSON.stringify({ roomId: 'session:s', commitSha: 'a'.repeat(40), coveredThroughSequence: 130, publicationRevision: 1, publicationId: 'published' }),
+    }))
+    expect(response.status).toBe(204)
+    expect([...f.records.keys()].filter(name => name.startsWith('update-piece:'))).toEqual([])
+    expect(f.records.get('update:0000000000000131')).toEqual(newer)
+    expect(f.records.get('retained-usage')).toEqual({ bytes: 7, count: 1 })
+    expect(f.storage.delete.mock.calls.length).toBeGreaterThan(1)
+    expect([...f.records.keys()].filter(name => name.startsWith('idempotency:'))).toHaveLength(130)
+  })
+
   it("authenticates publication handoffs and orders binary-only publications at the same barrier", async () => {
     const f = fixture(); const socket = new Socket("session:s")
     await f.hello(socket); await f.update(socket)
