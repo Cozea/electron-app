@@ -139,6 +139,22 @@ function patchWs(source) {
   return marker + 'import { guardNativeRpcEffect, guardNativeRpcStream } from "./cozeaWorkspaceEffects.ts";\nimport type { NativeWorkspaceLookup } from "./cozeaWorkspaceControl.ts";\n' + source;
 }
 
+function patchSharedPlatform(name, source) {
+  if (name === "nativeWorkspaceAuthority.ts") {
+    source = once(source, 'import path from "node:path";\nimport { realpath } from "node:fs/promises";', 'import { nativeWorkspacePath as path, canonicalizeNativeWorkspacePath, scheduleNativeWorkspaceDeadline } from "./nativeWorkspacePlatform.ts";', "admission platform imports");
+    source = once(source, "(this.options.canonicalize ?? realpath)", "(this.options.canonicalize ?? canonicalizeNativeWorkspacePath)", "admission canonicalization");
+    source = once(source, "let timer: ReturnType<typeof setTimeout> | undefined;", "let cancelDeadline: (() => void) | undefined;", "admission deadline handle");
+    source = once(source, 'timer = setTimeout(() => reject(new Error("Native workspace actions did not drain.")), this.options.drainTimeoutMs ?? 10_000);', 'cancelDeadline = scheduleNativeWorkspaceDeadline(this.options.drainTimeoutMs ?? 10_000, () => reject(new Error("Native workspace actions did not drain.")));', "admission deadline");
+    source = once(source, "finally { if (timer !== undefined) clearTimeout(timer); }", "finally { cancelDeadline?.(); }", "admission deadline release");
+  }
+  if (name === "nativeWorkspaceIpc.ts") {
+    source = once(source, 'import path from "node:path";', 'import { nativeWorkspacePath as path, scheduleNativeWorkspaceDeadline } from "./nativeWorkspacePlatform.ts";', "IPC platform import");
+    source = once(source, "clearTimeout(timer);", "cancelDeadline();", "IPC deadline release");
+    source = once(source, "const timer = setTimeout(onLost, timeoutMs);", "const cancelDeadline = scheduleNativeWorkspaceDeadline(timeoutMs, onLost);", "IPC deadline");
+  }
+  return source;
+}
+
 const transformed = new Map([
   ["apps/server/src/provider/Layers/ProviderService.ts", patchProvider],
   ["apps/server/src/terminal/Manager.ts", patchTerminal],
@@ -172,6 +188,7 @@ export function applyCozeaWorkspaceSourcePatches({ vendorRoot, checkOnly = false
     nextState.files[relative] = { original, after: digest(patched) };
   }
   const copied = new Map([
+    ["nativeWorkspacePlatform.ts", "scripts/t3-runtime/nativeWorkspacePlatform.ts"],
     ["nativeWorkspaceAuthority.ts", "shared/nativeWorkspaceAuthority.ts"],
     ["nativeWorkspaceIpc.ts", "shared/nativeWorkspaceIpc.ts"],
     ["cozeaWorkspaceControl.ts", "scripts/t3-runtime/cozeaWorkspaceControl.ts"],
@@ -180,7 +197,7 @@ export function applyCozeaWorkspaceSourcePatches({ vendorRoot, checkOnly = false
   for (const [name, input] of copied) {
     const relative = `apps/server/src/${name}`;
     const target = path.join(vendorRoot, relative);
-    const content = fs.readFileSync(path.join(root, input), "utf8").replace('from "./nativeWorkspaceAuthority"', 'from "./nativeWorkspaceAuthority.ts"');
+    const content = patchSharedPlatform(name, fs.readFileSync(path.join(root, input), "utf8").replace('from "./nativeWorkspaceAuthority"', 'from "./nativeWorkspaceAuthority.ts"'));
     if (fs.existsSync(target)) {
       const current = fs.readFileSync(target, "utf8");
       const previous = state?.files[relative];

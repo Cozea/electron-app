@@ -1,4 +1,4 @@
-import path from "node:path";
+import { nativeWorkspacePath as path, repeatNativeWorkspaceTask } from "./nativeWorkspacePlatform.ts";
 import { NativeWorkspaceAuthority, type NativeWorkspacePermit, type NativeWorkspaceOperation } from "./nativeWorkspaceAuthority.ts";
 import { isNativeWorkspaceControlRequest, requestNativeWorkspaceDecision, sendNativeWorkspaceMessage } from "./nativeWorkspaceIpc.ts";
 
@@ -8,7 +8,7 @@ const authority = new NativeWorkspaceAuthority({
   authorize: (cwd, operation) => requestNativeWorkspaceDecision(process, cwd, operation),
 });
 const stoppers = new Map<string, (root: string) => Promise<void>>();
-let polling: ReturnType<typeof setInterval> | undefined;
+let stopPolling: (() => void) | undefined;
 let sweepPending = false;
 
 async function stopOwned(root: string): Promise<void> {
@@ -37,23 +37,22 @@ export function bindNativeWorkspaceStopper(name: "providers" | "terminals", stop
   if (!nativeWorkspaceAuthorityEnabled) return () => undefined;
   if (stoppers.has(name)) throw new Error("Duplicate native workspace resource owner.");
   stoppers.set(name, stop);
-  if (!polling) {
-    polling = setInterval(() => {
+  if (!stopPolling) {
+    stopPolling = repeatNativeWorkspaceTask(2_000, async () => {
       if (sweepPending || !stoppers.has("providers") || !stoppers.has("terminals")) return;
       sweepPending = true;
-      void (async () => {
+      await (async () => {
         for (const root of authority.knownSessionRoots()) {
           if (!(await authority.recheckSessionRoot(root))) {
             await authority.stop(root, stopOwned).catch(() => undefined);
           }
         }
       })().finally(() => { sweepPending = false; });
-    }, 2_000);
-    polling.unref();
+    });
   }
   return () => {
     if (stoppers.get(name) === stop) stoppers.delete(name);
-    if (stoppers.size === 0 && polling) { clearInterval(polling); polling = undefined; }
+    if (stoppers.size === 0 && stopPolling) { stopPolling(); stopPolling = undefined; }
   };
 }
 

@@ -1,5 +1,4 @@
-import path from "node:path";
-import { realpath } from "node:fs/promises";
+import { nativeWorkspacePath as path, canonicalizeNativeWorkspacePath } from "./nativeWorkspacePlatform.ts";
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -63,7 +62,7 @@ export function guardNativeProviderEffect<A, E, R>(args: readonly unknown[], loo
 async function within(root: string, cwd: string): Promise<boolean> {
   // Removal of a directory cannot turn an already-running owned process into an
   // unrelated process. The catalog path remains the fallback shutdown identity.
-  const canonical = await realpath(cwd).catch(() => path.resolve(cwd));
+  const canonical = await canonicalizeNativeWorkspacePath(cwd).catch(() => path.resolve(cwd));
   return isWithinNativeWorkspace(root, canonical);
 }
 
@@ -116,7 +115,7 @@ export function installNativeTerminalAuthority(manager: TerminalManager["Service
       }
     });
     yield* Effect.addFinalizer(() => Effect.sync(unbind));
-    const guard = <A, E, R>(input: { readonly threadId: string; readonly terminalId: string; readonly cwd?: string; readonly worktreePath?: string | null }, effect: Effect.Effect<A, E, R>) => Effect.acquireUseRelease(
+    const guard = <A, E, R>(input: { readonly threadId: string; readonly terminalId: string; readonly cwd?: string | undefined; readonly worktreePath?: string | null | undefined }, effect: Effect.Effect<A, E, R>) => Effect.acquireUseRelease(
       Effect.tryPromise({
         try: () => {
           const previous = terminals.get(key(input.threadId, input.terminalId));
