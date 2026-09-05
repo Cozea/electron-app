@@ -97,11 +97,15 @@ export class NativeWorkspaceAuthority {
 
   async acquire(cwd: string, operation: NativeWorkspaceOperation = "execute"): Promise<NativeWorkspacePermit> {
     if (operation !== "execute" && operation !== "git") throw denied();
+    // realpath itself is asynchronous. An old request must not survive a
+    // stop/activate cycle while its canonical workspace is still resolving.
+    // Compare only this root's revision to preserve unrelated workspaces.
+    const requestedAtRevision = this.revision;
     let canonical: string;
     try { canonical = await this.canonicalize(cwd); }
     catch { throw denied(); }
-    if (this.isSuspended(canonical)) throw denied();
     const revision = this.revisionFor(canonical);
+    if (this.isSuspended(canonical) || revision > requestedAtRevision) throw denied();
     let finish: () => void = () => undefined;
     const done = new Promise<void>(resolve => { finish = resolve; });
     let released = false;
