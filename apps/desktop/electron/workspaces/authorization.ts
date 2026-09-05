@@ -1,3 +1,5 @@
+import { assertCollaborationWorkspaceOperation } from "../collaboration/workspacePolicy"
+import { collaborationWorkspacePolicyKey } from "../collaboration/SessionWorkspaceCoordinator"
 import * as Effect from "effect/Effect"
 import { WorkspaceCatalog } from "./WorkspaceCatalog.ts"
 import { waitForWorkspaceCatalogRuntime } from "./WorkspaceCatalogRuntime.ts"
@@ -75,8 +77,9 @@ export async function resolveAuthorizedWorkspaceAccess(input: {
         }
       }
 
-      // TODO: Enforce fine-grained operation policy (e.g. read-only roots)
-      // Currently we just trust that verificationStatus === "verified" is sufficient.
+      assertCollaborationWorkspaceOperation(
+        yield* catalog.getSetting(collaborationWorkspacePolicyKey(input.workspaceId)), input.operation,
+      )
 
       return {
         workspace,

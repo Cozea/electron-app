@@ -1,4 +1,6 @@
-export const COLLAB_PROTOCOL_VERSION = '2.0'
+import type { CollaborationChunk } from "../../../../shared/collaborationWire"
+export const COLLAB_PROTOCOL_VERSION = '2.1'
+export const COLLAB_SESSION_PROTOCOL_VERSION = '3.0'
 const DEFAULT_ALLOWED_HEADERS = 'Content-Type, Authorization'
 const DEFAULT_ALLOWED_METHODS = 'GET, POST, OPTIONS'
 
@@ -29,15 +31,13 @@ export interface ReadyMessage {
     serverTime: number
     headSeq: number
     resyncRequired: boolean
+    mediaClientId?: string
   }
 }
 
 export interface SyncRequestMessage {
   type: 'sync.request'
-  payload: {
-    roomId: string
-    knownSeq: number
-  }
+  payload: { roomId: string; knownSeq: number }
 }
 
 export interface SyncDeltaMessage {
@@ -47,6 +47,8 @@ export interface SyncDeltaMessage {
     fromSeq: number
     toSeq: number
     updatesBinary: string[]
+    headSeq?: number
+    hasMore?: boolean
   }
 }
 
@@ -60,6 +62,15 @@ export interface UpdatePushMessage {
     authorId: string
     timestamp: number
   }
+}
+
+export interface UpdateChunkMessage {
+  type: 'update.chunk'
+  payload: { roomId: string; chunk: CollaborationChunk; timestamp: number }
+}
+export interface SyncChunkMessage {
+  type: 'sync.chunk'
+  payload: { roomId: string; chunk: CollaborationChunk; sequence: number; headSeq: number }
 }
 
 export interface UpdateAckMessage {
@@ -96,9 +107,45 @@ export interface PresenceSnapshotMessage {
 
 export interface PresenceRemoveMessage {
   type: 'presence.remove'
+  payload: { roomId: string; clientIds: string[] }
+}
+
+export interface BarrierRequestMessage {
+  type: 'barrier.request'
+  payload: { roomId: string; requestId: string }
+}
+
+export interface BarrierReadyMessage {
+  type: 'barrier.ready'
+  payload: { roomId: string; requestId: string; sequence: number }
+}
+
+export interface BaseAdvancedMessage {
+  type: 'base.advanced'
   payload: {
     roomId: string
-    clientIds: string[]
+    commitSha: string
+    coveredThroughSequence: number
+  }
+}
+
+export interface MediaSignalMessage {
+  type: 'media.signal'
+  payload: {
+    roomId: string
+    targetClientId: string
+    sourceClientId: string
+    signal: unknown
+  }
+}
+
+export interface MediaStateMessage {
+  type: 'media.state'
+  payload: {
+    roomId: string
+    clientId: string
+    audio: boolean
+    screenShare: boolean
   }
 }
 
@@ -111,14 +158,23 @@ export type IncomingClientMessage =
   | HelloMessage
   | SyncRequestMessage
   | UpdatePushMessage
+  | UpdateChunkMessage
   | PresencePushMessage
+  | BarrierRequestMessage
+  | MediaSignalMessage
+  | MediaStateMessage
 
 export type OutgoingServerMessage =
   | ReadyMessage
   | SyncDeltaMessage
+  | SyncChunkMessage
   | UpdateAckMessage
   | PresenceSnapshotMessage
   | PresenceRemoveMessage
+  | BarrierReadyMessage
+  | BaseAdvancedMessage
+  | MediaSignalMessage
+  | MediaStateMessage
   | ErrorMessage
 
 export function jsonResponse(body: unknown, init?: ResponseInit, origin?: string | null): Response {
@@ -140,18 +196,8 @@ export function protocolError(
   origin?: string | null,
 ): Response {
   return jsonResponse(
-    {
-      type: 'error',
-      payload: {
-        code,
-        message,
-        recoverable,
-      },
-    },
-    {
-      status: init?.status ?? 400,
-      headers: init?.headers,
-    },
+    { type: 'error', payload: { code, message, recoverable } },
+    { status: init?.status ?? 400, headers: init?.headers },
     origin,
   )
 }
@@ -174,8 +220,5 @@ export function corsHeaders(headers?: HeadersInit, origin?: string | null): Reco
 }
 
 export function preflightResponse(origin?: string | null): Response {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders(undefined, origin),
-  })
+  return new Response(null, { status: 204, headers: corsHeaders(undefined, origin) })
 }

@@ -339,11 +339,13 @@ See `docs/agent-skills.md` for storage paths, safety boundaries, setup-pack beha
 
 ## How Collaborative Editing Works
 
-- **Yjs CRDTs** keep files in sync across collaborators in real time
-- Updates are **E2E encrypted** before leaving the device (per-project room keys)
-- Encrypted updates are stored in Convex (`yjsUpdates` table) and snapshotted periodically
-- A SQLite-backed **sync journal** in the main process queues file write ops with idempotency keys
-- Per-file locks (`projectFileLocks`) and tombstones (`fileTombstones`) handle concurrent edit and delete-vs-edit conflicts
+- Existing ordinary-project synchronization uses encrypted Yjs updates in Convex, the local SQLite sync journal, file locks and tombstones. Preserve it while the GitHub session release is gated.
+- Generation-3 GitHub sessions use one Electron `SessionRuntimeHost`, catalog-owned isolated workspaces, encrypted durable outboxes/checkpoints and authoritative room sequencing. React subscribes through IPC; never create a second session transport or run the legacy watcher on a session workspace.
+- GitHub App setup and repository bindings are verified server-side. Git credentials stay in main-process memory; room keys stay in OS-sealed device storage. Observers cannot submit shared edits or launch write-capable workspace actions.
+- Commit materializes the acknowledged barrier in a temporary index. Push is explicit and never forced. Published-base adoption preserves newer text and local binaries; a Git commit never replaces CRDT recovery state.
+- Keep both `VITE_GITHUB_COLLABORATION_RELEASE` and `COLLABORATION_G3_CREATE_ENABLED` disabled until the complete deployed packaged acceptance gate passes. Retained session workspaces and encrypted pending edits are recovery data, never ordinary project cleanup targets.
+
+See `docs/collaboration-v2-completion.md` for the implementation status, remaining release blockers and acceptance gate.
 
 ## Code Style
 

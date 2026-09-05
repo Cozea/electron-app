@@ -589,6 +589,7 @@ export const broadcastUpdate = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const inserted = await insertSequencedUpdate(ctx, {
       projectId: args.projectId,
       roomId: args.roomId,
@@ -1034,6 +1035,7 @@ export const getEncryptionBootstrap = query({
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     assertGatewaySecret(args.serverSecret)
     await assertCollaborationAccess(ctx, args.projectId)
     const roomId = args.roomId || defaultRoomId(args.projectId)
@@ -1113,6 +1115,7 @@ export const initializeEncryptedRoom = mutation({
     senderPublicKeyJwk: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
     const roomId = args.roomId || defaultRoomId(args.projectId)
 
@@ -1185,6 +1188,7 @@ export const createKeyRequest = mutation({
     recipientFingerprint: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (user._id !== args.recipientUserId || user.identityKey !== args.recipientDeviceId) {
       throw new ConvexError("A device can request an encryption key only for itself")
@@ -1238,6 +1242,7 @@ export const listPendingKeyRequests = query({
     roomId: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (!(await canManageProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("Only project managers can review encryption key requests")
@@ -1262,6 +1267,7 @@ export const getActiveRecoveryKit = query({
     roomId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     await assertCollaborationAccess(ctx, args.projectId)
     const roomId = args.roomId || defaultRoomId(args.projectId)
     const activeRoomKey = await getActiveRoomKey(ctx, args.projectId, roomId)
@@ -1298,6 +1304,7 @@ export const listCollabRoomDevices = query({
     roomId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (!(await canManageProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("Only project managers can review collaboration devices")
@@ -1383,6 +1390,7 @@ export const storeWrappedRoomKey = mutation({
     wrappedKey: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (!(await canManageProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("Only project managers can approve encryption key requests")
@@ -1458,6 +1466,7 @@ export const storeRecoveryKit = mutation({
     createdByDeviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (!(await canManageProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("Only project managers can create collaboration recovery kits")
@@ -1521,6 +1530,7 @@ export const revokeCollabDevice = mutation({
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (!(await canManageProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("Only project managers can revoke collaboration access")
@@ -1578,6 +1588,7 @@ export const rotateEncryptedRoomKey = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (!(await canManageProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("Only project managers can rotate collaboration keys")
@@ -1719,6 +1730,7 @@ export const resetEncryptedRoom = mutation({
     retainDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     const user = await requireAuthenticatedDevice(ctx)
     if (!(await canManageProject(ctx, args.projectId, user._id))) {
       throw new ConvexError("Only project managers can reset encrypted collaboration")
@@ -1845,6 +1857,7 @@ export const syncWithServer = mutation({
     idempotencyKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.roomId?.startsWith("session:")) throw new ConvexError("Session encryption requires participant-bound collaboration APIs")
     if (args.clientUpdate) {
       await insertSequencedUpdate(ctx, {
         projectId: args.projectId,

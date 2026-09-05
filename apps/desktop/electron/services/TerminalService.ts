@@ -650,6 +650,17 @@ export class TerminalService {
     }
   }
 
+  async stopAllForWorkspace(workspaceId: string): Promise<void> {
+    // Retain ownership until the runtime acknowledges termination so a failed
+    // stop remains retryable instead of forgetting a living process.
+    const ownedTerminals = this.listTerminalIds(workspaceId).slice()
+    for (const terminalId of ownedTerminals) {
+      const result = await this.runtimeClient.request<{ success: boolean }>('terminal.kill', { terminalId })
+      if (!result.success && this.activeTerminalIds.has(terminalId)) throw new Error('A shared workspace terminal could not be stopped')
+      this.evictTerminalCaches(terminalId)
+    }
+  }
+
   killAll(): void {
     void this.runtimeClient.request<{ success: boolean }>('terminal.killAll', {}).catch(() => {})
     // Clear every per-terminal cache, not just the two that were cleared

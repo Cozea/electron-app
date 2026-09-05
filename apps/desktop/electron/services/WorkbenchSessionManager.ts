@@ -848,6 +848,21 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return true
   }
 
+  async closeWorkspace(workspaceId: string): Promise<void> {
+    await this.devServerService.stopWorkspace(workspaceId)
+    await this.terminalService.stopAllForWorkspace(workspaceId)
+    for (const [sessionKey, record] of this.sessions) {
+      if (record.workspaceId !== workspaceId) continue
+      if (record.nativePreviewLocator) {
+        const result = await this.nativePreviewManager.stopSession(record.nativePreviewLocator)
+        if (!result.success) throw new Error('A shared workspace native preview could not be stopped')
+        record.nativePreviewLocator = null
+      }
+      await this.closeSessionByKey(sessionKey)
+    }
+    this.persist()
+  }
+
   refreshBrowserSurfaceState(sessionKey: string): void {
     const record = this.sessions.get(sessionKey)
     if (record) this.emitState(sessionKey, record)

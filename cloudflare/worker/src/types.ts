@@ -10,6 +10,7 @@ export interface EncryptionBootstrap {
 
 export interface SessionRequestBody {
   projectId: string
+  sessionId?: string
   clientType: 'web' | 'electron'
   deviceId: string
   deviceLabel: string
@@ -53,6 +54,7 @@ export interface DeviceAccessClaims {
 
 export interface SessionDescriptor {
   projectId: string
+  sessionId?: string
   roomId: string
   collabWsUrl: string
   token: string
@@ -73,8 +75,10 @@ export interface SessionDescriptor {
 }
 
 export interface SessionClaims {
+  role?: 'editor' | 'observer'
   sub: string
   projectId: string
+  sessionId?: string
   roomId: string
   userId: string
   deviceId: string
@@ -87,6 +91,7 @@ export interface SessionClaims {
 export interface ConvexSessionContext {
   userId: string
   projectId: string
+  sessionId?: string
   roomId: string
   deviceId: string
   deviceLabel: string
@@ -119,6 +124,16 @@ export interface Env {
   DEVICE_AUTH_PREVIOUS_PUBLIC_JWK?: string
   DEVICE_AUTH_PREVIOUS_KEY_ID?: string
   COLLAB_ROOM: DurableObjectNamespaceLike
+  COLLAB_RECOVERY_SEGMENTS?: R2Bucket
+
+  GITHUB_APP_CLIENT_ID?: string
+  GITHUB_APP_CLIENT_SECRET?: string
+  GITHUB_APP_CALLBACK_URL?: string
+  GITHUB_APP_WEBHOOK_SECRET?: string
+  GITHUB_APP_ID?: string
+  GITHUB_APP_PRIVATE_JWK?: string
+  GITHUB_API_BASE_URL?: string
+
   DEVAPP_RUNTIME_BUILD: DurableObjectNamespaceLike
   DEVAPP_SANDBOX: DurableObjectNamespace<import('./durableObjects/CozeaDevAppSandbox').CozeaDevAppSandbox>
   DEVAPP_BUILD_INPUTS: R2Bucket

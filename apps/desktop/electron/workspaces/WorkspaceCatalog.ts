@@ -259,6 +259,13 @@ export interface WorkspaceCatalogInterface {
     req: CreateWorkspaceForProjectRequest,
   ) => Effect.Effect<CreateWorkspaceForProjectResult>
 
+  /** Trusted main-process preparation, before catalog ownership markers are written. */
+  readonly createPreparedWorkspace: (
+    req: CreateWorkspaceForProjectRequest,
+    prepare: (targetPath: string) => Promise<void>,
+    reservationId: string,
+  ) => Effect.Effect<CreateWorkspaceForProjectResult>
+
   readonly importExistingFolder: (
     req: ImportExistingFolderRequest,
   ) => Effect.Effect<ImportExistingFolderResult>
@@ -1241,6 +1248,8 @@ export const WorkspaceCatalogLive = Layer.effect(
 
     const createForProject = (
       req: CreateWorkspaceForProjectRequest,
+      prepare?: (targetPath: string) => Promise<void>,
+      reservationId?: string,
     ): Effect.Effect<CreateWorkspaceForProjectResult> =>
       Effect.gen(function* () {
         console.log("[WorkspaceCatalog] createForProject started:", req)
@@ -1259,19 +1268,46 @@ export const WorkspaceCatalogLive = Layer.effect(
           Effect.catch(() => Effect.void),
         )
 
-        // Find an available folder name
-        const targetPath = yield* Effect.tryPromise({
+        // Reserve allocation before touching disk. A crash can then resume only
+        // this catalog-owned path, including the gap before its marker is bound.
+        const reservationKey = reservationId ? `workspace-allocation:${reservationId}` : null
+        const reservation = reservationKey ? yield* getSetting(reservationKey) : null
+        const previous = reservation ? JSON.parse(reservation) as {
+          projectId: string; rootId: string; targetPath: string
+        } : null
+        if (previous && (previous.projectId !== projectId || previous.rootId !== resolvedRoot.rootId ||
+          path.dirname(previous.targetPath) !== baseDir)) {
+          throw new Error("Workspace allocation does not match this project and managed root")
+        }
+        const targetPath = previous?.targetPath ?? (yield* Effect.tryPromise({
           try: () => findAvailablePath(baseDir, slug),
           catch: (e) => new Error(String(e)),
+        }))
+        if (reservationKey && !previous) {
+          yield* setSetting(reservationKey, JSON.stringify({ projectId, rootId: resolvedRoot.rootId, targetPath }))
+        }
+        const existingStat = yield* Effect.tryPromise({
+          try: () => fs.lstat(targetPath).catch(error => {
+            if (error.code === "ENOENT") return null
+            throw error
+          }),
+          catch: (e) => new Error(String(e)),
         })
-        console.log("[WorkspaceCatalog] createForProject targetPath resolved:", targetPath)
+        if (existingStat && (!existingStat.isDirectory() || existingStat.isSymbolicLink())) {
+          throw new Error("Reserved workspace path was replaced")
+        }
 
         yield* Effect.tryPromise({
           try: () => fs.mkdir(targetPath, { recursive: true }),
           catch: (e) => new Error(`Failed to create directory: ${String(e)}`),
         })
 
-        if (initGit) {
+        if (prepare) {
+          yield* Effect.tryPromise({
+            try: () => prepare(targetPath),
+            catch: (error) => new Error(`Workspace preparation failed: ${String(error)}`),
+          })
+        } else if (initGit) {
           yield* Effect.tryPromise({
             try: async () => {
               await runGitCommand(["init"], { cwd: targetPath })
@@ -1668,6 +1704,7 @@ export const WorkspaceCatalogLive = Layer.effect(
       preflightExistingFolder: (req) => preflightExistingFolder(req).pipe(Effect.orDie),
       attachExistingFolder: (req) => attachExistingFolder(req).pipe(Effect.orDie),
       createForProject: (req) => createForProject(req).pipe(Effect.orDie),
+      createPreparedWorkspace: (req, prepare, reservationId) => createForProject(req, prepare, reservationId).pipe(Effect.orDie),
       importExistingFolder: (req) => importExistingFolder(req).pipe(Effect.orDie),
       cloneForProject: (req) => cloneForProject(req).pipe(Effect.orDie),
       verify: (workspaceId) => verify(workspaceId).pipe(Effect.orDie),

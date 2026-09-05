@@ -1,3 +1,6 @@
+import { useCallback, useEffect, useState } from "react"
+
+import { downloadAuthorizedProjectRepository } from "@/features/collaboration/api/downloadAuthorizedProjectRepository"
 import type { ResolveProjectWorkspaceResult, WorkspaceResolutionAction } from "@shared/workspaceTypes"
 
 interface ProjectLike {
@@ -18,76 +21,127 @@ export function WorkspaceRepairScreen({
   onAction,
 }: WorkspaceRepairScreenProps) {
   const projectLabel = project.name ?? project.slug ?? project._id
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [downloadPhase, setDownloadPhase] = useState("")
+  useEffect(() => window.electronAPI.collaboration.onDownloadProgress(progress => {
+    if (progress.projectId === project._id) setDownloadPhase({ authorizing: "Checking GitHub access…", fetching: "Downloading Git objects…", materializing: "Preparing local files…", complete: "Ready", cancelled: "Download cancelled", failed: "Download needs attention" }[progress.phase])
+  }), [project._id])
+
+  const handleAction = useCallback(async (action: WorkspaceResolutionAction) => {
+    if (action.kind !== "clone") {
+      onAction?.(action)
+      return
+    }
+
+    setDownloading(true)
+    setDownloadError(null)
+    try {
+      await downloadAuthorizedProjectRepository({
+        projectId: project._id,
+        slug: project.slug ?? project._id,
+      })
+      window.location.reload()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not download the project"
+      // A project without a collaboration repository binding still belongs to
+      // the existing local/manual clone flow. Authorization and remote errors
+      // remain visible instead of silently embedding credentials in a URL.
+      if (message.includes("does not have an enabled organization repository binding")) {
+        onAction?.(action)
+      } else {
+        setDownloadError(message)
+      }
+    } finally {
+      setDownloading(false)
+    }
+  }, [onAction, project._id, project.slug])
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 p-8 text-center">
-      <div className="flex flex-col gap-2 max-w-md">
-        <h2 className="text-lg font-semibold text-foreground">
-          {headingFor(result)}
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {descriptionFor(result, projectLabel)}
-        </p>
+      <div className="flex max-w-md flex-col gap-2">
+        <h2 className="text-lg font-semibold text-foreground">{headingFor(result)}</h2>
+        <p className="text-sm text-muted-foreground">{descriptionFor(result, projectLabel)}</p>
 
-        {"workspace" in result && result.workspace && (
+        {"workspace" in result && result.workspace ? (
           <p className="mt-1 rounded bg-muted px-3 py-1 font-mono text-xs text-muted-foreground">
             {result.workspace.displayPath}
           </p>
-        )}
+        ) : null}
 
-        {"candidates" in result && result.candidates && result.candidates.length > 0 && (
+        {downloadError ? (
+          <p role="alert" className="mt-1 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            {downloadError}
+          </p>
+        ) : null}
+        {downloading && <div role="status" className="text-sm"><p>{downloadPhase}</p><button type="button" className="mt-2 underline" onClick={() => void window.electronAPI.collaboration.cancelDownload(project._id)}>Cancel download</button></div>}
+
+        {"candidates" in result && result.candidates && result.candidates.length > 0 ? (
           <div className="mt-3 flex flex-col gap-1 text-left">
             <p className="text-xs font-medium text-muted-foreground">Possible folders found:</p>
-            {result.candidates.map((c) => (
+            {result.candidates.map((candidate) => (
               <button
-                key={c.path}
+                key={candidate.path}
                 type="button"
-                onClick={() => onAction?.({ kind: "bind-candidate", folderPath: c.path, label: "Use this folder" })}
-                className="rounded border border-border bg-muted/50 px-3 py-2 text-left text-xs hover:bg-muted"
+                disabled={downloading}
+                onClick={() => void handleAction({
+                  kind: "bind-candidate",
+                  folderPath: candidate.path,
+                  label: "Use this folder",
+                })}
+                className="rounded border border-border bg-muted/50 px-3 py-2 text-left text-xs hover:bg-muted disabled:opacity-50"
               >
-                <span className="font-mono">{c.path}</span>
-                {c.reasons.length > 0 && (
-                  <span className="ml-2 text-muted-foreground">— {c.reasons[0]}</span>
-                )}
+                <span className="font-mono">{candidate.path}</span>
+                {candidate.reasons.length > 0 ? (
+                  <span className="ml-2 text-muted-foreground">— {candidate.reasons[0]}</span>
+                ) : null}
               </button>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
-      {result.actions.length > 0 && (
-        <div className="flex flex-wrap gap-2 justify-center">
+      {result.actions.length > 0 ? (
+        <div className="flex flex-wrap justify-center gap-2">
           {result.actions.map((action) => (
             <ActionButton
               key={action.kind + ("workspaceId" in action ? action.workspaceId : "")}
               action={action}
-              onAction={onAction}
+              disabled={downloading}
+              loading={downloading && action.kind === "clone"}
+              onAction={(next) => void handleAction(next)}
             />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
 
 function ActionButton({
   action,
+  disabled,
+  loading,
   onAction,
 }: {
   action: WorkspaceResolutionAction
+  disabled?: boolean
+  loading?: boolean
   onAction?: (action: WorkspaceResolutionAction) => void
 }) {
   const isDestructive = action.kind === "forget"
   return (
     <button
+      type="button"
+      disabled={disabled}
       onClick={() => onAction?.(action)}
       className={
         isDestructive
-          ? "rounded-md border border-destructive/40 px-4 py-2 text-sm text-destructive hover:bg-destructive/10"
-          : "rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
+          ? "rounded-md border border-destructive/40 px-4 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
+          : "rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
       }
     >
-      {action.label}
+      {loading ? "Downloading…" : action.label}
     </button>
   )
 }
@@ -112,7 +166,7 @@ function headingFor(result: Exclude<ResolveProjectWorkspaceResult, { status: "re
     case "ambiguous":
       return "Multiple matching folders found"
     case "needs-clone":
-      return "Repository not cloned yet"
+      return "Repository not downloaded yet"
     default:
       return "Workspace unavailable"
   }
@@ -130,14 +184,14 @@ function descriptionFor(
         case "missing":
           return "The linked folder no longer exists. It may have been moved or deleted."
         case "marker-mismatched-project":
-          return `The linked folder's workspace marker identifies a different project. It may have been reassigned.`
+          return "The linked folder's workspace marker identifies a different project. It may have been reassigned."
         default:
           return "The linked workspace could not be verified."
       }
     case "ambiguous":
       return `Found ${result.candidates.length} possible folders. Choose one to link.`
     case "needs-clone":
-      return `"${projectLabel}" has a repository that hasn't been cloned to this device yet.`
+      return `"${projectLabel}" is available from its organization repository but has not been downloaded to this device.`
     default:
       return "This workspace is not available."
   }

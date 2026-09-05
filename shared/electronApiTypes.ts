@@ -1,3 +1,4 @@
+import type { CollaborationDesktopAPI } from "./collaborationDesktop"
 import type { Session } from './types'
 import type {
   AttachExistingFolderRequest,
@@ -1529,6 +1530,7 @@ export interface WorkbenchSessionSnapshot {
 }
 
 export interface ElectronAPI {
+  collaboration: CollaborationDesktopAPI
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
   /**

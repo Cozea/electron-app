@@ -722,6 +722,51 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),
     readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),
   },
+  collaboration: {
+    downloadRepository: input => ipcRenderer.invoke("collaboration:downloadRepository", input),
+    cancelDownload: projectId => ipcRenderer.invoke("collaboration:cancelDownload", projectId),
+    onDownloadProgress: listener => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: import("../../../shared/collaborationDesktop").RepositoryDownloadProgress) => listener(progress)
+      ipcRenderer.on("collaboration:downloadProgress", handler)
+      return () => ipcRenderer.removeListener("collaboration:downloadProgress", handler)
+    },
+    prepare: input => ipcRenderer.invoke("collaboration:prepare", input),
+    leave: input => ipcRenderer.invoke("collaboration:leave", input),
+    getBinding: sessionId => ipcRenderer.invoke("collaboration:getBinding", sessionId),
+    bindingForWorkspace: id => ipcRenderer.invoke("collaboration:bindingForWorkspace", id),
+    inspectImportableChanges: sourceWorkspaceId => ipcRenderer.invoke("collaboration:inspectImport", sourceWorkspaceId),
+    readReviewedImport: input => ipcRenderer.invoke("collaboration:readImport", input),
+    prepareCommit: input => ipcRenderer.invoke("collaboration:prepareCommit", input),
+    pushPrepared: input => ipcRenderer.invoke("collaboration:pushPrepared", input),
+    adoptPublished: input => ipcRenderer.invoke("collaboration:adoptPublished", input),
+    runtime: {
+      setup: id => ipcRenderer.invoke("collaboration:runtimeSetup", id),
+      resolve: input => ipcRenderer.invoke("collaboration:runtimeResolve", input),
+      importChanges: input => ipcRenderer.invoke("collaboration:runtimeImport", input),
+      discard: id => ipcRenderer.invoke("collaboration:runtimeDiscard", id),
+      control: input => ipcRenderer.invoke("collaboration:control", input),
+      open: input => ipcRenderer.invoke("collaboration:runtimeOpen", input),
+      active: projectId => ipcRenderer.invoke("collaboration:runtimeActive", projectId),
+      snapshot: id => ipcRenderer.invoke("collaboration:runtimeSnapshot", id),
+      openFile: input => ipcRenderer.invoke("collaboration:runtimeOpenFile", input),
+      editorState: id => ipcRenderer.invoke("collaboration:runtimeEditorState", id),
+      edit: input => ipcRenderer.invoke("collaboration:runtimeEdit", input),
+      createFile: input => ipcRenderer.invoke("collaboration:runtimeCreateFile", input),
+      renameFile: input => ipcRenderer.invoke("collaboration:runtimeRenameFile", input),
+      deleteFile: input => ipcRenderer.invoke("collaboration:runtimeDeleteFile", input),
+      restoreFile: input => ipcRenderer.invoke("collaboration:runtimeRestoreFile", input),
+      commit: input => ipcRenderer.invoke("collaboration:runtimeCommit", input),
+      push: id => ipcRenderer.invoke("collaboration:runtimePush", id),
+      prepared: id => ipcRenderer.invoke("collaboration:runtimePrepared", id),
+      leave: input => ipcRenderer.invoke("collaboration:runtimeLeave", input),
+      retry: id => ipcRenderer.invoke("collaboration:runtimeRetry", id),
+      onChanged: listener => {
+        const handler = (_event: Electron.IpcRendererEvent, id: string) => listener(id)
+        ipcRenderer.on("collaboration:runtimeChanged", handler)
+        return () => ipcRenderer.removeListener("collaboration:runtimeChanged", handler)
+      },
+    },
+  },
   workspaceSync: {
     hashFile: (options: { workspaceId: string; laneId?: string | null; path: string }) =>
       ipcRenderer.invoke('workspaceSync:hashFile', options),

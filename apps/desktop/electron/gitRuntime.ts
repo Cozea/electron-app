@@ -25,6 +25,7 @@ export interface GitCommandResult {
   success: boolean
   exitCode: number | null
   stdout: string
+  stdoutBytes?: Uint8Array
   stderr: string
   executablePath: string
   source: GitRuntimeSource
@@ -142,6 +143,9 @@ export async function runGitCommand(
     env?: Record<string, string>
     stdin?: string
     timeoutMs?: number
+    captureStdoutBytes?: boolean
+    maxOutputBytes?: number
+    signal?: AbortSignal
   }
 ): Promise<GitCommandResult> {
   const resolved = resolveGitExecutablePath()
@@ -165,9 +169,15 @@ export async function runGitCommand(
     })
 
     let stdout = ""
+    const stdoutChunks: Buffer[] = []
+    let outputBytes = 0
+    let outputExceeded = false
     let stderr = ""
     let timedOut = false
     let timeout: NodeJS.Timeout | null = null
+    const abort = () => { child.kill("SIGKILL") }
+    options?.signal?.addEventListener("abort", abort, { once: true })
+    if (options?.signal?.aborted) abort()
 
     if (options?.timeoutMs && options.timeoutMs > 0) {
       timeout = setTimeout(() => {
@@ -181,14 +191,20 @@ export async function runGitCommand(
     }
 
     child.stdout.on("data", (chunk: Buffer | string) => {
+      outputBytes += Buffer.byteLength(chunk)
+      if (options?.maxOutputBytes && outputBytes > options.maxOutputBytes) { outputExceeded = true; child.kill("SIGKILL"); return }
+      if (options?.captureStdoutBytes) stdoutChunks.push(Buffer.from(chunk))
       stdout += chunk.toString()
     })
 
     child.stderr.on("data", (chunk: Buffer | string) => {
+      outputBytes += Buffer.byteLength(chunk)
+      if (options?.maxOutputBytes && outputBytes > options.maxOutputBytes) { outputExceeded = true; child.kill("SIGKILL"); return }
       stderr += chunk.toString()
     })
 
     child.on("error", (error) => {
+      options?.signal?.removeEventListener("abort", abort)
       if (timeout) clearTimeout(timeout)
       resolve({
         success: false,
@@ -202,15 +218,17 @@ export async function runGitCommand(
     })
 
     child.on("close", (code) => {
+      options?.signal?.removeEventListener("abort", abort)
       if (timeout) clearTimeout(timeout)
       resolve({
-        success: !timedOut && code === 0,
+        success: !options?.signal?.aborted && !timedOut && !outputExceeded && code === 0,
         exitCode: code,
         stdout,
+        ...(options?.captureStdoutBytes ? { stdoutBytes: Buffer.concat(stdoutChunks) } : {}),
         stderr,
         executablePath: resolved.path!,
         source: resolved.source,
-        error: timedOut ? "Git command timed out" : undefined,
+        error: outputExceeded ? "Git output exceeds the requested limit" : timedOut ? "Git command timed out" : undefined,
       })
     })
 

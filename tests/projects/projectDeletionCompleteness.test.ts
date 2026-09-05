@@ -21,7 +21,13 @@ function directProjectOwnedTables(schemaSource: string): string[] {
 }
 
 describe("project deletion completeness", () => {
-  const schemaSource = readFileSync(resolve(process.cwd(), "convex/schema.ts"), "utf8")
+  const schemaSource = [
+    "convex/schema/base.ts",
+    "convex/schema/collaboration.ts",
+    "convex/schema/collaborationRepositories.ts",
+  ]
+    .map((file) => readFileSync(resolve(process.cwd(), file), "utf8"))
+    .join("\n")
   const projectsSource = readFileSync(resolve(process.cwd(), "convex/projects.ts"), "utf8")
 
   it("purges every table whose rows are directly owned by a project", () => {

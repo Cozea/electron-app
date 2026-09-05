@@ -108,10 +108,10 @@ describe('left sidebar theme tokens', () => {
   })
 
   it('disables active icon animations under reduced-motion preference', () => {
-    const reducedMotionMatch = stylesheet.match(
-      /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/,
-    )
-    expect(reducedMotionMatch).not.toBeNull()
+    const reducedMotionMatch = [...stylesheet.matchAll(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/g,
+    )].find(match => match[1]?.includes('.cozea-sprite-active'))
+    expect(reducedMotionMatch).toBeDefined()
     const reducedMotionContent = reducedMotionMatch?.[1] ?? ''
 
     // Every sprite rule carries the base class, so one rule disables them all.

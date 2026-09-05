@@ -566,6 +566,14 @@ export class DevServerService {
     return this.processes.has(buildRunKey(workspaceId, laneId))
   }
 
+  public async stopWorkspace(workspaceId: string): Promise<void> {
+    for (const entry of this.processes.values()) {
+      if (entry.workspaceId !== workspaceId) continue
+      const result = await this.stop(workspaceId, entry.laneId)
+      if (!result.success) throw new Error(result.error ?? 'A shared workspace preview could not be stopped')
+    }
+  }
+
   /**
    * Detach a closing surface from the PTY that owns the singleton run. The
    * process keeps running; once it stops, its now-headless terminal is reaped.

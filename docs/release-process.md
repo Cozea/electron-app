@@ -133,6 +133,18 @@ The Cloudflare API token must be able to upload objects into the configured R2 b
 
 ## Operating Rules
 
+GitHub collaboration generation 3 has two release gates: the desktop build flag
+`VITE_GITHUB_COLLABORATION_RELEASE=1` and the production Convex environment flag
+`COLLABORATION_G3_CREATE_ENABLED=1`. Leave both disabled while implementation and
+acceptance are incomplete. Existing ordinary-project synchronization remains on.
+The completion checklist is in `docs/collaboration-v2-completion.md`.
+
+The collaboration rollout requires a reviewed collaboration-only reset inventory,
+compatible production Convex functions/schema (`bunx convex deploy`), the gateway,
+and then the packaged desktop build. Two independently authenticated packaged
+instances must pass the deployed workflow before general enablement. Rollback
+turns off new session creation and retains all unpublished local recovery data.
+
 - Do not publish GitHub Release artifacts from branches.
 - Do not rebuild a release from code that is not already tagged.
 - Do not publish a CircleCI main release without a version bump.

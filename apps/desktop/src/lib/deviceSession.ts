@@ -1,3 +1,4 @@
+import { validateDeviceGatewayUrl } from "@shared/gatewayUrl"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import type { PersonalWorkspaceMembership, User } from "@shared/types"
 
@@ -17,7 +18,7 @@ function getAuthBaseUrl(): string {
   if (!configured) {
     throw new Error("Device authentication server is not configured.")
   }
-  return configured.replace(/\/+$/, "")
+  return validateDeviceGatewayUrl(configured)
 }
 
 export function getDeviceGatewayBaseUrl(): string {
@@ -52,6 +53,8 @@ async function issueDeviceSession(): Promise<DeviceSession> {
   const baseUrl = getAuthBaseUrl()
   const challengeResponse = await fetch(`${baseUrl}/auth/device/challenge`, {
     method: "POST",
+    redirect: "error",
+    cache: "no-store",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       identityKey: identity.identityKey,
@@ -73,6 +76,8 @@ async function issueDeviceSession(): Promise<DeviceSession> {
 
   const completeResponse = await fetch(`${baseUrl}/auth/device/complete`, {
     method: "POST",
+    redirect: "error",
+    cache: "no-store",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ challenge, signature: signed.signature }),
   })
@@ -108,6 +113,8 @@ export async function createOrganizationRecoveryCode(
   const session = await getDeviceSession()
   return await parseResponse<{ recoveryCode: string; expiresAt: number }>(await fetch(`${getAuthBaseUrl()}/auth/device/recovery/create`, {
     method: "POST",
+    redirect: "error",
+    cache: "no-store",
     headers: { "content-type": "application/json", authorization: `Bearer ${session.accessToken}` },
     body: JSON.stringify({ organizationId }),
   }))
@@ -119,6 +126,8 @@ export async function redeemOrganizationRecoveryCode(
   const session = await getDeviceSession()
   return await parseResponse<{ organizationId: Id<"organizations">; recovered: true }>(await fetch(`${getAuthBaseUrl()}/auth/device/recovery/redeem`, {
     method: "POST",
+    redirect: "error",
+    cache: "no-store",
     headers: { "content-type": "application/json", authorization: `Bearer ${session.accessToken}` },
     body: JSON.stringify({ recoveryCode }),
   }))

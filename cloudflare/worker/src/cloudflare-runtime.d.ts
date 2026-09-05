@@ -10,19 +10,40 @@ interface DurableObjectNamespace<T = DurableObjectStub> {
 }
 
 interface DurableObjectState<T = unknown> {
-  acceptWebSocket(socket: WebSocket): void
+  acceptWebSocket(socket: WebSocket, tags?: string[]): void
+  getWebSockets(tag?: string): WebSocket[]
   storage: DurableObjectStorage
 }
 
+interface DurableObjectStorageListOptions {
+  prefix?: string
+  start?: string
+  end?: string
+  limit?: number
+  reverse?: boolean
+}
+
 interface DurableObjectStorage {
+  setAlarm(scheduledTime: number | Date): Promise<void>
+  getAlarm(): Promise<number | null>
+  deleteAlarm(): Promise<void>
   get<T>(key: string): Promise<T | undefined>
   put<T>(key: string, value: T): Promise<void>
+  put(entries: Record<string, unknown>): Promise<void>
   delete(key: string): Promise<boolean>
+  delete(keys: string[]): Promise<number>
+  deleteAll(): Promise<void>
+  list<T>(options?: DurableObjectStorageListOptions): Promise<Map<string, T>>
   transaction<T>(closure: (transaction: DurableObjectStorage) => Promise<T>): Promise<T>
 }
 
 interface DurableObject {
   fetch(request: Request): Promise<Response>
+}
+
+interface WebSocket {
+  serializeAttachment(attachment: unknown): void
+  deserializeAttachment<T = unknown>(): T | null
 }
 
 interface WebSocketPair {

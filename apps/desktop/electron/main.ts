@@ -1,3 +1,4 @@
+import { registerCollaborationHandlers } from "./collaboration/registerCollaborationHandlers"
 import { app, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
@@ -1913,6 +1914,7 @@ app.whenReady().then(() => {
   // Register workspace IPC handlers synchronously so they're available as soon
   // as the renderer loads. Internally each handler awaits catalog readiness.
   registerWorkspaceHandlers(ipcMain, { loadSettings, saveSettings })
+  registerCollaborationHandlers(ipcMain, app.getPath("userData"))
 
   scheduleBootWork(
     'workspace-catalog-initialized',
