@@ -26,6 +26,7 @@ function returnObject(source, required, name) {
     if (ts.isReturnStatement(node) && node.expression) {
       let expression = node.expression;
       while (ts.isSatisfiesExpression(expression) || ts.isAsExpression(expression) || ts.isParenthesizedExpression(expression)) expression = expression.expression;
+      if (ts.isCallExpression(expression) && expression.expression.getText(file) === "TerminalManager.of" && expression.arguments.length === 1) expression = expression.arguments[0];
       if (ts.isObjectLiteralExpression(expression)) {
         const keys = new Set(expression.properties.map(propertyName));
         if (required.every(key => keys.has(key))) matches.push({ node, expression });
