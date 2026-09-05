@@ -576,8 +576,10 @@ export function ProjectSidebar({
   }, [navigate]);
 
   const isOnAppStore = pathname === "/projects/store";
+  // Straight to Builds: it is the surface that does something, and the
+  // library is one button away from there.
   const handleOpenAgentSkills = React.useCallback(() => {
-    navigate("/projects/skills");
+    navigate("/projects/skills?view=builds");
   }, [navigate]);
   const isOnAgentSkills = pathname === "/projects/skills";
 

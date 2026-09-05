@@ -18,7 +18,7 @@ describe("DevApps Store shell unification", () => {
     expect(layout).not.toContain("/projects/store")
   })
 
-  it("keeps one persistent shell whose only lazy branches are settings and skills", () => {
+  it("keeps one persistent shell with a single lazy settings branch", () => {
     const layout = read(LAYOUT)
     const block = layout.slice(
       layout.indexOf("<AppSidebarShell"),
@@ -28,10 +28,10 @@ describe("DevApps Store shell unification", () => {
     expect(block).toContain("<LazySettingsSidebar")
     expect(block).toContain("<SidebarModeFallback />")
     expect(block).toContain("<ProjectSidebar")
-    // Settings and Agent Skills are the only route modes that swap the
-    // sidebar's contents; the store deliberately reuses the project sidebar.
-    expect(block).toContain("<LazyAgentSkillsSidebar")
-    expect(block.match(/<Suspense/g)).toHaveLength(2)
+    // Settings is the only route mode that swaps the sidebar's contents; the
+    // store and Agent Skills both reuse the project sidebar.
+    expect(block).not.toContain("<LazyAgentSkillsSidebar")
+    expect(block.match(/<Suspense/g)).toHaveLength(1)
     expect(block).not.toContain("surface=")
   })
 
