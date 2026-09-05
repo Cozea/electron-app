@@ -48,19 +48,11 @@ replace(bootstrap, '  process.on("message", onHostUpdate);', `  const onWorkspac
 replace(bootstrap, '      process.off("message", onHostUpdate);', '      process.off("message", onHostUpdate);\n      process.off("message", onWorkspaceControl);');
 
 const handlers = "apps/desktop/electron/collaboration/registerCollaborationHandlers.ts";
-replace(handlers, 'import { WorkbenchSessionManager } from "../services/WorkbenchSessionManager"', 'import { WorkbenchSessionManager } from "../services/WorkbenchSessionManager"\nimport { activateNativeWorkspaceRoot, blockNativeWorkspaceRoot, setNativeWorkspaceAuthorizer, stopNativeWorkspaceRoot } from "./NativeWorkspaceBridge"\nimport { createNativeWorkspaceAuthorizer } from "./NativeWorkspaceAuthorizer"');
-// Activation belongs to the host, not a generic renderer-controlled IPC route.
-replace(handlers, 'import { activateNativeWorkspaceRoot, blockNativeWorkspaceRoot, setNativeWorkspaceAuthorizer, stopNativeWorkspaceRoot } from "./NativeWorkspaceBridge"', 'import { blockNativeWorkspaceRoot, setNativeWorkspaceAuthorizer, stopNativeWorkspaceRoot } from "./NativeWorkspaceBridge"');
+replace(handlers, 'import { WorkbenchSessionManager } from "../services/WorkbenchSessionManager"', 'import { WorkbenchSessionManager } from "../services/WorkbenchSessionManager"\nimport { blockNativeWorkspaceRoot, setNativeWorkspaceAuthorizer, stopNativeWorkspaceRoot } from "./NativeWorkspaceBridge"\nimport { createNativeWorkspaceAuthorizer } from "./NativeWorkspaceAuthorizer"');
 replace(handlers, '{ projectId, slug: `collab-${sessionId}`, setActive: false }, prepare, `collaboration:g3:${sessionId}`,', '{ projectId, slug: `collab-${sessionId}`, setActive: false }, async target => { blockNativeWorkspaceRoot(target); await prepare(target) }, `collaboration:g3:${sessionId}`,');
 replace(handlers, "  const host = new SessionRuntimeHost(coordinator,", `  setNativeWorkspaceAuthorizer(createNativeWorkspaceAuthorizer({
     findWorkspace: cwd => catalog(service => service.findByPath(cwd)),
-    binding: async workspaceId => {
-      const reserved = await catalog(service => service.getSetting(\`collaboration.workspace.v1:\${workspaceId}\`))
-      if (!reserved) return null
-      const binding = await coordinator.bindingForWorkspace(workspaceId)
-      if (!binding) throw new Error("Session workspace authority is unavailable")
-      return binding
-    },
+    binding: workspaceId => coordinator.bindingForWorkspace(workspaceId),
     authorizeSession: sessionId => gateway.post<CollaborationWorkspaceAuthority>("/collab/v2/workspace-context", { sessionId }),
   }))
   const host = new SessionRuntimeHost(coordinator,`);
@@ -80,6 +72,13 @@ replace(host, "      hosted.ready = true", "      await activateNativeWorkspaceR
 
 const bridge = "apps/desktop/electron/collaboration/NativeWorkspaceBridge.ts";
 replace(bridge, "  const targets = [...endpoints].filter(endpoint => endpoint.connected);", "  // A disconnected but not exited child is an unconfirmed owner, not success.\n  const targets = [...endpoints];");
+
+const authorizer = "apps/desktop/electron/collaboration/NativeWorkspaceAuthorizer.ts";
+replace(authorizer, '      if (!path.isAbsolute(request.cwd) || request.cwd.includes("\\0")) return { allowed: false, sessionRoot };', '      if ((request.operation !== "execute" && request.operation !== "git") || !path.isAbsolute(request.cwd) || request.cwd.includes("\\0")) return { allowed: false, sessionRoot };');
+replace(authorizer, '      if (live.role !== "editor" || !Number.isFinite(live.expiresAt) || live.expiresAt <= now()) return { allowed: false, sessionRoot };', '      if (live.role !== "editor" || live.session.id !== binding.sessionId || live.session.projectId !== binding.projectId || live.session.repositoryId !== binding.repositoryId || ["closing", "closed", "failed"].includes(live.session.status) || !Number.isFinite(live.expiresAt) || live.expiresAt <= now()) return { allowed: false, sessionRoot };');
+
+const authority = "shared/nativeWorkspaceAuthority.ts";
+replace(authority, '      if (failed) throw new Error("Native workspace shutdown was not fully acknowledged; retry Leave.");', '      if (failed) throw new Error("Native workspace shutdown was not fully acknowledged; retry Leave.");\n      this.sessionRoots.delete(root);');
 
 const test = "tests/collaboration/nativeWorkspaceAuthority.test.ts";
 replace(test, 'function fixture(authorize = vi.fn(async (_cwd: string, _operation: "execute" | "git") => editor)) {\n  return { authorize, authority: new NativeWorkspaceAuthority({ authorize, canonicalize: async cwd => cwd, drainTimeoutMs: 10 }) };\n}', 'function fixture(implementation: (cwd: string, operation: "execute" | "git") => Promise<NativeWorkspaceDecision> = async () => editor) {\n  const authorize = vi.fn(implementation);\n  return { authorize, authority: new NativeWorkspaceAuthority({ authorize, canonicalize: async cwd => cwd, drainTimeoutMs: 10 }) };\n}');
