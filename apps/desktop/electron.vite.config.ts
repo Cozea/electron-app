@@ -141,6 +141,10 @@ const mainBootAliases: Alias[] = [
     find: './services/AgentToolService',
     replacement: path.resolve(__dirname, './electron/services/boot/AgentToolServiceFacade.ts'),
   },
+  {
+    find: './services/AgentSkillService',
+    replacement: path.resolve(__dirname, './electron/services/boot/AgentSkillServiceFacade.ts'),
+  },
 ]
 
 interface SandboxedPreloadBundle {
