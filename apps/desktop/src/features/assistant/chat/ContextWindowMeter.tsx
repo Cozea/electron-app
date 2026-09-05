@@ -48,7 +48,7 @@ export function ContextWindowMeter(props: {
         : "text-foreground/80 dark:text-white/80";
   const contextValue =
     usage.maxTokens !== null && usedPercentage
-      ? `${usedPercentage} used · ${formatContextWindowTokens(usage.usedTokens)}/${formatContextWindowTokens(usage.maxTokens ?? null)}`
+      ? `${formatContextWindowTokens(usage.usedTokens)} / ${formatContextWindowTokens(usage.maxTokens ?? null)} (${usedPercentage})`
       : `${formatContextWindowTokens(usage.usedTokens)} tokens used`;
   const accountUsageWindows = accountUsage?.windows ?? [];
   const hasAccountUsage = accountUsageWindows.length > 0;
@@ -57,10 +57,6 @@ export function ContextWindowMeter(props: {
         .map((window) => `${window.label} ${formatRemainingUsage(window)}`)
         .join(" · ")
     : "Not reported";
-  const nextResetWindow = accountUsageWindows
-    .filter((window) => window.resetsAt !== null)
-    .toSorted((left, right) => String(left.resetsAt).localeCompare(String(right.resetsAt)))[0];
-  const nextReset = nextResetWindow ? formatUsageLimitReset(nextResetWindow.resetsAt) : null;
 
   if (children) {
     const ringContent = (
@@ -116,40 +112,13 @@ export function ContextWindowMeter(props: {
           side="top"
           align="end"
           sideOffset={8}
-          className="w-[16.5rem] max-w-[calc(100vw-1rem)] p-3 rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl text-popover-foreground pointer-events-none dark:border-white/[0.08]"
+          className="w-[19rem] max-w-[calc(100vw-1rem)] p-3 rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl text-popover-foreground pointer-events-none dark:border-white/[0.08]"
         >
-          <div className="space-y-2 text-xs leading-tight">
-            <div
-              data-usage-row="context"
-              className="flex items-start justify-between gap-4"
-            >
-              <span className="shrink-0 text-muted-foreground">Context</span>
-              <span className="min-w-0 text-right font-medium tabular-nums text-foreground">
-                {contextValue}
-              </span>
-            </div>
-            <div
-              data-usage-row="account"
-              className="flex items-start justify-between gap-4 border-t border-border/60 pt-2"
-            >
-              <span className="shrink-0 text-muted-foreground">AI usage left</span>
-              <span className="min-w-0 text-right tabular-nums">
-                <span
-                  className={cn(
-                    "font-medium",
-                    hasAccountUsage ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  {accountUsageValue}
-                </span>
-                {nextReset ? (
-                  <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                    {nextResetWindow?.label} {nextReset.toLowerCase()}
-                  </span>
-                ) : null}
-              </span>
-            </div>
-          </div>
+          <UsagePanel
+            contextValue={contextValue}
+            contextPercentage={usage.usedPercentage}
+            windows={accountUsageWindows}
+          />
         </TooltipPopup>
       </Tooltip>
     );
@@ -221,42 +190,93 @@ export function ContextWindowMeter(props: {
         tooltipStyle
         side="top"
         align="end"
-        className="w-[16.5rem] max-w-[calc(100vw-1rem)] px-3 py-2.5"
+        className="w-[19rem] max-w-[calc(100vw-1rem)] px-3 py-3"
       >
-        <div className="space-y-2 text-xs leading-tight">
-          <div
-            data-usage-row="context"
-            className="flex items-start justify-between gap-4"
-          >
-            <span className="shrink-0 text-muted-foreground">Context</span>
-            <span className="min-w-0 text-right font-medium tabular-nums text-foreground">
-              {contextValue}
-            </span>
-          </div>
-          <div
-            data-usage-row="account"
-            className="flex items-start justify-between gap-4 border-t border-border/60 pt-2"
-          >
-            <span className="shrink-0 text-muted-foreground">AI usage left</span>
-            <span className="min-w-0 text-right tabular-nums">
-              <span
-                className={cn(
-                  "font-medium",
-                  hasAccountUsage ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {accountUsageValue}
-              </span>
-              {nextReset ? (
-                <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                  {nextResetWindow?.label} {nextReset.toLowerCase()}
-                </span>
-              ) : null}
-            </span>
-          </div>
-        </div>
+        <UsagePanel
+          contextValue={contextValue}
+          contextPercentage={usage.usedPercentage}
+          windows={accountUsageWindows}
+        />
       </PopoverPopup>
     </Popover>
+  );
+}
+
+/** Warm as a limit approaches, matching the ring around the send button. */
+function usageToneClass(percentage: number | null): string {
+  const value = percentage ?? 0;
+  if (value >= 90) return "bg-rose-500";
+  if (value >= 75) return "bg-amber-500";
+  return "bg-foreground/80 dark:bg-white/80";
+}
+
+function UsageBar({ percentage }: { percentage: number | null }) {
+  const filled = Math.max(0, Math.min(100, percentage ?? 0));
+  return (
+    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-foreground/12 dark:bg-white/12">
+      <div
+        className={cn("h-full rounded-full transition-[width]", usageToneClass(percentage))}
+        style={{ width: `${filled}%` }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The panel behind the ring: what the context window holds, then each plan
+ * window with when it resets and how much of it is gone.
+ *
+ * Percentages read as used rather than left, so they agree with the bar
+ * beneath them; the accessible name still summarises what is left, which is
+ * the more useful thing to hear.
+ */
+function UsagePanel({
+  contextValue,
+  contextPercentage,
+  windows,
+}: {
+  contextValue: string;
+  contextPercentage: number | null;
+  windows: ReadonlyArray<AccountUsageLimitWindow>;
+}) {
+  return (
+    <div className="space-y-3 text-xs leading-tight">
+      <div data-usage-row="context">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="shrink-0 text-muted-foreground">Context window</span>
+          <span className="min-w-0 truncate text-right tabular-nums text-foreground">
+            {contextValue}
+          </span>
+        </div>
+        <UsageBar percentage={contextPercentage} />
+      </div>
+
+      <div data-usage-row="account" className="border-t border-border/60 pt-2.5">
+        <div className="text-muted-foreground">Plan usage limits</div>
+        {windows.length === 0 ? (
+          <div className="mt-1.5 text-muted-foreground">Not reported</div>
+        ) : (
+          <div className="mt-2 space-y-2.5">
+            {windows.map((window) => {
+              const reset = formatUsageLimitReset(window.resetsAt);
+              const used = formatPercentage(window.usedPercentage);
+              return (
+                <div key={window.key}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate text-foreground">{window.label}</span>
+                    <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
+                      {reset ? <span className="text-muted-foreground">{reset}</span> : null}
+                      <span className="text-foreground">{used ?? formatRemainingUsage(window)}</span>
+                    </span>
+                  </div>
+                  <UsageBar percentage={window.usedPercentage} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
