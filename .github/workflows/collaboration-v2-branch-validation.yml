@@ -4,7 +4,12 @@ on:
   push:
     branches:
       - refactor/collaboration-v2-end-to-end
+      - codex/collaboration-v2-complete
   workflow_dispatch:
+
+env:
+  VITE_GITHUB_COLLABORATION_RELEASE: "0"
+  COLLABORATION_G3_CREATE_ENABLED: "0"
 
 permissions:
   contents: read
@@ -24,6 +29,20 @@ jobs:
         with:
           submodules: false
           fetch-depth: 0
+
+      - name: Capture exact validation sources
+        run: |
+          git archive --format=tar.gz --output="$RUNNER_TEMP/collaboration-source.tar.gz" HEAD -- \
+            apps packages shared convex cloudflare scripts tests patches \
+            package.json bun.lock .gitmodules 'tsconfig*.json' vitest.config.ts \
+            ':(glob,exclude)**/.env*' ':(glob,exclude)**/*.pem' ':(glob,exclude)**/*.key'
+
+      - name: Upload exact validation sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-source-${{ github.sha }}
+          path: ${{ runner.temp }}/collaboration-source.tar.gz
+          retention-days: 1
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
