@@ -1,4 +1,5 @@
 import * as React from "react";
+import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects/model/agentSkillsSnapshot";
 
 import { Logo } from "@/components/Logo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -29,7 +30,6 @@ import type {
   AgentSkillProvider,
   AgentSkillMutationResult,
   AgentSkillRecord,
-  AgentSkillsSnapshot,
 } from "@shared/electronApiTypes";
 
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -307,8 +307,7 @@ export function filterPickerSkills(
 export function SkillBuildsView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
-  const [snapshot, setSnapshot] = React.useState<AgentSkillsSnapshot | null>(null);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const { data: snapshot, error: loadError } = useAgentSkillsSnapshot();
   const [selectedBuildId, setSelectedBuildId] = React.useState<string | null>(null);
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
@@ -316,24 +315,14 @@ export function SkillBuildsView() {
   const [draftName, setDraftName] = React.useState("");
   const [draftSkillIds, setDraftSkillIds] = React.useState<string[]>([]);
 
-  const load = React.useCallback(async () => {
-    setLoadError(null);
-    try {
-      const next = await window.electronAPI.agentSkills.list();
-      setSnapshot(next);
-      setSelectedBuildId((current) =>
-        current && next.builds.some((build) => build.id === current)
-          ? current
-          : (next.activeBuildId ?? next.builds[0]?.id ?? null),
-      );
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Unable to load builds.");
-    }
-  }, []);
-
   React.useEffect(() => {
-    void load();
-  }, [load]);
+    if (!snapshot) return;
+    setSelectedBuildId((current) =>
+      current && snapshot.builds.some((build) => build.id === current)
+        ? current
+        : (snapshot.activeBuildId ?? snapshot.builds[0]?.id ?? null),
+    );
+  }, [snapshot]);
 
   const runMutation = React.useCallback(
     async (
@@ -344,7 +333,7 @@ export function SkillBuildsView() {
       setBusyKey(key);
       try {
         const result = await operation();
-        setSnapshot(result.snapshot);
+        agentSkillsSnapshot.publish(result.snapshot);
         if (!result.success) {
           if (result.error) appToast.error({ title: "Builds", description: result.error });
           return result;
@@ -509,8 +498,11 @@ export function SkillBuildsView() {
       )}
     >
       <div className="relative z-[5] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-8 pt-6 pb-5 sm:px-10">
-        {loadError ? (
+        {loadError && snapshot ? <p role="status" className="px-6 py-2 text-sm text-destructive">{loadError} — showing the last local snapshot.</p> : null}
+        {loadError && !snapshot ? (
           <p className="p-6 text-sm text-destructive">{loadError}</p>
+        ) : !snapshot ? (
+          <p role="status" className="p-6 text-sm text-muted-foreground">Reading local skills…</p>
         ) : isEditing ? (
           <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-border/50 bg-card/40">
             <BuildEditor

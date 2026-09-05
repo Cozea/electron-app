@@ -848,6 +848,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     activePendingApproval !== null ||
     activePendingUserInput !== null ||
     showPlanFollowUpPrompt ||
+    threadRuntimeBannerState !== null ||
     isNonEmptyReactNode(props.composerStatus) ||
     props.composer.trim().length > 0 ||
     props.composerImages.length > 0 ||
@@ -1485,7 +1486,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   const hasActiveComposerHeader = Boolean(
     hasComposerHeader ||
-    threadRuntimeBannerState ||
     (showPlanFollowUpPrompt && activeProposedPlan),
   )
 
@@ -1964,6 +1964,23 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         tabIndex={-1}
       />
 
+      {threadRuntimeBannerState ? (
+        <div className="mb-2 w-full animate-in fade-in-50 slide-in-from-bottom-2 duration-150">
+          <ThreadRuntimeBanner
+            state={threadRuntimeBannerState}
+            detail={threadRuntimeDetail}
+            isForceStopAvailable={props.isForceStopAvailable}
+            action={
+              <ProviderRemediationAction
+                provider={props.selectedProvider}
+                message={threadRuntimeDetail}
+                authenticationRequired={props.providerSnapshot?.auth.status === "unauthenticated"}
+              />
+            }
+          />
+        </div>
+      ) : null}
+
       {/* One surface and one editor subtree at every size. CSS order and
         * flex-basis move the same controls beneath the prompt once it wraps;
         * the Lexical editor never remounts, so focus and selection survive
@@ -1978,22 +1995,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         )}
       >
         {props.composerStatus ? <div className="basis-full mb-2">{props.composerStatus}</div> : null}
-        {threadRuntimeBannerState ? (
-          <div className="basis-full mb-2">
-            <ThreadRuntimeBanner
-              state={threadRuntimeBannerState}
-              detail={threadRuntimeDetail}
-              isForceStopAvailable={props.isForceStopAvailable}
-              action={
-                <ProviderRemediationAction
-                  provider={props.selectedProvider}
-                  message={threadRuntimeDetail}
-                  authenticationRequired={props.providerSnapshot?.auth.status === "unauthenticated"}
-                />
-              }
-            />
-          </div>
-        ) : null}
         {props.thread ? asyncUserInputs.map((request) => (
           <AsyncQuestionPanel key={String(request.requestId)} threadId={props.thread!.id} request={request}
             responding={props.activeRequestKey === String(request.requestId)} onSubmit={props.onSubmitUserInput} />

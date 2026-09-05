@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useConvex, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 
@@ -70,7 +70,9 @@ export function AppStorePage() {
   const navigate = useViewTransitionNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const query = searchParams.get("q") ?? ""
+  const routeQuery = searchParams.get("q") ?? ""
+  const [query, setQuery] = useState(routeQuery)
+  useEffect(() => setQuery(routeQuery), [routeQuery])
   const scope = resolveAppStoreScope(searchParams.get("scope"))
 
   const [pendingPublicationId, setPendingPublicationId] = useState<string | null>(null)
@@ -80,7 +82,7 @@ export function AppStorePage() {
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
   const highlightTimer = useRef<number | null>(null)
 
-  const { installations, loading: installationsLoading, refresh } = useOrgDevAppInstallations()
+  const { installations, loading: installationsLoading, error: installationsError, refresh } = useOrgDevAppInstallations()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
 
   const orgScopeEnabled = featureFlags.projectDevApps && Boolean(convexUserId)
@@ -103,6 +105,7 @@ export function AppStorePage() {
 
   const setParam = useCallback(
     (key: string, value: string | null, options?: { replace?: boolean }) => {
+      if (key === "q") setQuery(value ?? "")
       const next = new URLSearchParams(searchParams)
       if (value) next.set(key, value)
       else next.delete(key)
@@ -456,12 +459,12 @@ export function AppStorePage() {
 
   return (
     <div className="mx-auto w-full max-w-[960px] space-y-6 px-6 pt-4 pb-10">
-      {installationError ? (
+      {installationError || installationsError ? (
         <div
           className="flex items-center gap-3 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
           role="alert"
         >
-          <span className="min-w-0 flex-1">{installationError}</span>
+          <span className="min-w-0 flex-1">{installationError ?? installationsError}</span>
           <Button
             type="button"
             variant="ghost"
@@ -491,9 +494,11 @@ export function AppStorePage() {
           <Input
             type="search"
             value={query}
-            onChange={(event) =>
-              setParam("q", event.target.value.trim() ? event.target.value : null, { replace: true })
-            }
+            onChange={(event) => setQuery(event.target.value)}
+            onBlur={() => setParam("q", query.trim() ? query : null, { replace: true })}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') setParam("q", query.trim() ? query : null, { replace: true })
+            }}
             placeholder={t("appStore.searchPlaceholder")}
             className="h-11 rounded-search bg-muted pl-9 text-sm"
           />

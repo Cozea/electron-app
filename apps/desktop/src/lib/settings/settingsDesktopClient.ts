@@ -1,9 +1,11 @@
+import { localSettings, saveLocalSettings } from './localSettings'
+
 export const settingsDesktopClient = {
   hasSettings: () => Boolean(window.electronAPI?.settings),
   hasDialog: () => Boolean(window.electronAPI?.dialog),
-  get: () => window.electronAPI.settings.get(),
+  get: () => localSettings.ensure(),
   set: (settings: Parameters<typeof window.electronAPI.settings.set>[0]) =>
-    window.electronAPI.settings.set(settings),
+    saveLocalSettings(settings),
   selectDirectory: (
     options?: Parameters<typeof window.electronAPI.dialog.selectDirectory>[0]
   ) => window.electronAPI.dialog.selectDirectory(options),

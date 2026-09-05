@@ -27,33 +27,34 @@ function bannerPresentation(state: ThreadRuntimeBannerState, isForceStopAvailabl
         detail: isForceStopAvailable
           ? "The agent is still settling. Force stop is available if it stays stuck."
           : "Waiting for the current run and any active tools to stop.",
-        className: "border-amber-500/30 bg-amber-500/8 text-amber-800 dark:text-amber-200",
+        className: "border-amber-300 bg-[#fffbeb] text-amber-900 dark:border-amber-500/40 dark:bg-[#231b0f] dark:text-amber-200",
         icon: __LoadingIconHugeIcon,
       };
     case "interrupted":
       return {
         title: "Run interrupted",
         detail: "The last run was stopped before it finished.",
-        className: "border-amber-500/30 bg-amber-500/8 text-amber-800 dark:text-amber-200",
+        className: "border-amber-300 bg-[#fffbeb] text-amber-900 dark:border-amber-500/40 dark:bg-[#231b0f] dark:text-amber-200",
+        icon: __CircleAlertIconHugeIcon,
       };
     case "stopped":
       return {
         title: "Session stopped",
         detail: "The provider session ended. Send a message to start a fresh run.",
-        className: "border-border/70 bg-secondary/45 text-foreground/85",
+        className: "border-border bg-[#f4f4f5] text-foreground dark:border-white/[0.12] dark:bg-[#202022] dark:text-foreground",
       };
     case "error":
       return {
         title: "Run error",
         detail: "The last run failed before it completed.",
-        className: "border-destructive/25 bg-destructive/8 text-destructive",
+        className: "border-destructive/30 bg-[#fff1f2] text-destructive dark:border-red-500/40 dark:bg-[#231214] dark:text-red-400",
         icon: __CircleAlertIconHugeIcon,
       };
     case "connecting":
       return {
         title: "Connecting",
         detail: "Waiting for the provider session to come online.",
-        className: "border-border/70 bg-secondary/45 text-foreground/85",
+        className: "border-border bg-[#f4f4f5] text-foreground dark:border-white/[0.12] dark:bg-[#202022] dark:text-foreground",
         icon: __LoadingIconHugeIcon,
       };
   }
@@ -74,7 +75,7 @@ export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
   return (
     <div
       className={cn(
-        "border-b px-3 py-3",
+        "rounded-2xl border px-3.5 py-2.5 shadow-md transition-all duration-150",
         presentation.className,
       )}
       role="status"
@@ -82,23 +83,31 @@ export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
     >
       <div className="flex items-start gap-2.5">
         {presentation.icon && (
-          <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center">
-            <HugeiconsIcon icon={presentation.icon} className="size-4" />
+          <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center">
+            <HugeiconsIcon
+              icon={presentation.icon}
+              className={cn(
+                "size-4",
+                props.state === "connecting" || props.state === "interrupting"
+                  ? "animate-spin"
+                  : undefined,
+              )}
+            />
           </span>
         )}
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium leading-5">{presentation.title}</p>
+        <div className="min-w-0 flex-1 text-left">
+          <p className="text-xs font-semibold leading-5">{presentation.title}</p>
           {detail ? (
-            <p className="mt-0.5 text-xs leading-5 opacity-85">{detail}</p>
+            <p className="mt-0.5 text-xs leading-normal opacity-90 break-words">{detail}</p>
           ) : null}
-          {props.action ? <div className="mt-1.5">{props.action}</div> : null}
+          {props.action ? <div className="mt-2">{props.action}</div> : null}
         </div>
         <button
           onClick={() => setDismissedKey(currentKey)}
-          className="mt-0.5 ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-80"
+          className="mt-0.5 ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-white text-black shadow-sm transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/50"
           aria-label="Dismiss"
         >
-          <HugeiconsIcon icon={__XIconHugeIcon} className="size-3" />
+          <HugeiconsIcon icon={__XIconHugeIcon} strokeWidth={2.5} className="size-3 text-black stroke-[2.5]" />
         </button>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { useLocalSettings } from '@/lib/settings/localSettings'
 import { AntigravitySetup } from "./AntigravitySetup"
 import { useCallback, useEffect, useState } from 'react'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
@@ -44,25 +45,21 @@ let cachedRuntimeStatus: { target: string; runtimes: RuntimeHealth[] } | null = 
 let cachedGitRuntimeHealth: GitRuntimeHealth | null = null
 let runtimeStatusPrewarmPromise: Promise<void> | null = null
 
+async function readToolingHealth(): Promise<void> {
+  if (runtimeStatusPrewarmPromise) return runtimeStatusPrewarmPromise
+  runtimeStatusPrewarmPromise = Promise.allSettled([
+    toolingSettingsClient.getRuntimeStatus().then((status) => { cachedRuntimeStatus = status }),
+    toolingSettingsClient.getGitRuntimeHealth().then((health) => { cachedGitRuntimeHealth = health }),
+  ]).then((results) => {
+    const failure = results.find((result) => result.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
+  }).finally(() => { runtimeStatusPrewarmPromise = null })
+  return runtimeStatusPrewarmPromise
+}
+
 export async function prewarmToolingSettings(): Promise<void> {
-  if (!toolingSettingsClient.isAvailable()) return
-  if (cachedRuntimeStatus) return
-  if (runtimeStatusPrewarmPromise) {
-    await runtimeStatusPrewarmPromise
-    return
-  }
-
-  runtimeStatusPrewarmPromise = toolingSettingsClient
-    .getRuntimeStatus()
-    .then((status) => {
-      cachedRuntimeStatus = status
-    })
-    .catch(() => undefined)
-    .finally(() => {
-      runtimeStatusPrewarmPromise = null
-    })
-
-  await runtimeStatusPrewarmPromise
+  if (!toolingSettingsClient.isAvailable() || cachedRuntimeStatus) return
+  await readToolingHealth()
 }
 
 function getGitExecutableLabel(executablePath?: string): string {
@@ -102,16 +99,17 @@ function RuntimeLogo({ runtime }: { runtime: RuntimeKind }) {
 
 export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   const { t } = useTranslation()
+  const { data: savedSettings, error: localSettingsError } = useLocalSettings()
   const [isLoading, setIsLoading] = useState(!cachedRuntimeStatus)
   const [error, setError] = useState<string | null>(null)
   const [runtimeStatus, setRuntimeStatus] = useState<{ target: string; runtimes: RuntimeHealth[] } | null>(
     cachedRuntimeStatus
   )
   const [gitRuntimeHealth, setGitRuntimeHealth] = useState<GitRuntimeHealth | null>(cachedGitRuntimeHealth)
-  const [previewHeaderCompatibilityEnabled, setPreviewHeaderCompatibilityEnabled] = useState(true)
+  const [previewHeaderCompatibilityEnabled, setPreviewHeaderCompatibilityEnabled] = useState(savedSettings?.previewHeaderCompatibilityEnabled ?? false)
   const [previewHeaderCompatibilityError, setPreviewHeaderCompatibilityError] = useState<string | null>(null)
   const [isSavingPreviewHeaderCompatibility, setIsSavingPreviewHeaderCompatibility] = useState(false)
-  const [projectsDirectory, setProjectsDirectory] = useState<string | null>(null)
+  const [projectsDirectory, setProjectsDirectory] = useState<string | null>(savedSettings?.projectsDirectory ?? null)
   const [projectsDirectoryError, setProjectsDirectoryError] = useState<string | null>(null)
   const [isSavingProjectsDirectory, setIsSavingProjectsDirectory] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -126,14 +124,9 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
       if (!toolingSettingsClient.isAvailable()) {
         throw new Error('Runtime API is unavailable in this environment.')
       }
-      const status = await toolingSettingsClient.getRuntimeStatus()
-      cachedRuntimeStatus = status
-      setRuntimeStatus(status)
-      const gitHealth = await toolingSettingsClient.getGitRuntimeHealth()
-      if (gitHealth) {
-        cachedGitRuntimeHealth = gitHealth
-        setGitRuntimeHealth(gitHealth)
-      }
+      await readToolingHealth()
+      setRuntimeStatus(cachedRuntimeStatus)
+      setGitRuntimeHealth(cachedGitRuntimeHealth)
     } catch (runtimeError) {
       const message = runtimeError instanceof Error ? runtimeError.message : 'Failed to load tooling status.'
       setError(message)
@@ -151,24 +144,12 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
   }, [loadRuntimeStatus])
 
   useEffect(() => {
-    const loadPreviewHeaderCompatibilitySetting = async () => {
-      if (!settingsDesktopClient.hasSettings()) return
-
-      try {
-        const settings = await settingsDesktopClient.get()
-        setPreviewHeaderCompatibilityEnabled(settings.previewHeaderCompatibilityEnabled)
-        setProjectsDirectory(settings.projectsDirectory)
-      } catch (settingsError) {
-        const message =
-          settingsError instanceof Error
-            ? settingsError.message
-            : 'Failed to load preview compatibility setting.'
-        setPreviewHeaderCompatibilityError(message)
-      }
+    if (savedSettings) {
+      setPreviewHeaderCompatibilityEnabled(savedSettings.previewHeaderCompatibilityEnabled)
+      setProjectsDirectory(savedSettings.projectsDirectory)
     }
-
-    void loadPreviewHeaderCompatibilitySetting()
-  }, [])
+    setPreviewHeaderCompatibilityError(localSettingsError)
+  }, [savedSettings, localSettingsError])
 
   const handlePreviewHeaderCompatibilityChange = useCallback(
     async (checked: boolean) => {
@@ -339,7 +320,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                 onCheckedChange={(checked) => {
                   void handlePreviewHeaderCompatibilityChange(checked)
                 }}
-                disabled={isSavingPreviewHeaderCompatibility}
+                disabled={!savedSettings || isSavingPreviewHeaderCompatibility}
                 aria-label={t('settings.tooling.previewEmbedCompatibility')}
               />
             </SettingsRowControl>

@@ -480,8 +480,7 @@ export function ProjectLayout({
 
   const chromeHeader = useProjectChromeHeader({
     isSettingsModeRoute,
-    pathname,
-    workspaceScoped: false,
+    isWorkbenchView,
     presencePreSearchAddon: presenceHeaderAddon,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,

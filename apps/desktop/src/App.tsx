@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
+import { warmCommonNavigation } from '@/lib/navigationWarmup'
+import { Activity, lazy, Suspense, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
+import { SettingsDrawer } from '@/features/settings/ui/SettingsDrawer'
 import { Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -26,11 +28,6 @@ const LazyOnboarding = lazy(() =>
 const LazyUpdateMenu = lazy(() =>
   import('./components/updates/UpdateMenu').then((module) => ({
     default: module.UpdateMenu,
-  })),
-)
-const LazySettingsDrawer = lazy(() =>
-  import('@/features/settings/ui/SettingsDrawer').then((module) => ({
-    default: module.SettingsDrawer,
   })),
 )
 
@@ -65,15 +62,17 @@ function DeferredUpdateMenu({ enabled }: { enabled: boolean }) {
 
 function SettingsDrawerHost({ enabled }: { enabled: boolean }) {
   const isOpen = useSettingsDrawerStore((state) => state.isOpen)
+  const [hasOpened, setHasOpened] = useState(isOpen)
+  if (isOpen && !hasOpened) setHasOpened(true)
 
-  if (!enabled || !isOpen) {
+  if (!enabled || !hasOpened) {
     return null
   }
 
   return (
-    <Suspense fallback={null}>
-      <LazySettingsDrawer />
-    </Suspense>
+    <Activity mode={isOpen ? 'visible' : 'hidden'}>
+      <SettingsDrawer />
+    </Activity>
   )
 }
 
@@ -216,7 +215,6 @@ function AppContent() {
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
-
     const shouldWarmNewProject = pathname === "/projects" || pathname === "/projects/"
     const shouldWarmProjectEditor =
       pathname.startsWith('/projects/') &&
@@ -228,6 +226,7 @@ function AppContent() {
     }
 
     return scheduleIdleWarmup(() => {
+      warmCommonNavigation()
       if (shouldWarmNewProject) {
         void import('./pages/NewProject')
       }

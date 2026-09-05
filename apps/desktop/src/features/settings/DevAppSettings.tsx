@@ -90,7 +90,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
   const [pendingPublicationId, setPendingPublicationId] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
 
-  const { installations, loading: installationsLoading } = useOrgDevAppInstallations()
+  const { installations, loading: installationsLoading, error: installationsError } = useOrgDevAppInstallations()
 
   const orgScopeEnabled = featureFlags.projectDevApps && Boolean(convexUserId)
   const orgDevApps = useQuery(api.devApps.listMine, orgScopeEnabled ? {} : "skip")
@@ -299,12 +299,12 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
         </div>
       </div>
 
-      {operationError ? (
+      {operationError || installationsError ? (
         <div
           className="flex items-center justify-between rounded-xl bg-destructive/10 px-4 py-2.5 text-xs text-destructive"
           role="alert"
         >
-          <span>{operationError}</span>
+          <span>{operationError ?? installationsError}</span>
           <button
             type="button"
             className="text-sm font-semibold hover:opacity-80"

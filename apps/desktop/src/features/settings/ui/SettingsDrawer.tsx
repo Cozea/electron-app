@@ -1,14 +1,10 @@
 
-import { useCallback, useMemo, useRef } from 'react'
+import { Activity, Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { WindowChromeTopInset } from '@/components/window-chrome/WindowChromeTopInset'
-import { Account } from '@/features/settings/Account'
-import { Appearance } from '@/features/settings/Appearance'
-import { DevAppSettings } from '@/features/settings/DevAppSettings'
-import { Organizations } from '@/features/settings/Organizations'
-import { Tooling } from '@/features/settings/Tooling'
+import { settingsModules } from '@/lib/settings/settingsModules'
 import {
   resolveSettingsSurfaceFromRoute,
 } from '@/lib/settings/settingsRegistry'
@@ -25,6 +21,13 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'
 import { useTranslation } from '@/lib/i18n'
+import { LocalNavigationReady } from '@/lib/performance/localNavigation'
+
+const Account = lazy(() => settingsModules.account().then((m) => ({ default: m.Account })))
+const Appearance = lazy(() => settingsModules.appearance().then((m) => ({ default: m.Appearance })))
+const DevAppSettings = lazy(() => settingsModules.devapps().then((m) => ({ default: m.DevAppSettings })))
+const Organizations = lazy(() => settingsModules.organizations().then((m) => ({ default: m.Organizations })))
+const Tooling = lazy(() => settingsModules.tooling().then((m) => ({ default: m.Tooling })))
 
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
   if (section === 'account') {
@@ -48,9 +51,10 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 
 export function SettingsDrawer() {
   const { t, language } = useTranslation()
-  const isOpen = useSettingsDrawerStore((state) => state.isOpen)
   const section = useSettingsDrawerStore((state) => state.section)
   const route = useSettingsDrawerStore((state) => state.route)
+  const [visited, setVisited] = useState<Partial<Record<SettingsDrawerSection, string>>>(() => ({ [section]: route }))
+  if (visited[section] !== route) setVisited({ ...visited, [section]: route })
   const close = useSettingsDrawerStore((state) => state.close)
   const openFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
   const preloadedRoutesRef = useRef<Set<string>>(new Set())
@@ -71,7 +75,7 @@ export function SettingsDrawer() {
   }, [])
 
   return (
-    <Sheet open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
+    <Sheet open onOpenChange={(nextOpen) => !nextOpen && close()}>
       <SheetContent
         side="right"
         disableAnimation
@@ -143,9 +147,16 @@ export function SettingsDrawer() {
           </aside>
 
           <div className="relative min-w-0 flex-1">
-            <div className={cn("h-full overflow-y-auto scrollbar-hide", section !== 'devapps' && "scroll-fade-y")}>
-              <SettingsDrawerBody section={section} route={route} />
-            </div>
+            {Object.entries(visited).map(([key, savedRoute]) => (
+              <Activity key={key} mode={section === key ? 'visible' : 'hidden'}>
+                <div className={cn("h-full overflow-y-auto scrollbar-hide", key !== 'devapps' && "scroll-fade-y")}>
+                  <Suspense fallback={<div className="p-8 text-sm text-muted-foreground" role="status">Opening settings…</div>}>
+                    <SettingsDrawerBody section={key as SettingsDrawerSection} route={savedRoute} />
+                    <LocalNavigationReady destination={key} />
+                  </Suspense>
+                </div>
+              </Activity>
+            ))}
           </div>
         </div>
       </SheetContent>
