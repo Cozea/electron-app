@@ -51,9 +51,7 @@ function applyBootstrapRouteFromSearch(): void {
 
 async function prewarmRestoredWorkbench(bootstrap: DesktopBootstrapSnapshot): Promise<void> {
   const locator = bootstrap.lastWorkbenchRoute
-  const [workbenchModule] = await Promise.all([
-    import('./lib/workbenchStore'),
-  ])
+  const workbenchModule = await import('./lib/workbenchStore')
 
   const matchingWorkbenches = locator
     ? Object.values(workbenchModule.useProjectWorkbenchStore.getState().workbenches).filter(
