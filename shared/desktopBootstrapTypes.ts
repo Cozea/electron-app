@@ -15,6 +15,10 @@ export interface DesktopWorkbenchLocator {
   projectId: string
   laneId: string
   focusTileId: string | null
+  /** Additive v1 fields; optional so already-persisted v1 snapshots remain valid. */
+  workspaceId?: string | null
+  projectName?: string | null
+  collabBranch?: string | null
   updatedAt: number
 }
 
