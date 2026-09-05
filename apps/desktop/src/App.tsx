@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
+import { warmCommonNavigation } from '@/lib/navigationWarmup'
+import { Activity, lazy, Suspense, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
+import { SettingsDrawer } from '@/features/settings/ui/SettingsDrawer'
 import { Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -10,7 +12,8 @@ import { useViewTransitionNavigate } from './lib/navigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from '@/features/settings/model/settingsDrawerStore'
 import { WorkspaceRuntimeHostsGate } from '@/features/workspace/WorkspaceRuntimeHostsGate'
-import { TerminalViewHost } from '@/features/terminal/TerminalViewHost'
+import { TerminalViewHostGate } from '@/features/terminal/TerminalViewHostGate'
+import { featureFlags } from '@/lib/featureFlags'
 
 const LazyLogin = lazy(() =>
   import('./pages/Login').then((module) => ({
@@ -25,11 +28,6 @@ const LazyOnboarding = lazy(() =>
 const LazyUpdateMenu = lazy(() =>
   import('./components/updates/UpdateMenu').then((module) => ({
     default: module.UpdateMenu,
-  })),
-)
-const LazySettingsDrawer = lazy(() =>
-  import('@/features/settings/ui/SettingsDrawer').then((module) => ({
-    default: module.SettingsDrawer,
   })),
 )
 
@@ -64,15 +62,17 @@ function DeferredUpdateMenu({ enabled }: { enabled: boolean }) {
 
 function SettingsDrawerHost({ enabled }: { enabled: boolean }) {
   const isOpen = useSettingsDrawerStore((state) => state.isOpen)
+  const [hasOpened, setHasOpened] = useState(isOpen)
+  if (isOpen && !hasOpened) setHasOpened(true)
 
-  if (!enabled || !isOpen) {
+  if (!enabled || !hasOpened) {
     return null
   }
 
   return (
-    <Suspense fallback={null}>
-      <LazySettingsDrawer />
-    </Suspense>
+    <Activity mode={isOpen ? 'visible' : 'hidden'}>
+      <SettingsDrawer />
+    </Activity>
   )
 }
 
@@ -215,26 +215,33 @@ function AppContent() {
 
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
-
-    const shouldWarmNewProject =
-      pathname === "/projects" || pathname === "/projects/"
+    const shouldWarmNewProject = pathname === "/projects" || pathname === "/projects/"
     const shouldWarmProjectEditor =
       pathname.startsWith('/projects/') &&
       !pathname.startsWith('/projects/new') &&
       !pathname.endsWith('/workbench')
 
-    if (!shouldWarmNewProject && !shouldWarmProjectEditor) {
+    if (!featureFlags.commonRoutePrewarm && !shouldWarmNewProject && !shouldWarmProjectEditor) {
       return
     }
 
     return scheduleIdleWarmup(() => {
+      warmCommonNavigation()
       if (shouldWarmNewProject) {
         void import('./pages/NewProject')
       }
-      if (shouldWarmProjectEditor) {
+      if (featureFlags.commonRoutePrewarm || shouldWarmProjectEditor) {
         void import('./features/projects/pages/ProjectWorkbenchPage')
+        void import('./features/tasks/pages/TasksPage')
+        void import('./features/settings/Account')
+        void import('./features/settings/Appearance')
+        void import('./features/settings/Organizations')
+        void import('./features/settings/DevAppSettings')
       }
-    }, { delayMs: 3_500, timeoutMs: 12_000 })
+    }, {
+      delayMs: featureFlags.commonRoutePrewarm ? 250 : 3_500,
+      timeoutMs: featureFlags.commonRoutePrewarm ? 3_000 : 12_000,
+    })
   }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
   useEffect(() => {
@@ -250,7 +257,7 @@ function AppContent() {
       void import('@/features/settings/Tooling').then((module) =>
         module.prewarmToolingSettings?.()
       )
-    }, { delayMs: 6_000, timeoutMs: 15_000 })
+    }, { delayMs: featureFlags.commonRoutePrewarm ? 750 : 6_000, timeoutMs: 15_000 })
   }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
   if (isLoading) {
@@ -292,7 +299,7 @@ function AppContent() {
       <DeferredUpdateMenu enabled={!isSettingsWindow} />
       <Outlet />
       <WorkspaceRuntimeHostsGate />
-      <TerminalViewHost />
+      <TerminalViewHostGate />
       <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       <SettingsDrawerHost enabled={!isSettingsWindow} />

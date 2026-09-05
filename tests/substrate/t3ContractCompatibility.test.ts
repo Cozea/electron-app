@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { ChatAttachment, TurnCountRange } from "../../packages/contracts/src/t3/orchestration";
 import { UserInputRequestedPayload, UserInputQuestion } from "../../packages/contracts/src/t3/providerRuntime";

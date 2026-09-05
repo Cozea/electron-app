@@ -297,6 +297,7 @@ Exit criteria:
 - Keep [useProjectChromeHeader.tsx](<home>/Downloads/electron-app-main/src/features/projects/hooks/useProjectChromeHeader.tsx) as the main header composer.
 - Reduce special-case logic in header-related helpers.
 - Document the actual header zones and what belongs in each.
+- Project Share is visible only on a workbench route with a resolved project ID. `ProjectLayout` passes its `isWorkbenchView` flag to `useProjectChromeHeader`, which also preserves page-level `hideShare` overrides. Global pages and other project views do not mount the Share control.
 
 Progress:
 

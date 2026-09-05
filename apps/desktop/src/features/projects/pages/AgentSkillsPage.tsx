@@ -31,7 +31,9 @@ import { appToast } from "@/lib/appToast";
 import { ensureNativeApi } from "@/lib/nativeApi";
 import { useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
+import { useProjectHeader } from "@/lib/useProjectHeader";
 import { SkillBuildsView } from "@/features/projects/pages/SkillBuildsView";
+import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects/model/agentSkillsSnapshot";
 import {
   AgentSkillCategoryCarousel,
   type AgentSkillCategoryGroup,
@@ -59,6 +61,7 @@ import {
   ArrowDown01Icon as __ArrowDownHugeIcon,
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   ArrowRight01Icon as __ArrowRightHugeIcon,
+  Cancel01Icon as __CancelHugeIcon,
   Copy01Icon as __CopyHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
   Download04Icon as __DownloadHugeIcon,
@@ -67,6 +70,8 @@ import {
   FolderLibraryIcon as __FolderLibraryHugeIcon,
   MoreHorizontalIcon as __MoreHugeIcon,
   RefreshIcon as __RefreshHugeIcon,
+  Search01Icon as __SearchHugeIcon,
+  Settings02Icon as __SettingsHugeIcon,
   Share08Icon as __ShareHugeIcon,
   InformationCircleIcon as __InfoHugeIcon,
   Tick02Icon as __TickHugeIcon,
@@ -103,7 +108,7 @@ function formatUpdatedAt(value: number): string {
 const SKILL_NAME_ACRONYMS = new Map<string, string>(
   Object.entries({
     ai: "AI", api: "API", ci: "CI", cli: "CLI", css: "CSS", db: "DB", docx: "DOCX",
-    html: "HTML", io: "IO", mcp: "MCP", md: "MD", pdf: "PDF", pptx: "PPTX", pr: "PR",
+    html: "HTML", io: "IO", ios: "iOS", mcp: "MCP", md: "MD", pdf: "PDF", pptx: "PPTX", pr: "PR",
     qa: "QA", sdk: "SDK", seo: "SEO", ui: "UI", ux: "UX", xlsx: "XLSX",
   }),
 );
@@ -117,32 +122,28 @@ const SKILL_NAME_MINOR_WORDS = new Set([
 /**
  * Skill names are declared as invocation slugs — `cloudflare-email-service` —
  * because that is what you type to call one. They read as identifiers rather
- * than names when browsing, so the list shows a title-cased form and keeps the
- * slug beside it.
+ * than names when browsing, so the list shows a title-cased form.
  *
- * Only slugs are touched. A name the user typed themselves carries their own
- * capitalisation and spacing, and rewriting that would be presumptuous.
+ * If a skill has a plugin/package prefix (e.g. `build-ios-apps:ios-debugger-agent`),
+ * only the actual skill name is shown.
  */
 export function prettifySkillName(name: string): string {
   const trimmed = name.trim();
-  if (!trimmed || /[A-Z\s]/.test(trimmed)) return trimmed;
+  if (!trimmed) return trimmed;
 
-  return trimmed
-    .split(":")
-    .map((part) =>
-      part
-        .split(/[-_]/)
-        .filter(Boolean)
-        .map((word, index) => {
-          const acronym = SKILL_NAME_ACRONYMS.get(word);
-          if (acronym) return acronym;
-          if (index > 0 && SKILL_NAME_MINOR_WORDS.has(word)) return word;
-          return word.charAt(0).toUpperCase() + word.slice(1);
-        })
-        .join(" "),
-    )
+  const target = trimmed.includes(":") ? trimmed.slice(trimmed.lastIndexOf(":") + 1).trim() : trimmed;
+  if (!target || /[A-Z\s]/.test(target)) return target;
+
+  return target
+    .split(/[-_]/)
     .filter(Boolean)
-    .join(" · ");
+    .map((word, index) => {
+      const acronym = SKILL_NAME_ACRONYMS.get(word.toLowerCase());
+      if (acronym) return acronym;
+      if (index > 0 && SKILL_NAME_MINOR_WORDS.has(word.toLowerCase())) return word.toLowerCase();
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
 }
 
 /**
@@ -636,14 +637,22 @@ function SkillInspector({
                   description={providerBindingLabel(binding)}
                 />
                 <SettingsRowControl>
-                  <span
-                    className={cn(
-                      "text-[11px] tracking-[0.1em] uppercase",
-                      binding.enabled ? "text-success" : "text-muted-foreground/70",
-                    )}
-                  >
-                    {binding.enabled ? "On" : "Off"}
-                  </span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <Switch
+                          checked={binding.enabled}
+                          disabled
+                          aria-label={`${PROVIDER_LABELS[binding.provider]}: ${binding.enabled ? "enabled" : "disabled"}`}
+                        />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {binding.enabled
+                        ? "Switched on in active build"
+                        : "Switched off in active build"}
+                    </TooltipContent>
+                  </Tooltip>
                 </SettingsRowControl>
               </SettingsRow>
             ))}
@@ -893,8 +902,7 @@ function SetupPackBrowser({
 export function AgentSkillsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [snapshot, setSnapshot] = React.useState<AgentSkillsSnapshot | null>(null);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const { data: snapshot, error: loadError } = useAgentSkillsSnapshot();
   const [selectedSkillId, setSelectedSkillId] = React.useState<string | null>(null);
   const [editorMode, setEditorMode] = React.useState<"create" | "edit" | null>(null);
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
@@ -903,19 +911,24 @@ export function AgentSkillsPage() {
   const [selectedPackSkillId, setSelectedPackSkillId] = React.useState<string | null>(null);
 
   const loadSnapshot = React.useCallback(async () => {
-    setLoadError(null);
-    try {
-      const next = await window.electronAPI.agentSkills.list();
-      setSnapshot(next);
-      setSelectedSkillId((current) =>
-        current && next.skills.some((skill) => skill.id === current) ? current : null,
-      );
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Unable to load agent skills.");
-    }
+    await agentSkillsSnapshot.refresh().catch(() => undefined);
   }, []);
 
-  const query = searchParams.get("q") ?? "";
+  const routeQuery = searchParams.get("q") ?? "";
+  const [query, setQuery] = React.useState(routeQuery);
+  React.useEffect(() => setQuery(routeQuery), [routeQuery]);
+
+  const setParam = React.useCallback(
+    (key: string, value: string | null, options?: { replace?: boolean }) => {
+      if (key === "q") setQuery(value ?? "");
+      const next = new URLSearchParams(searchParams);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      setSearchParams(next, options);
+    },
+    [searchParams, setSearchParams],
+  );
+
   const source = searchParams.get("source") ?? "all";
   const provider = searchParams.get("provider") as AgentSkillProvider | null;
   const status = (searchParams.get("status") ?? "all") as SkillStatusFilter;
@@ -937,12 +950,12 @@ export function AgentSkillsPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, skillParam, snapshot]);
 
-  // Keyed by view, not just mount: Builds switches skills on and off, and this
-  // component only early-returns for it rather than unmounting. Loading once
-  // would leave the library showing the state from before a build was applied.
   React.useEffect(() => {
-    void loadSnapshot();
-  }, [loadSnapshot, view]);
+    if (!snapshot) return;
+    setSelectedSkillId((current) =>
+      current && snapshot.skills.some((skill) => skill.id === current) ? current : null,
+    );
+  }, [snapshot]);
 
   /**
    * Everything the sidebar and search allow through, before the status filter.
@@ -1019,7 +1032,7 @@ export function AgentSkillsPage() {
 
   const acceptMutation = React.useCallback(
     async (result: AgentSkillMutationResult, successTitle: string) => {
-      setSnapshot(result.snapshot);
+      agentSkillsSnapshot.publish(result.snapshot);
       if (!result.success) {
         if (result.error && !/canceled/i.test(result.error)) {
           appToast.error({ title: "Agent Skills", description: result.error });
@@ -1115,6 +1128,156 @@ export function AgentSkillsPage() {
   const displayName =
     [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || "Cozea user";
 
+  const headerFilter = React.useMemo(() => {
+    if (!snapshot) return null;
+    return (
+      <div
+        data-header-segmented="true"
+        role="group"
+        aria-label="Filter skills by whether they are installed"
+        className="flex items-center gap-1"
+      >
+        {STATUS_FILTERS.map((filter) => (
+          <button
+            key={filter.id}
+            type="button"
+            aria-pressed={status === filter.id}
+            onClick={() => setStatus(filter.id)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-3 text-xs transition-colors cursor-pointer",
+              status === filter.id
+                ? "bg-white/10 dark:bg-white/10 text-foreground font-medium shadow-xs"
+                : "text-muted-foreground/80 hover:text-foreground hover:bg-white/[0.05]",
+            )}
+          >
+            <span>{filter.label}</span>
+            <span
+              className={cn(
+                "text-[11px] tabular-nums",
+                status === filter.id ? "text-foreground/70" : "text-muted-foreground/60",
+              )}
+            >
+              {statusCounts[filter.id]}
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }, [setStatus, snapshot, status, statusCounts]);
+
+  const headerActions = React.useMemo(() => {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Refresh library"
+              onClick={() => void loadSnapshot()}
+            >
+              <HugeiconsIcon icon={__RefreshHugeIcon} className="size-4" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh library</TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="More library actions"
+            >
+              <HugeiconsIcon icon={__SettingsHugeIcon} className="size-4" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onClick={() => void loadSnapshot()}>
+              <HugeiconsIcon icon={__RefreshHugeIcon} />
+              Refresh library
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={busyKey === "import"}
+              onClick={() =>
+                void runMutation(
+                  "import",
+                  () => window.electronAPI.agentSkills.importDirectory(),
+                  "Skill imported",
+                )
+              }
+            >
+              <HugeiconsIcon icon={__FolderAddHugeIcon} />
+              Import folder
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                void window.electronAPI.agentSkills.openSetupPack().then((result) => {
+                  if (!result.success || !result.pack) {
+                    if (result.error && !/canceled/i.test(result.error)) {
+                      appToast.error({
+                        title: "Could not open setup",
+                        description: result.error,
+                      });
+                    }
+                    return;
+                  }
+                  setSetupPack(result.pack);
+                  setSelectedPackSkillId(null);
+                });
+              }}
+            >
+              <HugeiconsIcon icon={__ShareHugeIcon} />
+              Open shared setup
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                void window.electronAPI.agentSkills
+                  .exportSetupPack({ setupName: "My agent setup", authorName: displayName })
+                  .then((result) => {
+                    if (result.success) {
+                      appToast.success({
+                        title: "Setup pack exported",
+                        description: result.filePath,
+                      });
+                    } else if (result.error && !/canceled/i.test(result.error)) {
+                      appToast.error({
+                        title: "Could not export setup",
+                        description: result.error,
+                      });
+                    }
+                  });
+              }}
+            >
+              <HugeiconsIcon icon={__DownloadHugeIcon} />
+              Export setup
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          type="button"
+          size="sm"
+          className="gap-1 rounded-full"
+          onClick={() => setEditorMode("create")}
+        >
+          <HugeiconsIcon icon={__AddHugeIcon} className="size-3.5" aria-hidden />
+          Add
+        </Button>
+      </div>
+    );
+  }, [busyKey, displayName, loadSnapshot, runMutation]);
+
+  useProjectHeader(
+    view === "builds" || editorMode || selectedSkill || setupPack ? null : headerFilter,
+    null,
+    {
+      rightAddon: view === "builds" || editorMode || selectedSkill || setupPack ? null : headerActions,
+      hideShare: true,
+    },
+  );
+
   if (view === "builds") {
     return <SkillBuildsView />;
   }
@@ -1195,124 +1358,61 @@ export function AgentSkillsPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <SettingsPageBody className="max-w-5xl shrink-0 space-y-5 pb-4">
-        <div className="relative flex items-start justify-center gap-4">
-          {snapshot ? (
-            <div
-              role="group"
-              aria-label="Filter skills by whether they are installed"
-              className="absolute top-0 left-0 flex w-fit items-center gap-0.5 rounded-lg border border-border/50 bg-muted/40 p-0.5"
-            >
-              {STATUS_FILTERS.map((filter) => (
-                <button
-                  key={filter.id}
-                  type="button"
-                  aria-pressed={status === filter.id}
-                  onClick={() => setStatus(filter.id)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-                    status === filter.id
-                      ? "bg-background text-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {filter.label}
-                  <span className="text-[10px] tabular-nums text-muted-foreground/70">
-                    {statusCounts[filter.id]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <SettingsPageHeader
-            title="Agent Skills"
-            description={describeSkillsView(source, snapshot, {
+      <div className="mx-auto w-full max-w-[960px] shrink-0 space-y-6 px-6 pt-4 pb-2">
+        <header className="space-y-1">
+          <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
+            Agent Skills
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {describeSkillsView(source, snapshot, {
               visible: visibleSkills.length,
               available: statusCounts.available,
             })}
-            className="mb-0 min-w-0 text-center"
-          />
-          <div className="absolute top-0 right-0 flex shrink-0 items-center gap-1.5">
-            <Button size="sm" onClick={() => setEditorMode("create")}>
-              <HugeiconsIcon icon={__AddHugeIcon} />
-              New skill
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="More library actions">
-                  <HugeiconsIcon icon={__MoreHugeIcon} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={() => void loadSnapshot()}>
-                  <HugeiconsIcon icon={__RefreshHugeIcon} />
-                  Refresh library
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={busyKey === "import"}
-                  onClick={() =>
-                    void runMutation(
-                      "import",
-                      () => window.electronAPI.agentSkills.importDirectory(),
-                      "Skill imported",
-                    )
-                  }
-                >
-                  <HugeiconsIcon icon={__FolderAddHugeIcon} />
-                  Import folder
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    void window.electronAPI.agentSkills.openSetupPack().then((result) => {
-                      if (!result.success || !result.pack) {
-                        if (result.error && !/canceled/i.test(result.error)) {
-                          appToast.error({
-                            title: "Could not open setup",
-                            description: result.error,
-                          });
-                        }
-                        return;
-                      }
-                      setSetupPack(result.pack);
-                      setSelectedPackSkillId(null);
-                    });
-                  }}
-                >
-                  <HugeiconsIcon icon={__ShareHugeIcon} />
-                  Open shared setup
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    void window.electronAPI.agentSkills
-                      .exportSetupPack({ setupName: "My agent setup", authorName: displayName })
-                      .then((result) => {
-                        if (result.success) {
-                          appToast.success({
-                            title: "Setup pack exported",
-                            description: result.filePath,
-                          });
-                        } else if (result.error && !/canceled/i.test(result.error)) {
-                          appToast.error({
-                            title: "Could not export setup",
-                            description: result.error,
-                          });
-                        }
-                      });
-                  }}
-                >
-                  <HugeiconsIcon icon={__DownloadHugeIcon} />
-                  Export setup
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          </p>
+        </header>
+
+        <div className="sticky top-[-1rem] z-20 -mx-6 bg-background/95 px-6 pt-3 pb-2 backdrop-blur-md">
+          <div className="relative">
+            <HugeiconsIcon
+              icon={__SearchHugeIcon}
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/70"
+              aria-hidden
+            />
+            <Input
+              type="search"
+              value={query}
+              onChange={(event) => {
+                const val = event.target.value;
+                setQuery(val);
+                setParam("q", val.trim() ? val : null, { replace: true });
+              }}
+              onBlur={() => setParam("q", query.trim() ? query : null, { replace: true })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") setParam("q", query.trim() ? query : null, { replace: true });
+              }}
+              placeholder="Search skills…"
+              className={cn("h-11 rounded-search bg-muted pl-9 text-sm", query && "pr-9")}
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setParam("q", null, { replace: true });
+                }}
+                className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full cursor-pointer"
+                aria-label="Clear search"
+              >
+                <HugeiconsIcon icon={__CancelHugeIcon} className="size-3.5" />
+              </button>
+            ) : null}
           </div>
         </div>
-
-      </SettingsPageBody>
+      </div>
 
       <section aria-label="Skill library" className="min-h-0 flex-1 pb-2">
-        {loadError ? (
+        {loadError && snapshot ? <p role="status" className="px-6 py-2 text-sm text-destructive">{loadError} — showing the last local snapshot.</p> : null}
+        {loadError && !snapshot ? (
           <div className="mx-auto w-full max-w-3xl px-8 sm:px-10">
             <SettingsGroup>
               <div className="px-6 py-4 text-sm text-destructive">{loadError}</div>
@@ -1364,15 +1464,10 @@ export function AgentSkillsPage() {
                       }}
                       className="-my-1 flex min-w-0 flex-1 flex-col items-start rounded-md py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <span className="flex w-full min-w-0 items-baseline gap-2">
+                      <span className="flex w-full min-w-0 items-baseline">
                         <span className="truncate text-sm font-medium text-foreground">
                           {prettifySkillName(skill.name)}
                         </span>
-                        {prettifySkillName(skill.name) === skill.name ? null : (
-                          <span className="max-w-[45%] shrink-0 truncate font-mono text-[10px] text-muted-foreground/55">
-                            {skill.name}
-                          </span>
-                        )}
                       </span>
                       {/* Two lines, not one: inside a card at 62% of the track
                           the longest concise description needs ~500px, so a
@@ -1411,19 +1506,26 @@ export function AgentSkillsPage() {
                           <HugeiconsIcon icon={__DownloadHugeIcon} className="size-3" />
                           {installing ? "Installing…" : "Install"}
                         </Button>
-                      ) : isEssentialSkill(skill) ? (
-                        <EssentialTag />
                       ) : (
-                        // Read-only: builds decide what is on, so the library
-                        // reports state rather than offering to change it.
-                        <span
-                          className={cn(
-                            "text-[11px] tracking-[0.1em] uppercase",
-                            enabled ? "text-success" : "text-muted-foreground/70",
-                          )}
-                        >
-                          {enabled ? "On" : "Off"}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isEssentialSkill(skill) ? <EssentialTag /> : null}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex">
+                                <Switch
+                                  checked={enabled}
+                                  disabled
+                                  aria-label={`${prettifySkillName(skill.name)}: ${enabled ? "enabled" : "disabled"}`}
+                                />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              {enabled
+                                ? "Switched on in active build"
+                                : "Switched off in active build"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                       )}
                     </div>
                   </div>

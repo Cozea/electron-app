@@ -32,6 +32,22 @@ function createService(): AgentSkillService {
 }
 
 describe("AgentSkillService", () => {
+  it("coalesces display scans, yields to the event loop and serializes later writes", async () => {
+    const service = createService();
+    await service.save({ name: "Existing", description: "Existing skill", instructions: "Review changes.", compatibleProviders: ["codex"] });
+    const display = service.listForDisplay();
+    expect(service.listForDisplay()).toBe(display);
+    let mainLoopRan = false;
+    setImmediate(() => { mainLoopRan = true; });
+    const mutation = service.save({ name: "Later", description: "Later skill", instructions: "Review later changes.", compatibleProviders: ["codex"] });
+    const snapshot = await display;
+    expect(mainLoopRan).toBe(true);
+    expect(snapshot.skills.map((skill) => skill.name)).toEqual(["Existing"]);
+    expect((await mutation).snapshot.skills.map((skill) => skill.name)).toEqual(["Existing", "Later"]);
+    const next = await service.listForDisplay();
+    expect(next.skills).toEqual(service.list().skills);
+  });
+
   it("creates a canonical skill and wires recoverable provider copies", async () => {
     const service = createService();
     const created = await service.save({

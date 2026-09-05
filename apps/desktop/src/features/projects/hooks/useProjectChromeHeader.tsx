@@ -7,10 +7,9 @@ import { useProjectHeaderStore } from "@/lib/projectHeaderStore";
 
 interface UseProjectChromeHeaderArgs {
   isSettingsModeRoute: boolean;
-  pathname: string;
-  workspaceScoped: boolean;
+  isWorkbenchView: boolean;
   presencePreSearchAddon: ReactNode | null;
-  /** Route project (or last workbench fallback from layout) for changes/share/inbox strip */
+  /** Current route project for the changes/share/inbox strip. */
   projectId: Id<"projects"> | null;
   projectName: string | null;
   /** Local path for Open-in-editor; same source the workbench uses */
@@ -24,8 +23,7 @@ interface UseProjectChromeHeaderArgs {
  */
 export function useProjectChromeHeader({
   isSettingsModeRoute,
-  pathname: _pathname,
-  workspaceScoped: _workspaceScoped,
+  isWorkbenchView,
   presencePreSearchAddon,
   projectId,
   projectName,
@@ -52,7 +50,7 @@ export function useProjectChromeHeader({
       centerAddon,
       preSearchAddon: isSettingsModeRoute ? undefined : (presencePreSearchAddon ?? undefined),
       rightAddon: rightFromPage ?? undefined,
-      hideShare: hideShare || isSettingsModeRoute,
+      hideShare: hideShare || isSettingsModeRoute || !isWorkbenchView || !projectId,
       contentInsetLeft: insetLeft,
       contentInsetRight: insetRight,
       projectInviteContext: isSettingsModeRoute ? undefined : {
@@ -70,6 +68,7 @@ export function useProjectChromeHeader({
     insetLeft,
     insetRight,
     isSettingsModeRoute,
+    isWorkbenchView,
     presencePreSearchAddon,
     projectId,
     projectName,

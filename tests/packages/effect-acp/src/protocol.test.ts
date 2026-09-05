@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 import * as Stream from "effect/Stream";
 import * as Ref from "effect/Ref";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";

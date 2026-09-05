@@ -45,6 +45,23 @@ export function findCenteredIndex(
   return bestIndex;
 }
 
+export function findLeftAlignedIndex(
+  cardLefts: readonly number[],
+  scrollTarget: number,
+): number {
+  if (cardLefts.length === 0) return 0;
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  cardLefts.forEach((left, index) => {
+    const distance = Math.abs(left - scrollTarget);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
+
 /**
  * Where the selection lands after the category list changes underneath it.
  *
@@ -73,7 +90,26 @@ export function AgentSkillCategoryCarousel({
   const cardRefs = React.useRef<Array<HTMLDivElement | null>>([]);
   const chipRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const chipRowRef = React.useRef<HTMLDivElement | null>(null);
+  const chipScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
   const [indicator, setIndicator] = React.useState<{ left: number; width: number } | null>(null);
+
+  const updateChipScroll = React.useCallback(() => {
+    const el = chipScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  React.useEffect(() => {
+    updateChipScroll();
+    const el = chipScrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateChipScroll);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [groups, updateChipScroll]);
   // The card a smooth scroll is heading for, so the cards it passes on the way
   // do not each become "selected" for a frame.
   const pendingIndexRef = React.useRef<number | null>(null);
@@ -84,31 +120,39 @@ export function AgentSkillCategoryCarousel({
   const activeIndexRef = React.useRef(0);
   const [activeIndex, setActiveIndex] = React.useState(0);
 
+  const getLeftInset = React.useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return 24;
+    return Math.max(24, (track.clientWidth - 960) / 2 + 24);
+  }, []);
+
   const measureActive = React.useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
-    const viewportCenter = track.scrollLeft + track.clientWidth / 2;
-    const centers = cardRefs.current.map((card) =>
-      card ? card.offsetLeft + card.offsetWidth / 2 : Number.POSITIVE_INFINITY,
-    );
-    const next = findCenteredIndex(centers, viewportCenter);
+    const paddingLeft = getLeftInset();
+    const currentScroll = track.scrollLeft;
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    cardRefs.current.forEach((card, index) => {
+      if (!card) return;
+      const cardTargetScroll = Math.max(0, card.offsetLeft - paddingLeft);
+      const dist = Math.abs(cardTargetScroll - currentScroll);
+      if (dist < bestDistance) {
+        bestDistance = dist;
+        bestIndex = index;
+      }
+    });
 
-    /*
-     * A smooth scroll fires this for every frame it travels, so a jump from the
-     * first category to the fourth reports the second and third on the way. The
-     * highlight followed each one and read as a blink before it slid. While a
-     * scroll has a destination, only that destination counts.
-     */
     const pending = pendingIndexRef.current;
     if (pending !== null) {
-      if (next !== pending) return;
+      if (bestIndex !== pending) return;
       pendingIndexRef.current = null;
     }
 
-    activeIndexRef.current = next;
-    activeCategoryRef.current = groupsRef.current[next]?.category ?? null;
-    setActiveIndex(next);
-  }, []);
+    activeIndexRef.current = bestIndex;
+    activeCategoryRef.current = groupsRef.current[bestIndex]?.category ?? null;
+    setActiveIndex(bestIndex);
+  }, [getLeftInset]);
 
   const scrollToIndex = React.useCallback((index: number) => {
     const track = trackRef.current;
@@ -119,11 +163,12 @@ export function AgentSkillCategoryCarousel({
     activeIndexRef.current = clamped;
     activeCategoryRef.current = groupsRef.current[clamped]?.category ?? null;
     setActiveIndex(clamped);
+    const paddingLeft = getLeftInset();
     track.scrollTo({
-      left: card.offsetLeft + card.offsetWidth / 2 - track.clientWidth / 2,
+      left: Math.max(0, card.offsetLeft - paddingLeft),
       behavior: "smooth",
     });
-  }, []);
+  }, [getLeftInset]);
 
   // Re-anchor on the same category when the list changes, without a slide:
   // the categories moved, so animating between them would be meaningless.
@@ -145,12 +190,13 @@ export function AgentSkillCategoryCarousel({
 
     const card = cardRefs.current[nextIndex];
     if (card) {
+      const paddingLeft = getLeftInset();
       track.scrollTo({
-        left: card.offsetLeft + card.offsetWidth / 2 - track.clientWidth / 2,
+        left: Math.max(0, card.offsetLeft - paddingLeft),
         behavior: "auto",
       });
     }
-  }, [groups]);
+  }, [getLeftInset, groups]);
 
   /*
    * One pill slides between chips rather than each chip lighting up its own
@@ -184,7 +230,9 @@ export function AgentSkillCategoryCarousel({
       inline: "center",
       block: "nearest",
     });
-  }, [activeIndex, hasPlacedIndicator]);
+    const timer = setTimeout(updateChipScroll, 300);
+    return () => clearTimeout(timer);
+  }, [activeIndex, hasPlacedIndicator, updateChipScroll]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
@@ -207,55 +255,72 @@ export function AgentSkillCategoryCarousel({
       />
       <CarouselArrow side="right" disabled={atEnd} onClick={() => scrollToIndex(activeIndex + 1)} />
 
-      {/* One row always: it scrolls sideways rather than wrapping, and the
-          selected chip is kept in view as the carousel moves. */}
-      <div className="mx-auto w-full max-w-3xl shrink-0 overflow-x-auto pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* One row always: bounded strictly to the search bar width on both sides with lateral fade */}
+      <div className="mx-auto w-full max-w-[960px] px-6 shrink-0 pb-4">
         <div
-          ref={chipRowRef}
-          role="tablist"
-          aria-label="Jump to a category"
-          className="relative mx-auto flex w-max items-center gap-1.5 px-4"
+          ref={chipScrollRef}
+          onScroll={updateChipScroll}
+          className="relative w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{
+            maskImage: `linear-gradient(to right, ${
+              canScrollLeft ? "transparent 0%, black 28px" : "black 0%"
+            }, black calc(100% - 28px), ${
+              canScrollRight ? "transparent 100%" : "black 100%"
+            })`,
+            WebkitMaskImage: `linear-gradient(to right, ${
+              canScrollLeft ? "transparent 0%, black 28px" : "black 0%"
+            }, black calc(100% - 28px), ${
+              canScrollRight ? "transparent 100%" : "black 100%"
+            })`,
+          }}
         >
-          {indicator ? (
-            <span
-              aria-hidden="true"
-              /* `left-0` is load-bearing: without it an absolutely positioned
-                 flex child sits at its static position — inside the row's
-                 padding — and `translateX(offsetLeft)`, which is already
-                 measured from the padding box, adds that inset a second time. */
-              className={cn(
-                "absolute top-0 bottom-0 left-0 rounded-full bg-foreground/12",
-                hasPlacedIndicator && "transition-[transform,width] duration-300 ease-out",
-              )}
-              style={{
-                transform: `translateX(${indicator.left}px)`,
-                width: `${indicator.width}px`,
-              }}
-            />
-          ) : null}
-          {groups.map((group, index) => {
-            const isActive = index === activeIndex;
-            return (
-              <button
-                key={group.category}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                ref={(node) => {
-                  chipRefs.current[index] = node;
-                }}
-                onClick={() => scrollToIndex(index)}
+          <div
+            ref={chipRowRef}
+            role="tablist"
+            aria-label="Jump to a category"
+            className="relative flex w-max items-center gap-1.5"
+          >
+            {indicator ? (
+              <span
+                aria-hidden="true"
+                /* `left-0` is load-bearing: without it an absolutely positioned
+                   flex child sits at its static position — inside the row's
+                   padding — and `translateX(offsetLeft)`, which is already
+                   measured from the padding box, adds that inset a second time. */
                 className={cn(
-                  "relative z-10 shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
-                  isActive
-                    ? "border-transparent font-medium text-foreground"
-                    : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground",
+                  "absolute top-0 bottom-0 left-0 rounded-full bg-foreground/12",
+                  hasPlacedIndicator && "transition-[transform,width] duration-300 ease-out",
                 )}
-              >
-                {group.label}
-              </button>
-            );
-          })}
+                style={{
+                  transform: `translateX(${indicator.left}px)`,
+                  width: `${indicator.width}px`,
+                }}
+              />
+            ) : null}
+            {groups.map((group, index) => {
+              const isActive = index === activeIndex;
+              return (
+                <button
+                  key={group.category}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  ref={(node) => {
+                    chipRefs.current[index] = node;
+                  }}
+                  onClick={() => scrollToIndex(index)}
+                  className={cn(
+                    "relative z-10 shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+                    isActive
+                      ? "border-transparent font-medium text-foreground"
+                      : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground",
+                  )}
+                >
+                  {group.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -267,19 +332,17 @@ export function AgentSkillCategoryCarousel({
         onScroll={measureActive}
         onKeyDown={onKeyDown}
         className={cn(
-          "flex min-h-0 flex-1 snap-x snap-mandatory gap-5 overflow-x-auto overflow-y-hidden",
+          "relative flex min-h-0 flex-1 snap-x snap-mandatory gap-5 overflow-x-auto overflow-y-hidden",
           "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           "focus-visible:outline-none",
         )}
+        style={{
+          paddingLeft: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
+          paddingRight: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
+          scrollPaddingLeft: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
+          scrollPaddingRight: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
+        }}
       >
-        {/*
-          * Spacers rather than padding on the track: a percentage width inside
-          * a padded flex container resolves against the *content* box, so the
-          * cards came out far narrower than asked for and their neighbours
-          * filled most of the screen. With spacers, 62% means 62% of the track
-          * and the leftover 19% each side is exactly the peek.
-          */}
-        <div aria-hidden="true" className="w-[19%] shrink-0" />
         {groups.map((group, index) => {
           const isActive = index === activeIndex;
           return (
@@ -290,12 +353,12 @@ export function AgentSkillCategoryCarousel({
               }}
               aria-current={isActive ? "true" : undefined}
               className={cn(
-                "flex h-full w-[62%] min-w-[320px] shrink-0 snap-center flex-col",
+                "flex h-full w-[62%] min-w-[320px] shrink-0 snap-start flex-col",
                 "rounded-2xl border border-border/50 bg-card/40",
                 "transition-[opacity,transform] duration-300 ease-out",
                 isActive
                   ? "opacity-100 [transform:scale(1)]"
-                  : "opacity-55 [transform:scale(0.96)]",
+                  : "opacity-65 [transform:scale(0.98)]",
               )}
             >
               <button
@@ -324,7 +387,6 @@ export function AgentSkillCategoryCarousel({
             </div>
           );
         })}
-        <div aria-hidden="true" className="w-[19%] shrink-0" />
       </div>
 
     </div>

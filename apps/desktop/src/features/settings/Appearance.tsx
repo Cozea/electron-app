@@ -16,7 +16,9 @@ import { Switch } from "../../components/ui/switch";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { Theme } from "@/lib/theme";
 import { cn } from "../../lib/utils";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { saveLocalSettings, useLocalSettings } from '@/lib/settings/localSettings';
+import { appToast } from '@/lib/appToast';
 import { useLanguage, useTranslation, LANGUAGES, type Language } from "@/lib/i18n";
 import { PROJECT_ICON_SETS, useProjectIconSetsStore } from "@/lib/projectIconSets";
 import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon";
@@ -33,7 +35,8 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
   const { theme, setTheme } = useTheme();
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
-  const [transparencyOff, setTransparencyOff] = useState(false);
+  const { data: savedSettings, error: settingsError } = useLocalSettings();
+  const transparencyOff = savedSettings?.deactivateTransparency ?? false;
   const enabledSets = useProjectIconSetsStore((state) => state.enabledSets);
   const iconSetActions = useProjectIconSetsStore((state) => state.actions);
 
@@ -79,17 +82,13 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
     },
   ];
 
-  useEffect(() => {
-    void window.electronAPI.settings.get().then((s) => {
-      setTransparencyOff(s.deactivateTransparency ?? false);
-    });
-  }, []);
-
   const handleTransparencyToggle = useCallback(
     async (checked: boolean) => {
-      setTransparencyOff(checked);
-      // Applied live by the main process (vibrancy + backing color swap).
-      await window.electronAPI.settings.set({ deactivateTransparency: checked });
+      try {
+        await saveLocalSettings({ deactivateTransparency: checked });
+      } catch (error) {
+        appToast.error({ title: 'Appearance', description: error instanceof Error ? error.message : 'Unable to save appearance.' });
+      }
     },
     [],
   );
@@ -206,6 +205,8 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
             <SettingsRowControl>
               <Switch
                 checked={transparencyOff}
+                disabled={!savedSettings}
+                aria-label={settingsError ?? (!savedSettings ? 'Reading saved appearance' : undefined)}
                 onCheckedChange={handleTransparencyToggle}
               />
             </SettingsRowControl>

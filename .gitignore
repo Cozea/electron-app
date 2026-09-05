@@ -50,6 +50,7 @@ package-lock 2.json
 .vscode/*
 !.vscode/extensions.json
 .idea
+opencode.json
 .DS_Store
 .playwright-cli/
 *.suo

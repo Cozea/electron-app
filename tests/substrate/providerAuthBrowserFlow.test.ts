@@ -1,4 +1,4 @@
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 import { expect, it, vi } from "vitest";
 import { createProviderAuthBrowserFlow } from "../../apps/desktop/src/features/settings/providerAuthBrowserFlow";
 import { ProviderAuthState } from "../../packages/contracts/src/t3/providerSetup";

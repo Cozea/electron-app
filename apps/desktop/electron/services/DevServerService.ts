@@ -1,5 +1,6 @@
 import net from 'node:net'
 
+import { shouldPreserveWindowlessRuntime } from '../appLifecycleState'
 import { DevServerPortBroker } from './DevServerPortBroker'
 import { TerminalService } from './TerminalService'
 import {
@@ -629,6 +630,10 @@ export class DevServerService {
   }
 
   public killAll() {
+    if (shouldPreserveWindowlessRuntime()) {
+      return
+    }
+
     for (const [, entry] of this.processes) {
       this.stop(entry.workspaceId, entry.laneId).catch(console.error)
     }

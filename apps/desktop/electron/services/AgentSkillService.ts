@@ -537,6 +537,7 @@ export class AgentSkillService {
   private static instance: AgentSkillService;
   private readonly pathsOverride?: AgentSkillServicePaths;
   private mutationChain: Promise<void> = Promise.resolve();
+  private displayScan: Promise<AgentSkillsSnapshot> | null = null;
 
   constructor(pathsOverride?: AgentSkillServicePaths) {
     this.pathsOverride = pathsOverride;
@@ -680,12 +681,36 @@ export class AgentSkillService {
   }
 
   list(): AgentSkillsSnapshot {
+    const scan = this.scan();
+    let step = scan.next();
+    while (!step.done) step = scan.next();
+    return step.value;
+  }
+
+  /** Serialize with mutations, but allow native input and other IPC between records. */
+  listForDisplay(): Promise<AgentSkillsSnapshot> {
+    if (this.displayScan) return this.displayScan;
+    this.displayScan = this.enqueue(async () => {
+      const scan = this.scan();
+      let step = scan.next();
+      while (!step.done) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        step = scan.next();
+      }
+      return step.value;
+    }).finally(() => { this.displayScan = null; });
+    return this.displayScan;
+  }
+
+  private *scan(): Generator<void, AgentSkillsSnapshot, void> {
+    yield;
     ensureDirectory(this.libraryRoot);
     const providers = this.providers;
     const managedById = new Map<string, AgentSkillRecord>();
     const externalById = new Map<string, AgentSkillRecord>();
 
     for (const directoryPath of listDirectories(this.libraryRoot)) {
+      yield;
       const metadata = readJsonFile<ManagedSkillMetadata>(
         path.join(directoryPath, COZEA_METADATA_FILE_NAME),
       );
@@ -724,6 +749,7 @@ export class AgentSkillService {
 
     const catalogById = new Map<string, AgentSkillRecord>();
     for (const provider of providers) {
+      yield;
       const definition = PROVIDER_DEFINITIONS.find((candidate) => candidate.id === provider.id);
       const discovered = (definition?.relativeRoots ?? []).flatMap<DiscoveredSkillDirectory>(
         (root, index) => {
@@ -741,6 +767,7 @@ export class AgentSkillService {
         : new Set<string>();
 
       for (const { directoryPath, plugin, marketplace, essential } of discovered) {
+        yield;
         // A skill from a plugin the provider already runs is not "available";
         // it is already live, and its files belong to the plugin.
         if (plugin && marketplace && installedPlugins.has(`${plugin}@${marketplace}`)) continue;
@@ -1928,7 +1955,7 @@ export class AgentSkillService {
   }
 
   registerIpcHandlers(): void {
-    ipcMain.handle("agentSkills:list", () => this.list());
+    ipcMain.handle("agentSkills:list", () => this.listForDisplay());
     ipcMain.handle("agentSkills:save", (_event, draft: AgentSkillDraft) => this.save(draft));
     ipcMain.handle(
       "agentSkills:setProviderEnabled",

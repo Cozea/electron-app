@@ -15,6 +15,11 @@
       "command": "bunx",
       "args": ["chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"],
       "description": "Inspects and debugs the live Electron Chromium instance"
+    },
+    "open-computer-use": {
+      "command": "open-computer-use",
+      "args": ["mcp"],
+      "description": "Desktop GUI automation and accessibility inspection"
     }
   },
   "settings": {

@@ -115,11 +115,11 @@ describe("titling a skill's declared slug", () => {
     expect(prettifySkillName("mcp-server-dev")).toBe("MCP Server Dev");
   });
 
-  it("separates a plugin-qualified name into its two halves", () => {
+  it("strips a plugin prefix and keeps only the skill name", () => {
     expect(prettifySkillName("mcp-server-dev:build-mcp-server")).toBe(
-      "MCP Server Dev · Build MCP Server",
+      "Build MCP Server",
     );
-    expect(prettifySkillName("discord:access")).toBe("Discord · Access");
+    expect(prettifySkillName("discord:access")).toBe("Access");
   });
 
   it("keeps joining words lower-case unless they open the title", () => {

@@ -1,4 +1,5 @@
 import type { Id } from "../../../../convex/_generated/dataModel"
+import type { DesktopBootstrapSession } from "@shared/desktopBootstrapTypes"
 import type { PersonalWorkspaceMembership, User } from "@shared/types"
 
 export interface DeviceSession {
@@ -39,6 +40,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
+function toBootstrapSession(session: DeviceSession): DesktopBootstrapSession {
+  return {
+    ...session,
+    convexUserId: String(session.convexUserId),
+  }
+}
+
 async function issueDeviceSession(): Promise<DeviceSession> {
   const identity = await window.electronAPI.collab.ensureDeviceIdentity()
   if (
@@ -76,7 +84,16 @@ async function issueDeviceSession(): Promise<DeviceSession> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ challenge, signature: signed.signature }),
   })
-  return await parseResponse<DeviceSession>(completeResponse)
+  const session = await parseResponse<DeviceSession>(completeResponse)
+  try {
+    await window.cozeaBootstrap?.storeSession(toBootstrapSession(session))
+  } catch (error) {
+    // Secure persistence improves the next launch but is not a condition for a
+    // valid live device session. Never turn a successful auth exchange into a
+    // login failure merely because local secure storage is unavailable.
+    console.warn('[DesktopBootstrap] Failed to persist the refreshed device session.', error)
+  }
+  return session
 }
 
 export async function getDeviceSession(options: { force?: boolean } = {}): Promise<DeviceSession> {
@@ -97,9 +114,13 @@ export async function getDeviceSession(options: { force?: boolean } = {}): Promi
   return await pendingSession
 }
 
-export function clearDeviceSession(): void {
+export async function clearDeviceSession(): Promise<void> {
   cachedSession = null
   pendingSession = null
+  // Persisted secure state is part of logout/reset semantics. If its deletion
+  // fails, let the caller surface/retry the failure instead of claiming a
+  // completed logout that would silently restore on next launch.
+  await window.cozeaBootstrap?.clearSession()
 }
 
 export async function createOrganizationRecoveryCode(
