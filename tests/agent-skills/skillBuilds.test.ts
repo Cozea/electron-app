@@ -296,7 +296,7 @@ describe("saving and applying a build end to end", () => {
     await svc.applyBuild(saved.skillId!);
 
     const deleted = await svc.deleteBuild(saved.skillId!);
-    expect(deleted.snapshot.builds).toHaveLength(0);
+    expect(deleted.snapshot.builds.map((build) => build.id)).not.toContain(saved.skillId);
     expect(
       deleted.snapshot.skills.find((s) => s.id === alpha)?.bindings.some((b) => b.enabled),
     ).toBe(true);
@@ -794,5 +794,54 @@ describe("the core's two rings", () => {
       source.slice(source.indexOf("HUB_CHARGE_STUBS.map")).match(/strokeDasharray="(\d+)/)![1],
     );
     expect(coreDash).toBeGreaterThan(wiringDash);
+  });
+});
+
+/**
+ * Someone arriving with skills already on should not meet an empty Builds
+ * page, where their first activation would switch off everything they had.
+ */
+describe("the build seeded from what is already on", () => {
+  it("records the enabled skills as a build, reported as the active one", () => {
+    makeExternalSkill(".claude/skills", "alpha");
+    makeExternalSkill(".codex/skills", "beta");
+    const snap = service().list();
+
+    expect(snap.builds).toHaveLength(1);
+    expect(snap.builds[0]!.name).toBe("Default");
+    // Exactly what is on, so `findActiveBuildId` matches it.
+    const enabled = snap.skills
+      .filter((skill) => skill.bindings.some((b) => b.enabled))
+      .map((skill) => skill.id);
+    expect([...snap.builds[0]!.skillIds].sort()).toEqual([...enabled].sort());
+    expect(snap.activeBuildId).toBe(snap.builds[0]!.id);
+  });
+
+  it("seeds once, and does not come back after the build is deleted", async () => {
+    makeExternalSkill(".claude/skills", "alpha");
+    const svc = service();
+    const seeded = svc.list().builds[0]!;
+
+    await svc.deleteBuild(seeded.id);
+    expect(svc.list().builds).toEqual([]);
+    // A second read must not re-seed it.
+    expect(svc.list().builds).toEqual([]);
+  });
+
+  it("leaves a machine with no skills alone", () => {
+    expect(service().list().builds).toEqual([]);
+  });
+
+  it("seeds before a user's own build and never a second time", async () => {
+    // `saveBuild` reads the library first, so the seed lands before it, just
+    // as it would on a real machine where the page loads before anyone edits.
+    makeExternalSkill(".claude/skills", "alpha");
+    const svc = service();
+    const saved = await svc.saveBuild({ name: "Mine", skillIds: [] });
+    expect(saved.success).toBe(true);
+
+    expect(svc.list().builds.map((b) => b.name)).toEqual(["Default", "Mine"]);
+    // Reading again must not add another.
+    expect(svc.list().builds).toHaveLength(2);
   });
 });

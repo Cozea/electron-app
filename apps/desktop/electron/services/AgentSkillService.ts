@@ -83,6 +83,8 @@ interface AgentSkillStateFile {
   disabledExternalBindings: DisabledExternalBinding[];
   /** Built-in skill keys already seeded, so deleting one keeps it deleted. */
   seededBuiltInSkills?: string[];
+  /** Set once the first build has been recorded from what was already on. */
+  seededCurrentBuild?: boolean;
   /** Providers whose managed copies have been moved to their primary root. */
   migratedPrimaryRoots?: string[];
   /** Named skill loadouts. */
@@ -636,6 +638,37 @@ export class AgentSkillService {
     return candidate;
   }
 
+  /**
+   * First run with skills already on: record them as a build.
+   *
+   * Someone who has been using agents for months would otherwise open Builds
+   * to an empty page, and their first activation would quietly switch off
+   * everything they had. The seeded build names exactly what is enabled, so
+   * `findActiveBuildId` reports it as active straight away.
+   *
+   * Seeded at most once. The flag is only set when a build is actually
+   * written, so a machine with nothing enabled yet can still be seeded later,
+   * and deleting the build does not bring it back.
+   */
+  private seedBuildFromEnabledSkills(enabledSkillIds: readonly string[]): AgentSkillBuild[] {
+    const state = this.loadState();
+    const builds = state.builds ?? [];
+    if (state.seededCurrentBuild || builds.length > 0 || enabledSkillIds.length === 0) {
+      return builds;
+    }
+    const now = Date.now();
+    const seeded: AgentSkillBuild = {
+      id: `build_${randomUUID()}`,
+      name: "Default",
+      skillIds: [...enabledSkillIds],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = [...builds, seeded];
+    this.saveState({ ...state, builds: next, seededCurrentBuild: true });
+    return next;
+  }
+
   private moveToTrash(sourcePath: string, label: string): string {
     ensureDirectory(this.trashRoot);
     const destinationPath = path.join(
@@ -903,10 +936,10 @@ export class AgentSkillService {
     for (const skill of skills) {
       skill.updateSource = this.resolveUpdateSource(skill);
     }
-    const builds = this.loadState().builds ?? [];
     const enabledSkillIds = skills
       .filter((skill) => skill.bindings.some((binding) => binding.enabled))
       .map((skill) => skill.id);
+    const builds = this.seedBuildFromEnabledSkills(enabledSkillIds);
 
     return {
       skills,
