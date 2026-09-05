@@ -1,13 +1,8 @@
-import { app } from 'electron'
-
 let applicationQuitting = false
 
-// This listener is registered from mainEntry before main.ts installs its own
-// shutdown listeners, so window-lifetime cleanup can distinguish a normal
-// macOS last-window close from an actual application quit/update restart.
-app.on('before-quit', () => {
+export function markApplicationQuitting(): void {
   applicationQuitting = true
-})
+}
 
 export function isApplicationQuitting(): boolean {
   return applicationQuitting
@@ -15,6 +10,7 @@ export function isApplicationQuitting(): boolean {
 
 export function shouldPreserveWindowlessRuntime(
   platform: NodeJS.Platform = process.platform,
+  quitting: boolean = applicationQuitting,
 ): boolean {
-  return platform === 'darwin' && !applicationQuitting
+  return platform === 'darwin' && !quitting
 }

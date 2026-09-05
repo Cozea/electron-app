@@ -1,3 +1,3 @@
-import './appLifecycleState'
+import './registerAppLifecycle'
 import './desktopBootstrapMain'
 import './main'
