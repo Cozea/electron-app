@@ -605,9 +605,13 @@ export function useWorkbenchAssistantTileController(
     () =>
       deriveLatestAccountUsageLimitSnapshot(
         visibleThread?.activities ?? [],
-        selectedProvider === "codex" && providerSnapshot?.accountRateLimits !== undefined
+        // Claude reports limits the same way Codex does, and the deriver has
+        // always handled both. Only Codex was ever handed the baseline, so a
+        // Claude tile read "Not reported" until a turn happened to emit one.
+        (selectedProvider === "codex" || selectedProvider === "claudeAgent") &&
+        providerSnapshot?.accountRateLimits !== undefined
           ? {
-              provider: "codex",
+              provider: selectedProvider,
               rateLimits: providerSnapshot.accountRateLimits,
               updatedAt: providerSnapshot.checkedAt,
             }
