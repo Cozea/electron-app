@@ -679,6 +679,17 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
       )
     }
 
+    // A map cannot be built by an agent that is not running a memory skill,
+    // so say that rather than showing "no memory yet" with no way forward.
+    if (settings.knowsNoMemorySkillIsOn) {
+      return (
+        <MemoryEmptyState
+          title={t("workbench.memory.noSkill.title")}
+          description={t("workbench.memory.noSkill.description")}
+        />
+      )
+    }
+
     return (
       <MemoryEmptyState
         title={t("workbench.memory.empty.title")}

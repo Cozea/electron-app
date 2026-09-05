@@ -92,8 +92,9 @@ const EMPTY_AGENTS: Array<{ tileId: string; name: string; agentKey: string }> = 
  */
 function useMemorySettings(workspaceId: string | null) {
   const [skills, setSkills] = useState<
-    Array<{ id: string; name: string; isCozeaDefault: boolean }>
+    Array<{ id: string; name: string; isCozeaDefault: boolean; enabled: boolean }>
   >([])
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
   const selectedId = useMemorySettingsStore((state) =>
     workspaceId ? (state.byWorkspace[workspaceId] ?? null) : null,
   )
@@ -126,14 +127,19 @@ function useMemorySettings(workspaceId: string | null) {
                 id: skill.id,
                 name: skill.name,
                 description: skill.description,
+                // Whether an agent would actually load it, which is what the
+                // active build decides.
+                enabled: skill.bindings.some((binding) => binding.enabled),
               })),
             ),
           ).map((entry) => ({
             id: entry.skill.id,
             name: entry.skill.name,
             isCozeaDefault: entry.isCozeaDefault,
+            enabled: entry.skill.enabled,
           })),
         )
+        setSkillsLoaded(true)
       })
       .catch(() => undefined)
     return () => {
@@ -144,11 +150,25 @@ function useMemorySettings(workspaceId: string | null) {
   const resolvedSkillId =
     selectedId ?? skills.find((skill) => skill.isCozeaDefault)?.id ?? null
 
+  /**
+   * Whether anything that could build the map is switched on.
+   *
+   * The library may hold a memory skill while the active build leaves it off,
+   * and in that case no agent can build anything. The tile says so rather than
+   * showing an empty map with no explanation.
+   */
+  const hasEnabledMemorySkill = skills.some((skill) => skill.enabled)
+
+  /** Only true once the library has answered, so the tile cannot flash it. */
+  const knowsNoMemorySkillIsOn = skillsLoaded && !hasEnabledMemorySkill
+
   const label =
     skills.find((skill) => skill.id === resolvedSkillId)?.name ?? DEFAULT_MEMORY_SKILL_LABEL
 
   return {
     skills,
+    hasEnabledMemorySkill,
+    knowsNoMemorySkillIsOn,
     resolvedSkillId,
     label,
     setForWorkspace,

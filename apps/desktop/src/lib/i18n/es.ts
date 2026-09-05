@@ -666,6 +666,8 @@ const es: Record<TranslationKey, string> = {
   "workbench.memory.empty.needsAgent": "Abre una pestaña de agente y podrá construir el mapa desde aquí.",
   "workbench.memory.noProject.title": "Todavía no hay nada que recordar",
   "workbench.memory.noProject.description": "Empieza a construir el proyecto y su mapa de memoria podrá crearse a partir del código que escribas.",
+  "workbench.memory.noSkill.title": "Ninguna habilidad de memoria activa",
+  "workbench.memory.noSkill.description": "Nada en el build activo puede construir este mapa. Agrega la habilidad de memoria de Cozea a ese build y actívalo.",
   "workbench.memory.empty.title": "Aún no hay memoria",
   "workbench.memory.empty.description": "Los agentes construyen este mapa, no Cozea. Pide a uno que construya el mapa de memoria del proyecto y aparecerá aquí.",
   "workbench.memory.legend.filterHint": "Haz clic para mostrar solo estos; haz clic de nuevo para quitarlo.",
