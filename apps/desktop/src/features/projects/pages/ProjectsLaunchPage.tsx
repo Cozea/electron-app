@@ -1,10 +1,11 @@
-import { useCallback, useState, type DragEvent } from "react"
+import { useCallback, useEffect, useState, type DragEvent } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
 import { FolderLibraryIcon as __FolderLibraryHugeIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { api } from "../../../../../../convex/_generated/api"
+import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/empty"
 import {
   buildWorkbenchHref,
+  clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/workbench/model/lastWorkbenchRoute"
 import { browseForDirectory } from "@/lib/browseForDirectory"
@@ -23,19 +25,38 @@ import { resolveDroppedLocalFolderPath } from "@/lib/resolveDroppedLocalFolderPa
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
+import { featureFlags } from "@/lib/featureFlags"
 
 export function ProjectsLaunchPage() {
   const { convexUserId, user } = useAuth()
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const workspaceSelectionId = user?.id ?? "local-device"
+  const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
   const [isSelectingFolder, setIsSelectingFolder] = useState(false)
-  const lastWorkbenchRoute = readLastWorkbenchRoute(workspaceSelectionId)
+  const legacyLastWorkbenchRoute =
+    ignoredWorkspaceSelectionId === workspaceSelectionId
+      ? null
+      : readLastWorkbenchRoute(workspaceSelectionId)
+
+  // Desktop-bootstrap builds restore the previous workbench before React mounts,
+  // so /projects must be a real stable destination if authoritative validation
+  // redirects here. Keep the old server-validated restore path only as the
+  // rollback behavior when the new bootstrap flag is explicitly disabled.
+  const shouldUseLegacyRestore = !featureFlags.desktopBootstrap && Boolean(legacyLastWorkbenchRoute)
+  const restoredProject = useQuery(
+    api.projects.getAccessibleById,
+    shouldUseLegacyRestore && legacyLastWorkbenchRoute?.projectId && convexUserId
+      ? {
+          projectId: legacyLastWorkbenchRoute.projectId as Id<"projects">,
+        }
+      : "skip",
+  )
 
   const projectsPage = useQuery(
     api.projects.listPageForCurrentUser,
-    !lastWorkbenchRoute && convexUserId
+    !shouldUseLegacyRestore && convexUserId
       ? {
           userId: convexUserId,
           statusFilter: "all",
@@ -45,6 +66,14 @@ export function ProjectsLaunchPage() {
         }
       : "skip",
   )
+
+  useEffect(() => {
+    if (!shouldUseLegacyRestore || !legacyLastWorkbenchRoute) return
+    if (restoredProject !== null) return
+
+    clearLastWorkbenchRoute(workspaceSelectionId)
+    setIgnoredWorkspaceSelectionId(workspaceSelectionId)
+  }, [legacyLastWorkbenchRoute, restoredProject, shouldUseLegacyRestore, workspaceSelectionId])
 
   const showDropError = useCallback(async (detail: string) => {
     await window.electronAPI.dialog.showMessageBox({
@@ -136,11 +165,11 @@ export function ProjectsLaunchPage() {
     [isSelectingFolder, openCreateProjectDialog, showDropError],
   )
 
-  if (lastWorkbenchRoute) {
+  if (shouldUseLegacyRestore && legacyLastWorkbenchRoute && restoredProject) {
     return (
       <Navigate
-        to={buildWorkbenchHref(lastWorkbenchRoute.projectId, lastWorkbenchRoute.laneId, {
-          focusTileId: lastWorkbenchRoute.focusTileId,
+        to={buildWorkbenchHref(legacyLastWorkbenchRoute.projectId, legacyLastWorkbenchRoute.laneId, {
+          focusTileId: legacyLastWorkbenchRoute.focusTileId,
         })}
         replace
       />

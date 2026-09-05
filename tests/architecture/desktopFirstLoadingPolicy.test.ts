@@ -38,11 +38,14 @@ describe('desktop-first loading architecture', () => {
     expect(source).not.toContain('h-5 w-5 animate-spin')
   })
 
-  it('does not put a Convex project lookup in front of last-workbench navigation', () => {
-    const source = read('apps/desktop/src/features/projects/pages/ProjectsLaunchPage.tsx')
-    expect(source).not.toContain('api.projects.getAccessibleById')
-    expect(source).toContain('if (lastWorkbenchRoute)')
-    expect(source).toContain('<Navigate')
+  it('uses pre-React desktop bootstrap as the normal restore path', () => {
+    const bootstrap = read('apps/desktop/src/app/bootstrap/desktopBootstrap.ts')
+    const launch = read('apps/desktop/src/features/projects/pages/ProjectsLaunchPage.tsx')
+
+    expect(bootstrap).toContain('applyDesktopBootstrapRoute')
+    expect(bootstrap).toContain('/workbench')
+    expect(launch).toContain('const shouldUseLegacyRestore = !featureFlags.desktopBootstrap')
+    expect(launch).toContain('api.projects.getAccessibleById')
   })
 
   it('registers application lifetime before loading the main module', () => {
