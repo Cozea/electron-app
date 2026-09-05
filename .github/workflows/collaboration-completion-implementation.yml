@@ -38,12 +38,18 @@ jobs:
         run: bun scripts/collaboration-completion-patch.mjs
       - name: Bootstrap pinned runtime
         run: bun run bootstrap
-      - name: Inspect native authorization entry points
-        run: |
-          find vendor/t3code/apps/server/src -iname '*rpc*' -o -iname '*providerService*' -o -iname '*continuation*'
-          grep -R -l 'dispatchCommand' vendor/t3code/apps/server/src --include='*.ts' | head -40
+      - name: Verify pinned native runtime
+        run: bun run prepare:t3-runtime:check
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
+      - name: Native admission and shutdown regression tests
+        run: >-
+          bunx vitest run
+          tests/collaboration/nativeWorkspaceAuthorityAdmission.test.ts
+          tests/collaboration/verifiedChildProcessStop.test.ts
+          tests/collaboration/verifiedChildProcessStop.integration.test.ts
+          tests/collaboration/t3BootstrapShutdown.test.ts
+          tests/electron/substrateShadowServer.test.ts
       - name: Typecheck renderer
         run: bun run typecheck
       - name: Typecheck Electron
@@ -62,6 +68,11 @@ jobs:
         run: |
           git add -- apps/desktop/electron/substrate/ShadowServerManager.ts apps/server/src/t3/process.ts
           if git diff --cached --quiet; then exit 0; fi
+          remote_head="$(git ls-remote origin refs/heads/codex/collaboration-v2-complete | cut -f1)"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo 'Branch advanced during validation; refusing to publish stale integration.'
+            exit 1
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'fix: await confirmed native process exit before completing shutdown'
