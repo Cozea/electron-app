@@ -62,6 +62,7 @@ export const collaborationTables = {
     projectId: v.id("projects"),
     repositoryId: v.string(),
     targetBranch: v.string(),
+    targetCommitSha: v.optional(v.string()),
     sessionBranch: v.string(),
     baseCommitSha: v.string(),
     publishedCommitSha: v.optional(v.string()),

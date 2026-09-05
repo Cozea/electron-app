@@ -178,7 +178,7 @@ export function ProjectWorkbenchSurface() {
             <span className="truncate">{projectName}</span>
           </div>
           <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-            {GITHUB_COLLABORATION_RELEASE_ENABLED && project?._id && activeWorkspace?.workspace.workspaceId && <ProjectCollaborationControl projectId={project._id} organizationId={project.organizationId} sourceWorkspaceId={activeWorkspace.workspace.workspaceId} />}
+            {GITHUB_COLLABORATION_RELEASE_ENABLED && project?._id && activeWorkspace?.workspace.workspaceId && <ProjectCollaborationControl key={project._id} projectId={project._id} organizationId={project.organizationId} sourceWorkspaceId={activeWorkspace.workspace.workspaceId} />}
             <div className="inline-flex h-6 items-center rounded-md bg-secondary px-0.5 text-muted-foreground/85 transition-colors hover:bg-accent/80">
               {/* Lane/branch state is read from context inside the control so
                   this element stays identity-stable while lanes settle. */}

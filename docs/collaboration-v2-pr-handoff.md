@@ -102,6 +102,15 @@ the controlled fixture boundaries are documented in
 
 ## Verification and what it proves
 
+The recovery milestone at `85a385c5` passed immutable CI run `33953113424`,
+including all application/native typechecks, lint, the full behavioral suite,
+repeated recovery/shutdown checks, provider compatibility and production build.
+Subsequent changes require their own checks.
+
+Target advancement controls now retain an immutable starting target SHA and offer
+continuation or End followed by reviewed Start. See
+[target branch changes](current/collaboration-target-branch.md).
+
 Earlier work used GitHub Actions and a Linux conversation container. The current
 supervised continuation uses the macOS worktree and installed toolchains. Local
 behavioral tests and production dry runs supplement the immutable CI results;
@@ -157,7 +166,7 @@ provider/PTY process termination, full WebSocket routing, or packaged acceptance
 1. Finish external CLI rename identity reconciliation and the complete concurrent
    edit/delete/path-collision matrix. Explicit CRDT rename is not proof of arbitrary
    external rename detection.
-2. Complete advanced-target-branch controls and the full retry/leave/onboarding
+2. Complete the full retry/leave/onboarding
    matrix after runtime restart or authorization failures.
 3. Finish sealed-key/basis retention. Preserve unpublished and unknown recovery;
    do not broaden cleanup into blind directory/row deletion. Repeat the completed

@@ -25,6 +25,8 @@ export interface CollaborationSessionDescriptor {
   projectId: string
   repositoryId: string
   targetBranch: string
+  /** Immutable verified target SHA at creation; absent only on older sessions. */
+  targetCommitSha?: string
   sessionBranch: string
   baseCommitSha: string
   publishedCommitSha: string | null
@@ -196,6 +198,7 @@ export function validateCollaborationSession(
   const targetBranch = requireCanonicalTrimmed(session.targetBranch, "Target branch")
   requireCanonicalTrimmed(session.createdByUserId, "Creating user ID")
   const baseCommitSha = assertGitCommitSha(session.baseCommitSha, "Base commit SHA")
+  if (session.targetCommitSha !== undefined) assertGitCommitSha(session.targetCommitSha, "Starting target commit SHA")
 
   if (session.sessionBranch !== buildCollaborationSessionBranch(session.id)) {
     throw new Error("Session branch must be derived from the collaboration session ID")

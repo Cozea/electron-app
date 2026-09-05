@@ -7,6 +7,8 @@ import { SharedSessionEditor } from "./SharedSessionEditor"
 import { CollaborationBinaryPicker } from "./CollaborationBinaryPicker"
 import { CollaborationRecoveryPanel } from "./CollaborationRecoveryPanel"
 import { CollaborationCommitReview } from "./CollaborationCommitReview"
+import { CollaborationTargetBranch } from "./CollaborationTargetBranch"
+import { endCollaborationForRestart, type CollaborationRestartSelection } from "@shared/collaborationTargetBranch"
 import type { CollaborationBinarySelection } from "@shared/collaborationCommitReview"
 import { sessionEditorBridge } from "./runtime/SessionEditorBridge"
 import type { CollaborationSessionDescriptor, CollaborationParticipantDescriptor } from "@shared/collaborationSession"
@@ -45,7 +47,10 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
   const [binarySelection, setBinarySelection] = useState<{ sessionId: string | null; files: CollaborationBinarySelection[] }>({ sessionId: null, files: [] })
   const selectedBinaries = binarySelection.sessionId === sessionId ? binarySelection.files : []
   const [prepared, setPrepared] = useState<PreparedCollaborationCommit | null>(null)
-  const creationToken = useRef(crypto.randomUUID())
+  const [restart, setRestart] = useState<CollaborationRestartSelection | null>(null)
+  const startWorkspaceId = restart?.sourceWorkspaceId ?? sourceWorkspaceId
+  const currentSession = sessions.find(session => session.id === sessionId)
+  const creationToken = useRef<string>(crypto.randomUUID())
   const control = useCallback(<T,>(operation: string, args: Record<string, unknown>) => api.control({ operation, args }) as Promise<T>, [api])
   const refreshLocal = useCallback(async () => {
     const active = await api.active(projectId)
@@ -107,9 +112,20 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
       baseCommitSha: resolved.commitSha, resolutionId: resolved.resolutionId, creationToken: creationToken.current })
     setWaitingId(created.id)
     await control("activateSession", { sessionId: created.id })
-    if (!await api.open({ sessionId: created.id, sourceWorkspaceId })) return
+    if (!await api.open({ sessionId: created.id, sourceWorkspaceId: startWorkspaceId })) return
     if (selected.length) await api.importChanges({ sessionId: created.id, selected: imports.filter(file => selected.includes(file.path)).map(({ path, reviewHash }) => ({ path, reviewHash })) })
-    creationToken.current = crypto.randomUUID(); setWaitingId(null); setImports([]); setSelected([])
+    creationToken.current = crypto.randomUUID(); setWaitingId(null); setImports([]); setSelected([]); setRestart(null)
+  }
+  const endForRestart = async () => {
+    if (!currentSession) throw new Error("Refresh session details before restarting")
+    const selection = await endCollaborationForRestart(currentSession, {
+      getBinding: id => window.electronAPI.collaboration.getBinding(id),
+      resolve: input => api.resolve(input),
+      leave: input => api.leave(input),
+    })
+    creationToken.current = selection.creationToken
+    setRestart(selection); setBranch(selection.branch); setWaitingId(null)
+    setImports([]); setSelected([]); setEditorPath("")
   }
   return <>
     <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setOpen(true)}>
@@ -122,6 +138,7 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
         <CollaborationRecoveryPanel sessionId={sessionId ?? retainedId} disabled={busy} />
         {snapshot?.error && <p role="alert" className="text-sm text-destructive">{snapshot.error}</p>}
         {!sessionId && <div className="space-y-3">
+          {restart && <p role="status" className="text-sm">The previous session has ended. Review the starting branch below, then start a new session. Start resolves its latest remote commit. Previous shared work remains in the retained workspace.</p>}
           {retainedId && <Button disabled={busy} onClick={() => void run(() => join(retainedId))}>Resume retained session</Button>}
           {!binding?.enabled ? <>
             <p className="text-sm">An organization administrator must connect GitHub and select this project’s repository.</p>
@@ -136,7 +153,7 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
               <datalist id="collaboration-branches">{branches.map(name => <option key={name} value={name} />)}</datalist>
               <Button variant="outline" disabled={busy} onClick={() => void run(async () => { const resolved = await api.resolve({ projectId }); setBranches(resolved.branches) })}>Branches</Button>
             </div>
-            <Button variant="outline" disabled={busy} onClick={() => void run(async () => { setImports(await window.electronAPI.collaboration.inspectImportableChanges(sourceWorkspaceId)) })}>Review local text to copy</Button>
+            <Button variant="outline" disabled={busy} onClick={() => void run(async () => { setImports(await window.electronAPI.collaboration.inspectImportableChanges(startWorkspaceId)) })}>Review local text to copy</Button>
             {imports.map(file => <details key={file.path} className="rounded border p-2 text-xs"><summary><label><input type="checkbox" checked={selected.includes(file.path)} onChange={event => setSelected(values => event.target.checked ? [...values, file.path] : values.filter(value => value !== file.path))} /> {file.path}{file.content === null ? " (delete)" : ""}</label></summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap">{file.content ?? "This file is deleted locally."}</pre></details>)}
             <Button disabled={busy || Boolean(waitingId)} onClick={() => void run(start)}>Start session</Button>
             <div className="flex items-center gap-2 text-sm"><label htmlFor="collaboration-role">Join as</label><select id="collaboration-role" className="rounded border bg-background p-1" value={role} onChange={event => setRole(event.target.value as "editor" | "observer")}><option value="editor">Editor</option><option value="observer">Observer</option></select></div>
@@ -145,6 +162,7 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
           {waitingId && <div role="status" className="space-y-2 text-sm"><p>Waiting for an authorized editor to supply this device’s encrypted session key.</p><Button disabled={busy} onClick={() => void run(() => join(waitingId))}>Retry joining</Button></div>}
         </div>}
         {sessionId && snapshot && <div className="space-y-3">
+          {currentSession && <CollaborationTargetBranch key={currentSession.id} session={currentSession} readOnly={snapshot.role !== "editor"} disabled={busy} onEndForRestart={() => void run(endForRestart)} />}
           <RecoveredOfflineEdits sessionId={sessionId} readOnly={snapshot.role !== "editor"} />
           <div className="flex flex-wrap gap-2 text-xs"><span>{snapshot.role} · {snapshot.connection} · acknowledged update {snapshot.sequence}</span>{participants.filter(p => p.leftAt === null).map(p => <span key={p.userId} className="rounded bg-muted px-2 py-1" title={p.userId}>{p.userId.slice(0, 12)} · {p.role}</span>)}</div>
           <div className="flex gap-2"><Input aria-label="Session file path" placeholder="src/example.ts" value={filePath} onChange={event => setFilePath(event.target.value)} /><Button disabled={busy || !filePath} onClick={() => { setEditorPath(filePath) }}>Open</Button><Button variant="outline" disabled={busy || snapshot.role !== "editor" || !filePath} onClick={() => void run(async () => { await api.createFile({ sessionId, path: filePath }); setEditorPath(filePath) })}>New file</Button></div>
