@@ -310,6 +310,7 @@ import {
   partitionEssential,
   providerEssentialCount,
   resolveSelectedBuild,
+  skillMonogram,
   loadoutByCategory,
   providerCandidates,
   providerLoadout,
@@ -645,5 +646,35 @@ describe("which build the hub shows", () => {
 
   it("resolves to nothing only when there are no builds", () => {
     expect(resolveSelectedBuild([], "a", "a")).toBeNull();
+  });
+});
+
+/**
+ * Skills ship no artwork, so each row shows a monogram instead. Qualified
+ * names repeat their plugin down a whole group, so the mark has to come from
+ * the half that tells one row from the next.
+ */
+describe("the mark standing in for a skill", () => {
+  it("takes initials from the distinctive half of a qualified name", () => {
+    expect(skillMonogram("Cwc Makers · Cardputer Buddy")).toBe("CB");
+    expect(skillMonogram("Plugin Dev · Hook Development")).toBe("HD");
+  });
+
+  it("uses the first two words of a plain name", () => {
+    expect(skillMonogram("Cloudflare One Migrations")).toBe("CO");
+    expect(skillMonogram("Graphify")).toBe("G");
+  });
+
+  it("reads through slugs and underscores", () => {
+    expect(skillMonogram("memory-skill")).toBe("MS");
+    expect(skillMonogram("web_perf")).toBe("WP");
+  });
+
+  it("never returns more than two characters, or nothing", () => {
+    for (const name of ["", "   ", "·", "a b c d e"]) {
+      const mark = skillMonogram(name);
+      expect(mark.length).toBeGreaterThan(0);
+      expect(mark.length).toBeLessThanOrEqual(2);
+    }
   });
 });

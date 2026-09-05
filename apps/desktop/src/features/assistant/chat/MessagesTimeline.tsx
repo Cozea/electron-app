@@ -183,6 +183,17 @@ const LEGEND_LIST_DEFAULT_HEIGHT_PX = 640;
 const LEGEND_LIST_DEFAULT_WIDTH_PX = 720;
 const LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX = 48;
 const LEGEND_LIST_TAIL_PADDING_PX = 16;
+/** LegendList's `refScrollView` hands over an API object; dig out the scrolling element. */
+function resolveScrollViewElement(scrollView: unknown): HTMLElement | null {
+  if (!scrollView) return null;
+  if (scrollView instanceof HTMLElement) return scrollView;
+  const getScrollableNode = (scrollView as { getScrollableNode?: () => unknown })
+    .getScrollableNode;
+  if (typeof getScrollableNode !== "function") return null;
+  const node = getScrollableNode.call(scrollView);
+  return node instanceof HTMLElement ? node : null;
+}
+
 /** Covers the tail padding's own 200ms transition so the last row rides it up. */
 const DOCKED_COMPOSER_INSET_FOLLOW_MS = 260;
 
@@ -258,13 +269,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const legendListRef = useRef<LegendListRef | null>(null);
   // Held in state, not a ref, so the scroll listener attaches once LegendList
-  // hands the node over rather than on a first render where it is still null.
-  const [scrollViewNode, setScrollViewNode] = useState<HTMLDivElement | null>(null);
+  // hands the scroll view over rather than on a first render where it is null.
+  const [scrollViewNode, setScrollViewNode] = useState<HTMLElement | null>(null);
   const isNearBottomRef = useRef(true);
   const attachScrollView = useCallback(
-    (node: HTMLDivElement | null) => {
-      scrollContainerRef.current = node;
-      setScrollViewNode(node);
+    (scrollView: unknown) => {
+      // `refScrollView` receives LegendList's scroll-view API object, not the DOM
+      // node. Keep handing the caller what it has always had, and resolve the real
+      // element for the scroll work below.
+      scrollContainerRef.current = scrollView as HTMLDivElement | null;
+      setScrollViewNode(resolveScrollViewElement(scrollView));
     },
     [scrollContainerRef],
   );

@@ -112,6 +112,22 @@ export function resolveSelectedBuild(
   );
 }
 
+/**
+ * Two letters standing in for a skill, since skills carry no artwork.
+ *
+ * Qualified names read `plugin · skill`, and the plugin half repeats down a
+ * whole group, so the mark is taken from the part that actually distinguishes
+ * one row from the next.
+ */
+export function skillMonogram(name: string): string {
+  const distinctive = name.split("·").pop()?.trim() || name.trim();
+  const words = distinctive.split(/[\s\-_]+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  const letters = words.slice(0, 2).map((word) => word[0] ?? "");
+  const mark = letters.join("") || distinctive.slice(0, 2);
+  return mark.toUpperCase().slice(0, 2);
+}
+
 /** Whether ticking this skill has to install it before the build can hold it. */
 export function needsInstall(skill: AgentSkillRecord): boolean {
   return skill.source === "catalog";
@@ -280,7 +296,7 @@ export function filterPickerSkills(
 }
 
 export function SkillBuildsView() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
   const [snapshot, setSnapshot] = React.useState<AgentSkillsSnapshot | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -525,6 +541,14 @@ export function SkillBuildsView() {
                 buildSkillIds={selectedBuild.skillIds}
                 busySkillId={busyKey?.startsWith("toggle:") ? busyKey.slice(7) : null}
                 onToggle={(skillId) => void toggleBuildSkill(skillId)}
+                onOpenSkill={(skillId) => {
+                  // Hands off to the skill's own page, which lives on the
+                  // library side of this surface and reads the id from the URL.
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("view");
+                  next.set("skill", skillId);
+                  setSearchParams(next);
+                }}
                 onSwitch={(direction) =>
                   setOpenDetail((current) => (current ? stepDetail(current, direction) : current))
                 }
@@ -917,6 +941,7 @@ function DetailSheet({
   buildSkillIds,
   busySkillId,
   onToggle,
+  onOpenSkill,
   onSwitch,
   onBack,
 }: {
@@ -925,6 +950,7 @@ function DetailSheet({
   buildSkillIds: readonly string[];
   busySkillId: string | null;
   onToggle: (skillId: string) => void;
+  onOpenSkill: (skillId: string) => void;
   onSwitch: (direction: -1 | 1) => void;
   onBack: () => void;
 }) {
@@ -1019,45 +1045,57 @@ function DetailSheet({
                   const isChosen = chosen.has(skill.id);
                   return (
                     <li key={skill.id} className="min-w-0">
-                      <button
-                        type="button"
-                        aria-pressed={isChosen}
-                        disabled={busySkillId === skill.id}
-                        onClick={() => onToggle(skill.id)}
+                      {/* Two controls, not one: the box decides whether the
+                          build carries the skill, the rest opens its page. */}
+                      <div
                         className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
-                          "disabled:opacity-60",
+                          "flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
                           isChosen
                             ? "bg-foreground/[0.07] hover:bg-foreground/[0.1]"
                             : "hover:bg-foreground/[0.04]",
                         )}
                       >
-                        <span
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={isChosen}
+                          aria-label={`${isChosen ? "Remove" : "Add"} ${prettifySkillName(skill.name)}`}
+                          disabled={busySkillId === skill.id}
+                          onClick={() => onToggle(skill.id)}
                           className={cn(
                             "flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                            "focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none",
+                            "disabled:pointer-events-none disabled:opacity-60",
                             isChosen
                               ? "border-transparent bg-foreground text-background"
-                              : "border-border",
+                              : "border-border hover:border-foreground/50",
                           )}
                         >
                           {isChosen ? (
                             <HugeiconsIcon icon={__TickHugeIcon} className="size-3" />
                           ) : null}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span
-                            className={cn(
-                              "block truncate text-[13px] font-medium transition-colors",
-                              isChosen ? "text-foreground" : "text-muted-foreground",
-                            )}
-                          >
-                            {prettifySkillName(skill.name)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenSkill(skill.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:ring-ring/50 focus-visible:rounded-md focus-visible:ring-2 focus-visible:outline-none"
+                        >
+                          <SkillMark name={skill.name} lit={isChosen} />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className={cn(
+                                "block truncate text-[13px] font-medium transition-colors",
+                                isChosen ? "text-foreground" : "text-muted-foreground",
+                              )}
+                            >
+                              {prettifySkillName(skill.name)}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                              {conciseDescription(skill.description)}
+                            </span>
                           </span>
-                          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
-                            {conciseDescription(skill.description)}
-                          </span>
-                        </span>
-                      </button>
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -1094,7 +1132,7 @@ function DetailSheet({
             <ul className="grid gap-0.5 sm:grid-cols-2">
               {essential.map((skill) => (
                 <li key={skill.id} className="min-w-0">
-                  <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
+                  <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-foreground/[0.04]">
                     {/* No tick: the provider restores these, so a build cannot
                         promise to turn one off. */}
                     <Tooltip>
@@ -1112,14 +1150,21 @@ function DetailSheet({
                         {ESSENTIAL_SKILL_NOTE}
                       </TooltipContent>
                     </Tooltip>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-muted-foreground">
-                        {prettifySkillName(skill.name)}
+                    <button
+                      type="button"
+                      onClick={() => onOpenSkill(skill.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:ring-ring/50 focus-visible:rounded-md focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      <SkillMark name={skill.name} lit={false} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-muted-foreground">
+                          {prettifySkillName(skill.name)}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                          {conciseDescription(skill.description)}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
-                        {conciseDescription(skill.description)}
-                      </span>
-                    </span>
+                    </button>
                     <span className="shrink-0 text-[9px] tracking-[0.16em] text-muted-foreground/60 uppercase">
                       Essential
                     </span>
@@ -1131,6 +1176,29 @@ function DetailSheet({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * A skill's stand-in image. Skills ship no artwork, so this is a monogram on a
+ * chamfered plate, cut the same way as the hub's.
+ */
+function SkillMark({ name, lit }: { name: string; lit: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative flex size-7 shrink-0 items-center justify-center border transition-colors",
+        "[clip-path:polygon(0_0,calc(100%-6px)_0,100%_6px,100%_100%,6px_100%,0_calc(100%-6px))]",
+        lit
+          ? "border-[var(--hub-ln-hi)] bg-[var(--hub-fill-hi)] text-foreground"
+          : "border-[var(--hub-ln)] bg-[var(--hub-fill)] text-muted-foreground",
+      )}
+    >
+      <span className="text-[10px] leading-none font-medium tracking-[0.04em]">
+        {skillMonogram(name)}
+      </span>
+    </span>
   );
 }
 
