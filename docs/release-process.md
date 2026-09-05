@@ -173,3 +173,28 @@ Cozea/t3code before publishing a parent ref. Keep the protocol and native-runtim
 qualification record in `shared/provider-compatibility.json` current. Live signed
 updater replacement and fresh/upgrade packaged profiles still require the release
 matrix; unit tests of the handshake do not qualify the updater itself.
+
+
+## Collaboration-safe quit and update verification
+
+Renderer collaboration queues veto window unload while edits are awaiting durable
+main-process acceptance. Do not override Electron's `will-prevent-unload` event.
+Cancelable `before-quit` must not dispose the collaboration host, workspace
+catalog, or native runtime. Once all windows accept unload, `will-quit` first
+awaits session recovery and scoped native shutdown, then disposes the remaining
+owners. Failed preparation retains recovery and exposes a retry; partial disposal
+is retried without preparing an already disposed host again.
+
+Native Stop/Interrupt remains available after role removal, but Interrupt must
+not recover or launch an inactive provider. Shutdown acknowledges actual child
+exit and drains in-flight encrypted receive callbacks before releasing storage.
+Unrelated workspaces are not part of a session-scoped stop. The maintained T3
+source overlay is required in fresh and packaged runtime preparation.
+
+The existing controlled-update continuation contract still requires packaged
+verification with this quit ordering. A green Linux build is not an installer or
+macOS/Windows lifecycle acceptance result. Run cancel-close, failed persistence,
+failed native stop, last-window-close, ordinary Quit, update preparation and
+failed-update-handoff scenarios on the packaged candidate. Keep both GitHub
+collaboration release gates disabled until all code blockers in
+`collaboration-v2-completion.md` and the deployed two-device matrix are closed.

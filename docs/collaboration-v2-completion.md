@@ -1,8 +1,8 @@
 # GitHub-backed collaboration completion
 
-Status: implementation in progress on `codex/collaboration-v2-complete`, with PR #141 integrated in local checkpoint `41b7b17b`. The branch also reconciles committed main `bbf9ceab`, including provider fork `f2df43a98`. This branch is not ready to deploy or expose as a completed collaboration release.
+Status (2026-09-05): the continuation from `2d861c60` implements native-authority, shutdown, immutable commit-review and bounded local-recovery hardening on `codex/collaboration-v2-complete`. The original PR #141 foundations and provider pin `f2df43a98` are retained. This is not a completed collaboration release; remaining code blockers are listed below, separately from packaged acceptance.
 
-The user requested stopping implementation and handing off the committed branch. Start with `docs/collaboration-v2-handoff.md`.
+The user authorized all feasible continuation work and will perform final packaged two-device testing. Read `docs/collaboration-v2-pr-handoff.md` first. Both release gates remain disabled; no deployment, collaboration reset or release has been performed by this continuation.
 
 ## Scope and release gate
 
@@ -38,16 +38,24 @@ All standard typechecks, lint, tests and production builds must pass. Two indepe
 - Generation-3 sessions use protocol 3.0; existing project synchronization keeps protocol 2.1. Server session creation requires `COLLABORATION_G3_CREATE_ENABLED=1`, and the renderer controls require `VITE_GITHUB_COLLABORATION_RELEASE=1`. Both remain disabled by default. Rollback disables creation without deleting recovery.
 - Session exit suspends new workspace actions before stopping catalog-owned terminals and previews. Failed termination remains retryable. A missing original workspace does not leave write authority active.
 
+## Continuation hardening implemented
+
+- Native provider, terminal and mutating T3 RPC admission derives workspace authority through inherited main-process IPC, canonical catalog paths and fresh server membership. Revocation fences late admissions, drains admitted actions and stops only matching resource owners. Provider feedback upload is guarded; interrupting an inactive provider does not restart it. The native source overlay preserves unrelated fork edits with a digest receipt.
+- Child shutdown awaits real exit, escalates when required and reports unconfirmed termination. Editor IPC queues block whole-window unload until durable acceptance. Application recovery preparation happens after renderer unload consent and before catalog/native disposal; partially stopped hosts remain safely retryable.
+- Transport shutdown fences socket callbacks, drains recovery/incoming/outgoing work and waits for runtime file/checkpoint/projection producers before the final store flush. A real full-suite observer-recovery teardown race led to this fix; it was not hidden with test retries.
+- Prepared review reads immutable Git objects, verifies ancestry, displays text/binary changes and binds Push to the exact reviewed SHA. Explicit binary selection binds bytes, executable mode and deletions, with checks during preparation. Ordinary text cannot bypass the shared barrier through binary selection. Deprecated direct prepare/push IPC paths reject bypasses.
+- Recovery-store writes and projection allocations have 1 GiB aggregate admission and 256 MiB per-room store admission across key versions, counting existing temporary files and backups. Independent store handles serialize identity checks and mutation. Metadata-only inventory and catalog-associated cleanup authenticate a replacement checkpoint before removing at most 256 covered receive-log records per key per call. Unpublished records, keys, prepared commits, workspaces and backups are retained.
+
 ## Remaining implementation and acceptance gaps
 
-1. Enforce collaboration authority at the native T3 provider/RPC boundary and stop running agents on role removal or exit. The current workspace IPC policy alone does not cover native T3 agent commands; do not enable the release until this is closed.
-2. Finish external CLI rename identity reconciliation and the concurrent edit/delete/path-collision matrix. Add whole-window close protection for renderer edits awaiting IPC acceptance. Complete the reviewed prepared-commit diff and binary selection UI.
-3. Complete automatic recovery for an unacknowledged lazy file initializer when key rotation replaces its lease. Pending records are currently retained with a recoverable diagnostic. Validate complete host-level rotation with an offline participant and repeated removals.
-4. Bound total retained storage across key versions and checkpoint history, and add explicit catalog-owned cleanup. Finish content-free diagnostics and target-branch-advancement UI. Ensure runtime restart failures and authorization failures preserve visible retry/leave controls.
-5. Validate GitHub OAuth and configure/activate signed webhooks with the compatible gateway. Produce bounded generation-reset inventories for Convex, rooms and local caches, and execute only collaboration-owned entries.
-6. Run the entire behavioral matrix and standard checks, deploy Convex using `bunx convex deploy`, then the compatible gateway and desktop. Complete two independently authenticated packaged instances against production, including fresh checkout, offline restart, exact publication and compaction recovery.
+1. Complete automatic replay for an unacknowledged lazy file initializer whose lease is replaced during key rotation. Existing code deliberately retains the source ciphertext and reports a recoverable diagnostic. Complete whole-host offline/lost-reply/repeated-removal rotation coverage.
+2. Finish external CLI rename identity reconciliation and the complete concurrent edit/delete/path-collision matrix. Explicit shared rename operations already retain stable identities; arbitrary external rename detection is not complete.
+3. Finish target-branch-advancement controls and the full restart/authorization-failure UI matrix. Host retry/shutdown handling is improved, not a substitute for all required user flows.
+4. Complete room/checkpoint-history and sealed-key-history retention policy, plus the broader collaboration-only reset inventory. Local store/projection quotas and conservative covered-log cleanup are implemented; they are not a complete cross-service garbage collector or an implemented alpha reset.
+5. Validate GitHub OAuth and configure/activate signed webhooks with the compatible gateway using deployment-owner credentials. No OAuth browser acceptance, webhook activation, Convex deployment, gateway deployment or reset was performed here.
+6. After code blockers and restricted acceptance setup are ready, run the complete deployed packaged workflow with two independently authenticated devices, including a fresh checkout, offline/restart recovery, exact publication, base adoption, quota handling and compaction. Preserve identities, projects, chats, ordinary folders, Git history and unpublished recovery. Use only `bunx convex deploy` for approved Convex production deployment, never a development deployment.
 
-## GitHub App setup state
+## GitHub App setup state (historical credential handoff; not revalidated by this continuation)
 
 The existing app is **Cozea Source Control**, app ID `3150202`, client ID `Iv23likWiGv8yC0Vufon`, owned by Cozea. Settings: <https://github.com/organizations/Cozea/settings/apps/cozea-source-control>.
 
@@ -55,9 +63,9 @@ On 2026-09-04T23:45Z the user supplied a newly generated PEM and displayed clien
 
 GitHub confirmed the OAuth redirect URI was saved as `https://cozea-collab.kelyan-engone.workers.dev/collab/github/callback`. The full OAuth flow is not yet validated. Setup URL remains empty and webhooks remain inactive. The user approved Members read; GitHub confirmed the permission update for Cozea installation `118021065`, preserving its existing repository scope. The separate personal installation was unchanged. The webhook at `/collab/github/webhook` still needs a matching secret and activation when the compatible gateway is deployed.
 
-Only secrets on the existing gateway, the GitHub callback, and the approved installation permission changed. No application source deployment, Convex deployment, alpha reset, commit or push has occurred.
+During the original credential setup, only gateway secrets, the GitHub callback and the approved installation permission changed. This continuation has committed and pushed source hardening, but has not deployed the application/Convex/gateway, changed credentials, activated webhooks or performed an alpha reset.
 
-## Environment and verification
+## Original implementation environment and baseline verification
 
 Docker is unavailable; use existing local Bun without host system-package installation. Worktree dependencies link to already-installed root packages, including the pinned T3 package dependencies. Another task owns `provider-upstream`; do not touch it or unrelated root edits.
 

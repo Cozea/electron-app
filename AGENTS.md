@@ -354,7 +354,12 @@ See `docs/agent-skills.md` for storage paths, safety boundaries, setup-pack beha
 - Commit materializes the acknowledged barrier in a temporary index. Push is explicit and never forced. Published-base adoption preserves newer text and local binaries; a Git commit never replaces CRDT recovery state.
 - Keep both `VITE_GITHUB_COLLABORATION_RELEASE` and `COLLABORATION_G3_CREATE_ENABLED` disabled until the complete deployed packaged acceptance gate passes. Retained session workspaces and encrypted pending edits are recovery data, never ordinary project cleanup targets.
 
-See `docs/collaboration-v2-completion.md` for the implementation status, remaining release blockers and acceptance gate.
+- Native provider, terminal and mutating RPC authority is installed by the maintained source overlay in `scripts/patch-t3-workspace-authority.mjs`. Preserve its digest receipt and fail on independently changed vendor files; do not bypass it or repin the fork to hide overlay drift. Feedback upload is execution-capable because it can recover a provider; interrupt must never recover a stopped provider.
+- Collaboration editor updates awaiting durable IPC acceptance veto renderer unload. Application recovery shutdown runs at `will-quit`, after renderer unload consent and before catalog/native disposal. Stop must await admitted receive/file/checkpoint work; a sent process signal is not exit confirmation.
+- Prepared-commit review reads immutable Git objects. Push carries the reviewed SHA; selected publisher binaries carry hashes of exact bytes, executable mode and deletion state. Do not restore the deprecated renderer-selected commit/push bypasses.
+- Recovery-store/projection allocations use bounded aggregate admission rather than eviction. Explicit cleanup authenticates the exact replacement checkpoint and removes only covered receive-log records. Pending sends, editor ingress, sealed keys, prepared objects, unknown temporary files, workspaces and retained backups are not cleanup targets.
+
+See `docs/collaboration-v2-completion.md` for status and release blockers, and `docs/collaboration-v2-pr-handoff.md` for the continuation's verification and remaining work.
 
 ## Code Style
 

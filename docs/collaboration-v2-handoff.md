@@ -1,5 +1,9 @@
 # GitHub collaboration implementation handoff
 
+> Historical handoff at `2d861c60`. The subsequent continuation is documented in
+> `docs/collaboration-v2-pr-handoff.md`; use that and the updated completion document
+> for current code status. Both gates remain off and release-blocking work remains.
+
 ## Assignment
 
 Continue the approved end-to-end GitHub-backed code collaboration plan on

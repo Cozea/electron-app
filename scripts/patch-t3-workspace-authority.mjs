@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { patchNonresurrectingInterrupt, patchStoppedInterruptRegression } from "./patch-t3-stopped-interrupt.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const marker = "// Cozea native workspace authority overlay v1\n";
@@ -55,8 +56,9 @@ function once(source, before, after, name) {
 }
 
 function patchProvider(source) {
+  source = patchNonresurrectingInterrupt(source);
   const { node, expression, file } = returnObject(source, ["startSession", "sendTurn", "stopSession", "listSessions"], "ProviderService.ts");
-  const names = ["startSession", "sendTurn", "compactThread", "respondToRequest", "respondToUserInput", "rollbackConversation"];
+  const names = ["startSession", "sendTurn", "compactThread", "respondToRequest", "respondToUserInput", "rollbackConversation", "uploadFeedback"];
   const changes = [];
   for (const name of names) {
     const property = expression.properties.find(item => propertyName(item) === name);
@@ -157,6 +159,7 @@ function patchSharedPlatform(name, source) {
 
 const transformed = new Map([
   ["apps/server/src/provider/Layers/ProviderService.ts", patchProvider],
+  ["apps/server/src/provider/Layers/ProviderService.test.ts", patchStoppedInterruptRegression],
   ["apps/server/src/terminal/Manager.ts", patchTerminal],
   ["apps/server/src/ws.ts", patchWs],
 ]);
