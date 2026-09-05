@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-09-04T23:37:28Z",
+  "recordedAt": "2026-09-05T00:03:00Z",
   "adapterRevision": "59e1f1749a90912a5d68eedf026c4ba7fdcfb204",
   "upstreamRevision": "0a590fa01af66ec135d2ebf2d5542b08a37dc275",
   "providers": [
@@ -26,7 +26,9 @@
           "new-chat",
           "subsequent-turn",
           "catalog",
-          "streamed-result"
+          "streamed-result",
+          "server-restart-resume",
+          "same-native-rollout"
         ],
         "result": "passed",
         "fullMatrixQualified": false

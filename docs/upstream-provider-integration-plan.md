@@ -1,6 +1,6 @@
 # Upstream provider integration plan
 
-Status: implementation active in the isolated `codex/provider-upstream-integration` worktree.
+Status: implementation and available-host verification complete in `codex/provider-upstream-integration`; release qualification limits are recorded below.
 Prepared: 2026-09-05T04:47:58+08:00.
 
 ## Objective and acceptance
@@ -313,7 +313,7 @@ No reliable calendar estimate is assigned before the contract/Effect boundary, m
 
 | Environment/case | Evidence and result |
 | --- | --- |
-| macOS arm64 / Codex CLI 0.153.2 | Auth/catalog probe and two real consecutive `gpt-5.6-luna` turns passed in an isolated project. Completed-subagent history/process restart uses synthetic protocol fixtures; the friend's rollout and 0.153.3 binary were unavailable. |
+| macOS arm64 / Codex CLI 0.153.2 | Auth/catalog, consecutive `gpt-5.6-luna` turns and a further turn after server restart passed in an isolated project. The exact native rollout contains all three user turns. Completed-subagent history/process restart uses synthetic protocol fixtures; the friend's rollout and 0.153.3 binary were unavailable. |
 | Claude CLI 2.1.260 | Auth/catalog probe passed. A real chat reached the adapter and displayed the provider account rejection; successful-turn qualification is unavailable with this account. |
 | OpenCode CLI 1.18.28 | Auth/catalog probe passed. Lifecycle/permissions/stop use upstream integration fixtures; real paid-model conversation matrix remains unverified. |
 | Cursor | Native executable unavailable in this host's PATH; adapter/ACP fixtures pass. Native UI matrix remains unverified. |
@@ -338,3 +338,28 @@ in force. Do not downgrade a live database to test rollback.
   preparation/cancellation and retry behavior; operator documentation updated.
 - Compatibility CI and provider documentation follow as a separate change.
   Only the fork feature branch was published; parent changes remain local.
+
+
+### Final verification (2026-09-05T00:03Z)
+
+A separate parent clone at `d493cc2b` initialized its submodule directly from
+Cozea/t3code and fetched `59e1f1749`. `bun run bootstrap` rebuilt from the frozen
+lockfiles without adopting the implementation worktree's bundle. Its app
+typecheck, production build, compatibility/contract manifest check and isolated
+shadow RPC/update prepare-cancel smoke all passed; both source trees stayed clean.
+The implementation worktree's portable runtime metadata names that same full SHA.
+
+Final root result: **2106 passed, 7 skipped**. App/Electron/test typechecks, lint,
+production build, contract/pin checks and diff whitespace passed. The vendor
+compatibility suite passed **1561 tests, 8 skipped**; the earlier complete merged
+server/schema/contracts suite passed **4110 tests, 9 skipped**, with the subsequent
+host continuation change covered by 22 startup/update tests and a fresh server
+bundle/typecheck/lint. Existing Vite configuration/native-loader warnings and
+SQLite experimental notices remain; no new failing checks are hidden.
+
+The implementation is ready for parent-branch review. Publication of the parent,
+main merges and releases were not authorized or performed. Real credential,
+signed-updater and unavailable-platform cases in the table remain release
+qualification gates, not claimed successes. The user's original checkout and
+native histories were preserved; only clearly isolated QA conversations were
+created for live tests.
