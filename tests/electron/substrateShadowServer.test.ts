@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -110,19 +111,24 @@ describe("ShadowServerManager", () => {
       throw new Error("expected TCP listen address");
     }
 
-    const fakeChild = {
+    // Model an actual ChildProcess: signal delivery and confirmed exit are
+    // separate facts, and all EventEmitter listeners must be observable.
+    const fakeChild = Object.assign(new EventEmitter(), {
       pid: 99,
       killed: false,
       exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
       stdout: { on: vi.fn() },
       stderr: { on: vi.fn() },
-      once: vi.fn(),
       kill: vi.fn(() => {
         fakeChild.killed = true;
-        fakeChild.exitCode = 0;
+        queueMicrotask(() => {
+          fakeChild.exitCode = 0;
+          fakeChild.emit("exit", 0, null);
+        });
         return true;
       }),
-    };
+    });
 
     const forkImpl = vi.fn(() => fakeChild);
     const manager = new ShadowServerManager({
@@ -138,8 +144,6 @@ describe("ShadowServerManager", () => {
       readinessTimeoutMs: 5_000,
     });
 
-    // Pretend the entry exists without touching disk layout: monkey-patch existsSync via fork only after
-    // we stub fs by writing a tiny file.
     const fs = await import("node:fs");
     fs.writeFileSync("/tmp/fake-substrate-shadow-server.js", "console.log('fake')\n");
 
@@ -150,11 +154,16 @@ describe("ShadowServerManager", () => {
       expect(status.pid).toBe(99);
       expect(status.port).toBe(address.port);
     } finally {
-      await manager.stop();
-      await new Promise<void>((resolve, reject) => {
-        readyServer.close((error) => (error ? reject(error) : resolve()));
-      });
-      fs.rmSync("/tmp/fake-substrate-shadow-server.js", { force: true });
+      try {
+        await manager.stop();
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          readyServer.close((error) => (error ? reject(error) : resolve()));
+        });
+        fs.rmSync("/tmp/fake-substrate-shadow-server.js", { force: true });
+      }
     }
+    expect(fakeChild.exitCode).toBe(0);
+    expect(fakeChild.listenerCount("exit")).toBe(0);
   });
 });
