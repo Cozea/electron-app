@@ -1,3 +1,4 @@
+import { useSettingsDrawerStore } from "@/features/settings/model/settingsDrawerStore"
 import { CheckmarkCircle02Icon, Copy01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useRef, useState } from "react"
@@ -183,6 +184,8 @@ export function ProviderRemediationAction(props: {
       setCodeDraft("")
     }
   }, [props.persistenceKey, remediationKey])
+
+  if (props.provider === "antigravity") return <Button size="sm" variant="outline" onClick={() => useSettingsDrawerStore.getState().open("tooling")}>Set up Antigravity</Button>
 
   if (!remediation) return null
 

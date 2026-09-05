@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react"
 
-import { useCreateProjectDialogStore } from "@/features/projects/model/createProjectDialogStore"
+import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 
 const LazyCreateProjectDialog = lazy(() =>
   import("@/features/projects/ui/CreateProjectDialog").then((module) => ({

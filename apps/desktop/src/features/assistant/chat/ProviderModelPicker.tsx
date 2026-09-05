@@ -9,7 +9,10 @@ import {
 import { getProviderOptionCurrentValue } from "@cozea/assistant-shared/model";
 import { memo, useMemo, type Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon as __ChevronDownIconHugeIcon, ZapIcon as __ZapIconHugeIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon as __ChevronDownHugeIcon,
+  ZapIcon as __ZapIconHugeIcon,
+} from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -23,6 +26,7 @@ import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
 } from "@/features/assistant/providerInstances";
+import type { ModelPickerPrimaryView } from "./ModelPickerContent";
 
 interface ProviderModelPickerProps {
   provider: ProviderKind;
@@ -38,9 +42,10 @@ interface ProviderModelPickerProps {
   disabled?: boolean;
   terminalOpen?: boolean;
   open?: boolean;
+  activeView?: ModelPickerPrimaryView;
   triggerClassName?: string;
-  triggerRef?: Ref<HTMLButtonElement>;
-  onOpenChange?: (open: boolean) => void;
+  triggerRef?: Ref<HTMLDivElement>;
+  onOpenChange?: (open: boolean, view: ModelPickerPrimaryView) => void;
   onProviderModelChange: (provider: ProviderKind, model: string) => void;
 }
 
@@ -128,69 +133,76 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
   });
   const overflowTitle = getOverflowTitle(triggerLabel, 0);
 
+  const toggleView = (view: ModelPickerPrimaryView) => {
+    props.onOpenChange?.(!(props.open && props.activeView === view), view);
+  };
+
   return (
-    <button
+    <div
       ref={props.triggerRef}
-      type="button"
       data-chat-provider-model-picker="true"
       className={cn(
-        "inline-flex h-7 min-w-0 items-center justify-start gap-1.5 whitespace-nowrap rounded-full border border-transparent px-2 text-xs font-normal text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex h-7 min-w-0 items-center justify-start gap-1 whitespace-nowrap rounded-full border border-transparent px-1.5 text-xs font-normal text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground",
         props.compact ? "max-w-xs shrink sm:max-w-md" : "max-w-sm shrink sm:max-w-lg sm:px-3",
+        props.disabled && "pointer-events-none opacity-50",
         props.triggerClassName,
       )}
-      disabled={props.disabled}
-      onClick={() => props.onOpenChange?.(!props.open)}
     >
-      <span className="flex min-w-0 w-full box-border items-center gap-1.5 overflow-hidden">
-        {props.showProviderIcon !== false && activeEntry ? (
-          <ProviderInstanceIcon
-            driverKind={activeEntry.driverKind}
-            displayName={activeEntry.displayName}
-            accentColor={activeEntry.accentColor}
-            showBadge={showInstanceBadge}
-            className={showInstanceBadge ? "size-5" : "size-4"}
-            iconClassName={cn("size-4", props.activeProviderIconClassName)}
-            badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 text-[7px]"
-          />
-        ) : null}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              ref={containerRef}
-              className="min-w-0 flex-1 truncate flex items-center gap-1.5"
-            >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={props.disabled}
+            onClick={() => toggleView("models")}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 overflow-hidden rounded-full px-0.5 outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            aria-label={`Select model. Current model: ${triggerTitle}`}
+          >
+            {props.showProviderIcon !== false && activeEntry ? (
+              <ProviderInstanceIcon
+                driverKind={activeEntry.driverKind}
+                displayName={activeEntry.displayName}
+                accentColor={activeEntry.accentColor}
+                showBadge={showInstanceBadge}
+                className={showInstanceBadge ? "size-5" : "size-4"}
+                iconClassName={cn("size-4", props.activeProviderIconClassName)}
+                badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 text-[7px]"
+              />
+            ) : null}
+            <span ref={containerRef} className="min-w-0 truncate">
               <span className="truncate">{triggerTitle}</span>
               {currentAgentLabel && currentAgentLabel.toLowerCase() !== "build" ? (
-                <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium">
+                <span className="ml-1.5 shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   {currentAgentLabel}
                 </span>
               ) : null}
-              {currentEffortLabel ? (
-                <span className="shrink-0 text-muted-foreground/60 font-normal text-xs">
-                  {currentEffortLabel}
-                </span>
-              ) : null}
-              {isFastModeActive ? (
-                <HugeiconsIcon
-                  icon={__ZapIconHugeIcon}
-                  className="size-3 shrink-0 text-amber-500 fill-current"
-                  aria-label="Fast mode on"
-                />
-              ) : null}
             </span>
-          </TooltipTrigger>
-          {overflowTitle && <TooltipContent side="top">{overflowTitle}</TooltipContent>}
-        </Tooltip>
+          </button>
+        </TooltipTrigger>
+        {overflowTitle && <TooltipContent side="top">{overflowTitle}</TooltipContent>}
+      </Tooltip>
+
+      {currentEffortLabel ? (
+        <button
+          type="button"
+          disabled={props.disabled}
+          onClick={() => toggleView("capabilities")}
+          className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-0.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label={`Adjust capabilities. Current ${primaryTraitDescriptor?.label ?? "effort"}: ${currentEffortLabel}`}
+        >
+          <span>{currentEffortLabel}</span>
+          <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 opacity-70" />
+        </button>
+      ) : (
+        <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 opacity-70" />
+      )}
+
+      {isFastModeActive ? (
         <HugeiconsIcon
-          icon={__ChevronDownIconHugeIcon}
-          aria-hidden="true"
-          strokeWidth={2.25}
-          className={cn(
-            "size-4 shrink-0 opacity-80 stroke-[2.25] transition-transform duration-200",
-            props.open && "rotate-180",
-          )}
+          icon={__ZapIconHugeIcon}
+          className="size-3 shrink-0 fill-current text-amber-500"
+          aria-label="Fast mode on"
         />
-      </span>
-    </button>
+      ) : null}
+    </div>
   );
 });

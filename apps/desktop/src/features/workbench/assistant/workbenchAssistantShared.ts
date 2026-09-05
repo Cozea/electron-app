@@ -28,7 +28,9 @@ import {
   selectProjectWorkbench,
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
+
+export { toErrorMessage } from "@/features/assistant/lib/assistantErrors"
 
 export interface DiffDialogState {
   title: string
@@ -51,18 +53,6 @@ export function basenameFromPath(value: string | null): string {
 
   const segments = value.split(/[\\/]/).filter(Boolean)
   return segments.at(-1) ?? value
-}
-
-export function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-
-  if (typeof error === "string" && error.trim()) {
-    return error
-  }
-
-  return "Something went wrong while talking to the local assistant runtime."
 }
 
 export function deriveAssistantTurnRunning(input: {
@@ -260,64 +250,10 @@ export function resolvePreferredModelSelection(input: {
     resolveModelSlugForProvider(provider, candidateModel) ??
     DEFAULT_MODEL_BY_PROVIDER[provider]
 
-  switch (provider) {
-    case "codex":
-      return normalizeModelSelection({
-        provider: "codex",
-        instanceId: providerInstanceId,
-        model: resolvedModel,
-        options:
-          input.tile.provider === "codex"
-            ? undefined
-            : input.projectModelSelection?.provider === "codex"
-              ? input.projectModelSelection.options
-              : defaultModelSelection?.provider === "codex"
-                ? defaultModelSelection.options
-                : undefined,
-      })
-    case "claudeAgent":
-      return normalizeModelSelection({
-        provider: "claudeAgent",
-        instanceId: providerInstanceId,
-        model: resolvedModel,
-        options:
-          input.tile.provider === "claudeAgent"
-            ? undefined
-            : input.projectModelSelection?.provider === "claudeAgent"
-              ? input.projectModelSelection.options
-              : defaultModelSelection?.provider === "claudeAgent"
-                ? defaultModelSelection.options
-                : undefined,
-      })
-    case "cursor":
-      return normalizeModelSelection({
-        provider: "cursor",
-        instanceId: providerInstanceId,
-        model: resolvedModel,
-        options:
-          input.tile.provider === "cursor"
-            ? undefined
-            : input.projectModelSelection?.provider === "cursor"
-              ? input.projectModelSelection.options
-              : defaultModelSelection?.provider === "cursor"
-                ? defaultModelSelection.options
-                : undefined,
-      })
-    case "opencode":
-      return normalizeModelSelection({
-        provider: "opencode",
-        instanceId: providerInstanceId,
-        model: resolvedModel,
-        options:
-          input.tile.provider === "opencode"
-            ? undefined
-            : input.projectModelSelection?.provider === "opencode"
-              ? input.projectModelSelection.options
-              : defaultModelSelection?.provider === "opencode"
-                ? defaultModelSelection.options
-                : undefined,
-      })
-  }
+  return normalizeModelSelection({
+    provider, instanceId: providerInstanceId, model: resolvedModel,
+    options: input.tile.provider === provider ? undefined : input.projectModelSelection?.provider === provider ? input.projectModelSelection.options : defaultModelSelection?.provider === provider ? defaultModelSelection.options : undefined,
+  })
 }
 
 export function resolveRememberedModelSelection(input: {
@@ -370,36 +306,7 @@ export function withModelSelectionModel(
   selection: ModelSelection,
   model: string,
 ): StrictModelSelection {
-  switch (selection.provider) {
-    case "codex":
-      return normalizeModelSelection({
-        provider: "codex",
-        instanceId: selection.instanceId,
-        model,
-        options: selection.options,
-      })
-    case "claudeAgent":
-      return normalizeModelSelection({
-        provider: "claudeAgent",
-        instanceId: selection.instanceId,
-        model,
-        options: selection.options,
-      })
-    case "cursor":
-      return normalizeModelSelection({
-        provider: "cursor",
-        instanceId: selection.instanceId,
-        model,
-        options: selection.options,
-      })
-    case "opencode":
-      return normalizeModelSelection({
-        provider: "opencode",
-        instanceId: selection.instanceId,
-        model,
-        options: selection.options,
-      })
-  }
+  return normalizeModelSelection({ provider: selection.provider, instanceId: selection.instanceId, model, options: selection.options })
 }
 
 export function resolveRuntimeMode(tile: WorkbenchAssistantChatTileRecord): RuntimeMode {

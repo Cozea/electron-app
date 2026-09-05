@@ -1,6 +1,6 @@
 import type { ServerConfig } from "@cozea/assistant-contracts"
 
-import { useAssistantRuntimeMetadata } from "./assistantRuntimeMetadataStore"
+import { useAssistantRuntimeMetadata } from "@/features/assistant/model/assistantRuntimeMetadataStore"
 import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
 import { useT3Cutover } from "@/substrate/useT3Cutover"
 

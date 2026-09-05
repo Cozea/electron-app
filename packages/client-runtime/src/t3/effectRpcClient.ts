@@ -43,7 +43,11 @@ export class T3EffectRpcClient {
   private connectPromise: Promise<WebSocket> | null = null;
   private readonly exitWaiters = new Map<
     string,
-    { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
   >();
   private readonly chunkListeners = new Map<string, Set<(value: unknown) => void>>();
   private readonly streamDisconnectListeners = new Map<string, () => void>();
@@ -146,7 +150,9 @@ export class T3EffectRpcClient {
       if (message.exit._tag === "Success") {
         waiter.resolve(message.exit.value);
       } else {
-        waiter.reject(new Error(`T3 RPC failed: ${JSON.stringify(message.exit.cause).slice(0, 400)}`));
+        waiter.reject(
+          new Error(`T3 RPC failed: ${JSON.stringify(message.exit.cause).slice(0, 400)}`),
+        );
       }
       return;
     }
@@ -176,14 +182,19 @@ export class T3EffectRpcClient {
     }
   }
 
-  async callUnary(tag: string, payload: unknown = {}): Promise<unknown> {
+  async callUnary(
+    tag: string,
+    payload: unknown = {},
+    options?: { readonly timeoutMs?: number },
+  ): Promise<unknown> {
     const ws = await this.connect();
     const requestId = createRequestId();
+    const timeoutMs = options?.timeoutMs ?? this.requestTimeoutMs;
     return await new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.exitWaiters.delete(requestId);
-        reject(new Error(`T3 RPC ${tag} timed out after ${this.requestTimeoutMs}ms`));
-      }, this.requestTimeoutMs);
+        reject(new Error(`T3 RPC ${tag} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
       this.exitWaiters.set(requestId, { resolve, reject, timer });
       ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
     });

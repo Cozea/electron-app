@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest"
 import { EventId, MessageId, TurnId } from "@cozea/assistant-contracts"
 
-import { isIntentionalAbortMessage, normalizeThreadError } from "../../apps/desktop/src/features/assistant/lib/assistantErrors"
+import { isIntentionalAbortMessage, normalizeThreadError } from "@/features/assistant/lib/assistantErrors"
 import {
   buildRevertTurnCountByUserMessageId,
   buildTurnDiffSummaryByAssistantMessageId,
   deriveCompletionDividerBeforeEntryId,
   deriveCompletionSummariesByMessageId,
-} from "../../apps/desktop/src/features/assistant/chat/threadTimelineDerivations"
-import type { TimelineEntry } from "../../apps/desktop/src/features/assistant/chat/timelineDerivations"
+} from "@/features/assistant/chat/threadTimelineDerivations"
+import type { TimelineEntry } from "@/features/assistant/chat/session-logic"
 import type { ChatMessage, TurnDiffSummary } from "../../apps/desktop/src/features/assistant/model/types"
 
 describe("assistant error policy", () => {
@@ -306,6 +306,9 @@ describe("assistant timeline derivations", () => {
         state: "running",
         requestedAt: "2026-01-01T00:01:00.000Z",
         startedAt: "2026-01-01T00:01:00.000Z",
+        // A running turn has produced neither yet, and the type says so.
+        assistantMessageId: null,
+        completedAt: null,
       },
       latestTurnSettled: false,
     })

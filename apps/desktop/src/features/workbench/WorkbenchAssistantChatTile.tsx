@@ -10,13 +10,14 @@ import { useWorkbenchAssistantTileController } from "@/features/workbench/assist
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { registerPreviewAnnotationComposerTarget } from "@/features/browser/previewAnnotationComposerRegistry"
-import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/features/workbench/model/workbenchStore"
+import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/lib/workbenchStore"
 import {
   flushWorkbenchStorage,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { cn } from "@/lib/utils"
+import { AssistantHistoryButton } from "./assistant/AssistantHistoryButton"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -37,6 +38,12 @@ interface WorkbenchAssistantChatTileProps {
 }
 
 export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProps) {
+  // A deliberate history switch resets controller-local UI, never a text wrap.
+  // draftId stays stable when the first send binds a runtime thread.
+  return <WorkbenchAssistantChatTileContent key={props.tile.draftId ?? props.tile.id} {...props} />
+}
+
+function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProps) {
   const runtime = useWorkbenchDockRuntime()
   const {
     chatTitle,
@@ -47,6 +54,9 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
     artifacts,
     artifactMedia,
     attachPreviewAnnotation,
+    historyBusy,
+    flushDraft,
+    onHistoryError,
   } = useWorkbenchAssistantTileController({
     projectId: props.projectId,
     laneId: props.laneId,
@@ -55,9 +65,11 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
     tile: props.tile,
   })
   const activeRef = useRef(props.panelApi.isActive && props.panelApi.isVisible)
+  const [panelVisible, setPanelVisible] = useState(props.panelApi.isVisible)
   useEffect(() => {
     const update = () => {
       activeRef.current = props.panelApi.isActive && props.panelApi.isVisible
+      setPanelVisible(props.panelApi.isVisible)
     }
     const activeSubscription = props.panelApi.onDidActiveChange(update)
     const visibilitySubscription = props.panelApi.onDidVisibilityChange(update)
@@ -124,6 +136,19 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
         assistantProvider={props.tile.provider}
         actions={
           <>
+            <AssistantHistoryButton
+              context={{ projectId: props.projectId, workspaceId: props.workspaceId ?? "", laneId: props.laneId, rootPath: props.projectRootPath ?? "", branch: surfaceProps.thread?.branch ?? null }}
+              threadId={props.tile.threadId ?? null}
+              draftId={props.tile.draftId ?? props.tile.id}
+              assistantProjectId={props.tile.assistantProjectId ?? null}
+              modelSelection={surfaceProps.selectedModelSelection}
+              runtimeMode={surfaceProps.selectedRuntimeMode}
+              interactionMode={surfaceProps.selectedInteractionMode}
+              busy={historyBusy}
+              flushDraft={flushDraft}
+              onError={onHistoryError}
+              onOpen={(entry, busy) => runtime.onOpenAssistantConversation(props.tile.id, entry, busy)}
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -191,6 +216,7 @@ export function WorkbenchAssistantChatTile(props: WorkbenchAssistantChatTileProp
           >
             <CozeaChatSurface
               {...surfaceProps}
+              isChatVisible={panelVisible && viewMode === "chat"}
               artifactUrlsById={artifactMedia.urlsById}
               onOpenArtifact={openArtifact}
             />

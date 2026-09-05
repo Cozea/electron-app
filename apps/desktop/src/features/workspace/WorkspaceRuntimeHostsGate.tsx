@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 
-import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
+import { useWorkspaceRuntimeStore } from "@/lib/workspaceRuntimeStore"
 import {
   hasHostableWorkspaceRuntime,
   hasImmediateWorkspaceRuntimeHost,

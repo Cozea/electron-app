@@ -4,9 +4,9 @@ import type { Id } from '../../../../../../convex/_generated/dataModel'
 
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useAccessibleProject } from '@/features/projects/hooks/useAccessibleProject'
+import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
 import { openProjectFileInExternalEditor } from '@/features/settings/model/externalEditorPreference'
-import { buildProjectPath } from '@/features/projects/lib/projectRoutes'
+import { buildProjectPath } from '@/contexts/project/projectRoutes'
 import {
 
   type TaskOverlayLocationState,
@@ -18,7 +18,7 @@ import { useTranslation } from '@/lib/i18n'
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
-import { useOptionalProjectSyncContext } from '@/features/projects/contexts/ProjectSyncContext'
+import { useOptionalProjectSyncContext } from '@/contexts/project/ProjectSyncContext'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

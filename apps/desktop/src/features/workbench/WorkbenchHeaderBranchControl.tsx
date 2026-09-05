@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext"
-import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity"
+import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
+import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
 import { useWorkbenchBranchControl } from "@/features/workbench/branch-control/useWorkbenchBranchControl"
 
 interface WorkbenchHeaderBranchControlProps {

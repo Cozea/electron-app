@@ -238,6 +238,32 @@ index f9637a40aa5873dde08220bc5f7b2c3dde54975e..39c4a6e045823aee495371ec357af5be
              /**
               * Update overlay positions after DOM layout completes to prevent 0×0 dimensions.
               * With defaultRenderer="always" this results in panel content not showing after move operations.
+diff --git a/dist/cjs/dnd/pointer/pointerDragSource.js b/dist/cjs/dnd/pointer/pointerDragSource.js
+--- a/dist/cjs/dnd/pointer/pointerDragSource.js
++++ b/dist/cjs/dnd/pointer/pointerDragSource.js
+@@ -178,6 +178,9 @@ var PointerDragSource = /** @class */ (function (_super) {
+         var startEvent = (_a = this._startEvent) !== null && _a !== void 0 ? _a : triggerEvent;
+         this._cancelPending();
+         (_c = (_b = this.options).onDragStart) === null || _c === void 0 ? void 0 : _c.call(_b, startEvent);
++        if (startEvent.defaultPrevented) {
++            return;
++        }
+         var ghost = (_e = (_d = this.options).createGhost) === null || _e === void 0 ? void 0 : _e.call(_d, startEvent);
+         pointerDragController_1.PointerDragController.getInstance().beginDrag({
+             pointerEvent: triggerEvent,
+diff --git a/dist/esm/dnd/pointer/pointerDragSource.js b/dist/esm/dnd/pointer/pointerDragSource.js
+--- a/dist/esm/dnd/pointer/pointerDragSource.js
++++ b/dist/esm/dnd/pointer/pointerDragSource.js
+@@ -156,6 +156,9 @@ export class PointerDragSource extends CompositeDisposable {
+         const startEvent = (_a = this._startEvent) !== null && _a !== void 0 ? _a : triggerEvent;
+         this._cancelPending();
+         (_c = (_b = this.options).onDragStart) === null || _c === void 0 ? void 0 : _c.call(_b, startEvent);
++        if (startEvent.defaultPrevented) {
++            return;
++        }
+         const ghost = (_e = (_d = this.options).createGhost) === null || _e === void 0 ? void 0 : _e.call(_d, startEvent);
+         PointerDragController.getInstance().beginDrag({
+             pointerEvent: triggerEvent,
 diff --git a/dist/esm/dockview/floatingGroupService.d.ts b/dist/esm/dockview/floatingGroupService.d.ts
 index a46764c234de377eafba0d93a7ce8cac8783f5e3..54224f0f57484bfbda48a4d454997fc82f962826 100644
 --- a/dist/esm/dockview/floatingGroupService.d.ts
@@ -277,7 +303,17 @@ index 470f38ac75f5a205c643b2323dd84bcc4e872636..f36b15cc671c1710a5c223ef71438bc8
      /**
       * Invoked after a layout is deserialzied using the `fromJSON` method.
       */
-@@ -13388,6 +13392,7 @@ class FloatingGroupService {
+@@ -5107,6 +5111,9 @@ class PointerDragSource extends CompositeDisposable {
+         const startEvent = (_a = this._startEvent) !== null && _a !== void 0 ? _a : triggerEvent;
+         this._cancelPending();
+         (_c = (_b = this.options).onDragStart) === null || _c === void 0 ? void 0 : _c.call(_b, startEvent);
++        if (startEvent.defaultPrevented) {
++            return;
++        }
+         const ghost = (_e = (_d = this.options).createGhost) === null || _e === void 0 ? void 0 : _e.call(_d, startEvent);
+         PointerDragController.getInstance().beginDrag({
+             pointerEvent: triggerEvent,
+@@ -13388,6 +13395,7 @@ class FloatingGroupService {
          updateDialogLabel();
          floatingGroupPanel.addDisposables(group.api.onDidActivePanelChange(() => updateDialogLabel()), overlay.onDidChange(() => {
              gridview.layout(gridview.width, gridview.height);
@@ -285,7 +321,7 @@ index 470f38ac75f5a205c643b2323dd84bcc4e872636..f36b15cc671c1710a5c223ef71438bc8
          }), overlay.onDidChangeEnd(() => {
              this._host.fireLayoutChange();
          }), group.onDidChange((event) => {
-@@ -15767,6 +15772,9 @@ class DockviewComponent extends BaseGrid {
+@@ -15767,6 +15775,9 @@ class DockviewComponent extends BaseGrid {
      fireLayoutChange() {
          this._bufferOnDidLayoutChange.fire();
      }
@@ -295,7 +331,7 @@ index 470f38ac75f5a205c643b2323dd84bcc4e872636..f36b15cc671c1710a5c223ef71438bc8
      /**
       * Promise that resolves when all popout groups from the last fromJSON call are restored.
       * Useful for tests that need to wait for delayed popout creation.
-@@ -15838,6 +15846,8 @@ class DockviewComponent extends BaseGrid {
+@@ -15838,6 +15849,8 @@ class DockviewComponent extends BaseGrid {
          this.onDidActivePanelChange = this._onDidActivePanelChange.event;
          this._onDidMovePanel = new Emitter();
          this.onDidMovePanel = this._onDidMovePanel.event;
@@ -304,7 +340,7 @@ index 470f38ac75f5a205c643b2323dd84bcc4e872636..f36b15cc671c1710a5c223ef71438bc8
          this._onDidCreateTabGroup = new Emitter();
          this.onDidCreateTabGroup = this._onDidCreateTabGroup.event;
          this._onDidDestroyTabGroup = new Emitter();
-@@ -15923,7 +15933,7 @@ class DockviewComponent extends BaseGrid {
+@@ -15923,7 +15936,7 @@ class DockviewComponent extends BaseGrid {
          if (options.debug) {
              this.addDisposables(new StrictEventsSequencing(this));
          }
@@ -328,7 +364,17 @@ index 052a960dfcd1638870406482794fa242901031ff..3f9633a46e48b752181d50364ef28f48
      /**
       * Invoked after a layout is deserialzied using the `fromJSON` method.
       */
-@@ -13384,6 +13388,7 @@ class FloatingGroupService {
+@@ -5103,6 +5107,9 @@ class PointerDragSource extends CompositeDisposable {
+         const startEvent = (_a = this._startEvent) !== null && _a !== void 0 ? _a : triggerEvent;
+         this._cancelPending();
+         (_c = (_b = this.options).onDragStart) === null || _c === void 0 ? void 0 : _c.call(_b, startEvent);
++        if (startEvent.defaultPrevented) {
++            return;
++        }
+         const ghost = (_e = (_d = this.options).createGhost) === null || _e === void 0 ? void 0 : _e.call(_d, startEvent);
+         PointerDragController.getInstance().beginDrag({
+             pointerEvent: triggerEvent,
+@@ -13384,6 +13391,7 @@ class FloatingGroupService {
          updateDialogLabel();
          floatingGroupPanel.addDisposables(group.api.onDidActivePanelChange(() => updateDialogLabel()), overlay.onDidChange(() => {
              gridview.layout(gridview.width, gridview.height);
@@ -336,7 +382,7 @@ index 052a960dfcd1638870406482794fa242901031ff..3f9633a46e48b752181d50364ef28f48
          }), overlay.onDidChangeEnd(() => {
              this._host.fireLayoutChange();
          }), group.onDidChange((event) => {
-@@ -15763,6 +15768,9 @@ class DockviewComponent extends BaseGrid {
+@@ -15763,6 +15771,9 @@ class DockviewComponent extends BaseGrid {
      fireLayoutChange() {
          this._bufferOnDidLayoutChange.fire();
      }
@@ -346,7 +392,7 @@ index 052a960dfcd1638870406482794fa242901031ff..3f9633a46e48b752181d50364ef28f48
      /**
       * Promise that resolves when all popout groups from the last fromJSON call are restored.
       * Useful for tests that need to wait for delayed popout creation.
-@@ -15834,6 +15842,8 @@ class DockviewComponent extends BaseGrid {
+@@ -15834,6 +15845,8 @@ class DockviewComponent extends BaseGrid {
          this.onDidActivePanelChange = this._onDidActivePanelChange.event;
          this._onDidMovePanel = new Emitter();
          this.onDidMovePanel = this._onDidMovePanel.event;
@@ -355,7 +401,7 @@ index 052a960dfcd1638870406482794fa242901031ff..3f9633a46e48b752181d50364ef28f48
          this._onDidCreateTabGroup = new Emitter();
          this.onDidCreateTabGroup = this._onDidCreateTabGroup.event;
          this._onDidDestroyTabGroup = new Emitter();
-@@ -15919,7 +15929,7 @@ class DockviewComponent extends BaseGrid {
+@@ -15919,7 +15932,7 @@ class DockviewComponent extends BaseGrid {
          if (options.debug) {
              this.addDisposables(new StrictEventsSequencing(this));
          }

@@ -5,22 +5,23 @@
  * behavior is declared here once: title, tab identity, Dockview lifetime and sizing,
  * grouping, detach geometry, hosted-browser policy, and header ownership. Consumers must
  * ask this registry rather than maintaining their own lists of tile type strings.
+ *
+ * The tile type names themselves live in `@/lib/workbenchTileContract`, where a
+ * capability can reach them without importing the workbench feature. This file
+ * declares what the shell does with each of them.
  */
 
-export type WorkbenchTileType =
-  | "browser"
-  | "memory"
-  | "terminal"
-  | "devServer"
-  | "llama"
-  | "mobileSimulator"
-  | "orgDevApp"
-  | "devAppPreview"
-  | "selection"
-  | "tasks"
-  | "assistantChat"
+import {
+  WORKBENCH_TILE_DEFAULT_TITLES,
+  type RenderableWorkbenchTileType,
+  type WorkbenchTileType,
+} from "@/lib/workbenchTileContract"
 
-export type RenderableWorkbenchTileType = Exclude<WorkbenchTileType, "tasks">
+export type {
+  RenderableWorkbenchTileType,
+  WorkbenchTileType,
+} from "@/lib/workbenchTileContract"
+
 export type WorkbenchDockComponentName = RenderableWorkbenchTileType | "changes"
 export type WorkbenchPanelRenderer = "always" | "onlyWhenVisible"
 /**
@@ -135,7 +136,7 @@ function dockDefinition(options: Partial<WorkbenchDockDefinition> = {}): Workben
 
 export const WORKBENCH_TILE_REGISTRY = {
   browser: {
-    defaultTitle: "Browser",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.browser,
     tabLabel: "Browser",
     manifestSource: "surface",
     fallbackIcon: "browser",
@@ -143,7 +144,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     dock: dockDefinition({ browserBacked: true, headerControls: "browser" }),
   },
   terminal: {
-    defaultTitle: "Terminal",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.terminal,
     tabLabel: "Terminal",
     manifestSource: "surface",
     fallbackIcon: "terminal",
@@ -155,7 +156,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     }),
   },
   devServer: {
-    defaultTitle: "Dev Server",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.devServer,
     tabLabel: "Dev Server",
     manifestSource: "surface",
     fallbackIcon: "devServer",
@@ -163,7 +164,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     dock: dockDefinition({ browserBacked: true, headerControls: "runtimePreview" }),
   },
   memory: {
-    defaultTitle: "Memory",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.memory,
     tabLabel: "Memory",
     manifestSource: "surface",
     fallbackIcon: "memory",
@@ -174,7 +175,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     }),
   },
   llama: {
-    defaultTitle: "Llama",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.llama,
     tabLabel: "Llama",
     manifestSource: "surface",
     fallbackIcon: "llama",
@@ -185,7 +186,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     }),
   },
   mobileSimulator: {
-    defaultTitle: "Mobile Simulator",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.mobileSimulator,
     tabLabel: "Simulator",
     manifestSource: "surface",
     fallbackIcon: "mobileSimulator",
@@ -193,7 +194,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     dock: dockDefinition({ headerControls: "runtimePreview" }),
   },
   orgDevApp: {
-    defaultTitle: "DevApp",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.orgDevApp,
     tabLabel: "DevApp",
     manifestSource: "published",
     fallbackIcon: "published",
@@ -201,7 +202,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     dock: dockDefinition({ browserBacked: true }),
   },
   devAppPreview: {
-    defaultTitle: "DevApp (development)",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.devAppPreview,
     tabLabel: "DevApp preview",
     manifestSource: "published",
     fallbackIcon: "published",
@@ -209,7 +210,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     dock: dockDefinition({ browserBacked: true }),
   },
   selection: {
-    defaultTitle: "Add DevApp",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.selection,
     tabLabel: "Add",
     manifestSource: "none",
     fallbackIcon: "add",
@@ -223,7 +224,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     }),
   },
   tasks: {
-    defaultTitle: "Tasks",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.tasks,
     tabLabel: "Panel",
     manifestSource: "none",
     fallbackIcon: null,
@@ -231,7 +232,7 @@ export const WORKBENCH_TILE_REGISTRY = {
     dock: null,
   },
   assistantChat: {
-    defaultTitle: "AI Agent",
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.assistantChat,
     tabLabel: "Agent",
     manifestSource: "assistant",
     fallbackIcon: "messages",

@@ -6,7 +6,7 @@ import type { NativeApi } from "@cozea/assistant-contracts";
 import {
   connectT3ServerConfigBridge,
   disconnectT3ServerConfigBridge,
-} from "@/features/workbench/assistant/assistantRuntimeMetadataStore";
+} from "@/features/assistant/model/assistantRuntimeMetadataStore";
 import { registerT3NativeApiOverlay } from "@/lib/nativeApi";
 
 import { createT3NativeApi } from "./createT3NativeApi";
@@ -114,7 +114,12 @@ export function useT3Cutover(input: {
           baseUrl: rpcSessionPayload.baseUrl,
         });
 
-        const nativeApi = createT3NativeApi(session);
+        const localHostnames = new Set(["127.0.0.1", "localhost", "[::1]"]);
+        const localProviderSetup = [input.shadowBaseUrl!, rpcSessionPayload.baseUrl].every((value) => {
+          const url = new URL(value);
+          return url.protocol === "http:" && localHostnames.has(url.hostname);
+        });
+        const nativeApi = createT3NativeApi(session, { localProviderSetup });
         const orchestrationHandle = createT3OrchestrationApiFromClient(session.orchestration);
 
         connectT3ServerConfigBridge(owner, {

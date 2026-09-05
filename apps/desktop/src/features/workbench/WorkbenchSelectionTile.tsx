@@ -20,10 +20,8 @@ import type {
   PublishedDevAppLaunchSpec,
 } from "@/features/devapps/registry/types"
 import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
-import type {
-  WorkbenchSelectionTile,
-} from "@/features/workbench/model/workbenchStore"
-import { NativeProjectFolderIcon } from "@/features/projects/ui/NativeProjectFolderIcon"
+import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
+import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
@@ -88,7 +86,7 @@ interface WorkbenchSelectionTileProps {
 
 function WelcomeHero({
   projectName,
-  workspaceId,
+  workspaceId: _workspaceId,
 }: {
   projectName?: string | null
   workspaceId?: string | null
@@ -97,17 +95,16 @@ function WelcomeHero({
   const normalizedProjectName = projectName?.trim() || "this project"
 
   return (
-    <div className="mb-6 flex w-full max-w-4xl flex-col items-center">
-      <div className="flex flex-col items-center gap-1">
-        <span className="text-center text-2xl text-muted-foreground md:text-3xl">
+    <div className="mb-6 flex w-full max-w-4xl items-center justify-center">
+      <div className="inline-flex max-w-full items-center justify-center gap-2.5 text-center text-2xl tracking-tight md:text-3xl">
+        <span className="shrink-0 text-muted-foreground">
           {t('workbench.selection.letsWorkOn')}
         </span>
-        <span className="inline-flex items-center gap-3 text-center text-2xl font-bold tracking-tight text-foreground md:text-4xl">
-          <NativeProjectFolderIcon
-            folderPath={workspaceId}
-            fallbackClassName="h-7 w-7 text-muted-foreground md:h-9 md:w-9"
-            imgClassName="h-7 w-7 md:h-9 md:w-9"
-          />
+        <ProjectPixelInvaderIcon
+          name={normalizedProjectName}
+          className="size-6 shrink-0 md:size-7"
+        />
+        <span className="truncate font-medium text-foreground">
           {normalizedProjectName}
         </span>
       </div>
@@ -177,7 +174,7 @@ function SelectionFilterBar({
 
         <label
           className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-md border border-sidebar-border/50 bg-secondary px-3 text-sm transition-[color,box-shadow]",
+            "flex h-9 w-full items-center gap-2 rounded-search border border-sidebar-border/50 bg-secondary px-3 text-sm transition-[color,box-shadow]",
             "ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1",
           )}
         >
@@ -204,18 +201,15 @@ function SelectionFilterBar({
   )
 }
 
-function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolean, number] {
+function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolean] {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [dimensions, setDimensions] = useState({ spacious: false, height: 0 })
+  const [spacious, setSpacious] = useState(false)
 
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const { width, height } = el.getBoundingClientRect()
-    setDimensions({
-      spacious: isSpaciousSelectionSurface(width, height),
-      height,
-    })
+    setSpacious(isSpaciousSelectionSurface(width, height))
   }, [])
 
   useEffect(() => {
@@ -226,22 +220,20 @@ function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolea
       const entry = entries[0]
       if (!entry) return
       const { width, height } = entry.contentRect
-      setDimensions({
-        spacious: isSpaciousSelectionSurface(width, height),
-        height,
-      })
+      setSpacious(isSpaciousSelectionSurface(width, height))
     })
 
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  return [ref, dimensions.spacious, dimensions.height]
+  return [ref, spacious]
 }
 
 function useLauncherGridLayout(
   itemCount: number,
   containerRef?: RefObject<HTMLDivElement | null>,
+  isSingletonEmpty: boolean = false,
 ): [RefObject<HTMLDivElement | null>, WorkbenchSelectionLauncherLayout] {
   const ref = useRef<HTMLDivElement | null>(null)
   const [layout, setLayout] = useState<WorkbenchSelectionLauncherLayout>(() =>
@@ -254,7 +246,7 @@ function useLauncherGridLayout(
       columnGap: LAUNCHER_CONFIG.columnGap,
       rowGap: LAUNCHER_CONFIG.rowGap,
       maxColumns: LAUNCHER_CONFIG.maxColumns,
-      maxRows: LAUNCHER_CONFIG.maxRows,
+      maxRows: isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY,
     }),
   )
 
@@ -265,8 +257,11 @@ function useLauncherGridLayout(
     const containerRect = container.getBoundingClientRect()
     const elRect = el.getBoundingClientRect()
     const width = elRect.width || containerRect.width
-    // Estimate available vertical space below hero & filter bar (approx 220px overhead)
-    const availableHeight = Math.max(elRect.height, containerRect.height - 220)
+    // When singleton empty, hero + filter bar take ~220px. In compact/multi-tile mode,
+    // there is no hero, so only the ~90px filter bar overhead applies.
+    const overhead = isSingletonEmpty ? 220 : 90
+    const availableHeight = Math.max(elRect.height, containerRect.height - overhead)
+    const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
     setLayout(
       computeWorkbenchSelectionLauncherLayout({
         width,
@@ -277,10 +272,10 @@ function useLauncherGridLayout(
         columnGap: LAUNCHER_CONFIG.columnGap,
         rowGap: LAUNCHER_CONFIG.rowGap,
         maxColumns: LAUNCHER_CONFIG.maxColumns,
-        maxRows: LAUNCHER_CONFIG.maxRows,
+        maxRows: effectiveMaxRows,
       }),
     )
-  }, [containerRef, itemCount])
+  }, [containerRef, isSingletonEmpty, itemCount])
 
   useLayoutEffect(() => {
     recalculate()
@@ -403,7 +398,7 @@ export function WorkbenchSelectionTile({
   const { config } = useAssistantServerConfig(true)
   const densityConfig = LAUNCHER_CONFIG
 
-  const [rootRef, spacious, containerHeight] = useSelectionSurfaceDensity()
+  const [rootRef, spacious] = useSelectionSurfaceDensity()
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -512,7 +507,8 @@ export function WorkbenchSelectionTile({
     }
     return `${t("workbench.selection.noResults")} "${searchQuery.trim()}".`
   }, [canResolvePublicationRef, isDevAppRefInput, parsedRef, resolvedPublicationRef, resolvedRefOptions.length, searchQuery, t])
-  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, rootRef)
+  const isSingletonEmpty = singletonEmptyWorkbench && spacious
+  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, rootRef, isSingletonEmpty)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
   const useListView = launcherLayout.fittingColumns <= 2
@@ -535,16 +531,8 @@ export function WorkbenchSelectionTile({
     return pages.length > 0 ? pages : [[]]
   }, [filteredOptions, launcherLayout.itemsPerPage])
 
-  const showHero = singletonEmptyWorkbench && spacious
+  const showHero = isSingletonEmpty
   const centerSingletonSelectionLayout = showHero && !useListView
-
-  // Base 1-row centered top offset: centers the 1-row layout on screen, while a 2nd row
-  // simply expands downwards without pushing the hero and search bar upwards.
-  const centeredTopPaddingPx = useMemo(() => {
-    if (!centerSingletonSelectionLayout || containerHeight <= 0) return 0
-    const BASE_1_ROW_TOTAL_HEIGHT_PX = 360
-    return Math.max(16, Math.floor((containerHeight - BASE_1_ROW_TOTAL_HEIGHT_PX) / 2))
-  }, [centerSingletonSelectionLayout, containerHeight])
 
   useEffect(() => {
     setCurrentPage(0)
@@ -641,11 +629,13 @@ export function WorkbenchSelectionTile({
   return (
     <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-6"
-        style={centerSingletonSelectionLayout ? { paddingTop: `${centeredTopPaddingPx}px` } : undefined}
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          centerSingletonSelectionLayout ? "overflow-hidden justify-center items-center py-2" : "overflow-y-auto pb-6",
+        )}
       >
         {showHero ? (
-          <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-6 pt-0 md:px-10">
+          <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-2 pt-0 md:px-10">
             <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
             {useListView ? null : sharedFilterBar}
           </div>
@@ -656,7 +646,7 @@ export function WorkbenchSelectionTile({
         <div
           className={cn(
             "mx-auto flex w-full flex-col px-3 md:px-6",
-            centerSingletonSelectionLayout ? "flex-none pb-6 pt-1" : "flex-1 min-h-0 pb-4 pt-3",
+            centerSingletonSelectionLayout ? "flex-none" : "flex-1 min-h-0 pb-4 pt-3",
             "max-w-5xl",
           )}
         >
@@ -664,7 +654,7 @@ export function WorkbenchSelectionTile({
             ref={launcherViewportRef}
             className={cn(
               "flex w-full flex-col",
-              centerSingletonSelectionLayout ? "min-h-[140px] flex-none" : "min-h-0 flex-1",
+              centerSingletonSelectionLayout ? "h-[238px] flex-none" : "min-h-0 flex-1",
             )}
           >
             {useListView ? (
@@ -712,7 +702,9 @@ export function WorkbenchSelectionTile({
                                 gridAutoRows: `${densityConfig.cellHeight}px`,
                                 columnGap: `${densityConfig.columnGap}px`,
                                 rowGap: `${densityConfig.rowGap}px`,
-                                minHeight: `${launcherLayout.rows * densityConfig.cellHeight + Math.max(0, launcherLayout.rows - 1) * densityConfig.rowGap}px`,
+                                minHeight: centerSingletonSelectionLayout
+                                  ? `${2 * densityConfig.cellHeight + densityConfig.rowGap}px`
+                                  : `${launcherLayout.rows * densityConfig.cellHeight + Math.max(0, launcherLayout.rows - 1) * densityConfig.rowGap}px`,
                               }}
                             >
                               {page.map((option) => (

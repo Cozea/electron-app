@@ -6,6 +6,8 @@ import { resolveT3RuntimeRoot } from "../../apps/server/src/t3/paths";
 import {
   buildVendorSourceStamp,
   patchT3ServerBundleProviderDefaults,
+  isCurrentT3Bundle,
+  patchT3ServerBundleProviderUpdates,
   sanitizePortableRuntimeSymlinks,
 } from "../../scripts/prepare-t3-runtime.mjs";
 
@@ -18,6 +20,16 @@ const OpenCodeSettings = makeProviderSettingsSchema({
 \tenabled: Boolean$1.pipe(withDecodingDefault(succeed$1(false)), annotateKey({ providerSettingsForm: { hidden: true } })),
 enabled: persisted.providers?.cursor?.enabled ?? usedProviders.has("cursor")
 enabled: persisted.providers?.opencode?.enabled ?? usedProviders.has("opencode")`;
+  const unpatchedProviderUpdates = `function makeNpmGlobalProviderMaintenanceCapabilities(definition) {
+\t\t\t"-g",
+\t\t\t\`--allow-scripts=\${definition.npmPackageName}\`,
+function normalizeCommandPath(commandPath) {
+\treturn commandPath.replaceAll("\\\\", "/").toLowerCase();
+}
+function isBunGlobalCommandPath(commandPath) {
+\t\tconst commandPaths = [resolvedCommandPath, ...options?.realCommandPath ? [options.realCommandPath] : []];
+\t\tconst nativeUpdate = definition.nativeUpdate;
+message: couldNotVerify ? "Update command completed, but T3 Code could not verify the provider version." : stillOutdated ? "Update command completed, but T3 Code still detects an outdated provider version." : "Provider updated.",`;
 
   it("rebuilds a runtime when tracked or untracked vendor source changes", () => {
     const pin = "a".repeat(40);
@@ -146,4 +158,39 @@ enabled: persisted.providers?.opencode?.enabled ?? usedProviders.has("opencode")
       "Cursor default enablement patch anchor is missing",
     );
   });
+
+  it("targets the npm prefix that owns the selected provider executable", () => {
+    const patched = patchT3ServerBundleProviderUpdates(unpatchedProviderUpdates);
+
+    expect(patched.changed).toBe(true);
+    expect(patched.source).toContain(
+      "function makeNpmGlobalProviderMaintenanceCapabilities(definition, prefix = null)",
+    );
+    expect(patched.source).toContain('...prefix ? [`--prefix=${prefix}`] : []');
+    expect(patched.source).toContain('const posixMarker = "/lib/node_modules/"');
+    expect(patched.source).toContain(
+      "[options?.realCommandPath, resolvedCommandPath].filter(Boolean).find(isNpmGlobalCommandPath)",
+    );
+    expect(patched.source).toContain(
+      "Update completed, but the selected installation is still out of date.",
+    );
+    expect(patched.source).not.toContain("T3 Code still detects");
+
+    const secondPass = patchT3ServerBundleProviderUpdates(patched.source);
+    expect(secondPass.changed).toBe(false);
+    expect(secondPass.source).toBe(patched.source);
+  });
+
+  it("fails loudly when an upstream bundle changes the provider-update anchors", () => {
+    expect(() => patchT3ServerBundleProviderUpdates("const changedUpstreamBundle = true")).toThrow(
+      "npm updater accepts the selected installation prefix patch anchor is missing",
+    );
+  });
+});
+
+it("never attests an unstamped bundle just because it can load", () => {
+  expect(isCurrentT3Bundle(true, null, "reviewed-revision")).toBe(false);
+  expect(isCurrentT3Bundle(true, "old-revision", "reviewed-revision")).toBe(false);
+  expect(isCurrentT3Bundle(false, "reviewed-revision", "reviewed-revision")).toBe(false);
+  expect(isCurrentT3Bundle(true, "reviewed-revision", "reviewed-revision")).toBe(true);
 });

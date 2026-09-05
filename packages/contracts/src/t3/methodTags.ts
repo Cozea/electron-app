@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 */
+/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getWorkflowScript: "orchestration.getWorkflowScript",
@@ -32,6 +32,16 @@ export const WS_METHODS = {
 
   // Provider methods
   providerUploadFeedback: "provider.uploadFeedback",
+  providerAuthStart: "provider.auth.start",
+  providerConsumeResetCredit: "provider.consumeResetCredit",
+  providerAuthComplete: "provider.auth.complete",
+  providerAuthCancel: "provider.auth.cancel",
+  providerAuthLogout: "provider.auth.logout",
+  providerAuthSubscribe: "provider.auth.subscribe",
+  providerInstallStart: "provider.install.start",
+  providerInstallCancel: "provider.install.cancel",
+  providerInstallSubscribe: "provider.install.subscribe",
+  providerInstallRemove: "provider.install.remove",
 
   // VCS methods
   vcsPull: "vcs.pull",
@@ -80,6 +90,7 @@ export const WS_METHODS = {
   serverUpdateProvider: "server.updateProvider",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
+  serverCommitDesktopUpdate: "server.commitDesktopUpdate",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
@@ -95,6 +106,7 @@ export const WS_METHODS = {
   serverReportHostPowerState: "server.reportHostPowerState",
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
+  serverRefreshUsageRates: "server.refreshUsageRates",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -103,6 +115,7 @@ export const WS_METHODS = {
   // Pull request methods
   pullRequestsList: "pullRequests.list",
   pullRequestsListStats: "pullRequests.listStats",
+  pullRequestsSummary: "pullRequests.summary",
   pullRequestsDetail: "pullRequests.detail",
   pullRequestsActivity: "pullRequests.activity",
   pullRequestsThreadComments: "pullRequests.threadComments",
@@ -116,8 +129,11 @@ export const WS_METHODS = {
   pullRequestsSetThreadResolution: "pullRequests.setThreadResolution",
   pullRequestsSetReaction: "pullRequests.setReaction",
   pullRequestsInvalidate: "pullRequests.invalidate",
+  pullRequestsSubscribeRefreshes: "pullRequests.subscribeRefreshes",
   pullRequestsReviewerCandidates: "pullRequests.reviewerCandidates",
   pullRequestsRequestReviewers: "pullRequests.requestReviewers",
+  pullRequestsLabelCandidates: "pullRequests.labelCandidates",
+  pullRequestsSetLabels: "pullRequests.setLabels",
 
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",

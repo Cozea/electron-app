@@ -1,3 +1,4 @@
+import type { ProviderSetupApi } from "./providerSetup";
 import type {
   GitCheckoutInput,
   GitActionProgressEvent,
@@ -125,6 +126,7 @@ export interface DesktopBridge {
 }
 
 export interface NativeApi {
+  providerSetup?: ProviderSetupApi;
   dialogs: {
     pickFolder: () => Promise<string | null>;
     confirm: (message: string) => Promise<boolean>;
@@ -172,6 +174,7 @@ export interface NativeApi {
   };
   server: {
     getConfig: () => Promise<ServerConfig>;
+    onConfigUpdated?: (listener: (config: ServerConfig) => void) => Promise<() => void>;
     refreshProviders: () => Promise<ServerProviderUpdatedPayload>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;

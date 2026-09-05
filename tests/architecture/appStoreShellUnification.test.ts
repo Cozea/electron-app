@@ -83,13 +83,17 @@ describe("DevApps Store shell unification", () => {
     expect(page).toContain("hideShare: true")
     expect(page).not.toContain('className="flex items-center justify-end gap-2"')
 
-    const hook = read("apps/desktop/src/features/projects/hooks/useProjectHeader.ts")
+    const hook = read("apps/desktop/src/lib/useProjectHeader.ts")
     expect(hook).toContain("rightAddon")
     expect(hook).toContain("hideShare")
 
+    // Settings routes keep the page's own right-hand actions and drop only the
+    // sharing chrome, so the suppression rides on hideShare and the nulled
+    // invite/editor context rather than on withholding rightAddon wholesale.
     const chrome = read("apps/desktop/src/features/projects/hooks/useProjectChromeHeader.tsx")
-    expect(chrome).toContain("rightAddon: isSettingsModeRoute")
-    expect(chrome).toContain("hideShare")
+    expect(chrome).toContain("rightAddon: rightFromPage")
+    expect(chrome).toContain("hideShare: hideShare || isSettingsModeRoute")
+    expect(chrome).toContain("projectInviteContext: isSettingsModeRoute ? undefined")
 
     const header = read("apps/desktop/src/components/layouts/UnifiedHeader.tsx")
     expect(header).toContain("hideShare = false")

@@ -17,3 +17,10 @@ Thread snapshots contain bounded artifact metadata only: id, kind, lifecycle sta
 The renderer requests media on demand through T3's `assets.createUrl` RPC with a `thread-artifact` resource. The server resolves the artifact id against the authoritative persisted thread activity, canonicalizes the generated file, and returns a short-lived signed URL bound to that exact file. A token cannot traverse directories or resolve a sibling asset.
 
 Images are the first artifact kind. Keep the client model discriminated by `kind` when adding later artifact types, and preserve the same thread scope, stable lifecycle identity, bounded snapshot projection, and on-demand media boundary.
+
+## Provider history compatibility
+
+The integrated T3 wire contracts preserve persisted file-attachment variants.
+Cozea displays non-image attachment names without treating them as image URLs or
+arbitrary local paths. This does not add file/audio composer controls. Reasoning
+and generated artifact events retain one ingestion owner in the merged runtime.

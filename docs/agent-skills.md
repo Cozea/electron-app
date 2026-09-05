@@ -8,9 +8,9 @@ The testing release has no hosted runtime or database dependency. Cozea stores t
 
 | Provider | User skill folder | External-app refresh behavior |
 | --- | --- | --- |
-| Codex | `~/.agents/skills` | Restart standalone Codex processes |
+| Codex | `~/.codex/skills` (primary), `~/.agents/skills` (also scanned) | Restart standalone Codex processes |
 | Claude | `~/.claude/skills` | Claude detects changes live |
-| Cursor | `~/.cursor/skills` | Restart is recommended |
+| Cursor | `~/.cursor/skills`, plus essential bundled skills in `~/.cursor/skills-cursor` | Restart is recommended |
 | OpenCode | `~/.config/opencode/skills` | Restart is recommended |
 
 Cozea's provider runtime is refreshed after a binding changes. Restart guidance in the UI refers to separately running provider apps or CLIs, not the Cozea assistant tile.
@@ -29,12 +29,18 @@ The surface supports:
 - Full instruction inspection.
 - Personal skill creation and editing.
 - Folder import for an existing `SKILL.md` package.
-- Per-provider enable and disable controls.
+- Provider enable and disable controls in Builds; the library itself is informational.
+- Categories, concise descriptions, and manual updates from each skill's recorded source.
+- Installable catalog skills discovered from Claude marketplace clones and Codex plugin caches. Already installed Codex plugins are excluded from the installable catalog.
+- Named skill builds that enable their selected installed skills and disable other nonessential skills. Catalog selections install a provider copy before entering a build.
+- Essential provider skills listed separately, with disable and removal refused by the service.
 - Copying provider-owned skills into the personal library.
 - Recoverable removal.
 - Portable setup export, read-only inspection, and selective copying.
 
 Imports reject symbolic links, unsafe paths, more than 250 files, more than 12 nested levels, and skill packages larger than 5 MB. Provider binding conflicts are surfaced instead of overwritten.
+
+Build application can partially succeed: successful changes remain applied and failures are reported. Essential skills remain enabled outside build selection. Skills available only from external provider folders are restored where copies previously existed; enabling does not invent copies for other providers. Startup migrates marked managed bindings to the provider's primary root while preserving unmarked folders.
 
 ## Portable setup packs
 
@@ -49,10 +55,20 @@ A future organization catalog may move setup-pack manifests and revisions into C
 ## Manual QA
 
 1. Open **Agent Skills** from the project sidebar.
-2. Create a skill and enable it for each installed provider.
+2. Create a skill, open Builds, and enable it for each installed provider.
 3. Confirm `SKILL.md` appears in the provider roots above and that disabling moves only the selected binding to recoverable trash.
 4. Edit the skill and confirm enabled managed copies update.
 5. Place an unmarked skill in a provider root, refresh the page, and confirm it appears as External.
 6. Disable and restore the external skill; confirm the original path returns.
 7. Export a setup pack, reopen it in read-only mode, and copy one skill into the personal library.
 8. Confirm Light, Dark, Navy, Wine, Clay, Forest, and System themes remain readable at narrow and wide desktop sizes.
+9. Create and apply two builds; verify their selections and provider counts. Cancel a new build and delete the selected build; the hub should fall back to an existing build.
+10. Verify essential skills have no disable/delete controls and remain present when switching builds.
+11. Install a catalog entry, update an imported skill manually, and return from Builds to verify the library refreshes.
+
+## Integrated provider runtime
+
+The upstream T3 catalog also discovers Antigravity-native skills for explicitly
+enabled local instances. Cozea’s managed library still targets Codex, Claude,
+Cursor and OpenCode; this integration adds no fifth writable binding or automatic
+copy. Account-specific catalogs remain routed by provider instance.

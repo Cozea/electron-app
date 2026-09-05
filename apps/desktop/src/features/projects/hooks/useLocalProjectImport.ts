@@ -6,17 +6,17 @@ import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
-import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
 import {
   deriveProviderFromRepoUrl,
   resolveImportedProjectName,
 } from "@/features/projects/lib/localProjectImport"
 import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup"
+import { DEFAULT_WORKBENCH_LANE_ID } from "@/lib/workbenchScopeKey"
 import {
-  DEFAULT_WORKBENCH_LANE_ID,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 
 export type LocalProjectImportOutcome =
   | "cancelled"

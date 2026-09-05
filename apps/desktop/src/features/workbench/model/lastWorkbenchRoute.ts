@@ -1,4 +1,4 @@
-import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
 
 const LAST_WORKBENCH_ROUTE_STORAGE_KEY = "cozea.lastWorkbenchRoute.v1"
 

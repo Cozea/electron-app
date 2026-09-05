@@ -55,6 +55,7 @@ import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { DevServerProcessesDialog } from "@/features/workbench/DevServerProcessesDialog"
 import { useWorkbenchDockHeaderControls } from "@/features/workbench/workbenchDockHeaderControls"
 import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore"
+import { type WorkbenchTile } from "@/lib/workbenchTileContract"
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   type WorkbenchBrowserTile as WorkbenchBrowserTileRecord,
@@ -64,10 +65,9 @@ import {
   type WorkbenchOrgDevAppTile as WorkbenchOrgDevAppTileRecord,
   type WorkbenchDevAppPreviewTile as WorkbenchDevAppPreviewTileRecord,
   type WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
-  type WorkbenchTile,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import {
   type WorkbenchDockPanelParams,
   useWorkbenchDockRuntime,

@@ -61,11 +61,10 @@ import {
   readDevAppPreviewRuntime,
   type DevAppPreviewRuntimeSnapshot,
 } from "@/features/devapps/preview/devAppPreviewRuntimeStore";
+import { type WorkbenchDevAppPreviewTile, type WorkbenchOrgDevAppTile } from "@/lib/workbenchTileContract"
 import {
   useProjectWorkbenchStore,
-  type WorkbenchDevAppPreviewTile,
-  type WorkbenchOrgDevAppTile,
-} from "@/features/workbench/model/workbenchStore";
+} from "@/lib/workbenchStore"
 
 const SUPPORTED_OPERATIONS = [
   "status",

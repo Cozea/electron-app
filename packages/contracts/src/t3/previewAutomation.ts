@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
 import { Schema } from "effect";
 
 import { EnvironmentId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -928,7 +927,7 @@ const PreviewAutomationRemoteDiagnosticFields = {
   remoteDetailKind: Schema.optional(
     Schema.Literals(["null", "array", "object", "string", "number", "boolean"]),
   ),
-  cause: Schema.Defect(),
+  cause: Schema.Defect,
 };
 
 const PreviewAutomationOptionalRemoteDiagnosticFields = {
@@ -937,7 +936,7 @@ const PreviewAutomationOptionalRemoteDiagnosticFields = {
   remoteDetailKind: Schema.optional(
     Schema.Literals(["null", "array", "object", "string", "number", "boolean"]),
   ),
-  cause: Schema.optional(Schema.Defect()),
+  cause: Schema.optional(Schema.Defect),
 };
 
 export class PreviewAutomationNoAvailableHostError extends Schema.TaggedErrorClass<PreviewAutomationNoAvailableHostError>()(

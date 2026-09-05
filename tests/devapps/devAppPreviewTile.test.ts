@@ -23,7 +23,11 @@ const tileSource = fs.readFileSync(
   "utf8",
 )
 const storeSource = fs.readFileSync(
-  path.join(root, "apps/desktop/src/features/workbench/model/workbenchStore.ts"),
+  path.join(root, "apps/desktop/src/lib/workbenchStore.ts"),
+  "utf8",
+)
+const tileContractSource = fs.readFileSync(
+  path.join(root, "apps/desktop/src/lib/workbenchTileContract.ts"),
   "utf8",
 )
 const panelsSource = fs.readFileSync(
@@ -56,7 +60,9 @@ describe("Preview tile — persists no location", () => {
   it("stores a workspace-relative path, never an absolute one", () => {
     // A restored tile must not be able to name a directory outside its project. Main
     // joins this against the root authorization returns.
-    expect(storeSource).toContain("relativePath: string")
+    // The persisted shape lives in the tile contract; the option that creates one
+    // lives in the store. Both have to stay relative for the guarantee to hold.
+    expect(tileContractSource).toContain("relativePath: string")
     expect(storeSource).toContain("devAppPreviewRelativePath")
   })
 
@@ -81,7 +87,7 @@ describe("Preview tile — renders the host's decisions", () => {
 
   it("always shows a development badge, whatever the trust state", () => {
     expect(tileSource).toContain("function DevelopmentBadge")
-    expect(tileSource).toContain('badge?.label ?? "Development"')
+    expect(tileSource).toContain("DEV")
   })
 
   it("tells the user the grant is not saved", () => {

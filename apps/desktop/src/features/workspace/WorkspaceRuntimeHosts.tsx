@@ -3,12 +3,12 @@ import { memo, useEffect, useMemo } from "react"
 import {
   useYjsProject,
 } from "@/contexts/YjsProjectContextValue"
-import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext"
-import { ProjectSyncProviderRuntime } from "@/features/projects/contexts/ProjectSyncProviderRuntime"
+import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
+import { ProjectSyncProviderRuntime } from "@/contexts/project/ProjectSyncProviderRuntime"
 import {
   useWorkspaceRuntimeStore,
   type WorkspaceRuntimeRecord,
-} from "@/features/workspace/useWorkspaceRuntimeStore"
+} from "@/lib/workspaceRuntimeStore"
 import { selectHostedWorkspaceRuntimeRecords } from "@/features/workspace/workspaceRuntimePolicy"
 
 function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {

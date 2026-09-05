@@ -3,6 +3,8 @@ import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 import { removeLocalProjectDevApp } from "@/features/devapps/localProjectDevAppStore"
 import { useAssistantComposerDraftStore } from "@/features/assistant/chat/composerDraftStore"
 import { clearPersistedProjectSidebarEntry } from "@/features/projects/ui/sidebar/projectSidebarState"
+import { assistantDrafts } from "@/features/assistant/history/assistantDraftRepository"
+import { useAssistantHistoryStore } from "@/features/assistant/history/assistantHistoryStore"
 import { clearDevServerRunsForWorkspace } from "@/features/dev-server/devServerRunStore"
 import { clearDevServerProcessConfigForWorkspace } from "@/features/dev-server/devServerProcessConfigStore"
 import { releaseDevServerSurfaceLease } from "@/features/dev-server/devServerSurfaceController"
@@ -16,8 +18,8 @@ import { clearProjectBranchSession } from "@/features/source-control/model/proje
 import { clearRecentProjectOpenSync } from "@/features/projects/lib/recentProjectOpenSync"
 import { clearPersistedWorkbenchLayoutsForProject } from "@/features/workbench/model/workbenchLayoutPersistence"
 import { clearSyncFeedSeen } from "@/features/source-control/syncFeedSeen"
-import { useWorkspaceRuntimeStore } from "@/features/workspace/useWorkspaceRuntimeStore"
-import { useProjectWorkbenchStore } from "@/features/workbench/model/workbenchStore"
+import { useWorkspaceRuntimeStore } from "@/lib/workspaceRuntimeStore"
+import { useProjectWorkbenchStore } from "@/lib/workbenchStore"
 import { useQueryCache } from "@/app/model/queryCache"
 import { useTerminalStore } from "@/features/terminal/model/terminalStore"
 import { useThreadDetailStore } from "@/features/assistant/model/threadDetailStore"
@@ -350,7 +352,7 @@ export async function cleanupDeletedProjectLocally(
   }
 
   const assistantProjectIds = collectAssistantProjectIdsForDeletion({
-    assistantProjectIds: rendererSnapshot.assistantProjectIds,
+    assistantProjectIds: new Set([...rendererSnapshot.assistantProjectIds, ...Object.values(useAssistantHistoryStore.getState().projects).filter((entry) => entry.projectId === normalizedProjectId).map((entry) => entry.assistantProjectId)]),
     workspaceRoots,
   })
 
@@ -367,6 +369,19 @@ export async function cleanupDeletedProjectLocally(
     assistantProjectIds,
     workspaceRoots,
   })
+  await assistantDrafts.load()
+  const closedDraftTargets = Object.values(assistantDrafts.store.getState().drafts)
+    .filter((draft) => draft.projectId === normalizedProjectId)
+    .map((draft) => draft.threadId ?? draft.key.slice("draft:".length))
+  await assistantDrafts.removeProject(normalizedProjectId)
+  useAssistantComposerDraftStore.getState().clearDrafts(closedDraftTargets)
+  for (const [threadId, context] of Object.entries(useAssistantHistoryStore.getState().conversations)) {
+    if (context.projectId === normalizedProjectId) {
+      useAssistantComposerDraftStore.getState().clearDraft(threadId)
+      useThreadDetailStore.getState().resetThread(threadId)
+    }
+  }
+  useAssistantHistoryStore.getState().forgetProject(normalizedProjectId)
 
   const keepLocalFiles = options.keepLocalFiles !== false
   if (!keepLocalFiles) {

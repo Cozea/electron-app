@@ -82,7 +82,10 @@ export interface BrowserFindInPageOptions {
   matchCase?: boolean;
 }
 
-export interface CozeaDesktopPreviewBridge extends DesktopPreviewBridge {
+export interface CozeaDesktopPreviewBridge extends Omit<DesktopPreviewBridge, "clearCookies" | "clearCache" | "listBrowserImportSources" | "importBrowserCookies"> {
+  /** Cozea has one local host and owns partition scope in the main process. */
+  clearCookies: () => Promise<void>;
+  clearCache: () => Promise<void>;
   prepareSurface: (descriptor: BrowserSurfaceDescriptor) => Promise<PreparedBrowserSurface>;
   releaseSurface: (runtimeTabId: string) => Promise<void>;
   getSurfaceState: (runtimeTabId: string) => Promise<CozeaBrowserSurfaceState | null>;

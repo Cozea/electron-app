@@ -7,7 +7,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { useTranslation } from '@/lib/i18n'
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/features/projects/lib/projectRoutes"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { Button } from "@/components/ui/button"
 import {
   Card,

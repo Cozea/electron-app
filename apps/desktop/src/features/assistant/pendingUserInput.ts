@@ -2,6 +2,7 @@ import type { UserInputQuestion } from "@cozea/assistant-contracts";
 
 export interface PendingUserInputDraftAnswer {
   selectedOptionLabel?: string;
+  selectedOptionValue?: string;
   customAnswer?: string;
 }
 

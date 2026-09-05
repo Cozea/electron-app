@@ -1,5 +1,5 @@
 import { type ProviderKind } from "@cozea/assistant-contracts";
-import { ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
+import { AntigravityIcon, ClaudeAI, CursorIcon, Gemini, OpenAI, OpenCodeIcon } from "../Icons";
 import type { Icon } from "../Icons";
 import { PROVIDER_OPTIONS } from "./session-logic";
 
@@ -17,6 +17,7 @@ export const PROVIDER_ICON_BY_PROVIDER: Record<ProviderKind | "favorites" | "gem
   claudeAgent: ClaudeAI,
   cursor: CursorIcon,
   opencode: OpenCodeIcon,
+  antigravity: AntigravityIcon,
   favorites: OpenCodeIcon as any, // Dummy for favorites
   "gemini-coming-soon": Gemini,
   "github-copilot-coming-soon": OpenCodeIcon as any,

@@ -1,0 +1,8 @@
+ARG BUN_IMAGE
+ARG NODE_IMAGE
+FROM ${BUN_IMAGE} AS bun
+FROM ${NODE_IMAGE}
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
+WORKDIR /workspace
+CMD ["bun", "run", "test", "--", "tests/assistant/history"]

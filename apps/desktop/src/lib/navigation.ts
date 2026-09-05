@@ -1,7 +1,7 @@
 import { startTransition, useCallback } from 'react'
 import { createPath, type NavigateFunction, type NavigateOptions, type To, useNavigate } from '@/lib/router'
 
-import { parseProjectRoute } from '@/features/projects/lib/projectRoutes'
+import { parseProjectRoute } from '@/contexts/project/projectRoutes'
 import { featureFlags } from '@/lib/featureFlags'
 import { beginProjectSwitch } from '@/lib/performance/projectSwitchMarks'
 

@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const terminalDevAppManifest = {
   id: "terminal",
   name: "Terminal",
-  description: "Local shell surface for commands, logs, and project-side workflows.",
+  description: "Command-line shell.",
   categories: ["discover", "runtimes"],
   icon: {
     src: iconSrc,

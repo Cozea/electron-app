@@ -34,12 +34,12 @@ describe("the composer's scroll chain in a small tile", () => {
   });
 
   it("lets the composer shell shrink", () => {
-    expect(surfaceSource).toContain("mt-3 flex min-h-0 flex-col rounded-2xl");
+    expect(surfaceSource).toContain("relative flex min-h-0 flex-wrap");
   });
 
-  it("gives the pending-question panel the leftover space rather than its full height", () => {
+  it("bounds the full-width pending-question row and allows its contents to shrink", () => {
     expect(surfaceSource).toContain(
-      '<div className="min-h-0 flex-1 overflow-hidden border-b border-border/30 bg-background/10">',
+      '<div className="flex min-h-0 max-h-[40vh] basis-full flex-col border-b',
     );
   });
 

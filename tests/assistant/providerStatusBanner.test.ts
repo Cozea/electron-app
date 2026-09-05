@@ -8,6 +8,10 @@ import {
   resolveProviderRemediation,
 } from "@/features/assistant/chat/ProviderRemediationAction";
 import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner";
+import {
+  hasBlockingProviderBanner,
+  presentProviderStatusMessage,
+} from "@/features/assistant/chat/providerStatusPresentation";
 import { markProviderRemediationResolved } from "@/features/assistant/chat/providerRemediationResolutionStore";
 
 function createMemorySessionStorage(): Storage {
@@ -29,6 +33,32 @@ afterEach(() => {
 });
 
 describe("ProviderStatusBanner", () => {
+  it("blocks the composer for every provider state that replaces the timeline", () => {
+    const ready = {
+      status: "ready",
+      versionAdvisory: { status: "current" },
+    } as ServerProvider;
+    const updateAvailable = {
+      ...ready,
+      versionAdvisory: { status: "behind_latest" },
+    } as ServerProvider;
+    const unavailable = { ...ready, status: "error" } as ServerProvider;
+
+    expect(hasBlockingProviderBanner(ready)).toBe(false);
+    expect(hasBlockingProviderBanner(updateAvailable)).toBe(true);
+    expect(hasBlockingProviderBanner(unavailable)).toBe(true);
+  });
+
+  it("keeps implementation-vendor names out of provider status copy", () => {
+    expect(
+      presentProviderStatusMessage(
+        "T3 Code could not restart the T3 server because the T3 runtime is offline.",
+      ),
+    ).toBe(
+      "Cozea could not restart the local agent service because the local agent runtime is offline.",
+    );
+  });
+
   it("renders unchanged command feedback and captured updater output", () => {
     const status = {
       instanceId: "codex",
@@ -38,6 +68,7 @@ describe("ProviderStatusBanner", () => {
       version: "0.150.1",
       status: "ready",
       auth: { status: "authenticated" },
+      message: "Provider connection is healthy.",
       checkedAt: "2026-08-29T10:00:00.000Z",
       models: [],
       slashCommands: [],
@@ -65,6 +96,8 @@ describe("ProviderStatusBanner", () => {
     expect(markup).toContain("The installed provider version did not change.");
     expect(markup).toContain("Update details");
     expect(markup).toContain("Already up-to-date.");
+    expect(markup).toContain("Codex 0.150.1 is behind 0.151.0.");
+    expect(markup).not.toContain("Provider connection is healthy.");
   });
 
   it("shows exact Claude login instructions with a copy action", () => {

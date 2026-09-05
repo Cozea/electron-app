@@ -22,9 +22,9 @@ import {
   publishOrgDevAppFromWorkspace,
   type OrgDevAppPublishStage,
 } from "@/features/devapps/orgDevAppPublishing";
-import { useAccessibleProject } from "@/features/projects/hooks/useAccessibleProject";
+import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
-import { useOptionalProjectSyncContext } from "@/features/projects/contexts/ProjectSyncContext";
+import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState";
 import { useProjectCreationMenu } from "@/features/projects/hooks/useProjectCreationMenu";
 import {
@@ -46,9 +46,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { buildProjectPath } from "../lib/projectRoutes";
+import { buildProjectPath } from "@/contexts/project/projectRoutes";
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent";
-import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState";
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState";
 import { ProjectSidebarTreeItem } from "@/features/projects/ui/sidebar/ProjectSidebarTreeItem";
 import {
   areSidebarProjectItemsEqual,
@@ -83,9 +83,9 @@ import {
   selectProjectWorkbench,
   selectVisibleActiveWorkbenchTileId,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore";
-import { useOptionalProjectRouteContext } from "@/features/projects/contexts/ProjectRouteContext";
-import { useWorkspaceIdentity } from "@/features/workspace/useWorkspaceIdentity";
+} from "@/lib/workbenchStore";
+import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext";
+import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";
 import { openCommandPalette } from "@/features/workbench/command-palette/commandPaletteBus";
 
@@ -957,7 +957,7 @@ export function ProjectSidebar({
         <button
           type="button"
           onClick={() => openCommandPalette()}
-          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-xs text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-search border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-xs text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={t('nav.search')}
         >
           <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground" />

@@ -15,18 +15,18 @@ import { TerminalEventBridge } from "@/features/terminal/TerminalEventBridge";
 import { usePageContextStore } from "@/features/browser/model/pageContextStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-import { ProjectSyncProvider } from "../contexts/ProjectSyncContext";
+import { ProjectSyncProvider } from "@/contexts/project/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
-import { buildLegacyProjectPath, buildProjectPath } from "@/features/projects/lib/projectRoutes";
+import { buildLegacyProjectPath, buildProjectPath } from "@/contexts/project/projectRoutes";
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution";
 import { WorkspaceRepairScreen } from "@/features/workspace/WorkspaceRepairScreen";
-import { ActiveWorkspaceContext } from "@/features/workspace/ActiveWorkspaceContext";
+import { ActiveWorkspaceContext } from "@/contexts/workspace/ActiveWorkspaceContext";
 import {
   buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
-} from "@/features/projects/lib/projectNavigationState";
+} from "@/contexts/project/projectNavigationState";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
 import { appToast } from "@/lib/appToast";
 import { useTranslation } from "@/lib/i18n";
@@ -35,7 +35,7 @@ import { useDeferredActivation } from "@/hooks/useDeferredActivation";
 import {
   ProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
-} from "@/features/projects/contexts/ProjectRouteContext";
+} from "@/contexts/project/ProjectRouteContext";
 import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
 import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
@@ -373,6 +373,9 @@ export function ProjectLayout({
     pathname.startsWith("/projects/settings/") ||
     pathname.startsWith("/projects/workspace/") ||
     pathname.startsWith("/projects/teams");
+  const isStickySearchPage =
+    pathname.endsWith("/store") ||
+    pathname.includes("/settings/devapps");
   const shouldEnableProjectRuntime = Boolean(runtimeWorkspaceId);
   const runtimeEffectsReady = useDeferredActivation(shouldEnableProjectRuntime, {
     delayMs: 250,
@@ -648,7 +651,9 @@ export function ProjectLayout({
                   // when it contains wide children (iframes, editors, etc.).
                   "flex flex-1 flex-col min-h-0 min-w-0",
                   shouldRemovePadding ? "p-0" : "p-4",
-                  shouldRemovePadding ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden",
+                  shouldRemovePadding
+                    ? "overflow-hidden"
+                    : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
                 {featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (

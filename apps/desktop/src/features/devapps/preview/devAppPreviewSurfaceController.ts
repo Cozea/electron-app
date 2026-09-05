@@ -1,4 +1,4 @@
-import { buildWorkbenchScopeKey } from "@/features/workbench/model/workbenchStore";
+import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 
 export interface EnsureDevAppPreviewSurfaceRequest {
   projectId: string;

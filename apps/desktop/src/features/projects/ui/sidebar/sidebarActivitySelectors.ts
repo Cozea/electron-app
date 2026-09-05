@@ -1,7 +1,7 @@
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
-} from "@/features/assistant/chat/pendingRequests"
+} from "@/features/assistant/chat/session-logic"
 import {
   mergeSidebarActivity,
   resolveAgentActivity,

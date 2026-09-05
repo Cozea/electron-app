@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { SourceControlProviderError, SourceControlProviderInfo } from "./sourceControl.ts";
@@ -199,6 +198,8 @@ const VcsStatusChangeRequest = Schema.Struct({
   baseRef: TrimmedNonEmptyStringSchema,
   headRef: TrimmedNonEmptyStringSchema,
   state: VcsStatusChangeRequestState,
+  /** Optional for compatibility with older servers and providers. */
+  isDraft: Schema.optional(Schema.Boolean),
   /**
    * Last provider-side activity (ISO). For a merged/closed change request
    * this bounds when it reached that state, so clients can tell a PR that
@@ -291,7 +292,7 @@ export const GitPreparePullRequestThreadResult = Schema.Struct({
    * holding local commits or uncommitted changes keeps its own state, so the code being handed
    * over is older than the pull request.
    */
-  isOnPullRequestHead: Schema.Boolean,
+  isOnPullRequestHead: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(() => (true))),
 });
 export type GitPreparePullRequestThreadResult = typeof GitPreparePullRequestThreadResult.Type;
 
@@ -347,7 +348,7 @@ export class GitCommandError extends Schema.TaggedErrorClass<GitCommandError>()(
   stderrLength: Schema.optional(Schema.Number),
   outputLength: Schema.optional(Schema.Number),
   detail: Schema.String,
-  cause: Schema.optional(Schema.Defect()),
+  cause: Schema.optional(Schema.Defect),
 }) {
   override get message(): string {
     return `Git command failed in ${this.operation} (${this.cwd}): ${this.detail}`;
@@ -359,7 +360,7 @@ export class TextGenerationError extends Schema.TaggedErrorClass<TextGenerationE
   {
     operation: Schema.String,
     detail: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   override get message(): string {
@@ -371,7 +372,7 @@ export class GitManagerError extends Schema.TaggedErrorClass<GitManagerError>()(
   operation: Schema.String,
   cwd: Schema.String,
   detail: Schema.String,
-  cause: Schema.optional(Schema.Defect()),
+  cause: Schema.optional(Schema.Defect),
 }) {
   override get message(): string {
     return `Git manager failed in ${this.operation}: ${this.detail}`;
@@ -386,7 +387,7 @@ export class GitPullRequestMaterializationError extends Schema.TaggedErrorClass<
     headRepository: Schema.NullOr(TrimmedNonEmptyStringSchema),
     headBranch: TrimmedNonEmptyStringSchema,
     localBranch: TrimmedNonEmptyStringSchema,
-    cause: Schema.Defect(),
+    cause: Schema.Defect,
   },
 ) {
   override get message(): string {

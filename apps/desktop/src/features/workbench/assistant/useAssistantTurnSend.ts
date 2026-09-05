@@ -10,7 +10,7 @@ import {
 import { newCommandId, newMessageId } from "@/features/assistant/lib/utils"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import type { ChatMessage, Thread } from "@/features/assistant/model/types"
-import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/features/workbench/model/workbenchStore"
+import type { WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord } from "@/lib/workbenchStore"
 
 import { toErrorMessage, deriveTitleSeed, revokeUserMessagePreviewUrls, cloneComposerImageForRetry } from "./workbenchAssistantShared"
 

@@ -119,6 +119,13 @@ describe("application layer contract", () => {
     expect(slot).toContain("subscribePositionChanges?.(scheduleUpdate)");
   });
 
+  it("lets consumers cancel a pointer drag before Dockview creates its ghost", () => {
+    const dockviewPatch = read("patches/dockview-core@7.0.4.patch");
+
+    expect(dockviewPatch).toContain("if (startEvent.defaultPrevented)");
+    expect(dockviewPatch).toContain("PointerDragController.getInstance().beginDrag");
+  });
+
   it("keeps browser-owned overlays beside the living guest in the global host", () => {
     const host = read("apps/desktop/src/features/browser/HostedBrowserWebview.tsx");
     const localTiles = [

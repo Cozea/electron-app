@@ -28,21 +28,21 @@ import {
   settingsInlineInputWidth,
 } from "@/features/settings/ui/SettingsChrome"
 import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
-import { buildProjectRouteNavigationState } from "@/features/projects/lib/projectNavigationState"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
+import { browseForDirectory } from "@/lib/browseForDirectory"
 import {
-  browseForDirectory,
   buildFilesystemSlug,
   deriveNameFromPath,
   inspectLocalGitState,
   resolveImportedProjectName,
   type LocalGitState,
 } from "@/features/projects/lib/localProjectImport"
-import type { CreateProjectDialogMode } from "@/features/projects/model/createProjectDialogStore"
+import type { CreateProjectDialogMode } from "@/lib/createProjectDialogStore"
+import { DEFAULT_WORKBENCH_LANE_ID } from "@/lib/workbenchScopeKey"
 import {
-  DEFAULT_WORKBENCH_LANE_ID,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { useTranslation } from "@/lib/i18n"
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
 

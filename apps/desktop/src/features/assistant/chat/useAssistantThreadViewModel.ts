@@ -8,21 +8,21 @@ import {
   findLatestProposedPlan,
   hasActionableProposedPlan,
   isLatestTurnSettled,
-} from "@/features/assistant/chat/timelineDerivations"
-import type { PendingUserInput } from "@/features/assistant/chat/pendingRequests"
+  inferCheckpointTurnCountByTurnId,
+  type PendingUserInput,
+} from "@/features/assistant/chat/session-logic"
 import {
   buildRevertTurnCountByUserMessageId,
   buildTurnDiffSummaryByAssistantMessageId,
   deriveCompletionDividerBeforeEntryId,
   deriveCompletionSummariesByMessageId,
-  inferCheckpointTurnCountByTurnId,
-} from "@/features/assistant/chat/turnDiffDerivations"
+} from "@/features/assistant/chat/threadTimelineDerivations"
+import { deriveWorkLogEntries } from "@/features/assistant/chat/workLogDerivations"
 import {
-  deriveWorkLogEntries,
   deriveActiveWorkStartedAt,
   formatElapsed,
   hasToolActivityForTurn,
-} from "@/features/assistant/chat/workLogDerivations"
+} from "@/features/assistant/chat/session-logic"
 import { deriveGenerationStatusPhase } from "@/features/assistant/chat/MessagesTimeline.logic"
 import type { Thread } from "@/features/assistant/model/types"
 
@@ -160,7 +160,7 @@ export function useAssistantThreadViewModel({
     [activeTurn?.turnId, thread?.proposedPlans],
   )
   const showPlanFollowUpPrompt =
-    pendingUserInputs.length === 0 &&
+    !pendingUserInputs.some((request) => request.responseMode !== "message") &&
     selectedInteractionMode === "plan" &&
     latestTurnSettled &&
     hasActionableProposedPlan(activeProposedPlan)

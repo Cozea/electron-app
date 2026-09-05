@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { T3EffectRpcClient, T3OrchestrationClient } from "@cozea/client-runtime";
+import {
+  T3EffectRpcClient,
+  T3OrchestrationClient,
+  T3ServerConfigClient,
+} from "@cozea/client-runtime";
 
 type SocketEventType = "open" | "error" | "message" | "close";
 type SocketListener = (event: { readonly data?: unknown }) => void;
@@ -52,6 +56,52 @@ class FakeWebSocket {
 }
 
 describe("T3EffectRpcClient stream protocol", () => {
+  it("allows a slow provider update while ordinary requests retain their deadline", async () => {
+    vi.useFakeTimers();
+    FakeWebSocket.instances = [];
+    const rpc = new T3EffectRpcClient({
+      baseUrl: "http://127.0.0.1:13773",
+      wsTicket: "test-ticket",
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    const config = new T3ServerConfigClient({
+      baseUrl: "http://127.0.0.1:13773",
+      wsTicket: "test-ticket",
+      client: rpc,
+    });
+    try {
+      let updateSettled = false;
+      const update = config.updateProvider("codex").then(
+        (value) => {
+          updateSettled = true;
+          return { value };
+        },
+        (error) => {
+          updateSettled = true;
+          return { error };
+        },
+      );
+      const ordinary = rpc.callUnary("server.getConfig").catch((error) => error);
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(await ordinary).toBeInstanceOf(Error);
+      expect(updateSettled).toBe(false);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const socket = FakeWebSocket.instances[0]!;
+      const request = socket.sent
+        .map((raw) => JSON.parse(raw) as { id: string; tag: string })
+        .find((entry) => entry.tag === "server.updateProvider")!;
+      socket.receive({
+        _tag: "Exit",
+        requestId: request.id,
+        exit: { _tag: "Success", value: { providers: [] } },
+      });
+      await expect(update).resolves.toEqual({ value: { providers: [] } });
+    } finally {
+      await rpc.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("acknowledges each chunk and interrupts with the protocol requestId", async () => {
     FakeWebSocket.instances = [];
     const client = new T3EffectRpcClient({
@@ -122,6 +172,76 @@ describe("T3EffectRpcClient stream protocol", () => {
 });
 
 describe("T3OrchestrationClient snapshots", () => {
+  it("applies sparse shell updates, preserves other rows and never fabricates domain events", async () => {
+    FakeWebSocket.instances = [];
+    const client = new T3OrchestrationClient({
+      baseUrl: "http://127.0.0.1:13773",
+      wsTicket: "test-ticket",
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    const snapshots: unknown[] = [];
+    const domainEvents: unknown[] = [];
+    try {
+      await Promise.all([
+        client.onSnapshot((snapshot) => snapshots.push(snapshot)),
+        client.subscribeShellEvents((event) => domainEvents.push(event)),
+      ]);
+      const socket = FakeWebSocket.instances[0]!;
+      const requests = socket.sent.map((raw) => JSON.parse(raw) as { id: string; tag: string });
+      expect(
+        requests.filter((request) => request.tag === "orchestration.subscribeShell"),
+      ).toHaveLength(1);
+      const request = requests[0]!;
+      const emit = (...values: unknown[]) =>
+        socket.receive({ _tag: "Chunk", requestId: request.id, values });
+      const other = { id: "other" };
+      const initial = {
+        snapshotSequence: 10,
+        projects: [],
+        threads: [other],
+        updatedAt: "2026-09-05T00:00:00Z",
+      };
+      const running = { id: "qa", session: { status: "running" }, updatedAt: initial.updatedAt };
+      const ready = {
+        ...running,
+        session: { status: "ready" },
+        latestTurn: { state: "completed" },
+      };
+      emit(
+        { kind: "snapshot", snapshot: initial },
+        { kind: "thread-upserted", sequence: 20, thread: running },
+        { kind: "thread-upserted", sequence: 35, thread: ready },
+      );
+      expect(snapshots.at(-1)).toMatchObject({ snapshotSequence: 35, threads: [other, ready] });
+      const settled = snapshots.at(-1) as { threads: unknown[] };
+      expect(settled.threads[0]).toBe((snapshots[0] as { threads: unknown[] }).threads[0]);
+      emit({ kind: "thread-upserted", sequence: 34, thread: running }, { kind: "synchronized" });
+      expect(snapshots).toHaveLength(3);
+      expect(domainEvents).toEqual([]);
+      const late: unknown[] = [];
+      await client.onSnapshot((snapshot) => late.push(snapshot));
+      expect(late).toEqual([settled]);
+      emit(
+        {
+          kind: "project-upserted",
+          sequence: 40,
+          project: { id: "p", updatedAt: initial.updatedAt },
+        },
+        { kind: "thread-removed", sequence: 50, threadId: "qa" },
+        { kind: "project-removed", sequence: 60, projectId: "p" },
+      );
+      expect(snapshots.at(-1)).toMatchObject({
+        snapshotSequence: 60,
+        threads: [other],
+        projects: [],
+      });
+      emit({ kind: "snapshot", snapshot: initial });
+      expect(snapshots.at(-1)).toEqual(initial);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("reads the current shell snapshot from the shell subscription", async () => {
     FakeWebSocket.instances = [];
     const client = new T3OrchestrationClient({

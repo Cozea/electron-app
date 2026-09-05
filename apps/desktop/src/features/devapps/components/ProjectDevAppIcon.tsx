@@ -26,7 +26,7 @@ export function ProjectDevAppIcon({ publicationId, name, className }: ProjectDev
       app={{
         name,
         icon: logoDataUrl
-          ? { src: logoDataUrl, alt: `${name} DevApp` }
+          ? { src: logoDataUrl, alt: `${name} DevApp`, className: "scale-[1.25]" }
           : {
               ...devServerDevAppManifest.icon,
               alt: `${name} DevApp`,

@@ -6,11 +6,11 @@ import {
   ensureWorkbenchLayoutPersistenceReady,
   peekPersistedWorkbenchLayout,
 } from "@/features/workbench/model/workbenchLayoutPersistence"
+import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
-  buildWorkbenchScopeKey,
   selectProjectWorkbench,
   useProjectWorkbenchStore,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import {
   endProjectSwitch,
   markProjectSwitchPhase,
@@ -76,6 +76,7 @@ export function WorkbenchDockviewSession({
     getSelectionPreviewTile,
     handleResolveSelectionTile,
     handleDuplicateAssistantTile,
+    handleOpenAssistantConversation,
     handleSplitTile,
     handleDockviewReady,
   } = useWorkbenchDockviewRuntime({
@@ -149,6 +150,7 @@ export function WorkbenchDockviewSession({
       getWorkbenchSession={getWorkbenchSession}
       getSelectionPreviewTile={getSelectionPreviewTile}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}
+      onOpenAssistantConversation={handleOpenAssistantConversation}
       onResolveSelectionTile={handleResolveSelectionTile}
       onSplitTile={handleSplitTile}
     >

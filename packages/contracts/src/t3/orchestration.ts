@@ -1,5 +1,5 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
+import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
@@ -150,6 +150,8 @@ export type ProviderApprovalDecision = typeof ProviderApprovalDecision.Type;
 export const ProviderApprovalOption = Schema.Struct({
   decision: ProviderApprovalDecision,
   label: TrimmedNonEmptyString,
+  /** Provider-supplied caution shown next to the option, such as a prompt injection warning. */
+  warning: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderApprovalOption = typeof ProviderApprovalOption.Type;
 export const ProviderUserInputAnswers = Schema.Record(Schema.String, Schema.Unknown);
@@ -158,6 +160,7 @@ export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 8;
 export const PROVIDER_SEND_TURN_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const PROVIDER_SEND_TURN_MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES = [
   "image/gif",
   "image/jpeg",
@@ -193,6 +196,40 @@ export const ChatImageAttachment = Schema.Struct({
 });
 export type ChatImageAttachment = typeof ChatImageAttachment.Type;
 
+export const ChatFileAttachment = Schema.Struct({
+  type: Schema.Literal("file"),
+  id: ChatAttachmentId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  mimeType: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  sizeBytes: NonNegativeInt.check(
+    Schema.isGreaterThanOrEqualTo(1),
+    Schema.isLessThanOrEqualTo(PROVIDER_SEND_TURN_MAX_FILE_BYTES),
+  ),
+});
+export type ChatFileAttachment = typeof ChatFileAttachment.Type;
+
+/**
+ * Catch-all for attachment types this build does not know. Attachments ride on
+ * persisted events and thread streams, so a newer server or client must be able
+ * to introduce a type without making older readers fail to decode the whole
+ * message. Decoders keep the shared base fields; consumers skip these or render
+ * them as unsupported. Mirrors how `OrchestrationThreadActivity` keeps `kind`
+ * open. The known discriminators are excluded so a malformed image or file
+ * attachment fails its own schema instead of sliding through here with its
+ * size and mime constraints unchecked.
+ */
+export const ChatUnknownAttachment = Schema.Struct({
+  type: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(50),
+    Schema.isPattern(/^(?!(?:image|file)$)/),
+  ),
+  id: ChatAttachmentId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  mimeType: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  sizeBytes: NonNegativeInt,
+});
+export type ChatUnknownAttachment = typeof ChatUnknownAttachment.Type;
+
 const UploadChatImageAttachment = Schema.Struct({
   type: Schema.Literal("image"),
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
@@ -204,7 +241,11 @@ const UploadChatImageAttachment = Schema.Struct({
 });
 export type UploadChatImageAttachment = typeof UploadChatImageAttachment.Type;
 
-export const ChatAttachment = Schema.Union([ChatImageAttachment]);
+export const ChatAttachment = Schema.Union([
+  ChatImageAttachment,
+  ChatFileAttachment,
+  ChatUnknownAttachment,
+]);
 export type ChatAttachment = typeof ChatAttachment.Type;
 const UploadChatAttachment = Schema.Union([UploadChatImageAttachment]);
 export type UploadChatAttachment = typeof UploadChatAttachment.Type;
@@ -245,6 +286,48 @@ export const ProjectFaviconPath = TrimmedNonEmptyString.check(
 );
 export type ProjectFaviconPath = typeof ProjectFaviconPath.Type;
 
+export const ProjectIconColor = Schema.Literals([
+  "gray",
+  "red",
+  "orange",
+  "amber",
+  "yellow",
+  "lime",
+  "green",
+  "emerald",
+  "teal",
+  "cyan",
+  "sky",
+  "blue",
+  "indigo",
+  "violet",
+  "purple",
+  "fuchsia",
+  "pink",
+  "rose",
+]);
+export type ProjectIconColor = typeof ProjectIconColor.Type;
+
+const ProjectLucideIconName = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(64),
+  Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+);
+
+const ProjectEmoji = TrimmedNonEmptyString.check(Schema.isMaxLength(32));
+
+export const ProjectIconOverride = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("lucide"),
+    name: ProjectLucideIconName,
+    color: ProjectIconColor,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("emoji"),
+    emoji: ProjectEmoji,
+  }),
+]);
+export type ProjectIconOverride = typeof ProjectIconOverride.Type;
+
 export const OrchestrationProject = Schema.Struct({
   id: ProjectId,
   title: TrimmedNonEmptyString,
@@ -254,8 +337,12 @@ export const OrchestrationProject = Schema.Struct({
   // Per-project override for where new threads start. Null/absent means
   // "no override": clients fall back to t3.json, then the global setting.
   defaultThreadEnvMode: Schema.optional(Schema.NullOr(ThreadEnvMode)),
+  // Opt-in because background sync performs network I/O and may move the checkout.
+  // Optional on the wire so cached snapshots from older servers still decode.
+  autoPull: Schema.optional(Schema.Boolean),
   // Optional on the wire so cached snapshots from older servers still decode.
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
+  projectIcon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
   scripts: Schema.Array(ProjectScript),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -285,9 +372,9 @@ export const OrchestrationProposedPlan = Schema.Struct({
   id: OrchestrationProposedPlanId,
   turnId: Schema.NullOr(TurnId),
   planMarkdown: TrimmedNonEmptyString,
-  implementedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  implementedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => (null))),
   implementationThreadId: Schema.NullOr(ThreadId).pipe(
-    Schema.withDecodingDefault(Effect.succeed(null)),
+    Schema.withDecodingDefault(() => (null)),
   ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -315,7 +402,7 @@ export const OrchestrationSession = Schema.Struct({
   status: OrchestrationSessionStatus,
   providerName: Schema.NullOr(TrimmedNonEmptyString),
   providerInstanceId: Schema.optional(ProviderInstanceId),
-  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
+  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => (DEFAULT_RUNTIME_MODE))),
   activeTurnId: Schema.NullOr(TurnId),
   lastError: Schema.NullOr(TrimmedNonEmptyString),
   updatedAt: IsoDateTime,
@@ -404,7 +491,7 @@ export const OrchestrationThread = Schema.Struct({
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+    Schema.withDecodingDefault(() => (DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
@@ -412,11 +499,11 @@ export const OrchestrationThread = Schema.Struct({
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
-  archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => (null))),
   settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])).pipe(
-    Schema.withDecodingDefault(Effect.succeed(null)),
+    Schema.withDecodingDefault(() => (null)),
   ),
-  settledAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  settledAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => (null))),
   // When the thread last re-entered the active list (any thread.unsettled).
   // Anchors the active-list sort so an unsettled thread surfaces at the top
   // instead of sinking back to its creation-order slot. Cleared on settle.
@@ -442,7 +529,7 @@ export const OrchestrationThread = Schema.Struct({
   deletedAt: Schema.NullOr(IsoDateTime),
   messages: Schema.Array(OrchestrationMessage),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
-    Schema.withDecodingDefault(Effect.succeed([])),
+    Schema.withDecodingDefault(() => ([])),
   ),
   activities: Schema.Array(OrchestrationThreadActivity),
   checkpoints: Schema.Array(OrchestrationCheckpointSummary),
@@ -465,8 +552,10 @@ export const OrchestrationProjectShell = Schema.Struct({
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   defaultModelSelection: Schema.NullOr(ModelSelection),
   defaultThreadEnvMode: Schema.optional(Schema.NullOr(ThreadEnvMode)),
+  autoPull: Schema.optional(Schema.Boolean),
   // Optional on the wire so cached snapshots from older servers still decode.
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
+  projectIcon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
   scripts: Schema.Array(ProjectScript),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -480,7 +569,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+    Schema.withDecodingDefault(() => (DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
@@ -488,11 +577,11 @@ export const OrchestrationThreadShell = Schema.Struct({
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
-  archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => (null))),
   settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])).pipe(
-    Schema.withDecodingDefault(Effect.succeed(null)),
+    Schema.withDecodingDefault(() => (null)),
   ),
-  settledAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  settledAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => (null))),
   // See OrchestrationThread.unsettledAt: last re-entry into the active list.
   unsettledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   snoozedUntil: Schema.optional(Schema.NullOr(IsoDateTime)),
@@ -671,6 +760,8 @@ export const ProjectCreateCommand = Schema.Struct({
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
   createWorkspaceRootIfMissing: Schema.optional(Schema.Boolean),
+  // Retained for older clients that sent an automatic create-time seed. The
+  // server ignores it; explicit project defaults use project.meta.update.
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   createdAt: IsoDateTime,
 });
@@ -684,7 +775,9 @@ const ProjectMetaUpdateCommand = Schema.Struct({
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   // Absent = leave unchanged; null = clear the override.
   defaultThreadEnvMode: Schema.optional(Schema.NullOr(ThreadEnvMode)),
+  autoPull: Schema.optional(Schema.Boolean),
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
+  projectIcon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
 });
 
@@ -704,7 +797,7 @@ const ThreadCreateCommand = Schema.Struct({
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+    Schema.withDecodingDefault(() => (DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
@@ -733,6 +826,14 @@ const ThreadSettleCommand = Schema.Struct({
   type: Schema.Literal("thread.settle"),
   commandId: CommandId,
   threadId: ThreadId,
+});
+
+const ThreadAutoSettleCommand = Schema.Struct({
+  type: Schema.Literal("thread.auto-settle"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  snapshotSequence: NonNegativeInt,
+  settledAt: IsoDateTime,
 });
 
 const ThreadUnsettleCommand = Schema.Struct({
@@ -866,9 +967,9 @@ export const ThreadTurnStartCommand = Schema.Struct({
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
-  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
+  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => (DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+    Schema.withDecodingDefault(() => (DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
@@ -1070,6 +1171,7 @@ const ThreadTitleRegenerationCompleteCommand = Schema.Struct({
 });
 
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadAutoSettleCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
@@ -1132,6 +1234,7 @@ export const ProjectCreatedPayload = Schema.Struct({
   defaultModelSelection: Schema.NullOr(ModelSelection),
   // Optional so persisted events from older servers still decode.
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
+  projectIcon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
   scripts: Schema.Array(ProjectScript),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -1144,7 +1247,9 @@ export const ProjectMetaUpdatedPayload = Schema.Struct({
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   defaultThreadEnvMode: Schema.optional(Schema.NullOr(ThreadEnvMode)),
+  autoPull: Schema.optional(Schema.Boolean),
   faviconPath: Schema.optional(Schema.NullOr(ProjectFaviconPath)),
+  projectIcon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
   updatedAt: IsoDateTime,
 });
@@ -1159,9 +1264,9 @@ export const ThreadCreatedPayload = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
+  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => (DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+    Schema.withDecodingDefault(() => (DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
@@ -1260,7 +1365,7 @@ export const ThreadRuntimeModeSetPayload = Schema.Struct({
 export const ThreadInteractionModeSetPayload = Schema.Struct({
   threadId: ThreadId,
   interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+    Schema.withDecodingDefault(() => (DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   updatedAt: IsoDateTime,
 });
@@ -1282,9 +1387,9 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
-  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
+  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => (DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+    Schema.withDecodingDefault(() => (DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
   createdAt: IsoDateTime,
@@ -1560,7 +1665,7 @@ export const TurnCountRange = Schema.Struct({
   Schema.makeFilter(
     (input) =>
       input.fromTurnCount <= input.toTurnCount ||
-      new SchemaIssue.InvalidValue({
+      new SchemaIssue.InvalidValue(Option.none(), {
         message: "fromTurnCount must be less than or equal to toTurnCount",
       }),
     { identifier: "OrchestrationTurnDiffRange" },
@@ -1701,7 +1806,7 @@ export class OrchestrationGetWorkflowScriptError extends Schema.TaggedErrorClass
       "read-failed",
     ]),
     scriptPath: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   override get message(): string {
@@ -1748,7 +1853,7 @@ export class OrchestrationGetSnapshotError extends Schema.TaggedErrorClass<Orche
   "OrchestrationGetSnapshotError",
   {
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {}
 
@@ -1756,7 +1861,7 @@ export class OrchestrationDispatchCommandError extends Schema.TaggedErrorClass<O
   "OrchestrationDispatchCommandError",
   {
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
     bootstrapThreadDisposition: Schema.optional(Schema.Literal("deleted")),
   },
 ) {}
@@ -1765,7 +1870,7 @@ export class OrchestrationGetTurnDiffError extends Schema.TaggedErrorClass<Orche
   "OrchestrationGetTurnDiffError",
   {
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {}
 
@@ -1773,7 +1878,7 @@ export class OrchestrationGetFullThreadDiffError extends Schema.TaggedErrorClass
   "OrchestrationGetFullThreadDiffError",
   {
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {}
 
@@ -1781,6 +1886,6 @@ export class OrchestrationSearchThreadsError extends Schema.TaggedErrorClass<Orc
   "OrchestrationSearchThreadsError",
   {
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {}

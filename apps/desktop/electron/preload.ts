@@ -1198,7 +1198,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updates: {
     check: () => ipcRenderer.invoke('updates:check'),
     download: () => ipcRenderer.invoke('updates:download'),
-    install: () => ipcRenderer.invoke('updates:install'),
+    install: (options?: { continueActiveChats?: boolean }) => ipcRenderer.invoke('updates:install', options),
     getState: () => ipcRenderer.invoke('updates:getState'),
     onStatus: (callback: (state: UpdateState) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state)

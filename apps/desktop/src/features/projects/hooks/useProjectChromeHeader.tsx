@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
-import { useProjectHeaderStore } from "@/features/projects/model/projectHeaderStore";
+import { useProjectHeaderStore } from "@/lib/projectHeaderStore";
 
 interface UseProjectChromeHeaderArgs {
   isSettingsModeRoute: boolean;
@@ -51,15 +51,15 @@ export function useProjectChromeHeader({
       header: headerResolved,
       centerAddon,
       preSearchAddon: isSettingsModeRoute ? undefined : (presencePreSearchAddon ?? undefined),
-      rightAddon: isSettingsModeRoute ? undefined : (rightFromPage ?? undefined),
-      hideShare,
+      rightAddon: rightFromPage ?? undefined,
+      hideShare: hideShare || isSettingsModeRoute,
       contentInsetLeft: insetLeft,
       contentInsetRight: insetRight,
-      projectInviteContext: {
+      projectInviteContext: isSettingsModeRoute ? undefined : {
         projectId,
         projectName,
       },
-      editorProjectPath,
+      editorProjectPath: isSettingsModeRoute ? null : editorProjectPath,
     };
   }, [
     centerFromPage,

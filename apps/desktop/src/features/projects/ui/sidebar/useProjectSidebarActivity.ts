@@ -20,7 +20,7 @@ import {
   selectProjectLaneWorkbenches,
   useProjectWorkbenchStore,
   type WorkbenchLaneSidebarSummary,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import { useTileActivityStore } from "@/features/workbench/model/tileActivityStore"
 
 export interface ProjectSidebarActivity {

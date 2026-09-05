@@ -71,7 +71,7 @@ import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
-} from "./composerInlineChip";
+} from "../composerInlineChip";
 import { ComposerPendingTerminalContextChip } from "./ComposerPendingTerminalContexts";
 
 const COMPOSER_EDITOR_HMR_KEY = `composer-editor-${Math.random().toString(36).slice(2)}`;
@@ -811,6 +811,20 @@ export interface ComposerPromptEditorHandle {
   };
 }
 
+/**
+ * Resolve the element's line box in pixels. `line-height` computes to a px
+ * value whenever one is set (the app forces `--app-copy-line-height` onto the
+ * composer), but it can still compute to the keyword `normal` if that rule ever
+ * stops matching -- fall back to the usual ~1.2x font size rather than
+ * reporting a bogus line count.
+ */
+function resolveLineHeightPx(style: CSSStyleDeclaration): number {
+  const lineHeight = Number.parseFloat(style.lineHeight);
+  if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+  const fontSize = Number.parseFloat(style.fontSize);
+  return Number.isFinite(fontSize) && fontSize > 0 ? fontSize * 1.2 : 0;
+}
+
 interface ComposerPromptEditorProps {
   value: string;
   cursor: number;
@@ -820,6 +834,8 @@ interface ComposerPromptEditorProps {
   placeholder: string;
   className?: string;
   onRemoveTerminalContext: (contextId: string) => void;
+  /** Line boxes the prompt currently occupies at the editor's present width. */
+  onMeasuredLinesChange?: (lines: number, promptLength: number) => void;
   onChange: (
     nextValue: string,
     nextCursor: number,
@@ -1064,14 +1080,52 @@ function ComposerPromptEditorInner({
   placeholder,
   className,
   onRemoveTerminalContext,
+  onMeasuredLinesChange,
   onChange,
   onCommandKeyDown,
   onPaste,
   editorRef,
 }: ComposerPromptEditorInnerProps) {
   const [editor] = useLexicalComposerContext();
-  const onChangeRef = useRef(onChange);
   const initialCursor = clampCollapsedComposerCursor(value, cursor);
+  const snapshotRef = useRef({
+    value,
+    cursor: initialCursor,
+    expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
+    terminalContextIds: terminalContexts.map((context) => context.id),
+  });
+  const onChangeRef = useRef(onChange);
+  const onMeasuredLinesChangeRef = useRef(onMeasuredLinesChange);
+  useEffect(() => {
+    onMeasuredLinesChangeRef.current = onMeasuredLinesChange;
+  }, [onMeasuredLinesChange]);
+  const lastMeasurementRef = useRef("");
+
+  /**
+   * Report how many line boxes the prompt occupies at the editor's current
+   * width. `scrollHeight` gives the full content height even when the box is
+   * clamped by `max-height`, so this stays correct once the prompt is long
+   * enough to scroll.
+   */
+  const measureLines = useCallback(() => {
+    const report = onMeasuredLinesChangeRef.current;
+    if (!report) return;
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return;
+    const style = window.getComputedStyle(rootElement);
+    const lineHeight = resolveLineHeightPx(style);
+    if (lineHeight <= 0) return;
+    const paddingY =
+      (Number.parseFloat(style.paddingTop) || 0) +
+      (Number.parseFloat(style.paddingBottom) || 0);
+    const contentHeight = Math.max(0, rootElement.scrollHeight - paddingY);
+    const lines = Math.max(1, Math.round(contentHeight / lineHeight));
+    const promptLength = snapshotRef.current.value.length;
+    const measurement = `${lines}:${promptLength}`;
+    if (measurement === lastMeasurementRef.current) return;
+    lastMeasurementRef.current = measurement;
+    report(lines, promptLength);
+  }, [editor]);
   const terminalContextsSignature = terminalContextSignature(terminalContexts);
   const terminalContextsSignatureRef = useRef(terminalContextsSignature);
   const skillsSignatureText = skillSignature(skills);
@@ -1080,12 +1134,6 @@ function ComposerPromptEditorInner({
   useEffect(() => {
     skillMetadataRef.current = skillMetadataByName(skills);
   }, [skills]);
-  const snapshotRef = useRef({
-    value,
-    cursor: initialCursor,
-    expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
-    terminalContextIds: terminalContexts.map((context) => context.id),
-  });
   const isApplyingControlledUpdateRef = useRef(false);
   const terminalContextActions = useMemo(
     () => ({ onRemoveTerminalContext }),
@@ -1141,7 +1189,21 @@ function ComposerPromptEditorInner({
     queueMicrotask(() => {
       isApplyingControlledUpdateRef.current = false;
     });
-  }, [cursor, editor, terminalContexts, terminalContextsSignature, skillsSignatureText, value]);
+    window.requestAnimationFrame(measureLines);
+  }, [measureLines, cursor, editor, terminalContexts, terminalContextsSignature, skillsSignatureText, value]);
+
+  // A width change rewraps the prompt without changing its text, so a resized
+  // tile has to re-measure too.
+  useEffect(() => {
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return;
+    measureLines();
+    const observer = new ResizeObserver(() => {
+      measureLines();
+    });
+    observer.observe(rootElement);
+    return () => observer.disconnect();
+  }, [editor, measureLines]);
 
   const focusAt = useCallback(
     (nextCursor: number) => {
@@ -1269,17 +1331,24 @@ function ComposerPromptEditorInner({
         cursorAdjacentToMention,
         terminalContextIds,
       );
+      window.requestAnimationFrame(measureLines);
     });
-  }, []);
+  }, [measureLines]);
 
   return (
     <ComposerTerminalContextActionsContext.Provider value={terminalContextActions}>
-      <div className="relative">
+      <div className="relative w-full">
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
               className={cn(
-                "block max-h-[200px] min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[14px] leading-relaxed text-foreground focus:outline-none",
+                // No `leading-*` here on purpose: `text-[13px]` and `leading-*`
+                // collide in tailwind-merge's font-size group, so whichever
+                // lands last in a caller's className silently deletes the
+                // other. The app forces `--app-copy-line-height` onto
+                // `.text-[13px]` with `!important` anyway, so the line box is
+                // `--composer-line-height` and heights are derived from it.
+                "block min-h-[var(--composer-line-height)] max-h-[calc(var(--composer-line-height)*10)] w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[13px] text-foreground focus:outline-none",
                 className,
               )}
               data-testid="composer-editor"
@@ -1290,7 +1359,7 @@ function ComposerPromptEditorInner({
           }
           placeholder={
             terminalContexts.length > 0 ? null : (
-              <div className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] leading-relaxed text-muted-foreground">
+              <div className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-muted-foreground/60 select-none">
                 {placeholder}
               </div>
             )
@@ -1321,6 +1390,7 @@ export const ComposerPromptEditor = forwardRef<
     placeholder,
     className,
     onRemoveTerminalContext,
+    onMeasuredLinesChange,
     onChange,
     onCommandKeyDown,
     onPaste,
@@ -1359,6 +1429,7 @@ export const ComposerPromptEditor = forwardRef<
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}
+        onMeasuredLinesChange={onMeasuredLinesChange}
         onChange={onChange}
         onPaste={onPaste}
         editorRef={ref}

@@ -4,7 +4,7 @@ import type {
   OrchestrationThreadActivity,
 } from "@cozea/assistant-contracts"
 
-import type { TimelineEntry } from "@/features/assistant/chat/timelineDerivations"
+import type { TimelineEntry } from "@/features/assistant/chat/session-logic"
 import type { Thread, TurnDiffSummary } from "@/features/assistant/model/types"
 import { formatElapsed, hasToolActivityForTurn } from "./session-logic"
 

@@ -7,9 +7,10 @@ import {
 
 import type {
   WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
-} from "@/features/workbench/model/workbenchStore"
+} from "@/lib/workbenchStore"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { AssistantHistoryEntry } from "@/features/assistant/history/assistantHistory"
 
 export interface WorkbenchDockPanelParams {
   projectId: string
@@ -45,6 +46,7 @@ export interface WorkbenchDockRuntimeValue {
   getWorkbenchSession: () => WorkbenchSessionSnapshot | null
   getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onDuplicateAssistantTile: (sourceTileId: string) => void
+  onOpenAssistantConversation: (sourceTileId: string, entry: AssistantHistoryEntry, busy: boolean) => void
   onResolveSelectionTile: (
     selectionTileId: string,
     request: WorkbenchSelectionLaunchRequest,
@@ -85,6 +87,7 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       getWorkbenchSession: props.getWorkbenchSession,
       getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
+      onOpenAssistantConversation: props.onOpenAssistantConversation,
       onResolveSelectionTile: props.onResolveSelectionTile,
       onSplitTile: props.onSplitTile,
     }),
@@ -103,6 +106,7 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       props.getWorkbenchSession,
       props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,
+      props.onOpenAssistantConversation,
       props.onResolveSelectionTile,
       props.onSplitTile,
     ],

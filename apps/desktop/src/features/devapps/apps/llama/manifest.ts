@@ -5,7 +5,7 @@ import iconSrc from "./icon.png"
 export const llamaDevAppManifest = {
   id: "llama",
   name: "Llama",
-  description: "Local AI model runner for offline intelligence, private completions, and prompt workflows.",
+  description: "Run local AI models.",
   categories: ["discover", "agent-kits", "runtimes"],
   icon: {
     src: iconSrc,

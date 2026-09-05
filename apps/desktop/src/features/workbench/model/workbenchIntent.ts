@@ -11,7 +11,7 @@
  * the deep-link decoder for external entry points; new in-app flows should use
  * this module instead.
  */
-import type { WorkbenchTileType } from "@/features/workbench/model/workbenchStore"
+import type { WorkbenchTileType } from "@/lib/workbenchTileContract"
 
 export interface WorkbenchIntent {
   laneId?: string | null

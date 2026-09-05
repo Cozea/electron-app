@@ -13,7 +13,7 @@ interface RegisterCoreHandlersDeps {
   isAutoUpdateEnabled: () => boolean
   checkForUpdates: () => Promise<void>
   downloadUpdate: () => Promise<void>
-  installUpdate: () => void
+  installUpdate: (continueActiveChats?: boolean) => void | Promise<void>
   setUpdateError: (message: string) => void
   openExternal: (url: string) => Promise<void>
   listAvailableBrowsers: () => AvailableExternalBrowserResult
@@ -50,12 +50,13 @@ export function registerCoreHandlers(ipcMain: IpcMain, deps: RegisterCoreHandler
     return deps.getUpdateState()
   })
 
-  ipcMain.handle('updates:install', async () => {
+  ipcMain.handle('updates:install', async (_event, options?: unknown) => {
     if (!deps.isAutoUpdateEnabled()) {
       return { success: false, error: 'Updates are disabled in development builds.' }
     }
     try {
-      deps.installUpdate()
+      const continueActiveChats = Boolean(options && typeof options === "object" && "continueActiveChats" in options && options.continueActiveChats === true)
+      await deps.installUpdate(continueActiveChats)
       return { success: true }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) }

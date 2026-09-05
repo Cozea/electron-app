@@ -20,6 +20,20 @@ function sourceBetween(source: string, startMarker: string, endMarker: string): 
 }
 
 describe("active agent working status placement", () => {
+  it("reserves the divider for completed turns without changing the live indicator", () => {
+    const statusRow = sourceBetween(
+      timelineSource,
+      "const TurnStatusRow = memo(function TurnStatusRow",
+      "const ThinkingIndicatorRow = memo",
+    );
+
+    expect(statusRow).toContain("const isActive = summary === null;");
+    expect(statusRow).toContain('!isActive && "border-b border-border/60"');
+    expect(statusRow.match(/\bborder-b\b/g)).toHaveLength(1);
+    expect(statusRow).toContain("<LiveShimmerText>Working</LiveShimmerText>");
+    expect(statusRow).toContain("<WorkingTimer startedAtIso={startedAtIso} />");
+  });
+
   it("keeps Working after the temporary Thinking row at the timeline bottom", () => {
     const rowDerivation = sourceBetween(
       timelineSource,

@@ -18,6 +18,15 @@ const resetDevServerRuns = vi.fn()
 const resetTerminalProject = vi.fn()
 const resetThread = vi.fn()
 const clearQueryCache = vi.fn()
+const removeProjectDrafts = vi.fn(async () => undefined)
+const forgetHistoryProject = vi.fn()
+
+vi.mock("@/features/assistant/history/assistantDraftRepository", () => ({
+  assistantDrafts: { removeProject: removeProjectDrafts, load: async () => {}, store: { getState: () => ({ drafts: {} }) } },
+}))
+vi.mock("@/features/assistant/history/assistantHistoryStore", () => ({
+  useAssistantHistoryStore: { getState: () => ({ projects: {}, conversations: {}, forgetProject: forgetHistoryProject }) },
+}))
 
 vi.mock("@/features/devapps/localProjectDevAppStore", () => ({
   removeLocalProjectDevApp,
@@ -70,7 +79,7 @@ vi.mock("@/features/source-control/syncFeedSeen", () => ({
   clearSyncFeedSeen,
 }))
 
-vi.mock("@/features/workspace/useWorkspaceRuntimeStore", () => ({
+vi.mock("@/lib/workspaceRuntimeStore", () => ({
   useWorkspaceRuntimeStore: {
     getState: () => ({
       runtimes: {
@@ -130,8 +139,8 @@ const mockWorkbenchStore = {
   },
 }
 
-vi.mock("@/features/workbench/model/workbenchStore", () => mockWorkbenchStore)
-vi.mock("@/features/workbench/model/workbenchStore", () => mockWorkbenchStore)
+vi.mock("@/lib/workbenchStore", () => mockWorkbenchStore)
+vi.mock("@/lib/workbenchStore", () => mockWorkbenchStore)
 
 vi.mock("@/app/model/queryCache", () => ({
   useQueryCache: {
@@ -248,6 +257,8 @@ describe("cleanupDeletedProjectLocally", () => {
     ])
     expect(resetThread).toHaveBeenCalledWith("thread-1")
     expect(removeProjectWorkbench).toHaveBeenCalledWith("project_1")
+    expect(removeProjectDrafts).toHaveBeenCalledWith("project_1")
+    expect(forgetHistoryProject).toHaveBeenCalledWith("project_1")
     expect(clearPersistedWorkbenchLayoutsForProject).toHaveBeenCalledWith("project_1")
     expect(removeLocalProjectDevApp).toHaveBeenCalledWith("project_1")
     expect(clearPersistedProjectSidebarEntry).toHaveBeenCalledWith("project_1")

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildWorkspaceIdentityKey,
   normalizeWorkspaceProjectPath,
-} from '../../apps/desktop/src/features/workspace/workspaceIdentity'
+} from '@/lib/workspaceIdentity'
 
 describe('workspace identity normalization', () => {
   it('treats workspace ids as opaque values instead of filesystem paths', () => {

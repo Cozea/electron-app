@@ -1,4 +1,4 @@
-import { resolveDroppedFileSystemPath } from "@/features/projects/lib/resolveDroppedLocalFolderPath"
+import { resolveDroppedFileSystemPath } from "@/lib/resolveDroppedLocalFolderPath"
 
 /**
  * How a drop onto an agent tile splits up. Only images can ride along as real
