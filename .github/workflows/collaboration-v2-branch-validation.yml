@@ -54,7 +54,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: collaboration-native-${{ github.sha }}
-          path: ${{ runner.temp }}/collaboration-native
+          path: |
+            ${{ runner.temp }}/collaboration-native/t3-source.tar.gz
+            ${{ runner.temp }}/collaboration-native/bin.mjs
+            ${{ runner.temp }}/collaboration-native/bun
+          retention-days: 1
+
+      - name: Upload isolated test dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-dependencies-${{ github.sha }}
+          path: ${{ runner.temp }}/collaboration-native/test-dependencies.tar.gz
           retention-days: 1
 
       - name: Install Electron runtime for tests
