@@ -159,7 +159,7 @@ function patchSharedPlatform(name, source) {
 
 const transformed = new Map([
   ["apps/server/src/provider/Layers/ProviderService.ts", patchProvider],
-  ["apps/server/src/provider/Layers/ProviderService.test.ts", patchStoppedInterruptRegression],
+  ["apps/server/src/provider/Layers/ProviderService.test.ts", source => patchStoppedInterruptRegression(source) + "\n" + fs.readFileSync(path.join(root, "scripts/t3-runtime/nativeWorkspaceEntrypoints.test.txt"), "utf8")],
   ["apps/server/src/terminal/Manager.ts", patchTerminal],
   ["apps/server/src/ws.ts", patchWs],
 ]);

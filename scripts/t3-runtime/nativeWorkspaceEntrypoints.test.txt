@@ -1,0 +1,168 @@
+// Controlled trusted-host IPC decisions; this is not Convex authentication coverage.
+if (process.env.COZEA_NATIVE_WORKSPACE_AUTHORITY === "1") {
+  const boundary = makeProviderServiceLayer();
+  boundary.layer("Cozea native service authority boundary", (it) => {
+    it.effect("fences actual provider entrypoints and terminal owners across stop and reactivation", () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const assert: typeof import("node:assert/strict") = yield* Effect.promise(async () => (await import("node:assert/strict")).default);
+        const { installNativeTerminalAuthority } = yield* Effect.promise(() => import("../../cozeaWorkspaceEffects.ts"));
+        const temporary = NodeFS.realpathSync(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cozea-entrypoints-")));
+        const root = NodePath.join(temporary, "session");
+        const ordinary = NodePath.join(temporary, "ordinary");
+        NodeFS.mkdirSync(root); NodeFS.mkdirSync(ordinary);
+        const { scheduleNativeWorkspaceDeadline } = yield* Effect.promise(() => import("../../nativeWorkspacePlatform.ts"));
+        const deliver = (message: unknown) => Reflect.apply(process.emit, process, ["message", message]);
+        const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
+        const connectedDescriptor = Object.getOwnPropertyDescriptor(process, "connected");
+        let role = "editor";
+        let serial = 0;
+        const replies = new Map<string, (success: boolean) => void>();
+        const hostSend = (message: unknown, callback?: (error: Error | null) => void) => {
+          const value = message as { type: string; requestId: string; cwd: string; operation: string; success: boolean };
+          if (value.type === "cozea:workspace-authorize") {
+            const owned = value.cwd === root || value.cwd.startsWith(root + NodePath.sep);
+            queueMicrotask(() => deliver({
+              type: "cozea:workspace-authorize-result", requestId: value.requestId,
+              allowed: !owned || (role === "editor" && value.operation !== "git"), sessionRoot: owned ? root : null,
+            }));
+          } else if (value.type === "cozea:workspace-control-result") replies.get(value.requestId)?.(value.success);
+          callback?.(null);
+          return true;
+        };
+        Object.defineProperty(process, "connected", { configurable: true, value: true });
+        Object.defineProperty(process, "send", { configurable: true, value: hostSend });
+        const control = (action: "activate" | "stop") => new Promise<void>((resolve, reject) => {
+          const requestId = `00000000-0000-4000-8000-${String(++serial).padStart(12, "0")}`;
+          const cancelDeadline = scheduleNativeWorkspaceDeadline(12_000, () => { replies.delete(requestId); reject(new Error("Control acknowledgement timed out")); });
+          replies.set(requestId, success => {
+            cancelDeadline(); replies.delete(requestId);
+            if (success) resolve(); else reject(new Error("Control rejected"));
+          });
+          deliver({ type: "cozea:workspace-control", requestId, action, root });
+        });
+        yield* Effect.addFinalizer(() => Effect.sync(() => {
+          if (sendDescriptor) Object.defineProperty(process, "send", sendDescriptor); else Reflect.deleteProperty(process, "send");
+          if (connectedDescriptor) Object.defineProperty(process, "connected", connectedDescriptor); else Reflect.deleteProperty(process, "connected");
+          NodeFS.rmSync(temporary, { recursive: true, force: true });
+        }));
+        type Manager = import("../../terminal/Manager.ts").TerminalManager["Service"];
+        type Summary = import("@t3tools/contracts").TerminalSummary;
+        const terminals = new Map<string, Summary>();
+        let metadata: Parameters<Manager["subscribeMetadata"]>[0] = () => Effect.void;
+        const calls = { open: 0, write: 0, restart: 0, closed: [] as string[] };
+        const snapshot = (input: { threadId: string; terminalId: string; cwd: string }) => ({
+          ...input, worktreePath: null, status: "running" as const, pid: 123,
+          exitCode: null, exitSignal: null, hasRunningSubprocess: true, label: "fixture", updatedAt: "2026-01-01T00:00:00Z",
+        });
+        // Only the PTY engine is a test double; admission and metadata ownership are production code.
+        const raw = {
+          subscribeMetadata: (listener: typeof metadata) => Effect.gen(function* () {
+            metadata = listener; yield* listener({ type: "snapshot", terminals: [] }); return () => {};
+          }),
+          open: (input: { threadId: string; terminalId: string; cwd: string }) => Effect.gen(function* () {
+            calls.open++; const terminal = snapshot(input); terminals.set(input.terminalId, terminal);
+            yield* metadata({ type: "upsert", terminal }); return terminal;
+          }),
+          write: () => Effect.sync(() => { calls.write++; }),
+          restart: () => Effect.sync(() => { calls.restart++; }),
+          close: (input: { terminalId: string }) => Effect.gen(function* () {
+            calls.closed.push(input.terminalId);
+            const previous = terminals.get(input.terminalId)!;
+            const terminal = { ...previous, pid: null }; terminals.set(input.terminalId, terminal);
+            yield* metadata({ type: "upsert", terminal });
+          }),
+        } as unknown as Manager;
+        const terminal = yield* installNativeTerminalAuthority(raw);
+        yield* Effect.promise(async () => {
+          const run = Effect.runPromise;
+          const owned = asThreadId("cozea-authority-owned");
+          const other = asThreadId("cozea-authority-ordinary");
+          const start = (threadId: ThreadId, cwd: string) => provider.startSession(threadId, {
+            provider: CODEX_DRIVER, providerInstanceId: codexInstanceId, threadId, cwd, runtimeMode: "full-access",
+          });
+          await run(start(owned, root)); await run(start(other, ordinary));
+          const ownedTerminal = { threadId: String(owned), terminalId: "owned", cwd: root, cols: 80, rows: 24 };
+          const otherTerminal = { threadId: String(other), terminalId: "ordinary", cwd: ordinary, cols: 80, rows: 24 };
+          await run(terminal.open(ownedTerminal)); await run(terminal.open(otherTerminal));
+          for (const deniedRole of ["observer", "revoked", "closed"]) {
+            role = deniedRole;
+            const starts = boundary.codex.startSession.mock.calls.length;
+            const sends = boundary.codex.sendTurn.mock.calls.length;
+            const feedback = boundary.codex.uploadFeedback.mock.calls.length;
+            const deniedEffects = [start(owned, root).pipe(Effect.asVoid), provider.sendTurn({ threadId: owned, input: "denied" }).pipe(Effect.asVoid), provider.uploadFeedback({ threadId: owned }).pipe(Effect.asVoid)];
+            for (const effect of deniedEffects) {
+              await assert.rejects(run(effect), /not authorized/);
+            }
+            assert.equal(boundary.codex.startSession.mock.calls.length, starts);
+            assert.equal(boundary.codex.sendTurn.mock.calls.length, sends);
+            assert.equal(boundary.codex.uploadFeedback.mock.calls.length, feedback);
+            const before = { ...calls };
+            await assert.rejects(run(terminal.open(ownedTerminal)), { _tag: "TerminalCwdStatError", cause: new Error("Native workspace execution is not authorized.") });
+            await assert.rejects(run(terminal.write({ threadId: String(owned), terminalId: "owned", data: "denied" })), { _tag: "TerminalCwdStatError", cause: new Error("Native workspace execution is not authorized.") });
+            await assert.rejects(run(terminal.restart(ownedTerminal)), { _tag: "TerminalCwdStatError", cause: new Error("Native workspace execution is not authorized.") });
+            assert.equal(calls.open, before.open); assert.equal(calls.write, before.write); assert.equal(calls.restart, before.restart);
+            await run(provider.sendTurn({ threadId: other, input: "ordinary continues" }));
+            await run(terminal.write({ threadId: String(other), terminalId: "ordinary", data: "accepted" }));
+          }
+          role = "editor";
+          // Normalize after denial: slow CI may have let the real polling owner stop run.
+          await control("stop");
+          await control("activate");
+          await run(start(owned, root));
+          await run(terminal.open(ownedTerminal));
+          calls.closed.length = 0;
+          // Hold the actual adapter start before it registers/returns its session.
+          const late = asThreadId("cozea-authority-late-start");
+          let entered!: () => void; let release!: () => void;
+          const entering = new Promise<void>(resolve => { entered = resolve; });
+          const gate = new Promise<void>(resolve => { release = resolve; });
+          const originalStart = boundary.codex.startSession.getMockImplementation()!;
+          boundary.codex.startSession.mockImplementationOnce(input => Effect.promise(async () => {
+            entered(); await gate; return run(originalStart(input));
+          }));
+          const pendingStart = run(start(late, root));
+          void pendingStart.catch(() => {});
+          await Promise.race([entering, pendingStart.then(() => { throw new Error("Adapter start returned before the test gate"); })]);
+          let ownerStopped!: () => void;
+          const firstOwnerStop = new Promise<void>(resolve => { ownerStopped = resolve; });
+          const originalStop = boundary.codex.stopSession.getMockImplementation()!;
+          boundary.codex.stopSession.mockImplementation(id => originalStop(id).pipe(Effect.tap(() => Effect.sync(() => { if (id === owned) ownerStopped(); }))));
+          let acknowledged = false;
+          const stopping = control("stop").then(() => { acknowledged = true; });
+          void stopping.catch(() => {});
+          try {
+          // Wait until the real owner stopper has closed the preexisting provider.
+          await Promise.race([firstOwnerStop, stopping.then(() => { throw new Error("Stop acknowledged before owner termination"); })]);
+          assert.equal(acknowledged, false, "stop cannot acknowledge while admitted adapter start is pending");
+          await assert.rejects(run(start(asThreadId("cozea-after-stop"), root)), /not authorized/);
+          release(); await pendingStart; await stopping;
+          } finally {
+            release();
+            await Promise.allSettled([pendingStart, stopping]);
+          }
+          assert.deepEqual((await run(provider.listSessions())).map(session => session.threadId), [other]);
+          assert.ok(boundary.codex.stopSession.mock.calls.some(([id]) => id === late), "second owner sweep stops the late adapter session");
+          assert.deepEqual(calls.closed, ["owned"]);
+          assert.equal(terminals.get("owned")?.pid, null); assert.equal(terminals.get("ordinary")?.pid, 123);
+          const starts = boundary.codex.startSession.mock.calls.length;
+          await run(provider.interruptTurn({ threadId: owned }));
+          await assert.rejects(run(provider.uploadFeedback({ threadId: owned })), /not authorized/);
+          await assert.rejects(run(start(owned, root)), /not authorized/);
+          assert.equal(boundary.codex.startSession.mock.calls.length, starts, "fresh editor decision cannot resurrect before explicit activation");
+          await run(provider.sendTurn({ threadId: other, input: "still running" }));
+          await run(terminal.restart(otherTerminal));
+          await control("activate");
+          await run(start(owned, root));
+          await run(provider.sendTurn({ threadId: owned, input: "reactivated" }));
+          await run(provider.uploadFeedback({ threadId: owned }));
+          await run(terminal.open(ownedTerminal));
+          await run(terminal.write({ threadId: String(owned), terminalId: "owned", data: "reactivated" }));
+          await run(terminal.restart(ownedTerminal));
+          await control("stop");
+          await run(provider.stopSession({ threadId: other }));
+        });
+      }),
+    );
+  });
+}

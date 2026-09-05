@@ -3,7 +3,10 @@
 ## Status and release decision
 
 Continuation from `2d861c60` on `codex/collaboration-v2-complete`, 2026-09-05.
-The user will perform final packaged two-device acceptance. This PR implements
+The user has authorized supervised implementation and all feasible automated and
+packaged GUI acceptance, with the Computer plugin for desktop interaction. Its
+tools are not yet available in this task; installation guidance has been supplied.
+This PR implements
 substantial hardening, **not every remaining item in the original completion
 plan**. Known code blockers below must not be relabeled as manual QA.
 
@@ -97,6 +100,38 @@ actual source and PR merge candidate, not a patch applied only during testing.
 Temporary integration drivers and write-capable task workflows are removed from
 the finalized tree. Use the final PR head's checks as the review result. None of
 these checks establishes packaged, independently authenticated production acceptance.
+
+### Local native entrypoint evidence (2026-09-05, continuation from `aff1c8be`)
+
+The maintained overlay now adds an authority-enabled test of the actual native
+`ProviderService` entrypoints and production terminal-authority wrapper. Controlled
+trusted-host IPC replies deny observer/revoked/closed requests before adapter
+start/send/feedback and terminal open/write/restart effects execute. A deferred
+adapter start holds Stop acknowledgement pending; the second owner sweep stops its
+late session. An unrelated provider and terminal remain usable, stopped threads
+cannot relaunch before explicit activation, and reactivation restores editor work.
+The existing native stopped-interrupt regression remains in the ordinary suite.
+`test:provider-compatibility` runs this test separately with authority enabled, then
+runs the forked guard/IPC smoke. The smoke has bounded child-exit cleanup.
+
+Local evidence: 37 focused desktop authority/shutdown tests passed; 95 native
+ProviderService/ACP tests passed in a focused run; the separately selected native
+entrypoint test and forked IPC smoke passed. Native typecheck and compatibility
+manifest checks, focused oxlint, and overlay-receipt consistency checks passed.
+The broad compatibility run had **1 failure / 1,564 passed /
+8 skipped**: ACP `completes session/load after replay becomes idle while its RPC
+stays pending` hit its two-second timeout. Its focused pass does not resolve the
+broad-run failure or establish that it is a preexisting baseline failure.
+
+The parent supervisor subsequently reran the entire compatibility command without
+competing builds/typechecks. It passed: **122 files, 1,565 tests / 8 skipped**, then
+the separate authority regression and installed IPC smoke passed. This establishes
+a successful complete local run; the earlier ACP timeout remains an intermittent
+failure to track, not a proven baseline issue. Log: `/tmp/cozea-supervised-native-validation.log`.
+
+These tests use controlled authority decisions and simulated provider/PTY engines.
+They prove service admission/ownership behavior, not Convex authentication, actual
+provider/PTY process termination, full WebSocket routing, or packaged acceptance.
 
 ## Remaining release-blocking implementation
 
