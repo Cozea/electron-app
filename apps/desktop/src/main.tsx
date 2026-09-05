@@ -17,11 +17,12 @@ import { applyStoredLanguage } from './lib/i18n'
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
-import { ElectronBrowserHost } from './features/browser/ElectronBrowserHost'
+import { ElectronBrowserHostGate } from './features/browser/ElectronBrowserHostGate'
 import {
   applyDesktopBootstrapRoute,
   initializeDesktopBootstrap,
 } from './app/bootstrap/desktopBootstrap'
+import { featureFlags } from './lib/featureFlags'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -60,6 +61,16 @@ async function startRenderer(): Promise<void> {
   measureCozeaPerformance('renderer:desktop-bootstrap', bootstrapStartMark, bootstrapEndMark)
   applyDesktopBootstrapRoute(bootstrap)
 
+  if (
+    featureFlags.commonRoutePrewarm &&
+    window.location.pathname.endsWith('/workbench')
+  ) {
+    const workbenchWarmStart = markCozeaPerformance('renderer:workbench-code-prewarm-start')
+    await import('./features/projects/pages/ProjectWorkbenchPage')
+    const workbenchWarmEnd = markCozeaPerformance('renderer:workbench-code-prewarm-end')
+    measureCozeaPerformance('renderer:workbench-code-prewarm', workbenchWarmStart, workbenchWarmEnd)
+  }
+
   const platform = window.electronAPI?.platform
   if (platform) {
     document.documentElement.dataset.platform = platform
@@ -75,7 +86,7 @@ async function startRenderer(): Promise<void> {
       <ConvexProvider>
         <ToastProvider>
           <RouterProvider router={appRouter} />
-          <ElectronBrowserHost />
+          <ElectronBrowserHostGate />
         </ToastProvider>
       </ConvexProvider>
     </React.StrictMode>,

@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState, type DragEvent } from "react"
+import { useCallback, useState, type DragEvent } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
 import { FolderLibraryIcon as __FolderLibraryHugeIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { api } from "../../../../../../convex/_generated/api"
-import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,7 +16,6 @@ import {
 } from "@/components/ui/empty"
 import {
   buildWorkbenchHref,
-  clearLastWorkbenchRoute,
   readLastWorkbenchRoute,
 } from "@/features/workbench/model/lastWorkbenchRoute"
 import { browseForDirectory } from "@/lib/browseForDirectory"
@@ -31,22 +29,9 @@ export function ProjectsLaunchPage() {
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const workspaceSelectionId = user?.id ?? "local-device"
-  const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
   const [isSelectingFolder, setIsSelectingFolder] = useState(false)
-  const lastWorkbenchRoute =
-    ignoredWorkspaceSelectionId === workspaceSelectionId
-      ? null
-      : readLastWorkbenchRoute(workspaceSelectionId)
-
-  const restoredProject = useQuery(
-    api.projects.getAccessibleById,
-    lastWorkbenchRoute?.projectId && convexUserId
-      ? {
-          projectId: lastWorkbenchRoute.projectId as Id<"projects">,
-        }
-      : "skip",
-  )
+  const lastWorkbenchRoute = readLastWorkbenchRoute(workspaceSelectionId)
 
   const projectsPage = useQuery(
     api.projects.listPageForCurrentUser,
@@ -60,18 +45,6 @@ export function ProjectsLaunchPage() {
         }
       : "skip",
   )
-
-  useEffect(() => {
-    if (!workspaceSelectionId || !lastWorkbenchRoute) {
-      return
-    }
-    if (restoredProject !== null) {
-      return
-    }
-
-    clearLastWorkbenchRoute(workspaceSelectionId)
-    setIgnoredWorkspaceSelectionId(workspaceSelectionId)
-  }, [lastWorkbenchRoute, restoredProject, workspaceSelectionId])
 
   const showDropError = useCallback(async (detail: string) => {
     await window.electronAPI.dialog.showMessageBox({
@@ -164,20 +137,17 @@ export function ProjectsLaunchPage() {
   )
 
   if (lastWorkbenchRoute) {
-    if (restoredProject) {
-      return (
-        <Navigate
-          to={buildWorkbenchHref(lastWorkbenchRoute.projectId, lastWorkbenchRoute.laneId, {
-            focusTileId: lastWorkbenchRoute.focusTileId,
-          })}
-          replace
-        />
-      )
-    }
+    return (
+      <Navigate
+        to={buildWorkbenchHref(lastWorkbenchRoute.projectId, lastWorkbenchRoute.laneId, {
+          focusTileId: lastWorkbenchRoute.focusTileId,
+        })}
+        replace
+      />
+    )
   }
 
   const fallbackProject = projectsPage?.items?.[0] ?? null
-
   const hasProjects = Boolean(fallbackProject?._id)
 
   return (
