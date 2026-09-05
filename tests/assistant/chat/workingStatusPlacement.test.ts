@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { buildConversationRows } from "@/features/assistant/chat/conversationRows";
 
 const timelineSource = readFileSync(
   resolve(
@@ -34,18 +35,9 @@ describe("active agent working status placement", () => {
     expect(statusRow).toContain("<WorkingTimer startedAtIso={startedAtIso} />");
   });
 
-  it("keeps Working after the temporary Thinking row at the timeline bottom", () => {
-    const rowDerivation = sourceBetween(
-      timelineSource,
-      "const rows = useMemo<TimelineRow[]>(() => {",
-      "const latestAssistantMessageId = useMemo",
-    );
-    const thinkingRow = rowDerivation.indexOf('id: "thinking-indicator-row"');
-    const trailingTurnStatuses = rowDerivation.indexOf(
-      "appendTurnStatusRows(timelineEntries.length);",
-    );
-
-    expect(thinkingRow).toBeGreaterThanOrEqual(0);
-    expect(trailingTurnStatuses).toBeGreaterThan(thinkingRow);
+  it("uses one live status at the timeline bottom, with Thinking replacing Working", () => {
+    const input = { entries: [], isWorking: true, activeWorkStartedAt: "2026-09-05T00:00:00Z", expanded: {} };
+    expect(buildConversationRows({ ...input, generationStatusPhase: "thinking" }).map((row) => row.kind)).toEqual(["thinking"]);
+    expect(buildConversationRows({ ...input, generationStatusPhase: "working" }).map((row) => row.kind)).toEqual(["turn-status"]);
   });
 });

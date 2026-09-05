@@ -86,7 +86,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const persistedFiles = extractPersistedFiles(payload);
   const title = extractToolTitle(payload);
   const status = extractWorkLogStatus(payload);
-  const isTaskActivity = activity.kind === "task.progress" || activity.kind === "task.completed";
+  const isTaskActivity = activity.kind.startsWith("task.");
   const isToolProgressActivity =
     activity.kind === "tool.progress" || activity.kind === "tool.summary";
   const isPersistedFilesActivity = activity.kind === "files.persisted";
@@ -129,8 +129,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     turnId: activity.turnId,
     label,
     tone:
-      activity.kind === "task.progress"
-        ? "thinking"
+      isTaskActivity
+        ? (status === "failed" || activity.tone === "error" ? "error" : "info")
         : status === "failed" || (isPersistedFilesActivity && persistedFiles.failedFiles.length > 0)
           ? "error"
           : status === "cancelled" || status === "declined"
@@ -141,6 +141,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     activityKind: activity.kind,
     sourceActivityKind: activity.kind,
   };
+  if (isTaskActivity && typeof payload?.taskId === "string") {
+    entry.taskId = payload.taskId;
+    entry.toolData = payload;
+  }
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
   if (detail) {
@@ -656,6 +660,7 @@ function normalizeWorkLogStatus(
   value: unknown,
 ): "inProgress" | "completed" | "failed" | "declined" | "cancelled" | null {
   switch (value) {
+    case "running":
     case "in_progress":
     case "inProgress":
     case "pending":
@@ -666,6 +671,7 @@ function normalizeWorkLogStatus(
       return "failed";
     case "declined":
       return "declined";
+    case "stopped":
     case "cancelled":
       return "cancelled";
     default:

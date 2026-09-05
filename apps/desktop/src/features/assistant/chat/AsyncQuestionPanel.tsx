@@ -1,9 +1,15 @@
 import { memo } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  pendingUserInputDraftFromAnswer,
+  resolvePendingUserInputAnswer,
+  togglePendingUserInputOptionSelection,
+} from "@/features/assistant/pendingUserInput";
 import { cn } from "@/lib/utils";
-import { questionDraftKey, useQuestionDraftStore } from "../questionDraftStore";
-import type { PendingUserInput } from "./session-logic";
+import { questionDraftKey, useQuestionDraftStore } from "@/features/assistant/questionDraftStore";
+import type { PendingUserInput } from "@/features/assistant/chat/session-logic";
 
 interface AsyncQuestionPanelProps {
   threadId: string;
@@ -23,9 +29,9 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
   const draft = useQuestionDraftStore((state) => state.drafts[key]);
   const frozen = responding || Boolean(draft?.submission);
   const complete = request.questions.every((question) =>
-    Boolean(draft?.answers[question.id]?.trim()),
+    resolvePendingUserInputAnswer(question, pendingUserInputDraftFromAnswer(question, draft?.answers[question.id])) !== null,
   );
-  const setAnswer = (questionId: string, answer: string) =>
+  const setAnswer = (questionId: string, answer: string | string[]) =>
     useQuestionDraftStore.getState().setAnswer(key, questionId, answer);
   return (
     <section
@@ -37,22 +43,21 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
       </p>
       <div className="space-y-4">
         {request.questions.map((question) => {
-          const value = draft?.answers[question.id] ?? "";
-          const selected = question.options.some(
-            (option) => (option.value ?? option.label) === value,
-          );
+          const value = draft?.answers[question.id];
+          const answerDraft = pendingUserInputDraftFromAnswer(question, value);
+          const selectedValues = answerDraft.selectedOptionValues ?? [];
           return (
             <fieldset key={question.id} disabled={frozen} className="space-y-2">
               <legend className="mb-1 text-sm font-medium">{question.question}</legend>
-              {question.options.map((option) => (
+              {question.options.map((option, index) => (
                 <button
                   type="button"
-                  key={option.value ?? option.label}
-                  aria-pressed={value === (option.value ?? option.label)}
-                  onClick={() => setAnswer(question.id, option.value ?? option.label)}
+                  key={`${option.value ?? option.label}:${index}`}
+                  aria-pressed={selectedValues.includes(option.value ?? option.label)}
+                  onClick={() => setAnswer(question.id, resolvePendingUserInputAnswer(question, togglePendingUserInputOptionSelection(question, answerDraft, option.value ?? option.label)) ?? (question.multiSelect ? [] : ""))}
                   className={cn(
                     "block w-full rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-60",
-                    value === (option.value ?? option.label)
+                    selectedValues.includes(option.value ?? option.label)
                       ? "border-foreground/30 bg-accent"
                       : "border-border/60 hover:bg-accent/50",
                   )}
@@ -69,7 +74,7 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
                 <Textarea
                   aria-label={`Answer: ${question.question}`}
                   placeholder={question.options.length ? "Or write an answer" : "Your answer"}
-                  value={selected ? "" : value}
+                  value={answerDraft.customAnswer ?? ""}
                   onChange={(event) => setAnswer(question.id, event.target.value)}
                   className="min-h-16 resize-y text-sm"
                 />

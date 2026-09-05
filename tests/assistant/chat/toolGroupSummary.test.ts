@@ -286,10 +286,11 @@ describe("workGroupId", () => {
 });
 
 describe("workLogEntryIsToolLike", () => {
-  it("accepts tool, thinking, and error tones", () => {
+  it("accepts actual tool tone without mistaking reasoning or errors for tool use", () => {
     expect(workLogEntryIsToolLike(entry({ tone: "tool" }))).toBe(true);
-    expect(workLogEntryIsToolLike(entry({ tone: "thinking" }))).toBe(true);
-    expect(workLogEntryIsToolLike(entry({ tone: "error" }))).toBe(true);
+    expect(workLogEntryIsToolLike(entry({ tone: "thinking" }))).toBe(false);
+    expect(workLogEntryIsToolLike(entry({ tone: "error" }))).toBe(false);
+    expect(workLogEntryIsToolLike(entry({ tone: "error", toolCallId: "failed-tool" }))).toBe(true);
   });
 
   it("rejects plain info narration", () => {
