@@ -740,6 +740,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pushPrepared: input => ipcRenderer.invoke("collaboration:pushPrepared", input),
     adoptPublished: input => ipcRenderer.invoke("collaboration:adoptPublished", input),
     runtime: {
+      recoveryInventory: () => ipcRenderer.invoke("collaboration:runtimeRecoveryInventory"),
+      cleanupRecovery: id => ipcRenderer.invoke("collaboration:runtimeCleanupRecovery", id),
       setup: id => ipcRenderer.invoke("collaboration:runtimeSetup", id),
       resolve: input => ipcRenderer.invoke("collaboration:runtimeResolve", input),
       importChanges: input => ipcRenderer.invoke("collaboration:runtimeImport", input),
@@ -755,6 +757,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       renameFile: input => ipcRenderer.invoke("collaboration:runtimeRenameFile", input),
       deleteFile: input => ipcRenderer.invoke("collaboration:runtimeDeleteFile", input),
       restoreFile: input => ipcRenderer.invoke("collaboration:runtimeRestoreFile", input),
+      binaryCandidates: id => ipcRenderer.invoke("collaboration:runtimeBinaryCandidates", id),
+      reviewPrepared: input => ipcRenderer.invoke("collaboration:runtimeReviewPrepared", input),
       commit: input => ipcRenderer.invoke("collaboration:runtimeCommit", input),
       push: id => ipcRenderer.invoke("collaboration:runtimePush", id),
       prepared: id => ipcRenderer.invoke("collaboration:runtimePrepared", id),

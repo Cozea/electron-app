@@ -45,6 +45,8 @@ export class CollaborationSessionRuntime {
   private error: string | null = null
   private stopped = false
   private stopping = false
+  private stopPromise: Promise<void> | null = null
+  private readonly checkpointOperations = new Set<Promise<void>>()
   private editorQueue: Promise<void> = Promise.resolve()
   private readonly pendingEditor = new Map<string, Uint8Array>()
   private startPromise: Promise<boolean> | null = null
@@ -79,7 +81,7 @@ export class CollaborationSessionRuntime {
   private readonly emit = (): void => { const snapshot = this.snapshot(); for (const listener of this.listeners) listener(snapshot) }
 
   async start(): Promise<boolean> {
-    if (this.stopped) throw new Error("Session runtime has stopped")
+    if (this.stopped || this.stopping) throw new Error("Session runtime has stopped")
     if (this.provider) return true
     if (!this.startPromise) this.startPromise = this.open().finally(() => { this.startPromise = null })
     return this.startPromise
@@ -90,8 +92,9 @@ export class CollaborationSessionRuntime {
     try {
       const recovered = await (this.options.offline ? this.options.checkpoints.recoverLocal() : this.options.checkpoints.bootstrap())
       if (!recovered) { this.connection = "idle"; this.error = "Waiting for an editor to initialize the encrypted session"; this.emit(); return false }
-      if (this.stopped) return false
+      if (this.stopped || this.stopping) return false
       await this.options.beforeReplay?.(recovered.update)
+      if (this.stopped || this.stopping) return false
       Y.applyUpdate(this.files.doc, recovered.update, "snapshot")
       this.provider = new CollabWsProvider({
         doc: this.files.doc, awareness: this.awareness, session: this.options.session, encryption: this.options.encryption,
@@ -99,8 +102,8 @@ export class CollaborationSessionRuntime {
         refreshSession: this.options.refreshSession,
         onApplied: (sequence, encoded) => this.options.store.saveAcknowledged(sequence, encoded),
         onStateChange: (state, error) => { this.connection = state; this.error = error ?? null; this.emit() },
-        onPermanentFailure: reason => { this.connection = "error"; this.error = reason; this.options.onAuthorityFailure(reason); this.emit() },
-        onBaseAdvanced: this.options.onPublication,
+        onPermanentFailure: reason => { this.connection = "error"; this.error = reason; if (!this.stopping) this.options.onAuthorityFailure(reason); this.emit() },
+        onBaseAdvanced: (sha, sequence) => { if (!this.stopping) this.options.onPublication(sha, sequence) },
         onRecoveryRequired: this.options.onRecoveryRequired,
         canWrite: this.options.role === "editor",
       })
@@ -117,12 +120,13 @@ export class CollaborationSessionRuntime {
         await this.provider.flushLocalPersistence()
         await this.options.store.acknowledgeEditorIngress(ingress.id)
       }
-      if (this.options.projection) {
+      if (this.options.projection && !this.stopping) {
         this.projection = new SessionFileProjection({ ...this.options.projection, sessionId: this.options.sessionId,
           files: this.files, role: this.options.role, ...this.options.encryption, store: this.options.store,
           readBase: this.options.readBaseFile, persistEdits: () => this.provider!.flushLocalPersistence(),
         })
         this.watcher = watch(this.options.projection.root, { recursive: true }, (_event, filename) => {
+          if (this.stopping || this.stopped) return
           if (!filename) { this.scheduleProjection(); return }
           const relative = filename.toString().replaceAll("\\", "/")
           if (relative.split("/").includes(".git")) return
@@ -144,7 +148,7 @@ export class CollaborationSessionRuntime {
   }
 
   private readonly scheduleProjection = (): void => {
-    if (!this.projection || this.stopped || this.projectionPaused || this.projectionTimer || this.observingExternal || this.fileOperations.size) return
+    if (!this.projection || this.stopped || this.stopping || this.projectionPaused || this.projectionTimer || this.observingExternal || this.fileOperations.size) return
     this.projectionTimer = setTimeout(() => {
       this.projectionTimer = null
       void this.projectFiles().catch(() => {})
@@ -152,7 +156,7 @@ export class CollaborationSessionRuntime {
   }
 
   async projectFiles(): Promise<void> {
-    if (this.observingExternal || this.fileOperations.size) return
+    if (this.stopped || this.stopping || this.observingExternal || this.fileOperations.size) return
     try { await this.projection?.reconcile() }
     catch (error) {
       this.projectionPaused = true
@@ -173,6 +177,7 @@ export class CollaborationSessionRuntime {
     const provider = this.assertEditor()
     assertSharedFilePath(filePath)
     if (this.files.resolvePath(filePath) || await this.options.readBaseFile(filePath)) throw new Error("A file already occupies this path")
+    this.assertEditor() // The awaited Git read may outlive a Leave/quit fence.
     if (content.includes("\0") || Buffer.byteLength(content) > 2 * 1024 * 1024) throw new Error("New file exceeds the shared text limit")
     const id = randomUUID()
     this.files.initializeFile({ id, path: filePath, content, originalPath: null }, "create-file")
@@ -185,6 +190,7 @@ export class CollaborationSessionRuntime {
     const file = this.files.file(id)
     if (!file) throw new Error("Shared file not found")
     if (targetPath !== file.path && await this.options.readBaseFile(targetPath)) throw new Error("A Git file already occupies the target path")
+    this.assertEditor() // Recheck after the asynchronous target-base lookup.
     this.files.renameFile(id, targetPath)
     await provider.flushLocalPersistence()
   }
@@ -206,6 +212,7 @@ export class CollaborationSessionRuntime {
   }
 
   async openFile(filePath: string): Promise<SharedSessionFile> {
+    if (this.stopped || this.stopping) throw new Error("Session runtime is stopping")
     assertSharedFilePath(filePath)
     const existing = this.files.resolvePath(filePath)
     if (existing) return existing
@@ -228,6 +235,7 @@ export class CollaborationSessionRuntime {
       const base = await this.options.readBaseFile(filePath)
       if (!base) throw new Error("This path is absent from the Git base; create a new shared file explicitly")
       if (Buffer.byteLength(base.content) > 2 * 1024 * 1024 || base.content.includes("\0")) throw new Error("This file is Git-only because it is binary or exceeds the shared text limit")
+      this.assertEditor()
       this.files.initializeFile({ id, path: filePath, originalPath: filePath, ...base }, { type: "file-initialization", fileId: id, leaseId: claim.lease.leaseId })
       await this.projection?.trackCanonicalFile(id)
       await provider.captureCommitState()
@@ -250,7 +258,7 @@ export class CollaborationSessionRuntime {
   }
 
   private async reconcileExternalPath(relative: string): Promise<void> {
-    if (this.stopped || this.projectionPaused || !this.projection) return
+    if (this.stopped || this.stopping || this.projectionPaused || !this.projection) return
     assertSharedFilePath(relative)
     if (this.files.files().some(file => file.path === relative || file.originalPath === relative)) {
       try { await this.projection.readExternalText(relative) }
@@ -343,30 +351,47 @@ export class CollaborationSessionRuntime {
     this.emit()
   }
 
-  async checkpointPublished(sequence: number): Promise<void> {
-    if (!this.provider || this.options.role !== "editor") return
-    if (((await this.options.store.recover()).checkpoint?.sequence ?? -1) >= sequence) return
-    await this.provider.waitForSequence(sequence)
-    const state = this.provider.acknowledgedCheckpoint()
-    if (await this.options.checkpoints.checkpoint(state.sequence, state.update)) this.provider.compactAcknowledged(sequence)
+  checkpointPublished(sequence: number): Promise<void> {
+    const provider = this.provider
+    if (!provider || this.stopping || this.stopped || this.options.role !== "editor") return Promise.resolve()
+    const operation = (async () => {
+      if (((await this.options.store.recover()).checkpoint?.sequence ?? -1) >= sequence) return
+      await provider.waitForSequence(sequence)
+      const state = provider.acknowledgedCheckpoint()
+      if (await this.options.checkpoints.checkpoint(state.sequence, state.update)) provider.compactAcknowledged(sequence)
+    })().finally(() => this.checkpointOperations.delete(operation))
+    this.checkpointOperations.add(operation)
+    return operation
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise
     this.stopping = true
-    await this.editorQueue.catch(() => {})
-    if (this.provider) for (const [id, update] of this.pendingEditor) await this.persistEditorUpdate(this.provider, update, id)
-    this.stopped = true
+    // Fence timers and future filesystem events before waiting on any producer.
+    // Already accepted editor/file/checkpoint work is drained, not discarded.
     this.watcher?.close(); this.watcher = null
     for (const timer of this.externalTimers.values()) clearTimeout(timer)
     this.externalTimers.clear()
     if (this.projectionTimer) clearTimeout(this.projectionTimer)
     this.projectionTimer = null
-    await this.startPromise?.catch(() => {})
-    await this.externalQueue.catch(() => {})
-    await this.projection?.flush().catch(() => {})
-    await this.provider?.flushLocalPersistence()
-    this.provider?.destroy(); this.provider = null
-    await this.options.store.flush()
-    this.awareness.destroy(); this.files.doc.off("update", this.emit); this.files.doc.off("update", this.scheduleProjection); this.files.destroy(); this.listeners.clear()
+    const operation = (async () => {
+      await this.startPromise?.catch(() => {})
+      await this.editorQueue.catch(() => {})
+      if (this.provider) for (const [id, update] of this.pendingEditor) await this.persistEditorUpdate(this.provider, update, id)
+      await Promise.allSettled([...this.fileOperations.values(), ...this.checkpointOperations])
+      await this.externalQueue.catch(() => {})
+      await this.projection?.flush().catch(() => {})
+      await this.provider?.flushLocalPersistence()
+      // Close the receive input and await in-flight decryption/acknowledgement
+      // callbacks before the last store flush or destruction of the Yjs owner.
+      await this.provider?.shutdown()
+      await this.options.store.flush()
+      this.provider = null
+      this.stopped = true
+      this.awareness.destroy(); this.files.doc.off("update", this.emit); this.files.doc.off("update", this.scheduleProjection); this.files.destroy(); this.listeners.clear()
+    })()
+    this.stopPromise = operation
+    void operation.catch(() => { if (this.stopPromise === operation) this.stopPromise = null })
+    return operation
   }
 }

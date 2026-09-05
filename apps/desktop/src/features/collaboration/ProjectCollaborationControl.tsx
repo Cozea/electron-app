@@ -3,6 +3,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { SharedSessionEditor } from "./SharedSessionEditor"
+import { CollaborationBinaryPicker } from "./CollaborationBinaryPicker"
+import { CollaborationRecoveryPanel } from "./CollaborationRecoveryPanel"
+import { CollaborationCommitReview } from "./CollaborationCommitReview"
+import type { CollaborationBinarySelection } from "@shared/collaborationCommitReview"
 import { sessionEditorBridge } from "./runtime/SessionEditorBridge"
 import type { CollaborationSessionDescriptor, CollaborationParticipantDescriptor } from "@shared/collaborationSession"
 import type { CollaborationRepositoryBindingDescriptor } from "@shared/collaborationRepository"
@@ -37,7 +41,8 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
   const [message, setMessage] = useState("")
   const [authorName, setAuthorName] = useState("")
   const [authorEmail, setAuthorEmail] = useState("")
-  const [binaryPaths, setBinaryPaths] = useState("")
+  const [binarySelection, setBinarySelection] = useState<{ sessionId: string | null; files: CollaborationBinarySelection[] }>({ sessionId: null, files: [] })
+  const selectedBinaries = binarySelection.sessionId === sessionId ? binarySelection.files : []
   const [prepared, setPrepared] = useState<PreparedCollaborationCommit | null>(null)
   const creationToken = useRef(crypto.randomUUID())
   const control = useCallback(<T,>(operation: string, args: Record<string, unknown>) => api.control({ operation, args }) as Promise<T>, [api])
@@ -113,6 +118,7 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
       <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-y-auto">
         <DialogHeader><DialogTitle>Code collaboration</DialogTitle><DialogDescription>Work together in an isolated GitHub session. Your ordinary workspace stays separate.</DialogDescription></DialogHeader>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        <CollaborationRecoveryPanel sessionId={sessionId ?? retainedId} disabled={busy} />
         {snapshot?.error && <p role="alert" className="text-sm text-destructive">{snapshot.error}</p>}
         {!sessionId && <div className="space-y-3">
           {retainedId && <Button disabled={busy} onClick={() => void run(() => join(retainedId))}>Resume retained session</Button>}
@@ -148,10 +154,10 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
           {snapshot.role === "editor" && <div className="space-y-2 border-t pt-3">
             <Input aria-label="Commit message" placeholder="Commit message" value={message} onChange={event => setMessage(event.target.value)} />
             <div className="flex gap-2"><Input aria-label="Git author name" placeholder="Git author name" value={authorName} onChange={event => setAuthorName(event.target.value)} /><Input aria-label="Git author email" placeholder="Git author email" value={authorEmail} onChange={event => setAuthorEmail(event.target.value)} /></div>
-            <Input aria-label="Binary files to include" placeholder="Optional local binary paths, separated by commas" value={binaryPaths} onChange={event => setBinaryPaths(event.target.value)} />
+            <CollaborationBinaryPicker key={sessionId} sessionId={sessionId} disabled={busy} value={selectedBinaries} onChange={files => setBinarySelection({ sessionId, files })} />
             <p className="text-xs text-muted-foreground">Commit includes all acknowledged shared text and only the local binary paths you select. Push publishes the prepared commit to the session branch.</p>
-            <div className="flex gap-2"><Button disabled={busy || !message || !authorName || !authorEmail || Boolean(prepared && !["published", "discarded"].includes(prepared.state))} onClick={() => void run(async () => { setPrepared(await api.commit({ sessionId, message, authorName, authorEmail, binaryPaths: binaryPaths.split(",").map(value => value.trim()).filter(Boolean) })) })}>Commit shared snapshot</Button>
-              {prepared && !["published", "discarded"].includes(prepared.state) && <><Button disabled={busy} onClick={() => void run(async () => { setPrepared(await api.push(sessionId)) })}>Push {prepared.commitSha.slice(0, 8)}</Button><Button variant="outline" disabled={busy} onClick={() => void run(() => api.discard(sessionId))}>Discard prepared commit</Button></>}
+            <div className="space-y-3"><Button disabled={busy || !message || !authorName || !authorEmail || Boolean(prepared && !["published", "discarded"].includes(prepared.state))} onClick={() => void run(async () => { setPrepared(await api.commit({ sessionId, message, authorName, authorEmail, binaryPaths: selectedBinaries.map(file => file.path), binaryReviews: selectedBinaries })) })}>Commit shared snapshot</Button>
+              {prepared && !["published", "discarded"].includes(prepared.state) && <CollaborationCommitReview key={prepared.commitSha} sessionId={sessionId} prepared={prepared} disabled={busy} onPush={commitSha => void run(async () => { setPrepared(await api.push({ sessionId, commitSha })) })} onDiscard={() => void run(() => api.discard(sessionId))} />}
             </div>
             {prepared && <p className="text-xs">Commit {prepared.commitSha.slice(0, 12)} · {prepared.state} · through update {prepared.throughSequence}</p>}
           </div>}

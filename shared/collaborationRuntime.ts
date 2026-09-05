@@ -1,6 +1,7 @@
 import type { CollaborationConnectionState } from "./CollaborationTransport"
 import type { SharedSessionFile } from "./SessionFileDocument"
 import type { PreparedCollaborationCommit } from "./collaborationDesktop"
+import type { CollaborationBinaryCandidate, CollaborationBinarySelection, CollaborationPreparedReview } from "./collaborationCommitReview"
 
 export interface SessionRuntimeSnapshot {
   sessionId: string
@@ -13,6 +14,8 @@ export interface SessionRuntimeSnapshot {
   gitOnlyPaths: string[]
 }
 export interface CollaborationRuntimeAPI {
+  recoveryInventory(): Promise<import("./collaborationRecovery").CollaborationRecoveryInventory>
+  cleanupRecovery(sessionId: string): Promise<import("./collaborationRecovery").CollaborationRecoveryCleanupResult>
   setup(organizationId: string): Promise<{ authorizationUrl: string }>
   resolve(input: { projectId: string; branch?: string }): Promise<{ branch: string; commitSha: string; branches: string[]; resolutionId: string; repositoryId: string; fullName: string }>
   control(input: { operation: string; args: Record<string, unknown> }): Promise<unknown>
@@ -26,8 +29,10 @@ export interface CollaborationRuntimeAPI {
   renameFile(input: { sessionId: string; fileId: string; path: string }): Promise<void>
   deleteFile(input: { sessionId: string; fileId: string }): Promise<void>
   restoreFile(input: { sessionId: string; fileId: string; path?: string }): Promise<void>
-  commit(input: { sessionId: string; binaryPaths: string[]; message: string; authorName: string; authorEmail: string }): Promise<PreparedCollaborationCommit>
-  push(sessionId: string): Promise<PreparedCollaborationCommit>
+  binaryCandidates(sessionId: string): Promise<CollaborationBinaryCandidate[]>
+  reviewPrepared(input: { sessionId: string; commitSha: string }): Promise<CollaborationPreparedReview>
+  commit(input: { sessionId: string; binaryPaths: string[]; binaryReviews?: CollaborationBinarySelection[]; message: string; authorName: string; authorEmail: string }): Promise<PreparedCollaborationCommit>
+  push(input: { sessionId: string; commitSha: string }): Promise<PreparedCollaborationCommit>
   prepared(sessionId: string): Promise<PreparedCollaborationCommit | null>
   discard(sessionId: string): Promise<void>
   importChanges(input: { sessionId: string; selected: Array<{ path: string; reviewHash: string }> }): Promise<void>

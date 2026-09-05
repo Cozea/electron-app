@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, type IpcMain, type IpcMainInvokeEvent } from "electron"
+import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron"
+import { registerCollaborationShutdown } from "./CollaborationShutdown"
 import * as Effect from "effect/Effect"
 import path from "node:path"
 import type { CollaborationDesktopAPI, CollaborationWorkspaceAuthority } from "../../../../shared/collaborationDesktop"
@@ -84,23 +85,14 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     ])
     if (results.some(result => result.status === "rejected")) throw new Error("Session workspace shutdown was not fully acknowledged; retry Leave")
   })
-  let shutdownComplete = false
-  let shuttingDown = false
-  app.on("before-quit", event => {
-    if (shutdownComplete) return
-    event.preventDefault()
-    if (shuttingDown) return
-    shuttingDown = true
-    void host.shutdown().then(() => { shutdownComplete = true; app.quit() }).catch(() => {
-      shuttingDown = false
-      dialog.showErrorBox("Collaboration recovery needs attention", "Pending edits could not be saved. Free local storage and retry synchronization before quitting.")
-    })
-  })
+  registerCollaborationShutdown(() => host.shutdown())
   const api: CollaborationDesktopAPI = {
     downloadRepository: input => downloader.download(input.projectId, input.slug),
     cancelDownload: async projectId => downloader.cancel(projectId),
     onDownloadProgress: () => { throw new Error("Subscriptions are provided by preload") },
     runtime: {
+      recoveryInventory: () => host.recoveryInventory(),
+      cleanupRecovery: id => host.cleanupRecovery(id),
       setup: id => host.setup(id),
       resolve: input => host.resolve(input),
       control: input => host.control(input.operation, input.args),
@@ -114,13 +106,15 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
       renameFile: input => host.runtime(input.sessionId).renameFile(input.fileId, input.path),
       deleteFile: input => host.runtime(input.sessionId).deleteFile(input.fileId),
       restoreFile: input => host.runtime(input.sessionId).restoreFile(input.fileId, input.path),
+      binaryCandidates: id => coordinator.inspectBinaryCandidates(id),
+      reviewPrepared: input => coordinator.reviewPrepared(input.sessionId, input.commitSha),
       commit: input => host.prepareCommit(input),
       push: id => host.push(id),
       prepared: id => coordinator.getPrepared(id),
       discard: id => host.discard(id),
       importChanges: input => host.importChanges(input.sessionId, input.selected),
       leave: input => host.leave(input.sessionId, input.end ?? false),
-      retry: id => host.runtime(id).retry(),
+      retry: id => host.retry(id),
       onChanged: () => { throw new Error("Subscriptions are provided by preload") },
     },
     prepare: input => coordinator.prepare(input.sessionId, input.sourceWorkspaceId, input.accessToken),
@@ -129,8 +123,8 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     bindingForWorkspace: id => coordinator.bindingForWorkspace(id),
     inspectImportableChanges: id => coordinator.inspectImportableChanges(id),
     readReviewedImport: input => coordinator.readReviewedImport(input.sessionId, input.selected, input.accessToken),
-    prepareCommit: input => coordinator.prepareCommit(input),
-    pushPrepared: input => coordinator.pushPrepared(input.sessionId, input.accessToken),
+    prepareCommit: async () => { throw new Error("Use the main-owned acknowledged shared snapshot commit action") },
+    pushPrepared: async () => { throw new Error("Review and push the exact prepared commit through the session runtime") },
     adoptPublished: input => coordinator.adoptPublished(input.sessionId, input.accessToken, input.sharedPaths),
   }
   // Electron's normal preload is not installed in browser/DevApp guests.
@@ -151,6 +145,8 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
   ipcMain.handle("collaboration:pushPrepared", authorized(api.pushPrepared))
   ipcMain.handle("collaboration:adoptPublished", authorized(api.adoptPublished))
   ipcMain.handle("collaboration:control", authorized(api.runtime.control))
+  ipcMain.handle("collaboration:runtimeRecoveryInventory", authorized(api.runtime.recoveryInventory))
+  ipcMain.handle("collaboration:runtimeCleanupRecovery", authorized(api.runtime.cleanupRecovery))
   ipcMain.handle("collaboration:runtimeSetup", authorized(api.runtime.setup))
   ipcMain.handle("collaboration:runtimeResolve", authorized(api.runtime.resolve))
   ipcMain.handle("collaboration:runtimeImport", authorized(api.runtime.importChanges))
@@ -165,6 +161,8 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
   ipcMain.handle("collaboration:runtimeRenameFile", authorized(api.runtime.renameFile))
   ipcMain.handle("collaboration:runtimeDeleteFile", authorized(api.runtime.deleteFile))
   ipcMain.handle("collaboration:runtimeRestoreFile", authorized(api.runtime.restoreFile))
+  ipcMain.handle("collaboration:runtimeBinaryCandidates", authorized(api.runtime.binaryCandidates))
+  ipcMain.handle("collaboration:runtimeReviewPrepared", authorized(api.runtime.reviewPrepared))
   ipcMain.handle("collaboration:runtimeCommit", authorized(api.runtime.commit))
   ipcMain.handle("collaboration:runtimePush", authorized(api.runtime.push))
   ipcMain.handle("collaboration:runtimePrepared", authorized(api.runtime.prepared))

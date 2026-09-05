@@ -1,4 +1,8 @@
 import path from "node:path"
+import { inventoryRecoveryStorage } from "./RecoveryStorageBudget"
+import { compactVerifiedRecoveryStore } from "./RecoveryStorageCleanup"
+import { COLLABORATION_RECOVERY_LIMIT_BYTES, COLLABORATION_ROOM_RECOVERY_LIMIT_BYTES, type CollaborationRecoveryInventory, type CollaborationRecoveryCleanupResult } from "../../../../shared/collaborationRecovery"
+import type { CollaborationBinarySelection } from "../../../../shared/collaborationCommitReview"
 import { safeStorage } from "electron"
 import { activateNativeWorkspaceRoot } from "./NativeWorkspaceBridge"
 import { createHash } from "node:crypto"
@@ -33,6 +37,8 @@ export class SessionRuntimeHost {
   private readonly sessions = new Map<string, HostedSession>()
   private readonly opening = new Map<string, Promise<boolean>>()
   private openTail: Promise<unknown> = Promise.resolve()
+  private shuttingDown = false
+  private shutdownInFlight: Promise<void> | null = null
   private readonly coordinator: SessionWorkspaceCoordinator
   private readonly root: string
   private readonly changed: (sessionId: string) => void
@@ -69,9 +75,12 @@ export class SessionRuntimeHost {
   }
   active(projectId: string): string | null { return [...this.sessions].find(([, value]) => value.projectId === projectId)?.[0] ?? null }
   async open(sessionId: string, sourceWorkspaceId: string): Promise<boolean> {
-    if (this.sessions.has(sessionId)) return true
+    if (this.shuttingDown) throw new Error("Session recovery is being saved before quit")
     const pending = this.opening.get(sessionId)
     if (pending) return pending
+    const hosted = this.sessions.get(sessionId)
+    if (hosted?.ready) return true
+    if (hosted) { await this.retry(sessionId); return this.sessions.get(sessionId)?.ready ?? false }
     const operation = this.openTail.catch(() => {}).then(() => this.prepareRuntime(sessionId, sourceWorkspaceId)).finally(() => this.opening.delete(sessionId))
     this.openTail = operation
     this.opening.set(sessionId, operation)
@@ -136,7 +145,7 @@ export class SessionRuntimeHost {
     })
     const hosted: HostedSession = { runtime, projectId: binding.projectId, unsubscribe: runtime.subscribe(() => this.changed(sessionId)),
       timer: setInterval(() => {
-        if (hosted.maintenance || !hosted.ready) return
+        if (this.shuttingDown || hosted.maintenance || !hosted.ready) return
         let restart = false
         hosted.maintenance = (async () => {
           const liveAuthority = await this.gateway.post<CollaborationWorkspaceAuthority>("/collab/v2/workspace-context", { sessionId })
@@ -176,7 +185,7 @@ export class SessionRuntimeHost {
           }
         })().finally(() => {
           hosted.maintenance = null
-          if (restart) void this.restartSession(sessionId, sourceWorkspaceId).catch(error => runtime.reportRecoveryError(error))
+          if (restart && !this.shuttingDown && hosted.ready) void this.restartSession(sessionId, sourceWorkspaceId).catch(error => runtime.reportRecoveryError(error))
         })
         void hosted.maintenance.catch(error => runtime.reportRecoveryError(error))
       }, 15_000), maintenance: null, publication: Promise.resolve(), ready: false, recoveryRequired: false }
@@ -200,6 +209,7 @@ export class SessionRuntimeHost {
   private async restartSession(sessionId: string, sourceWorkspaceId: string): Promise<void> {
     const hosted = this.sessions.get(sessionId)
     if (!hosted) return
+    hosted.ready = false
     clearInterval(hosted.timer)
     await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
     await hosted.runtime.stop()
@@ -208,7 +218,7 @@ export class SessionRuntimeHost {
     await this.open(sessionId, sourceWorkspaceId)
   }
 
-  async prepareCommit(input: { sessionId: string; binaryPaths: string[]; message: string; authorName: string; authorEmail: string }): Promise<PreparedCollaborationCommit> {
+  async prepareCommit(input: { sessionId: string; binaryPaths: string[]; binaryReviews?: CollaborationBinarySelection[]; message: string; authorName: string; authorEmail: string }): Promise<PreparedCollaborationCommit> {
     const runtime = this.runtime(input.sessionId)
     await this.control("acquireCommitLease", { sessionId: input.sessionId })
     let renewalError: unknown = null
@@ -227,10 +237,11 @@ export class SessionRuntimeHost {
     } finally { clearInterval(timer) }
   }
 
-  async push(sessionId: string): Promise<PreparedCollaborationCommit> {
+  async push(input: { sessionId: string; commitSha: string }): Promise<PreparedCollaborationCommit> {
+    const { sessionId, commitSha } = input
     this.runtime(sessionId)
     const prepared = await this.coordinator.getPrepared(sessionId)
-    if (!prepared) throw new Error("Prepare and review a commit first")
+    if (!prepared || prepared.commitSha !== commitSha) throw new Error("The prepared commit changed; review the exact commit before pushing")
     // A completed publication can be recovered without acquiring a new lease.
     try { return await this.coordinator.pushPrepared(sessionId, await this.gateway.accessToken()) } catch { /* Reauthorize the exact prepared identity below. */ }
     if (prepared.state === "discarded") throw new Error("This prepared commit was discarded")
@@ -269,13 +280,57 @@ export class SessionRuntimeHost {
     this.changed(sessionId)
   }
 
-  async shutdown(): Promise<void> {
-    for (const [sessionId, hosted] of this.sessions) {
-      clearInterval(hosted.timer)
-      await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
-      await hosted.runtime.stop()
-      hosted.unsubscribe()
+  async recoveryInventory(): Promise<CollaborationRecoveryInventory> {
+    return { ...await inventoryRecoveryStorage(this.root), limitBytes: COLLABORATION_RECOVERY_LIMIT_BYTES, roomLimitBytes: COLLABORATION_ROOM_RECOVERY_LIMIT_BYTES }
+  }
+
+  async cleanupRecovery(sessionId: string): Promise<CollaborationRecoveryCleanupResult> {
+    const binding = await this.coordinator.getBinding(sessionId)
+    if (!binding || binding.generation !== 3) throw new Error("Catalog-owned session recovery is unavailable")
+    const policy = await this.coordinator.bindingForWorkspace(binding.workspaceId)
+    if (policy?.sessionId !== sessionId || policy.projectId !== binding.projectId) throw new Error("Recovery workspace association is invalid")
+    const versions = await this.keys.versions(sessionId)
+    if (versions.length > 64) throw new Error("Recovery cleanup exceeds its bounded key inventory; all data was retained")
+    const result = { files: 0, bytes: 0 }
+    for (const version of versions) {
+      const key = await this.keys.recoverKey(binding.projectId, sessionId, version)
+      if (!key) continue
+      const cleaned = await compactVerifiedRecoveryStore({ root: this.root, roomId: key.session.roomId, projectId: binding.projectId, sessionId, keyVersion: key.keyVersion, roomKeyBase64: key.roomKeyBase64 })
+      result.files += cleaned.files; result.bytes += cleaned.bytes
     }
-    this.sessions.clear()
+    return result
+  }
+
+  async retry(sessionId: string): Promise<void> {
+    const hosted = this.sessions.get(sessionId)
+    if (hosted?.ready) { await hosted.runtime.retry(); return }
+    const binding = await this.coordinator.getBinding(sessionId)
+    if (!binding) throw new Error("Session recovery is unavailable")
+    if (hosted) await this.restartSession(sessionId, binding.sourceWorkspaceId)
+    else await this.open(sessionId, binding.sourceWorkspaceId)
+  }
+
+  shutdown(): Promise<void> {
+    if (this.shutdownInFlight) return this.shutdownInFlight
+    this.shuttingDown = true
+    const operation = (async () => {
+      // A join already in flight must finish before taking the shutdown census.
+      // No new open or maintenance-triggered restart may enter after this fence.
+      await Promise.allSettled([...this.opening.values()])
+      for (const hosted of this.sessions.values()) { hosted.ready = false; clearInterval(hosted.timer) }
+      await Promise.allSettled([...this.sessions.values()].flatMap(hosted => hosted.maintenance ? [hosted.maintenance] : []))
+      for (const [sessionId, hosted] of this.sessions) {
+        await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
+        await hosted.publication.catch(() => {})
+        await hosted.runtime.stop()
+        hosted.unsubscribe()
+        // Successful hosts are removed individually. A later failure must not
+        // cause the next quit attempt to stop a destroyed CRDT owner twice.
+        if (this.sessions.get(sessionId) === hosted) this.sessions.delete(sessionId)
+      }
+    })()
+    this.shutdownInFlight = operation
+    void operation.then(() => { this.shutdownInFlight = null }, () => { this.shutdownInFlight = null; this.shuttingDown = false })
+    return operation
   }
 }

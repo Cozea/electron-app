@@ -305,7 +305,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }, SESSION_POLICY_SWEEP_INTERVAL_MS)
     this.policySweepTimer.unref?.()
 
-    app.once('before-quit', () => {
+    app.once('quit', () => {
       clearInterval(this.policySweepTimer)
     })
   }

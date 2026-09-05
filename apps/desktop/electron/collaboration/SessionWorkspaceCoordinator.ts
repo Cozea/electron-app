@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto"
+import { binaryReviewHash, isSharedTextBytes } from "./binaryReview"
+import { parsePreparedNumstat, type CollaborationBinaryCandidate, type CollaborationPreparedReview } from "../../../../shared/collaborationCommitReview"
 import fs from "node:fs/promises"
 import path from "node:path"
 import type { LocalWorkspaceDTO } from "../../../../shared/workspaceTypes"
@@ -194,6 +196,57 @@ export class SessionWorkspaceCoordinator {
     const prepared = JSON.parse(raw) as PreparedCollaborationCommit
     if (prepared.generation !== 3 || prepared.sessionId !== sessionId) throw new Error("Prepared commit recovery identity is invalid")
     return prepared
+  }
+
+  async inspectBinaryCandidates(sessionId: string): Promise<CollaborationBinaryCandidate[]> {
+    const binding = await this.getBinding(sessionId)
+    if (!binding) throw new Error("Session workspace is unavailable")
+    const workspace = await this.workspace(binding)
+    const result: CollaborationBinaryCandidate[] = []
+    for (const relative of await this.changedPaths(sessionId)) {
+      assertCollaborationPath(relative)
+      const buffer = await this.readRegularFile(workspace.projectRootPath, relative)
+      const entry = await this.git(workspace.projectRootPath, ["ls-tree", "-z", binding.baseCommitSha, "--", relative])
+      let baseBinary = false
+      if (entry) {
+        const match = /^(100644|100755) blob ([a-f0-9]{40})\t/.exec(entry)
+        if (!match) continue // Submodules and symlinks are never publisher binaries.
+        const size = Number((await this.git(workspace.projectRootPath, ["cat-file", "-s", match[2]!])).trim())
+        if (!Number.isSafeInteger(size) || size < 0) throw new Error("Git file size is invalid")
+        baseBinary = size > MAX_TEXT_BYTES
+        if (!baseBinary) {
+          const base = await this.deps.git(["-c", "core.hooksPath=/dev/null", "cat-file", "blob", match[2]!], { cwd: workspace.projectRootPath, captureStdoutBytes: true, maxOutputBytes: MAX_TEXT_BYTES })
+          if (!base.success || !base.stdoutBytes) throw new Error("Git binary review could not be read")
+          baseBinary = !isSharedTextBytes(base.stdoutBytes)
+        }
+      }
+      if (!baseBinary && (buffer === null || isSharedTextBytes(buffer))) continue
+      const executable = buffer !== null && Boolean((await fs.stat(path.join(workspace.projectRootPath, relative))).mode & 0o111)
+      result.push({ path: relative, bytes: buffer?.byteLength ?? 0, executable, reviewHash: binaryReviewHash(buffer, executable), change: buffer === null ? "deleted" : entry ? "modified" : "added" })
+    }
+    return result
+  }
+
+  /** Read immutable Git objects, never the evolving working tree or index. */
+  async reviewPrepared(sessionId: string, commitSha: string): Promise<CollaborationPreparedReview> {
+    assertGitCommitSha(commitSha)
+    const prepared = await this.getPrepared(sessionId)
+    if (!prepared || prepared.commitSha !== commitSha || prepared.state === "discarded") throw new Error("The prepared commit changed; review it again")
+    const binding = await this.getBinding(sessionId)
+    if (!binding) throw new Error("Session recovery is unavailable")
+    const workspace = await this.workspace(binding)
+    const parents = (await this.git(workspace.projectRootPath, ["rev-list", "--parents", "-n", "1", commitSha])).trim().split(/\s+/)
+    if (parents.length !== 2 || parents[0] !== commitSha || parents[1] !== prepared.parentCommitSha) throw new Error("Prepared commit ancestry is invalid")
+    const diff = async (format: string[]) => {
+      const output = await this.deps.git(["-c", "core.hooksPath=/dev/null", "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", ...format, prepared.parentCommitSha, commitSha, "--"], { cwd: workspace.projectRootPath, maxOutputBytes: 8 * 1024 * 1024 })
+      if (!output.success || Buffer.byteLength(output.stdout) > 8 * 1024 * 1024) throw new Error("Complete prepared review exceeds its safe display limit or could not be read; the commit remains retained")
+      return output.stdout
+    }
+    const [summary, patch, message] = await Promise.all([
+      diff(["--numstat", "-z"]), diff(["--patch", "--unified=3", "--src-prefix=a/", "--dst-prefix=b/"]),
+      this.git(workspace.projectRootPath, ["show", "-s", "--format=%B", commitSha]),
+    ])
+    return { sessionId, commitSha, parentCommitSha: prepared.parentCommitSha, throughSequence: prepared.throughSequence, message: message.trimEnd(), files: parsePreparedNumstat(summary), patch }
   }
 
   private async saveBinding(binding: SessionWorkspaceBinding): Promise<void> {
@@ -397,6 +450,10 @@ export class SessionWorkspaceCoordinator {
         if (normalized.has(key)) throw new Error("Snapshot contains colliding file paths")
         normalized.add(key)
       }
+      const binaryReviews = new Map((input.binaryReviews ?? []).map(item => [item.path, item.reviewHash]))
+      if (binaryReviews.size !== input.binaryPaths.length || input.binaryPaths.some(relative => !/^[a-f0-9]{64}$/.test(binaryReviews.get(relative) ?? ""))) throw new Error("Review every selected binary before preparing the commit")
+      const binaryCandidates = input.binaryPaths.length ? await this.inspectBinaryCandidates(input.sessionId) : []
+      if (input.binaryPaths.some(relative => !binaryCandidates.some(candidate => candidate.path === relative && candidate.reviewHash === binaryReviews.get(relative)))) throw new Error("A selected binary changed or is not a Git-only candidate; review local binaries again")
       await fs.mkdir(this.deps.scratchRoot, { recursive: true, mode: 0o700 })
       const scratch = await fs.mkdtemp(path.join(this.deps.scratchRoot, "commit-"))
       const env = { GIT_INDEX_FILE: path.join(scratch, "index") }
@@ -416,6 +473,8 @@ export class SessionWorkspaceCoordinator {
         }
         for (const relative of input.binaryPaths) {
           const buffer = await this.readRegularFile(workspace.projectRootPath, relative)
+          const executable = buffer !== null && Boolean((await fs.stat(path.join(workspace.projectRootPath, relative))).mode & 0o111)
+          if (binaryReviewHash(buffer, executable) !== binaryReviews.get(relative)) throw new Error("A selected binary changed after review; review local binaries again")
           if (!buffer) {
             await this.git(workspace.projectRootPath, ["update-index", "--force-remove", "--", relative], env)
             continue
@@ -425,7 +484,7 @@ export class SessionWorkspaceCoordinator {
           const frozen = path.join(scratch, "binary")
           await fs.writeFile(frozen, buffer, { mode: 0o600 })
           const oid = (await this.git(workspace.projectRootPath, ["hash-object", "-w", "--", frozen], env)).trim()
-          await this.git(workspace.projectRootPath, ["update-index", "--add", "--cacheinfo", "100644", oid, relative], env)
+          await this.git(workspace.projectRootPath, ["update-index", "--add", "--cacheinfo", executable ? "100755" : "100644", oid, relative], env)
         }
         const tree = (await this.git(workspace.projectRootPath, ["write-tree"], env)).trim()
         const commitEnv = { ...env, GIT_AUTHOR_NAME: input.authorName, GIT_AUTHOR_EMAIL: input.authorEmail, GIT_COMMITTER_NAME: input.authorName, GIT_COMMITTER_EMAIL: input.authorEmail }

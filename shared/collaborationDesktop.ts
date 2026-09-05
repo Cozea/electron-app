@@ -1,6 +1,7 @@
 import type { CollaborationParticipantRole, CollaborationSessionDescriptor } from "./collaborationSession"
 import type { CollaborationRuntimeAPI } from "./collaborationRuntime"
 import type { LocalWorkspaceDTO } from "./workspaceTypes"
+import type { CollaborationBinarySelection } from "./collaborationCommitReview"
 
 export interface RepositoryDownloadProgress {
   projectId: string
@@ -61,6 +62,7 @@ export interface PrepareCollaborationCommitInput {
   throughSequence: number
   textChanges: CollaborationTextChange[]
   binaryPaths: string[]
+  binaryReviews?: CollaborationBinarySelection[]
   message: string
   authorName: string
   authorEmail: string

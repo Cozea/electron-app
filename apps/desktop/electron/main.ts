@@ -1,6 +1,8 @@
 import { registerCollaborationHandlers } from "./collaboration/registerCollaborationHandlers"
+import { shutdownCollaboration } from "./collaboration/CollaborationShutdown"
+import { createDurableQuitHandler } from "../../../shared/durableQuit"
 import { createControlledAppUpdateInstaller } from "./services/controlledAppUpdate"
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session, dialog } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -720,9 +722,8 @@ async function stopSubstrateShadowServer(): Promise<void> {
       shadowServerManager = null
       logSubstrateShadow('stopped')
     } catch (error) {
-      logSubstrateShadow('stop-failed', {
-        error: error instanceof Error ? error.message : String(error),
-      })
+      logSubstrateShadow('stop-failed', { error: 'Native backend shutdown was not acknowledged' })
+      throw new Error('Native backend shutdown was not acknowledged')
     }
     return
   }
@@ -734,9 +735,8 @@ async function stopSubstrateShadowServer(): Promise<void> {
     await manager.stop()
     logSubstrateShadow('stopped')
   } catch (error) {
-    logSubstrateShadow('stop-failed', {
-      error: error instanceof Error ? error.message : String(error),
-    })
+    logSubstrateShadow('stop-failed', { error: 'Native backend shutdown was not acknowledged' })
+    throw new Error('Native backend shutdown was not acknowledged')
   }
 }
 
@@ -1700,6 +1700,11 @@ function createWindow() {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
 
+  // Do not prevent this event: that would override the renderer's unload
+  // protection and discard updates which main has not durably accepted yet.
+  win.webContents.on('will-prevent-unload', () => {
+    dialog.showErrorBox('Collaboration edits are still being saved', 'This window was kept open because some edits have not been durably accepted. Retry synchronization, then close the window again.')
+  })
   setBroadcastMainWindow(win)
 }
 
@@ -1863,26 +1868,43 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
-  appIsQuitting = true
-  logAssistantBridge('app-before-quit')
-  orgDevAppArtifactService.dispose()
-  devAppPreviewService.dispose()
-  devAppWorkerHost.dispose()
-  publishedDevAppWorkerHost.dispose()
-  void disposeContainedDevAppRuntime()
-  PreviewSnapshotService.getInstance().dispose()
-  LocalAutomationResolverService.getInstance().dispose()
-  void disposeWorkspaceCatalogRuntime()
-  stopUpdateChecks()
-  void stopSubstrateShadowServer()
-  unregisterBrowserSurfaceHandlers?.()
-  unregisterBrowserSurfaceHandlers = null
-  if (t3BrowserSurfaceService) {
-    void t3BrowserSurfaceService.dispose()
-    t3BrowserSurfaceService = null
-  }
-})
+app.on('will-quit', createDurableQuitHandler({
+  prepare: async () => {
+    // Electron reaches will-quit only after every window accepted unload.
+    // Pending renderer IPC therefore cannot lose its persistence owner here.
+    appIsQuitting = true
+    await shutdownCollaboration()
+  },
+  dispose: async () => {
+    logAssistantBridge('app-will-quit')
+    orgDevAppArtifactService.dispose()
+    devAppPreviewService.dispose()
+    devAppWorkerHost.dispose()
+    publishedDevAppWorkerHost.dispose()
+    PreviewSnapshotService.getInstance().dispose()
+    LocalAutomationResolverService.getInstance().dispose()
+    stopUpdateChecks()
+    await disposeContainedDevAppRuntime()
+    await stopSubstrateShadowServer()
+    unregisterBrowserSurfaceHandlers?.()
+    unregisterBrowserSurfaceHandlers = null
+    if (t3BrowserSurfaceService) {
+      await t3BrowserSurfaceService.dispose()
+      t3BrowserSurfaceService = null
+    }
+    await disposeWorkspaceCatalogRuntime()
+  },
+  quit: () => app.quit(),
+  failed: stage => {
+    if (stage === 'prepare') {
+      appIsQuitting = false
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    }
+    dialog.showErrorBox('Cozea could not safely quit', stage === 'prepare'
+      ? 'Collaboration recovery could not be saved or workspace shutdown was not acknowledged. Local recovery has been retained. Retry synchronization or Leave, then quit again.'
+      : 'A native service did not acknowledge shutdown. Quit again to retry; recovery preparation will not be repeated against disposed services.')
+  },
+}))
 
 app.on('activate', () => {
   if (canCreateMainWindow && BrowserWindow.getAllWindows().length === 0) {

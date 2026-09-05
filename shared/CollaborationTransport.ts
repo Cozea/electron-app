@@ -145,6 +145,8 @@ export class CollabWsProvider {
   private knownSeq: number
   private targetHeadSeq: number
   private destroyed = false
+  private resourcesReleased = false
+  private shutdownPromise: Promise<void> | null = null
   private paused = false
   private readonly chunkReceiver = new CollaborationChunkReceiver()
   private readonly drainWaiters = new Set<() => void>()
@@ -220,7 +222,8 @@ export class CollabWsProvider {
   async startOffline(): Promise<void> {
     this.doc.on("update", this.handleLocalUpdate)
     this.awareness.on("update", this.handleAwarenessUpdate)
-    await this.restoreOutboxAndConnect(false)
+    this.recoveryPromise = this.restoreOutboxAndConnect(false)
+    await this.recoveryPromise
   }
 
   async reconnectAuthorized(session: CollabSessionDescriptor): Promise<void> {
@@ -230,7 +233,8 @@ export class CollabWsProvider {
     await this.connect()
   }
 
-  destroy(): void {
+  private stopReceiving(): void {
+    if (this.destroyed) return
     this.destroyed = true
     this.doc.off("update", this.handleLocalUpdate)
     this.awareness.off("update", this.handleAwarenessUpdate)
@@ -240,6 +244,8 @@ export class CollabWsProvider {
       waiter.reject(new Error("Collaboration transport was destroyed"))
     }
     this.barrierWaiters.clear()
+    for (const done of this.drainWaiters) done()
+    this.drainWaiters.clear()
     const socket = this.socket
     this.socket = null
     if (socket) {
@@ -251,6 +257,28 @@ export class CollabWsProvider {
         socket.close(1000, "Provider destroyed")
       }
     }
+  }
+
+  /** Fence producers before awaiting consumers. An already-entered encrypted
+   * receive callback can still be awaiting onApplied after the socket closes.
+   * A store.flush() alone cannot see a write that has not entered the store yet. */
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise
+    this.stopReceiving()
+    this.shutdownPromise = (async () => {
+      // Recovery and receive failures retain their durable source (outbox/room)
+      // for replay. They must settle before those owners can be disposed.
+      await Promise.allSettled([this.recoveryPromise, this.incomingQueue])
+      await this.flushLocalPersistence()
+      this.destroy()
+    })()
+    return this.shutdownPromise
+  }
+
+  destroy(): void {
+    this.stopReceiving()
+    if (this.resourcesReleased) return
+    this.resourcesReleased = true
     this.outbox.close()
     this.acknowledged.destroy()
   }
@@ -428,6 +456,7 @@ export class CollabWsProvider {
     }
 
     socket.onmessage = (event) => {
+      if (this.destroyed || this.socket !== socket) return
       this.incomingQueue = this.incomingQueue
         .then(() => this.handleIncoming(event.data))
         .catch((error) => this.failFrame(error))
@@ -653,8 +682,13 @@ export class CollabWsProvider {
     if (this.outgoingSuspended) return
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || !this.handshakeReady) return
     if (update.updateBinary.length > COLLABORATION_CHUNK_CHARS) {
-      for (const chunk of await splitCollaborationUpdate(update.idempotencyKey, update.updateBinary)) {
-        this.socket.send(JSON.stringify({ type: "update.chunk", payload: { roomId: this.session.roomId, chunk, timestamp: update.timestamp } }))
+      const socket = this.socket
+      const chunks = await splitCollaborationUpdate(update.idempotencyKey, update.updateBinary)
+      for (const chunk of chunks) {
+        // Closing during asynchronous chunk preparation is not a local
+        // persistence failure: the exact ciphertext is already in the outbox.
+        if (this.destroyed || this.outgoingSuspended || this.socket !== socket || socket.readyState !== WebSocket.OPEN) return
+        socket.send(JSON.stringify({ type: "update.chunk", payload: { roomId: this.session.roomId, chunk, timestamp: update.timestamp } }))
       }
       return
     }

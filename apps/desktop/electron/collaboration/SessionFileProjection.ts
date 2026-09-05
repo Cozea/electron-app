@@ -19,7 +19,7 @@ interface ProjectionOptions {
   role: "editor" | "observer"
   roomKeyBase64: string
   keyVersion: number
-  store: Pick<DurableSessionStore, "readProjection" | "saveProjection">
+  store: Pick<DurableSessionStore, "readProjection" | "saveProjection"> & Partial<Pick<DurableSessionStore, "reserveProjectionWrite">>
   readBase(path: string): Promise<DiskText | null>
   persistEdits(): Promise<void>
 }
@@ -169,7 +169,7 @@ export class SessionFileProjection {
       const entries = await fs.readdir(this.options.recoveryRoot)
       let bytes = 0
       for (const name of entries) bytes += (await fs.lstat(path.join(this.options.recoveryRoot, name))).size
-      if (bytes > 96 * 1024 * 1024) throw new Error("Projection recovery storage is full; synchronization paused")
+      if (bytes + Buffer.byteLength(expected?.content ?? "") > 96 * 1024 * 1024) throw new Error("Projection recovery storage is full; synchronization paused")
       intent.backup = `${intent.id}.retained`
       await this.save()
     }
@@ -179,7 +179,10 @@ export class SessionFileProjection {
       const present = await fs.lstat(backup).catch(error => { if (error.code === "ENOENT") return null; throw error })
       if (!present) {
         if (!this.same(await this.read(oldPath), expected)) throw new Error("Local file changed before projection; recovery intent retained")
-        await fs.rename(await this.filename(oldPath), backup)
+        const source = await this.filename(oldPath)
+        const retain = () => fs.rename(source, backup)
+        if (this.options.store.reserveProjectionWrite) await this.options.store.reserveProjectionWrite((await fs.lstat(source)).size, retain)
+        else await retain()
         const moved = await fs.readFile(backup)
         const movedStat = await fs.lstat(backup)
         if (!expected || !moved.equals(Buffer.from(expected.content)) || Boolean(movedStat.mode & 0o111) !== expected.executable) throw new Error("External write raced projection; displaced bytes were retained")
@@ -194,12 +197,16 @@ export class SessionFileProjection {
         const filename = await this.filename(newPath, true)
         const staging = path.join(this.options.recoveryRoot, `${randomUUID()}.staging`)
         await fs.mkdir(this.options.recoveryRoot, { recursive: true, mode: 0o700 })
-        const handle = await fs.open(staging, "wx", after.executable ? 0o755 : 0o644)
-        try { await handle.writeFile(after.content, "utf8"); await handle.sync() } finally { await handle.close() }
-        // Hard-link is an atomic create-if-absent; it cannot replace a racing
-        // external write and readers never observe a half-written projection.
-        await fs.link(staging, filename)
-        await fs.unlink(staging)
+        const materialize = async () => {
+          const handle = await fs.open(staging, "wx", after.executable ? 0o755 : 0o644)
+          try { await handle.writeFile(after.content, "utf8"); await handle.sync() } finally { await handle.close() }
+          // Hard-link is an atomic create-if-absent; it cannot replace a racing
+          // external write and readers never observe a half-written projection.
+          await fs.link(staging, filename)
+          await fs.unlink(staging)
+        }
+        if (this.options.store.reserveProjectionWrite) await this.options.store.reserveProjectionWrite(Buffer.byteLength(after.content), materialize)
+        else await materialize()
         const directory = await fs.open(path.dirname(filename), "r")
         try { await directory.sync() } finally { await directory.close() }
       }

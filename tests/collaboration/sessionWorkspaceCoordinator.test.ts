@@ -5,9 +5,10 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { SessionWorkspaceCoordinator, type CollaborationCoordinatorDependencies } from "../../apps/desktop/electron/collaboration/SessionWorkspaceCoordinator"
-import type { CollaborationWorkspaceAuthority } from "../../shared/collaborationDesktop"
+import type { CollaborationWorkspaceAuthority, PrepareCollaborationCommitInput } from "../../shared/collaborationDesktop"
 import type { LocalWorkspaceDTO } from "../../shared/workspaceTypes"
 import { assertCollaborationWorkspaceOperation } from "../../apps/desktop/electron/collaboration/workspacePolicy"
+import { binaryReviewHash } from "../../apps/desktop/electron/collaboration/binaryReview"
 
 const exec = promisify(execFile)
 const github = "https://github.com/cozea/test.git"
@@ -67,12 +68,13 @@ beforeEach(async () => {
       if (mapped.includes("fetch") || mapped.includes("clone") || mapped.includes("push")) mapped.unshift("-c", "protocol.file.allow=always")
       try {
         const child = execFile("git", mapped, { cwd: options.cwd, env: { ...process.env, ...options.env }, maxBuffer: 16 * 1024 * 1024 })
-        const result = new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-          let stdout = "", stderr = ""
-          child.stdout?.on("data", chunk => { stdout += chunk })
+        const result = new Promise<{ stdout: string; stdoutBytes: Uint8Array; stderr: string }>((resolve, reject) => {
+          const chunks: Buffer[] = []
+          let stderr = ""
+          child.stdout?.on("data", chunk => { chunks.push(Buffer.from(chunk)) })
           child.stderr?.on("data", chunk => { stderr += chunk })
           child.on("error", reject)
-          child.on("close", code => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr)))
+          child.on("close", code => code === 0 ? resolve({ stdout: Buffer.concat(chunks).toString("utf8"), stdoutBytes: Buffer.concat(chunks), stderr }) : reject(new Error(stderr)))
         })
         child.stdin?.end(options.stdin)
         return { success: true, ...await result }
@@ -104,7 +106,7 @@ function lease() {
   authority.session.commitLeaseUserId = "user"
   authority.session.commitLeaseExpiresAt = now + 30_000
 }
-function commitInput() {
+function commitInput(): PrepareCollaborationCommitInput {
   return { sessionId: "test-session", accessToken: "device-token", throughSequence: 5,
     textChanges: [{ path: "shared.txt", content: "barrier\n" }], binaryPaths: [] as string[],
     message: "Shared snapshot", authorName: "Test", authorEmail: "test@example.com" }
@@ -292,6 +294,7 @@ describe("exact shared Git snapshot", () => {
     const indexBefore = await git(target, "write-tree")
     const input = commitInput()
     input.binaryPaths = ["selected.bin"]
+    input.binaryReviews = (await coordinator.inspectBinaryCandidates("test-session")).filter(file => file.path === "selected.bin")
     const prepared = await coordinator.prepareCommit(input)
     expect(await git(target, "show", `${prepared.commitSha}:shared.txt`)).toBe("barrier")
     expect(await git(target, "ls-tree", "--name-only", prepared.commitSha)).toBe("other.txt\nselected.bin\nshared.txt")
@@ -319,5 +322,63 @@ describe("exact shared Git snapshot", () => {
   it("rejects symlink escapes when reviewing local changes", async () => {
     await fs.symlink(path.join(root, "remote.git"), path.join(source, "escape"))
     await expect(coordinator.inspectImportableChanges("source")).rejects.toThrow("regular workspace files")
+  })
+})
+
+
+describe("immutable collaboration commit review", () => {
+  it("reviews the prepared object after working files and the real index change", async () => {
+    await prepare(); lease()
+    const name = "image, final.bin"
+    await fs.writeFile(path.join(target, name), Buffer.from([0, 255, 1]))
+    const candidates = await coordinator.inspectBinaryCandidates("test-session")
+    expect(candidates.map(file => file.path)).toEqual([name])
+    const input = { ...commitInput(), binaryPaths: [name], binaryReviews: candidates }
+    const prepared = await coordinator.prepareCommit(input)
+    await fs.writeFile(path.join(target, "shared.txt"), "newer working text\n")
+    await fs.writeFile(path.join(target, name), Buffer.from([0, 255, 2]))
+    await git(target, "add", "shared.txt")
+    const indexBefore = await git(target, "write-tree")
+    const review = await coordinator.reviewPrepared("test-session", prepared.commitSha)
+    expect(review.commitSha).toBe(prepared.commitSha)
+    expect(review.parentCommitSha).toBe(prepared.parentCommitSha)
+    expect(review.throughSequence).toBe(5)
+    expect(review.patch).toContain("+barrier")
+    expect(review.patch).not.toContain("newer working text")
+    expect(review.files.find(file => file.path === name)?.binary).toBe(true)
+    expect(await git(target, "write-tree")).toBe(indexBefore)
+    expect(await fs.readFile(path.join(target, name))).toEqual(Buffer.from([0, 255, 2]))
+  })
+
+  it("rejects bytes or executable bits changed since binary selection", async () => {
+    await prepare(); lease()
+    const name = "selected.bin"
+    await fs.writeFile(path.join(target, name), Buffer.from([0, 255, 1]))
+    await fs.chmod(path.join(target, name), 0o644)
+    const reviewed = await coordinator.inspectBinaryCandidates("test-session")
+    await fs.writeFile(path.join(target, name), Buffer.from([0, 255, 2]))
+    await expect(coordinator.prepareCommit({ ...commitInput(), binaryPaths: [name], binaryReviews: reviewed })).rejects.toThrow("review")
+    await fs.writeFile(path.join(target, name), Buffer.from([0, 255, 1]))
+    await fs.chmod(path.join(target, name), 0o755)
+    await expect(coordinator.prepareCommit({ ...commitInput(), binaryPaths: [name], binaryReviews: reviewed })).rejects.toThrow("review")
+    expect(await coordinator.getPrepared("test-session")).toBeNull()
+    expect((await fs.stat(path.join(target, name))).mode & 0o111).not.toBe(0)
+  })
+
+  it("does not let a binary selection bypass the acknowledged text barrier", async () => {
+    await prepare(); lease()
+    const buffer = Buffer.from("unacknowledged publisher-only text\n")
+    await fs.writeFile(path.join(target, "unshared.txt"), buffer)
+    const input = { ...commitInput(), binaryPaths: ["unshared.txt"], binaryReviews: [{ path: "unshared.txt", reviewHash: binaryReviewHash(buffer, false) }] }
+    await expect(coordinator.prepareCommit(input)).rejects.toThrow("Git-only")
+    expect(await coordinator.getPrepared("test-session")).toBeNull()
+  })
+
+  it("requires the exact prepared identity and never reviews discarded state", async () => {
+    await prepare(); lease()
+    const prepared = await coordinator.prepareCommit(commitInput())
+    await expect(coordinator.reviewPrepared("test-session", "f".repeat(40))).rejects.toThrow("changed")
+    await coordinator.discardPrepared("test-session", "token")
+    await expect(coordinator.reviewPrepared("test-session", prepared.commitSha)).rejects.toThrow("changed")
   })
 })
