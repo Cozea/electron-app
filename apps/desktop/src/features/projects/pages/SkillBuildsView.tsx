@@ -39,6 +39,7 @@ import {
   ArrowRight01Icon as __ArrowRightHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
   FlashIcon as __FlashHugeIcon,
+  FolderLibraryIcon as __LibraryHugeIcon,
   Search01Icon as __SearchHugeIcon,
   InformationCircleIcon as __InfoHugeIcon,
   Tick02Icon as __TickHugeIcon,
@@ -563,6 +564,11 @@ export function SkillBuildsView() {
                 busyKey={busyKey}
                 onOpenProvider={setOpenDetail}
                 onOpenShared={() => setOpenDetail("cozea")}
+                onOpenAllSkills={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("view");
+                  setSearchParams(next);
+                }}
                 onEquip={() =>
                   void runMutation(
                     `apply:${selectedBuild.id}`,
@@ -662,6 +668,7 @@ function ProviderHub({
   busyKey,
   onOpenProvider,
   onOpenShared,
+  onOpenAllSkills,
   onEquip,
 }: {
   build: AgentSkillBuild;
@@ -671,6 +678,7 @@ function ProviderHub({
   busyKey: string | null;
   onOpenProvider: (provider: AgentSkillProvider) => void;
   onOpenShared: () => void;
+  onOpenAllSkills: () => void;
   onEquip: () => void;
 }) {
   const counts = providerSkillCounts(loadout);
@@ -682,7 +690,19 @@ function ProviderHub({
           action that belongs to the whole build parked on the right. No
           status badge — that button already reads "Activated" when active. */}
       <header className="relative flex shrink-0 items-center justify-center px-1 pb-3">
-        <h1 className="max-w-[60%] truncate text-2xl font-bold tracking-tight text-foreground">
+        {/* The way back to the library, mirroring the build action opposite. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute top-1/2 left-0 -translate-y-1/2"
+          onClick={onOpenAllSkills}
+        >
+          <HugeiconsIcon icon={__LibraryHugeIcon} />
+          All skills
+        </Button>
+        {/* Reserves room for the button on each side, so the title truncates
+            instead of running under one on a narrow pane. */}
+        <h1 className="max-w-[calc(100%-280px)] truncate text-2xl font-bold tracking-tight text-foreground">
           {build.name}
         </h1>
         <div className="absolute top-1/2 right-0 -translate-y-1/2">
