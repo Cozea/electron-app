@@ -827,8 +827,10 @@ function ProviderHub({
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 size-full overflow-visible"
               >
-                {/* Both rings: the outer diamond and the inset one. */}
-                {["M50 0 L100 50 L50 100 L0 50 Z", "M50 12 L88 50 L50 88 L12 50 Z"].map((d) => (
+                {/* Both rings, each entered at the top and bottom vertices
+                    and split down the two edges either side, so the core is
+                    fed the way the plates are rather than chased round. */}
+                {HUB_CORE_CHARGE_EDGES.map((d) => (
                   <path
                     key={d}
                     d={d}
@@ -918,6 +920,32 @@ const HUB_CHARGE_STUBS = [
   "M615 264 H584",
   "M615 246 H600 V226",
   "M615 298 H600 V318",
+] as const;
+
+/**
+ * The core's rings as four edges each, drawn from the top and bottom vertices
+ * outward to the left and right ones.
+ *
+ * A closed ring would send one dash chasing round the whole diamond. Split
+ * this way the charge enters where the wiring actually arrives, at the top and
+ * bottom, and each entry runs down both sides to meet at the waist.
+ *
+ * The vertices sit outside the 100x100 box on purpose. Both rings are squares
+ * rotated 45 degrees, so their corners reach the half-diagonal rather than the
+ * box edge; a diamond inscribed in the box traces neither ring.
+ */
+const HUB_CORE_CHARGE_EDGES = [
+  // Outer ring: a square at inset 0, so its corners swing out to the
+  // half-diagonal, 50 * sqrt(2) = 70.71, not to the box edge at 50.
+  "M50 -20.71 L-20.71 50",
+  "M50 -20.71 L120.71 50",
+  "M50 120.71 L-20.71 50",
+  "M50 120.71 L120.71 50",
+  // Inner ring: inset 12%, so half-side 38 and half-diagonal 53.74.
+  "M50 -3.74 L-3.74 50",
+  "M50 -3.74 L103.74 50",
+  "M50 103.74 L-3.74 50",
+  "M50 103.74 L103.74 50",
 ] as const;
 
 /** The diagonals that carry the charge the last stretch to the diamond. */

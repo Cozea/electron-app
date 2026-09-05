@@ -726,9 +726,31 @@ describe("the hub's wiring", () => {
     expect(paths).toHaveLength(12);
   });
 
-  it("ends on both of the core's rings", () => {
-    expect(source).toContain("M50 0 L100 50 L50 100 L0 50 Z");
-    expect(source).toContain("M50 12 L88 50 L50 88 L12 50 Z");
+  it("enters both of the core's rings at the top and bottom, splitting each way", () => {
+    const block = source.slice(source.indexOf("const HUB_CORE_CHARGE_EDGES"));
+    const paths = block.slice(0, block.indexOf("] as const")).match(/"M[^"]+"/g) ?? [];
+    // Four edges per ring: two entries, each splitting in two.
+    expect(paths).toHaveLength(8);
+    // No closed ring, which would send one dash chasing round the whole shape.
+    expect(paths.every((d) => !d.includes("Z"))).toBe(true);
+    // Every edge starts on the vertical axis, so nothing enters at the waist.
+    const starts = paths.map((d) => d.match(/M([-\d.]+) ([-\d.]+)/)!.slice(1, 3).map(Number));
+    expect(starts.every(([x]) => x === 50)).toBe(true);
+  });
+
+  it("traces the rings where they are actually drawn", () => {
+    // Both rings are squares rotated 45 degrees, so a corner reaches the
+    // half-diagonal, not the box edge. Inscribing a diamond in the box put the
+    // outer charge on top of the inner ring and the inner charge on nothing.
+    const block = source.slice(source.indexOf("const HUB_CORE_CHARGE_EDGES"));
+    const paths = block.slice(0, block.indexOf("] as const")).match(/"M[^"]+"/g) ?? [];
+    const radii = paths.map((d) => {
+      const [, y] = d.match(/M([-\d.]+) ([-\d.]+)/)!.slice(1, 3).map(Number);
+      return Math.abs(y - 50);
+    });
+    const unique = [...new Set(radii.map((r) => r.toFixed(2)))].sort();
+    // 38 * sqrt(2) and 50 * sqrt(2), to the two decimals the paths carry.
+    expect(unique).toEqual(["53.74", "70.71"]);
   });
 
   it("normalises path length so a short route is not faster than a long one", () => {
