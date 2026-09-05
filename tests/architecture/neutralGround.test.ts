@@ -52,6 +52,12 @@ interface PinnedFeatureImport {
 
 const PINNED_FEATURE_IMPORTS: readonly PinnedFeatureImport[] = [
   {
+    file: "apps/desktop/src/contexts/YjsProjectContext.tsx",
+    specifier: "@/features/collaboration/runtime/seedProjectDocFromWorkspace",
+    because:
+      "The migration provider still owns legacy Yjs bootstrap while the v2 runtime is extracted; seeding is collaboration-owned and one-way.",
+  },
+  {
     file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
     specifier: "@/features/collaboration/hooks/useCollabSession",
     because:
@@ -61,6 +67,12 @@ const PINNED_FEATURE_IMPORTS: readonly PinnedFeatureImport[] = [
     file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
     specifier: "@/features/source-control/hooks/useProjectCheckpointCleanup",
     because: "Same runtime, same reason.",
+  },
+  {
+    file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
+    specifier: "@/features/collaboration/model/collaborationSessionStore",
+    because:
+      "The provider runtime is the application composition boundary that selects the explicitly joined session workspace; the store does not import contexts.",
   },
   {
     file: "apps/desktop/src/contexts/project/projectSyncShared.ts",

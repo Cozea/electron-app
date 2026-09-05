@@ -12,6 +12,7 @@ import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
 import { useCollabSession } from "@/features/collaboration/hooks/useCollabSession"
+import { useCollaborationSessionStore } from "@/features/collaboration/model/collaborationSessionStore"
 import { useYjsFileWriteback } from "@/hooks/useYjsFileWriteback"
 import { DeleteConflictDialog } from "@/components/editor/DeleteConflictDialog"
 import type { CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
@@ -46,10 +47,9 @@ function AgentFileSyncBridge({
     if (!workspaceId || !yjsDoc) return
 
     let cancelled = false
-
-    void window.electronAPI.project.watchStart({ workspaceId }).then((res) => {
-      if (!res?.success && !cancelled) {
-        console.warn("[ProjectWatcher] Failed to start watcher:", res?.error)
+    void window.electronAPI.project.watchStart({ workspaceId }).then((result) => {
+      if (!result?.success && !cancelled) {
+        console.warn("[ProjectWatcher] Failed to start watcher:", result?.error)
       }
     })
 
@@ -78,7 +78,7 @@ export function ProjectSyncProviderRuntime({
   lastSyncAt: initialLastSyncAt,
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
   onFilesChanged,
-  collaborationEnabled = true,
+  collaborationEnabled: _legacyBranchCollaborationEnabled = true,
   activeBranch = null,
   sharedBranch = null,
   documentScopeId = null,
@@ -87,6 +87,13 @@ export function ProjectSyncProviderRuntime({
   const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
   const resolvedUserId = (userId ?? "__inactive_user__") as Id<"users">
   const resolvedUserName = userName ?? "User"
+  const activeBinding = useCollaborationSessionStore((state) =>
+    projectId ? state.activeByProject[String(projectId)] ?? null : null,
+  )
+  const activeSessionId =
+    activeBinding && workspaceId === activeBinding.workspaceId
+      ? activeBinding.sessionId
+      : null
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
 
@@ -97,7 +104,10 @@ export function ProjectSyncProviderRuntime({
   }, [initialLastSyncAt])
 
   const canSync = Boolean(projectId && userId && workspaceId)
-  const sharedCollaborationEnabled = canSync && collaborationEnabled
+  // A v2 room is activated only by an explicit Start/Join binding. The old
+  // shared-branch equality remains useful for legacy local lanes, but it must
+  // not disable the dedicated `cozea/collab/<session-id>` worktree.
+  const sharedCollaborationEnabled = canSync && Boolean(activeSessionId)
   const collaborationMode: "shared" | "local" = sharedCollaborationEnabled ? "shared" : "local"
 
   const {
@@ -107,6 +117,7 @@ export function ProjectSyncProviderRuntime({
     refresh: refreshCollabSession,
   } = useCollabSession({
     projectId: String(resolvedProjectId),
+    sessionId: activeSessionId,
     enabled: sharedCollaborationEnabled,
   })
 
@@ -114,11 +125,13 @@ export function ProjectSyncProviderRuntime({
     sharedCollaborationEnabled && collabSessionStatus === "ready" && collabSession
       ? {
           projectId: String(resolvedProjectId),
+          sessionId: collabSession.sessionId,
           roomId: collabSession.roomId,
           collabWsUrl: collabSession.collabWsUrl,
           token: collabSession.token,
           protocolVersion: collabSession.protocolVersion,
           deviceId: collabSession.deviceId,
+          deviceFingerprint: collabSession.deviceFingerprint,
           devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
           encryption: collabSession.encryption,
         }
@@ -126,22 +139,18 @@ export function ProjectSyncProviderRuntime({
 
   const refreshActiveCollabSession = useMemo(
     () => async (): Promise<CollabSessionDescriptor | null> => {
-      if (!sharedCollaborationEnabled) {
-        return null
-      }
-
+      if (!sharedCollaborationEnabled) return null
       const nextSession = await refreshCollabSession()
-      if (!nextSession?.token || !nextSession?.roomId) {
-        return null
-      }
-
+      if (!nextSession?.token || !nextSession.roomId) return null
       return {
         projectId: String(resolvedProjectId),
+        sessionId: nextSession.sessionId,
         roomId: nextSession.roomId,
         collabWsUrl: nextSession.collabWsUrl,
         token: nextSession.token,
         protocolVersion: nextSession.protocolVersion,
         deviceId: nextSession.deviceId,
+        deviceFingerprint: nextSession.deviceFingerprint,
         devicePublicKeyJwk: nextSession.devicePublicKeyJwk,
         encryption: nextSession.encryption,
       }
@@ -150,33 +159,28 @@ export function ProjectSyncProviderRuntime({
   )
 
   const triggerSync = useCallback(async () => {
-    if (!projectId || !workspaceId) {
-      return
-    }
+    if (!projectId || !workspaceId) return
 
     try {
       if (!sharedCollaborationEnabled) {
         setProgress({
           status: "complete",
-          message: "Local branch mode",
+          message: "Local project mode",
           current: 0,
           total: 0,
-          logs: ["Live collaboration is paused on this branch."],
+          logs: ["Start or join a live session to share working changes."],
         })
-        window.setTimeout(() => {
-          setProgress(IDLE_SYNC_PROGRESS)
-        }, 1200)
+        window.setTimeout(() => setProgress(IDLE_SYNC_PROGRESS), 1_200)
         return
       }
 
       setProgress({
         status: "syncing",
-        message: "Refreshing collaboration session...",
+        message: "Refreshing live collaboration session...",
         current: 0,
         total: 0,
         logs: [],
       })
-
       await refreshActiveCollabSession()
       const now = Date.now()
       setLastSyncAt(now)
@@ -188,9 +192,7 @@ export function ProjectSyncProviderRuntime({
         total: 0,
         logs: [],
       })
-      window.setTimeout(() => {
-        setProgress(IDLE_SYNC_PROGRESS)
-      }, 1200)
+      window.setTimeout(() => setProgress(IDLE_SYNC_PROGRESS), 1_200)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to sync project"
       setProgress({
@@ -203,10 +205,6 @@ export function ProjectSyncProviderRuntime({
     }
   }, [workspaceId, onFilesChanged, projectId, refreshActiveCollabSession, sharedCollaborationEnabled])
 
-  // Identity-stable context value: this object is republished into the
-  // workspace runtime store and fans out to ~100 consumers (sidebar, header,
-  // sync chrome). As an inline literal it changed identity on every render
-  // of this engine — each collab/yjs/progress flip re-rendered them all.
   const syncContextValue = useMemo(
     () =>
       canSync
@@ -220,7 +218,7 @@ export function ProjectSyncProviderRuntime({
             collaborationMode,
             activeBranch,
             sharedBranch,
-            collabSessionStatus,
+            collabSessionStatus: activeSessionId ? collabSessionStatus : "idle",
             collabSessionError,
             collabEncryptionStatus: collabSession?.encryption?.status ?? null,
             triggerSync,
@@ -236,6 +234,7 @@ export function ProjectSyncProviderRuntime({
       collaborationMode,
       activeBranch,
       sharedBranch,
+      activeSessionId,
       collabSessionStatus,
       collabSessionError,
       collabSession?.encryption?.status,
@@ -252,7 +251,7 @@ export function ProjectSyncProviderRuntime({
         userName={resolvedUserName}
         workspaceId={workspaceId}
         enabled={canSync}
-        documentScopeId={documentScopeId}
+        documentScopeId={activeSessionId ?? documentScopeId}
         collaborationEnabled={sharedCollaborationEnabled}
         collabSession={activeCollabSession}
         refreshCollabSession={refreshActiveCollabSession}

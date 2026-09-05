@@ -17,6 +17,8 @@ export interface CipherEnvelopeV1 {
   iv: string
   ciphertext: string
   aad: string
+  /** Optional encrypted attribution; AAD is authenticated but publicly readable. */
+  privateMetadata?: { iv: string; ciphertext: string }
 }
 
 export interface EncryptPayloadArgs {
@@ -25,6 +27,7 @@ export interface EncryptPayloadArgs {
   keyVersion: number
   plaintext: Uint8Array
   metadata: Record<string, unknown>
+  privateMetadata?: Record<string, unknown>
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -78,6 +81,25 @@ export async function encryptPayload(args: EncryptPayloadArgs): Promise<CipherEn
     toOwnedBuffer(args.plaintext),
   )
 
+  let privateMetadata: CipherEnvelopeV1['privateMetadata']
+  if (args.privateMetadata) {
+    const metadataIv = crypto.getRandomValues(new Uint8Array(12))
+    const metadataCiphertext = await crypto.subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv: toOwnedBuffer(metadataIv),
+        // Bind attribution to this update and domain-separate it from code bytes.
+        additionalData: toOwnedBuffer(metadataAdditionalData(bytesToBase64(aadBytes))),
+      },
+      roomKey,
+      encoder.encode(JSON.stringify(args.privateMetadata)),
+    )
+    privateMetadata = {
+      iv: bytesToBase64(metadataIv),
+      ciphertext: bytesToBase64(new Uint8Array(metadataCiphertext)),
+    }
+  }
+
   return {
     v: 1,
     alg: 'A256GCM',
@@ -86,6 +108,7 @@ export async function encryptPayload(args: EncryptPayloadArgs): Promise<CipherEn
     iv: bytesToBase64(iv),
     ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
     aad: bytesToBase64(aadBytes),
+    ...(privateMetadata ? { privateMetadata } : {}),
   }
 }
 
@@ -132,4 +155,30 @@ export function tryParseEnvelope(bytes: Uint8Array): CipherEnvelopeV1 | null {
   } catch {
     return null
   }
+}
+
+function metadataAdditionalData(aad: string): Uint8Array {
+  return encoder.encode(`cozea:private-attribution:v1:${aad}`)
+}
+
+export async function decryptPayloadMetadata(args: {
+  roomKeyBase64: string
+  envelope: CipherEnvelopeV1
+}): Promise<Record<string, unknown>> {
+  const encrypted = args.envelope.privateMetadata
+  if (!encrypted) return {}
+  const plaintext = await crypto.subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv: toOwnedBuffer(base64ToBytes(encrypted.iv)),
+      additionalData: toOwnedBuffer(metadataAdditionalData(args.envelope.aad)),
+    },
+    await importRoomKey(args.roomKeyBase64),
+    toOwnedBuffer(base64ToBytes(encrypted.ciphertext)),
+  )
+  const value: unknown = JSON.parse(decoder.decode(plaintext))
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid encrypted attribution')
+  }
+  return value as Record<string, unknown>
 }
