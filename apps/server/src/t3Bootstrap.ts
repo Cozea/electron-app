@@ -52,8 +52,16 @@ export async function bootstrapT3Server(
     proxy,
     issueWsTicket: () => issueWebSocketTicket(processHandle.baseUrl, accessToken),
     stop: async () => {
-      await proxy.close();
-      await processHandle.stop();
+      // A failed (or slow) transport close must not leave the native process
+      // running. Start both cleanups independently, but never acknowledge a
+      // successful shutdown if either owner could not complete its cleanup.
+      const results = await Promise.allSettled([
+        Promise.resolve().then(() => proxy.close()),
+        Promise.resolve().then(() => processHandle.stop()),
+      ]);
+      if (results.some((result) => result.status === "rejected")) {
+        throw new Error("Native chat shutdown was not fully acknowledged.");
+      }
     },
   };
 }

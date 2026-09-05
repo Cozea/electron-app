@@ -22,75 +22,53 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           submodules: false
           fetch-depth: 0
-
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - name: Bootstrap repository
         run: bun run bootstrap
-
       - name: Verify pinned native runtime
+        run: bun run prepare:t3-runtime:check
+      - name: Inspect native authorization integration points
         run: |
-          bun run prepare:t3-runtime:check
-          mkdir -p "$RUNNER_TEMP/collaboration-native"
-          git -C vendor/t3code archive --format=tar.gz --output="$RUNNER_TEMP/collaboration-native/t3-source.tar.gz" HEAD
-          cp vendor/t3code/apps/server/dist/bin.mjs "$RUNNER_TEMP/collaboration-native/bin.mjs"
-          cp "$(command -v bun)" "$RUNNER_TEMP/collaboration-native/bun"
-          tar -czf "$RUNNER_TEMP/collaboration-native/test-dependencies.tar.gz" \
-            --exclude='*.woff*' --exclude='*.ttf' --exclude='*.otf' \
-            --exclude='.env*' --exclude='*.pem' --exclude='*.key' \
-            node_modules
-
-      - name: Upload native boundary qualification fixture
-        uses: actions/upload-artifact@v4
-        with:
-          name: collaboration-native-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/collaboration-native/t3-source.tar.gz
-            ${{ runner.temp }}/collaboration-native/bin.mjs
-            ${{ runner.temp }}/collaboration-native/bun
-          retention-days: 1
-
-      - name: Upload isolated test dependencies
-        uses: actions/upload-artifact@v4
-        with:
-          name: collaboration-dependencies-${{ github.sha }}
-          path: ${{ runner.temp }}/collaboration-native/test-dependencies.tar.gz
-          retention-days: 1
-
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const root = 'vendor/t3code/apps/server/src/';
+          for (const name of fs.readdirSync(root, {recursive: true}).filter(n => n.endsWith('.ts') && !n.includes('.test.'))) {
+            const source = fs.readFileSync(root + name, 'utf8');
+            if (source.includes('bindCozeaHostUpdateControl') || (source.includes('dispatchCommand') && /rpc|websocket|ws/i.test(name))) {
+              console.log('NATIVE-SOURCE-PATH', name);
+            }
+          }
+          const bundle = fs.readFileSync('vendor/t3code/apps/server/dist/bin.mjs', 'utf8');
+          for (const anchor of ['makeProviderService', 'bindCozeaHostUpdateControl(process', 'ORCHESTRATION_WS_METHODS.dispatchCommand', 'dispatchCommand: ', 'terminal.open', 'terminalOpen']) {
+            const index = bundle.indexOf(anchor);
+            console.log('NATIVE-BUNDLE-ANCHOR', JSON.stringify({anchor, index, excerpt: index < 0 ? '' : bundle.slice(Math.max(0, index - 200), index + 1600)}));
+          }
+          JS
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
-
       - name: Typecheck renderer
         run: bun run typecheck
-
       - name: Typecheck Electron
         run: bun run typecheck:electron
-
       - name: Typecheck tests
         run: bun run typecheck:tests
-
       - name: Typecheck Cloudflare
         run: bun run typecheck:cloudflare
-
       - name: Lint
         run: bun run lint
-
       - name: Test
         run: bun run test
-
       - name: Build
         run: bun run build
-
       - name: Upload validation logs
         if: failure()
         uses: actions/upload-artifact@v4
