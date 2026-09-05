@@ -23,6 +23,7 @@ import {
   initializeDesktopBootstrap,
 } from './app/bootstrap/desktopBootstrap'
 import { featureFlags } from './lib/featureFlags'
+import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -48,6 +49,46 @@ function applyBootstrapRouteFromSearch(): void {
   window.history.replaceState(window.history.state, '', bootstrapRoute)
 }
 
+async function prewarmRestoredWorkbench(bootstrap: DesktopBootstrapSnapshot): Promise<void> {
+  const locator = bootstrap.lastWorkbenchRoute
+  const [workbenchModule] = await Promise.all([
+    import('./lib/workbenchStore'),
+  ])
+
+  const matchingWorkbenches = locator
+    ? Object.values(workbenchModule.useProjectWorkbenchStore.getState().workbenches).filter(
+        (workbench) =>
+          workbench.projectId === locator.projectId &&
+          workbench.laneId === locator.laneId,
+      )
+    : []
+  const restoredTileTypes = new Set(
+    matchingWorkbenches.flatMap((workbench) =>
+      Object.values(workbench.tiles).map((tile) => tile.type),
+    ),
+  )
+
+  const warmups: Array<Promise<unknown>> = [
+    import('./features/projects/pages/ProjectWorkbenchPage'),
+  ]
+
+  if (featureFlags.lazyRendererHosts) {
+    if (restoredTileTypes.has('terminal') || restoredTileTypes.has('devServer')) {
+      warmups.push(import('./features/terminal/TerminalViewHost'))
+    }
+    if (
+      restoredTileTypes.has('browser') ||
+      restoredTileTypes.has('devServer') ||
+      restoredTileTypes.has('devAppPreview') ||
+      restoredTileTypes.has('orgDevApp')
+    ) {
+      warmups.push(import('./features/browser/ElectronBrowserHost'))
+    }
+  }
+
+  await Promise.all(warmups)
+}
+
 ;(globalThis as { __COZEA_OFFSCREEN_SCREENSHOT_FLAG__?: string }).__COZEA_OFFSCREEN_SCREENSHOT_FLAG__ =
   import.meta.env.VITE_FF_OFFSCREEN_SCREENSHOT
 
@@ -66,7 +107,7 @@ async function startRenderer(): Promise<void> {
     window.location.pathname.endsWith('/workbench')
   ) {
     const workbenchWarmStart = markCozeaPerformance('renderer:workbench-code-prewarm-start')
-    await import('./features/projects/pages/ProjectWorkbenchPage')
+    await prewarmRestoredWorkbench(bootstrap)
     const workbenchWarmEnd = markCozeaPerformance('renderer:workbench-code-prewarm-end')
     measureCozeaPerformance('renderer:workbench-code-prewarm', workbenchWarmStart, workbenchWarmEnd)
   }
