@@ -48,16 +48,20 @@ export async function handleCheckpointOperation(storage: DurableObjectStorage, a
     }
     if (!Number.isSafeInteger(sequence) || sequence < (current?.sequence ?? 0) || sequence > head || (!current && sequence !== 0)) throw new Error('Checkpoint sequence must cover a complete acknowledged state')
     const previous = await storage.get<StagedCheckpoint>(LEASE)
-    if (previous && previous.expiresAt > Date.now() && previous.keyVersion === authority.keyVersion) {
+    if (previous && previous.id !== current?.id && previous.expiresAt > Date.now() && previous.keyVersion === authority.keyVersion) {
       if (previous.userId !== authority.userId || previous.sequence !== sequence) return { waiting: true, expiresAt: previous.expiresAt }
       return { lease: previous }
     }
-    if (previous?.totalChars) {
-      const count = Math.ceil(previous.totalChars / COLLABORATION_CHUNK_CHARS)
-      for (let offset = 0; offset < count; offset += 128) await storage.delete(Array.from({ length: Math.min(128, count - offset) }, (_, index) => partKey(previous.id, offset + index)))
-    }
     const lease: CheckpointUploadLease = { id: crypto.randomUUID(), userId: authority.userId, sequence, keyVersion: authority.keyVersion, expiresAt: Date.now() + 120_000 }
-    await storage.put(LEASE, lease)
+    // Retire only a superseded upload. Record its exact identity atomically with
+    // the new lease; a crash must not strand pieces or delete a finalized base.
+    await storage.put({
+      [LEASE]: lease,
+      ...(previous?.totalChars && previous.id !== latest?.id ? {
+        [`checkpoint-cleanup:${previous.id}`]: { generation: 3, id: previous.id, roomId: authority.roomId, projectId: authority.projectId,
+          keyVersion: previous.keyVersion, totalChars: previous.totalChars, chunkCount: Math.ceil(previous.totalChars / COLLABORATION_CHUNK_CHARS) },
+      } : {}),
+    })
     return { lease }
   }
   // Lost finalization replies are safe to retry even after the lease was cleared.
@@ -101,13 +105,12 @@ export async function handleCheckpointOperation(storage: DurableObjectStorage, a
   }
   // Preserve old-key bootstrap until activation completes, including if another
   // removal supersedes this pending key before the gateway receives our reply.
-  if (current && current.keyVersion !== descriptor.keyVersion) await storage.put(`checkpoint-history:${current.keyVersion}`, current)
-  await storage.put(DESCRIPTOR, descriptor)
+  await storage.put({
+    [DESCRIPTOR]: descriptor,
+    ...(current ? { [current.keyVersion !== descriptor.keyVersion ? `checkpoint-history:${current.keyVersion}` : `checkpoint-cleanup:${current.id}`]: current } : {}),
+  })
   await storage.delete(LEASE)
-  // Keep the previous descriptor until the new descriptor is durable. If a
-  // reader raced replacement it retries inspect/read; the room log is intact.
-  if (current && current.keyVersion === descriptor.keyVersion) {
-    for (let offset = 0; offset < current.chunkCount; offset += 128) await storage.delete(Array.from({ length: Math.min(128, current.chunkCount - offset) }, (_, index) => partKey(current.id, offset + index)))
-  }
+  // Bounded retention consumes the durable cleanup record after validating the
+  // replacement, including after a lost finalization reply or process restart.
   return { checkpoint: descriptor }
 }

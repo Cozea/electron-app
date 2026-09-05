@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { retainActiveCheckpoint } from '../../cloudflare/worker/src/lib/collaborationRetention'
+import { handleCheckpointOperation } from '../../cloudflare/worker/src/lib/collaborationCheckpoints'
 import { encryptPayload, envelopeToBytes, decryptPayload, bytesToEnvelope } from '../../shared/collaborationCipher'
 import { collaborationDigest, COLLABORATION_CHUNK_CHARS } from '../../shared/collaborationWire'
 import type { EncryptedCheckpointDescriptor } from '../../shared/collaborationCheckpoint'
@@ -16,8 +17,12 @@ async function fixture() {
   const deletions: string[][] = []
   const storage = {
     get: async (name: string) => structuredClone(records.get(name)),
+    put: async (name: string | Record<string, unknown>, value?: unknown) => {
+      for (const [key, item] of typeof name === 'string' ? [[name, value]] : Object.entries(name)) records.set(key as string, structuredClone(item))
+    },
     list: async (options: DurableObjectStorageListOptions = {}) => new Map([...records].sort(([a], [b]) => a.localeCompare(b)).filter(([name]) => !options.prefix || name.startsWith(options.prefix)).slice(0, options.limit)),
-    delete: async (names: string[]) => {
+    delete: async (input: string | string[]) => {
+      const names = typeof input === 'string' ? [input] : input
       if (names.length > 128) throw new Error('Cloudflare delete limit')
       if (failDelete) { failDelete = false; throw new Error('storage unavailable') }
       deletions.push(names)
@@ -62,6 +67,44 @@ async function fixture() {
 }
 
 describe('activated encrypted checkpoint history retention', () => {
+  it('retains a cleanup cursor across a crash after replacement publication and resumes without an expired-lease wait', async () => {
+    const f = await fixture()
+    f.records.delete('checkpoint-history:1'); f.records.delete('checkpoint-history:2')
+    const auth = { ...authority, role: 'editor' as const, userId: 'alice' }
+    const call = (body: Record<string, unknown>) => handleCheckpointOperation(f.storage, auth, body)
+    const { lease } = await call({ operation: 'claim', sequence: 5 }) as { lease: { id: string } }
+    const encoded = f.records.get('checkpoint-piece:current:0') as string
+    await call({ operation: 'upload', id: lease.id, index: 0, totalChars: encoded.length, digest: await collaborationDigest(encoded), data: encoded })
+    f.failNextDelete()
+    await expect(call({ operation: 'finalize', id: lease.id })).rejects.toThrow('storage unavailable')
+    expect(f.records.get('encrypted-checkpoint')).toMatchObject({ id: lease.id })
+    expect(f.records.get('checkpoint-cleanup:current')).toEqual(f.current)
+    expect(await call({ operation: 'finalize', id: lease.id })).toMatchObject({ checkpoint: { id: lease.id } })
+    expect(await call({ operation: 'claim', sequence: 6 })).toHaveProperty('lease')
+    expect(f.records.has(`checkpoint-cleanup:${lease.id}`)).toBe(false)
+    expect(await retainActiveCheckpoint(f.storage, authority)).toEqual({ removedRecords: 2 })
+    expect(f.records.has('checkpoint-piece:current:0')).toBe(false)
+    expect(f.records.has(`checkpoint-piece:${lease.id}:0`)).toBe(true)
+    expect(await retainActiveCheckpoint(f.storage, authority)).toEqual({ removedRecords: 0 })
+  })
+
+  it('atomically queues an expired partial upload and removes it in bounded retryable batches', async () => {
+    const f = await fixture()
+    f.records.delete('checkpoint-history:1'); f.records.delete('checkpoint-history:2')
+    f.records.set('checkpoint-lease', { id: 'abandoned', userId: 'alice', keyVersion: 3, sequence: 5, expiresAt: 0, totalChars: 260 * COLLABORATION_CHUNK_CHARS })
+    for (let index = 0; index < 260; index++) f.records.set(`checkpoint-piece:abandoned:${index}`, 'partial encrypted upload')
+    const result = await handleCheckpointOperation(f.storage, { ...authority, role: 'editor', userId: 'alice' }, { operation: 'claim', sequence: 5 })
+    expect(result).toHaveProperty('lease')
+    expect(f.records.get('checkpoint-cleanup:abandoned')).toMatchObject({ id: 'abandoned', chunkCount: 260 })
+    f.failNextDelete()
+    await expect(retainActiveCheckpoint(f.storage, authority)).rejects.toThrow('storage unavailable')
+    for (const count of [128, 128, 5]) expect(await retainActiveCheckpoint(f.storage, authority)).toEqual({ removedRecords: count })
+    expect(f.records.has('checkpoint-cleanup:abandoned')).toBe(false)
+    expect(f.records.get('encrypted-checkpoint')).toEqual(f.current)
+    expect(f.records.get('checkpoint-lease')).toMatchObject({ keyVersion: 3, userId: 'alice' })
+    expect(f.records.has('checkpoint-piece:pending:0')).toBe(true)
+  })
+
   it('retains rotation fallbacks until activation and allows an older offline edit after history cleanup', async () => {
     const f = await fixture(), before = structuredClone(f.records)
     for (const auth of [{ ...authority, keyVersion: 2 }, { ...authority, rotationRequired: true }, { ...authority, allowed: false }]) {

@@ -3,7 +3,9 @@ import { collaborationDigest, COLLABORATION_CHUNK_CHARS, COLLABORATION_MAX_ENCOD
 import type { RoomAuthority } from './collaborationV2Convex'
 
 const HISTORY = 'checkpoint-history:'
+const CLEANUP = 'checkpoint-cleanup:'
 const MAX_DELETIONS = 128
+type CleanupCheckpoint = Pick<EncryptedCheckpointDescriptor, 'generation' | 'id' | 'roomId' | 'projectId' | 'keyVersion' | 'totalChars' | 'chunkCount'>
 
 function validateDescriptor(value: EncryptedCheckpointDescriptor, authority: RoomAuthority, head: number): void {
   if (value.generation !== 3 || value.roomId !== authority.roomId || value.projectId !== authority.projectId ||
@@ -26,15 +28,25 @@ export async function retainActiveCheckpoint(storage: DurableObjectStorage, auth
   const current = await storage.get<EncryptedCheckpointDescriptor>('encrypted-checkpoint')
   if (!current || current.keyVersion !== authority.keyVersion) return unchanged
   const history = await storage.list<EncryptedCheckpointDescriptor>({ prefix: HISTORY, limit: 16 })
-  if (!history.size) return unchanged
+  const queued = await storage.list<CleanupCheckpoint>({ prefix: CLEANUP, limit: 1 })
+  if (!history.size && !queued.size) return unchanged
   const head = await storage.get<number>('head-sequence') ?? 0
   validateDescriptor(current, authority, head)
   const lease = await storage.get<{ id: string }>('checkpoint-lease')
-  const candidate = [...history].find(([name, value]) => {
+  let candidate: [string, CleanupCheckpoint] | undefined = [...history].find(([name, value]) => {
     validateDescriptor(value, authority, head)
     if (name !== `${HISTORY}${value.keyVersion}`) throw new Error('Checkpoint history identity is invalid; recovery data was retained')
     return value.keyVersion < current.keyVersion && value.sequence <= current.sequence && value.id !== current.id && value.id !== lease?.id
   })
+  if (!candidate) {
+    for (const [name, value] of queued) {
+      if (value.generation !== 3 || value.roomId !== authority.roomId || value.projectId !== authority.projectId ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(value.id) || name !== `${CLEANUP}${value.id}` || !Number.isSafeInteger(value.keyVersion) || value.keyVersion < 1 ||
+        !Number.isSafeInteger(value.totalChars) || value.totalChars < 1 || value.totalChars > COLLABORATION_MAX_ENCODED_CHECKPOINT ||
+        value.chunkCount !== Math.ceil(value.totalChars / COLLABORATION_CHUNK_CHARS)) throw new Error('Checkpoint cleanup identity is invalid; recovery data was retained')
+      if (value.keyVersion <= current.keyVersion && value.id !== current.id && value.id !== lease?.id) candidate = [name, value]
+    }
+  }
   if (!candidate) return unchanged
 
   // Do not prune a fallback merely because a replacement descriptor exists.
@@ -64,7 +76,7 @@ export async function retainActiveCheckpoint(storage: DurableObjectStorage, auth
   if (keys.length < MAX_DELETIONS) keys.push(historyKey)
   return storage.transaction(async transaction => {
     const latest = await transaction.get<EncryptedCheckpointDescriptor>('encrypted-checkpoint')
-    const previous = await transaction.get<EncryptedCheckpointDescriptor>(historyKey)
+    const previous = await transaction.get<CleanupCheckpoint>(historyKey)
     const pending = await transaction.get<{ id: string }>('checkpoint-lease')
     if (latest?.id !== current.id || latest.digest !== current.digest || previous?.id !== old.id || pending?.id === old.id) return unchanged
     return { removedRecords: await transaction.delete(keys) }
