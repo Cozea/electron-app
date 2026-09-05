@@ -93,9 +93,14 @@ async function issueDeviceSession(): Promise<DeviceSession> {
     body: JSON.stringify({ challenge, signature: signed.signature }),
   })
   const session = await parseResponse<DeviceSession>(completeResponse)
-  void window.cozeaBootstrap?.storeSession(toBootstrapSession(session)).catch((error) => {
+  try {
+    await window.cozeaBootstrap?.storeSession(toBootstrapSession(session))
+  } catch (error) {
+    // Secure persistence improves the next launch but is not a condition for a
+    // valid live device session. Never turn a successful auth exchange into a
+    // login failure merely because local secure storage is unavailable.
     console.warn('[DesktopBootstrap] Failed to persist the refreshed device session.', error)
-  })
+  }
   return session
 }
 
@@ -117,12 +122,14 @@ export async function getDeviceSession(options: { force?: boolean } = {}): Promi
   return await pendingSession
 }
 
-export function clearDeviceSession(): void {
+export async function clearDeviceSession(): Promise<void> {
   cachedSession = null
   pendingSession = null
-  void window.cozeaBootstrap?.clearSession().catch((error) => {
+  try {
+    await window.cozeaBootstrap?.clearSession()
+  } catch (error) {
     console.warn('[DesktopBootstrap] Failed to clear the persisted device session.', error)
-  })
+  }
 }
 
 export async function createOrganizationRecoveryCode(

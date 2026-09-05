@@ -125,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     convex?.clearAuth()
-    clearDeviceSession()
+    await clearDeviceSession()
     setUser(null)
     setConvexUserId(null)
     setPersonalWorkspace(null)
