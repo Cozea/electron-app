@@ -1,3 +1,4 @@
+import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 import { describe, expect, it, beforeEach } from "vitest";
 import { useThreadDetailStore } from "@/features/assistant/model/threadDetailStore";
 import { deriveGenerationStatusPhase } from "../../apps/desktop/src/features/assistant/chat/MessagesTimeline.logic";
@@ -404,5 +405,32 @@ describe("threadDetailStore", () => {
     expect(detail?.activities[0]?.summary).toBe("Running tests");
     expect(detail?.turnDiffSummaries).toHaveLength(1);
     expect(detail?.turnDiffSummaries[0]?.files[0]?.path).toBe("app.ts");
+  });
+});
+
+
+describe("terminal session followed by native text flush", () => {
+  it.each(["interrupted", "ready", "error"])("keeps %s settled while retaining late text", (status) => {
+    const threadId = `late-flush-${status}`;
+    const store = useThreadDetailStore.getState();
+    store.resetThread(threadId);
+    let sequence = 0;
+    const emit = (type: string, payload: Record<string, unknown>) => store.applyEvent(threadId, {
+      type, sequence: ++sequence, payload,
+    } as unknown as OrchestrationEvent);
+    emit("thread.turn-start-requested", {});
+    emit("thread.message-sent", { messageId: "m", role: "assistant", text: "Hello", streaming: true });
+    emit("thread.session-set", { session: { status } });
+    emit("thread.message-sent", { messageId: "m", role: "assistant", text: " world", streaming: true });
+    let detail = store.getThreadDetail(threadId)!;
+    expect(detail.isStreaming).toBe(false);
+    expect(detail.messages[0]).toMatchObject({ text: "Hello world", streaming: false });
+    emit("thread.message-sent", { messageId: "m", role: "assistant", text: "Hello world", streaming: false });
+    expect(store.getThreadDetail(threadId)?.isStreaming).toBe(false);
+    emit("thread.turn-start-requested", {});
+    emit("thread.message-sent", { messageId: "next", role: "assistant", text: "New turn", streaming: true });
+    detail = store.getThreadDetail(threadId)!;
+    expect(detail.isStreaming).toBe(true);
+    expect(detail.messages[1]?.streaming).toBe(true);
   });
 });

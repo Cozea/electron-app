@@ -373,16 +373,65 @@ ready, and later checkpoint events overwrote terminal states. Fork follow-up
 `f2df43a98` preserves interrupted/cancelled and failed states through checkpointing;
 Cozea's local event reader now follows the same terminal-state behavior.
 
-The regression failed before the repair. Afterward the full server/schema/contracts
-suite passed **4117 tests, 9 skipped** and the root suite passed **2111 tests,
-4 skipped**. One existing 30ms logging assertion failed under concurrent full-suite
-load; the complete root suite passed when rerun independently. Server and parent
-typechecks and scoped vendor/root lint passed. Runtime rebuild and native retest
-are pending at this checkpoint; the new fork commit has not been published.
+The cancellation regression failed before the repair. The full vendor suite now
+passes **4117 tests, 9 skipped**. With explicit approval, the fork feature branch
+`codex/provider-qa-fixes` was published and an independent bare repository fetched
+its exact SHA. Parent main remains local; no release was published.
 
-Live desktop inspection verified project/tile restoration, Agent Skills rendering,
-and blocked-provider screens. Fixed a misleading update message that showed the
-OpenCode connection summary instead of installed/available versions. The app
-reports updates for Codex 0.153.2 and OpenCode 1.18.28; applying those updates needs
-the user's separate approval. Cursor is absent; real Antigravity login and signed
-installer replacement remain unverified.
+Further real desktop checks found and repaired three parent integration problems:
+
+- Provider installation can take five minutes, but its client RPC deadline was
+  only sixty seconds. Provider updates now have a six-minute deadline; ordinary
+  RPC requests retain their existing deadline. A fake-clock integration test
+  verifies that a slow update succeeds while an ordinary request times out.
+- Upstream shell upserts were incorrectly cast as domain events and deferred by
+  a recovery coordinator expecting contiguous history sequences. Shell updates
+  now materialize metadata snapshots directly, tolerate sparse sequences, and
+  retain cached transcript slices. Tiles own their detail streams; global shell
+  hydration no longer subscribes to every historical thread. A finished live
+  Codex turn now releases the Working indicator and composer.
+- Native Codex can flush buffered text after the interrupted session event. That
+  text previously reactivated the busy indicator. Terminal state now survives
+  those late chunks until the next turn starts; interrupted/ready/error ordering
+  regressions verify text retention and subsequent-turn streaming.
+
+Also fixed misleading provider-update copy and verified actual installed/available
+versions in the UI. With explicit approval, Cozea's update buttons installed
+Codex **0.153.3** and OpenCode **1.18.29**. Live CUA checks on the existing macOS
+arm64 development app passed:
+
+- Codex new chat, renderer reload/resume, completed-state idle transition and Stop
+  with both database session/turn marked interrupted and the composer available.
+- Codex 0.153.3 resumed isolated 0.153.2 history containing interruption and
+  compaction. Native 0.153.2 Stop, post-Stop chat, compaction and post-compaction
+  chat also passed against the repaired server.
+- OpenCode with Gemini 3.7 Flash returned real responses before and after reload;
+  the unsent draft survived reload, the composer settled, and model catalog opened.
+  An earlier OpenRouter GPT-5 Mini request on 1.18.28 was rejected for insufficient
+  credits; that account/model result does not apply to the successful Gemini test.
+- Project/tile restoration, layout split/maximize/restore, Artifacts round-trip,
+  Agent Skills rendering and blocked-provider screens were exercised.
+
+Final parent checks: **2117 tests passed, 4 skipped**; app/Electron/test typechecks,
+root and scoped client lint, production build and runtime/contract/pin checks pass.
+An existing 30ms logging assertion failed during an earlier concurrent vendor/root
+run; the full root suite passed when rerun independently. Existing Vite/native-loader
+and SQLite warnings remain. An unsigned arm64 `.app` was rebuilt under
+`.agent/provider-upstream/packaged/mac-arm64/Cozea.app`; packaging omits optional
+binaries for other platforms and skips signing as requested by the local QA lane.
+
+The packaged T3 payload was tested through the built shadow bootstrap with fresh
+state and a private copy of pre-upgrade state. The copied database preserved
+**14 projects, 69 threads, 478 messages and 57 native bindings**, including hashes
+of message text and resume data. Expected startup changes are new project columns,
+thread settlement metadata and runtime last-seen timestamps; these are not data
+loss. Logs and receipts are under `.agent/provider-upstream/qa-final-*` and
+`packaged-final-upgrade-verification.json`.
+The packaged GUI itself was not launched against the user's live profile.
+
+Claude chat remains blocked by the existing provider account rejection, Cursor CLI
+is absent, Antigravity login is not configured, and other operating systems and
+signed installer replacement are not live-qualified. Automated fixtures cover
+those protocol paths, but the manifest intentionally keeps full native matrix
+qualification false. No private rollout was rewritten or deleted; only QA chats
+and explicitly approved CLI updates were added to this machine.

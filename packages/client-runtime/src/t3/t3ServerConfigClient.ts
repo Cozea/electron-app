@@ -65,10 +65,12 @@ export class T3ServerConfigClient {
     provider: string,
     instanceId?: string,
   ): Promise<ServerProviderUpdatedPayload> {
-    return (await this.client.callUnary(WS_METHODS.serverUpdateProvider, {
-      provider,
-      ...(instanceId ? { instanceId } : {}),
-    })) as ServerProviderUpdatedPayload;
+    // The server allows five minutes for installation, then refreshes provider health.
+    return (await this.client.callUnary(
+      WS_METHODS.serverUpdateProvider,
+      { provider, ...(instanceId ? { instanceId } : {}) },
+      { timeoutMs: 6 * 60_000 },
+    )) as ServerProviderUpdatedPayload;
   }
 
   private async ensureConfigSubscription(): Promise<void> {

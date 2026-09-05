@@ -80,10 +80,11 @@ describe("T3 server config cutover client", () => {
     });
 
     await expect(client.updateProvider("codex", "codex")).resolves.toBe(payload);
-    expect(callUnary).toHaveBeenCalledWith("server.updateProvider", {
-      provider: "codex",
-      instanceId: "codex",
-    });
+    expect(callUnary).toHaveBeenCalledWith(
+      "server.updateProvider",
+      { provider: "codex", instanceId: "codex" },
+      { timeoutMs: 360_000 },
+    );
   });
 });
 

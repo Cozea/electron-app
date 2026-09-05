@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-09-05T00:03:00Z",
+  "recordedAt": "2026-09-05T01:13:00Z",
   "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
   "upstreamRevision": "0a590fa01af66ec135d2ebf2d5542b08a37dc275",
   "providers": [
@@ -8,7 +8,8 @@
       "driver": "codex",
       "testedRuntimeVersions": [],
       "observedRuntimeVersions": [
-        "0.153.2"
+        "0.153.2",
+        "0.153.3"
       ],
       "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
@@ -20,15 +21,29 @@
         "approvals"
       ],
       "nativeSmoke": {
-        "version": "0.153.2",
+        "version": "0.153.3",
         "model": "gpt-5.6-luna",
         "features": [
           "new-chat",
-          "subsequent-turn",
-          "catalog",
           "streamed-result",
+          "cli-upgrade-resume",
+          "renderer-reload-resume",
+          "stop-interrupted-state",
+          "idle-composer-after-stop"
+        ],
+        "result": "passed",
+        "fullMatrixQualified": false
+      },
+      "priorNativeSmoke": {
+        "version": "0.153.2",
+        "model": "gpt-5.6-luna",
+        "features": [
           "server-restart-resume",
-          "same-native-rollout"
+          "same-native-rollout",
+          "stop-interrupted-state",
+          "post-stop-chat",
+          "compaction",
+          "post-compaction-chat"
         ],
         "result": "passed",
         "fullMatrixQualified": false
@@ -75,7 +90,8 @@
       "driver": "opencode",
       "testedRuntimeVersions": [],
       "observedRuntimeVersions": [
-        "1.18.28"
+        "1.18.28",
+        "1.18.29"
       ],
       "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
@@ -85,7 +101,21 @@
         "process-isolation",
         "stop",
         "progress"
-      ]
+      ],
+      "nativeSmoke": {
+        "version": "1.18.29",
+        "model": "Gemini 3.7 Flash",
+        "features": [
+          "new-chat",
+          "streamed-result",
+          "idle-composer",
+          "draft-reload-restoration",
+          "renderer-reload-resume",
+          "model-catalog"
+        ],
+        "result": "passed; earlier 1.18.28 OpenRouter GPT-5 Mini request was rejected for insufficient credits",
+        "fullMatrixQualified": false
+      }
     },
     {
       "driver": "antigravity",

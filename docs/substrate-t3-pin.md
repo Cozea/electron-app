@@ -14,9 +14,9 @@ constant and parent gitlink synchronized. Generated contract banners record the
 revision they were generated from and change only when contracts are regenerated.
 
 The local QA follow-up pin preserves interrupted/failed turn states when later
-checkpoint events arrive. It is currently retained on the local fork branch
-`codex/provider-qa-fixes`; publish that fork commit before publishing a parent
-branch or release that references it.
+checkpoint events arrive. It is published on the fork feature branch
+`codex/provider-qa-fixes`. An independent bare repository fetched the exact SHA
+successfully; parent main remains local.
 
 ## Cozea runtime policy patches
 
