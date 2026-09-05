@@ -117,11 +117,10 @@ export async function getDeviceSession(options: { force?: boolean } = {}): Promi
 export async function clearDeviceSession(): Promise<void> {
   cachedSession = null
   pendingSession = null
-  try {
-    await window.cozeaBootstrap?.clearSession()
-  } catch (error) {
-    console.warn('[DesktopBootstrap] Failed to clear the persisted device session.', error)
-  }
+  // Persisted secure state is part of logout/reset semantics. If its deletion
+  // fails, let the caller surface/retry the failure instead of claiming a
+  // completed logout that would silently restore on next launch.
+  await window.cozeaBootstrap?.clearSession()
 }
 
 export async function createOrganizationRecoveryCode(
