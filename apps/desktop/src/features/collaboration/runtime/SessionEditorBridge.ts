@@ -10,6 +10,14 @@ export class SessionEditorBridge {
     return this.flush(sessionId)
   }
   count(sessionId: string): number { return this.queues.get(sessionId)?.length ?? 0 }
+  pendingCount(): number {
+    let count = 0
+    for (const queue of this.queues.values()) count += queue.length
+    return count
+  }
+  async flushAll(): Promise<void> {
+    await Promise.all([...this.queues.keys()].map(sessionId => this.flush(sessionId)))
+  }
   flush(sessionId: string): Promise<void> {
     const active = this.running.get(sessionId)
     if (active) return active
@@ -27,4 +35,22 @@ export class SessionEditorBridge {
   }
 }
 
+/** A rejected or in-flight IPC update is not yet main-process recovery data.
+ * Keep the window alive until durable acceptance; a close attempt may retry the
+ * queues, but never grants an unsafe "discard and close" path. */
+export function installSessionEditorUnloadGuard(
+  target: Pick<Window, "addEventListener" | "removeEventListener">,
+  bridge: SessionEditorBridge,
+): () => void {
+  const onBeforeUnload = (event: BeforeUnloadEvent) => {
+    if (bridge.pendingCount() === 0) return
+    event.preventDefault()
+    event.returnValue = "Pending collaboration edits have not been durably accepted."
+    void bridge.flushAll().catch(() => {})
+  }
+  target.addEventListener("beforeunload", onBeforeUnload)
+  return () => target.removeEventListener("beforeunload", onBeforeUnload)
+}
+
 export const sessionEditorBridge = new SessionEditorBridge((sessionId, update) => window.electronAPI.collaboration.runtime.edit({ sessionId, update }))
+if (typeof window !== "undefined") installSessionEditorUnloadGuard(window, sessionEditorBridge)

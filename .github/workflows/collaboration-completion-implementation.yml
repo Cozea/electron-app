@@ -5,9 +5,14 @@ on:
     branches: [codex/collaboration-v2-complete]
     paths:
       - scripts/collaboration-completion-patch.mjs
-      - scripts/collaboration-native-integration.mjs
+      - scripts/collaboration-*-integration.mjs
       - scripts/patch-t3-workspace-authority.mjs
       - scripts/t3-runtime/**
+      - apps/desktop/electron/collaboration/**
+      - apps/desktop/src/features/collaboration/**
+      - shared/collaboration*
+      - shared/durableQuit.ts
+      - tests/collaboration/**
       - .github/workflows/collaboration-completion-implementation.yml
   workflow_dispatch:
 
@@ -39,10 +44,14 @@ jobs:
         run: |
           bun scripts/collaboration-completion-patch.mjs --check
           bun scripts/collaboration-native-integration.mjs --check
+          bun scripts/collaboration-lifecycle-integration.mjs --check
+          bun scripts/collaboration-review-integration.mjs --check
       - name: Apply scoped edits in the isolated checkout
         run: |
           bun scripts/collaboration-completion-patch.mjs
           bun scripts/collaboration-native-integration.mjs
+          bun scripts/collaboration-lifecycle-integration.mjs
+          bun scripts/collaboration-review-integration.mjs
       - name: Bootstrap pinned runtime
         run: bun run bootstrap
       - name: Capture source-only integration diagnostics
@@ -71,7 +80,7 @@ jobs:
           bun x "$manager" --dir vendor/t3code --filter t3 typecheck
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
-      - name: Native admission and shutdown regression tests
+      - name: Focused admission, shutdown and immutable-review regressions
         run: >-
           bunx vitest run
           tests/collaboration/nativeWorkspaceAuthority.test.ts
@@ -81,6 +90,11 @@ jobs:
           tests/collaboration/verifiedChildProcessStop.integration.test.ts
           tests/collaboration/t3BootstrapShutdown.test.ts
           tests/electron/substrateShadowServer.test.ts
+          tests/collaboration/durableQuit.test.ts
+          tests/collaboration/sessionEditorUnload.test.ts
+          tests/collaboration/sessionHostShutdown.test.ts
+          tests/collaboration/commitReview.test.ts
+          tests/collaboration/sessionWorkspaceCoordinator.test.ts
       - name: Typecheck renderer
         run: bun run typecheck
       - name: Typecheck Electron
@@ -108,8 +122,14 @@ jobs:
             apps/desktop/electron/collaboration/NativeWorkspaceAuthorizer.ts \
             apps/desktop/electron/collaboration/registerCollaborationHandlers.ts \
             apps/desktop/electron/collaboration/SessionRuntimeHost.ts \
-            shared/nativeWorkspaceAuthority.ts \
+            apps/desktop/electron/collaboration/SessionWorkspaceCoordinator.ts \
+            apps/desktop/electron/main.ts apps/desktop/electron/preload.ts \
+            apps/desktop/electron/services/WorkbenchSessionManager.ts \
+            apps/desktop/src/features/collaboration/ProjectCollaborationControl.tsx \
+            shared/nativeWorkspaceAuthority.ts shared/collaborationDesktop.ts \
+            shared/collaborationRuntime.ts \
             tests/collaboration/nativeWorkspaceAuthority.test.ts \
+            tests/collaboration/sessionWorkspaceCoordinator.test.ts \
             scripts/prepare-t3-runtime.mjs
           if git diff --cached --quiet; then exit 0; fi
           remote_head="$(git ls-remote origin refs/heads/codex/collaboration-v2-complete | cut -f1)"
@@ -119,5 +139,5 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat: enforce native collaboration authority and scoped agent shutdown'
+          git commit -m 'feat: protect durable session shutdown and review exact shared commits'
           git push origin HEAD:refs/heads/codex/collaboration-v2-complete
