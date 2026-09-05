@@ -141,6 +141,19 @@ it("keeps successful legacy fallback available and probes for a restarted native
   expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ active: true }));
 });
 
+it("surfaces a readiness failure after a previously successful legacy probe", async () => {
+  mocks.readiness.mockResolvedValueOnce(false).mockRejectedValueOnce(new Error("shadow unavailable"));
+  const { update, stop } = start();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ loading: false, error: null }));
+  await vi.advanceTimersByTimeAsync(3500);
+  expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ active: false, loading: false, error: "shadow unavailable" }));
+  expect(mocks.ticket).not.toHaveBeenCalled();
+  stop();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(mocks.readiness).toHaveBeenCalledTimes(2);
+});
+
 it("does not let deferred cleanup or callbacks from a stopped generation clear a rapid same-owner restart", async () => {
   const owner = Symbol();
   const update = vi.fn();

@@ -1,11 +1,22 @@
 export function classifyChatMediaSource(
   source: string,
   cwd?: string,
-): { kind: "direct" | "file" | "blocked"; value: string } {
+): { kind: "direct" | "external" | "file" | "blocked"; value: string } {
   const value = source.trim();
-  if (/^(https?:|blob:|data:image\/|data:audio\/|data:video\/)/i.test(value))
+  // Provider URLs are links, never automatic requests. A hostname/IP filter
+  // cannot prevent redirects or DNS rebinding into the user's private network.
+  if (/^https?:/i.test(value) || value.startsWith("//")) {
+    try {
+      const url = new URL(value.startsWith("//") ? `https:${value}` : value);
+      if (!/^https?:$/.test(url.protocol) || url.username || url.password)
+        return { kind: "blocked", value };
+      return { kind: "external", value: url.href };
+    } catch {
+      return { kind: "blocked", value };
+    }
+  }
+  if (/^(blob:|data:image\/|data:audio\/|data:video\/)/i.test(value))
     return { kind: "direct", value };
-  if (value.startsWith("//")) return { kind: "direct", value: `https:${value}` };
   if (!value || /^[#?]/.test(value)) return { kind: "blocked", value };
   if (/^file:/i.test(value)) {
     try {

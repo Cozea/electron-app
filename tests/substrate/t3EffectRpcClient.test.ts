@@ -17,6 +17,7 @@ class FakeWebSocket {
   static readonly CLOSED = 3;
 
   static instances: FakeWebSocket[] = [];
+  static autoOpen = true;
 
   readonly sent: string[] = [];
   readyState = FakeWebSocket.CONNECTING;
@@ -25,6 +26,7 @@ class FakeWebSocket {
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
     queueMicrotask(() => {
+      if (!FakeWebSocket.autoOpen) return;
       this.readyState = FakeWebSocket.OPEN;
       this.emit("open", {});
     });
@@ -64,6 +66,25 @@ class FakeWebSocket {
 }
 
 describe("T3EffectRpcClient stream protocol", () => {
+  it("preserves the opening timeout diagnostic and closes without sending a request", async () => {
+    vi.useFakeTimers();
+    FakeWebSocket.instances = [];
+    FakeWebSocket.autoOpen = false;
+    const client = new T3EffectRpcClient({ baseUrl: "http://localhost", wsTicket: "ticket", requestTimeoutMs: 100, WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket });
+    try {
+      const pending = client.callUnary("orchestration.dispatchCommand", {}).catch(error => error);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(await pending).toEqual(new Error("T3 WebSocket connect timed out after 100ms"));
+      expect(FakeWebSocket.instances[0]!.readyState).toBe(FakeWebSocket.CLOSED);
+      expect(FakeWebSocket.instances[0]!.sent).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    } finally {
+      await client.close();
+      FakeWebSocket.autoOpen = true;
+      vi.useRealTimers();
+    }
+  });
   it("notifies session owners without a stream and disposes their listeners", async () => {
     FakeWebSocket.instances = [];
     const client = new T3EffectRpcClient({ baseUrl: "http://localhost", wsTicket: "ticket", WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket });

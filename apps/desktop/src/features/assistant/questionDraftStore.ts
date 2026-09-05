@@ -1,6 +1,7 @@
-import { pendingUserInputDraftFromAnswer, resolvePendingUserInputAnswer } from "./pendingUserInput";
 import { create } from "zustand";
-import type { PendingUserInput } from "./chat/session-logic";
+
+import { pendingUserInputDraftFromAnswer, resolvePendingUserInputAnswer } from "@/features/assistant/pendingUserInput";
+import type { PendingUserInput } from "@/features/assistant/chat/session-logic";
 
 export interface QuestionSubmission {
   commandId: string;

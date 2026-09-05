@@ -6,6 +6,7 @@ import {
   type ConversationRowsInput,
   type ConversationRow,
   MAX_INLINE_FOLD_ROWS,
+  workEntryKeys,
 } from "@/features/assistant/chat/conversationRows";
 import type { TimelineEntry } from "@/features/assistant/chat/session-logic";
 
@@ -60,6 +61,39 @@ const sequence = [
 ];
 
 describe("conversation rows", () => {
+  it("gives repeated sibling tool calls unique keys without replaying earlier children", () => {
+    const first = tool("first");
+    const second = tool("second");
+    if (first.kind !== "work" || second.kind !== "work") throw new Error("fixture");
+    first.entry.toolCallId = second.entry.toolCallId = "reused-call";
+    const initial = workEntryKeys([first.entry]);
+    const expanded = workEntryKeys([first.entry, second.entry]);
+    expect(expanded[0]).toBe(initial[0]);
+    expect(expanded[0]).not.toBe(expanded[1]);
+    expect(workEntryKeys([{ ...first.entry, label: "Updated" }, { ...second.entry }])).toEqual(
+      expanded,
+    );
+  });
+  it("keeps reused tool call IDs distinct across final text and fold boundaries", () => {
+    const earlier = tool("earlier");
+    const trailing = tool("trailing");
+    if (earlier.kind !== "work" || trailing.kind !== "work") throw new Error("fixture");
+    earlier.entry.toolCallId = trailing.entry.toolCallId = "reused-call";
+    const rows = buildConversationRows({
+      ...defaults,
+      entries: [message("user", "user"), earlier, message("final", "assistant"), trailing],
+      expanded: { "turn-fold:turn": true },
+    });
+    const flattened = rows.flatMap((row) =>
+      row.kind === "turn-fold" || row.kind === "turn-fold-content" ? row.children : [row],
+    );
+    const ids = flattened.map((row) => row.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(flattened.filter((row) => row.kind === "assistant-meta")).toHaveLength(1);
+    expect(
+      flattened.map((row) => (row.kind === "work-toggle" ? row.groupedEntries[0]!.id : row.id)),
+    ).toEqual(["user", "earlier", "final", "trailing", "assistant-meta:final"]);
+  });
   it("retains inline animation at the threshold and virtualizes larger expanded folds with stable IDs", () => {
     const makeEntries = (count: number) => [
       message("user", "user"),

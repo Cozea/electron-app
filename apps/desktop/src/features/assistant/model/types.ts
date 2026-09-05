@@ -36,29 +36,28 @@ export interface ThreadTerminalGroup {
   terminalIds: string[];
 }
 
-export interface ChatImageAttachment {
-  type: "image";
+export interface ChatAttachmentBase {
   id: string;
   name: string;
   mimeType: string;
   sizeBytes: number;
+}
+
+export interface ChatImageAttachment extends ChatAttachmentBase {
+  type: "image";
   previewUrl?: string;
 }
 
-export type ChatAttachment = ChatImageAttachment | {
+export interface ChatFileAttachment extends ChatAttachmentBase {
   type: "file";
-  id: string;
-  name: string;
-  mimeType: string;
-  sizeBytes: number;
-} | {
+}
+
+export interface ChatUnsupportedAttachment extends ChatAttachmentBase {
   type: "unsupported";
   originalType: string;
-  id: string;
-  name: string;
-  mimeType: string;
-  sizeBytes: number;
-};
+}
+
+export type ChatAttachment = ChatImageAttachment | ChatFileAttachment | ChatUnsupportedAttachment;
 
 export interface ChatMessage {
   id: MessageId;

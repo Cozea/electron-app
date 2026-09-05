@@ -66,13 +66,27 @@ export interface ConversationRowsInput {
 
 export function stableWorkIdentity(entry: WorkLogEntry): string {
   return entry.toolCallId
-    ? `tool:${entry.turnId ?? "no-turn"}:${entry.toolCallId}`
+    ? `tool:${JSON.stringify([entry.turnId ?? null, entry.toolCallId])}`
     : toolRowId(entry);
+}
+
+/** Disambiguate repeated native call IDs without renaming earlier live rows. */
+export function workEntryKeys(entries: readonly WorkLogEntry[]): string[] {
+  const occurrences = new Map<string, number>();
+  return entries.map((entry) => {
+    const identity = stableWorkIdentity(entry);
+    const occurrence = occurrences.get(identity) ?? 0;
+    occurrences.set(identity, occurrence + 1);
+    return JSON.stringify([identity, occurrence]);
+  });
 }
 
 /** One deterministic projection for both snapshot history and live arrivals. */
 export function buildConversationRows(input: ConversationRowsInput): ConversationRow[] {
   const { entries } = input;
+  const workEntries = entries.flatMap((entry) => (entry.kind === "work" ? [entry.entry] : []));
+  const keys = workEntryKeys(workEntries);
+  const workKeys = new Map(workEntries.map((entry, index) => [entry, keys[index]!]));
   const projection = projectConversation(input);
   const phase = deriveToolPhase(
     entries,
@@ -160,7 +174,7 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
       )
         continue;
       const groupedEntries = deduped.slice(start, cut);
-      const id = stableWorkIdentity(first);
+      const id = workKeys.get(first)!;
       const createdAt = first.timelineOrigin?.createdAt ?? first.createdAt;
       const ids = groupedEntries.map(toolRowId);
       if (isDiagnosticWorkEntry(first))

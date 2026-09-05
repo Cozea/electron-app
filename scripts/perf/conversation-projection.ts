@@ -3,17 +3,17 @@
  * Run: bun scripts/perf/conversation-projection.ts
  * Fixtures never contact providers or mutate workspace state.
  */
-import { projectConversation } from "../../apps/desktop/src/features/assistant/chat/conversationProjection";
-import { createConversationRowProjector } from "../../apps/desktop/src/features/assistant/chat/conversationRowProjector";
-import { deriveTimelineEntries } from "../../apps/desktop/src/features/assistant/chat/session-logic";
-import { mergeActivityEntries } from "../../apps/desktop/src/features/assistant/chat/conversationActivityEntries";
+import { projectConversation } from "@/features/assistant/chat/conversationProjection";
+import { createConversationRowProjector } from "@/features/assistant/chat/conversationRowProjector";
+import { deriveTimelineEntries } from "@/features/assistant/chat/session-logic";
+import { mergeActivityEntries } from "@/features/assistant/chat/conversationActivityEntries";
 import {
   buildConversationRows,
   reuseConversationRows,
   type ConversationRowsInput,
-} from "../../apps/desktop/src/features/assistant/chat/conversationRows";
-import type { TimelineEntry } from "../../apps/desktop/src/features/assistant/chat/session-logic";
-import type { MessageId, TurnId } from "../../shared/assistant-contracts";
+} from "@/features/assistant/chat/conversationRows";
+import type { TimelineEntry } from "@/features/assistant/chat/session-logic";
+import type { MessageId, TurnId } from "@shared/assistant-contracts";
 
 const stamp = "2026-09-05T00:00:00.000Z";
 const liveTurn = "live" as TurnId;

@@ -97,7 +97,9 @@ reasoning and plans cannot replace the parent's Thinking/plan state. Compact
 secondary disclosures retain original event payloads, including failures.
 
 Questions keep native option values, multi-select arrays and free-text policy.
-Ordinary composer text/caret stay separate from pending answers; Enter follows
+Each pending question retains its own caret, keyed by thread/request/question;
+resolved requests release those local entries. Ordinary composer text/caret stay
+separate from pending answers; Enter follows
 the same validation as Next/Submit. Async lost-ack retries retain their original
 command identity and answer payload. Approvals retain the provider's choices,
 app identity, warnings and native details.
@@ -105,6 +107,16 @@ app identity, warnings and native details.
 Images/files keep their attachment variants. Signed media URLs share a cancellable
 cache, refresh before expiry and retry failures; unknown variants stay explicitly
 unsupported. Workspace Markdown media uses the existing authorized asset RPC.
+Provider-controlled HTTP(S) media is an explicit external link, never an automatic
+image/audio/video request (including attachment preview URLs). This also avoids
+redirect and DNS-rebinding bypasses that a hostname blacklist cannot prevent.
+Inline data/blob previews and server-authorized attachments remain supported.
+Generic signed `media-file` previews require a bound workspace: relative, absolute,
+and symlink-resolved paths must remain inside its canonical root. The existing
+runtime-preparation patch applies this server-side rule without changing the T3
+pin; missing/ambiguous patch anchors fail preparation. Native type and inode
+checks remain intact. Files outside the workspace must use a supported dedicated
+attachment/thread-artifact resource, not an arbitrary Markdown filesystem path.
 Cozea's image gallery, file/editor routing and generated-artifact actions remain.
 
 Codex file citations and artifact-template directives use the exact pinned pure
@@ -129,6 +141,12 @@ capped retry delays. Transport errors never mean "use legacy"; only a successful
 readiness response can choose that path. Legacy mode bootstraps a full snapshot
 and replays later events. The command/config overlay is removed on disconnect;
 commands are never automatically replayed.
+Shell notices use the transport endpoint in both native and legacy mode. Failed
+readiness probes cannot reuse a previous successful legacy result, and opening
+timeouts retain their specific diagnostic. Invalid session updates and ambiguous
+positive reverts with unnumbered legacy checkpoints trigger snapshot recovery
+without mutating current messages or advancing the event cursor. A zero-turn
+revert remains deterministic; no checkpoint counts are guessed.
 
 One shared serialized bridge-status watcher per renderer checks every three
 seconds while available, backing off failed/unavailable reads up to 30 seconds.
@@ -169,7 +187,10 @@ Two identity fixes prevent avoidable jumping:
 
 - Collapsed lifecycle entries retain a renderer-only `timelineOrigin` (first
   event ID and timestamp). Timeline ordering uses this anchor; row/group keys use
-  native `(turnId, toolCallId)` when present, surviving completion-only snapshots.
+  native `(turnId, toolCallId)` plus its occurrence ordinal when present, surviving
+  ordinary completion-only snapshots while distinguishing reused call IDs.
+  JSON tuple encoding avoids delimiter collisions. Ordinals are assigned before
+  fold grouping; expanded sibling actions also have unique per-occurrence keys.
   The entry's latest event ID, timestamp, status, and payload remain intact.
 - LegendList treats `renderItem` as a React component. It now receives a stable
   module-level component and current rendering context, rather than an inline

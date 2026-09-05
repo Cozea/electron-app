@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { createChatMediaCache } from "../../../apps/desktop/src/features/assistant/chat/chatMediaCache";
+import { createChatMediaCache } from "@/features/assistant/chat/chatMediaCache";
 
 it("shares mounted consumers, refreshes actual expiry, retries failure, and releases the final timer", async () => {
   vi.useFakeTimers();

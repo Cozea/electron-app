@@ -38,6 +38,8 @@ export {
 } from "./t3";
 export {
   applyThreadDetailEvent,
+  settleMessageStreams,
+  type DetailCheckpoint,
   type ThreadDetailReducerResult,
   type ThreadDetailState,
 } from "./state/threadReducer";

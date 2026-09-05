@@ -1,8 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ThreadId } from "@cozea/assistant-contracts";
-import type { ChatAttachment } from "../model/types";
 import { useAuthorizedChatMedia } from "./useAuthorizedChatMedia";
 import { classifyChatMediaSource } from "./chatMediaSource";
+import type { ChatAttachment } from "@/features/assistant/model/types";
 
 const MediaContext = createContext<{ threadId: string; baseUrl: string | null } | null>(null);
 export function ChatMediaProvider({
@@ -101,6 +101,12 @@ export function ChatMarkdownMedia({ src, alt, cwd }: { src: string; alt: string;
         }
       : null,
   );
+  if (source.kind === "external")
+    return (
+      <a href={source.value} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+        {alt || "External media"} (open external media)
+      </a>
+    );
   const resolved = source.kind === "direct" ? source.value : url;
   if (!resolved)
     return (

@@ -99,6 +99,8 @@ export function startT3Cutover(
       update({ ...inactiveCutover, loading: !legacy && status.phase !== "error", error: legacy ? null : status.error });
     },
     connect: async attempt => {
+      // Legacy fallback is valid only for a successful probe in this attempt.
+      legacy = false;
       const abort = new AbortController();
       attempt.own(() => abort.abort());
       const enabled = await readShadowReadyT3Enabled(baseUrl, abort.signal);

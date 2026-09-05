@@ -1,17 +1,15 @@
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import type { ChatAttachment } from "../model/types";
 import { AuthorizedChatAttachment, useChatAttachmentUrl } from "./ChatMedia";
-import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { cn } from "@/lib/utils";
-
-type ImageAttachment = Extract<ChatAttachment, { type: "image" }>;
+import type { ChatAttachment, ChatImageAttachment } from "@/features/assistant/model/types";
+import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
 const MessageImage = memo(function MessageImage({
   attachment,
   urls,
   onExpand,
 }: {
-  attachment: ImageAttachment;
+  attachment: ChatImageAttachment;
   urls: Map<string, string>;
   onExpand: (id: string) => void;
 }) {

@@ -110,9 +110,10 @@ export class T3EffectRpcClient {
         reject(new Error("T3 WebSocket disconnected"));
       };
       const timer = setTimeout(() => {
+        // Settle with the specific cause before disposal rejects an opening socket.
+        reject(new Error(`T3 WebSocket connect timed out after ${this.requestTimeoutMs}ms`));
         dispose();
         ws.close();
-        reject(new Error(`T3 WebSocket connect timed out after ${this.requestTimeoutMs}ms`));
       }, this.requestTimeoutMs);
 
       const onOpen = () => {

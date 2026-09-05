@@ -619,6 +619,16 @@ export function applyThreadDetailEvent(
 
     // ── Revert ──────────────────────────────────────────────────────
     case "thread.reverted": {
+      // Only compatibility detail snapshots can omit this count. A positive
+      // target cannot distinguish retained/removed turns in that state. Let
+      // the subscription owner request an authoritative snapshot, rather than
+      // delete potentially retained text or pretend the revert was applied.
+      if (
+        event.payload.turnCount > 0 &&
+        thread.checkpoints.some((checkpoint) => checkpoint.checkpointTurnCount === undefined)
+      ) {
+        throw new Error("Revert requires numbered checkpoints; resynchronize thread snapshot");
+      }
       const checkpoints = pipe(
         thread.checkpoints,
         Arr.filter(

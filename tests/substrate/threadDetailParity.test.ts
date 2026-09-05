@@ -33,6 +33,43 @@ function apply(sequence: number, type: string, payload: unknown) {
 const detail = () => useThreadDetailStore.getState().getThreadDetail("thread")!;
 
 describe("pinned thread detail parity", () => {
+  beforeEach(() =>
+    useThreadDetailStore.setState({ byThreadId: {}, deletedSequenceByThreadId: {} }),
+  );
+
+  it.each([null, undefined])("rejects absent session payload %s without advancing state", (session) => {
+    apply(1, "thread.session-set", { session: { status: "running", activeTurnId: "turn" } });
+    const previous = detail();
+    expect(() => apply(2, "thread.session-set", { session })).toThrow("Session-set requires a session");
+    expect(detail()).toBe(previous);
+    expect(detail().lastSequence).toBe(1);
+  });
+
+  it("requests resynchronization instead of guessing a positive revert from unnumbered checkpoints", () => {
+    useThreadDetailStore.getState().ingestSnapshot("thread", { snapshotSequence: 1, thread: {
+      messages: [message("a", "turn-a"), message("b", "turn-b")],
+      checkpoints: [{ turnId: "turn-a", completedAt: timestamp }, { turnId: "turn-b", completedAt: timestamp }],
+    } });
+    const previous = detail();
+    expect(() => apply(2, "thread.reverted", { turnCount: 1 })).toThrow("Revert requires numbered checkpoints");
+    expect(detail()).toBe(previous);
+    expect(detail().lastSequence).toBe(1);
+    // A full snapshot is the authority after the recovery request.
+    useThreadDetailStore.getState().ingestSnapshot("thread", { snapshotSequence: 2, thread: {
+      messages: [message("a", "turn-a")], checkpoints: [{ turnId: "turn-a", checkpointTurnCount: 1, completedAt: timestamp }],
+    } });
+    expect(detail().messages.map(m => m.id)).toEqual(["a"]);
+  });
+
+  it("can revert to zero even with unnumbered legacy checkpoints", () => {
+    useThreadDetailStore.getState().ingestSnapshot("thread", { snapshotSequence: 1, thread: {
+      messages: [message("a", "turn-a"), message("user", null, "user")],
+      checkpoints: [{ turnId: "turn-a", completedAt: timestamp }],
+    } });
+    apply(2, "thread.reverted", { turnCount: 0 });
+    expect(detail().messages.map(m => m.id)).toEqual(["user"]);
+    expect(detail().canonical.checkpoints).toEqual([]);
+  });
   it.each(["ready", "interrupted", "error", "stopped"])(
     "restores settled %s snapshots without a final text event",
     (status) => {
@@ -94,9 +131,6 @@ describe("pinned thread detail parity", () => {
     expect(detail().messages[0]?.streaming).toBe(true);
     expect(detail().isStreaming).toBe(true);
   });
-  beforeEach(() =>
-    useThreadDetailStore.setState({ byThreadId: {}, deletedSequenceByThreadId: {} }),
-  );
 
   it("upserts plans with sparse sequences and rejects stale replay", () => {
     useThreadDetailStore.getState().ingestSnapshot("thread", {

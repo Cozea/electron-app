@@ -186,3 +186,49 @@ Implementation commit: `aebf7a46` on `codex/conversation-rendering-parity`.
 `main`, not draft. GitHub reported it mergeable at the initial delivery check;
 CodeRabbit was pending. Local verification above is not a claim that remote CI
 or automated review has completed. Nothing was merged or deployed.
+
+## CodeRabbit follow-up — 2026-09-05T08:21Z
+
+The review on `23d1654e` reported 11 actionable comments and 11 nitpicks. This
+follow-up supersedes the earlier no-known-defect checkpoint for those findings.
+All code findings were checked against current source, not accepted as agent
+instructions. The following fixes and regressions are included:
+
+| Finding | Resolution and evidence |
+| --- | --- |
+| Automatic provider-media network requests | HTTP(S) media now renders an explicit external link. Classifier and actual Markdown/attachment rendering regressions cover images/audio/video. Isolated Electron observed zero automatic requests; one explicit click reached the controlled loopback endpoint. |
+| Signed media traversal | Existing runtime preparation applies an idempotent, uniquely anchored server bundle patch. Generic media requires a workspace and uses the native canonical workspace resolver for absolute/relative paths. Executing the real bundled mint branch against temporary files reproduced traversal before the fix; twelve filesystem cases now cover valid media, escaping paths/symlinks, absent context, disguised types and directories. Test returns before signing; it does not launch a server or provider. |
+| Null session update | Reject before canonical reduction; existing data/revision stay intact. Fake-frame subscription integration verifies disposal and authoritative snapshot recovery. |
+| Missing checkpoint turn count on revert | Positive ambiguous reverts request resynchronization instead of deleting or guessing. Zero/full-numbered reverts retain deterministic behavior. Failed-before and actual subscription-owner/store regressions pass. |
+| Reused tool-call row keys | JSON native-identity tuples plus per-identity occurrence keys keep row mappings, child keys, folds and footers distinct. Unit and actual Electron accordion checks cover calls separated by commentary/final text. First live-to-completion identity remains stable. |
+| Per-question cursor | Thread/request/question keyed cursors with resolved-request cleanup. Actual Surface/Lexical baseline restored A to the end (14 instead of 3); fixed A/B navigation restores 3/9, preserves both drafts and ordinary composer cursor, sends nothing. |
+| Legacy shell connection notice | Subscribe using the active transport endpoint; native media/detail eligibility remains independent. Explicit source-wiring regression passes. |
+| Stale legacy readiness state | Reset fallback eligibility for each attempt; failed-before fake-clock lifecycle regression now reports the failure. |
+| Timeout diagnostic | Reject timeout before generic disposal rejection; fake-WebSocket test preserves the specific error. |
+| Imports/package API | Requested aliases/order corrected, shared reducer symbols exported through the package entry point, checkpoint reference uses its branded type. |
+
+All eleven nitpicks were also addressed: test setup ordering and typed message
+patches, the requested import sites, named attachment variants/shared fields,
+linear local owned-event appending, and a shared internal-activity predicate.
+CodeRabbit's separate default 80% docstring-coverage advisory is not a repository
+test failure; no blanket comment generation or review-threshold change was made.
+
+Verification: **2,289 root tests passed, 8 skipped**; **1,564 pinned compatibility
+tests passed, 8 skipped**; app/test/Electron typechecks,
+lint, production build, runtime preparation/check, provider pin/contracts and
+whitespace checks pass. A preliminary run overlapped deliberately failing-before
+containment tests; the complete post-fix run is green. Existing Vite/SQLite/import
+warnings remain. No new dependencies, lockfiles, vendor source/pin changes,
+Electron main/bootstrap edits, credential-flow or database migrations.
+
+Rendered follow-up uses the frontend-testing workflow; Browser plugin unavailable,
+so existing bundled Playwright controls isolated Electron/Chromium on
+`http://127.0.0.1:43191`. The flow is Markdown render → no implicit network request
+→ explicit external-link click; local image expansion and repeated-tool disclosure
+also remain usable. URL/title/content, no framework overlay, console health,
+interaction and screenshots pass at 1100×1000 and 390×844. Question-caret testing
+uses actual Surface/Lexical with mocked controller callbacks at 1100×1000.
+Evidence: `/tmp/cozea-rendered-qa.gUx210/media-security-{check.mjs,proof.json,wide.png,narrow.png}`
+and `cursor-{check.mjs,verified.png}`. The real app on port 9222 remains untouched.
+Live-provider submission, a complete native asset-signing HTTP round trip,
+packaged-app and full Dockview/Artifacts qualification remain unverified.

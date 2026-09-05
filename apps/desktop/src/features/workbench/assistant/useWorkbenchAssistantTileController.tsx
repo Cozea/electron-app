@@ -202,9 +202,10 @@ export function useWorkbenchAssistantTileController(
   const substrateRpcChat = useSubstrateRpcChat()
   const substrateTransport = useSubstrateChatTransport()
   const t3CutoverActive = useT3CutoverActive()
-  const mediaBaseUrl = substrateTransport.active && t3CutoverActive ? substrateTransport.shadowBaseUrl ?? null : null
+  const transportBaseUrl = substrateTransport.active ? substrateTransport.shadowBaseUrl ?? null : null
+  const mediaBaseUrl = t3CutoverActive ? transportBaseUrl : null
   const detailConnection = useT3ConnectionStatus(mediaBaseUrl && input.tile.threadId ? t3ThreadConnectionKey(mediaBaseUrl, input.tile.threadId) : null)
-  const shellConnection = useT3ConnectionStatus(mediaBaseUrl ? t3ShellConnectionKey(mediaBaseUrl) : null)
+  const shellConnection = useT3ConnectionStatus(transportBaseUrl ? t3ShellConnectionKey(transportBaseUrl) : null)
   const connectionStatus = detailConnection && detailConnection.phase !== "connected" ? detailConnection : shellConnection
   const getOrchestration = useCallback(
     () => resolveOrchestrationApi(t3CutoverActive ? ensureNativeApi().orchestration : null),

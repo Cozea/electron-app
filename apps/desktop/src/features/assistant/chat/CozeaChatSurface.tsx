@@ -55,6 +55,12 @@ import { ChatMediaProvider } from "./ChatMedia"
 import { ChatArtifactTemplateProvider } from "./ChatArtifactTemplate"
 import { appendTemplateUsePrompt, type CodexArtifactTemplate } from "./chatArtifactTemplates"
 import { useCommittedChatCallback } from "./useChatRenderStability"
+import {
+  questionCursorKey,
+  retainQuestionCursors,
+  setQuestionCursor,
+  type QuestionCursors,
+} from "@/features/assistant/chat/questionCursorState"
 import { ChatConnectionNotice } from "./ChatConnectionNotice"
 import type { SubscriptionStatus } from "@/substrate/subscriptionSupervisor"
 import { ProviderModelPicker } from "@/features/assistant/chat/ProviderModelPicker"
@@ -652,14 +658,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasComposerHeader =
     isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt
   const composerValue = activePendingProgress?.customAnswer ?? props.composer
-  const [questionCursor, setQuestionCursor] = useState<{ key: string; cursor: number } | null>(null)
-  const questionCursorKey = activePendingUserInput && activePendingProgress?.activeQuestion
-    ? JSON.stringify([props.thread?.id, activePendingUserInput.requestId, activePendingProgress.activeQuestion.id])
+  const [questionCursors, setQuestionCursors] = useState<QuestionCursors>({})
+  const activeQuestionCursorKey = activePendingUserInput && activePendingProgress?.activeQuestion
+    ? questionCursorKey(
+        props.thread?.id,
+        String(activePendingUserInput.requestId),
+        activePendingProgress.activeQuestion.id,
+      )
     : null
-  const composerCursor = questionCursorKey
-    ? questionCursor?.key === questionCursorKey
-      ? questionCursor.cursor
-      : collapseExpandedComposerCursor(composerValue, composerValue.length)
+  const composerCursor = activeQuestionCursorKey
+    ? questionCursors[activeQuestionCursorKey] ?? collapseExpandedComposerCursor(composerValue, composerValue.length)
     : props.composerCursor
   const [composerExpansionState, setComposerExpansionState] = useState(
     INITIAL_COMPOSER_EXPANSION_STATE,
@@ -1031,6 +1039,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   }, [props.pendingUserInputs])
 
   useEffect(() => {
+    const activeKeys = new Set(
+      props.pendingUserInputs.flatMap((request) =>
+        request.questions.map((question) =>
+          questionCursorKey(props.thread?.id, String(request.requestId), question.id),
+        ),
+      ),
+    )
+    setQuestionCursors((current) => retainQuestionCursors(current, activeKeys))
+  }, [props.pendingUserInputs, props.thread?.id])
+
+  useEffect(() => {
     if (!composerPathTrigger || !props.workspaceId) {
       setComposerPathMenuItems([])
       setIsComposerMenuLoading(false)
@@ -1122,7 +1141,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   const handleComposerChange = (nextValue: string, nextCursor: number) => {
     if (activePendingProgress?.activeQuestion && activePendingUserInput) {
-      if (questionCursorKey) setQuestionCursor({ key: questionCursorKey, cursor: nextCursor })
+      if (activeQuestionCursorKey) {
+        setQuestionCursors((current) => setQuestionCursor(current, activeQuestionCursorKey, nextCursor))
+      }
       props.onUserInputDraftChange(
         String(activePendingUserInput.requestId),
         activePendingProgress.activeQuestion.id,

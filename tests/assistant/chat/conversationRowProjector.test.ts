@@ -4,6 +4,7 @@ import {
   buildConversationRows,
   type ConversationRowsInput,
   type ConversationRow,
+  type TimelineMessage,
 } from "@/features/assistant/chat/conversationRows";
 import { createConversationRowProjector } from "@/features/assistant/chat/conversationRowProjector";
 import type { TimelineEntry } from "@/features/assistant/chat/session-logic";
@@ -48,7 +49,7 @@ const base: ConversationRowsInput = {
 function replace(
   input: ConversationRowsInput,
   index: number,
-  patch: object,
+  patch: Partial<TimelineMessage>,
 ): ConversationRowsInput {
   return {
     ...input,

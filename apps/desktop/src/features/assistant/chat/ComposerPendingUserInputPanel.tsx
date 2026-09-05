@@ -1,17 +1,16 @@
-
-
+import { memo, useCallback, useEffect, useRef } from "react";
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CheckmarkCircle02Icon as __CheckIconHugeIcon } from '@hugeicons/core-free-icons'
 
 import { type ApprovalRequestId } from "@cozea/assistant-contracts";
-import { memo, useCallback, useEffect, useRef } from "react";
-import { type PendingUserInput } from "./session-logic";
+
+import { type PendingUserInput } from "@/features/assistant/chat/session-logic";
 import {
   derivePendingUserInputProgress,
   pendingUserInputShortcutValue,
   shouldAutoAdvancePendingUserInput,
   type PendingUserInputDraftAnswer,
-} from "../pendingUserInput";
+} from "@/features/assistant/pendingUserInput";
 import { cn } from "@/lib/utils";
 
 interface PendingUserInputPanelProps {

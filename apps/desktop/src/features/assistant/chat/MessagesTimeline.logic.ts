@@ -4,6 +4,7 @@ import {
   type TurnId,
 } from "@cozea/assistant-contracts";
 import type { TimelineEntry, WorkLogEntry } from "./session-logic";
+import { isInternalActivity } from "@/features/assistant/chat/activityOwnership";
 import { normalizedToolAction } from "./toolDetailPresentation";
 
 export interface TimelineDurationMessage {
@@ -97,11 +98,7 @@ export function deriveGenerationStatusPhase(
   if (!activeTurnId) return "working";
   const markers = activities
     .filter((activity) => activity.turnId === activeTurnId)
-    .filter((activity) => {
-      const payload = activity.payload as Record<string, unknown> | null;
-      return payload?.timelineBypass !== true &&
-        !(typeof payload?.agentId === "string" && payload.agentId.trim().length > 0);
-    })
+    .filter((activity) => !isInternalActivity(activity))
     .filter(
       (activity) =>
         activity.kind === "reasoning.started" || activity.kind === "reasoning.completed",

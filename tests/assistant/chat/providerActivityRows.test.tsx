@@ -1,8 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { ProviderTaskRow } from "@/features/assistant/chat/ProviderTaskRow";
+
 import { ProviderPlanSteps } from "@/features/assistant/chat/ProviderPlanSteps";
+import { ProviderTaskRow } from "@/features/assistant/chat/ProviderTaskRow";
 import type { ProviderTaskActivity } from "@/features/assistant/chat/providerActivity";
 import { makeActivity } from "./activityFixture";
 

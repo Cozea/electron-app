@@ -53,7 +53,7 @@ import { type TurnDiffSummary } from "@/features/assistant/model/types";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { AssistantResponseActions } from "./AssistantResponseActions";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
-import { conversationRowsEqual, stableWorkIdentity, type ConversationRow as TimelineRow } from "./conversationRows";
+import { conversationRowsEqual, workEntryKeys, type ConversationRow as TimelineRow } from "./conversationRows";
 import { createConversationRowProjector } from "./conversationRowProjector";
 import type { ConversationTurn } from "./conversationProjection";
 import { projectActivityEntries, mergeActivityEntries } from "./conversationActivityEntries";
@@ -584,12 +584,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       {row.kind === "provider-plan" && <ProviderPlanSteps plan={row.plan} isActive={isChatVisible && isWorkActive && row.plan.turnId === (runningTurnId ?? activeTurnId)} />}
       {row.kind === "work" && (
         <div className="flex min-w-0 flex-col">
-          {row.groupedEntries.map((entry) => (
-            <SimpleWorkEntryRow key={stableWorkIdentity(entry)} compact workEntry={entry}
-              workspaceRoot={workspaceRoot} resolvedTheme={resolvedTheme}
-              artifactUrl={entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined}
-              onOpenArtifact={onOpenArtifact} onOpenTurnDiff={onOpenTurnDiff} />
-          ))}
+          {workEntryKeys(row.groupedEntries).map((key, index) => {
+            const entry = row.groupedEntries[index]!;
+            return (
+              <SimpleWorkEntryRow key={key} compact workEntry={entry}
+                workspaceRoot={workspaceRoot} resolvedTheme={resolvedTheme}
+                artifactUrl={entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined}
+                onOpenArtifact={onOpenArtifact} onOpenTurnDiff={onOpenTurnDiff} />
+            );
+          })}
         </div>
       )}
 
@@ -605,19 +608,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           seenRows={seenToolSummaryRows}
           onToggle={onToggleWorkGroup}
         >
-          {row.groupedEntries.map((entry) => (
-            <SimpleWorkEntryRow
-              key={stableWorkIdentity(entry)}
-              compact
-              active={row.active && row.liveIds.has(toolRowId(entry))}
-              workEntry={entry}
-              workspaceRoot={workspaceRoot}
-              resolvedTheme={resolvedTheme}
-              artifactUrl={entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined}
-              onOpenArtifact={onOpenArtifact}
-              onOpenTurnDiff={onOpenTurnDiff}
-            />
-          ))}
+          {workEntryKeys(row.groupedEntries).map((key, index) => {
+            const entry = row.groupedEntries[index]!;
+            return (
+              <SimpleWorkEntryRow
+                key={key}
+                compact
+                active={row.active && row.liveIds.has(toolRowId(entry))}
+                workEntry={entry}
+                workspaceRoot={workspaceRoot}
+                resolvedTheme={resolvedTheme}
+                artifactUrl={entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined}
+                onOpenArtifact={onOpenArtifact}
+                onOpenTurnDiff={onOpenTurnDiff}
+              />
+            );
+          })}
         </ToolGroupSummary>
       )}
 

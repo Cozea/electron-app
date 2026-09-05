@@ -1,9 +1,32 @@
 import { expect, it } from "vitest";
 import { TurnId } from "@cozea/assistant-contracts";
-import { deriveProviderActivityState } from "@/features/assistant/chat/providerActivity";
+import { deriveProviderActivityState, groupOwnedActivity } from "@/features/assistant/chat/providerActivity";
+import { isInternalActivity } from "@/features/assistant/chat/activityOwnership";
 import { makeActivity } from "./activityFixture";
 
 const turnId = TurnId.makeUnsafe("turn");
+it("shares native internal attribution rules without hiding blank or malformed owners", () => {
+  for (const payload of [{ agentId: "child" }, { agentId: " child " }, { timelineBypass: true }]) {
+    expect(isInternalActivity(makeActivity({ sequence: 1, payload }))).toBe(true);
+  }
+  for (const payload of [{}, { agentId: " " }, { agentId: 12 }, { timelineBypass: "true" }]) {
+    expect(isInternalActivity(makeActivity({ sequence: 1, payload }))).toBe(false);
+  }
+});
+
+it("groups a long owned lifecycle without mutating input or prior projected arrays", () => {
+  const events = Object.freeze(Array.from({ length: 1000 }, (_, index) => makeActivity({
+    sequence: index, kind: index === 999 ? "tool.completed" : "tool.progress",
+    payload: { toolCallId: "one", status: index === 999 ? "failed" : "running" },
+  })));
+  const first = groupOwnedActivity(events.slice(0, 10));
+  const full = groupOwnedActivity(events);
+  expect(first[0]?.events).toHaveLength(10);
+  expect(full).toHaveLength(1);
+  expect(full[0]?.events).toEqual(events);
+  expect(full[0]?.latest).toBe(events[999]);
+  expect(full[0]?.events).not.toBe(events);
+});
 it("keeps the spawn turn when completion arrives on a later synthetic turn", () => {
   const state = deriveProviderActivityState([
     makeActivity({

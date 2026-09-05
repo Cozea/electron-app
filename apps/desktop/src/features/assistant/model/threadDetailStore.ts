@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { Schema } from "effect";
 import {
+  type CheckpointRef,
   OrchestrationThread as ThreadSchema,
   OrchestrationMessage as MessageSchema,
   OrchestrationSession as SessionSchema,
@@ -14,7 +15,7 @@ import {
   settleMessageStreams,
   type ThreadDetailState,
   type DetailCheckpoint,
-} from "../../../../../../packages/client-runtime/src/state/threadReducer";
+} from "@cozea/client-runtime";
 import { markLiveText, markSnapshotText } from "./messageTextArrival";
 import type {
   MessageId,
@@ -197,7 +198,7 @@ function mapTurnDiffSummary(raw: unknown): TurnDiffSummary {
       typeof c.assistantMessageId === "string" ? (c.assistantMessageId as MessageId) : undefined,
     checkpointTurnCount:
       typeof c.checkpointTurnCount === "number" ? c.checkpointTurnCount : undefined,
-    checkpointRef: typeof c.checkpointRef === "string" ? (c.checkpointRef as any) : undefined,
+    checkpointRef: typeof c.checkpointRef === "string" ? (c.checkpointRef as CheckpointRef) : undefined,
     files,
   };
 }
@@ -443,15 +444,18 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
             },
           };
           break;
-        case "thread.session-set":
+        case "thread.session-set": {
+          const session = normalizeSession(event.payload.session, threadId);
+          if (session === null) throw new Error("Session-set requires a session");
           event = {
             ...event,
             payload: {
               ...event.payload,
-              session: normalizeSession(event.payload.session, threadId)!,
+              session,
             },
           };
           break;
+        }
       }
       const result = applyThreadDetailEvent(canonical, event);
       if (result.kind === "deleted") {

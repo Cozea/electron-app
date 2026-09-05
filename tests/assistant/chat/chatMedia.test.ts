@@ -1,16 +1,16 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import Markdown from "react-markdown";
 import { describe, expect, it } from "vitest";
 import {
   assetRefreshDelay,
   classifyChatMediaSource,
   resolveSignedAssetUrl,
-} from "../../../apps/desktop/src/features/assistant/chat/chatMediaSource";
+} from "@/features/assistant/chat/chatMediaSource";
 import {
   parseChatAssistantCitation,
   remarkChatRichOutput,
-} from "../../../apps/desktop/src/features/assistant/chat/chatRichOutput";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import Markdown from "react-markdown";
+} from "@/features/assistant/chat/chatRichOutput";
 
 const renderRichOutput = (text: string) =>
   renderToStaticMarkup(
@@ -21,6 +21,22 @@ const renderRichOutput = (text: string) =>
   );
 
 describe("authorized chat media", () => {
+  it("never automatically fetches provider-controlled network media", () => {
+    for (const source of [
+      "http://127.0.0.1:43193/private.png",
+      "http://localhost/private.mp4",
+      "http://192.168.1.2/private.wav",
+      "http://[::1]/image.png",
+      "http://2130706433/image.png",
+      "//10.0.0.1/image.png",
+      "https://example.com/redirect-to-private",
+      "https://rebind.example/image.png",
+    ])
+      expect(classifyChatMediaSource(source).kind).toBe("external");
+    expect(classifyChatMediaSource("https://").kind).toBe("blocked");
+    expect(classifyChatMediaSource("blob:https://example.com/local").kind).toBe("direct");
+    expect(classifyChatMediaSource("data:image/png;base64,aGVsbG8=").kind).toBe("direct");
+  });
   it("routes absolute, relative and encoded file paths through signing", () => {
     expect(classifyChatMediaSource("./art/result.png", "/workspace")).toEqual({
       kind: "file",
@@ -31,7 +47,7 @@ describe("authorized chat media", () => {
       value: "/tmp/my image.png",
     });
     expect(classifyChatMediaSource("C:\\images\\test.png").kind).toBe("file");
-    expect(classifyChatMediaSource("https://example.com/a.png").kind).toBe("direct");
+    expect(classifyChatMediaSource("https://example.com/a.png").kind).toBe("external");
     expect(classifyChatMediaSource("javascript:alert(1)", "/workspace").kind).toBe("blocked");
     expect(classifyChatMediaSource("data:text/html,<script>").kind).toBe("blocked");
     expect(classifyChatMediaSource("relative.png").kind).toBe("blocked");

@@ -1,4 +1,5 @@
 import type { OrchestrationThreadActivity, TurnId } from "@cozea/assistant-contracts";
+import { isInternalActivity } from "@/features/assistant/chat/activityOwnership";
 import { compareActivitiesByOrder, deriveActivePlanState } from "./session-logic";
 
 export interface ProviderTaskActivity {
@@ -40,6 +41,8 @@ export function groupOwnedActivity(activities: readonly OrchestrationThreadActiv
       ["completed", "failed", "stopped", "cancelled", "declined", "interrupted"].includes(
         String(previousData?.status),
       );
+    const events = previous?.events ?? [];
+    events.push(event);
     groups.set(key, {
       latest:
         settled &&
@@ -47,7 +50,7 @@ export function groupOwnedActivity(activities: readonly OrchestrationThreadActiv
           (data?.status === undefined && !event.kind.endsWith(".started")))
           ? previous.latest
           : event,
-      events: [...(previous?.events ?? []), event],
+      events,
     });
   }
   return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
@@ -62,10 +65,7 @@ export function deriveProviderActivityState(
   let reasoningActive = false;
   for (const activity of [...activities].sort(compareActivitiesByOrder)) {
     if (turnId && activity.turnId !== turnId) continue;
-    const attribution = activity.payload as Record<string, unknown> | null;
-    const internal =
-      attribution?.timelineBypass === true ||
-      (typeof attribution?.agentId === "string" && attribution.agentId.trim().length > 0);
+    const internal = isInternalActivity(activity);
     if (!internal && activity.kind === "reasoning.started") reasoningActive = true;
     if (!internal && activity.kind === "reasoning.completed") reasoningActive = false;
     if (!activity.kind.startsWith("task.")) continue;
@@ -109,13 +109,7 @@ export function deriveProviderActivityState(
     reasoningActive,
     tasks: [...tasks.values()],
     plan: deriveActivePlanState(
-      activities.filter((event) => {
-        const data = event.payload as Record<string, unknown> | null;
-        return (
-          data?.timelineBypass !== true &&
-          !(typeof data?.agentId === "string" && data.agentId.trim().length > 0)
-        );
-      }),
+      activities.filter((event) => !isInternalActivity(event)),
       turnId ?? undefined,
     ),
   };

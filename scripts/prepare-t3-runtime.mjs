@@ -138,14 +138,45 @@ function applyCozeaT3RuntimePatches({ checkOnly }) {
   const source = fs.readFileSync(serverBundle, "utf8");
   const providerDefaults = patchT3ServerBundleProviderDefaults(source);
   const providerUpdates = patchT3ServerBundleProviderUpdates(providerDefaults.source);
-  const changed = providerDefaults.changed || providerUpdates.changed;
+  const mediaContainment = patchT3ServerBundleMediaContainment(providerUpdates.source);
+  const changed = providerDefaults.changed || providerUpdates.changed || mediaContainment.changed;
   if (checkOnly && changed) {
     fail("T3 server bundle is missing a Cozea runtime patch.");
   }
   if (!checkOnly && changed) {
-    fs.writeFileSync(serverBundle, providerUpdates.source);
+    fs.writeFileSync(serverBundle, mediaContainment.source);
     console.log("[prepare-t3-runtime] Applied Cozea policies to the T3 bundle.");
   }
+}
+
+export function patchT3ServerBundleMediaContainment(source) {
+  const original = `\t\tcase "media-file": {
+\t\t\tlet requestedPath = input.resource.path;
+\t\t\tif (!path.isAbsolute(requestedPath)) {
+\t\t\t\tif (!input.workspaceRoot) return yield* new AssetWorkspaceContextNotFoundError({ resource: input.resource });
+\t\t\t\tconst workspaceRoot = yield* workspacePaths.normalizeWorkspaceRoot(input.workspaceRoot).pipe(mapError((cause) => new AssetWorkspaceRootNormalizationError({
+\t\t\t\t\tresource: input.resource,
+\t\t\t\t\tcause
+\t\t\t\t})));
+\t\t\t\trequestedPath = path.resolve(workspaceRoot, requestedPath);
+\t\t\t}
+\t\t\tconst canonicalFile = yield* resolveCanonicalFile(requestedPath).pipe(mapError((cause) => new AssetWorkspaceAssetInspectionError({`;
+  const patched = `\t\tcase "media-file": {
+\t\t\t// Cozea: generic media stays inside its bound workspace.
+\t\t\tif (!input.workspaceRoot) return yield* new AssetWorkspaceContextNotFoundError({ resource: input.resource });
+\t\t\tconst workspaceRoot = yield* workspacePaths.normalizeWorkspaceRoot(input.workspaceRoot).pipe(mapError((cause) => new AssetWorkspaceRootNormalizationError({
+\t\t\t\tresource: input.resource,
+\t\t\t\tcause
+\t\t\t})));
+\t\t\tconst relativePath = path.isAbsolute(input.resource.path) ? path.relative(workspaceRoot, input.resource.path) : input.resource.path;
+\t\t\tconst canonicalFile = yield* resolveCanonicalWorkspaceFile({ workspaceRoot, relativePath }).pipe(mapError((cause) => new AssetWorkspaceAssetInspectionError({`;
+  const originalCount = source.split(original).length - 1;
+  const patchedCount = source.split(patched).length - 1;
+  if (originalCount === 0 && patchedCount === 1) return { source, changed: false };
+  if (originalCount !== 1 || patchedCount !== 0) {
+    fail("Media containment patch anchor is missing or ambiguous; refresh the Cozea T3 runtime patch.");
+  }
+  return { source: source.replace(original, patched), changed: true };
 }
 
 const removableDeploySelfLink = path.join("node_modules", "pnpm-store", "node_modules", "t3");

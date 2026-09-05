@@ -10,7 +10,7 @@ import type {
   ThreadId,
 } from "@cozea/assistant-contracts";
 
-import { applyThreadDetailEvent, type ThreadDetailState } from "../../../../../../packages/client-runtime/src/state/threadReducer";
+import { applyThreadDetailEvent, type ThreadDetailState } from "@cozea/client-runtime";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
 

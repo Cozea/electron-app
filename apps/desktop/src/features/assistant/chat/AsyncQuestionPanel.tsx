@@ -1,10 +1,15 @@
-import { pendingUserInputDraftFromAnswer, resolvePendingUserInputAnswer, togglePendingUserInputOptionSelection } from "../pendingUserInput";
 import { memo } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  pendingUserInputDraftFromAnswer,
+  resolvePendingUserInputAnswer,
+  togglePendingUserInputOptionSelection,
+} from "@/features/assistant/pendingUserInput";
 import { cn } from "@/lib/utils";
-import { questionDraftKey, useQuestionDraftStore } from "../questionDraftStore";
-import type { PendingUserInput } from "./session-logic";
+import { questionDraftKey, useQuestionDraftStore } from "@/features/assistant/questionDraftStore";
+import type { PendingUserInput } from "@/features/assistant/chat/session-logic";
 
 interface AsyncQuestionPanelProps {
   threadId: string;

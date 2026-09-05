@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MessageId, TurnId } from "@cozea/assistant-contracts";
-import type { TimelineEntry } from "@/features/assistant/chat/session-logic";
 import { projectConversation } from "@/features/assistant/chat/conversationProjection";
+import type { TimelineEntry } from "@/features/assistant/chat/session-logic";
 
 const turn = TurnId.makeUnsafe("turn");
 const newer = TurnId.makeUnsafe("newer");
