@@ -363,3 +363,26 @@ signed-updater and unavailable-platform cases in the table remain release
 qualification gates, not claimed successes. The user's original checkout and
 native histories were preserved; only clearly isolated QA conversations were
 created for live tests.
+
+### Local-main extended QA (2026-09-05)
+
+Local main was integrated at `5827b00a` and the actual Cozea app restarted with
+its existing data intact. Extended testing found that native Codex cancellation
+stopped execution but was labelled completed: terminal notifications mapped to
+ready, and later checkpoint events overwrote terminal states. Fork follow-up
+`f2df43a98` preserves interrupted/cancelled and failed states through checkpointing;
+Cozea's local event reader now follows the same terminal-state behavior.
+
+The regression failed before the repair. Afterward the full server/schema/contracts
+suite passed **4117 tests, 9 skipped** and the root suite passed **2111 tests,
+4 skipped**. One existing 30ms logging assertion failed under concurrent full-suite
+load; the complete root suite passed when rerun independently. Server and parent
+typechecks and scoped vendor/root lint passed. Runtime rebuild and native retest
+are pending at this checkpoint; the new fork commit has not been published.
+
+Live desktop inspection verified project/tile restoration, Agent Skills rendering,
+and blocked-provider screens. Fixed a misleading update message that showed the
+OpenCode connection summary instead of installed/available versions. The app
+reports updates for Codex 0.153.2 and OpenCode 1.18.28; applying those updates needs
+the user's separate approval. Cursor is absent; real Antigravity login and signed
+installer replacement remain unverified.

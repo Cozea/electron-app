@@ -112,6 +112,57 @@ function event(type: string, payload: unknown, sequence = 2) {
 }
 
 describe("assistant store normalization", () => {
+  it.each(["interrupted", "error"] as const)(
+    "keeps a %s turn terminal when its checkpoint arrives",
+    (status) => {
+      const state = syncServerReadModel(createBaseState(), createReadModel());
+      const session = {
+        threadId: "thread-1",
+        providerName: "codex",
+        runtimeMode: "full-access",
+        lastError: status === "error" ? "Provider failed" : null,
+        updatedAt: NOW,
+      };
+      const settled = applyOrchestrationDomainEventsToState(state, [
+        event(
+          "thread.session-set",
+          {
+            threadId: "thread-1",
+            session: { ...session, status: "running", activeTurnId: "turn-1" },
+          },
+          2,
+        ),
+        event(
+          "thread.session-set",
+          {
+            threadId: "thread-1",
+            session: { ...session, status, activeTurnId: null },
+          },
+          3,
+        ),
+      ]);
+      expect(selectAssistantThreadById(settled, "thread-1")?.latestTurn?.state).toBe(status);
+      const next = applyOrchestrationDomainEventsToState(settled, [
+        event(
+          "thread.turn-diff-completed",
+          {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            checkpointTurnCount: 1,
+            checkpointRef: "refs/cozea/qa/checkpoint",
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: NOW,
+          },
+          4,
+        ),
+      ]);
+      expect(selectAssistantThreadById(next, "thread-1")?.latestTurn?.state).toBe(status);
+    },
+  );
+
+
   it("keeps message and activity slices stable when only session state changes", () => {
     const state = syncServerReadModel(createBaseState(), createReadModel())
     const before = selectAssistantThreadById(state, "thread-1")

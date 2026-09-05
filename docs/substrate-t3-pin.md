@@ -5,13 +5,18 @@ Date: 2026-09-05
 | Field | Value |
 | --- | --- |
 | Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Required pin SHA | `59e1f1749a90912a5d68eedf026c4ba7fdcfb204` (`59e1f1749`) |
+| Required pin SHA | `f2df43a98bc42936dd2a031d832c8c4dae53398a` (`f2df43a98`) |
 | Recorded by | Parent repository `vendor/t3code` gitlink |
 | Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
 Update this file whenever the shadow-server pin moves. Keep the Electron runtime
 constant and parent gitlink synchronized. Generated contract banners record the
 revision they were generated from and change only when contracts are regenerated.
+
+The local QA follow-up pin preserves interrupted/failed turn states when later
+checkpoint events arrive. It is currently retained on the local fork branch
+`codex/provider-qa-fixes`; publish that fork commit before publishing a parent
+branch or release that references it.
 
 ## Cozea runtime policy patches
 

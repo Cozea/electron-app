@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ 59e1f1749a90912a5d68eedf026c4ba7fdcfb204; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";

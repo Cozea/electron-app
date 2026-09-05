@@ -68,6 +68,7 @@ describe("ProviderStatusBanner", () => {
       version: "0.150.1",
       status: "ready",
       auth: { status: "authenticated" },
+      message: "Provider connection is healthy.",
       checkedAt: "2026-08-29T10:00:00.000Z",
       models: [],
       slashCommands: [],
@@ -95,6 +96,8 @@ describe("ProviderStatusBanner", () => {
     expect(markup).toContain("The installed provider version did not change.");
     expect(markup).toContain("Update details");
     expect(markup).toContain("Already up-to-date.");
+    expect(markup).toContain("Codex 0.150.1 is behind 0.151.0.");
+    expect(markup).not.toContain("Provider connection is healthy.");
   });
 
   it("shows exact Claude login instructions with a copy action", () => {
