@@ -51,6 +51,7 @@ export {
   LEGACY_T3_CHECKPOINT_REFS_PREFIX,
   checkpointRefForGroupId,
   checkpointRefForThreadTurn,
+  isGroupCheckpointRef,
   normalizeCheckpointRef,
   migrateLegacyT3CheckpointRefs,
 } from "./checkpointRefs";

@@ -39,6 +39,7 @@ import {
   ArrowRight01Icon as __ArrowRightHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
   FlashIcon as __FlashHugeIcon,
+  FolderLibraryIcon as __LibraryHugeIcon,
   Search01Icon as __SearchHugeIcon,
   InformationCircleIcon as __InfoHugeIcon,
   Tick02Icon as __TickHugeIcon,
@@ -110,6 +111,22 @@ export function resolveSelectedBuild(
     builds[0] ??
     null
   );
+}
+
+/**
+ * Two letters standing in for a skill, since skills carry no artwork.
+ *
+ * Qualified names read `plugin · skill`, and the plugin half repeats down a
+ * whole group, so the mark is taken from the part that actually distinguishes
+ * one row from the next.
+ */
+export function skillMonogram(name: string): string {
+  const distinctive = name.split("·").pop()?.trim() || name.trim();
+  const words = distinctive.split(/[\s\-_]+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  const letters = words.slice(0, 2).map((word) => word[0] ?? "");
+  const mark = letters.join("") || distinctive.slice(0, 2);
+  return mark.toUpperCase().slice(0, 2);
 }
 
 /** Whether ticking this skill has to install it before the build can hold it. */
@@ -209,21 +226,29 @@ export function providerLoadout(
   loadout: readonly AgentSkillRecord[],
   provider: AgentSkillProvider,
 ): AgentSkillRecord[] {
-  return loadout.filter((skill) => skill.source !== "managed" && providerOwns(skill, provider));
+  return loadout.filter(
+    (skill) =>
+      skill.source !== "managed" &&
+      // Essential skills are shown beside the count as "+N", not inside it.
+      // Counting them here reported them twice, and claimed the build
+      // controlled skills it cannot switch off.
+      !isEssential(skill) &&
+      providerOwns(skill, provider),
+  );
 }
 
 /**
- * What a provider's page offers to pick from: the skills it can run right now
- * — loaded, or offered by its catalog — matching the Agent Skills page, so the
- * two screens agree on how many skills a provider has.
+ * What a provider's page offers to pick from: every skill this provider has a
+ * copy of, plus what its catalog offers.
  *
- * Skills the build already holds are always included even when switched off,
- * so nothing it carries can become impossible to untick.
+ * A switched-off skill still counts. Disabling moves the folder to Cozea's
+ * trash but the binding keeps its ownership, and listing only what is switched
+ * on made unticking a one-way door: the skill vanished from the one page that
+ * could put it back.
  */
 export function providerCandidates(
   skills: readonly AgentSkillRecord[],
   provider: AgentSkillProvider,
-  held: ReadonlySet<string>,
 ): AgentSkillRecord[] {
   return skills.filter(
     (skill) =>
@@ -231,9 +256,7 @@ export function providerCandidates(
       skill.bindings.some(
         (binding) =>
           binding.provider === provider &&
-          (binding.enabled ||
-            binding.available === true ||
-            (held.has(skill.id) && binding.ownership !== "none")),
+          (binding.enabled || binding.available === true || binding.ownership !== "none"),
       ),
   );
 }
@@ -282,7 +305,7 @@ export function filterPickerSkills(
 }
 
 export function SkillBuildsView() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
   const [snapshot, setSnapshot] = React.useState<AgentSkillsSnapshot | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -520,13 +543,21 @@ export function SkillBuildsView() {
                 candidates={filterPickerSkills(
                   openDetail === "cozea"
                     ? cozeaSkills(skills)
-                    : providerCandidates(skills, openDetail, new Set(selectedBuild.skillIds)),
+                    : providerCandidates(skills, openDetail),
                   query,
                   null,
                 )}
                 buildSkillIds={selectedBuild.skillIds}
                 busySkillId={busyKey?.startsWith("toggle:") ? busyKey.slice(7) : null}
                 onToggle={(skillId) => void toggleBuildSkill(skillId)}
+                onOpenSkill={(skillId) => {
+                  // Hands off to the skill's own page, which lives on the
+                  // library side of this surface and reads the id from the URL.
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("view");
+                  next.set("skill", skillId);
+                  setSearchParams(next);
+                }}
                 onSwitch={(direction) =>
                   setOpenDetail((current) => (current ? stepDetail(current, direction) : current))
                 }
@@ -541,6 +572,11 @@ export function SkillBuildsView() {
                 busyKey={busyKey}
                 onOpenProvider={setOpenDetail}
                 onOpenShared={() => setOpenDetail("cozea")}
+                onOpenAllSkills={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("view");
+                  setSearchParams(next);
+                }}
                 onEquip={() =>
                   void runMutation(
                     `apply:${selectedBuild.id}`,
@@ -602,14 +638,60 @@ interface HubSlot {
   x: number;
   y: number;
   edge: "top" | "left" | "right" | "bottom";
+  /**
+   * The outline cut in two at the edge facing away from the core, so a single
+   * charge arriving at a plate runs down both of its sides and meets again at
+   * the edge that feeds the wiring.
+   */
+  halves: [string, string];
 }
 
 const HUB_SLOTS: HubSlot[] = [
-  { edge: "top", w: 300, h: 120, x: 450, y: 68, d: "M40 1 H260 L299 27 V119 H1 V27 Z" },
-  { edge: "left", w: 280, h: 132, x: 145, y: 280, d: "M40 1 H279 V101 L239 131 H1 V31 Z" },
-  { edge: "right", w: 280, h: 132, x: 755, y: 280, d: "M1 1 H239 L279 31 V131 H41 L1 101 Z" },
-  { edge: "bottom", w: 300, h: 120, x: 450, y: 492, d: "M1 1 H299 V93 L260 119 H40 L1 93 Z" },
+  {
+    edge: "top",
+    w: 300,
+    h: 120,
+    x: 450,
+    y: 68,
+    d: "M40 1 H260 L299 27 V119 H1 V27 Z",
+    halves: ["M150 1 H40 L1 27 V119 H150", "M150 1 H260 L299 27 V119 H150"],
+  },
+  {
+    edge: "left",
+    w: 280,
+    h: 132,
+    x: 145,
+    y: 280,
+    d: "M40 1 H279 V101 L239 131 H1 V31 Z",
+    halves: ["M1 81 V31 L40 1 H279 V51", "M1 81 V131 H239 L279 101 V51"],
+  },
+  {
+    edge: "right",
+    w: 280,
+    h: 132,
+    x: 755,
+    y: 280,
+    d: "M1 1 H239 L279 31 V131 H41 L1 101 Z",
+    halves: ["M279 81 V31 L239 1 H1 V51", "M279 81 V131 H41 L1 101 V51"],
+  },
+  {
+    edge: "bottom",
+    w: 300,
+    h: 120,
+    x: 450,
+    y: 492,
+    d: "M1 1 H299 V93 L260 119 H40 L1 93 Z",
+    halves: ["M150 119 H40 L1 93 V1 H150", "M150 119 H260 L299 93 V1 H150"],
+  },
 ];
+
+/**
+ * The charge crosses the diagram in stages, each starting a beat after the
+ * one that feeds it: a plate's two sides, then the three stubs leaving its
+ * inner edge, then the diagonals, then the core's two diamonds. Every stage
+ * shares one duration, so the offsets alone make the cascade.
+ */
+export const HUB_CHARGE_STAGE_DELAY_S = { plate: 0, stub: 0.42, diagonal: 0.82, core: 1.18 };
 
 /** Decorative part codes, the way a machined panel carries a stamp. */
 const HUB_STAMP = "8W7F1 1A1T1 21TRG";
@@ -640,6 +722,7 @@ function ProviderHub({
   busyKey,
   onOpenProvider,
   onOpenShared,
+  onOpenAllSkills,
   onEquip,
 }: {
   build: AgentSkillBuild;
@@ -649,6 +732,7 @@ function ProviderHub({
   busyKey: string | null;
   onOpenProvider: (provider: AgentSkillProvider) => void;
   onOpenShared: () => void;
+  onOpenAllSkills: () => void;
   onEquip: () => void;
 }) {
   const counts = providerSkillCounts(loadout);
@@ -660,7 +744,19 @@ function ProviderHub({
           action that belongs to the whole build parked on the right. No
           status badge — that button already reads "Activated" when active. */}
       <header className="relative flex shrink-0 items-center justify-center px-1 pb-3">
-        <h1 className="max-w-[60%] truncate text-2xl font-bold tracking-tight text-foreground">
+        {/* The way back to the library, mirroring the build action opposite. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute top-1/2 left-0 -translate-y-1/2"
+          onClick={onOpenAllSkills}
+        >
+          <HugeiconsIcon icon={__LibraryHugeIcon} />
+          All skills
+        </Button>
+        {/* Reserves room for the button on each side, so the title truncates
+            instead of running under one on a narrow pane. */}
+        <h1 className="max-w-[calc(100%-280px)] truncate text-2xl font-bold tracking-tight text-foreground">
           {build.name}
         </h1>
         <div className="absolute top-1/2 right-0 -translate-y-1/2">
@@ -689,7 +785,7 @@ function ProviderHub({
             "aspect-[900/560]",
           )}
         >
-          <HubTraces />
+          <HubTraces charged={isActive} />
 
           {counts.map((node, index) => {
             const slot = HUB_SLOTS[index];
@@ -699,6 +795,7 @@ function ProviderHub({
                 key={node.provider}
                 node={node}
                 slot={slot}
+                charged={isActive}
                 essential={providerEssentialCount(skills, node.provider)}
                 onClick={onOpenProvider}
               />
@@ -720,7 +817,47 @@ function ProviderHub({
                 "group-hover:border-foreground/60",
               )}
             />
-            <span className="absolute inset-[12%] rotate-45 rounded-[2px] border border-[var(--hub-ln)] opacity-55" />
+            {/* The ring nearest the middle holds steady instead of pulsing:
+                an active build reads as lit, and one running ring is enough
+                motion at the centre. */}
+            <span
+              className={cn(
+                "absolute inset-[12%] rotate-45 rounded-[2px] border transition-colors",
+                isActive
+                  ? "border-foreground/70 opacity-100 shadow-[0_0_12px_color-mix(in_oklch,var(--foreground)_30%,transparent)]"
+                  : "border-[var(--hub-ln)] opacity-55",
+              )}
+            />
+            {/* The core is CSS boxes, so the charge needs a path of its own.
+                A rotated square is a diamond in the SVG's own coordinates. */}
+            {isActive ? (
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 size-full overflow-visible"
+              >
+                {/* Both rings, each entered at the top and bottom vertices
+                    and split down the two edges either side, so the core is
+                    fed the way the plates are rather than chased round. */}
+                {HUB_CORE_CHARGE_EDGES.map((d) => (
+                  <path
+                    key={d}
+                    d={d}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    pathLength={100}
+                    // Longer than the wiring's dash: the core is the arrival.
+                    strokeDasharray="42 58"
+                    style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.core}s` }}
+                    className="cozea-hub-charge text-foreground/85 drop-shadow-[0_0_6px_color-mix(in_oklch,var(--foreground)_65%,transparent)]"
+                  />
+                ))}
+              </svg>
+            ) : null}
             {/* Same arrangement as a provider plate — name, then mark and
                 count — so the core reads as one of the family, just bigger. */}
             <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-[8%]">
@@ -746,8 +883,88 @@ function ProviderHub({
   );
 }
 
+/** The routes themselves, shared by the static wiring and the live charge. */
+const HUB_TRACE_PATHS = [
+  "M450 128 V150",
+  "M436 128 V142 H406",
+  "M464 128 V142 H494",
+  "M450 410 V432",
+  "M436 432 V418 H406",
+  "M464 432 V418 H494",
+  "M285 264 H316",
+  "M285 246 H300 V226",
+  "M285 298 H300 V318",
+  "M615 264 H584",
+  "M615 246 H600 V226",
+  "M615 298 H600 V318",
+  "M300 188 H352 L390 150",
+  "M600 188 H548 L510 150",
+  "M300 374 H352 L390 412",
+  "M600 374 H548 L510 412",
+] as const;
+
+/**
+ * The four spokes the charge runs along, each drawn from its plate's inner
+ * edge to the core.
+ *
+ * Separate from the decorative wiring on purpose: those routes are drawn in
+ * whichever direction suited the picture, and a dash travels the way its path
+ * was drawn, so reusing them would send half the charge outwards. Each spoke
+ * follows its stub's axis and ends on the diamond, so all four start together
+ * and arrive together.
+ */
+/**
+ * The three stubs leaving each plate's inner edge, every one drawn away from
+ * the plate. A dash travels the way its path was drawn, so the decorative
+ * wiring cannot be reused: some of those routes run core to plate.
+ */
+const HUB_CHARGE_STUBS = [
+  "M450 128 V150",
+  "M436 128 V142 H406",
+  "M464 128 V142 H494",
+  "M450 432 V410",
+  "M436 432 V418 H406",
+  "M464 432 V418 H494",
+  "M285 264 H316",
+  "M285 246 H300 V226",
+  "M285 298 H300 V318",
+  "M615 264 H584",
+  "M615 246 H600 V226",
+  "M615 298 H600 V318",
+] as const;
+
+/**
+ * The core's rings as four edges each, drawn from the top and bottom vertices
+ * outward to the left and right ones.
+ *
+ * A closed ring would send one dash chasing round the whole diamond. Split
+ * this way the charge enters where the wiring actually arrives, at the top and
+ * bottom, and each entry runs down both sides to meet at the waist.
+ *
+ * The vertices sit outside the 100x100 box on purpose. Both rings are squares
+ * rotated 45 degrees, so their corners reach the half-diagonal rather than the
+ * box edge; a diamond inscribed in the box traces neither ring.
+ */
+const HUB_CORE_CHARGE_EDGES = [
+  // Only the outer ring runs. It is a square at inset 0, so its corners swing
+  // out to the half-diagonal, 50 * sqrt(2) = 70.71, not the box edge at 50.
+  // The inner ring simply lights up: see the core's own markup.
+  "M50 -20.71 L-20.71 50",
+  "M50 -20.71 L120.71 50",
+  "M50 120.71 L-20.71 50",
+  "M50 120.71 L120.71 50",
+] as const;
+
+/** The diagonals that carry the charge the last stretch to the diamond. */
+const HUB_CHARGE_DIAGONALS = [
+  "M300 188 H352 L390 150",
+  "M600 188 H548 L510 150",
+  "M300 374 H352 L390 412",
+  "M600 374 H548 L510 412",
+] as const;
+
 /** Circuit routes from the core out to each plate, drawn behind them. */
-function HubTraces() {
+function HubTraces({ charged }: { charged: boolean }) {
   return (
     <svg
       viewBox={`0 0 ${HUB_W} ${HUB_H}`}
@@ -756,23 +973,44 @@ function HubTraces() {
       className="absolute inset-0 z-[1] size-full"
     >
       <g stroke="var(--hub-trace)" strokeWidth="1.1" fill="none" vectorEffect="non-scaling-stroke">
-        <path d="M450 128 V150" />
-        <path d="M436 128 V142 H406" />
-        <path d="M464 128 V142 H494" />
-        <path d="M450 410 V432" />
-        <path d="M436 432 V418 H406" />
-        <path d="M464 432 V418 H494" />
-        <path d="M285 264 H316" />
-        <path d="M285 246 H300 V226" />
-        <path d="M285 298 H300 V318" />
-        <path d="M615 264 H584" />
-        <path d="M615 246 H600 V226" />
-        <path d="M615 298 H600 V318" />
-        <path d="M300 188 H352 L390 150" />
-        <path d="M600 188 H548 L510 150" />
-        <path d="M300 374 H352 L390 412" />
-        <path d="M600 374 H548 L510 412" />
+        {HUB_TRACE_PATHS.map((d) => (
+          <path key={d} d={d} />
+        ))}
       </g>
+
+      {/* Stage two and three: out of each plate along its three stubs, then
+          on down the diagonals. Each stage starts a beat after its feeder. */}
+      {charged ? (
+        <g
+          stroke="currentColor"
+          strokeWidth="1.8"
+          fill="none"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          className="text-foreground/80 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
+        >
+          {HUB_CHARGE_STUBS.map((d) => (
+            <path
+              key={d}
+              d={d}
+              pathLength={100}
+              strokeDasharray="26 74"
+              style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.stub}s` }}
+              className="cozea-hub-charge"
+            />
+          ))}
+          {HUB_CHARGE_DIAGONALS.map((d) => (
+            <path
+              key={d}
+              d={d}
+              pathLength={100}
+              strokeDasharray="26 74"
+              style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.diagonal}s` }}
+              className="cozea-hub-charge"
+            />
+          ))}
+        </g>
+      ) : null}
       <g fill="var(--hub-trace)">
         <rect x="402" y="139" width="9" height="5" />
         <rect x="491" y="139" width="9" height="5" />
@@ -791,11 +1029,13 @@ function ProviderNode({
   node,
   slot,
   essential,
+  charged,
   onClick,
 }: {
   node: { provider: AgentSkillProvider; label: string; count: number };
   slot: HubSlot;
   essential: number;
+  charged: boolean;
   onClick: (provider: AgentSkillProvider) => void;
 }) {
   const isEmpty = node.count === 0;
@@ -828,6 +1068,23 @@ function ProviderNode({
           vectorEffect="non-scaling-stroke"
           className="transition-[fill,stroke] duration-150 group-hover:fill-[var(--hub-fill-hi)] group-hover:stroke-[var(--hub-ln-hi)]"
         />
+        {charged
+          ? slot.halves.map((half) => (
+              <path
+                key={half}
+                d={half}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+                pathLength={100}
+                strokeDasharray="26 74"
+                style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.plate}s` }}
+                className="cozea-hub-charge text-foreground/80 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
+              />
+            ))
+          : null}
       </svg>
 
       <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
@@ -919,6 +1176,7 @@ function DetailSheet({
   buildSkillIds,
   busySkillId,
   onToggle,
+  onOpenSkill,
   onSwitch,
   onBack,
 }: {
@@ -927,6 +1185,7 @@ function DetailSheet({
   buildSkillIds: readonly string[];
   busySkillId: string | null;
   onToggle: (skillId: string) => void;
+  onOpenSkill: (skillId: string) => void;
   onSwitch: (direction: -1 | 1) => void;
   onBack: () => void;
 }) {
@@ -1021,45 +1280,57 @@ function DetailSheet({
                   const isChosen = chosen.has(skill.id);
                   return (
                     <li key={skill.id} className="min-w-0">
-                      <button
-                        type="button"
-                        aria-pressed={isChosen}
-                        disabled={busySkillId === skill.id}
-                        onClick={() => onToggle(skill.id)}
+                      {/* Two controls, not one: the box decides whether the
+                          build carries the skill, the rest opens its page. */}
+                      <div
                         className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
-                          "disabled:opacity-60",
+                          "flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
                           isChosen
                             ? "bg-foreground/[0.07] hover:bg-foreground/[0.1]"
                             : "hover:bg-foreground/[0.04]",
                         )}
                       >
-                        <span
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={isChosen}
+                          aria-label={`${isChosen ? "Remove" : "Add"} ${prettifySkillName(skill.name)}`}
+                          disabled={busySkillId === skill.id}
+                          onClick={() => onToggle(skill.id)}
                           className={cn(
                             "flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                            "focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none",
+                            "disabled:pointer-events-none disabled:opacity-60",
                             isChosen
                               ? "border-transparent bg-foreground text-background"
-                              : "border-border",
+                              : "border-border hover:border-foreground/50",
                           )}
                         >
                           {isChosen ? (
                             <HugeiconsIcon icon={__TickHugeIcon} className="size-3" />
                           ) : null}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span
-                            className={cn(
-                              "block truncate text-[13px] font-medium transition-colors",
-                              isChosen ? "text-foreground" : "text-muted-foreground",
-                            )}
-                          >
-                            {prettifySkillName(skill.name)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenSkill(skill.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:ring-ring/50 focus-visible:rounded-md focus-visible:ring-2 focus-visible:outline-none"
+                        >
+                          <SkillMark name={skill.name} lit={isChosen} />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className={cn(
+                                "block truncate text-[13px] font-medium transition-colors",
+                                isChosen ? "text-foreground" : "text-muted-foreground",
+                              )}
+                            >
+                              {prettifySkillName(skill.name)}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                              {conciseDescription(skill.description)}
+                            </span>
                           </span>
-                          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
-                            {conciseDescription(skill.description)}
-                          </span>
-                        </span>
-                      </button>
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -1096,7 +1367,7 @@ function DetailSheet({
             <ul className="grid gap-0.5 sm:grid-cols-2">
               {essential.map((skill) => (
                 <li key={skill.id} className="min-w-0">
-                  <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
+                  <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-foreground/[0.04]">
                     {/* No tick: the provider restores these, so a build cannot
                         promise to turn one off. */}
                     <Tooltip>
@@ -1114,14 +1385,21 @@ function DetailSheet({
                         {ESSENTIAL_SKILL_NOTE}
                       </TooltipContent>
                     </Tooltip>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-muted-foreground">
-                        {prettifySkillName(skill.name)}
+                    <button
+                      type="button"
+                      onClick={() => onOpenSkill(skill.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:ring-ring/50 focus-visible:rounded-md focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      <SkillMark name={skill.name} lit={false} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-muted-foreground">
+                          {prettifySkillName(skill.name)}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                          {conciseDescription(skill.description)}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
-                        {conciseDescription(skill.description)}
-                      </span>
-                    </span>
+                    </button>
                     <span className="shrink-0 text-[9px] tracking-[0.16em] text-muted-foreground/60 uppercase">
                       Essential
                     </span>
@@ -1133,6 +1411,29 @@ function DetailSheet({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * A skill's stand-in image. Skills ship no artwork, so this is a monogram on a
+ * chamfered plate, cut the same way as the hub's.
+ */
+function SkillMark({ name, lit }: { name: string; lit: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative flex size-7 shrink-0 items-center justify-center border transition-colors",
+        "[clip-path:polygon(0_0,calc(100%-6px)_0,100%_6px,100%_100%,6px_100%,0_calc(100%-6px))]",
+        lit
+          ? "border-[var(--hub-ln-hi)] bg-[var(--hub-fill-hi)] text-foreground"
+          : "border-[var(--hub-ln)] bg-[var(--hub-fill)] text-muted-foreground",
+      )}
+    >
+      <span className="text-[10px] leading-none font-medium tracking-[0.04em]">
+        {skillMonogram(name)}
+      </span>
+    </span>
   );
 }
 

@@ -2,7 +2,8 @@
  * Unified checkpoint ref namespace (Phase 4b exit).
  *
  * Orchestration turn refs and Changes group refs share `refs/cozea/checkpoints`.
- * Legacy `refs/t3/checkpoints` refs are migrated lazily on read.
+ * Legacy `refs/t3/checkpoints` group refs are migrated lazily on read; turn refs
+ * are left where the embedded server put them (see `isGroupCheckpointRef`).
  */
 
 import { Encoding } from "effect";
@@ -36,7 +37,27 @@ export function isLegacyT3CheckpointRef(ref: string): boolean {
 }
 
 /**
- * Best-effort rename of legacy orchestration refs in a repo.
+ * True for the flat Changes group refs this process owns, `<prefix>/<id>`.
+ *
+ * Turn refs (`<prefix>/<threadId>/turn/<n>`) are written *and read back* by the
+ * embedded orchestration server, which still resolves them under the legacy
+ * prefix. Renaming those out from under it makes every later turn diff fail
+ * with "unknown revision", so they are not ours to migrate. Unrecognised
+ * shapes are treated as not ours for the same reason.
+ */
+export function isGroupCheckpointRef(ref: string): boolean {
+  const prefix = isLegacyT3CheckpointRef(ref)
+    ? LEGACY_T3_CHECKPOINT_REFS_PREFIX
+    : CHECKPOINT_REFS_PREFIX;
+  if (!ref.startsWith(`${prefix}/`)) {
+    return false;
+  }
+  const suffix = ref.slice(prefix.length + 1);
+  return suffix.length > 0 && !suffix.includes("/");
+}
+
+/**
+ * Best-effort rename of legacy Changes group refs in a repo.
  * Safe to call multiple times; no-ops when nothing to migrate.
  */
 export async function migrateLegacyT3CheckpointRefs(cwd: string): Promise<number> {
@@ -52,7 +73,8 @@ export async function migrateLegacyT3CheckpointRefs(cwd: string): Promise<number
   const refs = list.stdout
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter(isGroupCheckpointRef);
   let migrated = 0;
   for (const legacyRef of refs) {
     const target = normalizeCheckpointRef(legacyRef);

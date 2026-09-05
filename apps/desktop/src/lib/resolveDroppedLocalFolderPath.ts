@@ -7,7 +7,11 @@ function readLegacyFilePath(file: File): string {
   return typeof legacyPath === "string" ? legacyPath.trim() : ""
 }
 
-function resolveFileSystemPath(
+/**
+ * Absolute filesystem path for a dragged File, or "" when the drag carried no
+ * local file (a browser drag, a synthetic File in tests).
+ */
+export function resolveDroppedFileSystemPath(
   file: File,
   getPathForFile: ((file: File) => string) | undefined,
 ): string {
@@ -54,7 +58,7 @@ export function resolveDroppedLocalFolderPath(
       return { ok: false, reason: "no_path" }
     }
 
-    const path = resolveFileSystemPath(file, getPathForFile)
+    const path = resolveDroppedFileSystemPath(file, getPathForFile)
     if (!path) {
       return { ok: false, reason: "no_path" }
     }
@@ -73,7 +77,7 @@ export function resolveDroppedLocalFolderPath(
     return { ok: false, reason: "not_folder" }
   }
 
-  const path = resolveFileSystemPath(file, getPathForFile)
+  const path = resolveDroppedFileSystemPath(file, getPathForFile)
   if (!path) {
     return { ok: false, reason: "no_path" }
   }

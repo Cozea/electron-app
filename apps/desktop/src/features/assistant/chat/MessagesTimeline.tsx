@@ -48,7 +48,7 @@ import {
   Wrench01Icon as __WrenchIconHugeIcon,
 } from "@hugeicons/core-free-icons";
 import { deriveTimelineEntries, formatDuration } from "./session-logic";
-import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "./chat-scroll";
+import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX, isScrollContainerNearBottom } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/features/assistant/model/types";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { ToolGroupSummary } from "./ToolGroupSummary";
@@ -183,6 +183,19 @@ const LEGEND_LIST_DEFAULT_HEIGHT_PX = 640;
 const LEGEND_LIST_DEFAULT_WIDTH_PX = 720;
 const LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX = 48;
 const LEGEND_LIST_TAIL_PADDING_PX = 16;
+/** LegendList's `refScrollView` hands over an API object; dig out the scrolling element. */
+function resolveScrollViewElement(scrollView: unknown): HTMLElement | null {
+  if (!scrollView) return null;
+  if (scrollView instanceof HTMLElement) return scrollView;
+  const getScrollableNode = (scrollView as { getScrollableNode?: () => unknown })
+    .getScrollableNode;
+  if (typeof getScrollableNode !== "function") return null;
+  const node = getScrollableNode.call(scrollView);
+  return node instanceof HTMLElement ? node : null;
+}
+
+/** Covers the tail padding's own 200ms transition so the last row rides it up. */
+const DOCKED_COMPOSER_INSET_FOLLOW_MS = 260;
 
 function readLegendListBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -255,6 +268,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const textReveal = useTimelineTextReveal(revealMessages, isChatVisible, revealImmediately);
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const legendListRef = useRef<LegendListRef | null>(null);
+  // Held in state, not a ref, so the scroll listener attaches once LegendList
+  // hands the scroll view over rather than on a first render where it is null.
+  const [scrollViewNode, setScrollViewNode] = useState<HTMLElement | null>(null);
+  const isNearBottomRef = useRef(true);
+  const attachScrollView = useCallback(
+    (scrollView: unknown) => {
+      // `refScrollView` receives LegendList's scroll-view API object, not the DOM
+      // node. Keep handing the caller what it has always had, and resolve the real
+      // element for the scroll work below.
+      scrollContainerRef.current = scrollView as HTMLDivElement | null;
+      setScrollViewNode(resolveScrollViewElement(scrollView));
+    },
+    [scrollContainerRef],
+  );
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
   const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(null);
   const [changedFilesExpandedByTurnId, setChangedFilesExpandedByTurnId] = useState<
@@ -618,6 +645,53 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     return Math.max(LEGEND_LIST_TAIL_PADDING_PX, Math.ceil(dockedComposerScrollInsetPx));
   }, [dockedComposerScrollInsetPx]);
+
+  useEffect(() => {
+    if (!scrollViewNode) return;
+    const trackScrollPosition = () => {
+      isNearBottomRef.current = isScrollContainerNearBottom(scrollViewNode);
+    };
+    trackScrollPosition();
+    scrollViewNode.addEventListener("scroll", trackScrollPosition, { passive: true });
+    return () => {
+      scrollViewNode.removeEventListener("scroll", trackScrollPosition);
+    };
+  }, [scrollViewNode]);
+
+  // The docked composer floats over the timeline, so the tail padding that keeps
+  // the last row clear of it grows on hover, on a pending approval, on a taller
+  // draft. LegendList only re-pins to the end on data and layout changes, not on
+  // a content-padding change, so without this the list sits still and the
+  // composer slides over the rows that were at the bottom.
+  const previousBottomPaddingRef = useRef(bottomPaddingPx);
+  useLayoutEffect(() => {
+    const previousBottomPadding = previousBottomPaddingRef.current;
+    previousBottomPaddingRef.current = bottomPaddingPx;
+    if (bottomPaddingPx <= previousBottomPadding) return;
+    if (!scrollViewNode || !isNearBottomRef.current) return;
+
+    let animationFrameId: number | null = null;
+    const stopFollowing = () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+      scrollViewNode.removeEventListener("wheel", stopFollowing);
+      scrollViewNode.removeEventListener("touchmove", stopFollowing);
+    };
+    const deadline = performance.now() + DOCKED_COMPOSER_INSET_FOLLOW_MS;
+    const followBottom = () => {
+      scrollViewNode.scrollTop = scrollViewNode.scrollHeight - scrollViewNode.clientHeight;
+      animationFrameId =
+        performance.now() < deadline ? window.requestAnimationFrame(followBottom) : null;
+    };
+    // Hovering in is what reveals the composer, so a scroll can land mid-follow.
+    // Hand the list straight back to the reader when it does.
+    scrollViewNode.addEventListener("wheel", stopFollowing, { passive: true });
+    scrollViewNode.addEventListener("touchmove", stopFollowing, { passive: true });
+    followBottom();
+    return stopFollowing;
+  }, [bottomPaddingPx, scrollViewNode]);
   const dataVersion = useMemo(() => {
     const lastRow = rows.at(-1);
     return [
@@ -1218,7 +1292,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <TimelineRowRenderContext.Provider value={renderRowContent}>
         <LegendList<TimelineRow>
           ref={legendListRef}
-          refScrollView={scrollContainerRef}
+          refScrollView={attachScrollView}
           data={rows}
           dataVersion={dataVersion}
           extraData={legendListExtraData}

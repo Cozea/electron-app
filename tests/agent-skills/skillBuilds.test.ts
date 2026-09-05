@@ -30,6 +30,8 @@ afterEach(() => fs.rmSync(testRoot, { recursive: true, force: true }));
 
 const service = () => new AgentSkillService({ dataRoot, homeRoot });
 
+const ROOT = path.resolve(import.meta.dirname, "../..");
+
 async function makeSkill(name: string) {
   const created = await service().save({
     name,
@@ -310,6 +312,7 @@ import {
   partitionEssential,
   providerEssentialCount,
   resolveSelectedBuild,
+  skillMonogram,
   loadoutByCategory,
   providerCandidates,
   providerLoadout,
@@ -553,24 +556,26 @@ describe("what a provider page offers to pick from", () => {
   const library = skill("library", "managed", [binding("claude", { enabled: true, owned: true })]);
   const all = [loaded, offered, turnedOff, library];
 
-  it("offers what the provider can run, loaded or from its catalog", () => {
-    expect(providerCandidates(all, "claude", new Set()).map((s) => s.id)).toEqual([
+  it("offers every skill the provider has a copy of, plus its catalog", () => {
+    expect(providerCandidates(all, "claude").map((s) => s.id)).toEqual([
       "loaded",
       "offered",
+      "off",
     ]);
   });
 
   it("leaves the Cozea library to its own page", () => {
-    expect(providerCandidates(all, "claude", new Set(["library"])).map((s) => s.id)).not.toContain(
-      "library",
-    );
+    expect(providerCandidates(all, "claude").map((s) => s.id)).not.toContain("library");
   });
 
-  it("keeps a switched-off skill the build holds, so it can still be unticked", () => {
-    // Activating a build switches off what it excludes. Without this, a build
-    // could hold a skill that had vanished from the only page that edits it.
-    expect(providerCandidates(all, "claude", new Set(["off"])).map((s) => s.id)).toContain("off");
-    expect(providerCandidates(all, "claude", new Set()).map((s) => s.id)).not.toContain("off");
+  it("keeps a switched-off skill listed, so unticking is not a one-way door", () => {
+    // Unticking disables the skill. If the page then dropped it, the only
+    // screen that could put it back would no longer show it.
+    expect(providerCandidates(all, "claude").map((s) => s.id)).toContain("off");
+  });
+
+  it("offers nothing for a provider that has no copy and no catalog entry", () => {
+    expect(providerCandidates(all, "opencode")).toEqual([]);
   });
 });
 
@@ -598,6 +603,13 @@ describe("skills a build cannot control", () => {
   it("keeps every skill in one side or the other", () => {
     const { choosable, essential } = partitionEssential(skills);
     expect(choosable.length + essential.length).toBe(skills.length);
+  });
+
+  it("keeps essential skills out of the plate count that sits beside them", () => {
+    // The plate reads "12 +23". Counting the essential ones in both halves
+    // reported them twice and implied the build could switch them off.
+    expect(providerLoadout(skills, "cursor").map((s) => s.id)).toEqual(["mine"]);
+    expect(providerEssentialCount(skills, "cursor")).toBe(1);
   });
 
   it("counts what a provider always runs, per provider", () => {
@@ -643,5 +655,144 @@ describe("which build the hub shows", () => {
 
   it("resolves to nothing only when there are no builds", () => {
     expect(resolveSelectedBuild([], "a", "a")).toBeNull();
+  });
+});
+
+/**
+ * Skills ship no artwork, so each row shows a monogram instead. Qualified
+ * names repeat their plugin down a whole group, so the mark has to come from
+ * the half that tells one row from the next.
+ */
+describe("the mark standing in for a skill", () => {
+  it("takes initials from the distinctive half of a qualified name", () => {
+    expect(skillMonogram("Cwc Makers · Cardputer Buddy")).toBe("CB");
+    expect(skillMonogram("Plugin Dev · Hook Development")).toBe("HD");
+  });
+
+  it("uses the first two words of a plain name", () => {
+    expect(skillMonogram("Cloudflare One Migrations")).toBe("CO");
+    expect(skillMonogram("Graphify")).toBe("G");
+  });
+
+  it("reads through slugs and underscores", () => {
+    expect(skillMonogram("memory-skill")).toBe("MS");
+    expect(skillMonogram("web_perf")).toBe("WP");
+  });
+
+  it("never returns more than two characters, or nothing", () => {
+    for (const name of ["", "   ", "·", "a b c d e"]) {
+      const mark = skillMonogram(name);
+      expect(mark.length).toBeGreaterThan(0);
+      expect(mark.length).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+/**
+ * The hub carries a running charge while a build is active. The routes are
+ * shared by the static wiring and the animated copy, so they cannot drift
+ * apart and leave a charge travelling a line that is not drawn.
+ */
+describe("the hub's wiring", () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx"),
+    "utf8",
+  );
+
+  it("draws the decorative wiring from one list", () => {
+    expect(source).toContain("HUB_TRACE_PATHS");
+    expect(source.match(/HUB_TRACE_PATHS\.map/g)).toHaveLength(1);
+  });
+
+  it("carries the charge in stages, each after the one that feeds it", () => {
+    const delays = source.slice(source.indexOf("HUB_CHARGE_STAGE_DELAY_S = {"));
+    const line = delays.slice(0, delays.indexOf("}"));
+    const values = (line.match(/[-\d.]+/g) ?? []).map(Number);
+    expect(values).toHaveLength(4);
+    // Plate, then stubs, then diagonals, then the core: strictly increasing.
+    expect([...values].sort((a, b) => a - b)).toEqual(values);
+  });
+
+  it("splits at a plate and rejoins before the wiring", () => {
+    // Both halves leave the outer edge together and meet at the inner one.
+    expect(source).toContain("halves: [");
+    expect(source).toContain("slot.halves.map");
+  });
+
+  it("gives the charge stubs drawn away from their plate", () => {
+    const block = source.slice(source.indexOf("const HUB_CHARGE_STUBS"));
+    const paths = block.slice(0, block.indexOf("]")).match(/"M[^"]+"/g) ?? [];
+    // Three per plate, four plates.
+    expect(paths).toHaveLength(12);
+  });
+
+  it("enters the core's running ring at the top and bottom, splitting each way", () => {
+    const block = source.slice(source.indexOf("const HUB_CORE_CHARGE_EDGES"));
+    const paths = block.slice(0, block.indexOf("] as const")).match(/"M[^"]+"/g) ?? [];
+    // One ring runs: two entries, each splitting in two.
+    expect(paths).toHaveLength(4);
+    // No closed ring, which would send one dash chasing round the whole shape.
+    expect(paths.every((d) => !d.includes("Z"))).toBe(true);
+    // Every edge starts on the vertical axis, so nothing enters at the waist.
+    const starts = paths.map((d) => d.match(/M([-\d.]+) ([-\d.]+)/)!.slice(1, 3).map(Number));
+    expect(starts.every(([x]) => x === 50)).toBe(true);
+  });
+
+  it("traces the ring where it is actually drawn", () => {
+    // The ring is a square rotated 45 degrees, so a corner reaches the
+    // half-diagonal, not the box edge. Inscribing a diamond in the box put
+    // this charge on top of the inner ring instead.
+    const block = source.slice(source.indexOf("const HUB_CORE_CHARGE_EDGES"));
+    const paths = block.slice(0, block.indexOf("] as const")).match(/"M[^"]+"/g) ?? [];
+    const radii = paths.map((d) => {
+      const [, y] = d.match(/M([-\d.]+) ([-\d.]+)/)!.slice(1, 3).map(Number);
+      return Math.abs(y - 50);
+    });
+    // 50 * sqrt(2), to the two decimals the paths carry.
+    expect([...new Set(radii.map((r) => r.toFixed(2)))]).toEqual(["70.71"]);
+  });
+
+  it("normalises path length so a short route is not faster than a long one", () => {
+    expect(source).toContain("pathLength={100}");
+  });
+
+  it("only charges an active build", () => {
+    expect(source).toContain("<HubTraces charged={isActive} />");
+    expect(source).toContain("charged={isActive}");
+  });
+
+  it("stands down for reduced motion", () => {
+    const css = fs.readFileSync(path.join(ROOT, "apps/desktop/src/index.css"), "utf8");
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toContain(".cozea-hub-charge");
+  });
+});
+
+/**
+ * One ring runs at the centre; the one nearest the middle simply lights up
+ * while the build is active.
+ */
+describe("the core's two rings", () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx"),
+    "utf8",
+  );
+
+  it("lights the inner ring rather than animating it", () => {
+    const inner = source.slice(source.indexOf('"absolute inset-[12%] rotate-45'));
+    const block = inner.slice(0, inner.indexOf("/>"));
+    expect(block).not.toContain("cozea-hub-charge");
+    // Steady and brighter while active, dim otherwise.
+    expect(block).toContain("isActive");
+    expect(block).toContain("border-foreground/70");
+  });
+
+  it("draws a longer dash at the core than along the wiring", () => {
+    const coreDash = Number(source.match(/strokeDasharray="(\d+) \d+"\s*\n\s*\/\/ Longer/)?.[1] ?? 0)
+      || Number(source.slice(source.indexOf("the core is the arrival")).match(/strokeDasharray="(\d+)/)![1]);
+    const wiringDash = Number(
+      source.slice(source.indexOf("HUB_CHARGE_STUBS.map")).match(/strokeDasharray="(\d+)/)![1],
+    );
+    expect(coreDash).toBeGreaterThan(wiringDash);
   });
 });

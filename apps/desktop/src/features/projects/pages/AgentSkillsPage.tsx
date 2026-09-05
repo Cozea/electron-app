@@ -920,6 +920,22 @@ export function AgentSkillsPage() {
   const provider = searchParams.get("provider") as AgentSkillProvider | null;
   const status = (searchParams.get("status") ?? "all") as SkillStatusFilter;
   const view = searchParams.get("view") ?? "skills";
+  const skillParam = searchParams.get("skill");
+
+  /**
+   * A skill can be addressed by id, so the Builds pages can hand off to this
+   * one. The param is consumed once the snapshot actually holds the skill,
+   * otherwise the load below would reconcile the selection straight back to
+   * null; clearing it afterwards keeps closing the skill from reopening it.
+   */
+  React.useEffect(() => {
+    if (!skillParam || !snapshot) return;
+    if (!snapshot.skills.some((skill) => skill.id === skillParam)) return;
+    setSelectedSkillId(skillParam);
+    const next = new URLSearchParams(searchParams);
+    next.delete("skill");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, skillParam, snapshot]);
 
   // Keyed by view, not just mount: Builds switches skills on and off, and this
   // component only early-returns for it rather than unmounting. Loading once

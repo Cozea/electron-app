@@ -21,8 +21,10 @@ describe("Agent Skills surface", () => {
     );
 
     expect(routeSource).toContain('path: "/skills"');
-    expect(projectSidebarSource).toContain('navigate("/projects/skills")');
-    expect(layoutSource).toContain("LazyAgentSkillsSidebar");
+    // The primary nav opens Builds, and the surface carries its own chrome:
+    // there is no second sidebar, so the shell keeps the project one.
+    expect(projectSidebarSource).toContain('navigate("/projects/skills?view=builds")');
+    expect(layoutSource).not.toContain("AgentSkillsSidebar");
   });
 
   it("keeps focused provider controls explicit and provider-complete", () => {

@@ -21,7 +21,7 @@ import {
   readLastWorkbenchRoute,
 } from "@/features/workbench/model/lastWorkbenchRoute"
 import { browseForDirectory } from "@/lib/browseForDirectory"
-import { resolveDroppedLocalFolderPath } from "@/features/projects/lib/resolveDroppedLocalFolderPath"
+import { resolveDroppedLocalFolderPath } from "@/lib/resolveDroppedLocalFolderPath"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"

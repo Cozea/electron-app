@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { resolveDroppedLocalFolderPath } from "../../apps/desktop/src/features/projects/lib/resolveDroppedLocalFolderPath"
+import { resolveDroppedLocalFolderPath } from "../../apps/desktop/src/lib/resolveDroppedLocalFolderPath"
 
 function createFile(name: string, type = ""): File {
   return new File([""], name, { type })

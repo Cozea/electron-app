@@ -50,6 +50,11 @@ import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
 } from "@/features/assistant/chat/composerDraftStore"
+import { clampCollapsedComposerCursor } from "@/features/assistant/composer-logic"
+import {
+  appendComposerMentions,
+  partitionDroppedComposerFiles,
+} from "@/features/assistant/chat/composerDroppedFiles"
 import {
   reportMemoryUpdateOutcome,
   subscribeMemoryUpdateRequests,
@@ -2047,6 +2052,45 @@ export function useWorkbenchAssistantTileController(
     })
   }, [])
 
+  /**
+   * Files dropped on the tile or picked from the composer. Images become
+   * attachments; everything else (a PDF, a CSV, a folder) is mentioned by path
+   * so the agent opens it from disk, because the provider attachment contract
+   * carries images only.
+   */
+  const addComposerFiles = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return
+      // The composer is bound to the pending answer draft while a question is
+      // open, so anything written to the thread draft here would land offscreen.
+      if (pendingUserInputs.length > 0) {
+        setSendError("Attach files after answering pending questions.")
+        return
+      }
+
+      const { images, mentionPaths, unresolvedNames } = partitionDroppedComposerFiles(files, {
+        resolvePath: window.electronAPI?.getPathForFile,
+        workspaceRoot: resolvedWorkspaceRoot,
+      })
+
+      if (mentionPaths.length > 0) {
+        const nextComposer = appendComposerMentions(composer, mentionPaths)
+        setComposer(nextComposer)
+        setComposerCursor(clampCollapsedComposerCursor(nextComposer, Number.POSITIVE_INFINITY))
+      }
+
+      addComposerImages(images)
+
+      if (unresolvedNames.length > 0) {
+        const names = unresolvedNames.map((name) => `'${name}'`).join(", ")
+        setSendError(
+          `Cozea could not read a local path for ${names}. Save the file to disk, then drop it in.`,
+        )
+      }
+    },
+    [addComposerImages, composer, pendingUserInputs.length, resolvedWorkspaceRoot],
+  )
+
   const handleComposerPaste: ClipboardEventHandler<HTMLElement> = (event) => {
     const files = Array.from(event.clipboardData.files)
     if (files.length === 0) return
@@ -2324,7 +2368,7 @@ export function useWorkbenchAssistantTileController(
       onComposerChange: handleComposerChange,
       onComposerCommandKey: handleComposerCommandKey,
       onComposerPaste: handleComposerPaste,
-      onAttachFiles: addComposerImages,
+      onAttachFiles: addComposerFiles,
       onRemoveComposerImage: removeComposerImage,
       onRemovePreviewAnnotation: removePreviewAnnotation,
       compactUnavailableReason: compactUnavailable,

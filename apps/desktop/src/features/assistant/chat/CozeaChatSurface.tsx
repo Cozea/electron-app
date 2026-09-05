@@ -200,7 +200,9 @@ type ComposerSkillMenuItem = {
 
 type ComposerMenuItem = ComposerPathMenuItem | ComposerSlashMenuItem | ComposerSkillMenuItem
 
-const DOCKED_COMPOSER_SCROLL_GAP_PX = 16
+// Breathing room between the last timeline row and the composer. The composer
+// card carries its own top margin, so this only guards against rounding.
+const DOCKED_COMPOSER_SCROLL_CLEARANCE_PX = 4
 const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128
 const MODEL_PICKER_PANEL_TRANSITION_MS = 150
 
@@ -847,10 +849,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     let animationFrameId: number | null = null
     const updateInset = () => {
       const dockContent = findDockContent()
-      const measuredHeight = dockContent
-        ? dockContent.getBoundingClientRect().height
-        : frame.getBoundingClientRect().height
-      const nextInset = Math.ceil(measuredHeight + DOCKED_COMPOSER_SCROLL_GAP_PX)
+      const frameRect = frame.getBoundingClientRect()
+      // Measure to the frame's bottom rather than the composer's own height so
+      // the frame's bottom padding is reserved too; otherwise the last row sits
+      // that many pixels behind the composer.
+      const occupiedHeight = dockContent
+        ? Math.max(0, frameRect.bottom - dockContent.getBoundingClientRect().top)
+        : frameRect.height
+      const nextInset = Math.ceil(occupiedHeight + DOCKED_COMPOSER_SCROLL_CLEARANCE_PX)
       setDockedComposerMeasuredInsetPx((currentInset) => {
         if (Math.abs(currentInset - nextInset) < 1) {
           return currentInset
@@ -871,11 +877,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
 
     const resizeObserver = new ResizeObserver(updateInset)
+    resizeObserver.observe(frame)
     const dockContent = findDockContent()
     if (dockContent) {
       resizeObserver.observe(dockContent)
-    } else {
-      resizeObserver.observe(frame)
     }
 
     return () => {
@@ -2128,8 +2133,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             icon={__ImageAdd01IconHugeIcon}
             className="size-7 text-muted-foreground mb-4"
           />
-          <h3 className="text-base font-medium text-foreground">Drop images to attach</h3>
-          <p className="text-sm text-muted-foreground mt-1">Images will be added to your draft</p>
+          <h3 className="text-base font-medium text-foreground">Drop files to add them</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Images attach to your draft, other files are added as paths
+          </p>
         </div>
       )}
       <div
