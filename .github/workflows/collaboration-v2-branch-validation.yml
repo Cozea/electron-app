@@ -30,20 +30,6 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      - name: Capture exact validation sources
-        run: |
-          git archive --format=tar.gz --output="$RUNNER_TEMP/collaboration-source.tar.gz" HEAD -- \
-            apps packages shared convex cloudflare scripts tests patches \
-            package.json bun.lock .gitmodules 'tsconfig*.json' vitest.config.ts \
-            ':(glob,exclude)**/.env*' ':(glob,exclude)**/*.pem' ':(glob,exclude)**/*.key'
-
-      - name: Upload exact validation sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: collaboration-source-${{ github.sha }}
-          path: ${{ runner.temp }}/collaboration-source.tar.gz
-          retention-days: 1
-
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -51,6 +37,25 @@ jobs:
 
       - name: Bootstrap repository
         run: bun run bootstrap
+
+      - name: Verify pinned native runtime
+        run: |
+          bun run prepare:t3-runtime:check
+          mkdir -p "$RUNNER_TEMP/collaboration-native"
+          git -C vendor/t3code archive --format=tar.gz --output="$RUNNER_TEMP/collaboration-native/t3-source.tar.gz" HEAD
+          cp vendor/t3code/apps/server/dist/bin.mjs "$RUNNER_TEMP/collaboration-native/bin.mjs"
+          cp "$(command -v bun)" "$RUNNER_TEMP/collaboration-native/bun"
+          tar -czf "$RUNNER_TEMP/collaboration-native/test-dependencies.tar.gz" \
+            --exclude='*.woff*' --exclude='*.ttf' --exclude='*.otf' \
+            --exclude='.env*' --exclude='*.pem' --exclude='*.key' \
+            node_modules
+
+      - name: Upload native boundary qualification fixture
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-native-${{ github.sha }}
+          path: ${{ runner.temp }}/collaboration-native
+          retention-days: 1
 
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
