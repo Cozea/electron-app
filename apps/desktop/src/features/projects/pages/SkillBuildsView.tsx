@@ -226,7 +226,15 @@ export function providerLoadout(
   loadout: readonly AgentSkillRecord[],
   provider: AgentSkillProvider,
 ): AgentSkillRecord[] {
-  return loadout.filter((skill) => skill.source !== "managed" && providerOwns(skill, provider));
+  return loadout.filter(
+    (skill) =>
+      skill.source !== "managed" &&
+      // Essential skills are shown beside the count as "+N", not inside it.
+      // Counting them here reported them twice, and claimed the build
+      // controlled skills it cannot switch off.
+      !isEssential(skill) &&
+      providerOwns(skill, provider),
+  );
 }
 
 /**

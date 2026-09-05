@@ -603,6 +603,13 @@ describe("skills a build cannot control", () => {
     expect(choosable.length + essential.length).toBe(skills.length);
   });
 
+  it("keeps essential skills out of the plate count that sits beside them", () => {
+    // The plate reads "12 +23". Counting the essential ones in both halves
+    // reported them twice and implied the build could switch them off.
+    expect(providerLoadout(skills, "cursor").map((s) => s.id)).toEqual(["mine"]);
+    expect(providerEssentialCount(skills, "cursor")).toBe(1);
+  });
+
   it("counts what a provider always runs, per provider", () => {
     // The plate would otherwise report a Cursor running one skill while it
     // actually loads the bundled set it restores on its own.
