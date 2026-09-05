@@ -129,6 +129,20 @@ const sharedAliases: Alias[] = [
   },
 ]
 
+// main.ts keeps its stable service API, while the built main graph substitutes
+// cold implementations with tiny facades. Their IPC names are available at
+// boot and the real modules are dynamically imported only on first use.
+const mainBootAliases: Alias[] = [
+  {
+    find: './services/IntegrationService',
+    replacement: path.resolve(__dirname, './electron/services/boot/IntegrationServiceFacade.ts'),
+  },
+  {
+    find: './services/AgentToolService',
+    replacement: path.resolve(__dirname, './electron/services/boot/AgentToolServiceFacade.ts'),
+  },
+]
+
 interface SandboxedPreloadBundle {
   entry: string
   fileName: string
@@ -242,7 +256,7 @@ export default defineConfig({
       __COZEA_DEVICE_GATEWAY_ORIGIN__: JSON.stringify(deviceGatewayOrigin),
     },
     resolve: {
-      alias: sharedAliases,
+      alias: [...mainBootAliases, ...sharedAliases],
     },
     plugins: [
       {
