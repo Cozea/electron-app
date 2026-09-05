@@ -17,7 +17,7 @@ describe('desktop-first loading architecture', () => {
     expect(source).toContain('<ProjectWorkbenchSurface />')
   })
 
-  it('keeps heavyweight terminal and browser hosts behind demand-loading gates', () => {
+  it('keeps heavyweight terminal and browser hosts behind demand-loading gates and prewarms restored needs', () => {
     const app = read('apps/desktop/src/App.tsx')
     const renderer = read('apps/desktop/src/main.tsx')
     const terminalGate = read('apps/desktop/src/features/terminal/TerminalViewHostGate.tsx')
@@ -27,6 +27,9 @@ describe('desktop-first loading architecture', () => {
     expect(app).not.toContain('<TerminalViewHost />')
     expect(renderer).toContain('<ElectronBrowserHostGate />')
     expect(renderer).not.toContain('<ElectronBrowserHost />')
+    expect(renderer).toContain("restoredTileTypes.has('terminal') || restoredTileTypes.has('devServer')")
+    expect(renderer).toContain("warmups.push(import('./features/terminal/TerminalViewHost'))")
+    expect(renderer).toContain("warmups.push(import('./features/browser/ElectronBrowserHost'))")
     expect(terminalGate).toContain("import('./TerminalViewHost')")
     expect(browserGate).toContain("import('./ElectronBrowserHost')")
   })
@@ -46,6 +49,17 @@ describe('desktop-first loading architecture', () => {
     expect(source).toContain('projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}')
   })
 
+  it('uses cached identity for shell paint without granting cached cloud authority', () => {
+    const auth = read('apps/desktop/src/contexts/AuthContext.tsx')
+    const session = read('apps/desktop/src/lib/deviceSession.ts')
+
+    expect(auth).toContain('const [user, setUser] = useState<User | null>(() => bootstrapSession?.user ?? null)')
+    expect(auth).toContain('const [convexUserId, setConvexUserId] = useState<Id<"users"> | null>(null)')
+    expect(auth).toContain('const [accessToken, setAccessToken] = useState<string | null>(null)')
+    expect(auth).toContain('bootstrapLocalDeviceSession({ force: true })')
+    expect(session).not.toContain('seedDeviceSession')
+  })
+
   it('uses pre-React desktop bootstrap as the normal restore path', () => {
     const bootstrap = read('apps/desktop/src/app/bootstrap/desktopBootstrap.ts')
     const launch = read('apps/desktop/src/features/projects/pages/ProjectsLaunchPage.tsx')
@@ -56,12 +70,14 @@ describe('desktop-first loading architecture', () => {
     expect(launch).toContain('api.projects.getAccessibleById')
   })
 
-  it('registers application lifetime before loading the main module', () => {
+  it('marks process entry first and registers runtime shutdown after main bootstrap', () => {
     const source = read('apps/desktop/electron/mainEntry.ts')
     expect(source.trim().split('\n')).toEqual([
+      "import './mainEntryMark'",
       "import './registerAppLifecycle'",
       "import './desktopBootstrapMain'",
       "import './main'",
+      "import './runtimeQuitCleanup'",
     ])
   })
 })
