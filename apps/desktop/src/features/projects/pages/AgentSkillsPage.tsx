@@ -1269,11 +1269,12 @@ export function AgentSkillsPage() {
   }, [busyKey, displayName, loadSnapshot, runMutation]);
 
   useProjectHeader(
-    view === "builds" || editorMode || selectedSkill || setupPack ? null : headerFilter,
+    editorMode || selectedSkill || setupPack ? null : headerFilter,
     null,
     {
-      rightAddon: view === "builds" || editorMode || selectedSkill || setupPack ? null : headerActions,
+      rightAddon: editorMode || selectedSkill || setupPack ? null : headerActions,
       hideShare: true,
+      disabled: view === "builds",
     },
   );
 

@@ -14,6 +14,8 @@ interface ProjectHeaderOptions {
   rightAddon?: ReactNode | null
   /** Set when the route has nothing shareable, e.g. the DevApps Store. */
   hideShare?: boolean
+  /** When true, skips publishing or resetting the chrome header. */
+  disabled?: boolean
 }
 
 export function useProjectHeader(
@@ -23,8 +25,10 @@ export function useProjectHeader(
 ) {
   const setChrome = useProjectHeaderStore((state) => state.setChrome)
   const reset = useProjectHeaderStore((state) => state.reset)
+  const disabled = options?.disabled ?? false
 
   useEffect(() => {
+    if (disabled) return
     setChrome({
       header: header ?? null,
       centerAddon: centerAddon ?? null,
@@ -40,8 +44,12 @@ export function useProjectHeader(
     options?.hideShare,
     options?.insetLeft,
     options?.insetRight,
+    disabled,
     setChrome,
   ])
 
-  useEffect(() => reset, [reset])
+  useEffect(() => {
+    if (disabled) return
+    return reset
+  }, [disabled, reset])
 }
