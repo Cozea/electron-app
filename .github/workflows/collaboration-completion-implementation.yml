@@ -12,6 +12,7 @@ on:
       - apps/desktop/src/features/collaboration/**
       - shared/collaboration*
       - shared/durableQuit.ts
+      - shared/CollaborationTransport.ts
       - tests/collaboration/**
       - .github/workflows/collaboration-completion-implementation.yml
   workflow_dispatch:
@@ -52,6 +53,10 @@ jobs:
           bun scripts/collaboration-native-integration.mjs
           bun scripts/collaboration-lifecycle-integration.mjs
           bun scripts/collaboration-review-integration.mjs
+          bun scripts/collaboration-recovery-integration.mjs --check
+          bun scripts/collaboration-recovery-integration.mjs
+          bun scripts/collaboration-drain-integration.mjs --check
+          bun scripts/collaboration-drain-integration.mjs
       - name: Bootstrap pinned runtime
         run: bun run bootstrap
       - name: Capture source-only integration diagnostics
@@ -80,7 +85,7 @@ jobs:
           bun x "$manager" --dir vendor/t3code --filter t3 typecheck
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
-      - name: Focused admission, shutdown and immutable-review regressions
+      - name: Focused admission, shutdown, immutable-review and retention regressions
         run: >-
           bunx vitest run
           tests/collaboration/nativeWorkspaceAuthority.test.ts
@@ -95,6 +100,15 @@ jobs:
           tests/collaboration/sessionHostShutdown.test.ts
           tests/collaboration/commitReview.test.ts
           tests/collaboration/sessionWorkspaceCoordinator.test.ts
+          tests/collaboration/recoveryStorageBudget.test.ts
+          tests/collaboration/recoveryStorageCleanup.test.ts
+          tests/collaboration/durableStoreAdmission.test.ts
+          tests/collaboration/transportShutdown.test.ts
+      - name: Repeat complete runtime shutdown scenario without retry masking
+        run: |
+          for attempt in 1 2 3; do
+            bunx vitest run tests/collaboration/sessionRuntimeIntegration.test.ts
+          done
       - name: Typecheck renderer
         run: bun run typecheck
       - name: Typecheck Electron
@@ -123,11 +137,13 @@ jobs:
             apps/desktop/electron/collaboration/registerCollaborationHandlers.ts \
             apps/desktop/electron/collaboration/SessionRuntimeHost.ts \
             apps/desktop/electron/collaboration/SessionWorkspaceCoordinator.ts \
+            apps/desktop/electron/collaboration/SessionFileProjection.ts \
+            apps/desktop/electron/collaboration/CollaborationSessionRuntime.ts \
             apps/desktop/electron/main.ts apps/desktop/electron/preload.ts \
             apps/desktop/electron/services/WorkbenchSessionManager.ts \
             apps/desktop/src/features/collaboration/ProjectCollaborationControl.tsx \
             shared/nativeWorkspaceAuthority.ts shared/collaborationDesktop.ts \
-            shared/collaborationRuntime.ts \
+            shared/collaborationRuntime.ts shared/CollaborationTransport.ts \
             tests/collaboration/nativeWorkspaceAuthority.test.ts \
             tests/collaboration/sessionWorkspaceCoordinator.test.ts \
             scripts/prepare-t3-runtime.mjs
@@ -139,5 +155,5 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat: protect durable session shutdown and review exact shared commits'
+          git commit -m 'feat: drain session shutdown and bound retained recovery storage'
           git push origin HEAD:refs/heads/codex/collaboration-v2-complete

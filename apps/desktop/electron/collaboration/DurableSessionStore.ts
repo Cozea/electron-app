@@ -1,4 +1,6 @@
 import fs from "node:fs/promises"
+import { inventoryRecoveryStorage, withRecoveryStorageBudget } from "./RecoveryStorageBudget"
+import type { CollaborationRecoveryCleanupResult } from "../../../../shared/collaborationRecovery"
 import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
 import type { CollaborationOutbox, CollaborationOutboxRecord } from "../../../../shared/collaborationOutbox"
@@ -14,8 +16,10 @@ export interface DurableAcknowledgedUpdate {
   sequence: number
   updateBinary: string
 }
-const MAX_RETAINED_BYTES = 96 * 1024 * 1024
 const idPattern = /^[A-Za-z0-9_-]{1,160}$/
+// Runtime, key migration and explicit cleanup may open independent handles to
+// the same key-version store. Serialize their identity checks and mutations.
+const directoryOperations = new Map<string, Promise<unknown>>()
 
 /** Device-local recovery. Every code payload on disk is an encrypted envelope. */
 export class DurableSessionStore implements CollaborationOutbox {
@@ -33,36 +37,43 @@ export class DurableSessionStore implements CollaborationOutbox {
   }
 
   private serial<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.tail.catch(() => {}).then(operation)
+    const key = path.resolve(this.directory)
+    const next = (directoryOperations.get(key) ?? Promise.resolve()).catch(() => {}).then(operation)
     this.tail = next
+    directoryOperations.set(key, next)
+    const release = () => { if (directoryOperations.get(key) === next) directoryOperations.delete(key) }
+    void next.then(release, release)
     return next
   }
 
   private async ensure(): Promise<void> { await fs.mkdir(this.directory, { recursive: true, mode: 0o700 }) }
 
+  reserveProjectionWrite(bytes: number, write: () => Promise<void>): Promise<void> {
+    return withRecoveryStorageBudget(this.root, bytes, write)
+  }
+
   private async write(name: string, value: unknown): Promise<void> {
-    await this.ensure()
     const serialized = JSON.stringify(value)
-    if (Buffer.byteLength(serialized) > 32 * 1024 * 1024) throw new Error("Encrypted recovery record exceeds its limit")
-    const entries = await fs.readdir(this.directory, { withFileTypes: true })
-    let retainedBytes = Buffer.byteLength(serialized)
-    for (const entry of entries) {
-      if (entry.name === name || !entry.name.endsWith(".json")) continue
-      if (!entry.isFile()) throw new Error("Collaboration recovery directory contains an unexpected entry")
-      retainedBytes += (await fs.stat(path.join(this.directory, entry.name))).size
-    }
-    if (retainedBytes > MAX_RETAINED_BYTES) throw new Error("Collaboration recovery storage is full; synchronization paused with local edits retained")
-    const temp = path.join(this.directory, `.${randomUUID()}.pending`)
-    const handle = await fs.open(temp, "wx", 0o600)
-    try { await handle.writeFile(serialized, "utf8"); await handle.sync() } finally { await handle.close() }
-    await fs.rename(temp, path.join(this.directory, name))
-    const directory = await fs.open(this.directory, "r")
-    try { await directory.sync() } finally { await directory.close() }
+    const bytes = Buffer.byteLength(serialized)
+    if (bytes > 32 * 1024 * 1024) throw new Error("Encrypted recovery record exceeds its limit")
+    const roomRoot = path.join(this.root, "g3", createHash("sha256").update(this.roomId).digest("hex"))
+    await withRecoveryStorageBudget(this.root, bytes, async () => {
+      await this.ensure()
+      const temp = path.join(this.directory, `.${randomUUID()}.pending`)
+      const handle = await fs.open(temp, "wx", 0o600)
+      try { await handle.writeFile(serialized, "utf8"); await handle.sync() } finally { await handle.close() }
+      await fs.rename(temp, path.join(this.directory, name))
+      const directory = await fs.open(this.directory, "r")
+      try { await directory.sync() } finally { await directory.close() }
+    }, { roomRoot })
   }
 
   private async read<T>(name: string): Promise<T | null> {
     try {
-      const value = await fs.readFile(path.join(this.directory, name), "utf8")
+      const filename = path.join(this.directory, name)
+      const stat = await fs.lstat(filename)
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 32 * 1024 * 1024) throw new Error("Unsafe or oversized recovery record")
+      const value = await fs.readFile(filename, "utf8")
       return JSON.parse(value) as T
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return null
@@ -71,7 +82,7 @@ export class DurableSessionStore implements CollaborationOutbox {
   }
 
   async enqueue(record: CollaborationOutboxRecord): Promise<void> {
-    if (!idPattern.test(record.id) || record.roomId !== this.roomId || !record.updateBinary || !Number.isSafeInteger(record.keyVersion) || record.keyVersion < 1) throw new Error("Invalid encrypted outbox record")
+    if (!idPattern.test(record.id) || record.roomId !== this.roomId || !record.updateBinary || !Number.isSafeInteger(record.keyVersion) || record.keyVersion !== this.keyVersion) throw new Error("Invalid encrypted outbox record")
     await this.serial(async () => {
       const previous = await this.read<CollaborationOutboxRecord>(`outbox-${record.id}.json`)
       if (previous && previous.updateBinary !== record.updateBinary) throw new Error("Outbox identity was reused for different encrypted bytes")
@@ -98,19 +109,20 @@ export class DurableSessionStore implements CollaborationOutbox {
   }
 
   private async listRecords(prefix: "outbox" | "ingress", roomId: string, keyVersion: number): Promise<CollaborationOutboxRecord[]> {
-    await this.tail.catch(() => {})
-    if (roomId !== this.roomId) throw new Error("Outbox room mismatch")
-    await this.ensure()
-    const records: CollaborationOutboxRecord[] = []
-    for (const name of await fs.readdir(this.directory)) {
-      if (!name.startsWith(`${prefix}-`) || !name.endsWith(".json")) continue
-      const record = await this.read<CollaborationOutboxRecord>(name)
-      if (!record || record.roomId !== roomId || !idPattern.test(record.id) || typeof record.updateBinary !== "string") throw new Error("Encrypted outbox is corrupt; local recovery data was retained")
-      // Never silently hide pending work after a key rotation.
-      if (record.keyVersion !== keyVersion) throw new Error("Pending edits use a previous room key and require recovery before rejoining")
-      records.push(record)
-    }
-    return records.sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id))
+    return this.serial(async () => {
+      if (roomId !== this.roomId) throw new Error("Outbox room mismatch")
+      await this.ensure()
+      const records: CollaborationOutboxRecord[] = []
+      for (const name of await fs.readdir(this.directory)) {
+        if (!name.startsWith(`${prefix}-`) || !name.endsWith(".json")) continue
+        const record = await this.read<CollaborationOutboxRecord>(name)
+        if (!record || record.roomId !== roomId || !idPattern.test(record.id) || typeof record.updateBinary !== "string") throw new Error("Encrypted outbox is corrupt; local recovery data was retained")
+        // Never silently hide pending work after a key rotation.
+        if (record.keyVersion !== keyVersion) throw new Error("Pending edits use a previous room key and require recovery before rejoining")
+        records.push(record)
+      }
+      return records.sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id))
+    })
   }
 
   async acknowledge(id: string): Promise<void> {
@@ -150,7 +162,7 @@ export class DurableSessionStore implements CollaborationOutbox {
   }
 
   async saveCheckpoint(checkpoint: DurableSessionCheckpoint): Promise<void> {
-    if (checkpoint.roomId !== this.roomId || checkpoint.generation !== 3 || !Number.isSafeInteger(checkpoint.sequence) || checkpoint.sequence < 0) throw new Error("Invalid local recovery checkpoint")
+    if (checkpoint.roomId !== this.roomId || checkpoint.generation !== 3 || checkpoint.keyVersion !== this.keyVersion || !Number.isSafeInteger(checkpoint.sequence) || checkpoint.sequence < 0) throw new Error("Invalid local recovery checkpoint")
     await this.serial(async () => {
       const previous = await this.read<DurableSessionCheckpoint>("checkpoint.json")
       if (previous && previous.sequence > checkpoint.sequence) throw new Error("Recovery checkpoint cannot move backwards")
@@ -164,30 +176,58 @@ export class DurableSessionStore implements CollaborationOutbox {
   }
 
   async recover(): Promise<{ checkpoint: DurableSessionCheckpoint | null; updates: DurableAcknowledgedUpdate[] }> {
-    await this.tail.catch(() => {})
-    await this.ensure()
-    const checkpoint = await this.read<DurableSessionCheckpoint>("checkpoint.json")
-    if (checkpoint && (checkpoint.generation !== 3 || checkpoint.roomId !== this.roomId)) throw new Error("Local collaboration recovery generation does not match")
-    const updates: DurableAcknowledgedUpdate[] = []
-    let sequence = checkpoint?.sequence ?? 0
-    for (const name of (await fs.readdir(this.directory)).filter(name => /^ack-\d{16}\.json$/.test(name)).sort()) {
-      const update = await this.read<DurableAcknowledgedUpdate>(name)
-      if (!update || !Number.isSafeInteger(update.sequence) || typeof update.updateBinary !== "string") throw new Error("Invalid encrypted acknowledgement log")
-      if (update.sequence <= sequence) continue
-      if (update.sequence !== sequence + 1) throw new Error("Local acknowledgement log has a gap; reload the room checkpoint before replaying pending edits")
-      updates.push(update)
-      sequence = update.sequence
-    }
-    return { checkpoint, updates }
+    return this.serial(async () => {
+      await this.ensure()
+      const checkpoint = await this.read<DurableSessionCheckpoint>("checkpoint.json")
+      if (checkpoint && (checkpoint.generation !== 3 || checkpoint.roomId !== this.roomId)) throw new Error("Local collaboration recovery generation does not match")
+      const updates: DurableAcknowledgedUpdate[] = []
+      let sequence = checkpoint?.sequence ?? 0
+      for (const name of (await fs.readdir(this.directory)).filter(name => /^ack-\d{16}\.json$/.test(name)).sort()) {
+        const update = await this.read<DurableAcknowledgedUpdate>(name)
+        if (!update || !Number.isSafeInteger(update.sequence) || typeof update.updateBinary !== "string") throw new Error("Invalid encrypted acknowledgement log")
+        if (update.sequence <= sequence) continue
+        if (update.sequence !== sequence + 1) throw new Error("Local acknowledgement log has a gap; reload the room checkpoint before replaying pending edits")
+        updates.push(update)
+        sequence = update.sequence
+      }
+      return { checkpoint, updates }
+    })
   }
 
-  async flush(): Promise<void> { await this.tail }
+  /** Caller authenticates this exact replacement, not just its plaintext cursor. */
+  compactAcknowledged(verified: DurableSessionCheckpoint): Promise<CollaborationRecoveryCleanupResult> {
+    return this.serial(async () => {
+      await inventoryRecoveryStorage(this.root)
+      const current = await this.read<DurableSessionCheckpoint>("checkpoint.json")
+      if (!current || verified.roomId !== this.roomId || verified.keyVersion !== this.keyVersion ||
+        current.generation !== 3 || current.roomId !== verified.roomId || current.keyVersion !== verified.keyVersion ||
+        current.sequence !== verified.sequence || current.snapshotBinary !== verified.snapshotBinary ||
+        !Number.isSafeInteger(current.sequence) || current.sequence < 0) throw new Error("Recovery checkpoint changed; retry cleanup without discarding data")
+      const candidates: Array<{ filename: string; bytes: number }> = []
+      for (const name of (await fs.readdir(this.directory)).sort()) {
+        const match = /^ack-(\d{16})\.json$/.exec(name)
+        if (!match || Number(match[1]) > current.sequence) continue
+        const record = await this.read<DurableAcknowledgedUpdate>(name)
+        if (!record || record.sequence !== Number(match[1]) || typeof record.updateBinary !== "string") throw new Error("Acknowledged recovery metadata is invalid; all records were retained")
+        const filename = path.join(this.directory, name)
+        candidates.push({ filename, bytes: (await fs.lstat(filename)).size })
+        if (candidates.length === 256) break
+      }
+      for (const candidate of candidates) await fs.rm(candidate.filename)
+      const directory = await fs.open(this.directory, "r")
+      try { await directory.sync() } finally { await directory.close() }
+      return { files: candidates.length, bytes: candidates.reduce((sum, item) => sum + item.bytes, 0) }
+    })
+  }
+
+  async flush(): Promise<void> { await this.tail; await directoryOperations.get(path.resolve(this.directory)) }
 
   async readProjection(): Promise<string | null> {
-    await this.tail.catch(() => {})
-    const record = await this.read<{ ciphertext: string }>("projection.json")
-    if (record && typeof record.ciphertext !== "string") throw new Error("Projection recovery is corrupt; local files were retained")
-    return record?.ciphertext ?? null
+    return this.serial(async () => {
+      const record = await this.read<{ ciphertext: string }>("projection.json")
+      if (record && typeof record.ciphertext !== "string") throw new Error("Projection recovery is corrupt; local files were retained")
+      return record?.ciphertext ?? null
+    })
   }
 
   async saveProjection(ciphertext: string): Promise<void> {
