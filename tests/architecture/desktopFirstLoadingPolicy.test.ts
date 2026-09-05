@@ -38,6 +38,14 @@ describe('desktop-first loading architecture', () => {
     expect(source).not.toContain('h-5 w-5 animate-spin')
   })
 
+  it('resolves local workspace identity from the stable route before cloud project data', () => {
+    const source = read('apps/desktop/src/features/projects/layouts/ProjectLayout.tsx')
+    expect(source).toContain('const workspaceProjectId = project?._id ? String(project._id) : routeProjectId ?? null')
+    expect(source).toContain('featureFlags.localWorkspaceCatalog ? workspaceProjectId : null')
+    expect(source).toContain('Boolean(project?._id) && activeBranch === collabBranch')
+    expect(source).toContain('projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}')
+  })
+
   it('uses pre-React desktop bootstrap as the normal restore path', () => {
     const bootstrap = read('apps/desktop/src/app/bootstrap/desktopBootstrap.ts')
     const launch = read('apps/desktop/src/features/projects/pages/ProjectsLaunchPage.tsx')
