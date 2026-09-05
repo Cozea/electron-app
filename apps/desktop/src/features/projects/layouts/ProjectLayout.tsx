@@ -639,25 +639,33 @@ export function ProjectLayout({
                 className={cn(
                   // `min-w-0` prevents the main content from overflowing under the right panels
                   // when it contains wide children (iframes, editors, etc.).
-                  "flex flex-1 flex-col min-h-0 min-w-0",
+                  "relative flex flex-1 flex-col min-h-0 min-w-0",
                   shouldRemovePadding ? "p-0" : "p-4",
                   shouldRemovePadding
                     ? "overflow-hidden"
                     : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
-                {featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-                  </div>
-                ) : featureFlags.localWorkspaceCatalog && project?._id && workspaceResolution?.status !== "ready" ? (
+                {featureFlags.localWorkspaceCatalog && project?._id && workspaceResolution && workspaceResolution.status !== "ready" ? (
                   <WorkspaceRepairScreen
-                    result={workspaceResolution!}
+                    result={workspaceResolution}
                     project={{ _id: String(project._id), slug: project.slug, name: project.name }}
                     onAction={handleRepairAction}
                   />
                 ) : (
-                  children || <Outlet />
+                  <>
+                    {children || <Outlet />}
+                    {featureFlags.localWorkspaceCatalog && project?._id && !workspaceResolution ? (
+                      <div
+                        className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
+                        role="status"
+                        aria-live="polite"
+                        data-workspace-resolution="refreshing"
+                      >
+                        Reconnecting workspace…
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
               <TerminalEventBridge />
