@@ -740,6 +740,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pushPrepared: input => ipcRenderer.invoke("collaboration:pushPrepared", input),
     adoptPublished: input => ipcRenderer.invoke("collaboration:adoptPublished", input),
     runtime: {
+      recoveryEntries: id => ipcRenderer.invoke("collaboration:runtimeRecoveryEntries", id),
+      recoveredFiles: id => ipcRenderer.invoke("collaboration:runtimeRecoveredFiles", id),
+      resolveRecovered: input => ipcRenderer.invoke("collaboration:runtimeResolveRecovered", input),
       recoveryInventory: () => ipcRenderer.invoke("collaboration:runtimeRecoveryInventory"),
       cleanupRecovery: id => ipcRenderer.invoke("collaboration:runtimeCleanupRecovery", id),
       setup: id => ipcRenderer.invoke("collaboration:runtimeSetup", id),

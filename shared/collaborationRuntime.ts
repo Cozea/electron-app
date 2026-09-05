@@ -13,7 +13,12 @@ export interface SessionRuntimeSnapshot {
   conflicts: Array<{ path: string; fileIds: string[] }>
   gitOnlyPaths: string[]
 }
+export interface RecoveredOfflineEntry { id: string; incomplete: boolean; retainedRecords: number; unresolvedFiles: number }
+export interface RecoveredOfflineFile extends SharedSessionFile { recoveryId: string; canonicalContent: string | null; savingPath: string | null }
 export interface CollaborationRuntimeAPI {
+  recoveryEntries(sessionId: string): Promise<RecoveredOfflineEntry[]>
+  recoveredFiles(sessionId: string): Promise<RecoveredOfflineFile[]>
+  resolveRecovered(input: { sessionId: string; recoveryId: string; fileId: string; action: "save" | "discard"; path?: string }): Promise<void>
   recoveryInventory(): Promise<import("./collaborationRecovery").CollaborationRecoveryInventory>
   cleanupRecovery(sessionId: string): Promise<import("./collaborationRecovery").CollaborationRecoveryCleanupResult>
   setup(organizationId: string): Promise<{ authorizationUrl: string }>

@@ -81,6 +81,23 @@ export class DurableSessionStore implements CollaborationOutbox {
     }
   }
 
+  readInitializationBasis(id: string): Promise<string | null> {
+    if (!idPattern.test(id)) throw new Error("Invalid initialization basis identity")
+    return this.serial(() => this.read<string>(`initialization-basis-${id}.json`))
+  }
+  saveInitializationBasis(leaseId: string, encoded: string): Promise<void> {
+    if (!idPattern.test(leaseId)) throw new Error("Invalid initialization basis identity")
+    return this.serial(async () => {
+      const name = `initialization-basis-${leaseId}.json`
+      const previous = await this.read<string>(name)
+      if (previous && previous !== encoded) throw new Error("Initialization basis already exists; retain its original history")
+      if (!previous) await this.write(name, encoded)
+    })
+  }
+
+  readRecoveryJournal(): Promise<string | null> { return this.serial(() => this.read<string>("offline-recovery.json")) }
+  saveRecoveryJournal(encrypted: string): Promise<void> { return this.serial(() => this.write("offline-recovery.json", encrypted)) }
+
   async enqueue(record: CollaborationOutboxRecord): Promise<void> {
     if (!idPattern.test(record.id) || record.roomId !== this.roomId || !record.updateBinary || !Number.isSafeInteger(record.keyVersion) || record.keyVersion !== this.keyVersion) throw new Error("Invalid encrypted outbox record")
     await this.serial(async () => {
@@ -125,18 +142,31 @@ export class DurableSessionStore implements CollaborationOutbox {
     })
   }
 
-  async acknowledge(id: string): Promise<void> {
+  async retireRecoverySources(sources: Array<{ keyVersion: number; id: string; kind?: "ingress" }>): Promise<void> {
+    for (const ref of sources) {
+      if (ref.keyVersion > this.keyVersion || ref.keyVersion < 1) throw new Error("Invalid recovery source")
+      const source = new DurableSessionStore(this.root, this.roomId, ref.keyVersion)
+      if (ref.kind === "ingress") await source.acknowledgeEditorIngress(ref.id)
+      else await source.acknowledge(ref.id)
+    }
+  }
+
+  async acknowledge(id: string): Promise<void> { await this.acknowledgeChain(id, new Set()) }
+  private async acknowledgeChain(id: string, visited: Set<string>): Promise<void> {
     if (!idPattern.test(id)) throw new Error("Invalid outbox acknowledgement")
+    const identity = `${this.keyVersion}:${id}`
+    if (visited.has(identity)) throw new Error("Cyclic migrated edit provenance")
+    visited.add(identity)
+    // Read and remove in separate serialized operations: a renewed initializer
+    // may have a predecessor in this same key directory.
+    const record = await this.serial(() => this.read<CollaborationOutboxRecord>(`outbox-${id}.json`))
+    if (record?.migratedFrom) {
+      if (record.migratedFrom.keyVersion > this.keyVersion || record.migratedFrom.keyVersion < 1) throw new Error("Invalid migrated edit provenance")
+      const source = new DurableSessionStore(this.root, this.roomId, record.migratedFrom.keyVersion)
+      if (record.migratedFrom.kind === "ingress") await source.acknowledgeEditorIngress(record.migratedFrom.id)
+      else await source.acknowledgeChain(record.migratedFrom.id, visited)
+    }
     await this.serial(async () => {
-      const record = await this.read<CollaborationOutboxRecord>(`outbox-${id}.json`)
-      if (record?.migratedFrom) {
-        if (record.migratedFrom.keyVersion >= this.keyVersion || record.migratedFrom.keyVersion < 1) throw new Error("Invalid migrated edit provenance")
-        // The room durably acknowledged the new ciphertext. Remove its old-key
-        // source first so a crash cannot recreate a different encrypted retry.
-        const source = new DurableSessionStore(this.root, this.roomId, record.migratedFrom.keyVersion)
-        if (record.migratedFrom.kind === "ingress") await source.acknowledgeEditorIngress(record.migratedFrom.id)
-        else await source.acknowledge(record.migratedFrom.id)
-      }
       await fs.rm(path.join(this.directory, `outbox-${id}.json`), { force: true })
       const directory = await fs.open(this.directory, "r")
       try { await directory.sync() } finally { await directory.close() }

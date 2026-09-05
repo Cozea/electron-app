@@ -8,7 +8,7 @@ import { bytesToEnvelope, decryptPayload, encryptPayload, envelopeToBytes } from
 import type { DurableSessionStore } from "./DurableSessionStore"
 
 interface DiskText { content: string; executable: boolean }
-interface ProjectedFile { file: SharedSessionFile; update: string }
+interface ProjectedFile { file: SharedSessionFile; update: string; recovery?: boolean }
 interface ProjectionIntent { id: string; before: ProjectedFile | null; after: ProjectedFile; backup: string | null }
 interface ProjectionRecord { generation: 3; sessionId: string; files: Record<string, ProjectedFile>; intent: ProjectionIntent | null }
 interface ProjectionOptions {
@@ -32,6 +32,8 @@ interface ProjectionOptions {
 export class SessionFileProjection {
   private readonly options: ProjectionOptions
   private record: ProjectionRecord | null = null
+  private recoveryRetain: ((file: SharedSessionFile | null, projection: string | null) => Promise<void>) | null = null
+  private readonly retainedUnsupported = new Set<string>()
   private tail: Promise<void> = Promise.resolve()
   constructor(options: ProjectionOptions) { this.options = options }
 
@@ -54,6 +56,69 @@ export class SessionFileProjection {
     })
     this.tail = operation
     return operation
+  }
+
+  /** A quarantined history must never supply anchors for an external-write delta.
+   * Retain both its encrypted intent and any divergent text before replacing the
+   * baseline; normal write-ahead projection then preserves displaced inodes.
+   */
+  async prepareRecoveredFiles(ids: ReadonlySet<string>, retain: (file: SharedSessionFile | null, projection: string | null) => Promise<void>, unsupported: (path: string) => void, recoveredFiles: readonly SharedSessionFile[] = []): Promise<void> {
+    this.recoveryRetain = retain
+    const record = await this.load()
+    const original = await this.options.store.readProjection()
+    await retain(null, original)
+    const intent = record.intent
+    if (intent) {
+      // A crash may have displaced an inode whose bytes differ from the
+      // expected preimage. Surface those bytes before retiring the live intent.
+      if (intent.backup && intent.before) {
+        if (!/^[a-f0-9-]+\.retained$/.test(intent.backup)) throw new Error("Invalid projection recovery path")
+        const filename = path.join(this.options.recoveryRoot, intent.backup)
+        let actual: DiskText | null = null
+        try {
+          const directory = await fs.lstat(this.options.recoveryRoot)
+          if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Unsafe recovery directory")
+          actual = await this.readDisk(filename)
+        } catch { unsupported(intent.before.file.path) }
+        if (actual) await retain({ ...intent.before.file, ...actual, deleted: false }, original)
+      }
+      const target = intent.after.file
+      if (!target.deleted) {
+        let actual: DiskText | null = null
+        try { actual = await this.read(target.path) } catch { this.retainedUnsupported.add(target.id); unsupported(target.path) }
+        if (actual) await retain({ ...target, ...actual, deleted: false }, original)
+      }
+    }
+    for (const file of recoveredFiles) {
+      // Offline-created/renamed paths may have no canonical counterpart. Their
+      // disk bytes still belong to recovery and cannot become ordinary imports.
+      for (const relative of new Set([file.path, ...(file.originalPath ? [file.originalPath] : [])])) {
+        let actual: DiskText | null = null
+        try { actual = await this.read(relative) } catch { unsupported(relative); continue }
+        const canonical = this.options.files.file(file.id)
+        if (actual && !(canonical && !canonical.deleted && canonical.path === relative && actual.content === canonical.content && actual.executable === canonical.executable)) await retain({ ...file, path: relative, ...actual, deleted: false }, original)
+      }
+    }
+    for (const id of ids) {
+      const canonical = this.options.files.file(id)
+      if (!canonical) continue
+      const sourcePath = record.files[id]?.file.path ?? canonical.originalPath ?? canonical.path
+      let actual: DiskText | null
+      try { actual = await this.read(sourcePath) } catch { this.retainedUnsupported.add(id); unsupported(sourcePath); continue }
+      if (actual && (actual.content !== canonical.content || actual.executable !== canonical.executable)) await retain({ ...canonical, path: sourcePath, ...actual, deleted: false }, original)
+      // Re-read the canonical snapshot after awaiting durable retention: remote
+      // edits may have advanced it while the filesystem operation was pending.
+      const current = this.options.files.file(id)!
+      record.files[id] = { recovery: true, file: { ...current, path: sourcePath, content: actual?.content ?? "", executable: actual?.executable ?? false, deleted: actual === null }, update: Buffer.from(this.options.files.checkpoint()).toString("base64") }
+    }
+    record.intent = null
+    await this.save()
+  }
+
+  async retainQuarantinedPath(relative: string, file: SharedSessionFile): Promise<void> {
+    if (!this.recoveryRetain) throw new Error("Recovered path changed; reopen the session to retain its bytes")
+    const actual = await this.read(relative)
+    await this.recoveryRetain({ ...file, path: relative, content: actual?.content ?? "", executable: actual?.executable ?? file.executable, deleted: actual === null }, await this.options.store.readProjection())
   }
 
   private async load(): Promise<ProjectionRecord> {
@@ -97,7 +162,10 @@ export class SessionFileProjection {
   }
 
   private async read(relative: string): Promise<DiskText | null> {
-    const filename = await this.filename(relative)
+    return this.readDisk(await this.filename(relative))
+  }
+
+  private async readDisk(filename: string): Promise<DiskText | null> {
     const stat = await fs.lstat(filename).catch(error => { if (error.code === "ENOENT") return null; throw error })
     if (!stat) return null
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) throw new Error("Shared text was replaced by a Git-only file; local bytes were retained")
@@ -116,11 +184,18 @@ export class SessionFileProjection {
     if (record.intent) await this.finishIntent(record.intent)
     if (this.options.files.pathConflicts().length) throw new Error("Resolve shared path collisions before projecting files")
     for (const file of this.options.files.files()) {
+      if (this.retainedUnsupported.has(file.id)) continue
       let before = record.files[file.id] ?? null
       const sourcePath = before?.file.path ?? file.originalPath ?? file.path
       const expected = before ? before.file.deleted ? null : before.file : file.originalPath ? await this.options.readBase(file.originalPath) : null
       const actual = await this.read(sourcePath)
-      if (!this.same(actual, expected)) {
+      if (before?.recovery && !this.same(actual, expected)) {
+        if (!this.recoveryRetain) throw new Error("Recovered projection changed; reopen the session to retain the newer local bytes")
+        await this.recoveryRetain(actual ? { ...before.file, ...actual, deleted: false } : { ...before.file, deleted: true }, await this.options.store.readProjection())
+        before = { ...before, file: { ...before.file, content: actual?.content ?? "", executable: actual?.executable ?? false, deleted: actual === null } }
+        record.files[file.id] = before
+        await this.save()
+      } else if (!this.same(actual, expected)) {
         if (!before) throw new Error("Unreviewed local changes occupy a shared path; local bytes were retained")
         if (this.options.role !== "editor") throw new Error("Observer workspace has local changes; retained for recovery")
         if (before.file.deleted) throw new Error("A local file conflicts with a shared deletion; restore it explicitly")

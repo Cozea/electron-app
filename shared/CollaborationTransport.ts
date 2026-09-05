@@ -127,6 +127,7 @@ export class CollabWsProvider {
   private readonly onStateChange?: (state: CollaborationConnectionState, error?: string | null) => void
   private readonly onPermanentFailure?: (reason: string) => void
   private readonly onRecoveryRequired?: (code: string) => void
+  private canonicalOnly = false
   private outgoingSuspended = false
   private recoveryPromise: Promise<void> = Promise.resolve()
   private readonly refreshSession?: () => Promise<CollabSessionDescriptor | null>
@@ -175,6 +176,7 @@ export class CollabWsProvider {
     onPermanentFailure?: (reason: string) => void
     onRecoveryRequired?: (code: string) => void
     canWrite?: boolean
+    canonicalOnly?: boolean
     refreshSession?: () => Promise<CollabSessionDescriptor | null>
     encryption?: { roomKeyBase64: string; keyVersion: number } | null
     outbox: CollaborationOutbox
@@ -199,6 +201,7 @@ export class CollabWsProvider {
     this.onPermanentFailure = args.onPermanentFailure
     this.onRecoveryRequired = args.onRecoveryRequired
     this.outgoingSuspended = args.canWrite === false
+    this.canonicalOnly = args.canonicalOnly === true
     this.refreshSession = args.refreshSession
     this.encryption = args.encryption ?? null
     this.outbox = args.outbox
@@ -401,8 +404,20 @@ export class CollabWsProvider {
     }))
   }
 
+  async resumeLocalRecovery(): Promise<void> {
+    this.canonicalOnly = false
+    await this.restoreOutboxAndConnect(false)
+    await this.flushPendingUpdates()
+  }
+
+  async canonicalState(sequence?: number): Promise<{ sequence: number; update: Uint8Array }> {
+    await this.waitForCatchUp()
+    if (sequence !== undefined) { this.requestSync(); await this.waitForSequence(sequence) }
+    return { sequence: this.knownSeq, update: this.acknowledged.capture(this.knownSeq) }
+  }
+
   private async restoreOutboxAndConnect(connect = true): Promise<void> {
-    if (this.encryption) {
+    if (this.encryption && !this.canonicalOnly) {
       const records = await this.outbox.list(this.session.roomId, this.encryption.keyVersion)
       for (const record of records) {
         const restored = await this.decodeInbound(record.updateBinary, "yjs_update")
@@ -671,7 +686,7 @@ export class CollabWsProvider {
   }
 
   private async flushPendingUpdates(): Promise<void> {
-    if (this.outgoingSuspended) return
+    if (this.outgoingSuspended || this.canonicalOnly) return
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || !this.handshakeReady) return
     for (const update of [...this.pendingUpdates.values()].sort((a, b) => a.timestamp - b.timestamp)) {
       await this.sendUpdate(update)
@@ -679,7 +694,7 @@ export class CollabWsProvider {
   }
 
   private async sendUpdate(update: PendingUpdate): Promise<void> {
-    if (this.outgoingSuspended) return
+    if (this.outgoingSuspended || this.canonicalOnly) return
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || !this.handshakeReady) return
     if (update.updateBinary.length > COLLABORATION_CHUNK_CHARS) {
       const socket = this.socket
@@ -727,6 +742,7 @@ export class CollabWsProvider {
         },
         privateMetadata: {
           ...attribution,
+          ...(fileInitializationOrigin(origin) && origin && typeof origin === "object" && "recoveryBasis" in origin ? { recoveryBasis: origin.recoveryBasis } : {}),
           checkpointGroupId,
           origin: attribution?.origin ?? (typeof origin === "string" ? origin : "user"),
         },

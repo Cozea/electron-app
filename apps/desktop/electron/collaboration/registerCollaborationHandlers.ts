@@ -91,6 +91,9 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     cancelDownload: async projectId => downloader.cancel(projectId),
     onDownloadProgress: () => { throw new Error("Subscriptions are provided by preload") },
     runtime: {
+      recoveryEntries: id => Promise.resolve(host.runtime(id).recoveryEntries()),
+      recoveredFiles: id => Promise.resolve(host.runtime(id).recoveredFiles()),
+      resolveRecovered: input => host.runtime(input.sessionId).resolveRecovered(input),
       recoveryInventory: () => host.recoveryInventory(),
       cleanupRecovery: id => host.cleanupRecovery(id),
       setup: id => host.setup(id),
@@ -145,6 +148,9 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
   ipcMain.handle("collaboration:pushPrepared", authorized(api.pushPrepared))
   ipcMain.handle("collaboration:adoptPublished", authorized(api.adoptPublished))
   ipcMain.handle("collaboration:control", authorized(api.runtime.control))
+  ipcMain.handle("collaboration:runtimeRecoveryEntries", authorized(api.runtime.recoveryEntries))
+  ipcMain.handle("collaboration:runtimeRecoveredFiles", authorized(api.runtime.recoveredFiles))
+  ipcMain.handle("collaboration:runtimeResolveRecovered", authorized(api.runtime.resolveRecovered))
   ipcMain.handle("collaboration:runtimeRecoveryInventory", authorized(api.runtime.recoveryInventory))
   ipcMain.handle("collaboration:runtimeCleanupRecovery", authorized(api.runtime.cleanupRecovery))
   ipcMain.handle("collaboration:runtimeSetup", authorized(api.runtime.setup))

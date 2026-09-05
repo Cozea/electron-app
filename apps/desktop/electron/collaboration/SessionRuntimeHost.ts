@@ -117,14 +117,15 @@ export class SessionRuntimeHost {
       readBaseFile: relative => this.coordinator.readBaseFile(sessionId, relative),
       shouldTrackExternal: relative => this.coordinator.shouldTrackExternal(sessionId, relative),
       changedPaths: () => this.coordinator.changedPaths(sessionId),
-      beforeReplay: async acknowledgedUpdate => {
+      beforeReplay: async (acknowledgedUpdate, canonicalState) => {
         const previous = []
         for (const version of await this.keys.versions(sessionId)) {
           if (version >= material.keyVersion) continue
           const key = await this.keys.recoverKey(binding.projectId, sessionId, version)
           if (key) previous.push(key)
         }
-        await migrateSessionKeyRecovery({ root: this.root, projectId: binding.projectId, sessionId, roomId: material.session.roomId, next: material, previous, acknowledgedUpdate })
+        await migrateSessionKeyRecovery({ root: this.root, projectId: binding.projectId, sessionId, roomId: material.session.roomId, next: material, previous, acknowledgedUpdate, canonicalState, role: authority.role,
+          claimFile: async fileId => await request({ operation: "file.claim", fileId }) as { lease?: FileInitializationLease; sequence?: number; waiting?: boolean } })
       },
       projection: { root: workspace.projectRootPath, recoveryRoot: path.join(this.root, "retained", createHash("sha256").update(sessionId).digest("hex")) },
       onPublication: (_sha, sequence) => {

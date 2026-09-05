@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
+import { encryptPayload, envelopeToBytes } from "../../shared/collaborationCipher"
 import { SessionFileDocument } from "../../shared/SessionFileDocument"
 import { SessionFileProjection } from "../../apps/desktop/electron/collaboration/SessionFileProjection"
 import { DurableSessionStore } from "../../apps/desktop/electron/collaboration/DurableSessionStore"
@@ -28,6 +29,28 @@ async function fixture(role: "editor" | "observer" = "editor") {
 }
 
 describe("durable session file projection", () => {
+  it("retains displaced and target bytes from a preexisting recovery projection intent", async () => {
+    const f = await fixture()
+    const file = f.files.file("a")!
+    const update = Buffer.from(f.files.checkpoint()).toString("base64")
+    await fs.mkdir(f.options.recoveryRoot)
+    await fs.writeFile(path.join(f.options.recoveryRoot, "abcd.retained"), "displaced unpublished bytes")
+    await fs.writeFile(path.join(f.workspace, "a.txt"), "target unpublished bytes")
+    const record = { generation: 3, sessionId: "s", files: { a: { file, update } }, intent: {
+      id: "abcd", before: { file, update }, after: { file, update }, backup: "abcd.retained",
+    } }
+    const encrypted = await encryptPayload({ roomKeyBase64: f.options.roomKeyBase64, keyVersion: 1, kind: "yjs_snapshot",
+      metadata: { purpose: "local-projection", sessionId: "s" }, plaintext: Buffer.from(JSON.stringify(record)) })
+    await f.store.saveProjection(Buffer.from(envelopeToBytes(encrypted)).toString("base64"))
+    const retained: string[] = []
+    await f.projector.prepareRecoveredFiles(new Set(["a"]), async file => { if (file) retained.push(file.content) }, () => {})
+    expect(retained).toContain("displaced unpublished bytes")
+    expect(retained).toContain("target unpublished bytes")
+    expect(await fs.readFile(path.join(f.options.recoveryRoot, "abcd.retained"), "utf8")).toBe("displaced unpublished bytes")
+    expect(f.files.file("a")?.content).toBe("base\n")
+    f.files.destroy()
+  })
+
   it("merges formatter writes against the last projected CRDT and does not feed projection back", async () => {
     const f = await fixture()
     const externalUpdates = vi.fn()

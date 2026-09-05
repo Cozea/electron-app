@@ -1,14 +1,17 @@
 import * as Y from "yjs"
 import { Awareness } from "y-protocols/awareness"
 import { createHash, randomUUID } from "node:crypto"
+import { lstat } from "node:fs/promises"
+import path from "node:path"
 import { watch, type FSWatcher } from "node:fs"
 import { CollabWsProvider, type CollabSessionDescriptor, type CollaborationConnectionState } from "../../../../shared/CollaborationTransport"
 import type { SessionRuntimeSnapshot } from "../../../../shared/collaborationRuntime"
 export type { SessionRuntimeSnapshot } from "../../../../shared/collaborationRuntime"
 import { SessionFileDocument, type SharedSessionFile } from "../../../../shared/SessionFileDocument"
-import { assertSharedFilePath } from "../../../../shared/collaborationPaths"
+import { assertSharedFilePath, sharedPathComparisonKey } from "../../../../shared/collaborationPaths"
 import type { FileInitializationLease } from "../../../../shared/collaborationFileInitialization"
 import type { CollaborationTextChange } from "../../../../shared/collaborationDesktop"
+import { readOfflineRecovery, saveOfflineRecovery, recoverySourceId, type OfflineRecoveryJournal } from "./SessionOfflineRecovery"
 import { DurableSessionStore } from "./DurableSessionStore"
 import { SessionCheckpointClient } from "./SessionCheckpointClient"
 import { SessionFileProjection } from "./SessionFileProjection"
@@ -32,7 +35,7 @@ interface SessionRuntimeOptions {
   shouldTrackExternal?: (filePath: string) => Promise<boolean>
   changedPaths?: () => Promise<string[]>
   offline?: boolean
-  beforeReplay?: (acknowledgedUpdate: Uint8Array) => Promise<void>
+  beforeReplay?: (acknowledgedUpdate: Uint8Array, canonicalState: (sequence?: number) => Promise<Uint8Array>) => Promise<void>
 }
 
 /** One main-process runtime owns transport, CRDT state and encrypted recovery. */
@@ -40,7 +43,10 @@ export class CollaborationSessionRuntime {
   readonly files: SessionFileDocument
   private readonly options: SessionRuntimeOptions
   private readonly awareness: Awareness
+  private recoveryMutation: Promise<void> = Promise.resolve()
+  private recovered = false
   private provider: CollabWsProvider | null = null
+  private recovery: OfflineRecoveryJournal = { version: 1, entries: [] }
   private connection: CollaborationConnectionState = "idle"
   private error: string | null = null
   private stopped = false
@@ -82,7 +88,7 @@ export class CollaborationSessionRuntime {
 
   async start(): Promise<boolean> {
     if (this.stopped || this.stopping) throw new Error("Session runtime has stopped")
-    if (this.provider) return true
+    if (this.provider && this.recovered) return true
     if (!this.startPromise) this.startPromise = this.open().finally(() => { this.startPromise = null })
     return this.startPromise
   }
@@ -93,12 +99,21 @@ export class CollaborationSessionRuntime {
       const recovered = await (this.options.offline ? this.options.checkpoints.recoverLocal() : this.options.checkpoints.bootstrap())
       if (!recovered) { this.connection = "idle"; this.error = "Waiting for an editor to initialize the encrypted session"; this.emit(); return false }
       if (this.stopped || this.stopping) return false
-      await this.options.beforeReplay?.(recovered.update)
-      if (this.stopped || this.stopping) return false
+      this.recovery = await readOfflineRecovery(this.options.store, this.options.encryption, this.options.sessionId)
       Y.applyUpdate(this.files.doc, recovered.update, "snapshot")
       this.provider = new CollabWsProvider({
         doc: this.files.doc, awareness: this.awareness, session: this.options.session, encryption: this.options.encryption,
-        initialKnownSeq: recovered.sequence, initialAcknowledgedUpdate: recovered.update, outbox: this.options.store,
+        initialKnownSeq: recovered.sequence, initialAcknowledgedUpdate: recovered.update,
+        canonicalOnly: Boolean(this.options.beforeReplay) && !this.options.offline,
+        outbox: {
+          enqueue: record => this.options.store.enqueue(record), acknowledge: id => this.options.store.acknowledge(id), close: () => this.options.store.close(),
+          list: async (roomId, keyVersion) => {
+            const records = await this.options.store.list(roomId, keyVersion)
+            const excluded = new Set(this.recovery.entries.flatMap(entry => entry.sources.filter(source => source.keyVersion === keyVersion && !source.kind).map(source => source.id)))
+            for (const record of records) if (record.migratedFrom?.keyVersion === keyVersion && !record.migratedFrom.kind) excluded.add(record.migratedFrom.id)
+            return records.filter(record => !excluded.has(record.id))
+          },
+        },
         refreshSession: this.options.refreshSession,
         onApplied: (sequence, encoded) => this.options.store.saveAcknowledged(sequence, encoded),
         onStateChange: (state, error) => { this.connection = state; this.error = error ?? null; this.emit() },
@@ -112,7 +127,16 @@ export class CollaborationSessionRuntime {
         this.connection = "reconnecting"; this.error = "Offline. Local edits are saved; reconnect before publishing."; this.emit()
       } else this.provider.start()
       await this.provider.waitForLocalRecovery()
+      if (!this.options.offline && this.options.beforeReplay) {
+        const canonical = (sequence?: number) => this.provider!.canonicalState(sequence).then(state => state.update)
+        await this.options.beforeReplay(await canonical(), canonical)
+        if (this.stopped || this.stopping) return false
+      }
+      this.recovery = await readOfflineRecovery(this.options.store, this.options.encryption, this.options.sessionId)
+      await this.retireResolvedRecovery()
+      await this.provider.resumeLocalRecovery()
       for (const ingress of await this.options.store.listEditorIngress()) {
+        if (this.recovery.entries.some(entry => entry.sources.some(source => source.keyVersion === this.options.encryption.keyVersion && source.kind === "ingress" && source.id === ingress.id))) continue
         validateEncryptedCollaborationEnvelope(ingress.updateBinary, { roomId: this.options.session.roomId, projectId: this.options.session.projectId,
           kind: "yjs_update", keyVersion: this.options.encryption.keyVersion, idempotencyKey: ingress.id })
         const update = await decryptPayload({ envelope: bytesToEnvelope(Buffer.from(ingress.updateBinary, "base64")), roomKeyBase64: this.options.encryption.roomKeyBase64 })
@@ -125,6 +149,17 @@ export class CollaborationSessionRuntime {
           files: this.files, role: this.options.role, ...this.options.encryption, store: this.options.store,
           readBase: this.options.readBaseFile, persistEdits: () => this.provider!.flushLocalPersistence(),
         })
+        const recoveryEntries = this.recovery.entries
+        if (recoveryEntries.length) await this.projection.prepareRecoveredFiles(new Set(recoveryEntries.flatMap(entry => entry.files.map(file => file.id))), async (file, projection) => {
+          await this.mutateRecovery(next => {
+          if (projection) for (const entry of next.entries) if (!entry.projection) entry.projection = projection
+          if (file && !next.entries.some(entry => entry.files.some(saved => saved.id === file.id && saved.content === file.content && saved.path === file.path && saved.executable === file.executable && saved.deleted === file.deleted))) {
+            const id = createHash("sha256").update(`disk\0${file.id}\0${file.path}\0${file.content}\0${file.executable}\0${file.deleted}`).digest("hex")
+            const sources = [...new Map(recoveryEntries.flatMap(entry => entry.sources).map(source => [recoverySourceId(source), source])).values()]
+            next.entries.push({ id, incomplete: false, sources, branch: Buffer.from(new Uint8Array([0, 0])).toString("base64"), files: [file], resolved: [], saves: {} })
+          }
+          })
+        }, relative => this.gitOnlyPaths.add(relative), recoveryEntries.flatMap(entry => entry.files))
         this.watcher = watch(this.options.projection.root, { recursive: true }, (_event, filename) => {
           if (this.stopping || this.stopped) return
           if (!filename) { this.scheduleProjection(); return }
@@ -141,14 +176,18 @@ export class CollaborationSessionRuntime {
         this.watcher.on("error", () => { this.projectionPaused = true; this.error = "Session file watcher stopped; local files are retained. Retry synchronization."; this.emit() })
         this.scheduleProjection()
       }
+      this.recovered = true
+      this.scheduleProjection()
       return true
     } catch (error) {
+      await this.provider?.shutdown()
+      this.provider = null; this.recovered = false
       this.connection = "error"; this.error = error instanceof Error ? error.message : "Session recovery failed"; this.emit(); throw error
     }
   }
 
   private readonly scheduleProjection = (): void => {
-    if (!this.projection || this.stopped || this.stopping || this.projectionPaused || this.projectionTimer || this.observingExternal || this.fileOperations.size) return
+    if (!this.recovered || !this.projection || this.stopped || this.stopping || this.projectionPaused || this.projectionTimer || this.observingExternal || this.fileOperations.size) return
     this.projectionTimer = setTimeout(() => {
       this.projectionTimer = null
       void this.projectFiles().catch(() => {})
@@ -156,7 +195,7 @@ export class CollaborationSessionRuntime {
   }
 
   async projectFiles(): Promise<void> {
-    if (this.stopped || this.stopping || this.observingExternal || this.fileOperations.size) return
+    if (!this.recovered || this.stopped || this.stopping || this.observingExternal || this.fileOperations.size) return
     try { await this.projection?.reconcile() }
     catch (error) {
       this.projectionPaused = true
@@ -171,6 +210,86 @@ export class CollaborationSessionRuntime {
     await this.provider?.waitForLocalRecovery()
     if (this.provider) for (const [id, update] of this.pendingEditor) await this.persistEditorUpdate(this.provider, update, id)
     await this.retryProjection()
+  }
+
+  recoveryEntries(): import("../../../../shared/collaborationRuntime").RecoveredOfflineEntry[] {
+    return this.recovery.entries.filter(entry => entry.incomplete || entry.files.some(file => !entry.resolved.includes(file.id))).map(entry => ({
+      id: entry.id, incomplete: entry.incomplete, retainedRecords: entry.sources.length, unresolvedFiles: entry.files.filter(file => !entry.resolved.includes(file.id)).length,
+    }))
+  }
+  private mutateRecovery(change: (journal: typeof this.recovery) => void, retire = false): Promise<void> {
+    const operation = this.recoveryMutation.catch(() => {}).then(async () => {
+      const next = structuredClone(this.recovery)
+      change(next)
+      await saveOfflineRecovery(this.options.store, this.options.encryption, this.options.sessionId, next)
+      this.recovery = next
+      if (retire) await this.retireResolvedRecovery()
+    })
+    this.recoveryMutation = operation
+    return operation
+  }
+
+  private async retireResolvedRecovery(): Promise<void> {
+    const unresolved = new Set(this.recovery.entries.filter(entry => entry.incomplete || entry.files.length === 0 || entry.files.some(file => !entry.resolved.includes(file.id))).flatMap(entry => entry.sources.map(recoverySourceId)))
+    for (const entry of this.recovery.entries) if (!entry.incomplete && entry.files.length > 0 && entry.files.every(file => entry.resolved.includes(file.id))) await this.options.store.retireRecoverySources(entry.sources.filter(source => !unresolved.has(recoverySourceId(source))))
+  }
+
+  recoveredFiles(): import("../../../../shared/collaborationRuntime").RecoveredOfflineFile[] {
+    return this.recovery.entries.flatMap(entry => entry.files.filter(file => !entry.resolved.includes(file.id)).map(file => ({
+      ...file, recoveryId: entry.id, canonicalContent: this.files.file(file.id)?.content ?? null, savingPath: entry.saves[file.id]?.path ?? null,
+    })))
+  }
+
+  async resolveRecovered(input: { recoveryId: string; fileId: string; action: "save" | "discard"; path?: string }): Promise<void> {
+    const operation = this.editorQueue.catch(() => {}).then(() => this.resolveRecoveredFile(input))
+    this.editorQueue = operation
+    return operation
+  }
+  private async resolveRecoveredFile(input: { recoveryId: string; fileId: string; action: "save" | "discard"; path?: string }): Promise<void> {
+    if (this.stopping || this.stopped) throw new Error("Session runtime has stopped")
+    const nextRecovery = structuredClone(this.recovery)
+    const entry = nextRecovery.entries.find(entry => entry.id === input.recoveryId)
+    const file = entry?.files.find(file => file.id === input.fileId)
+    if (!entry || !file) throw new Error("Recovered offline file not found")
+    if (entry.resolved.includes(file.id)) { await this.mutateRecovery(() => {}, true); return }
+    if (input.action !== "save" && input.action !== "discard") throw new Error("Choose a recovery action")
+    if (input.action === "save") {
+      const provider = this.assertEditor()
+      let saved = entry.saves[file.id]
+      if (!saved) {
+        const filePath = assertSharedFilePath(input.path ?? "")
+        if (this.files.resolvePath(filePath) || await this.options.readBaseFile(filePath) || this.options.projection && await lstat(path.join(this.options.projection.root, filePath)).then(() => true, error => { if (error.code === "ENOENT") return false; throw error })) throw new Error("Choose an unused path for recovered content; an existing file occupies this path")
+        this.assertEditor()
+        const clone = new SessionFileDocument(this.options.sessionId)
+        try {
+          Y.applyUpdate(clone.doc, this.files.checkpoint())
+          const vector = Y.encodeStateVector(clone.doc)
+          const fileId = createHash("sha256").update(`recovered\0${entry.id}\0${file.id}`).digest("hex")
+          clone.initializeFile({ id: fileId, path: filePath, content: file.content, executable: file.executable, originalPath: null }, "recovered-offline-file")
+          saved = { path: filePath, fileId, recordId: "", updateBinary: "", update: Buffer.from(Y.encodeStateAsUpdate(clone.doc, vector)).toString("base64"), keyVersion: 0 }
+        } finally { clone.destroy() }
+      } else if (input.path && input.path !== saved.path) throw new Error("Retry the previously chosen recovery path")
+      if (saved.keyVersion !== this.options.encryption.keyVersion) {
+        const recordId = `recovery_${createHash("sha256").update(`${entry.id}\0${file.id}\0${this.options.encryption.keyVersion}`).digest("hex")}`
+        const encrypted = await encryptPayload({ ...this.options.encryption, kind: "yjs_update", plaintext: Buffer.from(saved.update, "base64"),
+          metadata: { roomId: this.options.session.roomId, projectId: this.options.session.projectId, sessionId: this.options.sessionId, idempotencyKey: recordId } })
+        saved = { ...saved, recordId, keyVersion: this.options.encryption.keyVersion, updateBinary: Buffer.from(envelopeToBytes(encrypted)).toString("base64") }
+        const prepared = saved
+        await this.mutateRecovery(latest => { latest.entries.find(current => current.id === entry.id)!.saves[file.id] = prepared })
+      }
+      this.assertEditor()
+      await this.options.store.enqueue({ id: saved.recordId, projectId: this.options.session.projectId, roomId: this.options.session.roomId,
+        keyVersion: saved.keyVersion, updateBinary: saved.updateBinary, timestamp: Date.now() })
+      await provider.resumeLocalRecovery()
+      await provider.captureCommitState()
+    } else if (entry.saves[file.id]) throw new Error("This recovery save is pending acknowledgement; retry saving before discarding")
+    // ACK waits run outside the journal queue. Merge the disposition into the
+    // latest durable branch, including disk variants retained during the wait.
+    await this.mutateRecovery(latest => {
+      const current = latest.entries.find(current => current.id === entry.id)!
+      if (!current.resolved.includes(file.id)) current.resolved.push(file.id)
+    }, true)
+    this.emit()
   }
 
   async createFile(filePath: string, content = ""): Promise<SharedSessionFile> {
@@ -207,7 +326,7 @@ export class CollaborationSessionRuntime {
 
   private assertEditor(): CollabWsProvider {
     if (this.stopped || this.stopping || this.options.role !== "editor") throw new Error("An active editor is required to change shared files")
-    if (!this.provider) throw new Error("Wait for encrypted session recovery before editing")
+    if (!this.provider || !this.recovered) throw new Error("Wait for encrypted session recovery before editing")
     return this.provider
   }
 
@@ -236,7 +355,13 @@ export class CollaborationSessionRuntime {
       if (!base) throw new Error("This path is absent from the Git base; create a new shared file explicitly")
       if (Buffer.byteLength(base.content) > 2 * 1024 * 1024 || base.content.includes("\0")) throw new Error("This file is Git-only because it is binary or exceeds the shared text limit")
       this.assertEditor()
-      this.files.initializeFile({ id, path: filePath, originalPath: filePath, ...base }, { type: "file-initialization", fileId: id, leaseId: claim.lease.leaseId })
+      const basisId = randomUUID()
+      const recoveryBasis = { id: basisId, keyVersion: this.options.encryption.keyVersion }
+      const basis = await encryptPayload({ ...this.options.encryption, kind: "yjs_snapshot", plaintext: this.files.checkpoint(),
+        metadata: { purpose: "file-initialization-basis", sessionId: this.options.sessionId, fileId: id, leaseId: claim.lease.leaseId } })
+      await this.options.store.saveInitializationBasis(basisId, Buffer.from(envelopeToBytes(basis)).toString("base64"))
+      this.assertEditor()
+      this.files.initializeFile({ id, path: filePath, originalPath: filePath, ...base }, { type: "file-initialization", fileId: id, leaseId: claim.lease.leaseId, recoveryBasis })
       await this.projection?.trackCanonicalFile(id)
       await provider.captureCommitState()
     } else throw new Error("Waiting for an editor to open this shared file")
@@ -264,6 +389,14 @@ export class CollaborationSessionRuntime {
       try { await this.projection.readExternalText(relative) }
       catch { this.gitOnlyPaths.add(relative); throw new Error("A shared file now contains unsupported bytes; retain the local file and resolve it before committing") }
       this.scheduleProjection(); return
+    }
+    // Recovery dispositions retain ownership of their original disk paths even
+    // after explicit discard. A watcher must never publish them as new files.
+    const quarantined = this.recovery.entries.flatMap(entry => entry.files).find(file => sharedPathComparisonKey(file.path) === sharedPathComparisonKey(relative) || file.originalPath && sharedPathComparisonKey(file.originalPath) === sharedPathComparisonKey(relative))
+    if (quarantined) {
+      try { await this.projection.retainQuarantinedPath(relative, quarantined) }
+      catch (error) { this.gitOnlyPaths.add(relative); throw error }
+      this.emit(); return
     }
     if (this.options.role !== "editor" || !this.options.shouldTrackExternal || !await this.options.shouldTrackExternal(relative)) return
     let local: { content: string; executable: boolean } | null
@@ -381,6 +514,7 @@ export class CollaborationSessionRuntime {
       await Promise.allSettled([...this.fileOperations.values(), ...this.checkpointOperations])
       await this.externalQueue.catch(() => {})
       await this.projection?.flush().catch(() => {})
+      await this.recoveryMutation.catch(() => {})
       await this.provider?.flushLocalPersistence()
       // Close the receive input and await in-flight decryption/acknowledgement
       // callbacks before the last store flush or destruction of the Yjs owner.

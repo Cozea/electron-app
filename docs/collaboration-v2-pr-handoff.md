@@ -2,7 +2,7 @@
 
 ## Status and release decision
 
-Continuation from `2d861c60` on `codex/collaboration-v2-complete`, 2026-09-05.
+Supervised continuation on `codex/collaboration-v2-complete`, 2026-09-05.
 The user has authorized supervised implementation and all feasible automated and
 packaged GUI acceptance, with the Computer plugin for desktop interaction. Its
 tools are not yet available in this task; installation guidance has been supplied.
@@ -12,9 +12,14 @@ plan**. Known code blockers below must not be relabeled as manual QA.
 
 Both default/release gates remain disabled:
 `VITE_GITHUB_COLLABORATION_RELEASE` and `COLLABORATION_G3_CREATE_ENABLED`.
-No deployment, webhook activation, collaboration-only alpha reset, main push,
-release tag, credential change or packaged acceptance was performed by this
-continuation. Ordinary project synchronization and the pinned T3 fork are retained.
+Compatible production Convex and Worker code is deployed with new-session creation
+disabled. The signed webhook endpoint is configured and tested with a synthetic
+ping; GitHub's App webhook configuration API returns 404, so actual GitHub delivery
+and OAuth remain unverified. The collaboration-only alpha inventory was empty and
+no data was deleted. No main push, release tag or packaged acceptance occurred.
+Ordinary project synchronization and the pinned T3 fork are retained. Exact
+deployment and inventory evidence is recorded in
+[the deployment note](current/collaboration-gated-deployment-2026-09-05.md).
 
 ## Implemented in this continuation
 
@@ -78,15 +83,29 @@ Explicit catalog-associated cleanup authenticates the exact replacement checkpoi
 then deletes only covered receive-log records in bounded batches. Outboxes, editor
 ingress, pending checkpoint uploads, sealed keys, prepared Git objects, retained
 workspaces, unknown temporary files and projection backups are not deletion targets.
-This is not a complete cross-service garbage collector: sealed-key history and room
-storage policies still require completion.
+Server checkpoint replacement now records durable cleanup cursors, and closed
+rooms retire bounded receipt metadata while retaining encrypted recovery. Local
+sealed-key/basis retention still requires completion. See
+[checkpoint retention](current/collaboration-checkpoint-retention.md).
+
+### Initializer, projection and offline recovery
+
+Canonical room catch-up precedes optimistic replay. Accepted initializers with
+lost replies, renewed leases and repeated key rotation recover with stable Yjs
+and encrypted operation identities. Competing histories become encrypted recovery
+entries with explicit Save-as-new and Discard controls. Startup/watchers preserve
+quarantined paths, including offline creates/renames and later disk variants;
+resolved paths cannot silently reimport themselves. Journal mutations serialize
+while transport acknowledgement waits remain independent. Behavioral evidence and
+the controlled fixture boundaries are documented in
+[initializer recovery](current/collaboration-initializer-recovery.md).
 
 ## Verification and what it proves
 
-GitHub Actions supplies the pinned build toolchains in isolated checkouts. The
-Linux conversation container has no network/dependency installation; local checks
-there used source inspection and targeted Node/TypeScript-transpiled real-Git and
-filesystem experiments. No local macOS checkout or credentials were accessed.
+Earlier work used GitHub Actions and a Linux conversation container. The current
+supervised continuation uses the macOS worktree and installed toolchains. Local
+behavioral tests and production dry runs supplement the immutable CI results;
+neither establishes packaged multi-device acceptance.
 
 The integrated hardening at `38d45e9e` passed run `33943061753`, including native
 typecheck, 103 focused regressions, three consecutive session-runtime recovery
@@ -135,21 +154,17 @@ provider/PTY process termination, full WebSocket routing, or packaged acceptance
 
 ## Remaining release-blocking implementation
 
-1. Automatically recover/replay an unacknowledged lazy initializer after its lease
-   is replaced by key rotation, with whole-host offline/lost-reply/repeated-removal
-   coverage. Existing code retains ciphertext and reports a diagnostic; it does not
-   complete this replay path.
-2. Finish external CLI rename identity reconciliation and the complete concurrent
+1. Finish external CLI rename identity reconciliation and the complete concurrent
    edit/delete/path-collision matrix. Explicit CRDT rename is not proof of arbitrary
    external rename detection.
-3. Complete advanced-target-branch controls and the full retry/leave/onboarding
+2. Complete advanced-target-branch controls and the full retry/leave/onboarding
    matrix after runtime restart or authorization failures.
-4. Finish sealed-key and server room/checkpoint-history retention, plus bounded
-   cross-service generation-reset inventory. The new conservative local cleanup
-   must not be broadened into blind directory/row deletion.
-5. Validate OAuth end to end, configure and activate the signed webhook, and perform
-   compatible production deployment using deployment-owner credentials. Then
-   execute only an inventoried, approved collaboration-owned reset, if still needed.
+3. Finish sealed-key/basis retention. Preserve unpublished and unknown recovery;
+   do not broaden cleanup into blind directory/row deletion. Repeat the completed
+   production/local inventory before rollout.
+4. Validate OAuth end to end and activate/verify actual GitHub webhook delivery.
+   Deploy subsequent compatible changes with creation disabled, then execute the
+   complete independently authenticated packaged acceptance worksheet.
 
 ## Deployment-owner sequence
 

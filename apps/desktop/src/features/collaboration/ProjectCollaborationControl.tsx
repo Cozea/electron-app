@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { RecoveredOfflineEdits } from "./RecoveredOfflineEdits"
 import { SharedSessionEditor } from "./SharedSessionEditor"
 import { CollaborationBinaryPicker } from "./CollaborationBinaryPicker"
 import { CollaborationRecoveryPanel } from "./CollaborationRecoveryPanel"
@@ -144,6 +145,7 @@ export function ProjectCollaborationControl({ projectId, organizationId, sourceW
           {waitingId && <div role="status" className="space-y-2 text-sm"><p>Waiting for an authorized editor to supply this device’s encrypted session key.</p><Button disabled={busy} onClick={() => void run(() => join(waitingId))}>Retry joining</Button></div>}
         </div>}
         {sessionId && snapshot && <div className="space-y-3">
+          <RecoveredOfflineEdits sessionId={sessionId} readOnly={snapshot.role !== "editor"} />
           <div className="flex flex-wrap gap-2 text-xs"><span>{snapshot.role} · {snapshot.connection} · acknowledged update {snapshot.sequence}</span>{participants.filter(p => p.leftAt === null).map(p => <span key={p.userId} className="rounded bg-muted px-2 py-1" title={p.userId}>{p.userId.slice(0, 12)} · {p.role}</span>)}</div>
           <div className="flex gap-2"><Input aria-label="Session file path" placeholder="src/example.ts" value={filePath} onChange={event => setFilePath(event.target.value)} /><Button disabled={busy || !filePath} onClick={() => { setEditorPath(filePath) }}>Open</Button><Button variant="outline" disabled={busy || snapshot.role !== "editor" || !filePath} onClick={() => void run(async () => { await api.createFile({ sessionId, path: filePath }); setEditorPath(filePath) })}>New file</Button></div>
           <div className="flex flex-wrap gap-1">{snapshot.files.map(file => <Button variant="ghost" size="sm" key={file.id} onClick={() => file.deleted ? void run(() => api.restoreFile({ sessionId, fileId: file.id })) : setEditorPath(file.path)} disabled={file.deleted && snapshot.role !== "editor"}>{file.path}{file.deleted ? " · Restore" : ""}</Button>)}</div>

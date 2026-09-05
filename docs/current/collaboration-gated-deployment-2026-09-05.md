@@ -14,6 +14,9 @@ The Worker compatibility deploy from `f2bea013` produced version
 `da53da1c-9411-4599-8e2e-a29c8b9b41c3`. Adding the webhook secret produced version
 `6fd3c21c-8122-4bb4-bea9-1a7f93f34e3f`. The webhook response correction from
 `b1a64268` produced version `c8892554-97d3-49ee-8eb2-ba64305d2a3d`.
+Checkpoint and closed-room metadata retention from `947a371e` then deployed as
+version `93b92bad-b9db-4124-8d6f-2ca2b47f9f3a`, after 36 focused behavioral tests,
+Worker/test typechecks, lint and a successful dry run.
 
 Wrangler 4.123.0 used the pinned existing account and
 `deploy --containers-rollout=none --keep-vars`, after successful dry runs.
