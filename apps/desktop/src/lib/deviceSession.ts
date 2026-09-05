@@ -47,14 +47,6 @@ function toBootstrapSession(session: DeviceSession): DesktopBootstrapSession {
   }
 }
 
-export function seedDeviceSession(session: DesktopBootstrapSession | null): void {
-  if (!session) return
-  cachedSession = {
-    ...session,
-    convexUserId: session.convexUserId as Id<"users">,
-  }
-}
-
 async function issueDeviceSession(): Promise<DeviceSession> {
   const identity = await window.electronAPI.collab.ensureDeviceIdentity()
   if (
