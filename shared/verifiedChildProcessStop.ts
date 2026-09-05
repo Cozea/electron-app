@@ -12,7 +12,7 @@ const hasExited = (child: StoppableChild): boolean =>
   child.exitCode != null || child.signalCode != null;
 
 /**
- * A sent signal is not an exit acknowledgement. Install the listener before
+ * A sent signal is not an exit acknowledgement. Install the listeners before
  * signalling, escalate even when `child.killed` is true, and reject if the OS
  * never confirms exit. A failed stop remains retryable by its owner.
  *
@@ -40,20 +40,27 @@ export function stopChildProcessVerified(
       finished = true;
       if (timer !== undefined) clearTimeout(timer);
       child.off("exit", exited);
+      child.off("error", signalError);
       if (success) resolve();
       else reject(new Error("Child process exit was not acknowledged; shutdown remains incomplete."));
     };
     const exited = () => finish(true);
+    // kill() may emit error asynchronously as well as throw. Neither proves
+    // exit. Keep the escalation deadline, without exposing subprocess details
+    // or leaving an unhandled EventEmitter error during shutdown.
+    const signalError = () => {
+      if (hasExited(child)) finish(true);
+    };
     const signal = (value: NodeJS.Signals) => {
       try {
         child.kill(value);
       } catch {
-        // Neither a thrown kill nor `false` proves the process is gone.
-        if (hasExited(child)) finish(true);
+        signalError();
       }
     };
 
     child.on("exit", exited);
+    child.on("error", signalError);
     if (hasExited(child)) {
       finish(true);
       return;
