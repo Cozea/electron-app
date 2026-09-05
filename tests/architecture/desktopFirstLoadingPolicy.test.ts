@@ -80,4 +80,17 @@ describe('desktop-first loading architecture', () => {
       "import './runtimeQuitCleanup'",
     ])
   })
+
+  it('preserves the macOS main shell on ordinary close but not application quit', () => {
+    const lifecycle = read('apps/desktop/electron/registerAppLifecycle.ts')
+
+    expect(lifecycle).toContain("app.on('browser-window-created'")
+    expect(lifecycle).toContain("args.includes(MAIN_WINDOW_ARGUMENT)")
+    expect(lifecycle).toContain('if (isApplicationQuitting() || window.isDestroyed()) return')
+    expect(lifecycle).toContain('event.preventDefault()')
+    expect(lifecycle).toContain('window.hide()')
+    expect(lifecycle).toContain("app.on('activate'")
+    expect(lifecycle).toContain('mainWindow.show()')
+    expect(lifecycle).toContain('mainWindow.focus()')
+  })
 })
