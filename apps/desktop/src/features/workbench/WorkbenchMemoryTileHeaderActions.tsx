@@ -159,9 +159,31 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
             })}
           </div>
 
-          {/* No skill picker: the active build decides which memory skill runs,
-              so choosing one here would have been a second, contradicting
-              answer to the same question. */}
+          {/* Only shown when there is a choice to make: the active build
+              decides which memory skills run, so one skill needs no picker and
+              none is reported by the tile itself. */}
+          {settings.selectableSkills.length > 1 ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+                {t("workbench.memory.skill.label")}
+              </DropdownMenuLabel>
+              {settings.selectableSkills.map((skill) => (
+                <DropdownMenuItem
+                  key={skill.id}
+                  onSelect={() => settings.setForWorkspace(workspaceId, skill.id)}
+                >
+                  <span className="flex-1 truncate">{skill.name}</span>
+                  {skill.isCozeaDefault ? (
+                    <span className="shrink-0 rounded bg-secondary px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                      {t("workbench.memory.skill.cozeaTag")}
+                    </span>
+                  ) : null}
+                  {settings.resolvedSkillId === skill.id ? <span aria-hidden>✓</span> : null}
+                </DropdownMenuItem>
+              ))}
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </>

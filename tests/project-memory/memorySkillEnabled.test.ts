@@ -6,6 +6,13 @@ const controls = readFileSync(
   resolve(process.cwd(), "apps/desktop/src/features/project-memory/useMemoryControls.ts"),
   "utf8",
 )
+const menu = readFileSync(
+  resolve(
+    process.cwd(),
+    "apps/desktop/src/features/workbench/WorkbenchMemoryTileHeaderActions.tsx",
+  ),
+  "utf8",
+)
 const tile = readFileSync(
   resolve(process.cwd(), "apps/desktop/src/features/workbench/WorkbenchMemoryTile.tsx"),
   "utf8",
@@ -48,5 +55,30 @@ describe("the memory tile without a memory skill running", () => {
     expect(tile.indexOf("workbench.memory.noSkill.title")).toBeLessThan(
       tile.indexOf('t("workbench.memory.empty.title")'),
     )
+  })
+})
+
+/**
+ * The picker is worth showing only when there is a choice. The active build
+ * decides which memory skills run, so one leaves nothing to pick and none is
+ * reported by the tile itself.
+ */
+describe("choosing between memory skills", () => {
+  it("offers only the skills the active build runs", () => {
+    expect(controls).toContain("selectableSkills")
+    // Derived from what is enabled, not from everything in the library.
+    const block = controls.slice(controls.indexOf("const selectableSkills"))
+    expect(block.slice(0, 120)).toContain("skill.enabled")
+    expect(menu).toContain("settings.selectableSkills")
+  })
+
+  it("hides the picker unless there are at least two", () => {
+    expect(menu).toContain("settings.selectableSkills.length > 1")
+  })
+
+  it("ignores a stored choice the build has since switched off", () => {
+    // Otherwise the tile would resolve to a skill no agent is running.
+    const block = controls.slice(controls.indexOf("const resolvedSkillId"))
+    expect(block.slice(0, 320)).toContain("selectableSkills.some")
   })
 })
