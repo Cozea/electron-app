@@ -278,7 +278,11 @@ describe("saving and applying a build end to end", () => {
     expect(applied.snapshot.activeBuildId).toBe(saved.skillId);
   });
 
-  it("stops reporting a build as active once a skill is toggled beyond it", async () => {
+  it("keeps reporting the activated build after a skill is toggled beyond it", async () => {
+    // Activation used to be inferred by comparing the enabled set to each
+    // build, so one skill enabled outside it made the page claim nothing was
+    // active. The choice is recorded now: the user activated this build, and
+    // toggling a skill does not undo that.
     const alpha = await makeSkill("alpha");
     const beta = await makeSkill("beta");
     const svc = service();
@@ -286,7 +290,29 @@ describe("saving and applying a build end to end", () => {
     await svc.applyBuild(saved.skillId!);
 
     const after = await svc.setEnabled({ skillId: beta, enabled: true });
-    expect(after.snapshot.activeBuildId).toBeNull();
+    expect(after.snapshot.activeBuildId).toBe(saved.skillId);
+  });
+
+  it("survives a restart, since the choice is in state and not inferred", async () => {
+    const alpha = await makeSkill("alpha");
+    const svc = service();
+    const saved = await svc.saveBuild({ name: "Alpha only", skillIds: [alpha] });
+    await svc.applyBuild(saved.skillId!);
+
+    // A fresh service is what a relaunch gives us.
+    expect(service().list().activeBuildId).toBe(saved.skillId);
+  });
+
+  it("forgets the active build when that build is deleted", async () => {
+    const alpha = await makeSkill("alpha");
+    const svc = service();
+    const saved = await svc.saveBuild({ name: "Alpha only", skillIds: [alpha] });
+    await svc.applyBuild(saved.skillId!);
+
+    const deleted = await svc.deleteBuild(saved.skillId!);
+    // Not null: the seeded Default build is still here, and the fallback match
+    // can legitimately claim it. What matters is the deleted one is released.
+    expect(deleted.snapshot.activeBuildId).not.toBe(saved.skillId);
   });
 
   it("deletes a build without touching which skills are on", async () => {

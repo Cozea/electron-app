@@ -85,6 +85,8 @@ interface AgentSkillStateFile {
   seededBuiltInSkills?: string[];
   /** Set once the first build has been recorded from what was already on. */
   seededCurrentBuild?: boolean;
+  /** The build the user last activated. Remembered, not inferred. */
+  activeBuildId?: string | null;
   /** Providers whose managed copies have been moved to their primary root. */
   migratedPrimaryRoots?: string[];
   /** Named skill loadouts. */
@@ -426,8 +428,12 @@ function findBuiltInDefinition(skill: {
 }
 
 /**
- * A build is "active" when what is enabled matches it exactly — not merely
- * contains it. Toggling one extra skill on should stop claiming the build.
+ * Which build the enabled set happens to match exactly.
+ *
+ * Only a fallback now, for builds activated before the choice was recorded.
+ * Inference alone was too brittle to be the answer: one skill enabled outside
+ * the build, and the page claimed nothing was active even though the user had
+ * just activated something. What was actually activated is stored in state.
  */
 export function findActiveBuildId(
   builds: readonly AgentSkillBuild[],
@@ -967,6 +973,9 @@ export class AgentSkillService {
       .filter((skill) => skill.bindings.some((binding) => binding.enabled))
       .map((skill) => skill.id);
     const builds = this.seedBuildFromEnabledSkills(enabledSkillIds);
+    const recorded = this.loadState().activeBuildId ?? null;
+    const recordedActiveBuildId =
+      recorded && builds.some((build) => build.id === recorded) ? recorded : null;
 
     return {
       skills,
@@ -974,11 +983,11 @@ export class AgentSkillService {
       libraryPath: this.libraryRoot,
       generatedAt: Date.now(),
       builds,
-      activeBuildId: findActiveBuildId(
-        builds,
-        enabledSkillIds,
-        new Set(skills.map((skill) => skill.id)),
-      ),
+      // The recorded choice wins; the match is only consulted for builds
+      // activated before Cozea started remembering.
+      activeBuildId:
+        recordedActiveBuildId ??
+        findActiveBuildId(builds, enabledSkillIds, new Set(skills.map((skill) => skill.id))),
     };
   }
 
@@ -1461,7 +1470,11 @@ export class AgentSkillService {
       try {
         const state = this.loadState();
         const builds = (state.builds ?? []).filter((build) => build.id !== buildId);
-        this.saveState({ ...state, builds });
+        this.saveState({
+          ...state,
+          builds,
+          ...(state.activeBuildId === buildId ? { activeBuildId: null } : {}),
+        });
         return this.mutationResult(true);
       } catch (error) {
         return this.mutationResult(false, {
@@ -1512,6 +1525,11 @@ export class AgentSkillService {
       if (result.success) changedProviders.push(...(result.changedProviders ?? []));
       else if (result.error) failures.push(result.error);
     }
+
+    // Remember what was activated, so a skill toggled afterwards cannot make
+    // the page forget which build the user chose.
+    const state = this.loadState();
+    this.saveState({ ...state, activeBuildId: build.id });
 
     return this.mutationResult(failures.length === 0, {
       skillId: build.id,
