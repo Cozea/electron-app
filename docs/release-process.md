@@ -151,3 +151,25 @@ turns off new session creation and retains all unpublished local recovery data.
 - Do not introduce channels other than `canary`, `beta`, and `stable` without updating the release model intentionally.
 - Keep release secrets limited to signing and publishing steps.
 - Delete merged stale branches regularly so the release surface stays easy to reason about.
+
+## Active conversations during a controlled update
+
+The update menu's **Continue active chats after updates** preference is off by
+default and applies to an explicit install-now action. Electron requests durable
+preparation from every active workspace's shadow/T3 server and awaits all replies
+before calling the updater. Failed preparation or installer handoff cancels all
+requests and retains the downloaded update for retry. Preparations expire after
+30 seconds if the old server stays alive.
+
+The replacement pinned T3 runtime owns continuation reconciliation; the renderer
+only reconnects. Native instance/thread/marked-turn identity remains authoritative.
+Ordinary quit, renderer reload and unexpected crashes do not create markers. Do
+not claim exactly-once external tool execution across an ambiguous crash.
+
+Before a candidate release, run `bun run check:provider-compatibility`,
+`bun run test:provider-compatibility`, ordinary root checks, portable runtime
+preparation and built-shadow smoke. Confirm the fork gitlink is fetchable from
+Cozea/t3code before publishing a parent ref. Keep the protocol and native-runtime
+qualification record in `shared/provider-compatibility.json` current. Live signed
+updater replacement and fresh/upgrade packaged profiles still require the release
+matrix; unit tests of the handshake do not qualify the updater itself.

@@ -161,6 +161,15 @@ CircleCI expects a context named `cozea-release` with:
 - macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD`
 - Optional runtime metadata signing: `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH`
 
+### Controlled-update conversation continuation
+
+The update menu has a device-local **Continue active chats after updates** option,
+off by default. Electron must await durable preparation from every active shadow
+server before installer handoff. The replacement T3 server alone reconciles native
+continuation; the renderer must not send a second Continue. Failed handoff cancels
+markers, with expiry if the old process stays alive. Ordinary Quit/reload/crash do
+not opt in. See `docs/provider-conversations.md` and `docs/release-process.md`.
+
 ### Local Release (Fallback)
 
 If GitHub Actions is blocked/unavailable, you can publish a release from a macOS machine (arm64) as long as:
@@ -239,7 +248,7 @@ The AI chat runs **after** project creation, inside the workbench.
 
 - The shadow child boots the vendored T3 server when `COZEA_T3_SERVER=1` (default on)
 - The workbench chat tile (`WorkbenchAssistantChatTile`) connects via T3 RPC session (`useT3Cutover`)
-- Four provider kinds are supported: `claudeAgent`, `codex`, `opencode`, `cursor`
+- Four primary provider kinds remain enabled by policy: `claudeAgent`, `codex`, `opencode`, `cursor`. Antigravity is a fifth, local-only opt-in provider with per-instance Google browser setup under Settings → Tooling. Respect snapshot capabilities for Plan, rollback, native option IDs and attachment limits; see `docs/provider-conversations.md`.
 - The chat surface (`CozeaChatSurface`) shows a message timeline, composer, and — when the AI proposes file changes — a diff approval panel
 - Generated images are thread-scoped artifacts. Each assistant tile has persistent `Chat` / `Artifacts` views; hiding chat must not unmount its controller or stream. See `docs/assistant-artifacts.md`.
 - Agent headers expose project/provider-scoped native Chat history. Drafts and image Blobs are device-local and independent of tiles; tile closure must not delete them. Preserve explicit missing-thread states and execution-context checks. See `docs/assistant-chat-history.md` for lifecycle, QA, and the optional `Dockerfile.agent-checks` container workflow.
@@ -564,3 +573,18 @@ A task is done when:
 - impact is explained (what changed, where, why),
 - follow-ups are listed if anything was intentionally left out.
 - `.agent/CONTINUITY.md` is updated if the change materially affects goal/state/decisions.
+
+## Provider compatibility verification
+
+Run `bun run check:provider-compatibility` for gitlink/manifest/contracts and new
+suppression checks; `bun run test:provider-compatibility` runs the isolated vendor
+provider, orchestration and persistence suites through its declared manager.
+Root and vendor Effect dependencies remain separate. The manifest distinguishes
+observed versions, protocol fixtures and qualified native runtimes; do not promote
+a version without recording the live matrix.
+
+Container checks use `Dockerfile.agent-checks` with explicitly supplied `BUN_IMAGE`
+and `NODE_IMAGE` arguments matching the repository manifests. Mount an isolated
+checkout at `/workspace`, run `bun run bootstrap`, then the compatibility commands.
+Use the existing macOS toolchain for Electron/PTY and portable packaging. Docker
+was unavailable on the implementation host; container execution is unverified.

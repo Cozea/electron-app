@@ -12,3 +12,5 @@ export function patchT3ServerBundleProviderUpdates(source: string): {
   source: string;
   changed: boolean;
 };
+
+export function isCurrentT3Bundle(validBundle: boolean, stamp: string | null, sourceStamp: string): boolean;

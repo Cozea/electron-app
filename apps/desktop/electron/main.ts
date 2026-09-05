@@ -1,5 +1,6 @@
 import { registerCollaborationHandlers } from "./collaboration/registerCollaborationHandlers"
-import { app, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session } from 'electron'
+import { createControlledAppUpdateInstaller } from "./services/controlledAppUpdate"
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'
 import windowStateKeeper from 'electron-window-state'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -1715,6 +1716,32 @@ registerProjectMemoryHandlers(ipcMain)
 // real filesystem path before delegating to TerminalService.
 registerTerminalWorkspaceHandlers(ipcMain, TerminalService.getInstance())
 
+const installControlledUpdate = createControlledAppUpdateInstaller({
+  isDownloaded: () => updateState.status === 'downloaded',
+  getHosts: () => {
+    const pool = getDesktopBackendPool()
+    if (pool) return pool.listDescriptors().flatMap((descriptor) => {
+      const manager = pool.getManager(descriptor.id)
+      return manager && manager.getStatus().phase !== 'stopped' ? [manager] : []
+    })
+    const manager = shadowServerManager ?? getShadowServerManager()
+    return manager && manager.getStatus().phase !== 'stopped' ? [manager] : []
+  },
+  install: () => new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer)
+      nativeAutoUpdater.off('before-quit-for-update', accepted)
+      autoUpdater.off('error', failed)
+    }
+    const accepted = () => { cleanup(); resolve() }
+    const failed = (error: Error) => { cleanup(); reject(error) }
+    const timer = setTimeout(() => failed(new Error('The updater did not confirm restart. Retry the update.')), 20_000)
+    nativeAutoUpdater.once('before-quit-for-update', accepted)
+    autoUpdater.once('error', failed)
+    try { autoUpdater.quitAndInstall() } catch (error) { failed(error instanceof Error ? error : new Error(String(error))) }
+  }),
+})
+
 registerCoreHandlers(ipcMain, {
   getUpdateState: () => updateState,
   isAutoUpdateEnabled,
@@ -1722,7 +1749,7 @@ registerCoreHandlers(ipcMain, {
   downloadUpdate: async () => {
     await autoUpdater.downloadUpdate()
   },
-  installUpdate: () => autoUpdater.quitAndInstall(),
+  installUpdate: installControlledUpdate,
   setUpdateError: (message) => {
     setUpdateState({
       status: 'error',

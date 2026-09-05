@@ -1,6 +1,8 @@
 # GitHub-backed collaboration completion
 
-Status: implementation in progress on `codex/collaboration-v2-complete`, based on main `2b7e5830` plus PR #141 `07c3f59d`. The merge is uncommitted. This branch is not ready to deploy or expose as a completed collaboration release.
+Status: implementation in progress on `codex/collaboration-v2-complete`, with PR #141 integrated in local checkpoint `41b7b17b`. The branch also reconciles committed main `bbf9ceab`, including provider fork `f2df43a98`. This branch is not ready to deploy or expose as a completed collaboration release.
+
+The user requested stopping implementation and handing off the committed branch. Start with `docs/collaboration-v2-handoff.md`.
 
 ## Scope and release gate
 
@@ -38,7 +40,7 @@ All standard typechecks, lint, tests and production builds must pass. Two indepe
 
 ## Remaining implementation and acceptance gaps
 
-1. Reconcile the latest committed main/provider runtime. Enforce collaboration authority at the native T3 provider/RPC boundary and stop running agents on role removal or exit. The current workspace IPC policy alone does not cover native T3 agent commands; do not enable the release until this is closed.
+1. Enforce collaboration authority at the native T3 provider/RPC boundary and stop running agents on role removal or exit. The current workspace IPC policy alone does not cover native T3 agent commands; do not enable the release until this is closed.
 2. Finish external CLI rename identity reconciliation and the concurrent edit/delete/path-collision matrix. Add whole-window close protection for renderer edits awaiting IPC acceptance. Complete the reviewed prepared-commit diff and binary selection UI.
 3. Complete automatic recovery for an unacknowledged lazy file initializer when key rotation replaces its lease. Pending records are currently retained with a recoverable diagnostic. Validate complete host-level rotation with an offline participant and repeated removals.
 4. Bound total retained storage across key versions and checkpoint history, and add explicit catalog-owned cleanup. Finish content-free diagnostics and target-branch-advancement UI. Ensure runtime restart failures and authorization failures preserve visible retry/leave controls.
@@ -61,4 +63,4 @@ Docker is unavailable; use existing local Bun without host system-package instal
 
 Behavioral coverage uses actual temporary Git repositories, real encrypted Yjs documents, filesystem recovery, and an isolated Durable Object runtime. Current tests include two main-process session runtimes editing through that room and recovering after restart, observer denial, canonical checkpoint retries, failed checkpoint persistence, older offline edits, exact temporary-index commits, non-fast-forward rejection and lost Git-push responses. Full checks are recorded in the workspace continuity file as they complete.
 
-Verification (2026-09-05): full Vitest 2,206 passed / 7 skipped; application, Electron, test and Worker typechecks passed; lint and production build passed. A full-suite run exposed an in-flight projection seeing a new external file before its canonical disk baseline was saved. Waiting for existing projection work before file initialization/discovery fixed the race; the complete suite then passed. Existing Vite/SQLite warnings remain. These results do not establish deployed or packaged acceptance.
+Verification (2026-09-05): after main reconciliation, full Vitest 2,258 passed / 7 skipped; application, Electron, test and Worker typechecks passed; lint and production build passed. A full-suite run exposed an in-flight projection seeing a new external file before its canonical disk baseline was saved. Waiting for existing projection work before file initialization/discovery fixed the race; the complete suite then passed. Existing Vite/SQLite warnings remain. These results do not establish deployed or packaged acceptance.

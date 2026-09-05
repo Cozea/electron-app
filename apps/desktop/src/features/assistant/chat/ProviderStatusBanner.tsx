@@ -40,7 +40,10 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     : status.status === "error"
       ? `${providerLabel} provider is unavailable.`
       : `${providerLabel} provider has limited availability.`;
-  const statusMessage = status.message ?? defaultMessage;
+  const statusMessage =
+    updateAvailable && status.status === "ready"
+      ? defaultMessage
+      : status.message ?? defaultMessage;
   const title = updateAvailable ? `${providerLabel} update available` : `${providerLabel} provider status`;
   const isError = status.status === "error";
   const devApp = getDevAppForAssistantProvider(provider);

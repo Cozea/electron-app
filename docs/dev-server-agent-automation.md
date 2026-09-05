@@ -173,3 +173,11 @@ Verify all of the following before release:
     can select both, and Stop/Restart tears down both.
 20. Auxiliary process configuration survives an app restart for that workspace, does not appear in
     another workspace, and is cleared when the local project is deleted.
+
+## Integrated provider instances
+
+The frozen upstream integration retains all Cozea preview/DevApp tool extensions.
+OpenCode managed servers remain per-thread, with instance-owned catalog helpers.
+Antigravity receives managed-preview instructions only when bound to that thread’s
+Cozea MCP endpoint; an unbound instance does not receive a generic preview grant.
+The single webview host and existing approval/grant boundaries are unchanged.

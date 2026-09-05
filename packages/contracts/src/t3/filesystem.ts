@@ -1,5 +1,4 @@
-// @ts-nocheck
-/** @generated from vendor/t3code/packages/contracts @ c1f224d9380e908e02578858b86f04abd7b386d8 — do not edit; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
@@ -44,7 +43,7 @@ export class FilesystemBrowseError extends Schema.TaggedErrorClass<FilesystemBro
     parentPath: Schema.optional(TrimmedNonEmptyString),
     platform: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
+    cause: Schema.optional(Schema.Defect),
   },
 ) {
   // Structured diagnostics stay optional for rolling compatibility with legacy message-only

@@ -160,7 +160,7 @@ export function useAssistantThreadViewModel({
     [activeTurn?.turnId, thread?.proposedPlans],
   )
   const showPlanFollowUpPrompt =
-    pendingUserInputs.length === 0 &&
+    !pendingUserInputs.some((request) => request.responseMode !== "message") &&
     selectedInteractionMode === "plan" &&
     latestTurnSettled &&
     hasActionableProposedPlan(activeProposedPlan)

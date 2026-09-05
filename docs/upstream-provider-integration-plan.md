@@ -1,6 +1,6 @@
 # Upstream provider integration plan
 
-Status: proposed implementation plan; no runtime changes implemented.
+Status: implementation and available-host verification complete in `codex/provider-upstream-integration`; release qualification limits are recorded below.
 Prepared: 2026-09-05T04:47:58+08:00.
 
 ## Objective and acceptance
@@ -269,3 +269,169 @@ Document user-visible question, compaction, continuation, and Antigravity behavi
 Suggested review units: (1) Codex compatibility repair, (2) coherent fork merge and extension preservation, (3) parent contracts/preparation/data compatibility, (4) async questions, (5) compaction, (6) controlled-update continuation, (7) OpenCode UI/lifecycle verification, (8) Antigravity setup, and (9) compatibility CI/docs/final qualification. Units 4–8 depend on units 2–3; the small repair can ship first. No sub-agent delegation is implied by this breakdown.
 
 No reliable calendar estimate is assigned before the contract/Effect boundary, migration tests, and Antigravity setup surface are assessed. Those are the largest unresolved implementation costs. The merge preview establishes conflict locations, not implementation completion or test success.
+
+## Execution record (2026-09-05)
+
+- Isolated baseline preserves the local UI changes in parent commit `4aa413be`.
+  App typecheck/lint/build and 2079 tests passed (7 skipped).
+- Independent repair branches retain fork `7df4f7903` and parent `0366aeba`.
+  Regression reproduced before repair. Schema/adapter checks, isolated Cozea RPC
+  smoke and portable packaging passed. The friend's private history was not supplied.
+- Fork merge `e6fd2165c7c1e8a1a0563c993d5205d53480130b` preserves upstream ancestry
+  at frozen target `0a590fa01af66ec135d2ebf2d5542b08a37dc275`. All ten Cozea fork
+  changes were reviewed against that target, including clean merges. The final
+  server/schema/contracts suite passed 4110 tests (9 skipped); added Antigravity
+  preview scoping plus Claude tests passed 115 tests. Server typecheck, lint and
+  bundle build passed. Reasoning events were consolidated; normalized usage and
+  Cozea native usage history share one event. macOS nested-file canonicalization
+  and outside-workspace leaf symlinks have regression coverage.
+- Parent contract adaptation removes generated type suppressions and translates
+  schema-construction APIs for the existing root Effect pin. Runtime identity is
+  checked before database startup. Five new contract/bootstrap tests pass; app
+  typecheck, Electron typecheck, lint, build and the 2079 existing tests pass.
+- Fork continuation commit `59e1f1749a90912a5d68eedf026c4ba7fdcfb204` and parent
+  pin `7b5920d7` add parent-only IPC preparation/cancellation and refuse unstamped
+  bundles. The fork feature branch was pushed after explicit user authorization;
+  an empty Git repository fetched that exact revision from Cozea/t3code.
+- Cozea question/compaction, native permission labels, controlled updates and
+  local Antigravity setup are implemented. Actual Electron component QA passed
+  active Stop, independent message/image drafts, scoped keyboard events, duplicate
+  native option labels, lost-ack/reload retry identity, completed-turn answer,
+  independent windows/tiles and OpenCode workspace warnings. Setup QA passed
+  explicit enable/install/cancel/progress, browser flow/cancel, separate account
+  IDs and sign-out/disable with a fixture transport. It caught and fixed the
+  early-auth-notification/browser-open race; two focused regressions cover it.
+- The repeatable vendor compatibility command passed 1561 tests (8 skipped);
+  final parent suite passed 2106 tests (7 skipped), including the auth race and
+  preference regressions. App/Electron/test typechecks, lint, production build and
+  whitespace checks passed.
+- Source shadow RPC and host-update prepare/cancel smoke passed. Portable runtime
+  preparation passed at `59e1f1749`; final built-shadow RPC and host-update smoke
+  passed after rebuilding the parent. Runtime and contract identity checks pass.
+
+### Native and release qualification boundaries
+
+| Environment/case | Evidence and result |
+| --- | --- |
+| macOS arm64 / Codex CLI 0.153.2 | Auth/catalog, consecutive `gpt-5.6-luna` turns and a further turn after server restart passed in an isolated project. The exact native rollout contains all three user turns. Completed-subagent history/process restart uses synthetic protocol fixtures; the friend's rollout and 0.153.3 binary were unavailable. |
+| Claude CLI 2.1.260 | Auth/catalog probe passed. A real chat reached the adapter and displayed the provider account rejection; successful-turn qualification is unavailable with this account. |
+| OpenCode CLI 1.18.28 | Auth/catalog probe passed. Lifecycle/permissions/stop use upstream integration fixtures; real paid-model conversation matrix remains unverified. |
+| Cursor | Native executable unavailable in this host's PATH; adapter/ACP fixtures pass. Native UI matrix remains unverified. |
+| Antigravity | Auth/account/install/lease/skills/attachment tests and actual Cozea setup UI with fixture transport pass. Real Google browser sign-in is user-operated and was not performed. |
+| App update | Parent transport, multi-host preparation/cancel/failure, off/on preference and startup reconciliation are tested. Signed installer replacement requires a release candidate and was not invoked. |
+| Packaging/platforms | macOS arm64 portable runtime and production bundles built. Docker daemon and other native release architectures were unavailable; those targets remain unverified. |
+
+The machine-readable manifest deliberately has no fully qualified native-version
+entries yet. Observed versions and limited live smoke results do not certify the
+entire live matrix. Feature-specific automated and Electron fixture checks are
+repeatable, while the credential/platform/release cases above are explicit rollout
+gates. No release, parent push, main merge, real Google login or private-history
+recovery is claimed. Existing source and distribution publication rules remain
+in force. Do not downgrade a live database to test rollback.
+
+
+### Reviewable parent stack
+
+- `c6f9e42a`: upstream conversation UI, async answer durability, compaction,
+  permission scopes, history variants and local Antigravity setup/capabilities.
+- `bb5f1808`: controlled-update preference, parent/shadow/T3 transport, multi-host
+  preparation/cancellation and retry behavior; operator documentation updated.
+- Compatibility CI and provider documentation follow as a separate change.
+  Only the fork feature branch was published; parent changes remain local.
+
+
+### Final verification (2026-09-05T00:03Z)
+
+A separate parent clone at `d493cc2b` initialized its submodule directly from
+Cozea/t3code and fetched `59e1f1749`. `bun run bootstrap` rebuilt from the frozen
+lockfiles without adopting the implementation worktree's bundle. Its app
+typecheck, production build, compatibility/contract manifest check and isolated
+shadow RPC/update prepare-cancel smoke all passed; both source trees stayed clean.
+The implementation worktree's portable runtime metadata names that same full SHA.
+
+Final root result: **2106 passed, 7 skipped**. App/Electron/test typechecks, lint,
+production build, contract/pin checks and diff whitespace passed. The vendor
+compatibility suite passed **1561 tests, 8 skipped**; the earlier complete merged
+server/schema/contracts suite passed **4110 tests, 9 skipped**, with the subsequent
+host continuation change covered by 22 startup/update tests and a fresh server
+bundle/typecheck/lint. Existing Vite configuration/native-loader warnings and
+SQLite experimental notices remain; no new failing checks are hidden.
+
+The implementation is ready for parent-branch review. Publication of the parent,
+main merges and releases were not authorized or performed. Real credential,
+signed-updater and unavailable-platform cases in the table remain release
+qualification gates, not claimed successes. The user's original checkout and
+native histories were preserved; only clearly isolated QA conversations were
+created for live tests.
+
+### Local-main extended QA (2026-09-05)
+
+Local main was integrated at `5827b00a` and the actual Cozea app restarted with
+its existing data intact. Extended testing found that native Codex cancellation
+stopped execution but was labelled completed: terminal notifications mapped to
+ready, and later checkpoint events overwrote terminal states. Fork follow-up
+`f2df43a98` preserves interrupted/cancelled and failed states through checkpointing;
+Cozea's local event reader now follows the same terminal-state behavior.
+
+The cancellation regression failed before the repair. The full vendor suite now
+passes **4117 tests, 9 skipped**. With explicit approval, the fork feature branch
+`codex/provider-qa-fixes` was published and an independent bare repository fetched
+its exact SHA. Parent main remains local; no release was published.
+
+Further real desktop checks found and repaired three parent integration problems:
+
+- Provider installation can take five minutes, but its client RPC deadline was
+  only sixty seconds. Provider updates now have a six-minute deadline; ordinary
+  RPC requests retain their existing deadline. A fake-clock integration test
+  verifies that a slow update succeeds while an ordinary request times out.
+- Upstream shell upserts were incorrectly cast as domain events and deferred by
+  a recovery coordinator expecting contiguous history sequences. Shell updates
+  now materialize metadata snapshots directly, tolerate sparse sequences, and
+  retain cached transcript slices. Tiles own their detail streams; global shell
+  hydration no longer subscribes to every historical thread. A finished live
+  Codex turn now releases the Working indicator and composer.
+- Native Codex can flush buffered text after the interrupted session event. That
+  text previously reactivated the busy indicator. Terminal state now survives
+  those late chunks until the next turn starts; interrupted/ready/error ordering
+  regressions verify text retention and subsequent-turn streaming.
+
+Also fixed misleading provider-update copy and verified actual installed/available
+versions in the UI. With explicit approval, Cozea's update buttons installed
+Codex **0.153.3** and OpenCode **1.18.29**. Live CUA checks on the existing macOS
+arm64 development app passed:
+
+- Codex new chat, renderer reload/resume, completed-state idle transition and Stop
+  with both database session/turn marked interrupted and the composer available.
+- Codex 0.153.3 resumed isolated 0.153.2 history containing interruption and
+  compaction. Native 0.153.2 Stop, post-Stop chat, compaction and post-compaction
+  chat also passed against the repaired server.
+- OpenCode with Gemini 3.7 Flash returned real responses before and after reload;
+  the unsent draft survived reload, the composer settled, and model catalog opened.
+  An earlier OpenRouter GPT-5 Mini request on 1.18.28 was rejected for insufficient
+  credits; that account/model result does not apply to the successful Gemini test.
+- Project/tile restoration, layout split/maximize/restore, Artifacts round-trip,
+  Agent Skills rendering and blocked-provider screens were exercised.
+
+Final parent checks: **2117 tests passed, 4 skipped**; app/Electron/test typechecks,
+root and scoped client lint, production build and runtime/contract/pin checks pass.
+An existing 30ms logging assertion failed during an earlier concurrent vendor/root
+run; the full root suite passed when rerun independently. Existing Vite/native-loader
+and SQLite warnings remain. An unsigned arm64 `.app` was rebuilt under
+`.agent/provider-upstream/packaged/mac-arm64/Cozea.app`; packaging omits optional
+binaries for other platforms and skips signing as requested by the local QA lane.
+
+The packaged T3 payload was tested through the built shadow bootstrap with fresh
+state and a private copy of pre-upgrade state. The copied database preserved
+**14 projects, 69 threads, 478 messages and 57 native bindings**, including hashes
+of message text and resume data. Expected startup changes are new project columns,
+thread settlement metadata and runtime last-seen timestamps; these are not data
+loss. Logs and receipts are under `.agent/provider-upstream/qa-final-*` and
+`packaged-final-upgrade-verification.json`.
+The packaged GUI itself was not launched against the user's live profile.
+
+Claude chat remains blocked by the existing provider account rejection, Cursor CLI
+is absent, Antigravity login is not configured, and other operating systems and
+signed installer replacement are not live-qualified. Automated fixtures cover
+those protocol paths, but the manifest intentionally keeps full native matrix
+qualification false. No private rollout was rewritten or deleted; only QA chats
+and explicitly approved CLI updates were added to this machine.

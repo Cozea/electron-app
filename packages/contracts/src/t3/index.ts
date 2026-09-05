@@ -1,18 +1,21 @@
-// @ts-nocheck
-/** @generated — re-export synced upstream T3 contract groups (see SYNC_MANIFEST.json). */
+/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
 export * from "./baseSchemas.ts";
+export * from "./assistantCitations.ts";
 export * from "./background.ts";
 export * from "./auth.ts";
 export * from "./environment.ts";
-export * from "./environmentHttp.ts";
 export * from "./relayClient.ts";
 export * from "./desktopBootstrap.ts";
+export * from "./desktopAppActivation.ts";
 export * from "./remoteAccess.ts";
 export * from "./ipc.ts";
 export * from "./terminal.ts";
 export * from "./provider.ts";
 export * from "./providerInstance.ts";
+export * from "./providerSetup.ts";
 export * from "./providerRuntime.ts";
+export * from "./providerUsageLimits.ts";
+export * from "./usageLimitSourceId.ts";
 export * from "./model.ts";
 export * from "./keybindings.ts";
 export * from "./server.ts";
@@ -28,9 +31,10 @@ export * from "./project.ts";
 export * from "./filesystem.ts";
 export * from "./assets.ts";
 export * from "./review.ts";
+export * from "./browserImport.ts";
+export * from "./browserProfile.ts";
 export * from "./preview.ts";
 export * from "./previewAutomation.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./usage.ts";
 export * from "./rpc.ts";
-export * from "./methodTags.ts";

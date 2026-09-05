@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useAutoUpdater } from '@/app/hooks/useAutoUpdater'
-import { useAutoUpdateStore } from '@/app/model/autoUpdateStore'
+import { installDownloadedUpdate, useAutoUpdateStore } from '@/app/model/autoUpdateStore'
 import { cn } from '@/lib/utils'
 import logoLightMode from '@/assets/logos/logo_light_mode.png'
 import { useTranslation } from '@/lib/i18n'
@@ -30,8 +30,11 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
   useAutoUpdater({ enabled: !disableAutoUpdaterHook })
   const { t } = useTranslation()
 
+  const continueActiveChats = useAutoUpdateStore((s) => s.continueActiveChats)
+  const setContinueActiveChats = useAutoUpdateStore((s) => s.setContinueActiveChats)
   const status = useAutoUpdateStore((s) => s.status)
   const version = useAutoUpdateStore((s) => s.version)
+  const installError = useAutoUpdateStore((s) => s.error)
   const progress = useAutoUpdateStore((s) => s.progress)
   const releaseNotes = useAutoUpdateStore((s) => s.releaseNotes)
   const setInstallMode = useAutoUpdateStore((s) => s.setInstallMode)
@@ -53,7 +56,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
 
     if (status === 'downloaded') {
       if (mode === 'now') {
-        void window.electronAPI.updates.install()
+        void installDownloadedUpdate()
       } else {
         setDismissedKey(dismissKey)
       }
@@ -65,7 +68,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
 
   const handleRestart = () => {
     if (!window.electronAPI?.updates) return
-    void window.electronAPI.updates.install()
+    void installDownloadedUpdate()
   }
 
   return createPortal(
@@ -94,6 +97,11 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
       </div>
 
       <div className="space-y-3 px-4 py-4">
+        {installError ? <p role="alert" className="text-sm text-red-700">{installError}</p> : null}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={continueActiveChats} onChange={(event) => setContinueActiveChats(event.target.checked)} />
+          Continue active chats after updates
+        </label>
         <div className="space-y-1">
           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{t('update.title')}</div>
           <div className="text-2xl font-semibold leading-tight">{t('update.version')} {effectiveVersion}</div>

@@ -256,7 +256,9 @@ export function projectOrchestrationReadModelEvent(
         ...nextBase,
         threads: updateOrchestrationThread(nextBase.threads, payload.threadId, {
           ...(payload.title !== undefined ? { title: payload.title } : {}),
-          ...(payload.modelSelection !== undefined ? { modelSelection: payload.modelSelection } : {}),
+          ...(payload.modelSelection !== undefined
+            ? { modelSelection: payload.modelSelection }
+            : {}),
           ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
           ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),
           updatedAt: payload.updatedAt,
@@ -291,7 +293,9 @@ export function projectOrchestrationReadModelEvent(
       return {
         ...nextBase,
         threads: updateOrchestrationThread(nextBase.threads, payload.threadId, {
-          ...(payload.modelSelection !== undefined ? { modelSelection: payload.modelSelection } : {}),
+          ...(payload.modelSelection !== undefined
+            ? { modelSelection: payload.modelSelection }
+            : {}),
           runtimeMode: payload.runtimeMode,
           interactionMode: payload.interactionMode,
           updatedAt: event.occurredAt,
@@ -331,7 +335,9 @@ export function projectOrchestrationReadModelEvent(
                   streaming: message.streaming,
                   updatedAt: message.updatedAt,
                   turnId: message.turnId,
-                  ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+                  ...(message.attachments !== undefined
+                    ? { attachments: message.attachments }
+                    : {}),
                 }
               : entry,
           )
@@ -388,6 +394,14 @@ export function projectOrchestrationReadModelEvent(
       }
 
       const session: OrchestrationSession = payload.session;
+      const settledState =
+        session.status === "error"
+          ? "error"
+          : session.status === "interrupted" || session.status === "stopped"
+            ? "interrupted"
+            : session.status === "ready"
+              ? "completed"
+              : null;
 
       return {
         ...nextBase,
@@ -412,7 +426,9 @@ export function projectOrchestrationReadModelEvent(
                       ? thread.latestTurn.assistantMessageId
                       : null,
                 }
-              : thread.latestTurn,
+              : thread.latestTurn?.state === "running" && settledState !== null
+                ? { ...thread.latestTurn, state: settledState, completedAt: session.updatedAt }
+                : thread.latestTurn,
           updatedAt: event.occurredAt,
         }),
       };
@@ -516,7 +532,11 @@ export function projectOrchestrationReadModelEvent(
           checkpoints,
           latestTurn: {
             turnId: payload.turnId,
-            state: checkpointStatusToLatestTurnState(payload.status),
+            state:
+              thread.latestTurn?.turnId === payload.turnId &&
+              (thread.latestTurn.state === "interrupted" || thread.latestTurn.state === "error")
+                ? thread.latestTurn.state
+                : checkpointStatusToLatestTurnState(payload.status),
             requestedAt:
               thread.latestTurn?.turnId === payload.turnId
                 ? thread.latestTurn.requestedAt

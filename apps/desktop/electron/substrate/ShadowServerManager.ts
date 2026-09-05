@@ -1,3 +1,4 @@
+import { requestHostUpdate, type HostUpdateRequest } from "../../../../shared/hostUpdateControl";
 import { fork, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -111,6 +112,11 @@ export class ShadowServerManager {
       startedAtMs: this.startedAtMs,
       readyAtMs: this.readyAtMs,
     };
+  }
+
+  async controlUpdate(request: HostUpdateRequest): Promise<void> {
+    if (!this.child || this.phase !== "ready") throw new Error("The chat server is not ready for an update.");
+    await requestHostUpdate(this.child, request, 15_000);
   }
 
   async start(): Promise<ShadowServerStatus> {

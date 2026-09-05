@@ -330,5 +330,5 @@ export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
  * collapsed toggle cannot claim success over a failed row it is hiding.
  */
 export function workEntryIndicatesFailure(entry: WorkLogEntry): boolean {
-  return entry.status === "failed" || entry.tone === "error";
+  return entry.status === "failed" || entry.toolLifecycleStatus === "failed" || entry.tone === "error";
 }

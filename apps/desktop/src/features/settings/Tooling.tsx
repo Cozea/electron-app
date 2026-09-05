@@ -1,3 +1,4 @@
+import { AntigravitySetup } from "./AntigravitySetup"
 import { useCallback, useEffect, useState } from 'react'
 import { SiBun, SiGo, SiNodedotjs, SiNpm, SiPnpm, SiPython, SiRust, SiYarn } from 'react-icons/si'
 import {
@@ -449,6 +450,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
           </div>
         </SettingsGroup>
       </section>
+      <AntigravitySetup />
     </SettingsPageBody>
   )
 

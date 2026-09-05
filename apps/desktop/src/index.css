@@ -126,12 +126,9 @@ body {
   to { opacity: 1; }
 }
 
-.assistant-text-enter {
+.assistant-text-enter,
+.assistant-tool-enter {
   animation: assistant-text-enter 180ms ease-out both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .assistant-text-enter { animation: none; }
 }
 
 .chat-markdown {
@@ -664,6 +661,10 @@ body {
 
 
 @media (prefers-reduced-motion: reduce) {
+  .assistant-text-enter,
+  .assistant-tool-enter {
+    animation: none;
+  }
   .cozea-live-shimmer-focus {
     animation: none;
     opacity: 0;

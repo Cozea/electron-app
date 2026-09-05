@@ -1,13 +1,12 @@
 import { useEffect } from "react";
 
-import type { OrchestrationEvent, OrchestrationReadModel } from "@cozea/assistant-contracts";
+import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 import { SubstrateOrchestrationClient, T3OrchestrationClient } from "@cozea/client-runtime";
 
-import {
-  coalesceOrchestrationUiEvents,
-  useStore,
-} from "@/features/assistant/model/assistantStore";
+import { coalesceOrchestrationUiEvents, useStore } from "@/features/assistant/model/assistantStore";
 import { createOrchestrationRecoveryCoordinator } from "@/features/assistant/model/orchestrationRecovery";
+
+import { mergeT3ShellSnapshot } from "@/features/assistant/model/t3ShellSnapshot";
 
 import { fetchT3RpcSession } from "./fetchT3RpcSession";
 
@@ -73,53 +72,15 @@ export function useSubstrateOrchestrationSync(input: SubstrateOrchestrationSyncI
             baseUrl: session.baseUrl,
             wsTicket: session.wsTicket,
           });
-          const threadUnsubs: Array<() => Promise<void>> = [];
-          closeClient = async () => {
-            for (const unsub of threadUnsubs) {
-              await unsub().catch(() => {});
-            }
-            await client.close();
-          };
-
-          // The archived snapshot intentionally omits active threads and any
-          // projects referenced only by them. Hydrate from the live shell
-          // snapshot so tiles restored from the current workbench bind to the
-          // existing server project instead of attempting a duplicate create.
-          const snapshot = await client.getSnapshot();
-          if (!cancelled && snapshot && typeof snapshot === "object") {
-            const record = snapshot as Record<string, unknown>;
-            if (Array.isArray(record.threads) && Array.isArray(record.projects)) {
-              useStore.getState().syncServerReadModel(snapshot as OrchestrationReadModel);
-            }
-          }
-
-          await client.subscribeShellEvents((event) => {
-            onDomainEvent(event);
-            if (event.type === "thread.created" && (event as unknown as { payload: { threadId: string } }).payload?.threadId) {
-              const thId = (event as unknown as { payload: { threadId: string } }).payload.threadId;
-              void client.subscribeThread(thId, (item) => {
-                const row = item as Record<string, unknown>;
-                if (row?.kind === "event" && row.event) {
-                  onDomainEvent(row.event as OrchestrationEvent);
-                }
-              }).then((unsub) => threadUnsubs.push(unsub));
-            }
+          closeClient = () => client.close();
+          // Shell metadata is authoritative for session/turn state. Detail streams
+          // belong to the visible tiles and do not share a contiguous sequence.
+          await client.onSnapshot((snapshot) => {
+            if (cancelled) return;
+            const store = useStore.getState();
+            store.syncServerReadModel(mergeT3ShellSnapshot(store.orchestrationReadModel, snapshot));
           });
-
-          const initialThreads = ((snapshot as Record<string, unknown>)?.threads ?? []) as Array<{ id: string }>;
-          for (const th of initialThreads) {
-            const unsub = await client.subscribeThread(th.id, (item) => {
-              const row = item as Record<string, unknown>;
-              if (row?.kind === "event" && row.event) {
-                onDomainEvent(row.event as OrchestrationEvent);
-              }
-            });
-            threadUnsubs.push(unsub);
-          }
-
-          while (!cancelled) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          }
+          if (cancelled) await client.close();
           return;
         }
 

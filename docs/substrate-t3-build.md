@@ -1,7 +1,7 @@
 # T3 runtime preparation and packaging
 
-Date: 2026-08-29
-Pin: `docs/substrate-t3-pin.md` (`c1f224d9`)
+Date: 2026-09-05
+Pin: `docs/substrate-t3-pin.md` (`f2df43a98`)
 
 Cozea runs its pinned T3 assistant server as a separate local process. The
 source tree preserves T3 as a direct Git submodule and keeps its pnpm workspace
@@ -96,3 +96,26 @@ assistant-less installer from being published.
 4. Regenerate selected contracts only when their upstream sources changed.
 5. Run the boot smoke, full checks, and `bun run prepare:t3-runtime:package`.
 6. Commit the parent gitlink, pin metadata, generated changes, and wrapper changes together.
+
+## Contract and runtime identity
+
+Contract synchronization verifies the reviewed fork HEAD against the staged parent
+submodule, runtime constant, and documented pin before writing. Run
+`bun scripts/vendor/sync-t3-contracts.mjs --check` in CI. The deterministic manifest
+records source hashes and the explicit Effect compatibility adapter version;
+regeneration adds no type-check suppressions. Cozea retains its root Effect pin.
+The adapter translates constructor/default/error syntax without changing wire
+shapes. T3's server HTTP/relay middleware is excluded: Cozea uses the RPC client
+and owns device authentication, so importing another HTTP auth stack would be
+incorrect.
+
+The shadow bootstrap verifies the prepared or packaged runtime revision before
+launching T3 or opening its database. An absent or mismatched stamp requires a
+matching rebuild/reinstall. Keep `cozea-runtime.json` with portable deployments.
+
+The integrated fork retains migration 044 as a no-op: Cozea can persist an
+explicit project model at creation, and old data has no reliable marker that
+would distinguish that from an automatic choice. Migrations 045–047 remain
+upstream-owned; automatic Git pull defaults to disabled. Preserve a consistent
+pre-upgrade SQLite backup. Reverting a submodule is not a data rollback; new events
+may need the newer runtime, and native provider rollouts must remain intact.

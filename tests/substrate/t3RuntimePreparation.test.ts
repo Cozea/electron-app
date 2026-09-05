@@ -7,6 +7,7 @@ import { resolveT3RuntimeRoot } from "../../apps/server/src/t3/paths";
 import {
   buildVendorSourceStamp,
   patchT3ServerBundleProviderDefaults,
+  isCurrentT3Bundle,
   patchT3ServerBundleProviderUpdates,
   sanitizePortableRuntimeSymlinks,
 } from "../../scripts/prepare-t3-runtime.mjs";
@@ -186,4 +187,11 @@ message: couldNotVerify ? "Update command completed, but T3 Code could not verif
       "npm updater accepts the selected installation prefix patch anchor is missing",
     );
   });
+});
+
+it("never attests an unstamped bundle just because it can load", () => {
+  expect(isCurrentT3Bundle(true, null, "reviewed-revision")).toBe(false);
+  expect(isCurrentT3Bundle(true, "old-revision", "reviewed-revision")).toBe(false);
+  expect(isCurrentT3Bundle(false, "reviewed-revision", "reviewed-revision")).toBe(false);
+  expect(isCurrentT3Bundle(true, "reviewed-revision", "reviewed-revision")).toBe(true);
 });

@@ -41,6 +41,7 @@ import {
 import { AppOverlayPortal } from "@/components/ui/app-overlay-portal"
 import { ComposerPendingApprovalActions } from "@/features/assistant/chat/ComposerPendingApprovalActions"
 import { ComposerPendingApprovalPanel } from "@/features/assistant/chat/ComposerPendingApprovalPanel"
+import { AsyncQuestionPanel } from "./AsyncQuestionPanel"
 import { ComposerPendingUserInputPanel } from "@/features/assistant/chat/ComposerPendingUserInputPanel"
 import { ComposerPlanFollowUpBanner } from "@/features/assistant/chat/ComposerPlanFollowUpBanner"
 import { ContextWindowMeter } from "@/features/assistant/chat/ContextWindowMeter"
@@ -141,6 +142,7 @@ function DebugBugIcon({ className }: { className?: string }) {
 }
 
 export interface ProviderModelOptionsByProvider {
+  antigravity: ReadonlyArray<{ slug: string; name: string }>
   codex: ReadonlyArray<{ slug: string; name: string }>
   claudeAgent: ReadonlyArray<{ slug: string; name: string }>
   cursor: ReadonlyArray<{ slug: string; name: string }>
@@ -343,6 +345,8 @@ interface CozeaChatSurfaceProps {
   onAttachFiles: (files: File[]) => void
   onRemoveComposerImage: (imageId: string) => void
   onRemovePreviewAnnotation: (annotationId: string) => void
+  compactUnavailableReason?: string | null
+  onCompact?: () => void | Promise<void>
   onSend: (overridePrompt?: string) => void | Promise<void>
   onInterrupt: () => void | Promise<void>
   onApprovalDecision: (
@@ -420,8 +424,9 @@ function toPendingUserInputDraftAnswers(
       continue
     }
 
-    if (question.options.some((option) => option.label === value)) {
-      next[question.id] = { selectedOptionLabel: value }
+    const option = question.options.find((option) => (option.value ?? option.label) === value)
+    if (option) {
+      next[question.id] = { selectedOptionLabel: option.label, selectedOptionValue: option.value ?? option.label }
       continue
     }
 
@@ -590,7 +595,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     selectedInteractionMode: props.selectedInteractionMode,
   })
   const activePendingApproval = props.pendingApprovals[0] ?? null
-  const activePendingUserInput = props.pendingUserInputs[0] ?? null
+  const blockingUserInputs = useMemo(() => props.pendingUserInputs.filter((request) => request.responseMode !== "message"), [props.pendingUserInputs])
+  const asyncUserInputs = useMemo(() => props.pendingUserInputs.filter((request) => request.responseMode === "message"), [props.pendingUserInputs])
+  const activePendingUserInput = blockingUserInputs[0] ?? null
   const activePendingDraftAnswers = useMemo(
     () =>
       toPendingUserInputDraftAnswers(
@@ -719,7 +726,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       label: `/${command.name}`,
       description: command.description ?? command.input?.hint ?? "Run provider command",
     }))
-    return filterSlashItems([...builtInItems, ...providerItems], composerSlashTrigger?.query ?? "")
+    return filterSlashItems([...builtInItems.filter((item) => item.type !== "slash-command" || item.command !== "plan" || (props.selectedProvider !== "antigravity" && props.providerSnapshot?.showInteractionModeToggle !== false)), ...providerItems], composerSlashTrigger?.query ?? "")
   }, [composerSlashTrigger?.query, props.providerSnapshot?.slashCommands, props.selectedProvider])
   const modelMenuItems = useMemo<ComposerSlashMenuItem[]>(() => {
     const allItems = (
@@ -772,6 +779,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.isBinding ||
     isComposerApprovalState ||
     activePendingIsResponding ||
+    activePendingProgress?.activeQuestion?.allowCustomAnswer === false ||
     (!activePendingProgress && props.isSending)
   const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation"
   const attachDisabled =
@@ -1130,7 +1138,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     if (!activePendingUserInput) {
       return
     }
-    props.onUserInputDraftChange(String(activePendingUserInput.requestId), questionId, optionLabel)
+    const question = activePendingUserInput.questions.find((entry) => entry.id === questionId)
+    const value = question?.options.find((option) => (option.value ?? option.label) === optionLabel)?.value ?? optionLabel
+    props.onUserInputDraftChange(String(activePendingUserInput.requestId), questionId, value)
   }
 
   const handleSubmitPendingUserInput = () => {
@@ -1277,6 +1287,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
       return
     }
+
+    if (item.command.name === "compact" && props.onCompact) { void props.onCompact(); setComposerHighlightedItemId(null); return }
 
     const replacement = `/${item.command.name} `
     const replacementRangeEnd =
@@ -1586,14 +1598,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <span className="flex-1">Debug Mode</span>
           {activeMode === "debug" && <span className="text-xs text-rose-400">✓</span>}
         </DropdownMenuItem>
-        <DropdownMenuItem
+        {props.selectedProvider !== "antigravity" && props.providerSnapshot?.showInteractionModeToggle !== false ? <DropdownMenuItem
           onClick={() => updateComposerMode(activeMode === "plan" ? null : "plan")}
           className={cn(activeMode === "plan" && "bg-amber-500/10 text-amber-400")}
         >
           <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 mr-2 text-amber-400" />
           <span className="flex-1">Plan Mode</span>
           {activeMode === "plan" && <span className="text-xs text-amber-400">✓</span>}
-        </DropdownMenuItem>
+        </DropdownMenuItem> : null}
         <DropdownMenuItem
           onClick={() => updateComposerMode(activeMode === "ask" ? null : "ask")}
           className={cn(activeMode === "ask" && "bg-sky-500/10 text-sky-400")}
@@ -1611,6 +1623,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
+        {props.onCompact && props.providerSnapshot?.slashCommands?.some((command) => command.name === "compact") ? (
+          <DropdownMenuItem disabled={Boolean(props.compactUnavailableReason)} title={props.compactUnavailableReason ?? "Summarize provider context; keep chat history and your draft"} onClick={() => void props.onCompact?.()}>
+            Compact context
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onClick={() => void props.onToggleRuntimeMode()}>
           <HugeiconsIcon
             icon={props.selectedRuntimeMode === "full-access" ? __CircleAlertIconHugeIcon : __LockIconHugeIcon}
@@ -1621,6 +1638,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       </DropdownMenuContent>
     </DropdownMenu>
   )
+
+  const latestUserMessage = props.thread?.messages.findLast((message) => message.role === "user")
+  const latestCompaction = props.thread?.activities.findLast((activity) => activity.kind === "context-compaction")
+  const compactionStatus = latestUserMessage?.text.trim().toLowerCase() === "/compact"
+    ? props.isRunning ? "Compacting context…" : latestCompaction && latestCompaction.createdAt >= latestUserMessage.createdAt ? latestCompaction.summary : null
+    : null
 
   const renderSendOrStopButton = () => {
     if (activePendingProgress) {
@@ -1906,6 +1929,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             />
           </div>
         ) : null}
+        {props.thread ? asyncUserInputs.map((request) => (
+          <AsyncQuestionPanel key={String(request.requestId)} threadId={props.thread!.id} request={request}
+            responding={props.activeRequestKey === String(request.requestId)} onSubmit={props.onSubmitUserInput} />
+        )) : null}
         {activePendingApproval ? (
           <div className="basis-full border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
             <ComposerPendingApprovalPanel
@@ -1914,6 +1941,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             />
             <div className="p-2 flex items-center justify-end gap-2">
               <ComposerPendingApprovalActions
+                options={activePendingApproval.options?.length ? activePendingApproval.options : activePendingApproval.options !== undefined || activePendingApproval.requestKind === "other" ? [{ decision: "decline", label: "Decline" }, { decision: "cancel", label: "Cancel turn" }] : undefined}
                 requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
                 isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
                 onRespondToApproval={async (requestId, decision) => {
@@ -1925,7 +1953,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : activePendingUserInput ? (
           <div className="flex min-h-0 max-h-[40vh] basis-full flex-col border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
             <ComposerPendingUserInputPanel
-              pendingUserInputs={props.pendingUserInputs}
+              pendingUserInputs={blockingUserInputs}
               respondingRequestIds={
                 activePendingIsResponding && activePendingUserInput
                   ? [ApprovalRequestId.makeUnsafe(String(activePendingUserInput.requestId))]
@@ -2093,6 +2121,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       onDragLeave={handleSurfaceDragLeave}
       onDrop={handleSurfaceDrop}
     >
+      {compactionStatus ? <div role="status" className="shrink-0 px-4 py-2 text-xs text-muted-foreground">{compactionStatus}</div> : null}
       {isDragOverSurface && (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-sm text-center rounded-[inherit]">
           <HugeiconsIcon
@@ -2150,7 +2179,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               expandedWorkGroups={expandedWorkGroups}
               onToggleWorkGroup={toggleWorkGroup}
               onOpenTurnDiff={props.onOpenTurnDiff}
-              revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
+              revertTurnCountByUserMessageId={props.onRevertToTurnCount ? revertTurnCountByUserMessageId : new Map()}
               onRevertUserMessage={handleRevertUserMessage}
               isRevertingCheckpoint={Boolean(props.isRevertingCheckpoint)}
               onImageExpand={handleExpandImage}

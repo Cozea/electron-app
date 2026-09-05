@@ -123,6 +123,10 @@ export const ServerProvider = Schema.Struct({
   accentColor: Schema.optional(TrimmedNonEmptyString),
   badgeLabel: Schema.optional(TrimmedNonEmptyString),
   requiresNewThreadForModelChange: Schema.optional(Schema.Boolean),
+  supportsConversationRollback: Schema.optional(Schema.Boolean),
+  showInteractionModeToggle: Schema.optional(Schema.Boolean),
+  supportsTextGeneration: Schema.optional(Schema.Boolean),
+  setup: Schema.optional(Schema.Struct({ canAuthenticate: Schema.Boolean, canInstall: Schema.Boolean })),
   availability: Schema.optional(Schema.Literals(["available", "unavailable"])),
   unavailableReason: Schema.optional(TrimmedNonEmptyString),
   enabled: Schema.Boolean,
@@ -167,6 +171,10 @@ export interface ServerProvider {
   accentColor?: string;
   badgeLabel?: string;
   requiresNewThreadForModelChange?: boolean;
+  supportsConversationRollback?: boolean;
+  showInteractionModeToggle?: boolean;
+  supportsTextGeneration?: boolean;
+  setup?: { canAuthenticate: boolean; canInstall: boolean };
   availability?: "available" | "unavailable";
   unavailableReason?: string;
   enabled: boolean;

@@ -1,7 +1,7 @@
 # Collaboration v2 implementation plan
 
-Status: active implementation plan  
-Base reviewed: `main@8dc33edf320cdcc8eba6ee92d40c0e43b7e24a9c`  
+Status: active implementation plan
+Base reviewed: `main@8dc33edf320cdcc8eba6ee92d40c0e43b7e24a9c`
 Last updated: 2026-09-04
 
 ## Product decisions

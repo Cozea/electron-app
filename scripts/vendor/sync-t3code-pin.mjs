@@ -38,7 +38,11 @@ function main() {
   }
 
   const pin = readPinSha();
-  run("git", ["fetch", "origin", "--depth", "1", pin], { cwd: vendorRoot });
+  const forkUrl = run("git", ["config", "--file", ".gitmodules", "--get", "submodule.vendor/t3code.url"], { cwd: root });
+  if (run("git", ["status", "--porcelain"], { cwd: vendorRoot })) {
+    throw new Error("Refusing to replace a dirty T3 checkout. Preserve its changes before syncing the pin.");
+  }
+  run("git", ["fetch", forkUrl, "--depth", "1", pin], { cwd: vendorRoot });
   run("git", ["checkout", "--detach", pin], { cwd: vendorRoot });
 
   const current = run("git", ["rev-parse", "HEAD"], { cwd: vendorRoot });

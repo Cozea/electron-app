@@ -34,7 +34,7 @@ describe("history integration safety contracts", () => {
       "isBinding",
       "isTurnStartPending",
       "pendingApprovals.length",
-      "pendingUserInputs.length",
+      'pendingUserInputs.some((request) => request.responseMode !== "message")',
       "activeRequestKey",
       "memoryUpdateInFlight",
       "isRevertingCheckpoint",

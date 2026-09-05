@@ -2527,7 +2527,7 @@ export interface ElectronAPI {
   updates: {
     check: () => Promise<UpdateState>
     download: () => Promise<UpdateState>
-    install: () => Promise<{ success: boolean; error?: string }>
+    install: (options?: { continueActiveChats?: boolean }) => Promise<{ success: boolean; error?: string }>
     getState: () => Promise<UpdateState>
     onStatus: (callback: (state: UpdateState) => void) => () => void
   }

@@ -21,6 +21,7 @@ export interface ThreadDetailRecord {
   readonly proposedPlans: ProposedPlan[];
   readonly turnDiffSummaries: TurnDiffSummary[];
   readonly isStreaming: boolean;
+  readonly turnSettled?: boolean;
   readonly error: string | null;
 }
 
@@ -56,10 +57,11 @@ function readSequence(value: unknown): number {
 }
 
 function sessionIsStreaming(snapshot: Record<string, unknown>, messages: ChatMessage[]): boolean {
-  if (messages.some((message) => message.streaming)) return true;
-
   const session = asRecord(snapshot.session);
-  return session?.status === "starting" || session?.status === "running";
+  if (typeof session?.status === "string") {
+    return session.status === "starting" || session.status === "running";
+  }
+  return messages.some((message) => message.streaming);
 }
 
 function sessionError(snapshot: Record<string, unknown>): string | null {
@@ -212,6 +214,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
             proposedPlans,
             turnDiffSummaries,
             isStreaming: sessionIsStreaming(snap, messages),
+            turnSettled: typeof asRecord(snap.session)?.status === "string" && !sessionIsStreaming(snap, messages),
             error: sessionError(snap),
           },
         },
@@ -236,9 +239,11 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
       switch (event.type) {
         case "thread.message-sent": {
           const messageId = String(payload.messageId ?? "");
-          const isStreaming = Boolean(payload.streaming);
+          // Native providers can flush buffered text after the terminal session
+          // event. Keep that text without resurrecting the stopped turn.
+          const isStreaming = Boolean(payload.streaming) && !current.turnSettled;
           const chunkText = String(payload.text ?? "");
-          const incomingMessage = mapMessage({ ...payload, id: messageId });
+          const incomingMessage = mapMessage({ ...payload, streaming: isStreaming, id: messageId });
 
           const existingIndex = current.messages.findIndex((m) => m.id === messageId);
 
@@ -247,7 +252,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
             const existing = current.messages[existingIndex]!;
             const updated: ChatMessage = {
               ...existing,
-              text: isStreaming
+              text: payload.streaming
                 ? existing.text + chunkText
                 : chunkText.length > 0
                   ? chunkText
@@ -321,6 +326,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
                 ...current,
                 lastSequence,
                 isStreaming: true,
+                turnSettled: false,
                 error: null,
               },
             },
@@ -344,6 +350,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
                 ...current,
                 lastSequence,
                 isStreaming: status === "starting" || status === "running",
+                turnSettled: status !== "starting" && status !== "running",
                 error,
               },
             },
@@ -358,6 +365,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
                 ...current,
                 lastSequence,
                 isStreaming: false,
+                turnSettled: true,
               },
             },
           };
