@@ -21,17 +21,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string'
+}
+
 function isDesktopBootstrapSession(value: unknown): value is DesktopBootstrapSession {
-  if (!isRecord(value)) return false
+  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.personalWorkspace)) {
+    return false
+  }
+
+  const user = value.user
+  const workspace = value.personalWorkspace
   return (
     typeof value.accessToken === 'string' &&
+    value.accessToken.length > 0 &&
     typeof value.expiresAt === 'number' &&
     Number.isFinite(value.expiresAt) &&
     typeof value.convexUserId === 'string' &&
-    isRecord(value.user) &&
-    typeof value.user.id === 'string' &&
-    isRecord(value.personalWorkspace) &&
-    typeof value.personalWorkspace.workspaceId === 'string'
+    value.convexUserId.length > 0 &&
+    typeof user.id === 'string' &&
+    user.id.length > 0 &&
+    typeof user.deviceId === 'string' &&
+    typeof user.email === 'string' &&
+    isNullableString(user.firstName) &&
+    isNullableString(user.lastName) &&
+    isNullableString(user.profileImageUrl) &&
+    typeof workspace.id === 'string' &&
+    typeof workspace.workspaceId === 'string' &&
+    workspace.workspaceId.length > 0 &&
+    typeof workspace.workspaceName === 'string' &&
+    typeof workspace.organizationId === 'string' &&
+    typeof workspace.organizationName === 'string' &&
+    workspace.role === 'admin' &&
+    workspace.status === 'active' &&
+    workspace.workspaceType === 'personal'
   )
 }
 
@@ -39,8 +62,11 @@ function isDesktopWorkbenchLocator(value: unknown): value is DesktopWorkbenchLoc
   if (!isRecord(value)) return false
   return (
     typeof value.workspaceSelectionId === 'string' &&
+    value.workspaceSelectionId.length > 0 &&
     typeof value.projectId === 'string' &&
+    value.projectId.length > 0 &&
     typeof value.laneId === 'string' &&
+    value.laneId.length > 0 &&
     (value.focusTileId === null || typeof value.focusTileId === 'string') &&
     typeof value.updatedAt === 'number' &&
     Number.isFinite(value.updatedAt)
