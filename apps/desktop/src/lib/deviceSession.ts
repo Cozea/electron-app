@@ -1,4 +1,5 @@
 import type { Id } from "../../../../convex/_generated/dataModel"
+import type { DesktopBootstrapSession } from "@shared/desktopBootstrapTypes"
 import type { PersonalWorkspaceMembership, User } from "@shared/types"
 
 export interface DeviceSession {
@@ -39,6 +40,21 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
+function toBootstrapSession(session: DeviceSession): DesktopBootstrapSession {
+  return {
+    ...session,
+    convexUserId: String(session.convexUserId),
+  }
+}
+
+export function seedDeviceSession(session: DesktopBootstrapSession | null): void {
+  if (!session) return
+  cachedSession = {
+    ...session,
+    convexUserId: session.convexUserId as Id<"users">,
+  }
+}
+
 async function issueDeviceSession(): Promise<DeviceSession> {
   const identity = await window.electronAPI.collab.ensureDeviceIdentity()
   if (
@@ -76,7 +92,11 @@ async function issueDeviceSession(): Promise<DeviceSession> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ challenge, signature: signed.signature }),
   })
-  return await parseResponse<DeviceSession>(completeResponse)
+  const session = await parseResponse<DeviceSession>(completeResponse)
+  void window.cozeaBootstrap?.storeSession(toBootstrapSession(session)).catch((error) => {
+    console.warn('[DesktopBootstrap] Failed to persist the refreshed device session.', error)
+  })
+  return session
 }
 
 export async function getDeviceSession(options: { force?: boolean } = {}): Promise<DeviceSession> {
@@ -100,6 +120,9 @@ export async function getDeviceSession(options: { force?: boolean } = {}): Promi
 export function clearDeviceSession(): void {
   cachedSession = null
   pendingSession = null
+  void window.cozeaBootstrap?.clearSession().catch((error) => {
+    console.warn('[DesktopBootstrap] Failed to clear the persisted device session.', error)
+  })
 }
 
 export async function createOrganizationRecoveryCode(

@@ -113,6 +113,9 @@ export function writeLastWorkbenchRoute(entry: LastWorkbenchRouteEntry) {
       [entry.workspaceSelectionId]: entry,
     },
   })
+  void window.cozeaBootstrap?.setLastWorkbenchRoute(entry).catch((error) => {
+    console.warn('[DesktopBootstrap] Failed to persist the last workbench locator.', error)
+  })
 }
 
 export function clearLastWorkbenchRoute(workspaceSelectionId: string | null | undefined) {
@@ -126,8 +129,9 @@ export function clearLastWorkbenchRoute(workspaceSelectionId: string | null | un
   }
 
   const { [workspaceSelectionId]: _removed, ...remainingEntries } = state.entriesByWorkspaceSelectionId
-  writePersistedState({
-    entriesByWorkspaceSelectionId: remainingEntries,
+  writePersistedState({ entriesByWorkspaceSelectionId: remainingEntries })
+  void window.cozeaBootstrap?.clearLastWorkbenchRoute(workspaceSelectionId).catch((error) => {
+    console.warn('[DesktopBootstrap] Failed to clear the last workbench locator.', error)
   })
 }
 
@@ -149,4 +153,7 @@ export function clearLastWorkbenchRoutesForProject(projectId: string): void {
   }
 
   writePersistedState({ entriesByWorkspaceSelectionId })
+  void window.cozeaBootstrap?.clearLastWorkbenchRoutesForProject(normalizedProjectId).catch((error) => {
+    console.warn('[DesktopBootstrap] Failed to clear the project workbench locator.', error)
+  })
 }

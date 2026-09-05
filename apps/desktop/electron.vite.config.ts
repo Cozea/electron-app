@@ -85,7 +85,7 @@ const sharedAliases: Alias[] = [
   },
   {
     find: '@cozea/assistant-contracts',
-    replacement: path.resolve(repoRoot, './shared/assistant-contracts'),
+    replacement: path.resolve(repoRoot, './shared/assistant-contracts/index.ts'),
   },
   {
     find: /^@cozea\/assistant-shared\/(.*)$/,
@@ -93,7 +93,7 @@ const sharedAliases: Alias[] = [
   },
   {
     find: '@cozea/assistant-shared',
-    replacement: path.resolve(repoRoot, './shared/assistant-shared'),
+    replacement: path.resolve(repoRoot, './shared/assistant-shared/index.ts'),
   },
   {
     find: /^@cozea\/effect-acp\/(.*)$/,
@@ -273,7 +273,7 @@ export default defineConfig({
       },
       lib: {
         entry: {
-          index: 'electron/main.ts',
+          index: 'electron/mainEntry.ts',
           'workbench-runtime': 'electron/workbench-runtime/child.ts',
           'substrate-shadow-server': 'electron/substrate-shadow-server/child.ts',
         },
@@ -298,7 +298,7 @@ export default defineConfig({
       },
       lib: {
         entry: {
-          index: 'electron/preload.ts',
+          index: 'electron/bootstrapPreload.ts',
           'preview-pick-preload': path.resolve(t3DesktopSource, 'preview-pick-preload.ts'),
           'devapp-preview-pick-preload': 'electron/preloads/devAppPreviewPickPreload.ts',
           'preview-pip-preload': path.resolve(t3DesktopSource, 'preview-pip-preload.ts'),
