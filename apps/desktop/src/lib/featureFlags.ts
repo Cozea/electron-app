@@ -10,6 +10,10 @@ const DEFINITIONS = {
   contentVisibility: { key: 'VITE_FF_CONTENT_VISIBILITY', defaultValue: true },
   localWorkspaceCatalog: { key: 'VITE_FF_LOCAL_WORKSPACE_CATALOG', defaultValue: true },
   projectDevApps: { key: 'VITE_FF_PROJECT_DEVAPPS', defaultValue: true },
+  desktopBootstrap: { key: 'VITE_FF_DESKTOP_BOOTSTRAP', defaultValue: true },
+  shellFirstAuth: { key: 'VITE_FF_SHELL_FIRST_AUTH', defaultValue: true },
+  commonRoutePrewarm: { key: 'VITE_FF_COMMON_ROUTE_PREWARM', defaultValue: true },
+  lazyRendererHosts: { key: 'VITE_FF_LAZY_RENDERER_HOSTS', defaultValue: true },
   /**
    * `cozea.palette.enabled` — workbench command palette + keybindings discovery.
    * Override with `VITE_FF_COZEA_PALETTE_ENABLED=0` to disable.
@@ -52,6 +56,22 @@ export const featureFlags = {
   projectDevApps: parseBoolean(
     import.meta.env[DEFINITIONS.projectDevApps.key],
     DEFINITIONS.projectDevApps.defaultValue
+  ),
+  desktopBootstrap: parseBoolean(
+    import.meta.env[DEFINITIONS.desktopBootstrap.key],
+    DEFINITIONS.desktopBootstrap.defaultValue
+  ),
+  shellFirstAuth: parseBoolean(
+    import.meta.env[DEFINITIONS.shellFirstAuth.key],
+    DEFINITIONS.shellFirstAuth.defaultValue
+  ),
+  commonRoutePrewarm: parseBoolean(
+    import.meta.env[DEFINITIONS.commonRoutePrewarm.key],
+    DEFINITIONS.commonRoutePrewarm.defaultValue
+  ),
+  lazyRendererHosts: parseBoolean(
+    import.meta.env[DEFINITIONS.lazyRendererHosts.key],
+    DEFINITIONS.lazyRendererHosts.defaultValue
   ),
   /** Maps to plan flag `cozea.palette.enabled` (default ON). */
   paletteEnabled: parseBoolean(
