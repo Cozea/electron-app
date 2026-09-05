@@ -36,25 +36,14 @@ jobs:
         run: bun run bootstrap
       - name: Verify pinned native runtime
         run: bun run prepare:t3-runtime:check
-      - name: Inspect native authorization integration points
-        run: |
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          const root = 'vendor/t3code/apps/server/src/';
-          for (const name of fs.readdirSync(root, {recursive: true}).filter(n => n.endsWith('.ts') && !n.includes('.test.'))) {
-            const source = fs.readFileSync(root + name, 'utf8');
-            if (source.includes('bindCozeaHostUpdateControl') || (source.includes('dispatchCommand') && /rpc|websocket|ws/i.test(name))) {
-              console.log('NATIVE-SOURCE-PATH', name);
-            }
-          }
-          const bundle = fs.readFileSync('vendor/t3code/apps/server/dist/bin.mjs', 'utf8');
-          for (const anchor of ['makeProviderService', 'bindCozeaHostUpdateControl(process', 'ORCHESTRATION_WS_METHODS.dispatchCommand', 'dispatchCommand: ', 'terminal.open', 'terminalOpen']) {
-            const index = bundle.indexOf(anchor);
-            console.log('NATIVE-BUNDLE-ANCHOR', JSON.stringify({anchor, index, excerpt: index < 0 ? '' : bundle.slice(Math.max(0, index - 200), index + 1600)}));
-          }
-          JS
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
+      - name: Native shutdown regression tests
+        run: >-
+          bunx vitest run
+          tests/collaboration/verifiedChildProcessStop.test.ts
+          tests/collaboration/verifiedChildProcessStop.integration.test.ts
+          tests/collaboration/t3BootstrapShutdown.test.ts
       - name: Typecheck renderer
         run: bun run typecheck
       - name: Typecheck Electron
