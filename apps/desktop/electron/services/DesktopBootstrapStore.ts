@@ -25,6 +25,10 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
+function isOptionalNullableString(value: unknown): value is string | null | undefined {
+  return value === undefined || isNullableString(value)
+}
+
 function isDesktopBootstrapSession(value: unknown): value is DesktopBootstrapSession {
   if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.personalWorkspace)) {
     return false
@@ -68,6 +72,9 @@ function isDesktopWorkbenchLocator(value: unknown): value is DesktopWorkbenchLoc
     typeof value.laneId === 'string' &&
     value.laneId.length > 0 &&
     (value.focusTileId === null || typeof value.focusTileId === 'string') &&
+    isOptionalNullableString(value.workspaceId) &&
+    isOptionalNullableString(value.projectName) &&
+    isOptionalNullableString(value.collabBranch) &&
     typeof value.updatedAt === 'number' &&
     Number.isFinite(value.updatedAt)
   )
