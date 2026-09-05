@@ -22,11 +22,12 @@ export function registerApplicationQuitCleanup(cleanup: () => void): () => void 
 }
 
 export function runApplicationQuitCleanups(): void {
+  const cleanups = applicationQuitCleanups.splice(0)
   // Reverse construction order: dependents (DevServer) shut down before the
   // lower-level runtime they use (Terminal/PTY).
-  for (let index = applicationQuitCleanups.length - 1; index >= 0; index -= 1) {
+  for (let index = cleanups.length - 1; index >= 0; index -= 1) {
     try {
-      applicationQuitCleanups[index]?.()
+      cleanups[index]?.()
     } catch (error) {
       console.warn('[Lifecycle] Application quit cleanup failed.', error)
     }
