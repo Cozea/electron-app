@@ -1,6 +1,8 @@
 import { requestHostUpdate, type HostUpdateRequest } from "../../../../shared/hostUpdateControl.ts";
 import { spawn } from "node:child_process";
+import { stopChildProcessVerified } from "../../../../shared/verifiedChildProcessStop.ts";
 import fs from "node:fs";
+import { isNativeWorkspaceAuthorizeRequest, requestNativeWorkspaceDecision, requestNativeWorkspaceControl, sendNativeWorkspaceMessage } from "../../../../shared/nativeWorkspaceIpc.ts";
 import os from "node:os";
 import path from "node:path";
 
@@ -28,6 +30,7 @@ export interface T3ServerProcessHandle {
   readonly port: number;
   readonly pairingToken: string;
   readonly controlUpdate: (request: HostUpdateRequest) => Promise<void>;
+  readonly controlWorkspace: (action: "stop" | "activate", root: string) => Promise<void>;
   readonly stop: () => Promise<void>;
 }
 
@@ -196,11 +199,18 @@ export async function startT3ServerProcess(
     [VENDOR_T3_SERVER_BIN, "serve", "--port", String(port), "--host", host, "--no-browser", "--base-dir", baseDir],
     {
       cwd: VENDOR_T3_SERVER_PKG,
-      env: { ...nodeLaunch.environment, COZEA_HOST_CONTINUATION: "1" },
+      env: { ...nodeLaunch.environment, COZEA_HOST_CONTINUATION: "1", COZEA_NATIVE_WORKSPACE_AUTHORITY: "1" },
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     },
   );
 
+  child.on("message", (message: unknown) => {
+    if (!isNativeWorkspaceAuthorizeRequest(message)) return;
+    void requestNativeWorkspaceDecision(process, message.cwd, message.operation).then(
+      decision => sendNativeWorkspaceMessage(child, { type: "cozea:workspace-authorize-result", requestId: message.requestId, ...decision }),
+      () => sendNativeWorkspaceMessage(child, { type: "cozea:workspace-authorize-result", requestId: message.requestId, allowed: false, sessionRoot: null }),
+    );
+  });
   child.stdout?.on("data", (chunk: Buffer) => startupOutput.append("stdout", chunk));
   child.stderr?.on("data", (chunk: Buffer) => startupOutput.append("stderr", chunk));
 
@@ -221,7 +231,7 @@ export async function startT3ServerProcess(
     ]);
     await Promise.race([ready, exited]);
   } catch (error) {
-    child.kill("SIGTERM");
+    await stopChildProcessVerified(child, { graceMs: 2_000, killWaitMs: 2_000 });
     throw error;
   }
 
@@ -233,18 +243,7 @@ export async function startT3ServerProcess(
     port,
     pairingToken,
     controlUpdate: (request) => requestHostUpdate(child, request),
-    stop: async () => {
-      child.kill("SIGTERM");
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => {
-          child.kill("SIGKILL");
-          resolve();
-        }, 2_000);
-        child.once("exit", () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-    },
+    controlWorkspace: (action, root) => requestNativeWorkspaceControl(child, action, root),
+    stop: () => stopChildProcessVerified(child, { graceMs: 2_000, killWaitMs: 2_000 }),
   };
 }

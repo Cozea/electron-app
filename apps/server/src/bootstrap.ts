@@ -1,5 +1,6 @@
 import { isHostUpdateRequest } from "../../../shared/hostUpdateControl.ts";
 import fs from "node:fs";
+import { isNativeWorkspaceControlRequest, sendNativeWorkspaceMessage } from "../../../shared/nativeWorkspaceIpc.ts";
 import path from "node:path";
 
 import {
@@ -134,11 +135,21 @@ export async function bootstrapCozeaSubstrateServer(
     };
     void request.then(() => reply(true), () => reply(false));
   };
+  const onWorkspaceControl = (message: unknown) => {
+    if (!isNativeWorkspaceControlRequest(message)) return;
+    const operation = t3Handle?.process.controlWorkspace(message.action, message.root) ?? Promise.reject(new Error("Native chat server is unavailable."));
+    const reply = (success: boolean) => sendNativeWorkspaceMessage(process, {
+      type: "cozea:workspace-control-result", requestId: message.requestId, action: message.action, success,
+    });
+    void operation.then(() => reply(true), () => reply(false));
+  };
+  process.on("message", onWorkspaceControl);
   process.on("message", onHostUpdate);
   await handle.start();
   return {
     stop: async () => {
       process.off("message", onHostUpdate);
+      process.off("message", onWorkspaceControl);
       await handle.stop();
       if (t3Handle) {
         await t3Handle.stop();

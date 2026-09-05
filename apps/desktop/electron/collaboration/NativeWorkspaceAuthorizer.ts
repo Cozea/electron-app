@@ -25,7 +25,7 @@ export function createNativeWorkspaceAuthorizer(options: NativeWorkspaceAuthoriz
   return async request => {
     let sessionRoot: string | null = null;
     try {
-      if (!path.isAbsolute(request.cwd) || request.cwd.includes("\0")) return { allowed: false, sessionRoot };
+      if ((request.operation !== "execute" && request.operation !== "git") || !path.isAbsolute(request.cwd) || request.cwd.includes("\0")) return { allowed: false, sessionRoot };
       const cwd = await canonicalize(request.cwd);
       if (!path.isAbsolute(cwd)) return { allowed: false, sessionRoot };
       let candidate = cwd;
@@ -53,7 +53,7 @@ export function createNativeWorkspaceAuthorizer(options: NativeWorkspaceAuthoriz
       const { workspace, binding } = found;
       if (request.operation === "git" || binding.state !== "active" || binding.role !== "editor") return { allowed: false, sessionRoot };
       const live = await options.authorizeSession(binding.sessionId);
-      if (live.role !== "editor" || !Number.isFinite(live.expiresAt) || live.expiresAt <= now()) return { allowed: false, sessionRoot };
+      if (live.role !== "editor" || live.session.id !== binding.sessionId || live.session.projectId !== binding.projectId || live.session.repositoryId !== binding.repositoryId || ["closing", "closed", "failed"].includes(live.session.status) || !Number.isFinite(live.expiresAt) || live.expiresAt <= now()) return { allowed: false, sessionRoot };
       // Leave/revocation may have completed while the gateway call was in flight.
       // A late server response cannot restore a locally suspended binding.
       const current = await options.binding(workspace.workspaceId);

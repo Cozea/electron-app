@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyCozeaWorkspaceSourcePatches } from "./patch-t3-workspace-authority.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const repositoryRoot = path.resolve(scriptDirectory, "..");
@@ -439,6 +440,7 @@ export function main(argv = process.argv.slice(2)) {
 
   const expectedPin = expectedVendorPin();
   ensureVendorCheckout(expectedPin, options.checkOnly);
+  applyCozeaWorkspaceSourcePatches({ vendorRoot, checkOnly: options.checkOnly });
   const sourceStamp = currentVendorSourceStamp(expectedPin);
   const pnpmVersion = readPnpmVersion();
   prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, options);

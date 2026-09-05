@@ -1,5 +1,6 @@
 import path from "node:path"
 import { safeStorage } from "electron"
+import { activateNativeWorkspaceRoot } from "./NativeWorkspaceBridge"
 import { createHash } from "node:crypto"
 import type { CollaborationWorkspaceAuthority, PreparedCollaborationCommit } from "../../../../shared/collaborationDesktop"
 import type { CollaborationSessionDescriptor } from "../../../../shared/collaborationSession"
@@ -190,6 +191,7 @@ export class SessionRuntimeHost {
         await this.coordinator.adoptPublished(sessionId, await this.gateway.accessToken(), runtime.files.files().flatMap(file => [file.path, ...(file.originalPath ? [file.originalPath] : [])]))
       }
       await this.coordinator.recordRecoveryKey(sessionId, material.keyVersion)
+      await activateNativeWorkspaceRoot(workspace.projectRootPath)
       hosted.ready = true
       return true
     } catch (error) { await this.leave(sessionId, false); throw error }

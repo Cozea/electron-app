@@ -18,7 +18,8 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function fixture(authorize = vi.fn(async (_cwd: string, _operation: "execute" | "git") => editor)) {
+function fixture(implementation: (cwd: string, operation: "execute" | "git") => Promise<NativeWorkspaceDecision> = async () => editor) {
+  const authorize = vi.fn(implementation);
   return { authorize, authority: new NativeWorkspaceAuthority({ authorize, canonicalize: async cwd => cwd, drainTimeoutMs: 10 }) };
 }
 

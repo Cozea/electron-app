@@ -55,7 +55,8 @@ export function trackNativeWorkspaceEndpoint(endpoint: NativeWorkspaceEndpoint):
 }
 
 async function control(root: string, action: "stop" | "activate"): Promise<void> {
-  const targets = [...endpoints].filter(endpoint => endpoint.connected);
+  // A disconnected but not exited child is an unconfirmed owner, not success.
+  const targets = [...endpoints];
   const results = await Promise.allSettled(targets.map(endpoint => requestNativeWorkspaceControl(endpoint, action, root)));
   if (results.some(result => result.status === "rejected")) throw new Error("A native chat server did not acknowledge workspace control; retry the operation.");
 }

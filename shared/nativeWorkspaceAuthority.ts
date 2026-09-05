@@ -183,6 +183,7 @@ export class NativeWorkspaceAuthority {
       // as the first sweep ran. It is now either drained or explicitly failed.
       try { await stopOwned(root); } catch { failed = true; }
       if (failed) throw new Error("Native workspace shutdown was not fully acknowledged; retry Leave.");
+      this.sessionRoots.delete(root);
     })();
     this.stopping.set(root, operation);
     void operation.then(() => this.stopping.delete(root), () => this.stopping.delete(root));

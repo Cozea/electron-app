@@ -1,6 +1,8 @@
 import { requestHostUpdate, type HostUpdateRequest } from "../../../../shared/hostUpdateControl";
 import { fork, type ChildProcess } from "node:child_process";
+import { stopChildProcessVerified } from "../../../../shared/verifiedChildProcessStop";
 import fs from "node:fs";
+import { trackNativeWorkspaceEndpoint } from "../collaboration/NativeWorkspaceBridge";
 import path from "node:path";
 
 import { waitForHttpReady } from "../backendReadiness";
@@ -47,12 +49,6 @@ export interface ShadowServerManagerOptions {
   readonly forkImpl?: typeof fork;
   readonly waitForReady?: typeof waitForHttpReady;
   readonly now?: () => number;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 /**
@@ -171,6 +167,7 @@ export class ShadowServerManager {
       },
     });
     this.child = child;
+    trackNativeWorkspaceEndpoint(child);
 
     child.stdout?.on("data", (chunk: Buffer | string) => {
       this.appendChildLog("stdout", chunk);
@@ -222,7 +219,13 @@ export class ShadowServerManager {
     this.startGeneration += 1;
     const child = this.child;
     this.phase = "stopping";
-    await this.stopChild(child);
+    try {
+      await this.stopChild(child);
+    } catch (error) {
+      this.phase = "error";
+      this.lastError = "Chat server termination could not be confirmed; retry shutdown";
+      throw error;
+    }
     this.child = null;
     this.phase = "stopped";
     this.readyAtMs = null;
@@ -233,29 +236,7 @@ export class ShadowServerManager {
   }
 
   private async stopChild(child: ChildProcess | null): Promise<void> {
-    if (!child || child.killed) {
-      return;
-    }
-
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      // Ignore repeated kill failures.
-    }
-
-    const exited = new Promise<void>((resolve) => {
-      child.once("exit", () => resolve());
-    });
-    await Promise.race([exited, delay(this.stopGraceMs)]);
-
-    if (!child.killed && child.exitCode === null) {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Ignore force-kill failures.
-      }
-      await Promise.race([exited, delay(1_000)]);
-    }
+    await stopChildProcessVerified(child, { graceMs: this.stopGraceMs, killWaitMs: 2_000 });
   }
 
   private appendManagerLog(line: string): void {

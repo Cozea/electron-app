@@ -13,6 +13,8 @@ import { SessionRuntimeHost } from "./SessionRuntimeHost"
 import { AuthorizedRepositoryDownloader } from "./AuthorizedRepositoryDownloader"
 import { DeviceCollaborationGateway } from "./DeviceCollaborationGateway"
 import { WorkbenchSessionManager } from "../services/WorkbenchSessionManager"
+import { blockNativeWorkspaceRoot, setNativeWorkspaceAuthorizer, stopNativeWorkspaceRoot } from "./NativeWorkspaceBridge"
+import { createNativeWorkspaceAuthorizer } from "./NativeWorkspaceAuthorizer"
 
 async function catalog<A>(operation: (catalog: WorkspaceCatalogInterface) => Effect.Effect<A>): Promise<A> {
   const runtime = await waitForWorkspaceCatalogRuntime()
@@ -50,7 +52,7 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     getWorkspace: id => catalog(asyncEffectCatalog => asyncEffectCatalog.verify(id).pipe(Effect.map(result => result.workspace))),
     async allocate(projectId, sessionId, prepare) {
       const result = await catalog(service => service.createPreparedWorkspace(
-        { projectId, slug: `collab-${sessionId}`, setActive: false }, prepare, `collaboration:g3:${sessionId}`,
+        { projectId, slug: `collab-${sessionId}`, setActive: false }, async target => { blockNativeWorkspaceRoot(target); await prepare(target) }, `collaboration:g3:${sessionId}`,
       ))
       if (!result.success || !result.workspace) throw new Error(result.error ?? "Session workspace creation failed")
       return result.workspace
@@ -66,9 +68,22 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     async verifyPush(sessionId, commitSha, token) { await post("/collab/repository/verify-push", { sessionId, commitSha }, token) },
     scratchRoot: path.join(userData, "collaboration", "g3", "scratch"),
   })
+  setNativeWorkspaceAuthorizer(createNativeWorkspaceAuthorizer({
+    findWorkspace: cwd => catalog(service => service.findByPath(cwd)),
+    binding: workspaceId => coordinator.bindingForWorkspace(workspaceId),
+    authorizeSession: sessionId => gateway.post<CollaborationWorkspaceAuthority>("/collab/v2/workspace-context", { sessionId }),
+  }))
   const host = new SessionRuntimeHost(coordinator, path.join(userData, "collaboration"), sessionId => {
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("collaboration:runtimeChanged", sessionId)
-  }, workspaceId => WorkbenchSessionManager.getInstance().closeWorkspace(workspaceId))
+  }, async workspaceId => {
+    const workspace = await catalog(service => service.getById(workspaceId))
+    if (!workspace) throw new Error("The retained session workspace could not be resolved for shutdown")
+    const results = await Promise.allSettled([
+      stopNativeWorkspaceRoot(workspace.projectRootPath),
+      WorkbenchSessionManager.getInstance().closeWorkspace(workspaceId),
+    ])
+    if (results.some(result => result.status === "rejected")) throw new Error("Session workspace shutdown was not fully acknowledged; retry Leave")
+  })
   let shutdownComplete = false
   let shuttingDown = false
   app.on("before-quit", event => {
