@@ -5,6 +5,9 @@ on:
     branches: [codex/collaboration-v2-complete]
     paths:
       - scripts/collaboration-completion-patch.mjs
+      - scripts/collaboration-native-integration.mjs
+      - scripts/patch-t3-workspace-authority.mjs
+      - scripts/t3-runtime/**
       - .github/workflows/collaboration-completion-implementation.yml
   workflow_dispatch:
 
@@ -13,7 +16,7 @@ permissions:
 
 concurrency:
   group: collaboration-completion-implementation
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   VITE_GITHUB_COLLABORATION_RELEASE: "0"
@@ -33,18 +36,28 @@ jobs:
         with:
           bun-version: latest
       - name: Validate exact edit anchors without writes
-        run: bun scripts/collaboration-completion-patch.mjs --check
+        run: |
+          bun scripts/collaboration-completion-patch.mjs --check
+          bun scripts/collaboration-native-integration.mjs --check
       - name: Apply scoped edits in the isolated checkout
-        run: bun scripts/collaboration-completion-patch.mjs
+        run: |
+          bun scripts/collaboration-completion-patch.mjs
+          bun scripts/collaboration-native-integration.mjs
       - name: Bootstrap pinned runtime
         run: bun run bootstrap
       - name: Verify pinned native runtime
         run: bun run prepare:t3-runtime:check
+      - name: Typecheck native runtime
+        run: |
+          manager="$(bun -p 'require("./vendor/t3code/package.json").packageManager')"
+          bun x "$manager" --dir vendor/t3code --filter t3 typecheck
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
       - name: Native admission and shutdown regression tests
         run: >-
           bunx vitest run
+          tests/collaboration/nativeWorkspaceAuthority.test.ts
+          tests/collaboration/nativeWorkspaceAuthorizer.test.ts
           tests/collaboration/nativeWorkspaceAuthorityAdmission.test.ts
           tests/collaboration/verifiedChildProcessStop.test.ts
           tests/collaboration/verifiedChildProcessStop.integration.test.ts
@@ -62,11 +75,24 @@ jobs:
         run: bun run lint
       - name: Behavioral tests
         run: bun run test
+      - name: Provider compatibility
+        run: |
+          bun run check:provider-compatibility
+          bun run test:provider-compatibility
       - name: Production build
         run: bun run build
       - name: Commit only verified scoped changes
         run: |
-          git add -- apps/desktop/electron/substrate/ShadowServerManager.ts apps/server/src/t3/process.ts
+          git add -- \
+            apps/desktop/electron/substrate/ShadowServerManager.ts \
+            apps/server/src/t3/process.ts apps/server/src/bootstrap.ts \
+            apps/desktop/electron/collaboration/NativeWorkspaceBridge.ts \
+            apps/desktop/electron/collaboration/NativeWorkspaceAuthorizer.ts \
+            apps/desktop/electron/collaboration/registerCollaborationHandlers.ts \
+            apps/desktop/electron/collaboration/SessionRuntimeHost.ts \
+            shared/nativeWorkspaceAuthority.ts \
+            tests/collaboration/nativeWorkspaceAuthority.test.ts \
+            scripts/prepare-t3-runtime.mjs
           if git diff --cached --quiet; then exit 0; fi
           remote_head="$(git ls-remote origin refs/heads/codex/collaboration-v2-complete | cut -f1)"
           if [ "$remote_head" != "$GITHUB_SHA" ]; then
@@ -75,5 +101,5 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix: await confirmed native process exit before completing shutdown'
+          git commit -m 'feat: enforce native collaboration authority and scoped agent shutdown'
           git push origin HEAD:refs/heads/codex/collaboration-v2-complete
