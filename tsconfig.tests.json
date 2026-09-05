@@ -5,7 +5,13 @@
     "baseUrl": "./apps/desktop",
     "types": ["vite/client", "node"]
   },
-  "include": ["tests"],
+  /*
+   * The ambient globals live beside the source they describe, and this project
+   * only includes `tests`, so a declaration like `window.cozeaBootstrap` was
+   * invisible here while the app project compiled fine. Pulling the types
+   * directory in keeps the two projects agreeing on what globals exist.
+   */
+  "include": ["tests", "apps/desktop/src/types"],
   /*
    * Test files were never part of a typecheck project, so contract changes could
    * leave a suite compiling against a shape that no longer exists — vitest

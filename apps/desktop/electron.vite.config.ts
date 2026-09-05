@@ -129,6 +129,24 @@ const sharedAliases: Alias[] = [
   },
 ]
 
+// main.ts keeps its stable service API, while the built main graph substitutes
+// cold implementations with tiny facades. Their IPC names are available at
+// boot and the real modules are dynamically imported only on first use.
+const mainBootAliases: Alias[] = [
+  {
+    find: './services/IntegrationService',
+    replacement: path.resolve(__dirname, './electron/services/boot/IntegrationServiceFacade.ts'),
+  },
+  {
+    find: './services/AgentToolService',
+    replacement: path.resolve(__dirname, './electron/services/boot/AgentToolServiceFacade.ts'),
+  },
+  {
+    find: './services/AgentSkillService',
+    replacement: path.resolve(__dirname, './electron/services/boot/AgentSkillServiceFacade.ts'),
+  },
+]
+
 interface SandboxedPreloadBundle {
   entry: string
   fileName: string
@@ -242,7 +260,7 @@ export default defineConfig({
       __COZEA_DEVICE_GATEWAY_ORIGIN__: JSON.stringify(deviceGatewayOrigin),
     },
     resolve: {
-      alias: sharedAliases,
+      alias: [...mainBootAliases, ...sharedAliases],
     },
     plugins: [
       {
@@ -273,7 +291,7 @@ export default defineConfig({
       },
       lib: {
         entry: {
-          index: 'electron/main.ts',
+          index: 'electron/mainEntry.ts',
           'workbench-runtime': 'electron/workbench-runtime/child.ts',
           'substrate-shadow-server': 'electron/substrate-shadow-server/child.ts',
         },
@@ -298,7 +316,7 @@ export default defineConfig({
       },
       lib: {
         entry: {
-          index: 'electron/preload.ts',
+          index: 'electron/bootstrapPreload.ts',
           'preview-pick-preload': path.resolve(t3DesktopSource, 'preview-pick-preload.ts'),
           'devapp-preview-pick-preload': 'electron/preloads/devAppPreviewPickPreload.ts',
           'preview-pip-preload': path.resolve(t3DesktopSource, 'preview-pip-preload.ts'),

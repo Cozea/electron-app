@@ -24,6 +24,7 @@ export class WorkbenchRuntimeClient {
   }
 
   private childProcess: ChildProcess | null = null
+  private disposed = false
   private nextRequestId = 1
   private readonly pending = new Map<number, PendingWorkbenchRuntimeRequest<unknown>>()
   private readonly listeners = new Set<WorkbenchRuntimeClientListener>()
@@ -38,6 +39,10 @@ export class WorkbenchRuntimeClient {
   }
 
   public async request<Result>(method: WorkbenchRuntimeMethod, params: unknown): Promise<Result> {
+    if (this.disposed) {
+      throw new Error('Workbench runtime client is disposed.')
+    }
+
     const child = this.ensureChildProcess()
     const requestId = this.nextRequestId
     this.nextRequestId += 1
@@ -63,6 +68,11 @@ export class WorkbenchRuntimeClient {
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return
+    }
+    this.disposed = true
+
     const child = this.childProcess
     this.childProcess = null
     if (!child) {
@@ -77,6 +87,9 @@ export class WorkbenchRuntimeClient {
   }
 
   private ensureChildProcess(): ChildProcess {
+    if (this.disposed) {
+      throw new Error('Workbench runtime client is disposed.')
+    }
     if (this.childProcess && this.childProcess.connected) {
       return this.childProcess
     }
