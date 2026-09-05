@@ -1,0 +1,96 @@
+name: Finalize collaboration hardening
+
+on:
+  push:
+    branches: [codex/collaboration-v2-complete]
+    paths:
+      - scripts/finalize-collaboration-hardening.mjs
+      - scripts/patch-t3-stopped-interrupt.mjs
+      - .github/workflows/collaboration-hardening-finalize.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VITE_GITHUB_COLLABORATION_RELEASE: "0"
+  COLLABORATION_G3_CREATE_ENABLED: "0"
+
+concurrency:
+  group: collaboration-hardening-finalization
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: github.ref == 'refs/heads/codex/collaboration-v2-complete'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Dry-run exact finalization anchors
+        run: bun scripts/finalize-collaboration-hardening.mjs --check
+      - name: Apply scoped finalization and remove temporary write workflows
+        run: bun scripts/finalize-collaboration-hardening.mjs
+      - name: Bootstrap pinned native runtime
+        run: bun run bootstrap
+      - name: Verify overlay and native types
+        run: |
+          bun run prepare:t3-runtime:check
+          manager="$(bun -p 'require("./vendor/t3code/package.json").packageManager')"
+          bun x "$manager" --dir vendor/t3code --filter t3 typecheck
+      - name: Install Electron runtime for tests
+        run: node node_modules/electron/install.js
+      - name: All application typechecks
+        run: |
+          bun run typecheck
+          bun run typecheck:electron
+          bun run typecheck:tests
+          bun run typecheck:cloudflare
+      - name: Lint and full behavioral tests
+        run: |
+          bun run lint
+          bun run test
+      - name: Repeat session recovery and shutdown without retry masking
+        run: |
+          for attempt in 1 2 3; do
+            bunx vitest run tests/collaboration/sessionRuntimeIntegration.test.ts
+          done
+      - name: Provider compatibility and native stopped-interrupt regression
+        run: |
+          bun run check:provider-compatibility
+          bun run test:provider-compatibility
+      - name: Production build
+        run: bun run build
+      - name: Commit only the verified finalization and remove this workflow
+        run: |
+          git add -A -- AGENTS.md scripts .github/workflows \
+            docs/collaboration-v2-completion.md docs/collaboration-v2-handoff.md docs/release-process.md
+          bun -e '
+            const {execFileSync} = require("node:child_process");
+            const allowed = new Set([
+              "AGENTS.md", "docs/collaboration-v2-completion.md", "docs/collaboration-v2-handoff.md", "docs/release-process.md",
+              "scripts/patch-t3-workspace-authority.mjs", "scripts/finalize-collaboration-hardening.mjs",
+              "scripts/collaboration-completion-patch.mjs", "scripts/collaboration-native-integration.mjs",
+              "scripts/collaboration-lifecycle-integration.mjs", "scripts/collaboration-review-integration.mjs",
+              "scripts/collaboration-recovery-integration.mjs", "scripts/collaboration-drain-integration.mjs",
+              ".github/workflows/collaboration-completion-implementation.yml", ".github/workflows/collaboration-hardening-finalize.yml"
+            ]);
+            const files = execFileSync("git", ["diff", "--cached", "--name-only", "-z"], {encoding:"utf8"}).split("\0").filter(Boolean);
+            if (files.some(file => !allowed.has(file))) throw new Error("Unexpected staged file; refusing to publish finalization");
+          '
+          remote_head="$(git ls-remote origin refs/heads/codex/collaboration-v2-complete | cut -f1)"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo 'Branch advanced; refusing to publish stale finalization.'
+            exit 1
+          fi
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: prevent stopped-agent resurrection and finalize collaboration hardening'
+          git push origin HEAD:refs/heads/codex/collaboration-v2-complete

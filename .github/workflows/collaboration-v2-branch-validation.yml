@@ -5,14 +5,16 @@ on:
     branches:
       - refactor/collaboration-v2-end-to-end
       - codex/collaboration-v2-complete
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   VITE_GITHUB_COLLABORATION_RELEASE: "0"
   COLLABORATION_G3_CREATE_ENABLED: "0"
-
-permissions:
-  contents: read
 
 concurrency:
   group: collaboration-v2-${{ github.ref }}
@@ -20,52 +22,50 @@ concurrency:
 
 jobs:
   validate:
+    if: github.event_name != 'pull_request' || github.head_ref == 'codex/collaboration-v2-complete'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Check out repository
+      - name: Check out the exact branch or PR merge candidate
         uses: actions/checkout@v4
         with:
           submodules: false
           fetch-depth: 0
-      - name: Set up Bun
+          persist-credentials: false
+      - name: Set up the repository's Bun version
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-      - name: Bootstrap repository
+          bun-version-file: package.json
+      - name: Bootstrap the pinned native runtime
         run: bun run bootstrap
-      - name: Verify pinned native runtime
+      - name: Verify native overlay and runtime stamp
         run: bun run prepare:t3-runtime:check
+      - name: Typecheck the native runtime in its own dependency graph
+        run: |
+          manager="$(bun -p 'require("./vendor/t3code/package.json").packageManager')"
+          bun x "$manager" --dir vendor/t3code --filter t3 typecheck
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
-      - name: Native shutdown regression tests
-        run: >-
-          bunx vitest run
-          tests/collaboration/verifiedChildProcessStop.test.ts
-          tests/collaboration/verifiedChildProcessStop.integration.test.ts
-          tests/collaboration/t3BootstrapShutdown.test.ts
       - name: Typecheck renderer
         run: bun run typecheck
       - name: Typecheck Electron
         run: bun run typecheck:electron
       - name: Typecheck tests
         run: bun run typecheck:tests
-      - name: Typecheck Cloudflare
+      - name: Typecheck Worker
         run: bun run typecheck:cloudflare
       - name: Lint
         run: bun run lint
-      - name: Test
+      - name: Full behavioral suite
         run: bun run test
-      - name: Build
+      - name: Repeat session recovery and shutdown without retry masking
+        run: |
+          for attempt in 1 2 3; do
+            bunx vitest run tests/collaboration/sessionRuntimeIntegration.test.ts
+          done
+      - name: Provider compatibility and native behavioral suites
+        run: |
+          bun run check:provider-compatibility
+          bun run test:provider-compatibility
+      - name: Production build
         run: bun run build
-      - name: Upload validation logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: collaboration-v2-validation-failure-${{ github.sha }}
-          path: |
-            npm-debug.log*
-            bun-error.log*
-            apps/desktop/*.log
-          if-no-files-found: ignore
-          retention-days: 7
