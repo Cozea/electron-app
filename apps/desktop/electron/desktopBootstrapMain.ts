@@ -1,17 +1,10 @@
 import { ipcMain } from 'electron'
-import { performance } from 'node:perf_hooks'
 
 import type {
   DesktopBootstrapSession,
   DesktopWorkbenchLocator,
 } from '../../../shared/desktopBootstrapTypes'
 import { DesktopBootstrapStore } from './services/DesktopBootstrapStore'
-
-declare global {
-  var __COZEA_MAIN_ENTRY_AT__: number | undefined
-}
-
-globalThis.__COZEA_MAIN_ENTRY_AT__ ??= performance.now()
 
 const store = new DesktopBootstrapStore()
 
