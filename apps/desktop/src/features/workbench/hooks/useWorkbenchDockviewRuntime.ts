@@ -147,6 +147,32 @@ interface UseWorkbenchDockviewRuntimeResult {
 
 import { useTranslation } from "@/lib/i18n";
 
+/**
+ * TEMPORARY diagnostics for the layout-on-restart bug.
+ *
+ * The layout is written under a workspace-qualified scope key, and
+ * `buildWorkbenchScopeKey` falls back to the legacy key when no workspace is
+ * known yet. If the workbench mounts before the workspace resolves, hydration
+ * looks under a key nothing was saved to, finds nothing, and the reconcile
+ * pass then rebuilds the grid flat. This records enough structure at each step
+ * to tell that apart from the alternatives, instead of guessing again.
+ *
+ * Bounded to the last 40 steps and swallows its own errors. Remove once the
+ * cause is known.
+ */
+function recordLayoutTrace(entry: Record<string, unknown>): void {
+  if (typeof window === "undefined") return;
+  try {
+    const key = "cozea:layout-trace";
+    const raw = window.localStorage.getItem(key);
+    const list: unknown[] = raw ? JSON.parse(raw) : [];
+    list.push({ at: new Date().toISOString(), ...entry });
+    window.localStorage.setItem(key, JSON.stringify(list.slice(-40)));
+  } catch {
+    // Diagnostics must never break the workbench.
+  }
+}
+
 export function useWorkbenchDockviewRuntime(
   input: UseWorkbenchDockviewRuntimeInput,
 ): UseWorkbenchDockviewRuntimeResult {
@@ -417,7 +443,17 @@ export function useWorkbenchDockviewRuntime(
 
     hydratedProjectKeyRef.current = hydrationKey;
 
+    const panelsBefore = api.totalPanels;
     hydrateDockviewPanels(api);
+    recordLayoutTrace({
+      step: "hydrate",
+      scopeKey: input.workbenchScopeKey,
+      hasPersistedLayout: Boolean(input.persistedLayout),
+      resetKey: input.projectWorkbench.layoutResetKey,
+      panelsBefore,
+      panelsAfter: api.totalPanels,
+      tilesWanted: input.projectWorkbench.order.length,
+    });
   }, [
     dockviewReadyScopeKey,
     input.activeLaneId,
@@ -532,6 +568,13 @@ export function useWorkbenchDockviewRuntime(
     ) {
       return;
     }
+
+    recordLayoutTrace({
+      step: "reconcile",
+      scopeKey: input.workbenchScopeKey,
+      panels: api.totalPanels,
+      tilesWanted: input.projectWorkbench.order.length,
+    });
 
     lastReconciledOrderRef.current = input.projectWorkbench.order;
     lastReconciledTilesRef.current = input.projectWorkbench.tiles;
