@@ -30,9 +30,12 @@ function readLegacyLastWorkbenchRoute(workspaceSelectionId: string): DesktopWork
     const entry = parsed?.entriesByWorkspaceSelectionId?.[workspaceSelectionId]
     if (!entry) return null
     if (
+      typeof entry.workspaceSelectionId !== 'string' ||
       typeof entry.projectId !== 'string' ||
       typeof entry.laneId !== 'string' ||
-      (entry.focusTileId !== null && typeof entry.focusTileId !== 'string')
+      (entry.focusTileId !== null && typeof entry.focusTileId !== 'string') ||
+      typeof entry.updatedAt !== 'number' ||
+      !Number.isFinite(entry.updatedAt)
     ) {
       return null
     }
@@ -40,6 +43,16 @@ function readLegacyLastWorkbenchRoute(workspaceSelectionId: string): DesktopWork
   } catch {
     return null
   }
+}
+
+export function isDesktopBootstrapRootLocation(protocol: string, pathname: string): boolean {
+  if (pathname === '/' || pathname === '/projects' || pathname === '/projects/') {
+    return true
+  }
+  // Before TanStack owns history, a packaged renderer is still at the physical
+  // file path (.../out/renderer/index.html). Treat that as the root bootstrap
+  // location so packaged cold launch behaves the same as the dev server root.
+  return protocol === 'file:' && /\/index\.html$/i.test(pathname)
 }
 
 export async function initializeDesktopBootstrap(): Promise<DesktopBootstrapSnapshot> {
@@ -73,9 +86,8 @@ export function getInitialDesktopBootstrap(): DesktopBootstrapSnapshot | null {
 export function applyDesktopBootstrapRoute(snapshot: DesktopBootstrapSnapshot): void {
   const locator = snapshot.lastWorkbenchRoute
   if (!featureFlags.desktopBootstrap || !locator) return
-
-  const pathname = window.location.pathname
-  if (pathname !== '/' && pathname !== '/projects' && pathname !== '/projects/') return
+  if (window.electronAPI?.windowContext === 'settings') return
+  if (!isDesktopBootstrapRootLocation(window.location.protocol, window.location.pathname)) return
 
   const params = new URLSearchParams()
   if (locator.laneId) params.set('lane', locator.laneId)
