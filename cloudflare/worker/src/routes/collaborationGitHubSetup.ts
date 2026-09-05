@@ -120,18 +120,26 @@ export async function handleGitHubCallback(request: Request, env: Env): Promise<
 }
 
 export async function handleGitHubWebhook(request: Request, env: Env): Promise<Response> {
-  if (!env.GITHUB_APP_WEBHOOK_SECRET) throw new Error('GitHub webhook is not configured')
-  const body = await readCollaborationRequest(request)
+  if (!env.GITHUB_APP_WEBHOOK_SECRET) return jsonResponse({ error: 'GitHub webhook is not configured' }, { status: 503 })
   const signature = request.headers.get('x-hub-signature-256')
-  if (!signature || !/^sha256=[a-f0-9]{64}$/.test(signature)) throw new Error('Invalid webhook signature')
+  if (!signature || !/^sha256=[a-f0-9]{64}$/.test(signature)) return jsonResponse({ error: 'Invalid webhook signature' }, { status: 401 })
+  let body: string
+  try { body = await readCollaborationRequest(request) }
+  catch { return jsonResponse({ error: 'Invalid or oversized webhook body' }, { status: 400 }) }
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.GITHUB_APP_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
   const bytes = Uint8Array.from(signature.slice(7).match(/../g)!, byte => parseInt(byte, 16))
-  if (!await crypto.subtle.verify('HMAC', key, bytes, new TextEncoder().encode(body))) throw new Error('Invalid webhook signature')
-  const event = JSON.parse(body) as { action?: string; installation?: { id?: number } }
+  if (!await crypto.subtle.verify('HMAC', key, bytes, new TextEncoder().encode(body))) return jsonResponse({ error: 'Invalid webhook signature' }, { status: 401 })
+  let event: { action?: string; installation?: { id?: number } }
+  try {
+    event = JSON.parse(body)
+    if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('Invalid event')
+  } catch { return jsonResponse({ error: 'Invalid webhook event' }, { status: 400 }) }
   const type = request.headers.get('x-github-event')
-  if (event.installation?.id && ((type === 'installation' && ['deleted', 'suspend'].includes(event.action ?? '')) || type === 'installation_repositories')) {
+  if ((type === 'installation' && ['deleted', 'suspend'].includes(event.action ?? '')) || type === 'installation_repositories') {
+    const installationId = event.installation?.id
+    if (typeof installationId !== 'number' || !Number.isSafeInteger(installationId) || installationId < 1) return jsonResponse({ error: 'Invalid webhook installation' }, { status: 400 })
     // Fail closed on repository-list changes until an administrator re-verifies setup.
-    await mutate(env, 'revokeInstallationFromServer', { installationId: String(event.installation.id) })
+    await mutate(env, 'revokeInstallationFromServer', { installationId: String(installationId) })
   }
   return new Response(null, { status: 204 })
 }
