@@ -41,6 +41,7 @@
     "typecheck:electron": "bun run --cwd apps/desktop typecheck:electron",
     "typecheck:tests": "bunx tsc --project tsconfig.tests.json",
     "typecheck:cloudflare": "bunx tsc --project cloudflare/worker/tsconfig.json",
+    "typecheck:convex": "bunx tsc --project convex/tsconfig.json",
     "lint": "bunx --bun oxlint apps/desktop/src apps/desktop/electron convex shared tests apps/desktop/electron.vite.config.ts vitest.config.ts",
     "test": "bunx vitest run",
     "models:sync": "bun run scripts/sync-model-picker.mjs",

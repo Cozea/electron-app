@@ -9,7 +9,7 @@ function assertGatewaySecret(secret: string): void {
   if (!process.env.AI_GATEWAY_SECRET || process.env.AI_GATEWAY_SECRET !== secret) throw new Error("Unauthorized")
 }
 
-interface PublicationArgs { publicationId: Id<"collaborationPublications"> }
+type PublicationArgs = { publicationId: Id<"collaborationPublications"> }
 const getReference = makeFunctionReference<"query", PublicationArgs, Doc<"collaborationPublications"> | null>("collaborationPublications:get") as unknown as FunctionReference<"query", "internal", PublicationArgs, Doc<"collaborationPublications"> | null>
 const finishReference = makeFunctionReference<"mutation", PublicationArgs & { delivered: boolean }, null>("collaborationPublications:finishAttempt") as unknown as FunctionReference<"mutation", "internal", PublicationArgs & { delivered: boolean }, null>
 

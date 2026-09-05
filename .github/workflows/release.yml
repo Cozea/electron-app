@@ -256,6 +256,9 @@ jobs:
       - name: Typecheck tests
         run: bun run typecheck:tests
 
+      - name: Typecheck Convex
+        run: bun run typecheck:convex
+
       - name: Lint
         run: bun run lint
 
