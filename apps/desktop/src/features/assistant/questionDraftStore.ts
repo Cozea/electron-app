@@ -1,18 +1,20 @@
 import { create } from "zustand";
-import type { PendingUserInput } from "./chat/session-logic";
+
+import { pendingUserInputDraftFromAnswer, resolvePendingUserInputAnswer } from "@/features/assistant/pendingUserInput";
+import type { PendingUserInput } from "@/features/assistant/chat/session-logic";
 
 export interface QuestionSubmission {
   commandId: string;
   createdAt: string;
-  answers: Record<string, string>;
+  answers: Record<string, string | string[]>;
 }
 export interface QuestionDraft {
-  answers: Record<string, string>;
+  answers: Record<string, string | string[]>;
   submission?: QuestionSubmission;
 }
 interface QuestionDraftState {
   drafts: Record<string, QuestionDraft>;
-  setAnswer: (key: string, questionId: string, answer: string) => void;
+  setAnswer: (key: string, questionId: string, answer: string | string[]) => void;
   prepare: (key: string, submission: QuestionSubmission) => QuestionSubmission;
   remove: (key: string) => void;
 }
@@ -35,7 +37,7 @@ function decodeDraft(raw: string | null): QuestionDraft | undefined {
       !answers ||
       typeof answers !== "object" ||
       Array.isArray(answers) ||
-      !Object.values(answers).every((answer) => typeof answer === "string")
+      !Object.values(answers).every((answer) => typeof answer === "string" || (Array.isArray(answer) && answer.every(value => typeof value === "string")))
     )
       return undefined;
     if ("submission" in value) {
@@ -124,17 +126,11 @@ export function submitQuestionOnce(
   if (current) return current;
   const task = (async () => {
     const draft = useQuestionDraftStore.getState().drafts[key];
-    const answers = Object.fromEntries(
-      request.questions.map((question) => [question.id, draft?.answers[question.id]?.trim() ?? ""]),
-    );
-    if (Object.values(answers).some((answer) => !answer))
-      throw new Error("Answer each question before sending.");
+    const answers: Record<string, string | string[]> = {};
     for (const question of request.questions) {
-      if (
-        question.allowCustomAnswer === false &&
-        !question.options.some((option) => (option.value ?? option.label) === answers[question.id])
-      )
-        throw new Error("Select one of the available answers.");
+      const answer = resolvePendingUserInputAnswer(question, pendingUserInputDraftFromAnswer(question, draft?.answers[question.id]));
+      if (answer === null) throw new Error("Answer each question before sending.");
+      answers[question.id] = answer;
     }
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
     const hash = Array.from(new Uint8Array(digest), (byte) =>

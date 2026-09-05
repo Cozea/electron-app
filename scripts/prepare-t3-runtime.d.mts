@@ -14,3 +14,7 @@ export function patchT3ServerBundleProviderUpdates(source: string): {
 };
 
 export function isCurrentT3Bundle(validBundle: boolean, stamp: string | null, sourceStamp: string): boolean;
+export function patchT3ServerBundleMediaContainment(source: string): {
+  source: string;
+  changed: boolean;
+};

@@ -36,6 +36,11 @@ import {
 } from "@/features/assistant/lib/markdownLinks";
 import { readNativeApi } from "@/lib/nativeApi";
 import { cn } from "@/lib/utils";
+import { ChatMarkdownMedia } from "./ChatMedia";
+import { ChatArtifactTemplateCard } from "./ChatArtifactTemplate";
+import { templateFromHastProperties } from "./chatArtifactTemplates";
+import { parseChatAssistantCitation, remarkChatRichOutput } from "./chatRichOutput";
+import { classifyChatMediaSource } from "./chatMediaSource";
 
 class CodeHighlightErrorBoundary extends React.Component<
   { fallback: ReactNode; children: ReactNode },
@@ -269,12 +274,23 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
   const { theme } = useTheme();
   const appliedTheme = resolveAppliedTheme(theme);
   const diffThemeName = resolveDiffThemeName(appliedTheme === "light" ? "light" : "dark");
-  const markdownUrlTransform = useCallback((href: string) => {
+  const markdownUrlTransform = useCallback((href: string, key: string) => {
+    if (key === "src") return classifyChatMediaSource(href, cwd).kind === "blocked" ? "" : href;
+    if (parseChatAssistantCitation(href)) return href;
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
-  }, []);
+  }, [cwd]);
   const markdownComponents = useMemo<Components>(
     () => ({
+      div({ node, ...props }) {
+        const template = templateFromHastProperties(node?.properties);
+        return template ? <ChatArtifactTemplateCard template={template} /> : <div {...props} />;
+      },
+      img({ src, alt }) {
+        return <ChatMarkdownMedia src={typeof src === "string" ? src : ""} alt={alt ?? ""} cwd={cwd} />;
+      },
       a({ node: _node, href, ...props }) {
+        const citation = href ? parseChatAssistantCitation(href) : null;
+        if (citation) return <span title="Quoted response. Source navigation is unavailable in this view." className="inline-flex flex-col rounded border px-2 py-1"><q>{citation.text}</q>{citation.comment ? <span>{citation.comment}</span> : null}</span>;
         const targetPath = resolveMarkdownFileLinkTarget(href);
         if (!targetPath) {
           return <a {...props} href={href} target="_blank" rel="noreferrer" />;
@@ -361,7 +377,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: C
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkChatRichOutput]}
         components={markdownComponents}
         urlTransform={markdownUrlTransform}
       >

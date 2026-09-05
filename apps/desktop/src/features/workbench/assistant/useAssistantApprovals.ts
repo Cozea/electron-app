@@ -5,6 +5,8 @@ import type { UserInputAnswerDrafts } from "@/features/assistant/chat/CozeaChatS
 import { newCommandId } from "@/features/assistant/lib/utils"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import type { Thread } from "@/features/assistant/model/types"
+import { derivePendingUserInputs } from "@/features/assistant/chat/session-logic"
+import { buildPendingUserInputAnswers, pendingUserInputDraftFromAnswer } from "@/features/assistant/pendingUserInput"
 
 interface UseAssistantApprovalsInput {
   thread: Thread | null
@@ -42,7 +44,7 @@ export function useAssistantApprovals({ thread, runMetaSync }: UseAssistantAppro
   )
 
   const handleUserInputDraftChange = useCallback(
-    (requestId: string, questionId: string, value: string) => {
+    (requestId: string, questionId: string, value: string | string[]) => {
       setUserInputDrafts((current) => ({
         ...current,
         [requestId]: {
@@ -61,17 +63,21 @@ export function useAssistantApprovals({ thread, runMetaSync }: UseAssistantAppro
       }
 
       const answers = userInputDrafts[requestId]
-      if (!answers) {
+      const request = derivePendingUserInputs(thread.activities).find(
+        (entry) => String(entry.requestId) === requestId,
+      )
+      if (!answers || !request) {
         return
       }
 
-      const normalizedAnswers = Object.fromEntries(
-        Object.entries(answers)
-          .map(([questionId, answer]) => [questionId, answer.trim()])
-          .filter((entry) => entry[1].length > 0),
+      const normalizedAnswers = buildPendingUserInputAnswers(
+        request.questions,
+        Object.fromEntries(request.questions.map((question) => [
+          question.id, pendingUserInputDraftFromAnswer(question, answers[question.id]),
+        ])),
       )
 
-      if (Object.keys(normalizedAnswers).length === 0) {
+      if (normalizedAnswers === null) {
         return
       }
 

@@ -315,12 +315,13 @@ function attachmentPreviewRoutePath(attachmentId: string): string {
 
 function mapMessage(message: OrchestrationReadModel["threads"][number]["messages"][number]): ChatMessage {
   const attachments = message.attachments?.map((attachment: {
+    type?: string;
     id: string;
     name: string;
     mimeType: string;
     sizeBytes: number;
   }) => ({
-    type: "image" as const,
+    ...(attachment.type === "image" || attachment.type === undefined ? { type: "image" as const } : attachment.type === "file" ? { type: "file" as const } : { type: "unsupported" as const, originalType: attachment.type }),
     id: attachment.id,
     name: attachment.name,
     mimeType: attachment.mimeType,

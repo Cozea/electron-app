@@ -17,6 +17,7 @@ export default defineConfig({
       "@cozea/contracts/t3/previewAutomation": path.resolve(repoRoot, "./packages/contracts/src/t3/previewAutomation.ts"),
       "@cozea/contracts/t3/ipc": path.resolve(repoRoot, "./packages/contracts/src/t3/ipc.ts"),
       "@cozea/contracts/collab": path.resolve(repoRoot, "./packages/contracts/src/collab.ts"),
+      "@cozea/contracts/t3": path.resolve(repoRoot, "./packages/contracts/src/t3/index.ts"),
       "@cozea/contracts": path.resolve(repoRoot, "./packages/contracts/src/index.ts"),
       "@cozea/client-runtime": path.resolve(repoRoot, "./packages/client-runtime/src/index.ts"),
       "@cozea/substrate-contracts": path.resolve(repoRoot, "./packages/substrate-contracts/src/index.ts"),

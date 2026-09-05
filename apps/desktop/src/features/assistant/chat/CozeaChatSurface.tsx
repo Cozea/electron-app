@@ -51,6 +51,18 @@ import type {
 } from "@/features/assistant/chat/ExpandedImagePreview"
 import { buildExpandedImagePreview } from "@/features/assistant/chat/ExpandedImagePreview"
 import { MessagesTimeline } from "@/features/assistant/chat/MessagesTimeline"
+import { ChatMediaProvider } from "./ChatMedia"
+import { ChatArtifactTemplateProvider } from "./ChatArtifactTemplate"
+import { appendTemplateUsePrompt, type CodexArtifactTemplate } from "./chatArtifactTemplates"
+import { useCommittedChatCallback } from "./useChatRenderStability"
+import {
+  questionCursorKey,
+  retainQuestionCursors,
+  setQuestionCursor,
+  type QuestionCursors,
+} from "@/features/assistant/chat/questionCursorState"
+import { ChatConnectionNotice } from "./ChatConnectionNotice"
+import type { SubscriptionStatus } from "@/substrate/subscriptionSupervisor"
 import { ProviderModelPicker } from "@/features/assistant/chat/ProviderModelPicker"
 import { shouldDismissModelPickerOnPointerDown } from "@/features/assistant/chat/modelPickerDismissal"
 import {
@@ -66,7 +78,7 @@ import type {
   PendingUserInput,
 } from "@/features/assistant/chat/session-logic"
 import { useAssistantThreadViewModel } from "@/features/assistant/chat/useAssistantThreadViewModel"
-import { ComposerPromptEditor } from "@/features/assistant/chat/ComposerPromptEditor"
+import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "@/features/assistant/chat/ComposerPromptEditor"
 import { ComposerPreviewAnnotationCards } from "@/features/assistant/chat/ComposerPreviewAnnotationCards"
 import {
   INITIAL_COMPOSER_EXPANSION_STATE,
@@ -86,6 +98,9 @@ import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWind
 import type { AccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits"
 import {
   buildPendingUserInputAnswers,
+  pendingUserInputDraftFromAnswer,
+  togglePendingUserInputOptionSelection,
+  resolvePendingUserInputAnswer,
   derivePendingUserInputProgress,
   findFirstUnansweredPendingUserInputQuestionIndex,
   type PendingUserInputDraftAnswer,
@@ -110,7 +125,7 @@ import {
   Mic01Icon as __Mic01IconHugeIcon,
 } from "@hugeicons/core-free-icons"
 
-export type UserInputAnswerDrafts = Record<string, Record<string, string>>
+export type UserInputAnswerDrafts = Record<string, Record<string, string | string[]>>
 
 export type ComposerMode = "debug" | "plan" | "ask" | "default" | null
 
@@ -284,6 +299,8 @@ function filterSlashItems<T extends { label: string; description: string }>(
 
 interface CozeaChatSurfaceProps {
   isChatVisible?: boolean
+  mediaBaseUrl?: string | null
+  connectionStatus?: SubscriptionStatus | null
   isRuntimeReady: boolean
   /** When set, gates composer/send/model picker. Defaults to `isRuntimeReady`. */
   isChatReady?: boolean
@@ -358,7 +375,7 @@ interface CozeaChatSurfaceProps {
   onUserInputDraftChange: (
     requestId: string,
     questionId: string,
-    value: string,
+    value: string | string[],
     cursor?: number,
   ) => void
   onSubmitUserInput: (requestId: string) => void | Promise<void>
@@ -413,7 +430,7 @@ function planTitleFromMarkdown(markdown: string): string | null {
 
 function toPendingUserInputDraftAnswers(
   request: PendingUserInput | null,
-  drafts: Record<string, string> | undefined,
+  drafts: Record<string, string | string[]> | undefined,
 ): Record<string, PendingUserInputDraftAnswer> {
   if (!request) {
     return {}
@@ -422,17 +439,7 @@ function toPendingUserInputDraftAnswers(
   const next: Record<string, PendingUserInputDraftAnswer> = {}
   for (const question of request.questions) {
     const value = drafts?.[question.id]
-    if (typeof value !== "string") {
-      continue
-    }
-
-    const option = question.options.find((option) => (option.value ?? option.label) === value)
-    if (option) {
-      next[question.id] = { selectedOptionLabel: option.label, selectedOptionValue: option.value ?? option.label }
-      continue
-    }
-
-    next[question.id] = { customAnswer: value }
+    next[question.id] = pendingUserInputDraftFromAnswer(question, value)
   }
   return next
 }
@@ -492,6 +499,8 @@ function SkillGlyph({ className }: { className?: string }) {
     </svg>
   )
 }
+
+const NO_REVERT_TURNS: ReadonlyMap<MessageId, number> = new Map()
 
 export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatSurfaceProps) {
   const { t } = useTranslation()
@@ -553,6 +562,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   )
   const dragDepthRef = useRef(0)
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
+  const composerEditorRef = useRef<ComposerPromptEditorHandle | null>(null)
+  const templateFocusFrameRef = useRef<number | null>(null)
   const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
   const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
   const modelPickerPanelRef = useRef<HTMLDivElement | null>(null)
@@ -580,8 +591,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isWorkActive,
     generationStatusPhase,
     timelineEntries,
-    completionSummary,
-    completionSummariesByMessageId,
     turnDiffSummaryByAssistantMessageId,
     revertTurnCountByUserMessageId,
     activeProposedPlan,
@@ -651,13 +660,24 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const hasComposerHeader =
     isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt
   const composerValue = activePendingProgress?.customAnswer ?? props.composer
+  const [questionCursors, setQuestionCursors] = useState<QuestionCursors>({})
+  const activeQuestionCursorKey = activePendingUserInput && activePendingProgress?.activeQuestion
+    ? questionCursorKey(
+        props.thread?.id,
+        String(activePendingUserInput.requestId),
+        activePendingProgress.activeQuestion.id,
+      )
+    : null
+  const composerCursor = activeQuestionCursorKey
+    ? questionCursors[activeQuestionCursorKey] ?? collapseExpandedComposerCursor(composerValue, composerValue.length)
+    : props.composerCursor
   const [composerExpansionState, setComposerExpansionState] = useState(
     INITIAL_COMPOSER_EXPANSION_STATE,
   )
 
   const composerExpandedCursor = useMemo(
-    () => expandCollapsedComposerCursor(composerValue, props.composerCursor),
-    [composerValue, props.composerCursor],
+    () => expandCollapsedComposerCursor(composerValue, composerCursor),
+    [composerValue, composerCursor],
   )
   const composerTrigger = useMemo(
     () => detectComposerTrigger(composerValue, composerExpandedCursor),
@@ -783,6 +803,24 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     activePendingIsResponding ||
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false ||
     (!activePendingProgress && props.isSending)
+  const canUseArtifactTemplate = !composerDisabled && activePendingUserInput === null
+  const handleUseArtifactTemplate = useCommittedChatCallback((template: CodexArtifactTemplate) => {
+    if (!canUseArtifactTemplate) return
+    // Ordinary drafts and request answers are deliberately separate state.
+    const draft = appendTemplateUsePrompt(props.composer, template)
+    props.onComposerChange(draft, collapseExpandedComposerCursor(draft, draft.length))
+    if (templateFocusFrameRef.current !== null) cancelAnimationFrame(templateFocusFrameRef.current)
+    templateFocusFrameRef.current = requestAnimationFrame(() => {
+      templateFocusFrameRef.current = null
+      composerEditorRef.current?.focusAtEnd()
+    })
+  })
+  useLayoutEffect(() => () => {
+    if (templateFocusFrameRef.current !== null) {
+      cancelAnimationFrame(templateFocusFrameRef.current)
+      templateFocusFrameRef.current = null
+    }
+  }, [props.thread?.id, canUseArtifactTemplate, props.isChatVisible])
   const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation"
   const attachDisabled =
     !isChatReady || props.isRunning || isComposerApprovalState || activePendingUserInput !== null
@@ -1006,6 +1044,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   }, [props.pendingUserInputs])
 
   useEffect(() => {
+    const activeKeys = new Set(
+      props.pendingUserInputs.flatMap((request) =>
+        request.questions.map((question) =>
+          questionCursorKey(props.thread?.id, String(request.requestId), question.id),
+        ),
+      ),
+    )
+    setQuestionCursors((current) => retainQuestionCursors(current, activeKeys))
+  }, [props.pendingUserInputs, props.thread?.id])
+
+  useEffect(() => {
     if (!composerPathTrigger || !props.workspaceId) {
       setComposerPathMenuItems([])
       setIsComposerMenuLoading(false)
@@ -1067,16 +1116,16 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     )
   }, [composerMenuItems, composerMenuOpen])
 
-  const toggleWorkGroup = (groupId: string) => {
+  const toggleWorkGroup = useCallback((groupId: string) => {
     setExpandedWorkGroups((current) => ({
       ...current,
       [groupId]: !current[groupId],
     }))
-  }
+  }, [])
 
-  const handleExpandImage = (preview: ExpandedImagePreview) => {
+  const handleExpandImage = useCallback((preview: ExpandedImagePreview) => {
     setExpandedImage(preview)
-  }
+  }, [])
 
   const closeExpandedImage = () => {
     setExpandedImage(null)
@@ -1097,11 +1146,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   const handleComposerChange = (nextValue: string, nextCursor: number) => {
     if (activePendingProgress?.activeQuestion && activePendingUserInput) {
+      if (activeQuestionCursorKey) {
+        setQuestionCursors((current) => setQuestionCursor(current, activeQuestionCursorKey, nextCursor))
+      }
       props.onUserInputDraftChange(
         String(activePendingUserInput.requestId),
         activePendingProgress.activeQuestion.id,
         nextValue,
-        nextCursor,
       )
       return
     }
@@ -1144,7 +1195,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       return
     }
     const question = activePendingUserInput.questions.find((entry) => entry.id === questionId)
-    const value = question?.options.find((option) => (option.value ?? option.label) === optionLabel)?.value ?? optionLabel
+    if (!question) return
+    const next = togglePendingUserInputOptionSelection(question, activePendingDraftAnswers[questionId], optionLabel)
+    const value = resolvePendingUserInputAnswer(question, next) ?? (question.multiSelect ? [] : "")
     props.onUserInputDraftChange(String(activePendingUserInput.requestId), questionId, value)
   }
 
@@ -1155,13 +1208,15 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     void props.onSubmitUserInput(String(activePendingUserInput.requestId))
   }
 
-  const handleRevertUserMessage = (messageId: MessageId) => {
+  const handleRevertUserMessage = useCommittedChatCallback((messageId: MessageId) => {
     const turnCount = revertTurnCountByUserMessageId.get(messageId)
     if (typeof turnCount !== "number") {
       return
     }
     void props.onRevertToTurnCount?.(turnCount)
-  }
+  })
+  const handleOpenTurnDiff = useCommittedChatCallback(props.onOpenTurnDiff)
+  const handleOpenArtifact = useCommittedChatCallback((artifactId: string) => props.onOpenArtifact?.(artifactId))
 
   const expandedImageItem: ExpandedImageItem | null = expandedImage
     ? (expandedImage.images[expandedImage.index] ?? null)
@@ -1386,9 +1441,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     if (key === "Enter" && !event.shiftKey) {
       if (activePendingProgress) {
+        // Match the visible Next/Submit controls; Enter must not skip an
+        // unanswered question or resubmit a request awaiting acknowledgement.
+        event.preventDefault()
+        event.stopPropagation()
+        if (activePendingIsResponding) return true
         if (activePendingProgress.isLastQuestion) {
-          handleSubmitPendingUserInput()
-        } else {
+          if (activePendingResolvedAnswers) handleSubmitPendingUserInput()
+        } else if (activePendingProgress.canAdvance) {
           handleAdvancePendingQuestion()
         }
         return true
@@ -1958,6 +2018,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : activePendingUserInput ? (
           <div className="flex min-h-0 max-h-[40vh] basis-full flex-col border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
             <ComposerPendingUserInputPanel
+              isVisible={props.isChatVisible}
               pendingUserInputs={blockingUserInputs}
               respondingRequestIds={
                 activePendingIsResponding && activePendingUserInput
@@ -2070,8 +2131,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           )}
         >
           <ComposerPromptEditor
+            ref={composerEditorRef}
             value={composerValue}
-            cursor={props.composerCursor}
+            cursor={composerCursor}
             skills={props.providerSnapshot?.skills ?? []}
             terminalContexts={props.terminalContexts}
             onRemoveTerminalContext={props.onRemoveTerminalContext}
@@ -2154,6 +2216,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             This provider is unavailable. Saved history is still readable; reconnect or update the provider to continue.
           </div>
         ) : null}
+        <ChatConnectionNotice status={props.connectionStatus} />
         {!props.workspaceId && timelineEntries.length === 0 ? (
           <div className="px-3 py-3 sm:px-5 sm:py-4">
             <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/20 p-6 text-sm text-muted-foreground">
@@ -2166,7 +2229,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
+            <ChatArtifactTemplateProvider onUse={canUseArtifactTemplate ? handleUseArtifactTemplate : undefined}>
+            <ChatMediaProvider threadId={props.thread?.id ?? ""} baseUrl={props.mediaBaseUrl ?? null}>
             <MessagesTimeline
+              waitingFor={props.pendingApprovals.length > 0 ? "approval" : blockingUserInputs.length > 0 ? "question" : null}
+              activities={props.thread?.activities}
               isChatVisible={props.isChatVisible}
               revealImmediately={props.isInterrupting || phase === "error" || phase === "interrupted" || phase === "stopped" || phase === "disconnected"}
               key={props.thread?.id ?? "cozea-chat-surface-empty"}
@@ -2175,18 +2242,18 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               selectedProvider={props.selectedProvider}
               activeTurnInProgress={isWorking || !latestTurnSettled}
               activeTurnId={activeTurn?.turnId ?? null}
+              latestTurn={activeTurn}
+              runningTurnId={props.thread?.session?.status === "running" ? props.thread.session.activeTurnId : null}
               activeWorkStartedAt={activeWorkStartedAt}
               isWorkActive={isWorkActive}
               generationStatusPhase={generationStatusPhase}
               scrollContainerRef={props.timelineRef}
               timelineEntries={timelineEntries}
-              completionSummary={completionSummary}
-              completionSummariesByMessageId={completionSummariesByMessageId}
               turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
               expandedWorkGroups={expandedWorkGroups}
               onToggleWorkGroup={toggleWorkGroup}
-              onOpenTurnDiff={props.onOpenTurnDiff}
-              revertTurnCountByUserMessageId={props.onRevertToTurnCount ? revertTurnCountByUserMessageId : new Map()}
+              onOpenTurnDiff={handleOpenTurnDiff}
+              revertTurnCountByUserMessageId={props.onRevertToTurnCount ? revertTurnCountByUserMessageId : NO_REVERT_TURNS}
               onRevertUserMessage={handleRevertUserMessage}
               isRevertingCheckpoint={Boolean(props.isRevertingCheckpoint)}
               onImageExpand={handleExpandImage}
@@ -2196,8 +2263,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               workspaceId={workspaceIdForFileActions}
               workspaceRoot={props.workspaceRoot ?? undefined}
               artifactUrlsById={props.artifactUrlsById}
-              onOpenArtifact={props.onOpenArtifact}
+              onOpenArtifact={props.onOpenArtifact ? handleOpenArtifact : undefined}
             />
+            </ChatMediaProvider>
+            </ChatArtifactTemplateProvider>
           </div>
         )}
         {dockComposerOnHover && !composerSuppressed ? (
