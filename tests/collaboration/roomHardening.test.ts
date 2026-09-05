@@ -59,6 +59,38 @@ function fixture() {
 beforeEach(() => { vi.clearAllMocks(); mocks.authority.mockResolvedValue({ allowed: true, roomId: "session:s", projectId: "p", role: "editor", keyVersion: 1 }) })
 
 describe("Durable Object room boundary and recovery", () => {
+  it("bounds closed-room metadata cleanup, retries failure and preserves every encrypted recovery record", async () => {
+    const f = fixture(), socket = new Socket("session:s")
+    await f.hello(socket)
+    for (let index = 0; index < 260; index++) f.records.set(`idempotency:closed-${index}`, { seq: index, digest: 'receipt' })
+    f.records.set('rate:u1', { bytes: 1 })
+    f.records.set('file-initialization:file', { sequence: 1 })
+    const recovery = new Map<string, unknown>([
+      ['encrypted-checkpoint', { id: 'base', sequence: 1 }],
+      ['checkpoint-piece:base:0', 'encrypted snapshot'],
+      ['update:0000000000000002', 'unpublished encrypted update'],
+      ['checkpoint-lease', 'unfinished encrypted checkpoint metadata'],
+      ['unclassified', 'retained unknown bytes'],
+    ])
+    for (const [name, value] of recovery) f.records.set(name, value)
+    const close = () => f.room.fetch(new Request('https://internal/internal/close', { method: 'POST', headers: { authorization: 'Bearer test-room-secret' } }))
+    expect((await close()).status).toBe(204)
+    // Even a stale positive authority response cannot revive a closed room.
+    await f.update(socket, 'late-write')
+    expect(f.records.has('idempotency:late-write')).toBe(false)
+    f.storage.delete.mockRejectedValueOnce(new Error('temporary storage failure'))
+    await expect(f.room.alarm()).rejects.toThrow('temporary storage failure')
+    expect(f.storage.setAlarm).toHaveBeenCalled()
+    for (let index = 0; index < 6; index++) await f.room.alarm()
+    expect([...f.records.keys()].some(name => /^(idempotency:|rate:|file-initialization:)/.test(name))).toBe(false)
+    expect(f.records.has('session-closed')).toBe(true)
+    for (const [name, value] of recovery) expect(f.records.get(name)).toEqual(value)
+    expect(f.storage.delete.mock.calls.every(([names]) => typeof names === 'string' || names.length <= 128)).toBe(true)
+    expect((await close()).status).toBe(204)
+    await f.room.alarm()
+    expect(f.storage.deleteAll).not.toHaveBeenCalled()
+  })
+
   it("runs checkpoint retention only after fresh room authority confirms key activation", async () => {
     const f = fixture()
     const encrypted = Buffer.from(envelopeToBytes(await encryptPayload({ roomKeyBase64: Buffer.alloc(32).toString('base64'),

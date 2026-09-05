@@ -183,6 +183,7 @@ export class CollabRoom implements DurableObject {
       const closing = this.messageQueue.then(async () => {
         await this.state.storage.put('session-closed', { closedAt: Date.now() })
         for (const socket of this.state.getWebSockets()) socket.close(1000, 'Session closed')
+        await this.state.storage.setAlarm(Date.now() + 1_000)
       })
       this.messageQueue = closing.then(() => undefined, () => undefined)
       await closing
@@ -253,6 +254,22 @@ export class CollabRoom implements DurableObject {
   }
 
   async alarm(): Promise<void> {
+    const cleanup = this.messageQueue.then(async () => {
+      if (!await this.state.storage.get('session-closed')) return false
+      // Closed rooms never admit another operation. Their idempotency and rate
+      // metadata can be retired, while all encrypted recovery data stays intact.
+      // Arm the next pass before deletion so a crash or failed batch is retryable.
+      for (const prefix of [IDEMPOTENCY_PREFIX, 'rate:', 'file-initialization:']) {
+        const records = await this.state.storage.list({ prefix, limit: 128 })
+        if (!records.size) continue
+        await this.state.storage.setAlarm(Date.now() + 1_000)
+        await this.state.storage.delete([...records.keys()])
+        return true
+      }
+      return true
+    })
+    this.messageQueue = cleanup.then(() => undefined, () => undefined)
+    if (await cleanup) return
     // Hibernation-compatible revocation: an idle socket must not retain room
     // access indefinitely simply because it is not sending new messages.
     const checks = new Map<string, Awaited<ReturnType<typeof authorizeRoomConnection>>>()
@@ -386,6 +403,7 @@ export class CollabRoom implements DurableObject {
     }
     if (connection.expiresAt <= Date.now()) throw new RoomAccessError('SESSION_EXPIRED', 'Session token expired')
     if (connection.sessionId) {
+      if (await this.state.storage.get('session-closed')) throw new RoomAccessError('SESSION_CLOSED', 'Session is closed; recovery data was retained')
       const authority = await authorizeRoomConnection(this.env, connection.userId, connection.sessionId)
       if (!authority.allowed || authority.roomId !== connection.roomId || authority.projectId !== connection.projectId) {
         throw new RoomAccessError('DEVICE_REVOKED', 'Session access revoked or closed')
