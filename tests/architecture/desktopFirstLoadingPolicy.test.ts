@@ -85,12 +85,21 @@ describe('desktop-first loading architecture', () => {
     const lifecycle = read('apps/desktop/electron/registerAppLifecycle.ts')
 
     expect(lifecycle).toContain("app.on('browser-window-created'")
-    expect(lifecycle).toContain("args.includes(MAIN_WINDOW_ARGUMENT)")
+    expect(lifecycle).toContain('mainWindowId = window.id')
+    expect(lifecycle).toContain('mainWindowRef = window')
+    expect(lifecycle).not.toContain('getLastWebPreferences')
     expect(lifecycle).toContain('if (isApplicationQuitting() || window.isDestroyed()) return')
     expect(lifecycle).toContain('event.preventDefault()')
     expect(lifecycle).toContain('window.hide()')
     expect(lifecycle).toContain("app.on('activate'")
     expect(lifecycle).toContain('mainWindow.show()')
     expect(lifecycle).toContain('mainWindow.focus()')
+  })
+
+  it('measures app/window boot milestones from true process entry', () => {
+    const lifecycle = read('apps/desktop/electron/registerAppLifecycle.ts')
+    expect(lifecycle).toContain('__COZEA_MAIN_ENTRY_AT__')
+    expect(lifecycle).toContain("logProcessEntryMilestone('process-entry-to-app-ready')")
+    expect(lifecycle).toContain("logProcessEntryMilestone('process-entry-to-main-window-created')")
   })
 })
