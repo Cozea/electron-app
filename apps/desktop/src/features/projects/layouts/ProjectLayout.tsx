@@ -772,7 +772,7 @@ export function ProjectLayout({
           workspaceRevision={activeWorkspaceValue?.workspace.workspaceRevision ?? 1}
           projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
           userId={shouldEnableProjectRuntime ? principalId ?? null : null}
-          userName={displayUserName ?? "User"}
+          userName={user?.displayName ?? "This device"}
           laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
           projectSlug={projectSlug}
           gitCwd={activeWorkspaceValue ? activeGitRootPath : null}

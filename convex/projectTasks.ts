@@ -617,7 +617,6 @@ export const migrateLocalBoardState = mutation({
         } catch {
           safeAssignee = {
             name: assignee.name,
-            email: assignee.email,
             avatarUrl: assignee.avatarUrl,
           }
         }

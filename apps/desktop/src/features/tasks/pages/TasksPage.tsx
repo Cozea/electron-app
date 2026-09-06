@@ -1087,8 +1087,7 @@ export function TasksPage({
                 ? {
                     userId: assignee.userId as Id<'devicePrincipals'> | undefined,
                     name: assignee.name,
-                    identityKey: assignee.identityKey,
-                    avatarUrl: assignee.avatarUrl ?? undefined,
+                          avatarUrl: assignee.avatarUrl ?? undefined,
                   }
                 : undefined,
               context: {
@@ -1269,7 +1268,7 @@ export function TasksPage({
         {
           id: candidate.id,
           name: candidate.name,
-          email: candidate.email,
+          identityKey: candidate.identityKey,
           avatarUrl: candidate.avatarUrl ?? null,
         },
       ]
