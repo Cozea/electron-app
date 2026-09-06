@@ -49,7 +49,7 @@ describe('scheduled task Computer Use authorization', () => {
     expect(runner).toContain('error: "Computer Use is disabled in Settings."')
   })
 
-  it('clears scheduled leases on canonical turn settlement and runner teardown', () => {
+  it('clears scheduled policy on canonical turn settlement and runner teardown', () => {
     const runner = read('apps/desktop/src/features/projects/model/scheduledTaskRunner.ts')
 
     expect(runner).toContain('latestTurn.turnId === previousTurnId')
@@ -59,15 +59,20 @@ describe('scheduled task Computer Use authorization', () => {
     expect(runner).toContain('for (const [threadId, taskId] of activeComputerUsePolicies)')
   })
 
-  it('preserves active scheduled policy through live runtime resets but clears it at terminal boundaries', () => {
+  it('keeps scheduled policy lifecycle-bound and fail-closed across live runtime resets', () => {
     const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
     const resetAllStart = runtime.indexOf('async resetAll(): Promise<void>')
     const startBroker = runtime.indexOf('async startBroker(): Promise<ComputerUseRuntimeEnvironment>')
     const resetAllBody = runtime.slice(resetAllStart, startBroker)
 
+    expect(runtime).toContain(
+      'private readonly threadPolicies = new Map<string, ExplicitComputerUseThreadPolicy>()',
+    )
+    expect(runtime).not.toContain('THREAD_POLICY_TTL_MS')
+    expect(runtime).not.toContain('expiresAt')
+    expect(runtime).not.toContain('pruneExpiredThreadPolicies')
     expect(resetAllBody).not.toContain('this.threadPolicies.clear()')
     expect(runtime).toContain('finally {\n      this.clearThreadPolicy(sessionId)')
     expect(runtime).toContain('this.threadPolicies.clear()')
-    expect(runtime).toContain('THREAD_POLICY_TTL_MS')
   })
 })
