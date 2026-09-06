@@ -103,7 +103,7 @@ describe("device-principal cutover invariants", () => {
 
     const schema = read("convex/schema.ts")
     expect(schema).toContain("publisherDisplayName")
-    expect(schema).not.toContain("publisherDeviceLabel")
+    expect(schema).not.toContain("publisherDisplayName")
   })
 
   it("exposes only machine-principal presentation in shared session identity", () => {
