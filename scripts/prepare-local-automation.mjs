@@ -21,6 +21,14 @@ function run(command, args) {
   }
 }
 
+// Computer Use is now a Cozea-owned runtime. Keep it on the same dev/package
+// preparation lane as the existing native automation helper so neither the
+// renderer nor end users ever install a separate OCU CLI at runtime.
+run('node', [
+  path.join(repositoryRoot, 'scripts', 'prepare-computer-use-runtime.mjs'),
+  ...(configuration === 'debug' ? ['--debug'] : []),
+])
+
 if (process.platform !== 'darwin' || process.arch !== 'arm64') {
   console.log('Skipping Core ML local automation helper outside Apple silicon macOS.')
   process.exit(0)
