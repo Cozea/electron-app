@@ -22,7 +22,7 @@ describe("direct device-principal project authority", () => {
     const join = section(joinLinks, "joinByToken")
 
     expect(join).toContain("requireAuthenticatedDevice(ctx)")
-    expect(join).toContain("userId: principal._id")
+    expect(join).toContain("principalId: principal._id")
     expect(join).not.toContain("trustProjectDevice")
     expect(join).not.toContain("userId: args.userId")
     expect(join).not.toContain("deviceLabel: args.deviceLabel")
