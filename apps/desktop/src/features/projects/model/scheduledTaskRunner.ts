@@ -110,9 +110,8 @@ export async function runScheduledTask(
   // the conversation exists so unattended desktop access always fails closed.
   await prepareScheduledTaskComputerUsePolicy(task.id, threadId)
 
-  // If launch fails, the task-owned lease remains safely bound to this unused
-  // thread ID. The next preparation for the same task replaces that orphan;
-  // renderer code is never allowed to release an active policy.
+  // If thread creation itself fails, the policy is bound to an ID that never
+  // existed; a later run for the same task replaces that inert orphan.
   await orchestration.dispatchCommand({
     type: "thread.create",
     commandId: newCommandId(),
@@ -127,22 +126,37 @@ export async function runScheduledTask(
     createdAt,
   })
 
-  await orchestration.dispatchCommand({
-    type: "thread.turn.start",
-    commandId: newCommandId(),
-    threadId,
-    message: {
-      messageId: newMessageId(),
-      role: "user",
-      text: task.prompt,
-      attachments: [],
-    },
-    modelSelection,
-    titleSeed: task.name,
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-    createdAt,
-  })
+  try {
+    await orchestration.dispatchCommand({
+      type: "thread.turn.start",
+      commandId: newCommandId(),
+      threadId,
+      message: {
+        messageId: newMessageId(),
+        role: "user",
+        text: task.prompt,
+        attachments: [],
+      },
+      modelSelection,
+      titleSeed: task.name,
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      createdAt,
+    })
+  } catch (error: unknown) {
+    // Do not leave a user-reusable idle thread carrying the scheduled policy.
+    // Deletion is an authoritative orchestration mutation; the policy itself
+    // remains main-owned and will be replaced by the next run or cleared by
+    // task/broker teardown.
+    await orchestration
+      .dispatchCommand({
+        type: "thread.delete",
+        commandId: newCommandId(),
+        threadId,
+      })
+      .catch(() => undefined)
+    throw error
+  }
 
   return threadId
 }
