@@ -6,7 +6,7 @@ on:
       - codex/device-principal-identity-cutover
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CI: true
@@ -25,25 +25,6 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-
-      - name: Remove stale caller identity claims
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          persistence = Path("apps/desktop/src/lib/yjs/ProjectFilesPersistence.ts")
-          source = persistence.read_text()
-          source = source.replace("              deletedBy: this.userId,\n", "")
-          persistence.write_text(source)
-          PY
-
-          if ! git diff --quiet; then
-            git config user.name "cozea-verification"
-            git config user.email "actions@users.noreply.github.com"
-            git add apps/desktop/src/lib/yjs/ProjectFilesPersistence.ts
-            git commit -m "refactor(identity): remove tombstone caller identity claim"
-            git push
-          fi
 
       - name: Initialize pinned T3 source
         run: |
