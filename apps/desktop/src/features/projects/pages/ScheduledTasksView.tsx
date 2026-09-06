@@ -26,7 +26,10 @@ import {
 } from "@/features/assistant/Icons";
 import { scheduledTasksSnapshot, useScheduledTasksSnapshot } from "@/features/projects/model/scheduledTasksSnapshot";
 import { useWorkspaceCatalogSnapshot } from "@/features/workspace/useWorkspaceCatalogSnapshot";
-import { ScheduledTaskDetail } from "@/features/projects/pages/ScheduledTaskDetail";
+import {
+  formatHistoryTime,
+  ScheduledTaskDetail,
+} from "@/features/projects/pages/ScheduledTaskDetail";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
@@ -383,12 +386,18 @@ export function projectTargets(
   return targets.sort((left, right) => left.label.localeCompare(right.label));
 }
 
-function emptyDraft(): ScheduledTaskDraft {
-  // Tomorrow at 09:00 is a defensible default: far enough out that saving a
-  // half-filled form cannot fire something immediately.
-  const start = new Date();
-  start.setDate(start.getDate() + 1);
+/** Seam for tests: the default start time depends on the clock. */
+export function emptyDraftForTests(now: number): ScheduledTaskDraft {
+  return emptyDraft(now);
+}
+
+function emptyDraft(now: number = Date.now()): ScheduledTaskDraft {
+  // The next 09:00, which is today when the morning has not gone yet. Always
+  // defaulting to tomorrow made a task created in the morning sit idle for a
+  // day, which reads as a run that failed rather than one not yet due.
+  const start = new Date(now);
   start.setHours(9, 0, 0, 0);
+  if (start.getTime() <= now) start.setDate(start.getDate() + 1);
   const provider: ScheduledTaskProvider = "claude";
   return {
     name: "",
@@ -1419,6 +1428,11 @@ function ScheduledTaskEditor({
             value={date}
             onChange={(event) => setStart(event.target.value, time)}
           />
+          {/* A date field alone leaves "is that today or tomorrow?" to be
+              worked out from a calendar. Say the day it lands on. */}
+          <p className="text-xs text-muted-foreground">
+            {formatHistoryTime(draft.startAt)}
+          </p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="scheduled-task-time">Time</Label>

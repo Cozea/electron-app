@@ -78,7 +78,7 @@ const RUN_CARDS = [
  */
 export function EmptyTaskRuns({
   title = "No runs yet",
-  description = "When this task next comes due, the run lands here with the conversation it opened.",
+  description = "When this task next comes due, the run lands here with the conversation it opened. Runs happen while Cozea is open.",
   className,
 }: {
   title?: string;

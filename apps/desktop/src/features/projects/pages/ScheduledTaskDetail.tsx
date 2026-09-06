@@ -49,6 +49,8 @@ export function formatHistoryTime(value: number, now: number = Date.now()): stri
   const days = Math.round((startOfDay(now) - startOfDay(value)) / 86_400_000);
   if (days === 0) return `Today at ${time}`;
   if (days === 1) return `Yesterday at ${time}`;
+  // Future days matter for a first run, which is named before it exists.
+  if (days === -1) return `Tomorrow at ${time}`;
   const sameYear = new Date(value).getFullYear() === new Date(now).getFullYear();
   const day = (sameYear ? HISTORY_DAY_FORMAT : HISTORY_YEAR_FORMAT).format(new Date(value));
   return `${day} at ${time}`;
@@ -248,7 +250,16 @@ export function ScheduledTaskDetail({
 
       {/* History: scrolls on its own, so a long result never moves it. */}
       <aside className="hidden w-80 shrink-0 flex-col border-l border-border/60 md:flex">
-        <h2 className="shrink-0 px-4 pt-4 pb-2 text-sm text-muted-foreground">History</h2>
+        <div className="shrink-0 px-4 pt-4 pb-2">
+          <h2 className="text-sm text-muted-foreground">History</h2>
+          {/* The runner lives in the app. Recently missed runs can still start,
+              while older ones are skipped, so an empty history should not be
+              read as a run that vanished. */}
+          <p className="mt-1 text-xs text-muted-foreground/70">
+            Runs happen while Cozea is open. If Cozea reopens soon after a scheduled time, the run
+            may still start. Older missed runs are marked skipped.
+          </p>
+        </div>
         {runs.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">Nothing has run yet.</p>
         ) : (
