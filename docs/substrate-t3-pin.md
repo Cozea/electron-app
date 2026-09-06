@@ -5,7 +5,7 @@ Date: 2026-09-06
 | Field | Value |
 | --- | --- |
 | Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Required pin SHA | `c594c87fabcbbdab1e2ca99a7afa7a3495e76b40` (`c594c87f`) |
+| Required pin SHA | `632e8dcc970d878f272750132e55427b310fe581` (`632e8dcc`) |
 | Recorded by | Parent repository `vendor/t3code` gitlink |
 | Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
@@ -18,7 +18,12 @@ managed Computer Use MCP toolkit. The toolkit exposes the upstream
 open-computer-use v0.3.3 nine-tool contract through the existing provider-scoped
 T3 MCP endpoint, but forwards execution to the signed Electron main process over
 a private loopback broker. It never installs a global MCP entry in provider home
-configuration.
+configuration. Threads that actually invoke Computer Use are also tied to T3's
+accepted orchestration lifecycle: when the provider turn settles and the thread
+has no active turn, T3 forwards the upstream `notifications/turn-ended` lifecycle
+signal through that broker so cursor state is cleared immediately. Stale terminal
+provider events do not produce that notification because they never become an
+accepted `thread.session-set` event.
 
 ## Cozea runtime policy patches
 
