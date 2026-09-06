@@ -13,10 +13,6 @@ import {
   type ScheduledTaskRunReport,
 } from "@shared/scheduledTasks"
 
-import {
-  selectAssistantProjectByCwd,
-  useStore,
-} from "@/features/assistant/model/assistantStore"
 import { newCommandId, newMessageId, newProjectId, newThreadId } from "@/features/assistant/lib/utils"
 import { normalizeModelSelection } from "@/features/workbench/assistant/workbenchAssistantShared"
 import { refreshAssistantRuntimeSnapshot } from "@/features/workbench/useAssistantRuntimeSync"
@@ -65,26 +61,19 @@ async function prepareScheduledTaskComputerUsePolicy(
   }
 }
 
-/** Resolve or create the assistant project using the already-ready runtime for this run. */
+/** Resolve or create the assistant project from this run's exact runtime snapshot. */
 async function resolveAssistantProjectId(
   workspaceRoot: string,
   nativeApi: NativeApi,
 ): Promise<ProjectId> {
-  const existing = selectAssistantProjectByCwd(useStore.getState(), workspaceRoot)
+  // Snapshot transport failures are real run failures, not proof that the
+  // runtime disappeared before dispatch. Let them propagate so the scheduler
+  // records a failed run instead of retrying forever.
+  const snapshot = await refreshAssistantRuntimeSnapshot(nativeApi)
+  const existing = snapshot.projects.find(
+    (project) => project.workspaceRoot === workspaceRoot && project.deletedAt === null,
+  )
   if (existing) return existing.id
-
-  try {
-    await refreshAssistantRuntimeSnapshot(nativeApi)
-  } catch (error: unknown) {
-    throw new ScheduledTaskRuntimeUnavailableError(
-      `Local agent runtime was unavailable before the scheduled run started: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    )
-  }
-
-  const refreshed = selectAssistantProjectByCwd(useStore.getState(), workspaceRoot)
-  if (refreshed) return refreshed.id
 
   const projectId = newProjectId()
   try {
