@@ -116,7 +116,8 @@ export async function refreshAssistantRuntimeSnapshot(
   } finally {
     if (state.active === active) {
       state.active = null
-      if (!state.queued) snapshotRefreshByApi.delete(api)
+      state.queued = false
+      snapshotRefreshByApi.delete(api)
     }
   }
 }
