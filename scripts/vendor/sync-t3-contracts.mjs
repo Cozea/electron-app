@@ -15,7 +15,7 @@ const check = process.argv.includes("--check");
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const pin = git(vendorRoot, "rev-parse", "HEAD");
 const documented = fs.readFileSync(path.join(root, "docs/substrate-t3-pin.md"), "utf8").match(/`([0-9a-f]{40})`/)?.[1];
-const constant = fs.readFileSync(path.join(root, "apps/desktop/electron/substrate/constants.ts"), "utf8").match(/SUBSTRATE_T3_PIN_SHA = "([0-9a-f]{40})"/)?.[1];
+const constant = fs.readFileSync(path.join(root, "apps/desktop/electron/substrate/constants.ts"), "utf8").match(/SUBSTRATE_T3_PIN_SHA\s*(?::\s*string)?\s*=\s*"([0-9a-f]{40})"/)?.[1];
 const gitlink = git(root, "ls-files", "--stage", "vendor/t3code").split(/\s+/)[1];
 if (pin !== documented || pin !== constant || pin !== gitlink) {
   throw new Error("T3 HEAD, staged gitlink, documented pin, and runtime constant must agree before contract sync.");
