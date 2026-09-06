@@ -55,10 +55,8 @@ Known architecture rules these budgets encode:
   identity on equal content. Mutating bindings must call
   `invalidateProjectWorkspaceResolution(projectId)` (or the hook's `refresh`,
   which invalidates its own key).
-- ProjectLayout must not subscribe to `location.href`, navigation state it
-  doesn't render, presence, or page-context objects — those live in
-  null-rendering/leaf siblings (`PendingTeamSetupEffect`,
-  `ProjectPresenceHeaderAddon`).
+- High-frequency presence and page-context subscriptions stay out of
+  ProjectLayout and live in the leaf `ProjectPresenceHeaderAddon` component.
 
 ## Fixture requirements
 

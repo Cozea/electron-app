@@ -15,9 +15,9 @@ import { WorkspaceRuntimeHostsGate } from '@/features/workspace/WorkspaceRuntime
 import { TerminalViewHostGate } from '@/features/terminal/TerminalViewHostGate'
 import { featureFlags } from '@/lib/featureFlags'
 
-const LazyLogin = lazy(() =>
-  import('./pages/Login').then((module) => ({
-    default: module.Login,
+const LazyDeviceSessionRecovery = lazy(() =>
+  import('./pages/DeviceSessionRecovery').then((module) => ({
+    default: module.DeviceSessionRecovery,
   })),
 )
 const LazyOnboarding = lazy(() =>
@@ -262,7 +262,7 @@ function AppContent() {
 
   /**
    * Scheduled tasks fire from the app, not from a page, so the loop lives here
-   * and outlives whatever route is open. It starts after sign-in because a run
+   * and outlives whatever route is open. It starts after the device session is ready because a run
    * opens a conversation, which needs the local agent runtime.
    */
   useEffect(() => {
@@ -299,7 +299,7 @@ function AppContent() {
     }
     return (
       <LazySurface>
-        <LazyLogin />
+        <LazyDeviceSessionRecovery />
       </LazySurface>
     )
   }

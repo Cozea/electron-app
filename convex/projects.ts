@@ -278,22 +278,6 @@ export const create = mutation({
     // instead of creating a twin.
     creationToken: v.optional(v.string()),
     organizationId: v.optional(v.id("organizations")),
-    team: v.optional(
-      v.array(
-        v.object({
-          email: v.string(),
-          name: v.optional(v.string()),
-          role: v.union(
-            v.literal("project_manager"),
-            v.literal("developer"),
-            v.literal("designer"),
-            v.literal("viewer"),
-          ),
-          isCurrentUser: v.optional(v.boolean()),
-          profileImageUrl: v.optional(v.union(v.string(), v.null())),
-        }),
-      ),
-    ),
   },
   handler: async (ctx, args) => {
     const now = Date.now()
@@ -399,35 +383,6 @@ export const get = query({
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => ctx.db.get(args.projectId),
-})
-
-export const applyInitialTeamSetup = mutation({
-  args: {
-    projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
-    team: v.array(
-      v.object({
-        email: v.string(),
-        name: v.optional(v.string()),
-        role: v.union(
-          v.literal("project_manager"),
-          v.literal("developer"),
-          v.literal("designer"),
-          v.literal("viewer"),
-        ),
-        isCurrentUser: v.optional(v.boolean()),
-        profileImageUrl: v.optional(v.union(v.string(), v.null())),
-      }),
-    ),
-  },
-  handler: async (ctx, args) => {
-    const canManage = await canManageProject(ctx, args.projectId, args.actorUserId)
-    if (!canManage) {
-      throw new ConvexError("Only project managers can update the project team")
-    }
-
-    return { ok: true }
-  },
 })
 
 export const listForCurrentUser = query({

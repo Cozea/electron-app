@@ -4,19 +4,19 @@ import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Logo } from "@/components/Logo"
 import { useTranslation } from "@/lib/i18n"
 
-interface LoginFormProps extends React.ComponentProps<"div"> {
-  onLogin: () => void
+interface DeviceSessionRecoveryFormProps extends React.ComponentProps<"div"> {
+  onRetry: () => void
   isLoading: boolean
   errorMessage?: string | null
 }
 
-export function LoginForm({
+export function DeviceSessionRecoveryForm({
   className,
-  onLogin,
+  onRetry,
   isLoading,
   errorMessage,
   ...props
-}: LoginFormProps) {
+}: DeviceSessionRecoveryFormProps) {
   const { t } = useTranslation()
 
   return (
@@ -24,11 +24,11 @@ export function LoginForm({
       <FieldGroup>
         <div className="flex flex-col items-center gap-2 text-center">
           <Logo size={48} />
-          <h1 className="text-xl font-bold">{t("login.welcome")}</h1>
-          <FieldDescription>{t("login.initializeDevice")}</FieldDescription>
+          <h1 className="text-xl font-bold">{t("deviceSession.welcome")}</h1>
+          <FieldDescription>{t("deviceSession.initializeDevice")}</FieldDescription>
         </div>
         <Button
-          onClick={onLogin}
+          onClick={onRetry}
           disabled={isLoading}
           size="lg"
           className="w-full"
@@ -37,10 +37,10 @@ export function LoginForm({
           {isLoading ? (
             <>
               <div className="loader" />
-              {t("login.preparingDevice")}
+              {t("deviceSession.preparingDevice")}
             </>
           ) : (
-            t("login.continueOnDevice")
+            t("deviceSession.continueOnDevice")
           )}
         </Button>
         {errorMessage ? (
@@ -50,7 +50,7 @@ export function LoginForm({
         ) : null}
       </FieldGroup>
       <FieldDescription className="px-6 text-center">
-        {t("login.localIdentityNote")}
+        {t("deviceSession.localIdentityNote")}
       </FieldDescription>
     </div>
   )

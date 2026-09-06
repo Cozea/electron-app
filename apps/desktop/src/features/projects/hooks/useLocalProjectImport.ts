@@ -126,7 +126,7 @@ export function useLocalProjectImport() {
     }
 
     if (!principalId) {
-      await showImportError("No project profile is ready right now.")
+      await showImportError("No device identity is ready right now.")
       return "error"
     }
 

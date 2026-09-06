@@ -1,9 +1,9 @@
 "use client";
 
-import { lazy, Suspense, type ReactNode, useRef, useCallback, useEffect, useMemo,  } from "react";
+import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/app/model/queryCache";
@@ -70,115 +70,6 @@ interface ProjectLayoutLocationState {
   projectSlug?: string | null;
   projectName?: string | null;
   preferredWorkspaceId?: string | null;
-  pendingTeamSetup?: Array<{
-    email: string;
-    name?: string;
-    role: "project_manager" | "developer" | "designer" | "viewer";
-    isCurrentUser?: boolean;
-    profileImageUrl?: string | null;
-  }>;
-}
-
-/**
- * Null-rendering sibling that owns the deferred team-setup flow. It subscribes
- * to `location.href` and navigation state, which change on every navigation —
- * isolating those subscriptions here keeps ProjectLayout (and the whole route
- * tree under it) from re-rendering when only the URL or state changed.
- */
-function PendingTeamSetupEffect({
-  projectId,
-  principalId,
-  projectSlug,
-  projectName,
-  runtimeWorkspaceId,
-  routeProjectId,
-}: {
-  projectId: Id<"projects">;
-  principalId: Id<"devicePrincipals">;
-  projectSlug: string | null;
-  projectName: string | null;
-  runtimeWorkspaceId: string | null;
-  routeProjectId: string | null;
-}) {
-  const navigate = useViewTransitionNavigate();
-  const locationHref = useLocation({ select: (location) => location.href });
-  const statePendingTeamSetup = useLocation({
-    select: (location) =>
-      (location.state as ProjectLayoutLocationState | null)?.pendingTeamSetup ?? null,
-  });
-  const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
-  const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
-
-  const pendingTeamSetup = useMemo(
-    () => statePendingTeamSetup ?? [],
-    [statePendingTeamSetup],
-  );
-
-  useEffect(() => {
-    if (pendingTeamSetup.length === 0) {
-      return;
-    }
-
-    const pendingKey = `${String(projectId)}:${pendingTeamSetup
-      .map((member) => `${member.email}:${member.role}`)
-      .sort()
-      .join("|")}`;
-
-    if (appliedInitialTeamSetupKeysRef.current.has(pendingKey)) {
-      return;
-    }
-    appliedInitialTeamSetupKeysRef.current.add(pendingKey);
-
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        await applyInitialTeamSetup({
-          projectId,
-          actorUserId: principalId,
-          team: pendingTeamSetup,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextState =
-          runtimeWorkspaceId
-            ? buildProjectRouteNavigationState({
-                projectId: String(projectId) || (routeProjectId ?? null),
-                projectSlug,
-                projectName,
-                preferredWorkspaceId: runtimeWorkspaceId,
-              })
-            : null;
-        navigate(locationHref, {
-          replace: true,
-          state: nextState,
-        });
-      } catch (error) {
-        console.warn("[ProjectLayout] Failed to apply deferred initial team setup:", error);
-        appliedInitialTeamSetupKeysRef.current.delete(pendingKey);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    applyInitialTeamSetup,
-    principalId,
-    locationHref,
-    runtimeWorkspaceId,
-    navigate,
-    pendingTeamSetup,
-    projectSlug,
-    projectId,
-    routeProjectId,
-    projectName,
-  ]);
-
-  return null;
 }
 
 /**
@@ -756,16 +647,6 @@ export function ProjectLayout({
 
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
-      {project?._id && principalId ? (
-        <PendingTeamSetupEffect
-          projectId={project._id}
-          principalId={principalId}
-          projectSlug={projectSlug}
-          projectName={effectiveProjectName}
-          runtimeWorkspaceId={runtimeWorkspaceId}
-          routeProjectId={routeProjectId ?? null}
-        />
-      ) : null}
       <ActiveWorkspaceContext.Provider value={activeWorkspaceValue}>
         <ProjectSyncProvider
           workspaceId={activeWorkspaceValue ? activeWorkspaceId : null}

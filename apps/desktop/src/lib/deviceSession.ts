@@ -89,7 +89,7 @@ async function issueDeviceSession(): Promise<DeviceSession> {
   } catch (error) {
     // Secure persistence improves the next launch but is not a condition for a
     // valid live device session. Never turn a successful auth exchange into a
-    // login failure merely because local secure storage is unavailable.
+    // device-session failure merely because local secure storage is unavailable.
     console.warn('[DesktopBootstrap] Failed to persist the refreshed device session.', error)
   }
   return session
@@ -116,9 +116,9 @@ export async function getDeviceSession(options: { force?: boolean } = {}): Promi
 export async function clearDeviceSession(): Promise<void> {
   cachedSession = null
   pendingSession = null
-  // Persisted secure state is part of logout/reset semantics. If its deletion
+  // Persisted secure state is part of session-clear/reset semantics. If its deletion
   // fails, let the caller surface/retry the failure instead of claiming a
-  // completed logout that would silently restore on next launch.
+  // completed clear that would silently restore on next launch.
   await window.cozeaBootstrap?.clearSession()
 }
 

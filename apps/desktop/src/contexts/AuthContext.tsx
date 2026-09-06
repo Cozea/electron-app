@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Id } from '../../../../convex/_generated/dataModel'
 import type { PersonalWorkspaceMembership, User } from '../types/electron'
 import { convex } from '@/lib/convex'
-import { clearDeviceSession, getDeviceSession, type DeviceSession } from '@/lib/deviceSession'
+import { getDeviceSession, type DeviceSession } from '@/lib/deviceSession'
 import { getInitialDesktopBootstrap } from '@/app/bootstrap/desktopBootstrap'
 import { featureFlags } from '@/lib/featureFlags'
 
@@ -18,8 +18,7 @@ interface AuthContextType {
   isRevalidating: boolean
   authError: string | null
   needsOnboarding: boolean
-  login: () => Promise<void>
-  logout: () => Promise<void>
+  retryDeviceSession: () => Promise<void>
   refreshToken: () => Promise<RefreshTokenStatus>
 }
 
@@ -112,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [bootstrapLocalDeviceSession, bootstrapSession])
 
-  const login = useCallback(async () => {
+  const retryDeviceSession = useCallback(async () => {
     setIsLoading(true)
     setIsRevalidating(true)
     try {
@@ -131,17 +130,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [bootstrapLocalDeviceSession])
 
-  const logout = useCallback(async () => {
-    convex?.clearAuth()
-    await clearDeviceSession()
-    setUser(null)
-    setPrincipalId(null)
-    setPersonalWorkspace(null)
-    setAccessToken(null)
-    setAuthError(null)
-    setIsLoading(false)
-    setIsRevalidating(false)
-  }, [])
 
   const refreshToken = useCallback(async (): Promise<RefreshTokenStatus> => {
     try {
@@ -174,8 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRevalidating,
       authError,
       needsOnboarding,
-      login,
-      logout,
+      retryDeviceSession,
       refreshToken,
     }),
     [
@@ -184,8 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       principalId,
       isLoading,
       isRevalidating,
-      login,
-      logout,
+      retryDeviceSession,
       needsOnboarding,
       personalWorkspace,
       refreshToken,
