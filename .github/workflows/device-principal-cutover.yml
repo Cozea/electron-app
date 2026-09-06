@@ -16,8 +16,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply compiler repair pass
-        run: node scripts/fix-device-principal-pass1.mjs
+      - name: Apply compiler repair passes
+        run: |
+          node scripts/fix-device-principal-pass1.mjs
+          node scripts/fix-device-principal-pass2.mjs
       - name: Commit repairs
         run: |
           if git diff --quiet; then
@@ -43,6 +45,9 @@ jobs:
           bun-version: 1.4.0
       - name: Install validation dependencies
         run: bun install --frozen-lockfile --ignore-scripts
+      - name: Install pinned T3 client-runtime dependencies
+        working-directory: vendor/t3code
+        run: corepack pnpm install --filter @t3tools/client-runtime... --frozen-lockfile --ignore-scripts
       - name: Typecheck desktop
         run: bun run typecheck
       - name: Typecheck cloudflare
