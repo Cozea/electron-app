@@ -60,8 +60,20 @@ One JSON object. Keep the shape exactly, so the Memory tile and other graph tool
   "built_at_commit": "<git rev-parse HEAD>",
   "nodes": [
     {
+      "id": "auth_session",
+      "label": "session.ts",
+      "file_type": "code",
+      "source_file": "auth/session.ts",
+      "source_location": "L1",
+      "community": 0,
+      "community_name": "Session Lifecycle",
+      "norm_label": "session.ts",
+      "rationale": null,
+      "_origin": "ast"
+    },
+    {
       "id": "auth_session_createsession",
-      "label": "createSession",
+      "label": "createSession()",
       "file_type": "code",
       "source_file": "auth/session.ts",
       "source_location": "L42",
@@ -69,10 +81,23 @@ One JSON object. Keep the shape exactly, so the Memory tile and other graph tool
       "community_name": "Session Lifecycle",
       "norm_label": "createsession",
       "rationale": null,
-      "_origin": "ast"
+      "_origin": "ast",
+      "_callable": true,
+      "_callable_class": null
     }
   ],
   "links": [
+    {
+      "source": "auth_session",
+      "target": "auth_session_createsession",
+      "relation": "contains",
+      "weight": 1,
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "auth/session.ts",
+      "source_location": "L42",
+      "_origin": "ast"
+    },
     {
       "source": "auth_session_createsession",
       "target": "auth_session_signtoken",
@@ -120,12 +145,19 @@ on its own and other things point at it.
 
 \`relation\` MUST be one of:
 
-- \`calls\`, \`imports\`, \`defines\`, \`extends\` — structural, read directly from code
+- \`contains\` — a file holds a symbol, or a symbol holds a nested one. **The spine of the
+  map.** In a well built map this is the single most common relation, around a third of all
+  links. A map without it is a pile of symbols with no sense of where anything lives.
+- \`calls\`, \`imports\`, \`imports_from\`, \`re_exports\`, \`defines\`, \`extends\`, \`method\` —
+  structural, read directly from code. \`imports_from\` names the module a symbol came from;
+  \`method\` ties a method to its class.
+- \`indirect_call\` — reached through a handler, callback or dispatch table rather than a
+  direct call site.
 - \`implements\` — a thing realises a named concept or interface
 - \`references\` — one thing mentions another
 - \`cites\` — a paper or document points at external work
 - \`rationale_for\` — a decision explains a thing
-- \`conceptually_related_to\` — same idea, different place
+- \`conceptually_related_to\`, \`semantically_similar_to\` — same idea, different place
 - \`shares_data_with\` — two things read or write the same state
 
 Prefer the most specific relation that is true. \`references\` is the fallback, not the default.
@@ -156,19 +188,47 @@ Use \`participate_in\`, \`implement\` or \`form\`. Leave the array empty if noth
 1. Record the commit: \`git rev-parse HEAD\` into \`built_at_commit\`.
 2. Walk the project, skipping anything git ignores plus \`node_modules\`, build output, vendored
    code, lockfiles and minified bundles.
-3. Extract per file according to the table above. Code first: it is the spine everything else
-   attaches to.
+3. **Emit a node for the file itself**, then a node for each symbol inside it, then link
+   file to symbol with \`contains\`. Nest further where the code nests: a function defined
+   inside another is contained by it, not by the file. This hierarchy is most of what makes a
+   map navigable, and skipping it costs roughly a third of the links.
+   - File node: \`label\` is the file name (\`session.ts\`), \`source_location\` is \`L1\`.
+   - Symbol node: \`label\` carries \`()\` for callables (\`createSession()\`), \`_callable\` is
+     \`true\`, and \`_callable_class\` names the owning class or is \`null\`.
+   - Set \`_origin\` to \`ast\` for anything read out of code, \`curated\` for anything you
+     reasoned into existence.
 4. Add the relations you can see. Structural ones from code, the rest from what documents and
    diagrams actually say.
+   - Carry \`source_file\` and \`source_location\` on **every link**, naming the file the
+     evidence was read from. Updates depend on this: it is how a later pass knows which links
+     belong to a file it is about to re-read.
+   - For a document or image node that came from somewhere citable, record \`source_url\`,
+     \`author\`, \`contributor\` and \`captured_at\` when you know them.
 5. Deduplicate by \`id\`. The same thing described in code and in a doc is one node with both
    sources, not two nodes.
 6. Cluster into communities: group nodes that link to each other far more than to the rest, then
    give each group a short human name for its job ("Session Lifecycle", not "Community 3").
-   Assign the index to \`community\` and the name to \`community_name\`.
+   Assign the index to \`community\` and the name to \`community_name\`. Aim for groups of
+   roughly 5 to 25 nodes; a handful of giant communities tells the reader nothing, and one
+   community per node tells them nothing either. **Every node gets a name**, not just the big
+   groups: an unnamed community reads as a hole in the map.
 7. Write the file, creating \`graphify-out/\` if needed.
 
 Prefer breadth over depth. A map covering the whole project shallowly is more useful than a
 perfect map of one directory.
+
+### What a finished map looks like
+
+Check your output against these before writing. They are what real maps of this shape measure,
+and falling far short of them means extraction stopped early rather than the project being small:
+
+- **Every source file that holds anything is a node**, and its symbols hang off it.
+- **Links per node between about 1.5 and 2.5.** Below 1 the map is a list, not a graph.
+- **\`contains\` is roughly a third of all links**, and \`calls\` plus the import family most
+  of the rest.
+- **\`EXTRACTED\` dominates.** Structural edges read out of code should be the bulk of the
+  graph; if most of your links are \`INFERRED\` you are guessing, not reading.
+- **Every node carries \`community\` and \`community_name\`.**
 
 ## Never destroy a good map
 
@@ -183,21 +243,57 @@ no update at all:
 
 ## Keeping it current
 
-After work that adds, removes or moves things, update rather than rebuild:
+**Updating must not re-read the project.** A rebuild of a large repo is minutes of tokens; an
+update should touch only the files git says moved. If you find yourself walking the whole tree
+on an update, stop: you are rebuilding, and it will be slower and will churn ids.
 
-1. Read the existing graph.
-2. Re-extract only what changed since \`built_at_commit\`: \`git diff --name-only <commit> HEAD\`.
-3. Replace those files' nodes and links, leave the rest untouched, refresh \`built_at_commit\`.
-4. Re-cluster only if the shape changed materially.
+1. Read the existing graph and take \`built_at_commit\` from it.
+2. Ask git exactly what moved, with status letters, not just names:
+
+   \`\`\`
+   git diff --name-status <built_at_commit> HEAD
+   \`\`\`
+
+   \`A\` added, \`M\` modified, \`D\` deleted, \`R\` renamed. If the command fails, or
+   \`built_at_commit\` is missing or no longer in history, fall back to a full build and say so.
+   If it returns nothing, the map is current: change nothing and say that.
+3. Let **touched** be the added, modified and renamed paths, and **gone** the deleted ones.
+4. Drop from the graph:
+   - every node whose \`source_file\` is in touched or gone,
+   - every link whose \`source_file\` is in touched or gone,
+   - every remaining link that now points at an id no longer present. This last one is the step
+     that is easy to miss: a link recorded against an untouched file can still name a symbol
+     that has just been deleted, and leaving it behind puts a dangling edge in the map.
+5. Re-extract **only the touched files**, exactly as a full build would, and add their nodes
+   and links back.
+6. Leave every other node and link byte for byte as it was, \`community\` and
+   \`community_name\` included. Re-cluster only when the node set moved by more than about a
+   tenth, and say so when you do, because re-clustering renames communities and the tile shows
+   that as change.
+7. Set \`built_at_commit\` to \`git rev-parse HEAD\` and write the file once.
+
+A rename is a delete plus an add: ids derive from the path, so the old ids go and new ones
+arrive. That is honest, and the tile will show it.
 
 Preserving untouched ids is what makes the Memory tile's new and changed colouring meaningful.
 An id must be stable: derive it from path plus symbol, lowercased, non-alphanumerics as
 underscores. A churning id reads as delete-plus-add and destroys the signal.
 
+The tile decides what is new or changed by comparing \`label\`, \`source_file\`,
+\`source_location\` and \`community_name\` against the previous build. The first three move only
+when the code moves, which is what you want. \`community_name\` is the fragile one: re-cluster
+needlessly and every node in the project turns "changed" while nothing actually moved. That is
+the strongest reason to leave untouched communities alone.
+
 ## Scale
 
-Cap at roughly 4000 nodes. Past that, keep exported and cross-file symbols and drop private
-helpers. A map too large to read is a map nobody uses.
+Do not truncate a real project to keep the file small. Maps of tens of thousands of nodes are
+normal for a large repo, and the Memory tile already renders only the busiest few thousand, so
+detail you record is never wasted even when it is not all drawn at once.
+
+Past roughly 40,000 nodes, start dropping private helpers before anything else, and keep every
+exported and cross-file symbol. Breadth first: a file with no node at all is a hole, while a
+file whose private helpers were skipped is still findable.
 
 ## Reporting
 
