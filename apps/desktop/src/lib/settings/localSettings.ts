@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import type { AppSettings } from '@shared/electronApiTypes'
 import { createLocalSnapshot } from '@/lib/localSnapshot'
 
-export type LocalAppSettings = AppSettings & {
+export interface LocalAppSettings extends AppSettings {
   computerUseAllowGlobalPointerFallbacks?: boolean
 }
 
