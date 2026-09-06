@@ -17,9 +17,11 @@ export interface CollabSessionDescriptor {
   collabWsUrl: string
   token: string
   protocolVersion: string
-  deviceId: string
-  deviceFingerprint?: string
-  devicePublicKeyJwk?: string
+  principalId: string
+  identityKey: string
+  displayName: string
+  encryptionFingerprint: string
+  encryptionPublicKeyJwk: string
   encryption: {
     roomId: string
     encryptionRequired: boolean

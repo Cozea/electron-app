@@ -194,7 +194,7 @@ export function ProjectSettingsPage({
   const canSave = Boolean(principalId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
   const collabSession = collabSessionResult.session
   const collabBootstrap = collabSession?.encryption ?? null
-  const currentDeviceId = collabSession?.deviceId ?? null
+  const currentDeviceId = collabSession?.identityKey ?? null
   const collabScopeKey = project?._id ? String(project._id) : null
   const canManageCollabSecurity = Boolean(project?._id && principalId && isManager)
   const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
@@ -217,7 +217,7 @@ export function ProjectSettingsPage({
       roomId: collabSession.roomId,
       keyVersion: args.keyVersion,
       createdByUserId: principalId,
-      createdByDeviceId: collabSession.deviceId,
+      createdByDeviceId: collabSession.identityKey,
       wrapAlgorithm: recoveryKit.wrapAlgorithm,
       wrappedKey: recoveryKit.wrappedKey,
       salt: recoveryKit.salt,
@@ -312,7 +312,7 @@ export function ProjectSettingsPage({
 
       wrappedKeys.push({
         recipientUserId: device.userId,
-        recipientDeviceId: device.deviceId,
+        recipientDeviceId: device.identityKey,
         senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
@@ -328,7 +328,7 @@ export function ProjectSettingsPage({
       projectId: project._id,
       roomId: collabSession.roomId,
       userId: principalId,
-      initiatedByDeviceId: collabSession.deviceId,
+      initiatedByDeviceId: collabSession.identityKey,
       encryptedSnapshot: nextSnapshotBytes.slice().buffer,
       createdByClientId: String(roomDoc.clientID),
       wrappedKeys,
@@ -537,7 +537,7 @@ export function ProjectSettingsPage({
       })
       if (collabBootstrap?.status === 'ready' && collaborationDevices) {
         const nextDevices = collaborationDevices.map((device) =>
-          device.deviceId === deviceId
+          device.identityKey === deviceId
             ? { ...device, revokedAt: Date.now() }
             : device,
         )
@@ -632,7 +632,7 @@ export function ProjectSettingsPage({
       !collabSession ||
       !collabBootstrap ||
       collabBootstrap.status !== 'missing_for_device' ||
-      !collabSession.devicePublicKeyJwk ||
+      !collabSession.encryptionPublicKeyJwk ||
       !activeRecoveryKit ||
       !recoveryCodeInput.trim()
     ) {
@@ -654,7 +654,7 @@ export function ProjectSettingsPage({
 
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64,
-        recipientPublicKeyJwk: collabSession.devicePublicKeyJwk,
+        recipientPublicKeyJwk: collabSession.encryptionPublicKeyJwk,
       })
 
       await storeWrappedRoomKey({
@@ -662,7 +662,7 @@ export function ProjectSettingsPage({
         roomId: collabSession.roomId,
         keyVersion: activeRecoveryKit.keyVersion,
         recipientUserId: principalId,
-        recipientDeviceId: collabSession.deviceId,
+        recipientDeviceId: collabSession.identityKey,
         senderDeviceId: wrapped.senderDeviceId,
         senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
         wrapAlgorithm: wrapped.wrapAlgorithm,
@@ -703,7 +703,7 @@ export function ProjectSettingsPage({
         projectId: project._id,
         roomId: collabSession.roomId,
         userId: principalId ?? undefined,
-        retainDeviceId: collabSession.deviceId,
+        retainDeviceId: collabSession.identityKey,
       })
 
       if (collabScopeKey) {
@@ -1029,7 +1029,7 @@ export function ProjectSettingsPage({
                         </SettingsRowControl>
                       </SettingsRow>
                     ) : null}
-                    {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
+                    {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.encryptionPublicKeyJwk ? (
                       <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
                         <div className="flex min-w-0 flex-col gap-0.5">
                           <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoverWithCode')}</Label>
@@ -1066,7 +1066,7 @@ export function ProjectSettingsPage({
                       <div className="border-t border-border/40">
                         {collaborationDevices.map((device, index) => (
                           <div
-                            key={device.deviceId}
+                            key={device.identityKey}
                             className={cn(
                               'flex min-h-[50px] items-center justify-between gap-4 px-4 py-3',
                               index > 0 && 'border-t border-border/40',
@@ -1075,7 +1075,7 @@ export function ProjectSettingsPage({
                             <div className="flex min-w-0 flex-col gap-0.5">
                               <p className="truncate text-xs font-medium text-foreground">
                                 {device.deviceLabel}
-                                {device.deviceId === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
+                                {device.identityKey === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
                               </p>
                               <p className="truncate text-[11px] text-muted-foreground">
                                 {device.platform} · {device.fingerprint.slice(0, 12)}
@@ -1091,8 +1091,8 @@ export function ProjectSettingsPage({
                                 aria-label="Device options"
                                 disabled={
                                   Boolean(device.revokedAt) ||
-                                  device.deviceId === currentDeviceId ||
-                                  collabAction === `revoke:${device.deviceId}`
+                                  device.identityKey === currentDeviceId ||
+                                  collabAction === `revoke:${device.identityKey}`
                                 }
                                 onClick={async (event) => {
                                   event.preventDefault()
@@ -1111,7 +1111,7 @@ export function ProjectSettingsPage({
 
                                   const action = await showDesktopContextMenu(items, position)
                                   if (action === "revoke") {
-                                    void handleRevokeDevice(device.deviceId)
+                                    void handleRevokeDevice(device.identityKey)
                                   }
                                 }}
                               >

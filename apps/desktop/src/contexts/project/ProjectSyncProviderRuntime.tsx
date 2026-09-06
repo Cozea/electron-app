@@ -118,8 +118,8 @@ export function ProjectSyncProviderRuntime({
           collabWsUrl: collabSession.collabWsUrl,
           token: collabSession.token,
           protocolVersion: collabSession.protocolVersion,
-          deviceId: collabSession.deviceId,
-          devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
+          deviceId: collabSession.identityKey,
+          devicePublicKeyJwk: collabSession.encryptionPublicKeyJwk,
           encryption: collabSession.encryption,
         }
       : null
@@ -141,8 +141,8 @@ export function ProjectSyncProviderRuntime({
         collabWsUrl: nextSession.collabWsUrl,
         token: nextSession.token,
         protocolVersion: nextSession.protocolVersion,
-        deviceId: nextSession.deviceId,
-        devicePublicKeyJwk: nextSession.devicePublicKeyJwk,
+        deviceId: nextSession.identityKey,
+        devicePublicKeyJwk: nextSession.encryptionPublicKeyJwk,
         encryption: nextSession.encryption,
       }
     },
