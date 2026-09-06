@@ -1,6 +1,7 @@
 import { shell } from 'electron'
-import type { ComputerUseDiagnostics } from '../../../../shared/electronApiTypes'
+
 import { ComputerUseRuntimeService } from './ComputerUseRuntimeService'
+import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
 
 /**
  * Compatibility facade retained while older main/settings call sites still
