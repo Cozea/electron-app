@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import contractManifest from "../../../../packages/contracts/src/t3/SYNC_MANIFEST.json";
+import { SUBSTRATE_T3_PIN_SHA } from "../../../../apps/desktop/electron/substrate/constants";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,7 +62,7 @@ export function assertNodeVersionForT3Server(nodeVersion: string = process.versi
 /** Refuse mixed client/runtime installations before opening persisted state. */
 export function assertT3RuntimeIdentity(
   runtimeRoot: string = VENDOR_T3_SERVER_PKG,
-  expectedPin: string = contractManifest.pin,
+  expectedPin: string = process.env.COZEA_SUBSTRATE_T3_PIN?.trim() || SUBSTRATE_T3_PIN_SHA || contractManifest.pin,
 ): void {
   const metadataPath = path.join(runtimeRoot, "cozea-runtime.json");
   let actual: unknown;

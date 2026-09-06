@@ -2,8 +2,11 @@ import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HeaderBackButton } from "@/components/ui/header-back-button";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -69,9 +72,11 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Add01Icon as __AddHugeIcon,
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
+  Cancel01Icon as __CancelHugeIcon,
   Clock01Icon as __ClockHugeIcon,
   ComputerIcon as __ComputerHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
+  MoreHorizontalIcon as __MoreHugeIcon,
   PauseIcon as __PauseHugeIcon,
   PencilEdit02Icon as __EditHugeIcon,
   PlayIcon as __PlayHugeIcon,
@@ -84,6 +89,9 @@ import {
   Idea01Icon as __IdeaHugeIcon,
   News01Icon as __NewsHugeIcon,
 } from "@hugeicons/core-free-icons";
+import type { ContextMenuItem } from "@cozea/assistant-contracts";
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient";
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons";
 
 const PROVIDER_LABELS: Record<ScheduledTaskProvider, string> = {
   claude: "Claude",
@@ -596,7 +604,6 @@ export function ScheduledTasksView() {
   // The header only cares whether a form is open and whether it is an edit,
   // not what has been typed into it, so it is not rebuilt on every keystroke.
   const isEditing = draft !== null;
-  const isEditingExisting = Boolean(draft?.taskId);
   const isViewingTask = !isEditing && openTask !== null;
 
   // Scheduled Tasks is its own place in the sidebar, so the only way back worth
@@ -615,32 +622,27 @@ export function ScheduledTasksView() {
   const headerLeft = React.useMemo(
     () =>
       isEditing || isViewingTask ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+        <HeaderBackButton
           onClick={() => (isEditing ? setDraft(null) : setOpenTaskId(null))}
-        >
-          <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
-          Back
-        </Button>
+        />
       ) : null,
     [isEditing, isViewingTask],
   );
 
-  const headerCenter = React.useMemo(
-    () => (
+  const headerCenter = React.useMemo(() => {
+    if (isEditing) {
+      return (
+        <span className="max-w-[40ch] truncate text-sm font-semibold tracking-tight text-foreground">
+          {draft?.taskId ? "Edit scheduled task" : "New scheduled task"}
+        </span>
+      );
+    }
+    return openTask ? (
       <span className="max-w-[40ch] truncate text-sm font-semibold tracking-tight text-foreground">
-        {isEditing
-          ? isEditingExisting
-            ? "Edit scheduled task"
-            : "New scheduled task"
-          : (openTask?.name ?? "Scheduled tasks")}
+        {openTask.name}
       </span>
-    ),
-    [isEditing, isEditingExisting, openTask?.name],
-  );
+    ) : null;
+  }, [isEditing, draft?.taskId, openTask]);
 
   const headerRight = React.useMemo(() => {
     if (isEditing) return null;
@@ -731,21 +733,35 @@ export function ScheduledTasksView() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-[820px] px-6 pb-16 pt-10 sm:px-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Scheduled tasks</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Ask an agent to schedule tasks, set reminders, or monitor for updates
-        </p>
+    <div className="flex h-full min-h-0 flex-col">
+      {!draft ? (
+        <div className="mx-auto w-full max-w-[960px] shrink-0 space-y-4 px-6 pt-4 pb-3">
+          <header>
+            <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
+              Scheduled tasks
+            </h1>
+          </header>
+
+          <SearchInput
+            value={query}
+            onValueChange={setQuery}
+            placeholder="Search scheduled tasks…"
+            aria-label="Search scheduled tasks"
+          />
+        </div>
+      ) : null}
+
+      <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1">
+        <div className="mx-auto w-full max-w-[960px] space-y-6 px-6 pt-2 pb-16">
 
         {loadError && !snapshot ? (
-          <p className="mt-8 text-sm text-destructive">{loadError}</p>
+          <p className="text-sm text-destructive">{loadError}</p>
         ) : !snapshot ? (
-          <p role="status" className="mt-8 text-sm text-muted-foreground">
+          <p role="status" className="text-sm text-muted-foreground">
             Reading your scheduled tasks…
           </p>
         ) : draft ? (
-          <div className="mt-8">
+          <div className="pt-2">
             <ScheduledTaskEditor
               draft={draft}
               busy={busyKey === "save"}
@@ -770,23 +786,7 @@ export function ScheduledTasksView() {
           </div>
         ) : (
           <>
-            <div className="relative mt-6">
-              <HugeiconsIcon
-                icon={__SearchHugeIcon}
-                className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden
-              />
-              <Input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search scheduled tasks"
-                aria-label="Search scheduled tasks"
-                className="h-11 rounded-full bg-muted/50 pl-11 text-sm"
-              />
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1.5">
               {SCHEDULED_TASK_FILTERS.map((option) => (
                 <button
                   key={option.id}
@@ -794,10 +794,10 @@ export function ScheduledTasksView() {
                   aria-pressed={filter === option.id}
                   onClick={() => setFilter(option.id)}
                   className={cn(
-                    "cursor-pointer rounded-full px-3 py-1 text-sm transition-colors",
+                    "cursor-pointer rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
                     filter === option.id
-                      ? "border border-primary/60 text-foreground"
-                      : "border border-transparent text-muted-foreground hover:text-foreground",
+                      ? "bg-secondary text-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                   )}
                 >
                   {option.label}
@@ -865,7 +865,8 @@ export function ScheduledTasksView() {
             </div>
           </>
         )}
-      </div>
+        </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -931,13 +932,12 @@ export function ComputerUseTag({ available }: { available: boolean }) {
   const tag = (
     <Badge
       variant="outline"
-      size="sm"
       className={cn(
-        "gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-500",
-        !available && "opacity-70",
+        "h-5 gap-1.5 rounded-full border-0 bg-amber-500/15 px-2 text-[10px] font-medium text-amber-800 dark:bg-amber-400/15 dark:text-amber-300",
+        !available && "opacity-60",
       )}
     >
-      <HugeiconsIcon icon={__ComputerHugeIcon} className="size-3" aria-hidden />
+      <HugeiconsIcon icon={__ComputerHugeIcon} className="size-3 shrink-0" aria-hidden />
       Computer use
     </Badge>
   );
@@ -958,7 +958,10 @@ export function ComputerUseTag({ available }: { available: boolean }) {
 function ProjectTag({ project }: { project: ScheduledTaskProjectTarget | null }) {
   if (!project) {
     return (
-      <Badge variant="outline" size="sm" className="gap-1">
+      <Badge
+        variant="outline"
+        className="h-5 gap-1.5 rounded-full border-0 bg-muted/60 px-2 text-[10px] font-medium text-muted-foreground"
+      >
         General task
       </Badge>
     );
@@ -967,8 +970,11 @@ function ProjectTag({ project }: { project: ScheduledTaskProjectTarget | null })
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="inline-flex">
-          <Badge variant="outline" size="sm" className="gap-1">
-            <HugeiconsIcon icon={__ProjectHugeIcon} className="size-3" aria-hidden />
+          <Badge
+            variant="outline"
+            className="h-5 gap-1.5 rounded-full border-0 bg-muted/60 px-2 text-[10px] font-medium text-muted-foreground"
+          >
+            <HugeiconsIcon icon={__ProjectHugeIcon} className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
             {project.label}
           </Badge>
         </span>
@@ -981,8 +987,11 @@ function ProjectTag({ project }: { project: ScheduledTaskProjectTarget | null })
 function ProviderTag({ provider }: { provider: ScheduledTaskProvider }) {
   const Mark = PROVIDER_ICONS[provider];
   return (
-    <Badge variant="secondary" size="sm" className="gap-1">
-      <Mark aria-hidden className="size-3" />
+    <Badge
+      variant="secondary"
+      className="h-5 gap-1.5 rounded-full border-0 bg-secondary px-2 text-[10px] font-medium text-foreground"
+    >
+      <Mark aria-hidden className="size-3 shrink-0" />
       {PROVIDER_LABELS[provider]}
     </Badge>
   );
@@ -1049,20 +1058,36 @@ function ScheduledTaskRow({
           type="button"
           variant="ghost"
           size="icon-sm"
-          onClick={onEdit}
-          aria-label={`Edit ${task.name}`}
-        >
-          <HugeiconsIcon icon={__EditHugeIcon} className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
           disabled={busy}
-          onClick={onDelete}
-          aria-label={`Delete ${task.name}`}
+          onClick={async (event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            const position = {
+              x: Math.round(rect.left),
+              y: Math.round(rect.bottom + 4),
+            };
+            const items: ContextMenuItem<string>[] = [
+              {
+                id: "edit",
+                label: "Edit task",
+                icon: getNativeMenuIcon("edit"),
+              },
+              {
+                id: "delete",
+                label: "Delete task",
+                icon: getNativeMenuIcon("delete"),
+              },
+            ];
+            const action = await showDesktopContextMenu(items, position);
+            if (action === "edit") {
+              onEdit();
+            } else if (action === "delete") {
+              onDelete();
+            }
+          }}
+          aria-label={`More actions for ${task.name}`}
         >
-          <HugeiconsIcon icon={__DeleteHugeIcon} className="size-3.5" />
+          <HugeiconsIcon icon={__MoreHugeIcon} className="size-4 text-muted-foreground" />
         </Button>
       </div>
     </div>

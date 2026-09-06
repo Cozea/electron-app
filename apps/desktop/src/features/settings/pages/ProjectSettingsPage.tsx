@@ -8,10 +8,9 @@ import { useCollabSession, invalidateCollabSession } from '@/features/collaborat
 import { useTranslation } from '@/lib/i18n'
 import { featureFlags } from '@/lib/featureFlags'
 import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
-import { ProjectDeleteDialog } from '@/features/projects/ui/ProjectDeleteDialog'
+import { confirmProjectDeletion, type ProjectDeleteConfirmOptions } from '@/features/projects/ui/ProjectDeleteDialog'
 import { cleanupDeletedProjectLocally } from '@/features/projects/lib/projectLocalCleanup'
 import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDeletedProjectFromUi'
-import type { ProjectDeleteConfirmOptions } from '@/features/projects/ui/ProjectDeleteDialog'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { PublishedDevAppIcon } from '@/features/devapps/components/PublishedDevAppIcon'
@@ -148,14 +147,8 @@ export function ProjectSettingsPage({
   const [showDevAppIdentityDialog, setShowDevAppIdentityDialog] = useState(false)
   const [devAppIdentityError, setDevAppIdentityError] = useState<string | null>(null)
 
-  const [showArchiveDialog, setShowArchiveDialog] = useState(false)
-  const [archiveError, setArchiveError] = useState<string | null>(null)
   const [isArchiving, setIsArchiving] = useState(false)
-
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [showCollabResetDialog, setShowCollabResetDialog] = useState(false)
   const [showRecoveryCodeDialog, setShowRecoveryCodeDialog] = useState(false)
   const [generatedRecoveryCode, setGeneratedRecoveryCode] = useState<string | null>(null)
   const [recoveryCodeInput, setRecoveryCodeInput] = useState('')
@@ -168,8 +161,6 @@ export function ProjectSettingsPage({
     setName(project.name ?? '')
     setDescription(project.description ?? '')
     setSaveError(null)
-    setArchiveError(null)
-    setDeleteError(null)
     setCollabError(null)
     setCollabNotice(null)
     setGeneratedRecoveryCode(null)
@@ -396,26 +387,29 @@ export function ProjectSettingsPage({
     if (!project || !principalId) return
 
     setIsArchiving(true)
-    setArchiveError(null)
     try {
       await archiveProject({
         projectId: project._id,
         principalId: principalId,
       })
-      setShowArchiveDialog(false)
       navigate('/projects')
     } catch (error) {
-      setArchiveError(cleanConvexError(error, t('settings.error.archiveFailed')))
+      const message = cleanConvexError(error, t('settings.error.archiveFailed'))
+      await window.electronAPI.dialog.showMessageBox({
+        type: 'error',
+        title: t('settings.error.archiveFailed'),
+        message: t('settings.error.archiveFailed'),
+        detail: message,
+      })
     } finally {
       setIsArchiving(false)
     }
-  }, [archiveProject, principalId, navigate, project])
+  }, [archiveProject, principalId, navigate, project, t])
 
   const handleDelete = useCallback(async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
     if (!project || !principalId) return
 
     setIsDeleting(true)
-    setDeleteError(null)
     const deletedProjectId = String(project._id)
     try {
       await withProjectMutationTimeout(
@@ -429,7 +423,6 @@ export function ProjectSettingsPage({
       )
 
       detachDeletedProjectFromUi(deletedProjectId)
-      setShowDeleteDialog(false)
       navigate('/projects', { replace: true })
 
       await cleanupDeletedProjectLocally(deletedProjectId, {
@@ -438,11 +431,15 @@ export function ProjectSettingsPage({
       })
     } catch (error) {
       const presentation = formatProjectDeleteError(error)
-      setDeleteError(
-        presentation.detail
-          ? `${presentation.message} ${presentation.detail}`
-          : presentation.message
-      )
+      const message = presentation.detail
+        ? `${presentation.message} ${presentation.detail}`
+        : presentation.message
+      await window.electronAPI.dialog.showMessageBox({
+        type: 'error',
+        title: 'Delete Failed',
+        message: 'Failed to delete project',
+        detail: message,
+      })
     } finally {
       setIsDeleting(false)
     }
@@ -708,7 +705,6 @@ export function ProjectSettingsPage({
       invalidateCollabSession(String(project._id))
       await collabSessionResult.refresh()
       setCollabNotice(t('settings.notice.reset'))
-      setShowCollabResetDialog(false)
     } catch (error) {
       setCollabError(cleanConvexError(error, t('settings.error.resetFailed')))
     } finally {
@@ -1014,8 +1010,20 @@ export function ProjectSettingsPage({
                             variant="ghost"
                             className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
                             disabled={collabAction === 'reset'}
-                            onClick={() => {
-                              setShowCollabResetDialog(true)
+                            onClick={async () => {
+                              const result = await window.electronAPI.dialog.showMessageBox({
+                                type: 'warning',
+                                title: t('settings.dialog.reset.title'),
+                                message: `${t('settings.dialog.reset.title')}?`,
+                                detail: `${t('settings.dialog.reset.desc1')}\n\n${t('settings.dialog.reset.desc2')}`,
+                                buttons: [t('settings.dialog.reset.action'), t('settings.action.cancel')],
+                                defaultId: 0,
+                                cancelId: 1,
+                                noLink: true,
+                              })
+                              if (result.response === 0) {
+                                void handleResetEncryptedRoom()
+                              }
                             }}
                           >
                             {t('settings.collab.resetRoom')}
@@ -1134,10 +1142,21 @@ export function ProjectSettingsPage({
                         <Button
                           variant="outline"
                           className="h-7 text-[11px] text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
-                          disabled={!principalId || !isManager || project.status === 'archived'}
-                          onClick={() => {
-                            setShowArchiveDialog(true)
-                            setArchiveError(null)
+                          disabled={!principalId || !isManager || project.status === 'archived' || isArchiving}
+                          onClick={async () => {
+                            const result = await window.electronAPI.dialog.showMessageBox({
+                              type: 'warning',
+                              title: t('settings.dialog.archive.title'),
+                              message: `${t('settings.dialog.archive.title')}?`,
+                              detail: t('settings.dialog.archive.desc'),
+                              buttons: [t('settings.dialog.archive.action'), t('settings.action.cancel')],
+                              defaultId: 0,
+                              cancelId: 1,
+                              noLink: true,
+                            })
+                            if (result.response === 0) {
+                              void handleArchive()
+                            }
                           }}
                         >
                           {project.status === 'archived' ? t('settings.action.archived') : t('settings.action.archive')}
@@ -1152,15 +1171,20 @@ export function ProjectSettingsPage({
                       <SettingsRowControl>
                         <Button
                           variant="destructive"
-                          disabled={!principalId}
+                          disabled={!principalId || isDeleting}
                           className="h-7 text-[11px]"
-                          onClick={() => {
-                            setShowDeleteDialog(true)
-                            setDeleteError(null)
+                          onClick={async () => {
+                            const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
+                              projectId: String(project._id),
+                              projectName: project.name,
+                            })
+                            if (confirmed) {
+                              void handleDelete({ keepLocalFiles })
+                            }
                           }}
                         >
                           <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-1.5 h-4 w-4" />
-                          {t('settings.action.delete')}
+                          {isDeleting ? 'Deleting...' : t('settings.action.delete')}
                         </Button>
                       </SettingsRowControl>
                     </SettingsRow>
@@ -1190,46 +1214,6 @@ export function ProjectSettingsPage({
           </ScrollArea>
         </div>
       </div>
-
-      <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('settings.dialog.archive.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.dialog.archive.desc')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {archiveError ? <p className="text-sm text-destructive">{archiveError}</p> : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isArchiving}>{t('settings.action.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault()
-                void handleArchive()
-              }}
-              disabled={isArchiving}
-              className="bg-orange-500 text-white hover:bg-orange-600"
-            >
-              {isArchiving ? t('settings.dialog.archive.archiving') : t('settings.dialog.archive.action')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <ProjectDeleteDialog
-        open={showDeleteDialog}
-        onOpenChange={(open) => {
-          setShowDeleteDialog(open)
-          if (!open) {
-            setDeleteError(null)
-          }
-        }}
-        projectId={String(project._id)}
-        projectName={project.name}
-        onConfirm={handleDelete}
-        isDeleting={isDeleting}
-        errorMessage={deleteError}
-      />
 
       {orgDevApp && showDevAppIdentityDialog ? (
         <Suspense fallback={null}>
@@ -1269,34 +1253,6 @@ export function ProjectSettingsPage({
           />
         </Suspense>
       ) : null}
-
-      <AlertDialog open={showCollabResetDialog} onOpenChange={setShowCollabResetDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('settings.dialog.reset.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.dialog.reset.desc1')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {t('settings.dialog.reset.desc2')}
-          </p>
-          {collabError ? <p className="text-sm text-destructive">{collabError}</p> : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={collabAction === 'reset'}>{t('settings.action.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault()
-                void handleResetEncryptedRoom()
-              }}
-              disabled={collabAction === 'reset'}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {collabAction === 'reset' ? t('settings.dialog.reset.resetting') : t('settings.dialog.reset.action')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog
         open={showRecoveryCodeDialog}

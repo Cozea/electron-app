@@ -1,7 +1,9 @@
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { HeaderBackButton } from "@/components/ui/header-back-button";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import {
   SettingsFooterActions,
   SettingsGroup,
@@ -1137,18 +1139,7 @@ export function AgentSkillsPage() {
   }, [returnTo, setSearchParams]);
 
   const headerBack = React.useMemo(
-    () => (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-        onClick={closeDetail}
-      >
-        <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
-        Back
-      </Button>
-    ),
+    () => <HeaderBackButton onClick={closeDetail} />,
     [closeDetail],
   );
 
@@ -1168,10 +1159,10 @@ export function AgentSkillsPage() {
             aria-pressed={status === filter.id}
             onClick={() => setStatus(filter.id)}
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 text-xs transition-colors cursor-pointer",
+              "flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer",
               status === filter.id
-                ? "bg-white/10 dark:bg-white/10 text-foreground font-medium shadow-xs"
-                : "text-muted-foreground/80 hover:text-foreground hover:bg-white/[0.05]",
+                ? "bg-secondary text-foreground shadow-xs"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
             <span>{filter.label}</span>
@@ -1396,41 +1387,22 @@ export function AgentSkillsPage() {
         </header>
 
         <div className="sticky top-[-1rem] z-20 -mx-6 bg-background/95 px-6 pt-3 pb-2 backdrop-blur-md">
-          <div className="relative">
-            <HugeiconsIcon
-              icon={__SearchHugeIcon}
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/70"
-              aria-hidden
-            />
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => {
-                const val = event.target.value;
-                setQuery(val);
-                setParam("q", val.trim() ? val : null, { replace: true });
-              }}
-              onBlur={() => setParam("q", query.trim() ? query : null, { replace: true })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") setParam("q", query.trim() ? query : null, { replace: true });
-              }}
-              placeholder="Search skills…"
-              className={cn("h-11 rounded-search bg-muted pl-9 text-sm", query && "pr-9")}
-            />
-            {query ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery("");
-                  setParam("q", null, { replace: true });
-                }}
-                className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full cursor-pointer"
-                aria-label="Clear search"
-              >
-                <HugeiconsIcon icon={__CancelHugeIcon} className="size-3.5" />
-              </button>
-            ) : null}
-          </div>
+          <SearchInput
+            value={query}
+            onValueChange={(val) => {
+              setQuery(val);
+              setParam("q", val.trim() ? val : null, { replace: true });
+            }}
+            onClear={() => {
+              setQuery("");
+              setParam("q", null, { replace: true });
+            }}
+            onBlur={() => setParam("q", query.trim() ? query : null, { replace: true })}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") setParam("q", query.trim() ? query : null, { replace: true });
+            }}
+            placeholder="Search skills…"
+          />
         </div>
       </div>
 

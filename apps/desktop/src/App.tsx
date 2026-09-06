@@ -13,6 +13,7 @@ import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/set
 import { useSettingsDrawerStore } from '@/features/settings/model/settingsDrawerStore'
 import { WorkspaceRuntimeHostsGate } from '@/features/workspace/WorkspaceRuntimeHostsGate'
 import { TerminalViewHostGate } from '@/features/terminal/TerminalViewHostGate'
+import { AppAgentRuntimeHost } from '@/substrate/AppAgentRuntimeHost'
 import { featureFlags } from '@/lib/featureFlags'
 
 const LazyDeviceSessionRecovery = lazy(() =>
@@ -260,29 +261,6 @@ function AppContent() {
     }, { delayMs: featureFlags.commonRoutePrewarm ? 750 : 6_000, timeoutMs: 15_000 })
   }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
-  /**
-   * Scheduled tasks fire from the app, not from a page, so the loop lives here
-   * and outlives whatever route is open. It starts after the device session is ready because a run
-   * opens a conversation, which needs the local agent runtime.
-   */
-  useEffect(() => {
-    if (!isAuthenticated || isLoading || needsOnboarding) {
-      return
-    }
-
-    let stop: (() => void) | null = null
-    const cancelWarmup = scheduleIdleWarmup(() => {
-      void import('@/features/projects/model/scheduledTaskRunner').then((module) => {
-        stop = module.startScheduledTaskRunner()
-      })
-    }, { delayMs: 5_000, timeoutMs: 20_000 })
-
-    return () => {
-      cancelWarmup?.()
-      stop?.()
-    }
-  }, [isAuthenticated, isLoading, needsOnboarding])
-
   if (isLoading) {
     return <FullscreenLoading />
   }
@@ -319,6 +297,7 @@ function AppContent() {
     <>
       <ElectronNavigationBridge />
       <ElectronSettingsBridge />
+      <AppAgentRuntimeHost enableScheduledTasks={!isSettingsWindow} />
       <DeferredUpdateMenu enabled={!isSettingsWindow} />
       <Outlet />
       <WorkspaceRuntimeHostsGate />

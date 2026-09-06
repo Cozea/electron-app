@@ -1,4 +1,4 @@
-import ApplicationServices
+@preconcurrency import ApplicationServices
 import CoreGraphics
 import Darwin
 import Foundation

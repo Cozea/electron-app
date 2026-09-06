@@ -10,6 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import type { ThreadImageArtifact } from "./threadArtifacts";
@@ -213,8 +214,11 @@ export function ThreadArtifactsView({
   }
 
   return (
-    <section
-      className="h-full min-h-0 overflow-y-auto bg-content-surface p-3"
+    <ScrollArea
+      scrollFade
+      fadeSize="1.5rem"
+      className="h-full min-h-0 bg-content-surface"
+      viewportClassName="p-3"
       aria-label="Thread artifacts"
     >
       {onBackToChat ? (
@@ -281,6 +285,6 @@ export function ThreadArtifactsView({
           })}
         </div>
       )}
-    </section>
+    </ScrollArea>
   );
 }

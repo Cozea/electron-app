@@ -1,6 +1,7 @@
 import { memo } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,7 +84,7 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
           title={`${run.updating.agentName} ${t("workbench.memory.update.working")}`}
           onClick={() => key && cancelProjectMemoryUpdate(key)}
         >
-          <span className="cozea-loader size-3.5" aria-hidden />
+          <Spinner size="sm" aria-hidden />
         </Button>
       ) : (
         <Button

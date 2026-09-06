@@ -59,11 +59,21 @@ export function readNativeApi(): NativeApi | undefined {
   return undefined;
 }
 
+/** Return the currently registered T3 overlay without waiting or falling back. */
+export function readT3NativeApiOverlay(): NativeApi | undefined {
+  return t3NativeApiOverlay ?? undefined;
+}
+
+/** Return whichever NativeApi is usable right now; never poll for future readiness. */
+export function readAvailableNativeApi(): NativeApi | undefined {
+  return readT3NativeApiOverlay() ?? readNativeApi();
+}
+
 function createDeferredNativeApi(): NativeApi {
   const waitForNativeApi = async (): Promise<NativeApi> => {
     const startedAt = Date.now();
     while (Date.now() - startedAt < 10_000) {
-      const activeApi = t3NativeApiOverlay ?? readNativeApi();
+      const activeApi = readAvailableNativeApi();
       if (activeApi) return activeApi;
       await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 25));
     }
@@ -152,10 +162,7 @@ function createDeferredNativeApi(): NativeApi {
 }
 
 export function ensureNativeApi(): NativeApi {
-  if (t3NativeApiOverlay) {
-    return t3NativeApiOverlay;
-  }
-  const api = readNativeApi();
+  const api = readAvailableNativeApi();
   if (api) {
     return api;
   }

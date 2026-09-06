@@ -146,4 +146,21 @@ describe('DesktopBootstrapStore', () => {
     await store.clearLastWorkbenchRoute(route.workspaceSelectionId)
     expect((await store.getInitialSnapshot()).lastWorkbenchRoute).toBeNull()
   })
+
+  it('handles rapid concurrent setLastWorkbenchRoute calls without ENOENT or corruption', async () => {
+    const store = new DesktopBootstrapStore()
+    const routes = Array.from({ length: 15 }, (_, index) => ({
+      ...routeFixture(),
+      laneId: `lane_${index}`,
+      updatedAt: 1000 + index,
+    }))
+
+    await expect(
+      Promise.all(routes.map((route) => store.setLastWorkbenchRoute(route))),
+    ).resolves.toBeDefined()
+
+    const snapshot = await store.getInitialSnapshot()
+    expect(snapshot.lastWorkbenchRoute).not.toBeNull()
+    expect(snapshot.lastWorkbenchRoute?.laneId).toBe('lane_14')
+  })
 })

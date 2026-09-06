@@ -3,7 +3,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AgentSkillRecord } from "@shared/electronApiTypes";
-
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
@@ -108,25 +108,8 @@ export function AgentSkillCategoryCarousel({
   const chipRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const chipRowRef = React.useRef<HTMLDivElement | null>(null);
   const chipScrollRef = React.useRef<HTMLDivElement | null>(null);
-  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
-  const [canScrollRight, setCanScrollRight] = React.useState(false);
   const [indicator, setIndicator] = React.useState<{ left: number; width: number } | null>(null);
 
-  const updateChipScroll = React.useCallback(() => {
-    const el = chipScrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  }, []);
-
-  React.useEffect(() => {
-    updateChipScroll();
-    const el = chipScrollRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(updateChipScroll);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [groups, updateChipScroll]);
   // The card a smooth scroll is heading for, so the cards it passes on the way
   // do not each become "selected" for a frame.
   const pendingIndexRef = React.useRef<number | null>(null);
@@ -250,9 +233,7 @@ export function AgentSkillCategoryCarousel({
       inline: "center",
       block: "nearest",
     });
-    const timer = setTimeout(updateChipScroll, 300);
-    return () => clearTimeout(timer);
-  }, [activeIndex, hasPlacedIndicator, updateChipScroll]);
+  }, [activeIndex, hasPlacedIndicator]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
@@ -276,23 +257,14 @@ export function AgentSkillCategoryCarousel({
       <CarouselArrow side="right" disabled={atEnd} onClick={() => scrollToIndex(activeIndex + 1)} />
 
       {/* One row always: bounded strictly to the search bar width on both sides with lateral fade */}
-      <div className="mx-auto w-full max-w-[960px] px-6 shrink-0 pb-4">
-        <div
-          ref={chipScrollRef}
-          onScroll={updateChipScroll}
-          className="relative w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          style={{
-            maskImage: `linear-gradient(to right, ${
-              canScrollLeft ? "transparent 0%, black 28px" : "black 0%"
-            }, black calc(100% - 28px), ${
-              canScrollRight ? "transparent 100%" : "black 100%"
-            })`,
-            WebkitMaskImage: `linear-gradient(to right, ${
-              canScrollLeft ? "transparent 0%, black 28px" : "black 0%"
-            }, black calc(100% - 28px), ${
-              canScrollRight ? "transparent 100%" : "black 100%"
-            })`,
-          }}
+      <div className="mx-auto w-full max-w-[960px] px-6 shrink-0 pt-4 pb-4">
+        <ScrollArea
+          scrollFade
+          hideScrollbars
+          fadeSize="1.75rem"
+          className="relative w-full"
+          viewportRef={chipScrollRef}
+          viewportClassName="overflow-x-auto"
         >
           <div
             ref={chipRowRef}
@@ -308,7 +280,7 @@ export function AgentSkillCategoryCarousel({
                    padding — and `translateX(offsetLeft)`, which is already
                    measured from the padding box, adds that inset a second time. */
                 className={cn(
-                  "absolute top-0 bottom-0 left-0 rounded-full bg-foreground/12",
+                  "absolute top-0 bottom-0 left-0 rounded-full bg-secondary shadow-xs",
                   hasPlacedIndicator && "transition-[transform,width] duration-300 ease-out",
                 )}
                 style={{
@@ -330,10 +302,10 @@ export function AgentSkillCategoryCarousel({
                   }}
                   onClick={() => scrollToIndex(index)}
                   className={cn(
-                    "relative z-10 shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+                    "relative z-10 shrink-0 cursor-pointer whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
                     isActive
-                      ? "border-transparent font-medium text-foreground"
-                      : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground",
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                   )}
                 >
                   {group.label}
@@ -341,23 +313,27 @@ export function AgentSkillCategoryCarousel({
               );
             })}
           </div>
-        </div>
+        </ScrollArea>
       </div>
 
-      <div
-        ref={trackRef}
-        role="group"
-        aria-label="Skill categories"
-        tabIndex={0}
-        onScroll={measureActive}
-        onKeyDown={onKeyDown}
-        className={cn(
-          "relative flex min-h-0 flex-1 snap-x snap-mandatory gap-5 overflow-x-auto overflow-y-hidden",
-          "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+      <ScrollArea
+        scrollFade
+        hideScrollbars
+        fadeSize="3.5rem"
+        className="min-h-0 flex-1"
+        viewportRef={trackRef}
+        viewportProps={{
+          role: "group",
+          "aria-label": "Skill categories",
+          tabIndex: 0,
+          onScroll: measureActive,
+          onKeyDown: onKeyDown,
+          style: { paddingLeft: metrics.inset, paddingRight: metrics.inset },
+        }}
+        viewportClassName={cn(
+          "relative flex snap-x snap-mandatory gap-5 overflow-x-auto overflow-y-hidden",
           "focus-visible:outline-none",
         )}
-        /* Equal insets so the first and last cards can still reach the middle. */
-        style={{ paddingLeft: metrics.inset, paddingRight: metrics.inset }}
       >
         {groups.map((group, index) => {
           const isActive = index === activeIndex;
@@ -370,7 +346,7 @@ export function AgentSkillCategoryCarousel({
               aria-current={isActive ? "true" : undefined}
               style={{ width: metrics.cardWidth }}
               className={cn(
-                "flex h-full shrink-0 snap-center flex-col",
+                "flex h-full shrink-0 snap-center flex-col overflow-hidden",
                 "rounded-2xl border border-border/50 bg-card/40",
                 "transition-[opacity,transform] duration-300 ease-out",
                 isActive
@@ -395,16 +371,19 @@ export function AgentSkillCategoryCarousel({
                   {group.skills.length}
                 </span>
               </button>
-              <div
+              <ScrollArea
+                scrollFade
+                className="min-h-0 flex-1"
                 data-skill-list
-                className="min-h-0 flex-1 divide-y divide-border/25 overflow-y-auto overscroll-contain"
               >
-                {group.skills.map((skill) => renderSkill(skill))}
-              </div>
+                <div className="divide-y divide-border/25">
+                  {group.skills.map((skill) => renderSkill(skill))}
+                </div>
+              </ScrollArea>
             </div>
           );
         })}
-      </div>
+      </ScrollArea>
 
     </div>
   );

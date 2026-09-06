@@ -797,14 +797,26 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                                         memberPrincipalId: member.principalId,
                                       })
                                     })
-                                  } else if (action === "remove") {
-                                    void run(async () => {
-                                      await removeMember({
-                                        organizationId: activeOrg.organizationId,
-                                        memberPrincipalId: member.principalId,
-                                      })
-                                    })
-                                  }
+                                   } else if (action === "remove") {
+                                     const confirmation = await window.electronAPI.dialog.showMessageBox({
+                                       type: "warning",
+                                       title: t("settings.organizations.remove"),
+                                       message: `${t("settings.organizations.remove")}?`,
+                                       detail: "This member will lose access to organization projects and shared resources.",
+                                       buttons: [t("settings.organizations.remove"), t("common.cancel")],
+                                       defaultId: 0,
+                                       cancelId: 1,
+                                       noLink: true,
+                                     })
+                                     if (confirmation.response !== 0) return
+
+                                     void run(async () => {
+                                       await removeMember({
+                                         organizationId: activeOrg.organizationId,
+                                         memberPrincipalId: member.principalId,
+                                       })
+                                     })
+                                   }
                                 }}
                               >
                                 <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />

@@ -2,7 +2,6 @@ import { type ReactNode, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
 import { useProjectHeaderStore } from "@/lib/projectHeaderStore";
 
 interface UseProjectChromeHeaderArgs {
@@ -17,8 +16,8 @@ interface UseProjectChromeHeaderArgs {
 }
 
 /**
- * Feeds the single `UnifiedHeader` from the same sources as the workbench:
- * - Left: `ProjectShellTitleBarLeft` (sidebar toggle) whenever the page did not call `useProjectHeader` (settings, /projects hub, …)
+ * Feeds the single `UnifiedHeader` from the route's published state:
+ * - Left: page `header` from the store (sidebar toggle is rendered permanently by `UnifiedHeader`)
  * - Center: page `centerAddon` from the store, or settings title in the workbench center shell
  */
 export function useProjectChromeHeader({
@@ -42,7 +41,7 @@ export function useProjectChromeHeader({
     );
 
   return useMemo(() => {
-    const headerResolved = headerFromPage ?? <ProjectShellTitleBarLeft />;
+    const headerResolved = headerFromPage ?? undefined;
     const centerAddon = isSettingsModeRoute ? undefined : (centerFromPage ?? undefined);
 
     return {

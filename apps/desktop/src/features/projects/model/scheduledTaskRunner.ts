@@ -2,6 +2,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  type NativeApi,
   type ProjectId,
   type ThreadId,
 } from "@cozea/assistant-contracts"
@@ -12,15 +13,15 @@ import {
   type ScheduledTaskRunReport,
 } from "@shared/scheduledTasks"
 
-import {
-  selectAssistantProjectByCwd,
-  useStore,
-} from "@/features/assistant/model/assistantStore"
 import { newCommandId, newMessageId, newProjectId, newThreadId } from "@/features/assistant/lib/utils"
 import { normalizeModelSelection } from "@/features/workbench/assistant/workbenchAssistantShared"
 import { refreshAssistantRuntimeSnapshot } from "@/features/workbench/useAssistantRuntimeSync"
-import { ensureNativeApi } from "@/lib/nativeApi"
+import { readAvailableNativeApi } from "@/lib/nativeApi"
 import { scheduledTasksSnapshot } from "@/features/projects/model/scheduledTasksSnapshot"
+import {
+  isScheduledTaskRuntimeUnavailableError,
+  ScheduledTaskRuntimeUnavailableError,
+} from "@/features/projects/model/scheduledTaskRuntime"
 import {
   SCHEDULED_TASK_PROVIDER_KINDS,
   scheduledTaskInstanceId,
@@ -31,6 +32,10 @@ const TICK_MS = 30_000
 interface ScheduledTaskRunControl extends ScheduledTaskRunReport {
   computerUsePolicy: 'prepare'
   threadId: ThreadId
+}
+
+export interface ScheduledTaskRunnerOptions {
+  readonly getNativeApi?: () => NativeApi | undefined
 }
 
 function basename(pathValue: string): string {
@@ -56,19 +61,23 @@ async function prepareScheduledTaskComputerUsePolicy(
   }
 }
 
-/** Resolve or create the assistant project that owns a scheduled run's working directory. */
-async function resolveAssistantProjectId(workspaceRoot: string): Promise<ProjectId> {
-  const orchestration = ensureNativeApi().orchestration
-  const existing =
-    selectAssistantProjectByCwd(useStore.getState(), workspaceRoot) ??
-    (await refreshAssistantRuntimeSnapshot()
-      .then(() => selectAssistantProjectByCwd(useStore.getState(), workspaceRoot))
-      .catch(() => null))
+/** Resolve or create the assistant project from this run's exact runtime snapshot. */
+async function resolveAssistantProjectId(
+  workspaceRoot: string,
+  nativeApi: NativeApi,
+): Promise<ProjectId> {
+  // Snapshot transport failures are real run failures, not proof that the
+  // runtime disappeared before dispatch. Let them propagate so the scheduler
+  // records a failed run instead of retrying forever.
+  const snapshot = await refreshAssistantRuntimeSnapshot(nativeApi)
+  const existing = snapshot.projects.find(
+    (project) => project.workspaceRoot === workspaceRoot && project.deletedAt === null,
+  )
   if (existing) return existing.id
 
   const projectId = newProjectId()
   try {
-    await orchestration.dispatchCommand({
+    await nativeApi.orchestration.dispatchCommand({
       type: "project.create",
       commandId: newCommandId(),
       projectId,
@@ -82,6 +91,9 @@ async function resolveAssistantProjectId(workspaceRoot: string): Promise<Project
     const message = error instanceof Error ? error.message : String(error)
     const match = message.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/)
     if (match?.[1]) return match[1] as ProjectId
+    // A project.create command was already dispatched. Do not classify this as
+    // retryable: a lost response is ambiguous and a blind retry could duplicate
+    // side effects on runtimes that do not deduplicate the command.
     throw error
   }
 }
@@ -90,12 +102,16 @@ async function resolveAssistantProjectId(workspaceRoot: string): Promise<Project
 export async function runScheduledTask(
   task: ScheduledTask,
   standaloneWorkspaceRoot: string,
+  nativeApi: NativeApi | undefined = readAvailableNativeApi(),
 ): Promise<string> {
   const workspaceRoot = task.project?.workspaceRoot ?? standaloneWorkspaceRoot
   if (!workspaceRoot) throw new Error("No working directory for this task.")
+  if (!nativeApi) {
+    throw new ScheduledTaskRuntimeUnavailableError()
+  }
 
-  const orchestration = ensureNativeApi().orchestration
-  const projectId = await resolveAssistantProjectId(workspaceRoot)
+  const orchestration = nativeApi.orchestration
+  const projectId = await resolveAssistantProjectId(workspaceRoot, nativeApi)
   const provider = SCHEDULED_TASK_PROVIDER_KINDS[task.provider]
   const modelSelection = normalizeModelSelection({
     provider,
@@ -164,8 +180,8 @@ export async function runScheduledTask(
 let timer: ReturnType<typeof setInterval> | null = null
 let ticking = false
 
-/** Run all currently due tasks once, recording skips/failures instead of retrying every tick. */
-async function tick(): Promise<void> {
+/** Run all currently due tasks once, retrying only proven pre-dispatch runtime waits. */
+async function tick(getNativeApi: () => NativeApi | undefined): Promise<void> {
   if (ticking) return
   ticking = true
   try {
@@ -181,7 +197,7 @@ async function tick(): Promise<void> {
             taskId: task.id,
             ranAt: now,
             status: "skipped",
-            error: "Cozea was not running when this was due.",
+            error: "Cozea couldn't run this task when it was due.",
           })
           .catch(() => undefined)
         continue
@@ -198,7 +214,11 @@ async function tick(): Promise<void> {
         continue
       }
       try {
-        const threadId = await runScheduledTask(task, snapshot?.standaloneWorkspaceRoot ?? "")
+        const threadId = await runScheduledTask(
+          task,
+          snapshot?.standaloneWorkspaceRoot ?? "",
+          getNativeApi(),
+        )
         await window.electronAPI.scheduledTasks.markRun({
           taskId: task.id,
           ranAt: now,
@@ -206,6 +226,11 @@ async function tick(): Promise<void> {
           threadId,
         })
       } catch (error: unknown) {
+        if (isScheduledTaskRuntimeUnavailableError(error)) {
+          // No orchestration command was dispatched, so leaving the task due is
+          // safe. The next scheduler tick (or runtime reconnect) can try again.
+          continue
+        }
         await window.electronAPI.scheduledTasks
           .markRun({
             taskId: task.id,
@@ -223,13 +248,16 @@ async function tick(): Promise<void> {
 }
 
 /** Start the renderer scheduler while Cozea is open; main/T3 own CU policy lifetime. */
-export function startScheduledTaskRunner(): () => void {
+export function startScheduledTaskRunner(
+  options: ScheduledTaskRunnerOptions = {},
+): () => void {
   if (typeof window === "undefined" || !window.electronAPI?.scheduledTasks) {
     return () => undefined
   }
   if (timer) return () => undefined
-  timer = setInterval(() => void tick(), TICK_MS)
-  void tick()
+  const getNativeApi = options.getNativeApi ?? readAvailableNativeApi
+  timer = setInterval(() => void tick(getNativeApi), TICK_MS)
+  void tick(getNativeApi)
   return () => {
     if (timer) clearInterval(timer)
     timer = null

@@ -374,12 +374,6 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
             />
           </div>
         </div>
-
-        {/* Soft edge fade right under the sticky filter/search bar matching DevStore */}
-        <div
-          className="pointer-events-none absolute -bottom-4 left-0 right-0 h-4 bg-gradient-to-b from-background/95 via-background/60 to-transparent"
-          aria-hidden
-        />
       </div>
 
       {/* DevApps List */}

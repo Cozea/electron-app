@@ -8,6 +8,7 @@ import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncCon
 import { buildProjectJoinUrl } from "@shared/projectShare";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -98,6 +99,8 @@ export function HeaderProjectShareButton({
 
   const canManage = memberRole === "project_manager";
   const activeLink = joinLinkState?.activeLink ?? null;
+  const roleCheckPending = Boolean(projectId && principalId && memberRole === undefined);
+  const shareStatePending = Boolean(projectId && principalId && joinLinkState === undefined);
 
   useEffect(() => {
     if (activeLink?.role) setJoinRole(activeLink.role as ProjectRole);
@@ -170,8 +173,18 @@ export function HeaderProjectShareButton({
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Share project">
-              <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4" />
+            <Button
+              variant="ghost"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
+              disabled={roleCheckPending || shareStatePending}
+              aria-label="Share project"
+              title="Share project"
+            >
+              {roleCheckPending || shareStatePending ? (
+                <Spinner size="sm" className="text-muted-foreground" />
+              ) : (
+                <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
+              )}
             </Button>
           </DialogTrigger>
         </TooltipTrigger>

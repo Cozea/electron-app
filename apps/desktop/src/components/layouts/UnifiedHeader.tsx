@@ -5,7 +5,8 @@ import {
 } from "react";
 
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { LayoutToggles, SidebarInsetToggle } from "@/components/layouts/LayoutToggles";
+import { LayoutToggles } from "@/components/layouts/LayoutToggles";
+import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
 import { cn } from "@/lib/utils";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
@@ -110,7 +111,7 @@ export function UnifiedHeader({
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
 
   const collaborationControl = projectInviteContext ? (
-    <div className="flex items-center gap-1.5">
+    <div className="flex min-w-0 items-center gap-1.5">
       {(() => {
         const parts: ReactNode[] = [];
         if (editorProjectPath) {
@@ -158,8 +159,9 @@ export function UnifiedHeader({
       >
         {centerAddon && (
           <div
-            className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center"
+            className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center max-md:hidden"
             style={headerContentStyle}
+            data-unified-header-center="true"
           >
             <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center justify-center">
               {centerAddon}
@@ -185,10 +187,13 @@ export function UnifiedHeader({
         </div>
         <div className="flex h-10 w-full items-stretch gap-0.5" style={headerContentStyle}>
           <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-            <SidebarInsetToggle />
+            <ProjectShellTitleBarLeft />
           </div>
           <div className="min-h-0 min-w-0 flex-1" aria-hidden="true" />
-          <div className="flex shrink-0 items-center gap-2 titlebar-no-drag">
+          <div
+            className="flex min-w-0 shrink-0 items-center gap-2 max-md:gap-1 titlebar-no-drag"
+            data-unified-header-actions="true"
+          >
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (
@@ -222,17 +227,18 @@ export function UnifiedHeader({
     >
       {centerAddon && (
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center"
+          className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center max-md:hidden"
           style={headerContentStyle}
+          data-unified-header-center="true"
         >
           <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center justify-center">
             {centerAddon}
           </div>
         </div>
       )}
-      <div className="flex h-10 w-full items-stretch gap-3" style={headerContentStyle}>
-        <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-          <SidebarInsetToggle />
+      <div className="flex h-10 w-full items-stretch gap-3 max-md:gap-1.5" style={headerContentStyle}>
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 titlebar-no-drag">
+          <ProjectShellTitleBarLeft />
           {compactHeaderActions ? (
             <div className="shared-header-action-pills flex min-w-0 items-center">{header}</div>
           ) : (
@@ -241,8 +247,11 @@ export function UnifiedHeader({
           {preSearchAddon && <div className="flex shrink-0 items-center">{preSearchAddon}</div>}
         </div>
         <div className="min-h-0 min-w-0 flex-1" aria-hidden="true" />
-        <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-          <div className="flex items-center gap-2">
+        <div
+          className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag"
+          data-unified-header-actions="true"
+        >
+          <div className="flex min-w-0 items-center gap-2 max-md:gap-1">
             {collaborationControl}
             <LayoutToggles />
             {rightAddon && (

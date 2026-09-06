@@ -323,6 +323,7 @@ export function WorkbenchTileChrome({
   return (
     <div
       className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-transparent relative", className)}
+      data-workbench-tile-type={tileType}
       ref={setTileRef}
       onPointerEnter={tileHover.onPointerEnter}
       onPointerLeave={tileHover.onPointerLeave}
@@ -480,7 +481,10 @@ export function WorkbenchTileChrome({
         </div>
       ) : null}
 
-      <div className={cn("min-h-0 flex-1", contentClassName)}>
+      <div
+        className={cn("min-h-0 flex-1", contentClassName)}
+        data-workbench-pane-content="true"
+      >
         {children}
       </div>
 
