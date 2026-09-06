@@ -1,4 +1,4 @@
-import type { ProjectId } from "@cozea/assistant-contracts"
+import type { NativeApi, ProjectId } from "@cozea/assistant-contracts"
 
 import { newCommandId } from "@/features/assistant/lib/utils"
 import { ensureNativeApi } from "@/lib/nativeApi"
@@ -89,6 +89,7 @@ export function collectAssistantProjectIdsForDeletion(input: {
 
 export async function flushPendingAssistantProjectDeletions(options: {
   snapshotIsAuthoritative?: boolean
+  nativeApi?: NativeApi
 } = {}): Promise<void> {
   const pending = readPendingState()
   if (pending.projectIds.length === 0) return
@@ -103,7 +104,7 @@ export async function flushPendingAssistantProjectDeletions(options: {
       : [],
   )
 
-  const api = ensureNativeApi()
+  const api = options.nativeApi ?? ensureNativeApi()
   const results = await Promise.allSettled(
     projectIdsToDelete.map(async (projectId) => {
       let timeoutId: ReturnType<typeof setTimeout> | null = null
