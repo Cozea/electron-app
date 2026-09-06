@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -50,22 +51,36 @@ function initials(value: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
 }
 
-export function Account({ surface = "page", route: _route }: AccountProps) {
-  const { user, principalId } = useAuth();
-  const { t } = useTranslation();
+async function uploadAvatar(uploadUrl: string, dataUrl: string): Promise<Id<"_storage">> {
+  const blob = await fetch(dataUrl).then((response) => response.blob())
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": blob.type || "image/webp" },
+    body: blob,
+  })
+  if (!response.ok) throw new Error("Could not upload the device avatar")
+  const payload = await response.json() as { storageId?: Id<"_storage"> }
+  if (!payload.storageId) throw new Error("The avatar upload did not return a storage ID")
+  return payload.storageId
+}
 
+export function Account({ surface = "page", route: _route }: AccountProps) {
+  const { user, principalId, refreshToken } = useAuth();
+  const { t } = useTranslation();
   const profile = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip");
 
   const updatePreferencesMutation = useMutation(api.devicePrincipals.updatePreferences);
   const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation);
+  const generateAvatarUploadUrl = useMutation(api.devicePrincipals.generateAvatarUploadUrl);
+  const setAvatarMutation = useMutation(api.devicePrincipals.setAvatar);
   const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
   const avatarInputRef = useRef<HTMLInputElement>(null)
-  const [userPrefs, setUserPrefs] = useState<UserPrefs>({
-    pushNotifications: true,
-  });
+  const [userPrefs, setUserPrefs] = useState<UserPrefs>({ pushNotifications: true });
   const [deviceName, setDeviceName] = useState("")
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [pendingAvatarDataUrl, setPendingAvatarDataUrl] = useState<string | null>(null)
+  const [removeAvatar, setRemoveAvatar] = useState(false)
   const [savedDeviceName, setSavedDeviceName] = useState("")
   const [savedAvatarUrl, setSavedAvatarUrl] = useState<string | null>(null)
   const [savingPresentation, setSavingPresentation] = useState(false)
@@ -76,77 +91,74 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
   useEffect(() => {
     if (!profile) return;
+    setUserPrefs({ pushNotifications: profile.preferences?.pushNotifications ?? true });
+    setDeviceName(profile.displayName)
+    setSavedDeviceName(profile.displayName)
+    setAvatarUrl(profile.avatarUrl)
+    setSavedAvatarUrl(profile.avatarUrl)
+    setPendingAvatarDataUrl(null)
+    setRemoveAvatar(false)
+  }, [profile]);
 
-    setUserPrefs({
-      pushNotifications: profile.preferences?.pushNotifications ?? true,
-    });
-
-    const nextName = profile.deviceLabel?.trim()
-      || profile.firstName?.trim()
-      || t("settings.account.thisDevice")
-    const nextAvatar = profile.profileImageUrl ?? null
-    setDeviceName(nextName)
-    setSavedDeviceName(nextName)
-    setAvatarUrl(nextAvatar)
-    setSavedAvatarUrl(nextAvatar)
-  }, [profile, t]);
-
-  const identityKey = profile?.identityKey ?? user?.deviceId ?? user?.id ?? "";
+  const identityKey = profile?.identityKey ?? user?.identityKey ?? "";
   const normalizedDeviceName = deviceName.trim()
-  const presentationDirty = normalizedDeviceName !== savedDeviceName || avatarUrl !== savedAvatarUrl
+  const presentationDirty =
+    normalizedDeviceName !== savedDeviceName ||
+    pendingAvatarDataUrl !== null ||
+    removeAvatar
 
   const handlePrefChange = async (key: keyof UserPrefs, value: boolean) => {
     if (!principalId) return;
-
-    const newPrefs = { ...userPrefs, [key]: value };
-    setUserPrefs(newPrefs);
-
+    const previous = userPrefs
+    const next = { ...userPrefs, [key]: value };
+    setUserPrefs(next);
     try {
-      await updatePreferencesMutation({
-        preferences: { [key]: value },
-      });
+      await updatePreferencesMutation({ preferences: { [key]: value } });
     } catch (error) {
-      setUserPrefs(userPrefs);
+      setUserPrefs(previous);
       console.error(`Failed to update preference ${key}:`, error);
     }
   };
-
-  const savePresentation = async () => {
-    if (!principalId || !normalizedDeviceName || savingPresentation || processingAvatar) return
-    setSavingPresentation(true)
-    setPresentationError(null)
-    try {
-      const result = await updateDevicePresentation({
-        displayName: normalizedDeviceName,
-        avatarUrl,
-      })
-      const nextName = result.displayName?.trim() || normalizedDeviceName
-      const nextAvatar = result.avatarUrl ?? null
-      setDeviceName(nextName)
-      setSavedDeviceName(nextName)
-      setAvatarUrl(nextAvatar)
-      setSavedAvatarUrl(nextAvatar)
-    } catch (error) {
-      setPresentationError(error instanceof Error ? error.message : "Could not update this device")
-    } finally {
-      setSavingPresentation(false)
-    }
-  }
 
   const chooseAvatar = async (file: File | null) => {
     if (!file || processingAvatar) return
     setProcessingAvatar(true)
     setPresentationError(null)
     try {
-      // Reuse the existing hardened square-image pipeline for this first slice.
-      // The final schema cutover will move principal avatars to Convex Storage
-      // and rename/extract this helper away from the DevApp-specific module.
-      setAvatarUrl(await optimizeProjectDevAppLogo(file))
+      const dataUrl = await optimizeProjectDevAppLogo(file)
+      setPendingAvatarDataUrl(dataUrl)
+      setAvatarUrl(dataUrl)
+      setRemoveAvatar(false)
     } catch (error) {
       setPresentationError(error instanceof Error ? error.message : "Could not prepare this image")
     } finally {
       setProcessingAvatar(false)
       if (avatarInputRef.current) avatarInputRef.current.value = ""
+    }
+  }
+
+  const savePresentation = async () => {
+    if (!principalId || !normalizedDeviceName || savingPresentation || processingAvatar) return
+    setSavingPresentation(true)
+    setPresentationError(null)
+    try {
+      await updateDevicePresentation({ displayName: normalizedDeviceName })
+      if (removeAvatar) {
+        await setAvatarMutation({ storageId: null })
+      } else if (pendingAvatarDataUrl) {
+        const uploadUrl = await generateAvatarUploadUrl({})
+        const storageId = await uploadAvatar(uploadUrl, pendingAvatarDataUrl)
+        await setAvatarMutation({ storageId })
+      }
+      const status = await refreshToken()
+      if (status !== 'refreshed') throw new Error('Saved, but the local device session could not refresh')
+      setSavedDeviceName(normalizedDeviceName)
+      setPendingAvatarDataUrl(null)
+      setRemoveAvatar(false)
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "Could not update this device")
+    } finally {
+      setSavingPresentation(false)
     }
   }
 
@@ -205,7 +217,11 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                     size="sm"
                     className="h-7 text-[11px]"
                     disabled={processingAvatar || savingPresentation}
-                    onClick={() => setAvatarUrl(null)}
+                    onClick={() => {
+                      setAvatarUrl(null)
+                      setPendingAvatarDataUrl(null)
+                      setRemoveAvatar(true)
+                    }}
                   >
                     Remove
                   </Button>
@@ -239,11 +255,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
           <SettingsRow isFirst className="items-center">
             <div className="min-w-0 flex-1">
               <span className="text-xs font-medium text-foreground">{t("settings.account.thisDevice")}</span>
-              <PublicIdDisclosure
-                value={identityKey}
-                label={t("settings.account.deviceIdentity")}
-                className="max-w-[42rem]"
-              />
+              <PublicIdDisclosure value={identityKey} label={t("settings.account.deviceIdentity")} className="max-w-[42rem]" />
             </div>
           </SettingsRow>
         </SettingsGroup>
@@ -289,29 +301,23 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>
-                      {t("settings.account.resetConfirmTitle")}
-                    </DialogTitle>
-                    <DialogDescription>
-                      {t("settings.account.resetConfirmDesc")}
-                    </DialogDescription>
+                    <DialogTitle>{t("settings.account.resetConfirmTitle")}</DialogTitle>
+                    <DialogDescription>{t("settings.account.resetConfirmDesc")}</DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>
-                        {t("settings.account.resetConfirmLabel")}
-                      </Label>
-                      <Input
-                        placeholder={t("settings.account.resetConfirmPlaceholder")}
-                        value={resetConfirmation}
-                        onChange={(event) => setResetConfirmation(event.target.value)}
-                        disabled={resetting}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label>{t("settings.account.resetConfirmLabel")}</Label>
+                    <Input
+                      placeholder={t("settings.account.resetConfirmPlaceholder")}
+                      value={resetConfirmation}
+                      onChange={(event) => setResetConfirmation(event.target.value)}
+                      disabled={resetting}
+                    />
                   </div>
                   <DialogFooter>
                     <Button variant="outline">{t("common.cancel")}</Button>
-                    <Button variant="destructive" disabled={resetConfirmation !== "RESET" || resetting}
+                    <Button
+                      variant="destructive"
+                      disabled={resetConfirmation !== "RESET" || resetting}
                       onClick={() => void (async () => {
                         setResetting(true);
                         try {
@@ -323,7 +329,8 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                         } finally {
                           setResetting(false);
                         }
-                      })()}>
+                      })()}
+                    >
                       {t("settings.account.resetDeviceIdentity")}
                     </Button>
                   </DialogFooter>
