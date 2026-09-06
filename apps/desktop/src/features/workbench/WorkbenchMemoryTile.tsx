@@ -13,7 +13,9 @@ import {
   refreshProjectMemory,
   selectProjectMemoryNode,
 } from "@/features/project-memory/projectMemoryStore"
+import { resolveMemoryPalette } from "@/features/project-memory/memoryPalette"
 import { useMemoryControls } from "@/features/project-memory/useMemoryControls"
+import { useTheme } from "@/contexts/ThemeContext"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
@@ -27,20 +29,6 @@ interface WorkbenchMemoryTileProps {
   projectId: string
   workspaceId: string | null
   laneId: string | null
-}
-
-/**
- * Colour is the whole point of this surface: it answers "what moved?" at a glance.
- *
- * One cool, equal-luminance family so the map reads as a single living network
- * rather than three unrelated legends — cobalt is the resting substrate, violet
- * is a memory that moved, mint is new growth. Each node is drawn as a soft halo
- * under a crisp core, which is what gives the synaptic glow.
- */
-const STATE_COLORS: Record<ProjectMemoryNodeState, string> = {
-  new: "#3DE6A8",
-  changed: "#B072FF",
-  unchanged: "#4C8DFF",
 }
 
 /**
@@ -70,39 +58,14 @@ function typeKeyOf(fileType: string | null): string {
 /** What a filtered-out memory fades to. */
 const DIMMED_ALPHA = 0.09
 
-/** Wider, dimmer disc behind each core. Cheaper than shadowBlur at this node count. */
-const STATE_HALO_COLORS: Record<ProjectMemoryNodeState, string> = {
-  new: "rgba(61, 230, 168, 0.22)",
-  changed: "rgba(176, 114, 255, 0.22)",
-  unchanged: "rgba(76, 141, 255, 0.14)",
-}
-
 /**
  * Hover colour, deliberately outside the state palette.
  *
- * Amber is the one warm hue here, so it cannot be mistaken for "new" or
- * "changed" — it only ever means "this is the one under your cursor". Marking
- * the hovered node instead of dimming the other ~1300 keeps the map calm; the
- * old dim-everything approach made the whole surface flicker on every mouse
- * move.
+ * A warm focus hue cannot be mistaken for "new" or "changed" — it only ever
+ * means "this is the one under your cursor". Connected memories get a ring,
+ * not a fill, so their state color remains intact. Marking the hovered node
+ * instead of dimming the other ~1300 keeps the map calm.
  */
-const FOCUS_COLOR = "#FFC53D"
-const FOCUS_HALO_COLOR = "rgba(255, 197, 61, 0.26)"
-const FOCUS_EDGE_COLOR = "rgba(255, 197, 61, 0.58)"
-/**
- * Connected memories get a ring, not a fill. Recolouring them would throw away
- * the thing the palette exists to say — whether each one is new, changed, or
- * untouched — so the state stays in the core and the connection rides on the
- * border.
- */
-const FOCUS_NEIGHBOR_RING_COLOR = "rgba(255, 201, 64, 0.95)"
-
-const STATE_EDGE_COLORS: Record<ProjectMemoryNodeState, string> = {
-  new: "rgba(61, 230, 168, 0.34)",
-  changed: "rgba(176, 114, 255, 0.30)",
-  unchanged: "rgba(76, 141, 255, 0.16)",
-}
-
 /** Explicit map: TranslationKey is a strict union, so template keys do not typecheck. */
 const STATE_LABEL_KEYS = {
   new: "workbench.memory.state.new",
@@ -117,7 +80,9 @@ const MIN_SCALE = 0.12
 const MAX_SCALE = 4
 
 export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: WorkbenchMemoryTileProps) {
+  const { theme } = useTheme()
   const { t } = useTranslation()
+  const memoryPalette = resolveMemoryPalette(theme)
   const { key, run, defaultAgent, requestUpdate, settings } = useMemoryControls({
     projectId,
     workspaceId,
@@ -272,7 +237,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
           source && target && matchesFilter(source.node) && matchesFilter(target.node)
         context.globalAlpha = bothSurvive ? 1 : DIMMED_ALPHA
       }
-      context.strokeStyle = STATE_EDGE_COLORS[edge.state]
+      context.strokeStyle = memoryPalette.edge[edge.state]
       strokeEdge(edge)
     }
     context.globalAlpha = 1
@@ -285,11 +250,11 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
       const code = isCodeNode(entry.node.fileType)
       context.globalAlpha = filtering && !matchesFilter(entry.node) ? DIMMED_ALPHA : 1
 
-      context.fillStyle = STATE_HALO_COLORS[entry.node.state]
+      context.fillStyle = memoryPalette.halo[entry.node.state]
       traceNode(screenX, screenY, radius * 2.4, code)
       context.fill()
 
-      context.fillStyle = STATE_COLORS[entry.node.state]
+      context.fillStyle = memoryPalette.state[entry.node.state]
       traceNode(screenX, screenY, radius, code)
       context.fill()
     }
@@ -299,7 +264,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
     const focusEntry = focus ? layout.byId.get(focus) : null
     if (focusEntry) {
       context.lineWidth = Math.max(1, 1.4 * scale)
-      context.strokeStyle = FOCUS_EDGE_COLOR
+      context.strokeStyle = memoryPalette.focusEdge
       for (const edge of layout.edges) {
         if (edge.sourceId !== focus && edge.targetId !== focus) continue
         strokeEdge(edge)
@@ -308,7 +273,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
       // Ring every directly connected memory, keeping its own colour inside.
       const neighbors = focus ? layout.adjacency.get(focus) : null
       if (neighbors) {
-        context.strokeStyle = FOCUS_NEIGHBOR_RING_COLOR
+        context.strokeStyle = memoryPalette.focusNeighborRing
         context.lineWidth = Math.max(1.5, 1.2 * scale)
         for (const neighborId of neighbors) {
           const neighbor = layout.byId.get(neighborId)
@@ -331,15 +296,15 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
 
       const focusIsCode = isCodeNode(focusEntry.node.fileType)
 
-      context.fillStyle = FOCUS_HALO_COLOR
+      context.fillStyle = memoryPalette.focusHalo
       traceNode(screenX, screenY, haloRadius, focusIsCode)
       context.fill()
 
-      context.fillStyle = FOCUS_COLOR
+      context.fillStyle = memoryPalette.focus
       traceNode(screenX, screenY, radius, focusIsCode)
       context.fill()
 
-      context.strokeStyle = "rgba(255,255,255,0.85)"
+      context.strokeStyle = memoryPalette.focusCoreStroke
       context.lineWidth = 1.4
       context.stroke()
     }
@@ -352,7 +317,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
     const drawLabel = (text: string, x: number, y: number, fill: string) => {
       context.lineJoin = "round"
       context.lineWidth = 3
-      context.strokeStyle = "rgba(8, 8, 10, 0.9)"
+      context.strokeStyle = memoryPalette.labelStroke
       context.strokeText(text, x, y)
       context.fillStyle = fill
       context.fillText(text, x, y)
@@ -394,7 +359,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
         )
         if (collides) continue
         placed.push(box)
-        drawLabel(text, x, y, "#e5e7eb")
+        drawLabel(text, x, y, memoryPalette.label)
       }
       context.globalAlpha = 1
     }
@@ -412,10 +377,10 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
         focusEntry.node.label.slice(0, 40),
         toScreenX(focusEntry.x),
         toScreenY(focusEntry.y) - Math.max(2, focusEntry.radius * scale * 1.5) - 9,
-        FOCUS_COLOR,
+        memoryPalette.focus,
       )
     }
-  }, [layout, focusId, filtering, matchesFilter])
+  }, [layout, focusId, filtering, matchesFilter, memoryPalette])
 
   useEffect(() => {
     if (!layout) return
@@ -589,7 +554,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
                 // meaning what it means while also showing it is selected.
                 active && "ring-2 ring-foreground/70 ring-offset-1 ring-offset-content-surface",
               )}
-              style={{ backgroundColor: STATE_COLORS[state] }}
+              style={{ backgroundColor: memoryPalette.state[state] }}
               aria-hidden
             />
             {!compactChips ? <span className="truncate">{t(STATE_LABEL_KEYS[state])}</span> : null}
@@ -805,7 +770,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
                 <div className="mt-0.5 flex items-center gap-1.5">
                   <span
                     className="size-1.5 rounded-full"
-                    style={{ backgroundColor: STATE_COLORS[detail.node.state] }}
+                    style={{ backgroundColor: memoryPalette.state[detail.node.state] }}
                     aria-hidden
                   />
                   <span className="text-[11px] text-muted-foreground">

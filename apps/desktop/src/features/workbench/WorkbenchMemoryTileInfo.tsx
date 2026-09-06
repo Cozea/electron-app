@@ -11,6 +11,8 @@ import {
   buildProjectMemoryKey,
   useProjectMemoryStore,
 } from "@/features/project-memory/projectMemoryStore"
+import { resolveMemoryPalette } from "@/features/project-memory/memoryPalette"
+import { useTheme } from "@/contexts/ThemeContext"
 import { useTranslation, type TranslationKey } from "@/lib/i18n"
 
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -30,11 +32,8 @@ interface WorkbenchMemoryTileInfoProps {
   laneId: string | null
 }
 
-const STATE_SWATCHES = [
-  { key: "new", color: "#3DE6A8" },
-  { key: "changed", color: "#B072FF" },
-  { key: "unchanged", color: "#4C8DFF" },
-] as const
+/** Order only; the colours come from the palette so the legend cannot drift from the canvas. */
+const STATE_SWATCH_ORDER = ["new", "changed", "unchanged"] as const
 
 const STATE_LABEL_KEYS = {
   new: "workbench.memory.state.new",
@@ -82,6 +81,8 @@ export const WorkbenchMemoryTileInfo = memo(function WorkbenchMemoryTileInfo({
   laneId,
 }: WorkbenchMemoryTileInfoProps) {
   const { t } = useTranslation()
+  const { theme } = useTheme()
+  const palette = resolveMemoryPalette(theme)
   const key = workspaceId ? buildProjectMemoryKey(workspaceId, laneId) : null
   const run =
     useProjectMemoryStore((state) => (key ? state.byKey[key] : undefined)) ??
@@ -120,18 +121,18 @@ export const WorkbenchMemoryTileInfo = memo(function WorkbenchMemoryTileInfo({
       >
         <Section title={t("workbench.memory.info.colourTitle")}>
           <p className="pb-0.5 text-muted-foreground">{t("workbench.memory.info.colourLead")}</p>
-          {STATE_SWATCHES.map((swatch) => (
+          {STATE_SWATCH_ORDER.map((swatch) => (
             <Row
-              key={swatch.key}
+              key={swatch}
               marker={
                 <span
                   className="size-2 rounded-full"
-                  style={{ backgroundColor: swatch.color }}
+                  style={{ backgroundColor: palette.state[swatch] }}
                   aria-hidden
                 />
               }
             >
-              {t(STATE_LABEL_KEYS[swatch.key])}
+              {t(STATE_LABEL_KEYS[swatch])}
             </Row>
           ))}
         </Section>
@@ -201,7 +202,7 @@ export const WorkbenchMemoryTileInfo = memo(function WorkbenchMemoryTileInfo({
             marker={
               <span
                 className="size-2 rounded-full"
-                style={{ backgroundColor: "#FFC53D" }}
+                style={{ backgroundColor: palette.focus }}
                 aria-hidden
               />
             }
