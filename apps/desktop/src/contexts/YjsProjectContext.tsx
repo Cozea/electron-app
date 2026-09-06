@@ -11,6 +11,7 @@ import { useConvex } from "convex/react"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
+import { seedProjectDocFromWorkspace } from "@/features/collaboration/runtime/seedProjectDocFromWorkspace"
 import { useReconnectionSync } from "@/hooks/useReconnectionSync"
 import { CollabWsProvider, type CollabSessionDescriptor } from "@/lib/yjs/CollabWsProvider"
 import { YjsIndexedDBProvider } from "@/lib/yjs/IndexedDBPersistence"
@@ -37,7 +38,11 @@ interface InitialSyncResponse {
   serverSnapshot: ArrayBuffer | null
   snapshotVersion: number
   snapshotCreatedAt: number
-  recentUpdates: Array<{ update: ArrayBuffer; clientId: string; timestamp: number }>
+  recentUpdates: Array<{
+    update: ArrayBuffer
+    clientId: string
+    timestamp: number
+  }>
   deltaUpdate?: ArrayBuffer
   deltaByteLength?: number
   serverStateVector?: ArrayBuffer
@@ -51,6 +56,22 @@ interface RoomEncryptionState {
   keyVersion: number | null
 }
 
+interface YjsProjectProviderProps {
+  projectId: Id<"projects">
+  userId: Id<"users">
+  userName: string
+  workspaceId: string | null
+  enabled?: boolean
+  documentScopeId?: string | null
+  collaborationEnabled?: boolean
+  collabSession?: CollabSessionDescriptor | null
+  refreshCollabSession?: () => Promise<CollabSessionDescriptor | null>
+  children: ReactNode
+}
+
+const SNAPSHOT_DEBOUNCE_MS = 1_200
+const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1_000
+
 function generateColor(id: string): string {
   const colors = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#818cf8", "#e879f9"]
   const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
@@ -63,21 +84,21 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return buffer
 }
 
-function randomDebugId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+function normalizeSequence(value: unknown): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0
 }
 
-interface YjsProjectProviderProps {
-  projectId: Id<"projects">
-  userId: Id<"users">
-  userName: string
-  workspaceId: string | null
-  enabled?: boolean
-  documentScopeId?: string | null
-  collaborationEnabled?: boolean
-  collabSession?: CollabSessionDescriptor | null
-  refreshCollabSession?: () => Promise<CollabSessionDescriptor | null>
-  children: ReactNode
+function hasServerState(sync: InitialSyncResponse): boolean {
+  return Boolean(
+    sync.serverSnapshot ||
+      sync.recentUpdates.length > 0 ||
+      normalizeSequence(sync.serverSeq) > 0,
+  )
+}
+
+function randomDebugId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 }
 
 export function YjsProjectProvider({
@@ -159,16 +180,15 @@ export function YjsProjectProvider({
     let indexedDBProviderInstance: YjsIndexedDBProvider | null = null
     let persistenceInstance: ProjectFilesPersistence | null = null
 
-    if (!enabled) {
-      return
-    }
+    if (!enabled) return
 
-    const initDoc = async () => {
+    const initializeDocument = async () => {
       const doc = new YjsProjectDoc(scopeKey)
       docInstance = doc
 
       const shouldUseIndexedDb =
-        !collaborationEnabled || (wsSession ? wsSession.encryption.encryptionRequired !== true : false)
+        !collaborationEnabled ||
+        (wsSession ? wsSession.encryption.encryptionRequired !== true : false)
 
       if (shouldUseIndexedDb) {
         const indexedDBProvider = new YjsIndexedDBProvider(scopeKey, doc.doc)
@@ -208,14 +228,14 @@ export function YjsProjectProvider({
       setYjsDoc(doc)
     }
 
-    void initDoc().catch((error) => {
+    void initializeDocument().catch((error) => {
       if (disposed) return
       destroyPersistenceForInit({
         doc: docInstance,
         indexedDBProvider: indexedDBProviderInstance,
         persistence: persistenceInstance,
       })
-      console.error("[YjsProjectProvider] Failed to initialize Yjs project provider:", error)
+      console.error("[YjsProjectProvider] Failed to initialize project document:", error)
       setIsConnected(false)
       setYjsDoc(null)
     })
@@ -238,10 +258,10 @@ export function YjsProjectProvider({
     destroyPersistenceForInit,
     enabled,
     projectId,
-    workspaceId,
     scopeKey,
     userId,
     userName,
+    workspaceId,
     wsSession?.encryption.encryptionRequired,
   ])
 
@@ -260,6 +280,7 @@ export function YjsProjectProvider({
       if (!session.devicePublicKeyJwk) {
         throw new Error("Missing local collaboration device public key")
       }
+
       const roomKeyBase64 = generateRoomKeyBase64()
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64,
@@ -275,6 +296,7 @@ export function YjsProjectProvider({
         wrappedKey: wrapped.wrappedKey,
         senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
       })
+
       return {
         encryptionEnabled: true,
         roomKeyBase64,
@@ -286,6 +308,7 @@ export function YjsProjectProvider({
       if (!session.encryption.wrappedRoomKey || !session.encryption.senderPublicKeyJwk) {
         throw new Error("Encrypted collaboration room is missing wrapped key metadata")
       }
+
       const unwrapped = await window.electronAPI.collab.unwrapRoomKey({
         senderPublicKeyJwk: session.encryption.senderPublicKeyJwk,
         wrappedKey: session.encryption.wrappedRoomKey,
@@ -312,59 +335,82 @@ export function YjsProjectProvider({
       return null
     }
 
-    if (session.encryption.status === "device_revoked") {
-      return null
-    }
-
-    return {
-      encryptionEnabled: false,
-      roomKeyBase64: null,
-      keyVersion: null,
-    }
+    return null
   }, [convex, projectId, userId])
 
   useEffect(() => {
-    if (!enabled || !yjsDoc) {
-      return
-    }
+    if (!enabled || !yjsDoc) return
 
     let disposed = false
+    destroyTransportProvider()
+    setIsConnected(false)
+    setRoomEncryption(null)
+
+    const persistBootstrapSnapshot = async (
+      encryption: RoomEncryptionState,
+      session: CollabSessionDescriptor,
+      snapshotBaseSeq: number,
+    ) => {
+      if (!encryption.encryptionEnabled || !encryption.roomKeyBase64) return
+
+      const envelope = await encryptPayload({
+        roomKeyBase64: encryption.roomKeyBase64,
+        kind: "yjs_snapshot",
+        keyVersion: encryption.keyVersion ?? 1,
+        plaintext: Y.encodeStateAsUpdate(yjsDoc.doc),
+        metadata: {
+          projectId: String(projectId),
+          roomId: session.roomId,
+          snapshotBaseSeq,
+        },
+      })
+
+      const store = encryptedLocalStoreRef.current ?? new EncryptedLocalSnapshotStore()
+      encryptedLocalStoreRef.current = store
+      await store.save({
+        scopeKey,
+        keyVersion: encryption.keyVersion ?? 1,
+        envelopeJson: JSON.stringify(envelope),
+        updatedAt: Date.now(),
+      })
+
+      const snapshotBytes = envelopeToBytes(envelope)
+      await convex.mutation(api.yjs.saveSnapshot, {
+        projectId,
+        snapshot: toArrayBuffer(snapshotBytes),
+        version: Date.now(),
+        snapshotBaseSeq,
+        createdByClientId: yjsDoc.doc.clientID.toString(),
+      })
+    }
 
     const bootstrapCollaborationState = async () => {
       if (!collaborationEnabled) {
+        initialKnownSeqRef.current = 0
         setRoomEncryption({
           encryptionEnabled: false,
           roomKeyBase64: null,
           keyVersion: null,
         })
-        initialKnownSeqRef.current = 0
         return
       }
 
       const session = wsSessionRef.current
-      if (!session) {
-        return
-      }
+      if (!session) return
 
-      const nextRoomEncryption = await resolveRoomEncryptionState(session)
-      if (disposed) return
-      if (!nextRoomEncryption) {
-        setRoomEncryption(null)
-        initialKnownSeqRef.current = 0
-        return
-      }
+      const encryption = await resolveRoomEncryptionState(session)
+      if (disposed || !encryption) return
 
-      setRoomEncryption(nextRoomEncryption)
-
-      if (nextRoomEncryption.encryptionEnabled && nextRoomEncryption.roomKeyBase64) {
+      if (encryption.encryptionEnabled && encryption.roomKeyBase64) {
         const localStore = new EncryptedLocalSnapshotStore()
         encryptedLocalStoreRef.current = localStore
         const localSnapshot = await localStore.load(scopeKey)
         if (disposed) return
+
         if (localSnapshot?.envelopeJson) {
           try {
             const decrypted = await decryptPayload({
-              roomKeyBase64: nextRoomEncryption.roomKeyBase64,
+              roomKeyBase64: encryption.roomKeyBase64,
               envelope: JSON.parse(localSnapshot.envelopeJson),
               expectedKind: "yjs_snapshot",
             })
@@ -377,26 +423,27 @@ export function YjsProjectProvider({
         encryptedLocalStoreRef.current = null
       }
 
-      const initialSync = (await convex.mutation(api.yjs.syncWithServer, {
+      const initialSync = await convex.mutation(api.yjs.syncWithServer, {
         projectId,
         clientId: yjsDoc.doc.clientID.toString(),
         roomId: session.roomId,
-      })) as InitialSyncResponse
+      }) as InitialSyncResponse
       if (disposed) return
 
-      if (nextRoomEncryption.encryptionEnabled && nextRoomEncryption.roomKeyBase64) {
+      if (encryption.encryptionEnabled && encryption.roomKeyBase64) {
         if (initialSync.serverSnapshot) {
           const decryptedSnapshot = await decryptPayload({
-            roomKeyBase64: nextRoomEncryption.roomKeyBase64,
+            roomKeyBase64: encryption.roomKeyBase64,
             envelope: bytesToEnvelope(new Uint8Array(initialSync.serverSnapshot)),
             expectedKind: "yjs_snapshot",
           })
           Y.applyUpdate(yjsDoc.doc, decryptedSnapshot, "snapshot")
         }
+
         for (const update of initialSync.recentUpdates) {
           if (update.clientId === yjsDoc.doc.clientID.toString()) continue
           const decryptedUpdate = await decryptPayload({
-            roomKeyBase64: nextRoomEncryption.roomKeyBase64,
+            roomKeyBase64: encryption.roomKeyBase64,
             envelope: bytesToEnvelope(new Uint8Array(update.update)),
             expectedKind: "yjs_update",
           })
@@ -404,10 +451,28 @@ export function YjsProjectProvider({
         }
       }
 
-      initialKnownSeqRef.current =
-        typeof initialSync.serverSeq === "number" && Number.isFinite(initialSync.serverSeq)
-          ? Math.max(0, Math.floor(initialSync.serverSeq))
-          : 0
+      const serverSeq = normalizeSequence(initialSync.serverSeq)
+      initialKnownSeqRef.current = serverSeq
+
+      if (!hasServerState(initialSync)) {
+        const seedResult = await seedProjectDocFromWorkspace({
+          doc: yjsDoc,
+          workspaceId,
+        })
+        if (disposed) return
+
+        if (seedResult.failedFiles > 0) {
+          console.warn("[YjsProjectProvider] Some project files could not seed collaboration:", seedResult)
+        }
+
+        if (yjsDoc.files.size > 0) {
+          await persistBootstrapSnapshot(encryption, session, serverSeq)
+        }
+      }
+
+      if (!disposed) {
+        setRoomEncryption(encryption)
+      }
     }
 
     void bootstrapCollaborationState().catch((error) => {
@@ -423,11 +488,12 @@ export function YjsProjectProvider({
   }, [
     collaborationEnabled,
     convex,
+    destroyTransportProvider,
     enabled,
     projectId,
     resolveRoomEncryptionState,
     scopeKey,
-    userId,
+    workspaceId,
     yjsDoc,
     wsSession?.projectId,
     wsSession?.roomId,
@@ -438,9 +504,7 @@ export function YjsProjectProvider({
   ])
 
   useEffect(() => {
-    if (!enabled || !yjsDoc) {
-      return
-    }
+    if (!enabled || !yjsDoc) return
 
     let disposed = false
     destroyTransportProvider()
@@ -461,7 +525,7 @@ export function YjsProjectProvider({
       return
     }
 
-    wsProviderRef.current = new CollabWsProvider({
+    const provider = new CollabWsProvider({
       doc: yjsDoc.doc,
       awareness: yjsDoc.awareness,
       session,
@@ -495,8 +559,10 @@ export function YjsProjectProvider({
         setIsConnected(false)
       },
     })
+
+    wsProviderRef.current = provider
     wsProviderLifecycleIdRef.current = randomDebugId("yjs_ws_provider")
-    wsProviderRef.current.start()
+    provider.start()
 
     return () => {
       disposed = true
@@ -533,11 +599,9 @@ export function YjsProjectProvider({
 
     const interval = window.setInterval(() => {
       void refreshCollabSession().catch(() => undefined)
-    }, 3000)
+    }, 3_000)
 
-    return () => {
-      window.clearInterval(interval)
-    }
+    return () => window.clearInterval(interval)
   }, [collaborationEnabled, enabled, refreshCollabSession, wsSession?.encryption.status])
 
   useEffect(() => {
@@ -546,67 +610,59 @@ export function YjsProjectProvider({
     let snapshotTimer: number | null = null
 
     const persistSnapshot = async (persistServer: boolean) => {
+      if (!roomEncryption?.encryptionEnabled || !roomEncryption.roomKeyBase64) return
+
+      const snapshotBaseSeq = wsProviderRef.current?.getKnownSeq() ?? initialKnownSeqRef.current
       const snapshot = Y.encodeStateAsUpdate(yjsDoc.doc)
+      const envelope = await encryptPayload({
+        roomKeyBase64: roomEncryption.roomKeyBase64,
+        kind: "yjs_snapshot",
+        keyVersion: roomEncryption.keyVersion ?? 1,
+        plaintext: snapshot,
+        metadata: {
+          projectId: String(projectId),
+          roomId: wsSession?.roomId ?? String(projectId),
+          snapshotBaseSeq,
+        },
+      })
 
-      if (roomEncryption?.encryptionEnabled && roomEncryption.roomKeyBase64) {
-        const envelope = await encryptPayload({
-          roomKeyBase64: roomEncryption.roomKeyBase64,
-          kind: "yjs_snapshot",
-          keyVersion: roomEncryption.keyVersion ?? 1,
-          plaintext: snapshot,
-          metadata: {
-            projectId: String(projectId),
-            roomId: wsSession?.roomId ?? String(projectId),
-          },
-        })
+      await encryptedLocalStoreRef.current?.save({
+        scopeKey,
+        keyVersion: roomEncryption.keyVersion ?? 1,
+        envelopeJson: JSON.stringify(envelope),
+        updatedAt: Date.now(),
+      })
 
-        await encryptedLocalStoreRef.current?.save({
-          scopeKey,
-          keyVersion: roomEncryption.keyVersion ?? 1,
-          envelopeJson: JSON.stringify(envelope),
-          updatedAt: Date.now(),
-        })
+      if (!persistServer || !collaborationEnabled) return
 
-        if (persistServer && collaborationEnabled) {
-          const snapshotBytes = envelopeToBytes(envelope)
-          await convex.mutation(api.yjs.saveSnapshot, {
-            projectId,
-            snapshot: toArrayBuffer(snapshotBytes),
-            version: Date.now(),
-            createdByClientId: yjsDoc.doc.clientID.toString(),
-          })
-          await convex.mutation(api.yjs.cleanupOldUpdates, {
-            projectId,
-            olderThan: Date.now() - 5 * 60 * 1000,
-          })
-        }
-        return
-      }
-
-      return
+      const snapshotBytes = envelopeToBytes(envelope)
+      await convex.mutation(api.yjs.saveSnapshot, {
+        projectId,
+        snapshot: toArrayBuffer(snapshotBytes),
+        version: Date.now(),
+        snapshotBaseSeq,
+        createdByClientId: yjsDoc.doc.clientID.toString(),
+      })
+      // Update pruning deliberately stays disabled until the websocket protocol
+      // can resync a long-disconnected client from the encrypted snapshot.
     }
 
     const handleDocUpdate = () => {
       if (!roomEncryption?.encryptionEnabled) return
-      if (snapshotTimer !== null) {
-        window.clearTimeout(snapshotTimer)
-      }
+      if (snapshotTimer !== null) window.clearTimeout(snapshotTimer)
       snapshotTimer = window.setTimeout(() => {
         void persistSnapshot(false).catch(() => undefined)
-      }, 1200)
+      }, SNAPSHOT_DEBOUNCE_MS)
     }
 
     yjsDoc.doc.on("update", handleDocUpdate)
-
     const interval = window.setInterval(() => {
       void persistSnapshot(true).catch(() => undefined)
-    }, 5 * 60 * 1000)
+    }, SNAPSHOT_INTERVAL_MS)
 
     return () => {
       yjsDoc.doc.off("update", handleDocUpdate)
-      if (snapshotTimer !== null) {
-        window.clearTimeout(snapshotTimer)
-      }
+      if (snapshotTimer !== null) window.clearTimeout(snapshotTimer)
       window.clearInterval(interval)
       void persistSnapshot(true).catch(() => undefined)
     }
@@ -628,9 +684,6 @@ export function YjsProjectProvider({
     canRunCollaborationSync ? yjsDoc : null,
   )
 
-  // Identity-stable: this value is republished into the workspace runtime
-  // store and consumed across the whole project surface; an inline literal
-  // re-rendered all of it on every render of this provider.
   const contextValue = useMemo(
     () => ({
       yjsDoc,
