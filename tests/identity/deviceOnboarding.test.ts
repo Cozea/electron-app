@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
-const users = readFileSync(join(process.cwd(), "convex/users.ts"), "utf8")
+const principals = readFileSync(join(process.cwd(), "convex/devicePrincipals.ts"), "utf8")
 const authContext = readFileSync(
   join(process.cwd(), "apps/desktop/src/contexts/AuthContext.tsx"),
   "utf8",
@@ -13,13 +13,16 @@ const onboarding = readFileSync(
 )
 
 describe("device principal onboarding", () => {
-  it("does not promote the OS/device-auth label to a fresh principal display name", () => {
-    const start = users.indexOf("export const ensureDevicePrincipalFromServer")
-    const end = users.indexOf("export const getDevicePrincipalForServer", start)
-    const section = users.slice(start, end)
+  it("creates a fresh principal with an explicit unconfigured display name", () => {
+    const start = principals.indexOf("export const ensureDevicePrincipalFromServer")
+    const end = principals.indexOf("export const getDevicePrincipalForServer", start)
+    const section = principals.slice(start, end)
 
-    expect(section).toContain('const suggestedLabel = "This Device"')
-    expect(section).not.toContain("const suggestedLabel = args.deviceLabel")
+    expect(section).toContain('displayName: "This Device"')
+    expect(section).not.toContain("deviceLabel")
+    expect(section).not.toContain("email")
+    expect(section).not.toContain("firstName")
+    expect(section).not.toContain("lastName")
   })
 
   it("treats an unconfigured device as onboarding-required", () => {
