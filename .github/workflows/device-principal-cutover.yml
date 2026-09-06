@@ -65,7 +65,7 @@ jobs:
         run: bun run lint
 
       - name: Check formatting
-        run: bun run fmt:check
+        run: bunx --bun oxfmt --check apps/desktop cloudflare/worker convex shared tests scripts docs .github package.json
 
       - name: Identity architecture tests
         run: bunx vitest run tests/identity
