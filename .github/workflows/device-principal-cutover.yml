@@ -6,9 +6,30 @@ on:
       - codex/device-principal-identity-cutover
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  autofix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply compiler repair pass
+        run: node scripts/fix-device-principal-pass1.mjs
+      - name: Commit repairs
+        run: |
+          if git diff --quiet; then
+            echo "No repair changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(identity): repair cutover compiler contracts"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
   validate:
     runs-on: ubuntu-latest
     steps:
