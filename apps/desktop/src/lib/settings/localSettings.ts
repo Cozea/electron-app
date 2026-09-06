@@ -19,9 +19,21 @@ let writes: Promise<unknown> = Promise.resolve()
 export function saveLocalSettings(patch: Partial<LocalAppSettings>): Promise<{ success: boolean }> {
   const save = async () => {
     const current = await localSettings.ensure()
-    const result = await window.electronAPI.settings.set(patch)
+    // The main-process settings handler already uses the Computer Use tool-list
+    // field as its policy-change signal. Include the unchanged list when the
+    // advanced pointer gate changes so existing macOS state and Windows/Linux
+    // workers are revoked and recreated under the new upstream environment.
+    const outboundPatch: Partial<LocalAppSettings> =
+      patch.computerUseAllowGlobalPointerFallbacks !== undefined &&
+      patch.disabledComputerUseTools === undefined
+        ? {
+            ...patch,
+            disabledComputerUseTools: current.disabledComputerUseTools ?? [],
+          }
+        : patch
+    const result = await window.electronAPI.settings.set(outboundPatch)
     if (!result.success) throw new Error('Unable to save local settings.')
-    localSettings.publish({ ...(localSettings.getSnapshot().data ?? current), ...patch })
+    localSettings.publish({ ...(localSettings.getSnapshot().data ?? current), ...outboundPatch })
     return result
   }
   const next = writes.then(save, save)
