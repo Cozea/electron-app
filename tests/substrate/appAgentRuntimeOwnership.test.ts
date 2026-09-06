@@ -81,4 +81,12 @@ describe('app-level agent runtime ownership', () => {
     expect(schedulesConfig).not.toContain('T3ServerConfigClient')
     expect(schedulesConfig).toContain('Full T3/config lifecycle')
   })
+
+  it('does not leak app-owned substrate loading into an inactive compatibility surface', () => {
+    const schedulesConfig = read('apps/desktop/src/substrate/useT3ServerConfigCutover.ts')
+
+    expect(schedulesConfig).toContain(
+      'loading: input.substrateActive ? !active || metadata.isConfigLoading : false',
+    )
+  })
 })
