@@ -5,7 +5,7 @@ Date: 2026-09-06
 | Field | Value |
 | --- | --- |
 | Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Required pin SHA | `7500499980b6d5e6cad483d8fea6b0586fc406eb` (`75004999`) |
+| Required pin SHA | `be4668f7b439499f39a659055d0f6ec34ac666b2` (`be4668f7`) |
 | Recorded by | Parent repository `vendor/t3code` gitlink |
 | Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
@@ -20,15 +20,14 @@ but forwards execution to the signed Electron main process over a private
 loopback broker. It never installs a global MCP entry in provider home
 configuration.
 
-Accepted canonical terminal `thread.session-set` events are now forwarded to the
-Electron broker for every thread, rather than only threads that already invoked a
-Computer Use tool. Electron owns the authoritative per-thread policy/runtime
-state and ignores unrelated terminal notifications. This lets scheduled threads
-that were explicitly denied Computer Use release their deny policy only from T3's
-accepted provider lifecycle, while ordinary interactive Computer Use still gets
-upstream `notifications/turn-ended` cleanup. Stale terminal provider events do
-not produce this notification because they never become an accepted
-`thread.session-set` event.
+T3 now tracks threads that enter an accepted provider turn (`activeTurnId` is
+non-null). Only a later accepted terminal `thread.session-set` for one of those
+threads is forwarded to Electron's authenticated `/v1/turn-ended` route. This
+avoids pre-turn `ready` states while still covering scheduled tasks that were
+explicitly denied Computer Use and therefore never invoked a CU tool. Electron
+owns the authoritative per-thread policy/native state and ignores terminal
+notifications for unrelated threads. Stale provider terminal events do not
+produce cleanup because they never become accepted canonical session events.
 
 ## Cozea runtime policy patches
 
