@@ -70,4 +70,11 @@ describe('Cozea-owned Computer Use runtime', () => {
     expect(preparation).toContain('computer-use-runtime')
     expect(preparation).toContain('OPEN_COMPUTER_USE_LICENSE.txt')
   })
+
+  it('accepts authenticated turn-end notifications from the managed T3 runtime', () => {
+    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
+    expect(runtime).toContain("request.url === '/v1/turn-ended'")
+    expect(runtime).toContain('this.turnEnded(threadId)')
+    expect(runtime).toContain("'notifications/turn-ended'")
+  })
 })
