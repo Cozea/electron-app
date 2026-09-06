@@ -72,6 +72,7 @@ describe('scheduled task Computer Use authorization', () => {
     expect(runtime).not.toContain('expiresAt')
     expect(runtime).not.toContain('pruneExpiredThreadPolicies')
     expect(resetAllBody).not.toContain('this.threadPolicies.clear()')
+    expect(resetAllBody).toContain("if (policy === 'allow') this.threadPolicies.set(sessionId, 'deny')")
     expect(runtime).toContain('finally {\n      this.clearThreadPolicy(sessionId)')
     expect(runtime).toContain('this.threadPolicies.clear()')
   })
