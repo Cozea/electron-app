@@ -18,7 +18,6 @@ export const heartbeat = mutation({
     projectId: v.id("projects"),
     userId: v.optional(v.id("devicePrincipals")),
     userName: v.optional(v.string()),
-    userEmail: v.optional(v.string()),
     userAvatarUrl: v.optional(v.string()),
     activeTab: v.optional(v.string()),
     activeFile: v.optional(v.string()),
@@ -30,8 +29,8 @@ export const heartbeat = mutation({
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)
     const now = Date.now()
-    const displayName = principal.deviceLabel?.trim() || "This device"
-    const avatarUrl = principal.profileImageUrl ?? undefined
+    const displayName = principal.displayName.trim() || "This device"
+    const avatarUrl = principal.avatarStorageId ? (await ctx.storage.getUrl(principal.avatarStorageId)) ?? undefined : undefined
 
     const existing = await ctx.db
       .query("projectPresence")
@@ -42,9 +41,6 @@ export const heartbeat = mutation({
 
     const presentation = {
       userName: displayName,
-      // Transitional storage field. Email is no longer identity/presentation.
-      // Remove this field from schema in the breaking schema commit.
-      userEmail: "",
       userAvatarUrl: avatarUrl,
     }
 
@@ -118,8 +114,6 @@ export const getActiveUsers = query({
         id: p._id,
         userId: p.userId,
         userName: p.userName,
-        // Transitional output field; consumers should stop relying on email.
-        userEmail: p.userEmail,
         userAvatarUrl: p.userAvatarUrl,
         activeTab: p.activeTab,
         activeFile: p.activeFile,

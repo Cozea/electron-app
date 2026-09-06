@@ -1,3 +1,15 @@
+import { ConvexError, v } from "convex/values"
+
+import { internal } from "./_generated/api"
+import type { Doc, Id, TableNames } from "./_generated/dataModel"
+import {
+  internalMutation,
+  query as baseQuery,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import {
   canAccessProject,
   canArchiveProject,

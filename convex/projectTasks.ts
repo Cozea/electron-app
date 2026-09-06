@@ -363,10 +363,9 @@ export const listInboxForUser = query({
           actor: actor
             ? {
                 id: actor._id,
-                email: actor.email,
-                firstName: actor.firstName,
-                lastName: actor.lastName,
-                profileImageUrl: actor.profileImageUrl,
+                identityKey: actor.identityKey,
+                displayName: actor.displayName,
+                avatarUrl: actor.avatarStorageId ? await ctx.storage.getUrl(actor.avatarStorageId) : null,
               }
             : null,
         }

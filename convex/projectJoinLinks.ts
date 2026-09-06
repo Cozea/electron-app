@@ -117,9 +117,9 @@ export const previewByToken = query({
       inviter: inviter
         ? {
             id: inviter._id,
-            identityKey: inviter.identityKey ?? null,
-            displayName: inviter.deviceLabel ?? inviter.firstName ?? "Unknown device",
-            avatarUrl: inviter.profileImageUrl ?? null,
+            identityKey: inviter.identityKey,
+            displayName: inviter.displayName,
+            avatarUrl: inviter.avatarStorageId ? await ctx.storage.getUrl(inviter.avatarStorageId) : null,
           }
         : null,
       alreadyMember: Boolean(existingMembership),

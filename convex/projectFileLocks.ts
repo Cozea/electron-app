@@ -209,7 +209,7 @@ export const getLock = query({
         ? {
             id: lockedByDevice._id as Id<"devicePrincipals">,
             name: displayName(lockedByDevice),
-            profileImageUrl: lockedByDevice.profileImageUrl ?? null,
+            profileImageUrl: lockedByDevice.avatarStorageId ? await ctx.storage.getUrl(lockedByDevice.avatarStorageId) : null,
           }
         : null,
     }

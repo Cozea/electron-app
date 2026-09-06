@@ -226,7 +226,7 @@ export const getRecentActivity = query({
     const userImageEntries = await Promise.all(
       Array.from(uniqueUserIds.entries()).map(async ([userKey, userId]) => {
         const user = userId ? await ctx.db.get(userId) : null
-        return [userKey, user?.profileImageUrl ?? undefined] as const
+        return [userKey, user?.avatarStorageId ? (await ctx.storage.getUrl(user.avatarStorageId)) ?? undefined : undefined] as const
       })
     )
     const userImages = new Map(userImageEntries)
@@ -387,7 +387,7 @@ export const addComment = mutation({
       }
     }
 
-    const userName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email
+    const userName = user.displayName
     const userColor = generateColor(userId)
 
     const commentId = await ctx.db.insert("changeComments", {
@@ -397,7 +397,7 @@ export const addComment = mutation({
       content,
       userName,
       userColor,
-      userImage: user.profileImageUrl,
+      userImage: user.avatarStorageId ? (await ctx.storage.getUrl(user.avatarStorageId)) ?? undefined : undefined,
       parentCommentId,
       status: "active",
       createdAt: Date.now(),

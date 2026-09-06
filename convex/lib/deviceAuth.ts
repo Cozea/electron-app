@@ -8,7 +8,7 @@ type AuthenticatedCtx = Pick<QueryCtx | MutationCtx, "auth" | "db">
 
 export type DevicePrincipal = Doc<"devicePrincipals"> & {
   identityKey: string
-  deviceLabel: string
+  displayName: string
   platform: string
   encryptionPublicKeyJwk: string
   encryptionPublicKeyAlgorithm: string
@@ -28,7 +28,7 @@ export function isRegisteredDevicePrincipal(
     user &&
     user.identityKey &&
     isDeviceIdentityKey(user.identityKey) &&
-    user.deviceLabel &&
+    user.displayName &&
     user.platform &&
     user.encryptionPublicKeyJwk &&
     user.encryptionPublicKeyAlgorithm &&

@@ -187,17 +187,14 @@ export const listMembers = query({
           role: membership.role,
           addedAt: membership.addedAt,
           identityKey: user?.identityKey ?? "",
-          deviceLabel: user?.deviceLabel ?? "Unknown device",
+          displayName: user?.displayName ?? "Unknown device",
           platform: user?.platform ?? "unknown",
-          email: user?.email ?? "",
-          firstName: user?.firstName ?? null,
-          lastName: user?.lastName ?? null,
-          profileImageUrl: user?.profileImageUrl ?? null,
+          avatarUrl: user?.avatarStorageId ? await ctx.storage.getUrl(user.avatarStorageId) : null,
         }
       }),
     )
 
-    return rows.sort((left, right) => left.deviceLabel.localeCompare(right.deviceLabel))
+    return rows.sort((left, right) => left.displayName.localeCompare(right.displayName))
   },
 })
 
