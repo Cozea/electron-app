@@ -26,45 +26,22 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Apply final source cleanup
+      - name: Remove stale caller identity claims
         run: |
           python3 <<'PY'
           from pathlib import Path
 
-          tombstones = Path("convex/fileTombstones.ts")
-          source = tombstones.read_text()
-          source = source.replace(
-              'function deviceDisplayName(device: { deviceLabel?: string; identityKey?: string }): string {\n  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
-              'function deviceDisplayName(device: { displayName?: string; identityKey?: string }): string {\n  return device.displayName?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
-          )
-          source = source.replace(
-              '    // Transitional caller field. Human/device attribution is derived from auth.\n    deletedBy: v.optional(v.id("devicePrincipals")),\n',
-              '',
-          )
-          tombstones.write_text(source)
-
-          locks = Path("convex/projectFileLocks.ts")
-          source = locks.read_text()
-          source = source.replace(
-              'function displayName(device: {\n  deviceLabel?: string | undefined\n  identityKey?: string | undefined\n}): string {\n  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
-              'function displayName(device: {\n  displayName?: string | undefined\n  identityKey?: string | undefined\n}): string {\n  return device.displayName?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
-          )
-          source = source.replace(
-              '    // Transitional caller field. Lock ownership is derived from device auth.\n    userId: v.optional(v.id("devicePrincipals")),\n',
-              '',
-          )
-          source = source.replace('    userId: v.optional(v.id("devicePrincipals")),\n', '', 1)
-          source = source.replace('      lockedByUser: lockedByDevice\n', '      lockedByPrincipal: lockedByDevice\n')
-          source = source.replace('            name: displayName(lockedByDevice),\n', '            displayName: displayName(lockedByDevice),\n')
-          source = source.replace('            profileImageUrl: lockedByDevice.avatarStorageId ? await ctx.storage.getUrl(lockedByDevice.avatarStorageId) : null,\n', '            avatarUrl: lockedByDevice.avatarStorageId ? await ctx.storage.getUrl(lockedByDevice.avatarStorageId) : null,\n')
-          locks.write_text(source)
+          persistence = Path("apps/desktop/src/lib/yjs/ProjectFilesPersistence.ts")
+          source = persistence.read_text()
+          source = source.replace("              deletedBy: this.userId,\n", "")
+          persistence.write_text(source)
           PY
 
           if ! git diff --quiet; then
             git config user.name "cozea-verification"
             git config user.email "actions@users.noreply.github.com"
-            git add convex/fileTombstones.ts convex/projectFileLocks.ts
-            git commit -m "refactor(identity): canonicalize lock and tombstone principals"
+            git add apps/desktop/src/lib/yjs/ProjectFilesPersistence.ts
+            git commit -m "refactor(identity): remove tombstone caller identity claim"
             git push
           fi
 
