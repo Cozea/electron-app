@@ -133,10 +133,10 @@ export const ensureDevicePrincipalFromServer = mutation({
       throw new ConvexError("Invalid device identity ID")
     }
 
-    // Fresh devices still need placeholder values for account-era required
-    // fields until the breaking schema cutover removes them. They are storage
-    // compatibility only and never authentication/collaboration identity.
-    const suggestedLabel = args.deviceLabel.trim() || "This Device"
+    // The OS hostname is never product identity. A fresh principal starts with
+    // an explicit unconfigured label and must be named by the user in Cozea.
+    // Account-era required fields remain placeholders until the schema purge.
+    const suggestedLabel = "This Device"
     const localUserWorkosId = `device:${identityKey}`
     const localEmail = `device+${identityKey}@local.cozea.app`
     const normalizedEmail = normalizeEmail(localEmail)
