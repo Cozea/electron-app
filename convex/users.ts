@@ -21,6 +21,20 @@ function requireServerSecret(serverSecret: string): void {
   }
 }
 
+function normalizeDeviceDisplayName(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) throw new ConvexError("Device name cannot be blank")
+  if (normalized.length > 80) throw new ConvexError("Device name cannot exceed 80 characters")
+  return normalized
+}
+
+function normalizeAvatarUrl(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) throw new ConvexError("Avatar URL cannot be blank")
+  if (normalized.length > 200_000) throw new ConvexError("Avatar data is too large")
+  return normalized
+}
+
 const CHALLENGE_WINDOW_MS = 10 * 60 * 1_000
 const MAX_IDENTITY_CHALLENGES_PER_WINDOW = 12
 const MAX_FINGERPRINT_CHALLENGES_PER_WINDOW = 30
@@ -98,7 +112,6 @@ function pickCanonicalUser<T extends { updatedAt?: number; createdAt: number; _i
   })[0]
 }
 
-
 export const ensureDevicePrincipalFromServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -119,11 +132,14 @@ export const ensureDevicePrincipalFromServer = mutation({
     if (!isDeviceIdentityKey(identityKey)) {
       throw new ConvexError("Invalid device identity ID")
     }
-    const normalizedLabel = args.deviceLabel.trim() || "This Device"
+
+    // Fresh devices still need placeholder values for account-era required
+    // fields until the breaking schema cutover removes them. They are storage
+    // compatibility only and never authentication/collaboration identity.
+    const suggestedLabel = args.deviceLabel.trim() || "This Device"
     const localUserWorkosId = `device:${identityKey}`
     const localEmail = `device+${identityKey}@local.cozea.app`
     const normalizedEmail = normalizeEmail(localEmail)
-    const personalWorkspaceName = `${normalizedLabel} Workspace`
     const localWorkspaceMembershipId = `local-membership:${identityKey}`
 
     const canonicalUser = await ctx.db
@@ -132,6 +148,9 @@ export const ensureDevicePrincipalFromServer = mutation({
       .unique()
 
     let userId = canonicalUser?._id
+    let effectiveLabel = canonicalUser?.deviceLabel?.trim() || suggestedLabel
+    let effectiveAvatarUrl = canonicalUser?.profileImageUrl ?? null
+
     if (canonicalUser) {
       if (canonicalUser.status === "revoked") {
         throw new ConvexError("This device identity has been revoked")
@@ -142,17 +161,14 @@ export const ensureDevicePrincipalFromServer = mutation({
       ) {
         throw new ConvexError("This device ID is already bound to another signing key")
       }
+
+      // Authentication refreshes security/runtime metadata only. Never overwrite
+      // user-selected device presentation with the OS-derived bootstrap label.
       await ctx.db.patch(canonicalUser._id, {
-        deviceLabel: normalizedLabel,
         platform: args.platform.trim() || "desktop",
         encryptionPublicKeyJwk: args.encryptionPublicKeyJwk,
         encryptionPublicKeyAlgorithm: args.encryptionPublicKeyAlgorithm,
         encryptionFingerprint: args.encryptionFingerprint,
-        email: localEmail,
-        normalizedEmail,
-        firstName: normalizedLabel,
-        lastName: undefined,
-        profileImageUrl: undefined,
         status: "active",
         signingKeyVersion: canonicalUser.signingKeyVersion ?? 1,
         tokenValidAfter: canonicalUser.tokenValidAfter ?? now,
@@ -163,7 +179,7 @@ export const ensureDevicePrincipalFromServer = mutation({
     } else {
       userId = await ctx.db.insert("users", {
         identityKey,
-        deviceLabel: normalizedLabel,
+        deviceLabel: suggestedLabel,
         platform: args.platform.trim() || "desktop",
         encryptionPublicKeyJwk: args.encryptionPublicKeyJwk,
         encryptionPublicKeyAlgorithm: args.encryptionPublicKeyAlgorithm,
@@ -178,14 +194,18 @@ export const ensureDevicePrincipalFromServer = mutation({
         workosId: localUserWorkosId,
         email: localEmail,
         normalizedEmail,
-        firstName: normalizedLabel,
+        firstName: suggestedLabel,
         lastName: undefined,
         profileImageUrl: undefined,
         createdAt: now,
         updatedAt: now,
         lastLoginAt: now,
       })
+      effectiveLabel = suggestedLabel
+      effectiveAvatarUrl = null
     }
+
+    const personalWorkspaceName = `${effectiveLabel} Workspace`
 
     return {
       userId: userId!,
@@ -193,9 +213,11 @@ export const ensureDevicePrincipalFromServer = mutation({
         id: identityKey,
         deviceId: identityKey,
         email: localEmail,
-        firstName: normalizedLabel,
+        // Transitional renderer contract: this value is the machine display
+        // name, not a human first name.
+        firstName: effectiveLabel,
         lastName: null,
-        profileImageUrl: null,
+        profileImageUrl: effectiveAvatarUrl,
       },
       personalWorkspace: {
         id: localWorkspaceMembershipId,
@@ -211,7 +233,7 @@ export const ensureDevicePrincipalFromServer = mutation({
         deviceId: identityKey,
         userId: identityKey,
         identityKey,
-        deviceLabel: normalizedLabel,
+        deviceLabel: effectiveLabel,
         platform: args.platform.trim() || "desktop",
         encryptionFingerprint: args.encryptionFingerprint,
         signingFingerprint: args.signingFingerprint,
@@ -254,7 +276,7 @@ export const getDevicePrincipalForServer = query({
   },
 })
 
-// Get user by email
+// Legacy email lookup. Deleted with the breaking project-sharing cutover.
 export const getByEmail = query({
   args: { email: v.string() },
   handler: async (ctx, args) => {
@@ -271,14 +293,11 @@ export const getByEmail = query({
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .collect()
-    const fallback = pickCanonicalUser(byEmail)
-
-    if (!fallback) return null
-    return fallback
+    return pickCanonicalUser(byEmail)
   },
 })
 
-// Resolve multiple users by email (for invite UI enrichment)
+// Legacy invite enrichment. Deleted with email-keyed project sharing.
 export const getByEmails = query({
   args: { emails: v.array(v.string()) },
   handler: async (ctx, args) => {
@@ -301,7 +320,6 @@ export const getByEmails = query({
             .collect()
           user = pickCanonicalUser(byEmail)
         }
-
         if (!user) return null
 
         return {
@@ -321,7 +339,7 @@ export const getByEmails = query({
   },
 })
 
-// Get user by ID (for account settings)
+// Transitional name: the value is the internal device-principal row ID.
 export const getById = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
@@ -333,9 +351,7 @@ export const getById = query({
 
 export const getCurrent = query({
   args: {},
-  handler: async (ctx) => {
-    return await requireAuthenticatedDevice(ctx)
-  },
+  handler: async (ctx) => await requireAuthenticatedDevice(ctx),
 })
 
 export const revokeCurrentDevice = mutation({
@@ -361,7 +377,43 @@ export const revokeCurrentDevice = mutation({
   },
 })
 
-// Update user profile (name, profile image, job title)
+// Presentation-only mutation for the machine principal. Cosmetic changes are
+// deliberately isolated from authentication/authorization state.
+export const updateDevicePresentation = mutation({
+  args: {
+    displayName: v.optional(v.string()),
+    avatarUrl: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuthenticatedDevice(ctx)
+    const patch: {
+      deviceLabel?: string
+      firstName?: string
+      profileImageUrl?: string | undefined
+      updatedAt: number
+    } = { updatedAt: Date.now() }
+
+    if (args.displayName !== undefined) {
+      const displayName = normalizeDeviceDisplayName(args.displayName)
+      patch.deviceLabel = displayName
+      // Temporary mirror while account-shaped renderer contracts are removed.
+      patch.firstName = displayName
+    }
+    if (args.avatarUrl !== undefined) {
+      patch.profileImageUrl = args.avatarUrl === null ? undefined : normalizeAvatarUrl(args.avatarUrl)
+    }
+
+    await ctx.db.patch(user._id, patch)
+    const next = await ctx.db.get(user._id)
+    return {
+      identityKey: user.identityKey,
+      displayName: next?.deviceLabel ?? user.deviceLabel,
+      avatarUrl: next?.profileImageUrl ?? null,
+    }
+  },
+})
+
+// Legacy account-profile mutation. New code must use updateDevicePresentation.
 export const updateProfile = mutation({
   args: {
     firstName: v.optional(v.string()),
@@ -371,23 +423,15 @@ export const updateProfile = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
-    const updates = args
-
-    // Filter out undefined values
     const filteredUpdates: Record<string, string | number> = {}
-    if (updates.firstName !== undefined) filteredUpdates.firstName = updates.firstName
-    if (updates.lastName !== undefined) filteredUpdates.lastName = updates.lastName
-    if (updates.profileImageUrl !== undefined) filteredUpdates.profileImageUrl = updates.profileImageUrl
-    if (updates.jobTitle !== undefined) filteredUpdates.jobTitle = updates.jobTitle
-
-    await ctx.db.patch(user._id, {
-      ...filteredUpdates,
-      updatedAt: Date.now(),
-    })
+    if (args.firstName !== undefined) filteredUpdates.firstName = args.firstName
+    if (args.lastName !== undefined) filteredUpdates.lastName = args.lastName
+    if (args.profileImageUrl !== undefined) filteredUpdates.profileImageUrl = args.profileImageUrl
+    if (args.jobTitle !== undefined) filteredUpdates.jobTitle = args.jobTitle
+    await ctx.db.patch(user._id, { ...filteredUpdates, updatedAt: Date.now() })
   },
 })
 
-// Update user preferences (theme, model, notifications)
 export const updatePreferences = mutation({
   args: {
     preferences: v.object({
@@ -399,25 +443,11 @@ export const updatePreferences = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
-
-    // Merge with existing preferences to allow partial updates
-    const nextPreferences: NonNullable<typeof user.preferences> = {
-      ...user.preferences,
-    }
+    const nextPreferences: NonNullable<typeof user.preferences> = { ...user.preferences }
     if (args.preferences.theme !== undefined) nextPreferences.theme = args.preferences.theme
-    if (args.preferences.defaultModel !== undefined) {
-      nextPreferences.defaultModel = args.preferences.defaultModel
-    }
-    if (args.preferences.emailNotifications !== undefined) {
-      nextPreferences.emailNotifications = args.preferences.emailNotifications
-    }
-    if (args.preferences.pushNotifications !== undefined) {
-      nextPreferences.pushNotifications = args.preferences.pushNotifications
-    }
-
-    await ctx.db.patch(user._id, {
-      preferences: nextPreferences,
-      updatedAt: Date.now(),
-    })
+    if (args.preferences.defaultModel !== undefined) nextPreferences.defaultModel = args.preferences.defaultModel
+    if (args.preferences.emailNotifications !== undefined) nextPreferences.emailNotifications = args.preferences.emailNotifications
+    if (args.preferences.pushNotifications !== undefined) nextPreferences.pushNotifications = args.preferences.pushNotifications
+    await ctx.db.patch(user._id, { preferences: nextPreferences, updatedAt: Date.now() })
   },
 })
