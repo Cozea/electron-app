@@ -33,8 +33,8 @@ export const SUBSTRATE_T3_SERVER_FLAG = "cozea.t3.server" as const;
 /** Default port for vendored T3 server child (separate from shadow :4783). */
 export const DEFAULT_T3_SERVER_PORT = 13_773;
 
-/** Reviewed Cozea T3 fork pin including the native Computer Use MCP toolkit. */
-export const SUBSTRATE_T3_PIN_SHA = "c594c87fabcbbdab1e2ca99a7afa7a3495e76b40";
+/** Reviewed Cozea T3 fork pin including managed Computer Use lifecycle forwarding. */
+export const SUBSTRATE_T3_PIN_SHA = "632e8dcc970d878f272750132e55427b310fe581";
 
 export const DEFAULT_ASSISTANT_RUNTIME_HTTP_ORIGIN = "http://127.0.0.1:3773";
 export const ASSISTANT_RUNTIME_READINESS_PATH = "/__cozea/ready";
