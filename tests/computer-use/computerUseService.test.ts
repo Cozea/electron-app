@@ -1,104 +1,71 @@
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 
-describe('Computer Use Provider Sync Logic', () => {
-  it('updates and removes open-computer-use in Claude JSON config', () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cu-test-claude-'))
-    const claudePath = path.join(tempDir, '.claude.json')
+const repositoryRoot = process.cwd()
+const read = (relativePath: string) =>
+  fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8')
 
-    const initialConfig = {
-      mcpServers: {
-        filesystem: { command: 'npx', args: ['-y', 'mcp-filesystem'] },
-      },
-    }
-    fs.writeFileSync(claudePath, JSON.stringify(initialConfig, null, 2))
+const UPSTREAM_COMMIT = '41c5294cfe4735baca03f9c82b4de99d191a0b49'
+const COMPUTER_USE_TOOLS = [
+  'list_apps',
+  'get_app_state',
+  'click',
+  'perform_secondary_action',
+  'scroll',
+  'drag',
+  'type_text',
+  'press_key',
+  'set_value',
+] as const
 
-    // Enable
-    const data = JSON.parse(fs.readFileSync(claudePath, 'utf8'))
-    data.mcpServers = data.mcpServers || {}
-    data.mcpServers['open-computer-use'] = {
-      type: 'stdio',
-      command: 'open-computer-use',
-      args: ['mcp'],
-    }
-    fs.writeFileSync(claudePath, JSON.stringify(data, null, 2))
+describe('Cozea-owned Computer Use runtime', () => {
+  it('pins OpenComputerUseKit and keeps macOS execution in the Cozea process', () => {
+    const packageSwift = read('native/computer-use-bridge/Package.swift')
+    expect(packageSwift).toContain(UPSTREAM_COMMIT)
+    expect(packageSwift).toContain('OpenComputerUseKit')
+    expect(packageSwift).toContain('type: .dynamic')
 
-    let updated = JSON.parse(fs.readFileSync(claudePath, 'utf8'))
-    expect(updated.mcpServers['open-computer-use']).toEqual({
-      type: 'stdio',
-      command: 'open-computer-use',
-      args: ['mcp'],
-    })
-    expect(updated.mcpServers.filesystem).toBeDefined()
-
-    // Disable
-    delete updated.mcpServers['open-computer-use']
-    fs.writeFileSync(claudePath, JSON.stringify(updated, null, 2))
-
-    const disabled = JSON.parse(fs.readFileSync(claudePath, 'utf8'))
-    expect(disabled.mcpServers['open-computer-use']).toBeUndefined()
-    expect(disabled.mcpServers.filesystem).toBeDefined()
-
-    fs.rmSync(tempDir, { recursive: true, force: true })
+    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
+    expect(runtime).toContain('computer-use-native')
+    expect(runtime).toContain('requestPermission')
+    expect(runtime).toContain('turnEnded')
   })
 
-  it('updates and removes open-computer-use in OpenCode JSON config', () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cu-test-opencode-'))
-    const openCodePath = path.join(tempDir, 'opencode.json')
-
-    // Enable on fresh file
-    const data: Record<string, any> = {}
-    data.mcp = data.mcp || {}
-    data.mcp['open-computer-use'] = {
-      type: 'local',
-      command: ['open-computer-use', 'mcp'],
+  it('owns and hard-gates the complete upstream nine-tool surface', () => {
+    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
+    for (const tool of COMPUTER_USE_TOOLS) {
+      expect(runtime).toContain(tool)
     }
-    fs.writeFileSync(openCodePath, JSON.stringify(data, null, 2))
-
-    let updated = JSON.parse(fs.readFileSync(openCodePath, 'utf8'))
-    expect(updated.mcp['open-computer-use']).toEqual({
-      type: 'local',
-      command: ['open-computer-use', 'mcp'],
-    })
-
-    // Disable
-    delete updated.mcp['open-computer-use']
-    fs.writeFileSync(openCodePath, JSON.stringify(updated, null, 2))
-
-    const disabled = JSON.parse(fs.readFileSync(openCodePath, 'utf8'))
-    expect(disabled.mcp['open-computer-use']).toBeUndefined()
-
-    fs.rmSync(tempDir, { recursive: true, force: true })
+    expect(runtime).toContain('validateActionPolicy')
+    expect(runtime).toContain('disabledComputerUseTools')
+    expect(runtime).toContain('computerUseEnabled')
+    expect(runtime).toContain('computerUseAllowGlobalPointerFallbacks')
+    expect(runtime).toContain('timingSafeEqual')
   })
 
-  it('updates and removes open-computer-use in Codex TOML config', () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cu-test-codex-'))
-    const codexPath = path.join(tempDir, 'config.toml')
+  it('never discovers an external CLI or mutates provider home configuration', () => {
+    const facade = read('apps/desktop/electron/services/ComputerUseService.ts')
+    expect(facade).toContain('return null')
+    expect(facade).toContain('Deliberate no-op')
+    expect(facade).not.toContain('writeFileSync')
+    expect(facade).not.toContain("path.join(home, '.claude")
+    expect(facade).not.toContain("path.join(home, '.codex")
+    expect(facade).not.toContain("path.join(home, '.cursor")
+    expect(facade).not.toContain("path.join(home, '.config', 'opencode")
+  })
 
-    const initialToml = `model = "gpt-5"\n\n[marketplaces.openai]\nsource_type = "local"\n`
-    fs.writeFileSync(codexPath, initialToml)
+  it('packages the runtime and gives T3 only a private broker endpoint and token', () => {
+    const builder = read('apps/desktop/electron-builder.config.cjs')
+    expect(builder).toContain('computer-use-runtime')
 
-    // Enable
-    let toml = fs.readFileSync(codexPath, 'utf8')
-    const sectionHeader = '[mcp_servers."open-computer-use"]'
-    toml = toml.trimEnd() + `\n\n${sectionHeader}\ncommand = "open-computer-use"\nargs = ["mcp"]\n`
-    fs.writeFileSync(codexPath, toml)
+    const shadow = read('apps/desktop/electron/substrate/ShadowServerManager.ts')
+    expect(shadow).toContain('COZEA_COMPUTER_USE_ENDPOINT')
+    expect(shadow).toContain('COZEA_COMPUTER_USE_TOKEN')
+    expect(shadow).toContain('ComputerUseRuntimeService.getInstance().startBroker()')
 
-    let updated = fs.readFileSync(codexPath, 'utf8')
-    expect(updated).toContain('[mcp_servers."open-computer-use"]')
-    expect(updated).toContain('command = "open-computer-use"')
-
-    // Disable
-    const regex = new RegExp(`\\[mcp_servers\\.(?:"open-computer-use"|open_computer_use)\\][\\s\\S]*?(?=\\n\\[|$)`, 'g')
-    toml = toml.replace(regex, '').trimEnd() + '\n'
-    fs.writeFileSync(codexPath, toml)
-
-    const disabled = fs.readFileSync(codexPath, 'utf8')
-    expect(disabled).not.toContain('open-computer-use')
-    expect(disabled).toContain('model = "gpt-5"')
-
-    fs.rmSync(tempDir, { recursive: true, force: true })
+    const preparation = read('scripts/prepare-computer-use-runtime.mjs')
+    expect(preparation).toContain(UPSTREAM_COMMIT)
+    expect(preparation).toContain('computer-use-runtime')
   })
 })
