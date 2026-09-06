@@ -31,32 +31,40 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          layout = Path("apps/desktop/src/features/projects/layouts/ProjectLayout.tsx")
-          source = layout.read_text()
-          source = source.replace("  buildProjectRouteNavigationState,\n", "")
-          layout.write_text(source)
+          tombstones = Path("convex/fileTombstones.ts")
+          source = tombstones.read_text()
+          source = source.replace(
+              'function deviceDisplayName(device: { deviceLabel?: string; identityKey?: string }): string {\n  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
+              'function deviceDisplayName(device: { displayName?: string; identityKey?: string }): string {\n  return device.displayName?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
+          )
+          source = source.replace(
+              '    // Transitional caller field. Human/device attribution is derived from auth.\n    deletedBy: v.optional(v.id("devicePrincipals")),\n',
+              '',
+          )
+          tombstones.write_text(source)
 
-          join_links = Path("convex/projectJoinLinks.ts")
-          source = join_links.read_text()
-          removals = [
-              '''    // Transitional renderer argument. Authority is derived from ctx.auth.\n    userId: v.optional(v.id("devicePrincipals")),\n''',
-              '''    // Transitional only; current principal is derived from device auth.\n    viewerUserId: v.optional(v.id("devicePrincipals")),\n''',
-              '''    // Transitional renderer argument. Do not use it for authority.\n    actorUserId: v.optional(v.id("devicePrincipals")),\n''',
-              '''    actorUserId: v.optional(v.id("devicePrincipals")),\n''',
-              '''    actorUserId: v.optional(v.id("devicePrincipals")),\n''',
-              '''    // Transitional caller metadata. The authenticated canonical device is the\n    // only identity used to create membership. These fields are removed once\n    // the renderer contract is cut over.\n    userId: v.optional(v.id("devicePrincipals")),\n    deviceId: v.optional(v.string()),\n    deviceLabel: v.optional(v.string()),\n    platform: v.optional(v.string()),\n    fingerprint: v.optional(v.string()),\n''',
-          ]
-          for removal in removals:
-              if removal in source:
-                  source = source.replace(removal, "", 1)
-          join_links.write_text(source)
+          locks = Path("convex/projectFileLocks.ts")
+          source = locks.read_text()
+          source = source.replace(
+              'function displayName(device: {\n  deviceLabel?: string | undefined\n  identityKey?: string | undefined\n}): string {\n  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
+              'function displayName(device: {\n  displayName?: string | undefined\n  identityKey?: string | undefined\n}): string {\n  return device.displayName?.trim() || device.identityKey?.trim() || "Unknown device"\n}',
+          )
+          source = source.replace(
+              '    // Transitional caller field. Lock ownership is derived from device auth.\n    userId: v.optional(v.id("devicePrincipals")),\n',
+              '',
+          )
+          source = source.replace('    userId: v.optional(v.id("devicePrincipals")),\n', '', 1)
+          source = source.replace('      lockedByUser: lockedByDevice\n', '      lockedByPrincipal: lockedByDevice\n')
+          source = source.replace('            name: displayName(lockedByDevice),\n', '            displayName: displayName(lockedByDevice),\n')
+          source = source.replace('            profileImageUrl: lockedByDevice.avatarStorageId ? await ctx.storage.getUrl(lockedByDevice.avatarStorageId) : null,\n', '            avatarUrl: lockedByDevice.avatarStorageId ? await ctx.storage.getUrl(lockedByDevice.avatarStorageId) : null,\n')
+          locks.write_text(source)
           PY
 
           if ! git diff --quiet; then
             git config user.name "cozea-verification"
             git config user.email "actions@users.noreply.github.com"
-            git add apps/desktop/src/features/projects/layouts/ProjectLayout.tsx convex/projectJoinLinks.ts
-            git commit -m "refactor(identity): remove transitional principal arguments"
+            git add convex/fileTombstones.ts convex/projectFileLocks.ts
+            git commit -m "refactor(identity): canonicalize lock and tombstone principals"
             git push
           fi
 
