@@ -251,12 +251,12 @@ export function ScheduledTaskDetail({
       <aside className="hidden w-80 shrink-0 flex-col border-l border-border/60 md:flex">
         <div className="shrink-0 px-4 pt-4 pb-2">
           <h2 className="text-sm text-muted-foreground">History</h2>
-          {/* The runner lives in the app. A slot that passes while Cozea is
-              closed is recorded as skipped the next time it opens, so an empty
-              history should not be read as a run that vanished. */}
+          {/* The runner lives in the app. Recently missed runs can still start,
+              while older ones are skipped, so an empty history should not be
+              read as a run that vanished. */}
           <p className="mt-1 text-xs text-muted-foreground/70">
-            Runs happen while Cozea is open. A slot missed while it was closed is marked skipped
-            when you next open it.
+            Runs happen while Cozea is open. If Cozea reopens soon after a scheduled time, the run
+            may still start. Older missed runs are marked skipped.
           </p>
         </div>
         {runs.length === 0 ? (

@@ -272,6 +272,9 @@ describe("a task's run history", () => {
 
     expect(markup).toContain("No runs yet");
     expect(markup).toContain("Nothing has run yet.");
+    expect(markup).toContain("If Cozea reopens soon after a scheduled time");
+    expect(markup).toContain("Older missed runs are marked skipped");
+    expect(markup).not.toContain("marked skipped when you next open it");
   });
 
   it("says a paused task stays paused until it is started again", () => {
