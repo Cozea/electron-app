@@ -51,7 +51,10 @@ async function applySnapshotToStore(snapshot: AssistantRuntimeSnapshot) {
 async function performSnapshotSync(api: NativeApi = ensureNativeApi()) {
   const snapshot = await api.orchestration.getSnapshot()
   await applySnapshotToStore(snapshot)
-  await flushPendingAssistantProjectDeletions({ snapshotIsAuthoritative: true })
+  await flushPendingAssistantProjectDeletions({
+    snapshotIsAuthoritative: true,
+    nativeApi: api,
+  })
   const shouldReplay = coordinator.completeSnapshotRecovery(snapshot.snapshotSequence)
   if (shouldReplay) {
     const nextEvents = coordinator.markEventBatchApplied(pendingDomainEvents)
