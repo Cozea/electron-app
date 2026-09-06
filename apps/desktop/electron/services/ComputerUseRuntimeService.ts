@@ -29,6 +29,16 @@ const COMPUTER_USE_TOOLS = new Set([
 const UPSTREAM_VERSION = '0.3.3'
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const CALL_TIMEOUT_MS = 45_000
+const THREAD_POLICY_TTL_MS = 24 * 60 * 60 * 1000
+
+export type ComputerUseThreadPolicy = 'inherit' | 'allow' | 'deny'
+
+type ExplicitComputerUseThreadPolicy = Exclude<ComputerUseThreadPolicy, 'inherit'>
+
+interface ComputerUseThreadPolicyLease {
+  policy: ExplicitComputerUseThreadPolicy
+  expiresAt: number
+}
 
 interface NativeComputerUseAddon {
   callTool(sessionId: string, tool: string, argumentsJson: string): Promise<string>
@@ -118,7 +128,14 @@ function validateActionPolicy(
   settings: ComputerUseAppSettings,
   tool: string,
   args: unknown,
+  threadPolicy: ComputerUseThreadPolicy = 'inherit',
 ): string | null {
+  // Scheduled tasks opt into desktop control explicitly. A deny is a hard
+  // per-thread boundary and must not turn into global inheritance if settings
+  // change while the unattended turn is still running.
+  if (threadPolicy === 'deny') {
+    return 'Computer Use is not authorized for this scheduled task.'
+  }
   if (!settings.computerUseEnabled) return 'Computer Use is disabled in Cozea Settings.'
   if (!COMPUTER_USE_TOOLS.has(tool)) return `Unknown Computer Use tool: ${tool}`
   if (disabledTools(settings).has(tool)) {
@@ -261,6 +278,7 @@ export class ComputerUseRuntimeService {
 
   private nativeAddon: NativeComputerUseAddon | null | undefined
   private readonly workerSessions = new Map<string, WorkerMcpSession>()
+  private readonly threadPolicies = new Map<string, ComputerUseThreadPolicyLease>()
   private server: Server | null = null
   private endpoint: string | null = null
   private readonly token = randomBytes(32).toString('base64url')
@@ -304,9 +322,43 @@ export class ComputerUseRuntimeService {
     return next
   }
 
+  setThreadPolicy(sessionId: string, policy: ComputerUseThreadPolicy): void {
+    const normalizedSessionId = sessionId.trim()
+    if (!normalizedSessionId) throw new Error('Computer Use thread policy requires a thread ID.')
+    if (policy === 'inherit') {
+      this.threadPolicies.delete(normalizedSessionId)
+      return
+    }
+    this.threadPolicies.set(normalizedSessionId, {
+      policy,
+      expiresAt: Date.now() + THREAD_POLICY_TTL_MS,
+    })
+  }
+
+  clearThreadPolicy(sessionId: string): void {
+    this.threadPolicies.delete(sessionId.trim())
+  }
+
+  private threadPolicy(sessionId: string): ComputerUseThreadPolicy {
+    const entry = this.threadPolicies.get(sessionId)
+    if (!entry) return 'inherit'
+    if (entry.expiresAt <= Date.now()) {
+      this.threadPolicies.delete(sessionId)
+      return 'inherit'
+    }
+    return entry.policy
+  }
+
+  private pruneExpiredThreadPolicies(): void {
+    const now = Date.now()
+    for (const [sessionId, entry] of this.threadPolicies) {
+      if (entry.expiresAt <= now) this.threadPolicies.delete(sessionId)
+    }
+  }
+
   async callTool(sessionId: string, tool: string, args: unknown): Promise<ComputerUseToolResult> {
     const settings = readComputerUseAppSettings()
-    const policyError = validateActionPolicy(settings, tool, args)
+    const policyError = validateActionPolicy(settings, tool, args, this.threadPolicy(sessionId))
     if (policyError) return failure(policyError)
 
     if (settings.computerUseAllowGlobalPointerFallbacks) {
@@ -382,26 +434,41 @@ export class ComputerUseRuntimeService {
   }
 
   async turnEnded(sessionId: string): Promise<void> {
-    if (process.platform === 'darwin') {
-      await this.loadNativeAddon()?.turnEnded(sessionId)
-      return
+    try {
+      if (process.platform === 'darwin') {
+        await this.loadNativeAddon()?.turnEnded(sessionId)
+        return
+      }
+      this.workerSessions.get(sessionId)?.turnEnded()
+    } finally {
+      this.clearThreadPolicy(sessionId)
     }
-    this.workerSessions.get(sessionId)?.turnEnded()
   }
 
   async resetSession(sessionId: string): Promise<void> {
-    if (process.platform === 'darwin') {
-      await this.loadNativeAddon()?.resetSession(sessionId)
-      return
+    try {
+      if (process.platform === 'darwin') {
+        await this.loadNativeAddon()?.resetSession(sessionId)
+        return
+      }
+      this.workerSessions.get(sessionId)?.stop()
+      this.workerSessions.delete(sessionId)
+    } finally {
+      this.clearThreadPolicy(sessionId)
     }
-    this.workerSessions.get(sessionId)?.stop()
-    this.workerSessions.delete(sessionId)
   }
 
   async resetAll(): Promise<void> {
-    await this.loadNativeAddon()?.resetAll()
-    for (const session of this.workerSessions.values()) session.stop()
-    this.workerSessions.clear()
+    // Resetting native/worker state is also used to apply live global settings.
+    // Keep active scheduled-task authorization leases intact across that reset;
+    // otherwise a running scheduled deny could accidentally become inheritance.
+    try {
+      await this.loadNativeAddon()?.resetAll()
+    } finally {
+      for (const session of this.workerSessions.values()) session.stop()
+      this.workerSessions.clear()
+      this.pruneExpiredThreadPolicies()
+    }
   }
 
   async startBroker(): Promise<ComputerUseRuntimeEnvironment> {
@@ -424,6 +491,7 @@ export class ComputerUseRuntimeService {
 
   async stopBroker(): Promise<void> {
     await this.resetAll()
+    this.threadPolicies.clear()
     const server = this.server
     this.server = null
     this.endpoint = null
