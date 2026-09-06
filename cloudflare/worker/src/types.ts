@@ -11,17 +11,10 @@ export interface EncryptionBootstrap {
 export interface SessionRequestBody {
   projectId: string
   clientType: 'web' | 'electron'
-  deviceId: string
-  deviceLabel: string
-  platform: string
-  publicKeyJwk: string
-  publicKeyAlgorithm: string
-  fingerprint: string
 }
 
 export interface DeviceAuthChallengeRequest {
   identityKey: string
-  deviceLabel: string
   platform: string
   encryptionPublicKeyJwk: string
   encryptionPublicKeyAlgorithm: string
@@ -42,7 +35,6 @@ export interface DeviceAccessClaims {
   sub: string
   iss: string
   aud: string
-  device_id: string
   identity_kind: 'device'
   jti: string
   key_version: number
@@ -57,10 +49,11 @@ export interface SessionDescriptor {
   collabWsUrl: string
   token: string
   protocolVersion: string
-  deviceId: string
-  deviceLabel?: string
-  deviceFingerprint?: string
-  devicePublicKeyJwk?: string
+  principalId: string
+  identityKey: string
+  displayName: string
+  encryptionFingerprint: string
+  encryptionPublicKeyJwk: string
   capabilities: {
     execution: 'browser-local' | 'vm'
     languageScope: string[]
@@ -76,8 +69,7 @@ export interface SessionClaims {
   sub: string
   projectId: string
   roomId: string
-  userId: string
-  deviceId: string
+  principalId: string
   clientType: 'web' | 'electron'
   protocolVersion: string
   exp: number
@@ -85,13 +77,13 @@ export interface SessionClaims {
 }
 
 export interface ConvexSessionContext {
-  userId: string
+  principalId: string
+  identityKey: string
+  displayName: string
   projectId: string
   roomId: string
-  deviceId: string
-  deviceLabel: string
-  deviceFingerprint: string
-  devicePublicKeyJwk: string
+  encryptionFingerprint: string
+  encryptionPublicKeyJwk: string
   encryption: EncryptionBootstrap
 }
 

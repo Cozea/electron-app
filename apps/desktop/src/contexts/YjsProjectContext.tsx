@@ -257,19 +257,19 @@ export function YjsProjectProvider({
     }
 
     if (session.encryption.status === "room_not_initialized") {
-      if (!session.devicePublicKeyJwk) {
+      if (!session.encryptionPublicKeyJwk) {
         throw new Error("Missing local collaboration device public key")
       }
       const roomKeyBase64 = generateRoomKeyBase64()
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64,
-        recipientPublicKeyJwk: session.devicePublicKeyJwk,
+        recipientPublicKeyJwk: session.encryptionPublicKeyJwk,
       })
       await convex.mutation(api.yjs.initializeEncryptedRoom, {
         projectId,
         roomId: session.roomId,
         userId,
-        deviceId: session.deviceId,
+        deviceId: session.identityKey,
         keyVersion: session.encryption.activeKeyVersion ?? 1,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
@@ -299,14 +299,14 @@ export function YjsProjectProvider({
     }
 
     if (session.encryption.status === "missing_for_device") {
-      if (session.devicePublicKeyJwk) {
+      if (session.encryptionPublicKeyJwk) {
         await convex.mutation(api.yjs.createKeyRequest, {
           projectId,
           roomId: session.roomId,
           recipientUserId: userId,
-          recipientDeviceId: session.deviceId,
-          recipientPublicKeyJwk: session.devicePublicKeyJwk,
-          recipientFingerprint: session.deviceFingerprint ?? session.deviceId,
+          recipientDeviceId: session.identityKey,
+          recipientPublicKeyJwk: session.encryptionPublicKeyJwk,
+          recipientFingerprint: session.encryptionFingerprint ?? session.identityKey,
         })
       }
       return null

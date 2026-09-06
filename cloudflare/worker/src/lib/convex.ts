@@ -16,14 +16,13 @@ type AnyQueryReference = FunctionReference<'query', 'public', Record<string, unk
 type AnyMutationReference = FunctionReference<'mutation', 'public', Record<string, unknown>, unknown>
 
 interface LocalDeviceProfileInfo {
-  userId: string
+  principalId: string
   user: {
-    id: string
-    deviceId: string
-    email: string
-    firstName: string
-    lastName: null
-    profileImageUrl: string | null
+    principalId: string
+    identityKey: string
+    displayName: string
+    avatarUrl: string | null
+    platform: string
   }
   personalWorkspace: {
     id: string
@@ -34,11 +33,6 @@ interface LocalDeviceProfileInfo {
     role: 'admin'
     status: 'active'
     workspaceType: 'personal'
-  }
-  identity: {
-    deviceId: string
-    deviceLabel: string
-    fingerprint: string | null
   }
   authentication: {
     status: 'active'
@@ -94,7 +88,6 @@ export async function ensureDevicePrincipalFromConvex(
   return runMutation<LocalDeviceProfileInfo>(env, 'devicePrincipals:ensureDevicePrincipalFromServer', {
     serverSecret: env.AI_GATEWAY_SECRET,
     identityKey: identity.identityKey,
-    deviceLabel: identity.deviceLabel,
     platform: identity.platform,
     encryptionPublicKeyJwk: identity.encryptionPublicKeyJwk,
     encryptionPublicKeyAlgorithm: identity.encryptionPublicKeyAlgorithm,
@@ -288,26 +281,7 @@ export async function createCollabSessionFromConvex(
   body: SessionRequestBody,
   auth: DeviceAccessClaims,
 ): Promise<ConvexSessionContext> {
-  if (auth.sub !== body.deviceId) {
-    throw new Error('Authenticated device does not match the collaboration device')
-  }
-
   const principal = await requireActiveDeviceAccessInConvex(env, auth)
-
-  // The request still carries the public ECDH material during this transitional
-  // slice, but the canonical registered principal is authoritative. A mismatch
-  // is rejected rather than accepted as a device re-registration.
-  if (
-    principal.encryptionPublicKeyJwk !== body.publicKeyJwk ||
-    principal.encryptionPublicKeyAlgorithm !== body.publicKeyAlgorithm ||
-    principal.encryptionFingerprint !== body.fingerprint
-  ) {
-    throw new Error('Collaboration encryption key does not match the authenticated device')
-  }
-
-  // Do not pass deviceId into the legacy trusted-device fallback. Direct
-  // project/organization membership of the authenticated principal is the
-  // authorization source in the pure device-principal model.
   const access = await runServerQuery<ProjectAccessResult>(env, 'projectMembers:getProjectAccessForServer', {
     projectId: body.projectId,
     userId: principal.principalId,
@@ -325,13 +299,13 @@ export async function createCollabSessionFromConvex(
   })
 
   return {
-    userId: principal.principalId,
+    principalId: principal.principalId,
+    identityKey: principal.identityKey,
+    displayName: principal.displayName,
     projectId: body.projectId,
     roomId,
-    deviceId: principal.identityKey,
-    deviceLabel: principal.displayName,
-    deviceFingerprint: principal.encryptionFingerprint,
-    devicePublicKeyJwk: principal.encryptionPublicKeyJwk,
+    encryptionFingerprint: principal.encryptionFingerprint,
+    encryptionPublicKeyJwk: principal.encryptionPublicKeyJwk,
     encryption,
   }
 }

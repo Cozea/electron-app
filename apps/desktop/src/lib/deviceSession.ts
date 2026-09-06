@@ -63,7 +63,6 @@ async function issueDeviceSession(): Promise<DeviceSession> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       identityKey: identity.identityKey,
-      deviceLabel: identity.deviceLabel,
       platform: identity.platform,
       encryptionPublicKeyJwk: identity.publicKeyJwk,
       encryptionPublicKeyAlgorithm: identity.publicKeyAlgorithm,

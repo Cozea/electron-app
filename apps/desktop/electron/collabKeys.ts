@@ -1,7 +1,6 @@
 import { app, safeStorage } from 'electron'
 import { createHash, webcrypto } from 'node:crypto'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 
 import { createDeviceIdentityKey } from '@shared/deviceIdentity'
@@ -25,10 +24,8 @@ const RECOVERY_WRAP_ALGORITHM = 'PBKDF2-SHA256+A256GCM'
 const RECOVERY_WRAP_ITERATIONS = 210_000
 
 interface StoredCollabDeviceIdentity {
-  schemaVersion: 2
-  deviceId: string
+  schemaVersion: 3
   identityKey: string
-  deviceLabel: string
   platform: string
   publicKeyAlgorithm: typeof DEVICE_ALGORITHM
   fingerprint: string
@@ -42,10 +39,7 @@ interface StoredCollabDeviceIdentity {
 }
 
 export interface CollabDeviceIdentity {
-  deviceId: string
-  userId: string
   identityKey: string
-  deviceLabel: string
   platform: string
   publicKeyAlgorithm: typeof DEVICE_ALGORITHM
   fingerprint: string
@@ -56,8 +50,6 @@ export interface CollabDeviceIdentity {
 }
 
 export interface CollabDeviceChallengeSignature {
-  deviceId: string
-  userId: string
   identityKey: string
   algorithm: typeof DEVICE_SIGNING_ALGORITHM
   signature: string
@@ -156,9 +148,8 @@ function readStoredIdentity(): StoredCollabDeviceIdentity | null {
       const json = safeStorage.decryptString(encrypted)
       const parsed = JSON.parse(json) as StoredCollabDeviceIdentity
       if (
-        parsed?.schemaVersion !== 2 ||
+        parsed?.schemaVersion !== 3 ||
         !parsed.identityKey ||
-        parsed.deviceId !== parsed.identityKey ||
         !parsed.publicKeyJwk ||
         !parsed.privateKeyJwk ||
         !parsed.signingPublicKeyJwk ||
@@ -175,9 +166,8 @@ function readStoredIdentity(): StoredCollabDeviceIdentity | null {
       )
       const parsed = JSON.parse(fs.readFileSync(insecurePath, 'utf8')) as StoredCollabDeviceIdentity
       if (
-        parsed?.schemaVersion !== 2 ||
+        parsed?.schemaVersion !== 3 ||
         !parsed.identityKey ||
-        parsed.deviceId !== parsed.identityKey ||
         !parsed.publicKeyJwk ||
         !parsed.privateKeyJwk ||
         !parsed.signingPublicKeyJwk ||
@@ -252,10 +242,8 @@ async function generateStoredIdentity(): Promise<StoredCollabDeviceIdentity> {
   const identityKey = createDeviceIdentityKey(webcrypto.getRandomValues(new Uint8Array(16)))
 
   return {
-    schemaVersion: 2,
-    deviceId: identityKey,
+    schemaVersion: 3,
     identityKey,
-    deviceLabel: os.hostname(),
     platform: process.platform,
     publicKeyAlgorithm: DEVICE_ALGORITHM,
     fingerprint: publicJwkFingerprint(publicKeyJwk),
@@ -272,10 +260,7 @@ async function generateStoredIdentity(): Promise<StoredCollabDeviceIdentity> {
 function toPublicIdentity(identity: StoredCollabDeviceIdentity): CollabDeviceIdentity {
   const identityKey = identity.identityKey
   return {
-    deviceId: identityKey,
-    userId: identityKey,
     identityKey,
-    deviceLabel: identity.deviceLabel,
     platform: identity.platform,
     publicKeyAlgorithm: identity.publicKeyAlgorithm,
     fingerprint: identity.fingerprint,
@@ -399,8 +384,6 @@ export async function signCollabDeviceChallenge(
   const identityKey = identity.identityKey
 
   return {
-    deviceId: identityKey,
-    userId: identityKey,
     identityKey,
     algorithm: DEVICE_SIGNING_ALGORITHM,
     signature: bytesToBase64Url(new Uint8Array(signature)),
@@ -422,7 +405,7 @@ export async function wrapRoomKeyForRecipient(args: {
     JSON.stringify({
       v: 1,
       alg: WRAP_ALGORITHM,
-      senderDeviceId: identity.deviceId,
+      senderDeviceId: identity.identityKey,
       senderFingerprint: identity.fingerprint,
     }),
   )
@@ -449,7 +432,7 @@ export async function wrapRoomKeyForRecipient(args: {
     wrappedKey: JSON.stringify(envelope),
     wrapAlgorithm: WRAP_ALGORITHM,
     senderPublicKeyJwk: JSON.stringify(identity.publicKeyJwk),
-    senderDeviceId: identity.deviceId,
+    senderDeviceId: identity.identityKey,
   }
 }
 

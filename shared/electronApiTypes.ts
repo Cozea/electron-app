@@ -1428,10 +1428,7 @@ export interface IntegrationToolResult {
 }
 
 export interface CollabDeviceIdentity {
-  deviceId: string
-  userId: string
   identityKey: string
-  deviceLabel: string
   platform: string
   publicKeyAlgorithm: string
   fingerprint: string
@@ -1442,8 +1439,6 @@ export interface CollabDeviceIdentity {
 }
 
 export interface CollabDeviceChallengeSignature {
-  deviceId: string
-  userId: string
   identityKey: string
   algorithm: string
   signature: string

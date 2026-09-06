@@ -26,7 +26,7 @@ interface ClientConnection {
   clientId: string
   projectId: string
   roomId: string
-  userId: string
+  principalId: string
   knownSeq: number
 }
 
@@ -232,7 +232,7 @@ export class CollabRoom implements DurableObject {
         clientId: message.payload.clientId,
         projectId: claims.projectId,
         roomId: claims.roomId,
-        userId: claims.userId,
+        principalId: claims.principalId,
         knownSeq: message.payload.knownSeq,
       })
 
