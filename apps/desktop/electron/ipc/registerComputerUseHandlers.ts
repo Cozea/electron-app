@@ -2,6 +2,14 @@ import { shell, type IpcMain } from 'electron'
 import { ComputerUseRuntimeService } from '../services/ComputerUseRuntimeService'
 import type { AppSettings } from '../../../../shared/electronApiTypes'
 
+/**
+ * Registers IPC handlers for Computer Use runtime operations including diagnostics
+ * and permission management. Connects the renderer process to the native Computer
+ * Use runtime service for macOS Accessibility and Screen Recording permissions.
+ *
+ * @param ipcMain - Electron IPC main interface for registering handlers
+ * @param _deps - Dependencies object (currently unused)
+ */
 export function registerComputerUseHandlers(
   ipcMain: IpcMain,
   _deps: { loadSettings: () => AppSettings }

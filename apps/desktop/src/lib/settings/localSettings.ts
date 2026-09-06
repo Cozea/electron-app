@@ -16,6 +16,15 @@ export const localSettings = createLocalSnapshot<LocalAppSettings>({
 })
 
 let writes: Promise<unknown> = Promise.resolve()
+/**
+ * Saves local app settings changes with automatic serialization to prevent
+ * concurrent writes. When the Computer Use pointer policy changes, includes
+ * the tool list to trigger session resets in the main process.
+ *
+ * @param patch - Partial settings object with fields to update
+ * @returns Promise resolving to success status
+ * @throws Error if the settings update fails
+ */
 export function saveLocalSettings(patch: Partial<LocalAppSettings>): Promise<{ success: boolean }> {
   const save = async () => {
     const current = await localSettings.ensure()
