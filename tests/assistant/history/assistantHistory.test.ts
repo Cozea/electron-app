@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   ProjectId,
   ProviderInstanceId,
@@ -20,13 +20,6 @@ import {
   type AssistantHistoryEntry,
 } from "@/features/assistant/history/assistantHistory";
 import type { AssistantContentDraft } from "@/features/assistant/history/assistantDraftRepository";
-
-const storage = new Map<string, string>();
-vi.stubGlobal("localStorage", {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-});
 
 const context: AssistantProjectAssociation = {
   projectId: "cozea-a",
