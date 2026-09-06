@@ -6,12 +6,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 
-import type { ComputerUseDiagnostics } from '../../../../shared/electronApiTypes'
 import { resolveUnpackagedBuildDir } from '../runtime/runtimeManifest'
 import {
   readComputerUseAppSettings,
   type ComputerUseAppSettings,
 } from './computerUseSettings'
+import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
 
 const require = createRequire(import.meta.url)
 
@@ -56,6 +56,12 @@ interface PendingWorkerRequest {
   resolve: (result: ComputerUseToolResult) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
+}
+
+interface WorkerRpcMessage {
+  id?: unknown
+  error?: unknown
+  result?: unknown
 }
 
 function failure(message: string): ComputerUseToolResult {
@@ -145,47 +151,58 @@ class WorkerMcpSession {
     })
     this.output = readline.createInterface({ input: this.child.stdout })
     this.output.on('line', (line) => this.handleLine(line))
+    this.child.on('error', (error) => this.failAll(error))
+    this.child.stdin.on('error', (error) => this.failAll(error))
     this.child.stderr.on('data', (chunk) => {
       const text = chunk.toString().trim()
       if (text) console.warn('[ComputerUse:worker]', text)
     })
     this.child.once('exit', (code, signal) => {
-      this.stopped = true
-      const error = new Error(
-        `Computer Use worker exited (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`,
+      this.failAll(
+        new Error(`Computer Use worker exited (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`),
       )
-      for (const pending of this.pending.values()) {
-        clearTimeout(pending.timer)
-        pending.reject(error)
-      }
-      this.pending.clear()
-      this.output.close()
     })
   }
 
+  private failAll(error: Error): void {
+    this.stopped = true
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(error)
+    }
+    this.pending.clear()
+    this.output.close()
+  }
+
   private handleLine(line: string): void {
-    let payload: any
+    let payload: unknown
     try {
       payload = JSON.parse(line)
     } catch {
       return
     }
-    const id = typeof payload?.id === 'number' ? payload.id : null
+    if (!payload || typeof payload !== 'object') return
+    const message = payload as WorkerRpcMessage
+    const id = typeof message.id === 'number' ? message.id : null
     if (id === null) return
     const pending = this.pending.get(id)
     if (!pending) return
     this.pending.delete(id)
     clearTimeout(pending.timer)
-    if (payload.error) {
-      pending.reject(new Error(payload.error.message || 'Computer Use worker request failed.'))
+
+    if (message.error && typeof message.error === 'object') {
+      const errorMessage = (message.error as { message?: unknown }).message
+      pending.reject(
+        new Error(
+          typeof errorMessage === 'string' ? errorMessage : 'Computer Use worker request failed.',
+        ),
+      )
       return
     }
+
     pending.resolve(
-      payload.result && typeof payload.result === 'object'
-        ? {
-            content: Array.isArray(payload.result.content) ? payload.result.content : [],
-            isError: payload.result.isError === true,
-          }
+      message.result && typeof message.result === 'object'
+        ? parseToolResult(JSON.stringify(message.result))
         : failure('Computer Use worker returned no result.'),
     )
   }
@@ -298,7 +315,7 @@ export class ComputerUseRuntimeService {
       delete process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS
     }
 
-    const execute = async () => {
+    const execute = async (): Promise<ComputerUseToolResult> => {
       if (process.platform === 'darwin') {
         const addon = this.loadNativeAddon()
         if (!addon) {
@@ -408,7 +425,10 @@ export class ComputerUseRuntimeService {
     this.server = null
     this.endpoint = null
     if (!server) return
-    await new Promise<void>((resolve) => server.close(() => resolve()))
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve())
+      server.closeAllConnections()
+    })
   }
 
   private async readBody(request: IncomingMessage): Promise<string> {
