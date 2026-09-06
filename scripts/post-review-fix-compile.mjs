@@ -54,4 +54,16 @@ patch(
   "      displayName: 'Test device',\n      presentationConfigured: true,\n      avatarUrl: null,",
 )
 
+patch(
+  'tests/identity/manualReviewHardening.test.ts',
+  `    const source = read("convex/devicePrincipals.ts")\n    expect(source).toContain("already bound to another encryption key")\n    expect(source).not.toContain("encryptionPublicKeyJwk: args.encryptionPublicKeyJwk,\\n        encryptionPublicKeyAlgorithm")`,
+  `    const source = read("convex/devicePrincipals.ts")\n    const existingStart = source.indexOf("if (principal) {")\n    const existingEnd = source.indexOf("} else {", existingStart)\n    const existingPrincipalAuth = source.slice(existingStart, existingEnd)\n    expect(existingPrincipalAuth).toContain("already bound to another encryption key")\n    expect(existingPrincipalAuth).not.toContain("encryptionPublicKeyJwk: args.encryptionPublicKeyJwk")`,
+)
+
+patch(
+  'tests/identity/manualReviewHardening.test.ts',
+  '    expect(source).toContain("internal.devicePrincipals.commitAvatarUpload")',
+  '    expect(source).toContain("ctx.runMutation(commitAvatarUploadRef")',
+)
+
 console.log('Resolved manual-review compile roots.')
