@@ -35,6 +35,34 @@ describe("collaboration authority boundary", () => {
     expect(workerConvex).toContain("The authenticated device cannot access this project")
   })
 
+  it("uses direct principal membership instead of trusted-device fallback", () => {
+    const start = workerConvex.indexOf("export async function createCollabSessionFromConvex")
+    const end = workerConvex.indexOf("export async function fetchYjsDeltasFromConvex", start)
+    expect(start).toBeGreaterThanOrEqual(0)
+    expect(end).toBeGreaterThan(start)
+    const section = workerConvex.slice(start, end)
+
+    const accessStart = section.indexOf("projectMembers:getProjectAccessForServer")
+    const accessEnd = section.indexOf("})", accessStart)
+    const accessCall = section.slice(accessStart, accessEnd + 2)
+    expect(accessCall).toContain("userId: principal.userId")
+    expect(accessCall).not.toContain("deviceId:")
+  })
+
+  it("canonicalizes collaboration registration from the authenticated principal", () => {
+    const start = workerConvex.indexOf("yjs:registerCollabDevice")
+    expect(start).toBeGreaterThanOrEqual(0)
+    const call = workerConvex.slice(start, workerConvex.indexOf("})", start) + 2)
+
+    expect(call).toContain("deviceId: principal.identityKey")
+    expect(call).toContain("deviceLabel: principal.deviceLabel")
+    expect(call).toContain("platform: principal.platform")
+    expect(call).toContain("publicKeyJwk: principal.encryptionPublicKeyJwk")
+    expect(call).toContain("fingerprint: principal.encryptionFingerprint")
+    expect(call).not.toContain("body.deviceLabel")
+    expect(call).not.toContain("body.platform")
+  })
+
   it("requires an explicit matching request before sharing a wrapped room key", () => {
     const section = exportedSection("storeWrappedRoomKey", "storeRecoveryKit")
     expect(section).toContain("canManageProject")
