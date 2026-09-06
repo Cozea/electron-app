@@ -30,6 +30,18 @@ describe('scheduled task runtime lifecycle', () => {
     expect(nativeApi).toContain('export function readAvailableNativeApi()')
   })
 
+  it('keeps the already-ready API through snapshot and pending-deletion cleanup', () => {
+    const runtimeSync = read('apps/desktop/src/features/workbench/useAssistantRuntimeSync.ts')
+    const deletion = read(
+      'apps/desktop/src/features/assistant/services/assistantProjectDeletion.ts',
+    )
+
+    expect(runtimeSync).toContain('async function performSnapshotSync(api: NativeApi = ensureNativeApi())')
+    expect(runtimeSync).toContain('nativeApi: api')
+    expect(deletion).toContain('nativeApi?: NativeApi')
+    expect(deletion).toContain('const api = options.nativeApi ?? ensureNativeApi()')
+  })
+
   it('leaves a task due when runtime readiness fails before orchestration dispatch', () => {
     const runner = read('apps/desktop/src/features/projects/model/scheduledTaskRunner.ts')
     const runtimeGuard = runner.indexOf('if (isScheduledTaskRuntimeUnavailableError(error))')
