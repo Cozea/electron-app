@@ -42,18 +42,19 @@ jobs:
 
           projects = Path("convex/projects.ts")
           projects_source = projects.read_text()
-          enrollment_stage = '''    case 10: {
-              const rows = await ctx.db
-                .query("projectDeviceEnrollments")
-                .withIndex("by_project_and_status", (q) => q.eq("projectId", projectId))
-                .take(PROJECT_PURGE_BATCH_SIZE)
-              await deleteRows(ctx, rows)
-              return rows.length
-            }
-'''
+          enrollment_stage = "\n".join([
+              "    case 10: {",
+              "      const rows = await ctx.db",
+              "        .query(\"projectDeviceEnrollments\")",
+              "        .withIndex(\"by_project_and_status\", (q) => q.eq(\"projectId\", projectId))",
+              "        .take(PROJECT_PURGE_BATCH_SIZE)",
+              "      await deleteRows(ctx, rows)",
+              "      return rows.length",
+              "    }",
+              "",
+          ])
           if enrollment_stage not in projects_source:
-              anchor = '''    case 11: {
-'''
+              anchor = "    case 11: {\n"
               if anchor not in projects_source:
                   raise SystemExit("project purge stage anchor missing")
               projects.write_text(projects_source.replace(anchor, enrollment_stage + anchor, 1))
@@ -63,31 +64,21 @@ jobs:
               'expect(presence).toContain("if (!isConvexAuthReady) return");',
               'expect(presence).toContain("if (!projectId || !userId || !isConvexAuthReady) return");',
           )
-
-          gating = Path("tests/assistant/convexAuthGating.test.ts")
-          gating_source = gating.read_text()
-          old_share_test = '''  it("gates every authenticated query in the share button on principalId", () => {
-              // getByEmails previously gated only on the email list, so invite-email
-              // enrichment could crash the view during the auth gap.
-              expect(shareButton).toContain(
-                "principalId && inviteEmailCandidates.length > 0",
-              );
-            });'''
-          new_share_test = '''  it("gates every authenticated query in the share button on principalId", () => {
-              expect(shareButton).toContain(
-                'projectId && principalId ? { projectId, userId: principalId } : "skip"',
-              );
-              expect(shareButton).toContain(
-                'projectId && principalId ? { projectId, viewerUserId: principalId } : "skip"',
-              );
-              expect(shareButton).toContain(
-                'projectId && principalId && memberRole === "project_manager" ? { projectId } : "skip"',
-              );
-            });'''
-          if new_share_test not in gating_source:
-              if old_share_test not in gating_source:
-                  raise SystemExit("share-button gating test anchor missing")
-              gating.write_text(gating_source.replace(old_share_test, new_share_test, 1))
+          replace_once(
+              "tests/assistant/convexAuthGating.test.ts",
+              '"principalId && inviteEmailCandidates.length > 0"',
+              '\'projectId && principalId ? { projectId, userId: principalId } : "skip"\'',
+          )
+          replace_once(
+              "tests/assistant/convexAuthGating.test.ts",
+              "// getByEmails previously gated only on the email list, so invite-email",
+              "// All share-surface reads require a live authenticated device principal;",
+          )
+          replace_once(
+              "tests/assistant/convexAuthGating.test.ts",
+              "// enrichment could crash the view during the auth gap.",
+              "// cached shell presentation alone must never open cloud queries.",
+          )
 
           replace_once(
               "tests/architecture/desktopFirstLoadingPolicy.test.ts",
