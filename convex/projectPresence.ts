@@ -1,20 +1,24 @@
 import { v } from "convex/values"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { internalMutation } from "./_generated/server"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 
 // Presence is considered stale after 60 seconds (2 missed heartbeats)
 const PRESENCE_TIMEOUT_MS = 60 * 1000
 
 /**
- * Update presence heartbeat for a user in a project.
- * Call this every 30 seconds while the user is viewing the project.
+ * Update presence heartbeat for the authenticated device principal.
+ *
+ * Identity/presentation arguments remain optional only while the renderer is
+ * being cut over. The server ignores them for authority and display; the
+ * canonical principal row is the source of truth.
  */
 export const heartbeat = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
-    userName: v.string(),
-    userEmail: v.string(),
+    userId: v.optional(v.id("users")),
+    userName: v.optional(v.string()),
+    userEmail: v.optional(v.string()),
     userAvatarUrl: v.optional(v.string()),
     activeTab: v.optional(v.string()),
     activeFile: v.optional(v.string()),
@@ -24,114 +28,97 @@ export const heartbeat = mutation({
     isAgentWorking: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const {
-      projectId,
-      userId,
-      userName,
-      userEmail,
-      userAvatarUrl,
-      activeTab,
-      activeFile,
-      activeRoute,
-      lastActivityAt,
-      isAiTyping,
-      isAgentWorking,
-    } = args
+    const principal = await requireAuthenticatedDevice(ctx)
+    const now = Date.now()
+    const displayName = principal.deviceLabel?.trim() || "This device"
+    const avatarUrl = principal.profileImageUrl ?? undefined
 
-    // Check if presence record already exists
     const existing = await ctx.db
       .query("projectPresence")
-      .withIndex("by_project_and_user", (q) => q.eq("projectId", projectId).eq("userId", userId))
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", principal._id)
+      )
       .first()
 
-    const now = Date.now()
+    const presentation = {
+      userName: displayName,
+      // Transitional storage field. Email is no longer identity/presentation.
+      // Remove this field from schema in the breaking schema commit.
+      userEmail: "",
+      userAvatarUrl: avatarUrl,
+    }
 
     if (existing) {
-      // Update existing presence
       await ctx.db.patch(existing._id, {
-        userName,
-        userEmail,
-        userAvatarUrl,
+        ...presentation,
         lastHeartbeat: now,
-        lastActivityAt: lastActivityAt ?? now,
-        activeTab,
-        activeFile,
-        activeRoute,
-        isAiTyping: isAiTyping ?? false,
-        isAgentWorking: isAgentWorking ?? false,
+        lastActivityAt: args.lastActivityAt ?? now,
+        activeTab: args.activeTab,
+        activeFile: args.activeFile,
+        activeRoute: args.activeRoute,
+        isAiTyping: args.isAiTyping ?? false,
+        isAgentWorking: args.isAgentWorking ?? false,
       })
     } else {
-      // Create new presence record
       await ctx.db.insert("projectPresence", {
-        projectId,
-        userId,
-        userName,
-        userEmail,
-        userAvatarUrl,
+        projectId: args.projectId,
+        userId: principal._id,
+        ...presentation,
         lastHeartbeat: now,
-        lastActivityAt: lastActivityAt ?? now,
-        activeTab,
-        activeFile,
-        activeRoute,
-        isAiTyping: isAiTyping ?? false,
-        isAgentWorking: isAgentWorking ?? false,
+        lastActivityAt: args.lastActivityAt ?? now,
+        activeTab: args.activeTab,
+        activeFile: args.activeFile,
+        activeRoute: args.activeRoute,
+        isAiTyping: args.isAiTyping ?? false,
+        isAgentWorking: args.isAgentWorking ?? false,
       })
     }
   },
 })
 
-/**
- * Remove presence when user leaves the project page.
- */
+/** Remove presence for the authenticated device when it leaves a project. */
 export const leave = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId } = args
-
+    const principal = await requireAuthenticatedDevice(ctx)
     const presence = await ctx.db
       .query("projectPresence")
-      .withIndex("by_project_and_user", (q) => q.eq("projectId", projectId).eq("userId", userId))
+      .withIndex("by_project_and_user", (q) =>
+        q.eq("projectId", args.projectId).eq("userId", principal._id)
+      )
       .first()
 
-    if (presence) {
-      await ctx.db.delete(presence._id)
-    }
+    if (presence) await ctx.db.delete(presence._id)
   },
 })
 
-/**
- * Get all active users in a project (heartbeat within last 60 seconds).
- */
+/** Get all active device principals in a project. */
 export const getActiveUsers = query({
   args: {
     projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    const { projectId } = args
     const cutoff = Date.now() - PRESENCE_TIMEOUT_MS
-
     const presences = await ctx.db
       .query("projectPresence")
-      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect()
 
-    // Filter to only active presences and return user info
-    const activePresences = presences
+    return presences
       .filter((p) => p.lastHeartbeat > cutoff)
       .sort(
         (a, b) =>
           (b.lastActivityAt ?? b.lastHeartbeat) -
           (a.lastActivityAt ?? a.lastHeartbeat)
       )
-
-    return activePresences
       .map((p) => ({
         id: p._id,
         userId: p.userId,
         userName: p.userName,
+        // Transitional output field; consumers should stop relying on email.
         userEmail: p.userEmail,
         userAvatarUrl: p.userAvatarUrl,
         activeTab: p.activeTab,
@@ -145,15 +132,11 @@ export const getActiveUsers = query({
   },
 })
 
-/**
- * Cleanup stale presence records (run periodically via cron or on heartbeat).
- * This is optional - records will naturally be filtered out by getActiveUsers.
- */
+/** Cleanup stale presence records. */
 export const cleanupStale = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const cutoff = Date.now() - PRESENCE_TIMEOUT_MS * 2 // Delete after 2 minutes of inactivity
-
+    const cutoff = Date.now() - PRESENCE_TIMEOUT_MS * 2
     const stalePresences = await ctx.db
       .query("projectPresence")
       .withIndex("by_heartbeat", (q) => q.lt("lastHeartbeat", cutoff))
