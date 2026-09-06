@@ -1327,7 +1327,6 @@ export function TasksPage({
           ? {
               userId: assignee.userId as Id<'devicePrincipals'> | undefined,
               name: assignee.name,
-              identityKey: assignee.identityKey,
               avatarUrl: assignee.avatarUrl ?? undefined,
             }
           : undefined,
