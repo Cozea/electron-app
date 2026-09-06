@@ -49,6 +49,6 @@ export class ComputerUseService {
     // however, revoke every current Computer Use session immediately so stale
     // element indexes/cursor state and worker-spawn environment cannot survive
     // a capability change.
-    this.runtime.resetAll()
+    await this.runtime.resetAll()
   }
 }
