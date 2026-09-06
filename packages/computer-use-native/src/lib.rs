@@ -26,6 +26,12 @@ fn operation_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn lock_operations() -> Result<std::sync::MutexGuard<'static, ()>> {
+    operation_lock()
+        .lock()
+        .map_err(|_| Error::from_reason("Computer Use operation lock was poisoned"))
+}
+
 fn to_c_string(value: &str, label: &str) -> Result<CString> {
     CString::new(value).map_err(|_| Error::from_reason(format!("{label} contains an embedded NUL byte")))
 }
@@ -42,9 +48,7 @@ unsafe fn take_owned_string(pointer: *mut c_char) -> Result<String> {
 #[napi]
 pub async fn call_tool(session_id: String, tool: String, arguments_json: String) -> Result<String> {
     tokio::task::spawn_blocking(move || {
-        let _guard = operation_lock()
-            .lock()
-            .map_err(|_| Error::from_reason("Computer Use operation lock was poisoned"))?;
+        let _guard = lock_operations()?;
         let session_id = to_c_string(&session_id, "sessionId")?;
         let tool = to_c_string(&tool, "tool")?;
         let arguments_json = to_c_string(&arguments_json, "argumentsJson")?;
@@ -62,9 +66,7 @@ pub async fn call_tool(session_id: String, tool: String, arguments_json: String)
 
 #[napi]
 pub fn list_tools() -> Result<String> {
-    let _guard = operation_lock()
-        .lock()
-        .map_err(|_| Error::from_reason("Computer Use operation lock was poisoned"))?;
+    let _guard = lock_operations()?;
     unsafe { take_owned_string(cozea_computer_use_list_tools()) }
 }
 
@@ -81,6 +83,7 @@ pub fn request_permission(target: String) -> Result<bool> {
 
 #[napi]
 pub fn turn_ended(session_id: String) -> Result<()> {
+    let _guard = lock_operations()?;
     let session_id = to_c_string(&session_id, "sessionId")?;
     unsafe { cozea_computer_use_turn_ended(session_id.as_ptr()) };
     Ok(())
@@ -88,12 +91,15 @@ pub fn turn_ended(session_id: String) -> Result<()> {
 
 #[napi]
 pub fn reset_session(session_id: String) -> Result<()> {
+    let _guard = lock_operations()?;
     let session_id = to_c_string(&session_id, "sessionId")?;
     unsafe { cozea_computer_use_reset_session(session_id.as_ptr()) };
     Ok(())
 }
 
 #[napi]
-pub fn reset_all() {
+pub fn reset_all() -> Result<()> {
+    let _guard = lock_operations()?;
     unsafe { cozea_computer_use_reset_all() };
+    Ok(())
 }
