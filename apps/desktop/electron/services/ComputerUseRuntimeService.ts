@@ -444,6 +444,23 @@ export class ComputerUseRuntimeService {
       this.writeJson(response, 401, failure('Invalid Computer Use broker credential.'))
       return
     }
+
+    if (request.method === 'POST' && request.url === '/v1/turn-ended') {
+      try {
+        const input = JSON.parse(await this.readBody(request)) as { threadId?: unknown }
+        const threadId = typeof input.threadId === 'string' ? input.threadId.trim() : ''
+        if (!threadId) {
+          this.writeJson(response, 400, failure('Computer Use turn end requires threadId.'))
+          return
+        }
+        this.turnEnded(threadId)
+        this.writeJson(response, 200, { ok: true })
+      } catch (error) {
+        this.writeJson(response, 500, failure(error instanceof Error ? error.message : String(error)))
+      }
+      return
+    }
+
     if (request.method !== 'POST' || request.url !== '/v1/call') {
       this.writeJson(response, 404, failure('Unknown Computer Use broker route.'))
       return
