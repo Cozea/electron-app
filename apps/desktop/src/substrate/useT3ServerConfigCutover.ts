@@ -25,7 +25,7 @@ export function useT3ServerConfigCutover(input: {
 
   return {
     active,
-    loading: input.substrateActive && !active ? true : metadata.isConfigLoading,
+    loading: input.substrateActive ? !active || metadata.isConfigLoading : false,
     error: input.substrateActive ? metadata.configError : null,
     refreshProviders: active
       ? async () => {
