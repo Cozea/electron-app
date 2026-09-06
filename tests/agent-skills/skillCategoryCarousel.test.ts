@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { findCenteredIndex, reanchorCategoryIndex } from "../../apps/desktop/src/features/projects/components/AgentSkillCategoryCarousel";
+import {
+  centeredScrollTarget,
+  findCenteredIndex,
+  measureCarouselMetrics,
+  reanchorCategoryIndex,
+} from "../../apps/desktop/src/features/projects/components/AgentSkillCategoryCarousel";
 
 describe("which category card is centred", () => {
   const centers = [200, 700, 1200, 1700];
@@ -87,3 +92,46 @@ describe("keeping the selection when the category list changes", () => {
     expect(reanchorCategoryIndex([], "code", 3)).toBe(0);
   });
 });
+
+describe("centring the selected category card", () => {
+  /** The whole point: the card lands under the middle, not against the left inset. */
+  it("puts the card's centre on the track's centre", () => {
+    const { cardWidth, inset } = measureCarouselMetrics(1400)
+    const firstCardLeft = inset
+    const scroll = centeredScrollTarget(firstCardLeft, cardWidth, 1400)
+    const cardCentreOnScreen = firstCardLeft - scroll + cardWidth / 2
+    expect(cardCentreOnScreen).toBeCloseTo(700, 5)
+  })
+
+  it("leaves the first card centred without scrolling", () => {
+    // The inset exists so the first card can reach the middle; if it were
+    // smaller, the card could never centre because scrollLeft cannot go below 0.
+    const { cardWidth, inset } = measureCarouselMetrics(1400)
+    expect(centeredScrollTarget(inset, cardWidth, 1400)).toBe(0)
+    expect(inset + cardWidth / 2).toBeCloseTo(700, 5)
+  })
+
+  it("never returns a negative scroll offset", () => {
+    expect(centeredScrollTarget(0, 900, 1400)).toBe(0)
+  })
+
+  it("keeps the card inside the track at every width", () => {
+    for (const width of [500, 900, 1200, 1600, 2400, 3200]) {
+      const { cardWidth, inset } = measureCarouselMetrics(width)
+      expect(cardWidth).toBeLessThanOrEqual(Math.max(width, 320))
+      expect(inset).toBeGreaterThanOrEqual(24)
+      // Centred means equal gutters, which is exactly what the inset is.
+      if (cardWidth < width) expect(inset).toBeCloseTo((width - cardWidth) / 2, 5)
+    }
+  })
+
+  it("caps the card so it does not sprawl on a wide window", () => {
+    expect(measureCarouselMetrics(4000).cardWidth).toBe(960)
+    expect(measureCarouselMetrics(300).cardWidth).toBe(320)
+  })
+
+  it("shows a sliver of the neighbouring cards, so the row reads as scrollable", () => {
+    const { cardWidth } = measureCarouselMetrics(1400)
+    expect(cardWidth).toBeLessThan(1400)
+  })
+})
