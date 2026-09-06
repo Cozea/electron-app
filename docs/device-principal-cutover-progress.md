@@ -31,11 +31,15 @@ This branch is intentionally breaking. Cozea has no compatibility requirement fo
 - task assignment uses device-principal identity instead of email identity
 - activity, organization membership, DevApp publisher attribution, and collaboration presentation use device-principal metadata
 - renderer/session/bootstrap types are device-principal shaped
+- local encrypted device identity is schema v3 and stores only `identityKey`, platform, crypto material/fingerprints, and creation metadata
+- device-auth challenge no longer carries an OS/device display label
+- collaboration-session requests carry only project ID + client type; identity, display, and encryption metadata are server-resolved from the authenticated principal
+- redundant `userId`/`deviceId` identity aliases were removed from local identity and collaboration-session JWT/contracts
 - regression tests cover presentation isolation, onboarding, project principal authority, and collaboration authority
 
 ## Validation status
 
-Compiler-driven repair has removed the final stale task-assignee field from the current branch head. The prior validation run saw only that one Cozea desktop type error; the current head no longer contains it. This commit triggers validation against the repaired tree because GitHub Actions does not recursively trigger workflows from its own bot commits.
+The principal-only transport cleanup and its remaining renderer consumers have been repaired through commit `5aed0e8`. This commit triggers validation against that bot-produced tree because GitHub Actions does not recursively trigger workflows from its own bot commits.
 
 Remaining validation gates:
 
