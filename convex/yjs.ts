@@ -1269,13 +1269,13 @@ export const listCollabRoomDevices = query({
           .sort((a, b) => b.requestedAt - a.requestedAt)[0]
 
         return {
-          userId: principal._id,
-          deviceId: principal.identityKey,
-          deviceLabel: principal.displayName,
+          principalId: principal._id,
+          identityKey: principal.identityKey,
+          displayName: principal.displayName,
           platform: principal.platform,
-          fingerprint: principal.encryptionFingerprint,
-          publicKeyJwk: principal.encryptionPublicKeyJwk,
-          publicKeyAlgorithm: principal.encryptionPublicKeyAlgorithm,
+          encryptionFingerprint: principal.encryptionFingerprint,
+          encryptionPublicKeyJwk: principal.encryptionPublicKeyJwk,
+          encryptionPublicKeyAlgorithm: principal.encryptionPublicKeyAlgorithm,
           createdAt: principal.createdAt,
           lastSeenAt: principal.lastAuthenticatedAt,
           revokedAt: principal.revokedAt ?? null,

@@ -118,9 +118,11 @@ export function YjsProjectProvider({
       collabWsUrl: collabSession.collabWsUrl,
       token: collabSession.token,
       protocolVersion: collabSession.protocolVersion,
-      deviceId: collabSession.deviceId,
-      deviceFingerprint: collabSession.deviceFingerprint,
-      devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
+      principalId: collabSession.principalId,
+      identityKey: collabSession.identityKey,
+      displayName: collabSession.displayName,
+      encryptionFingerprint: collabSession.encryptionFingerprint,
+      encryptionPublicKeyJwk: collabSession.encryptionPublicKeyJwk,
       encryption: collabSession.encryption,
     }
   }, [collabSession, collaborationEnabled])

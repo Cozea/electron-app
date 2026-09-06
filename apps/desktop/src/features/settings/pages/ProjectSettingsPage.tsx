@@ -293,7 +293,7 @@ export function ProjectSettingsPage({
     })
 
     const wrappedKeys: Array<{
-      recipientUserId: NonNullable<typeof devices>[number]['userId']
+      recipientUserId: NonNullable<typeof devices>[number]['principalId']
       recipientDeviceId: string
       senderPublicKeyJwk: string
       wrapAlgorithm: string
@@ -301,17 +301,17 @@ export function ProjectSettingsPage({
     }> = []
 
     for (const device of devices) {
-      if (device.revokedAt || !device.publicKeyJwk) {
+      if (device.revokedAt || !device.encryptionPublicKeyJwk) {
         continue
       }
 
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64: nextRoomKeyBase64,
-        recipientPublicKeyJwk: device.publicKeyJwk,
+        recipientPublicKeyJwk: device.encryptionPublicKeyJwk,
       })
 
       wrappedKeys.push({
-        recipientUserId: device.userId,
+        recipientUserId: device.principalId,
         recipientDeviceId: device.identityKey,
         senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
         wrapAlgorithm: wrapped.wrapAlgorithm,
@@ -1074,11 +1074,11 @@ export function ProjectSettingsPage({
                           >
                             <div className="flex min-w-0 flex-col gap-0.5">
                               <p className="truncate text-xs font-medium text-foreground">
-                                {device.deviceLabel}
+                                {device.displayName}
                                 {device.identityKey === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
                               </p>
                               <p className="truncate text-[11px] text-muted-foreground">
-                                {device.platform} · {device.fingerprint.slice(0, 12)}
+                                {device.platform} · {device.encryptionFingerprint.slice(0, 12)}
                                 {device.hasPendingRequest ? ` · ${t('settings.collab.waitingForKey')}` : ''}
                                 {device.revokedAt ? ` · ${t('settings.collab.revoked')}` : ''}
                               </p>
