@@ -27,7 +27,8 @@ describe('Cozea-owned Computer Use runtime', () => {
     expect(packageSwift).toContain('type: .dynamic')
 
     const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
-    expect(runtime).toContain('computer-use-native')
+    expect(runtime).toContain('loadNativeAddon')
+    expect(runtime).toContain('require(addonPath)')
     expect(runtime).toContain('requestPermission')
     expect(runtime).toContain('turnEnded')
   })
@@ -67,5 +68,6 @@ describe('Cozea-owned Computer Use runtime', () => {
     const preparation = read('scripts/prepare-computer-use-runtime.mjs')
     expect(preparation).toContain(UPSTREAM_COMMIT)
     expect(preparation).toContain('computer-use-runtime')
+    expect(preparation).toContain('OPEN_COMPUTER_USE_LICENSE.txt')
   })
 })
