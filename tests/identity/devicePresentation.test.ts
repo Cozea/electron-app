@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest"
 
 const principalsSource = readFileSync(join(process.cwd(), "convex/devicePrincipals.ts"), "utf8")
 
-function exportedSection(name: string, nextName: string): string {
+function exportedSection(name: string, nextName?: string): string {
   const start = principalsSource.indexOf(`export const ${name}`)
-  const end = principalsSource.indexOf(`export const ${nextName}`, start + 1)
+  const end = nextName
+    ? principalsSource.indexOf(`export const ${nextName}`, start + 1)
+    : principalsSource.length
   expect(start).toBeGreaterThanOrEqual(0)
-  expect(end).toBeGreaterThan(start)
+  if (nextName) expect(end).toBeGreaterThan(start)
   return principalsSource.slice(start, end)
 }
 
@@ -42,7 +44,7 @@ describe("device presentation authority boundary", () => {
   })
 
   it("keeps avatar changes isolated from security state", () => {
-    const section = exportedSection("setAvatar", "revokeCurrentDevice")
+    const section = exportedSection("setAvatar")
 
     expect(section).toContain("avatarStorageId")
     expect(section).toContain("ctx.storage")
