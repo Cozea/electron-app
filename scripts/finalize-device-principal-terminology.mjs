@@ -67,6 +67,10 @@ function replaceIdentityTerms(source) {
 const changed = []
 for (const root of roots) {
   for (const file of collectFiles(root)) {
+    // Identity tests are the independent oracle for forbidden legacy names;
+    // do not rewrite their assertion strings while cleaning implementation callers.
+    if (file.startsWith(`tests${path.sep}identity${path.sep}`)) continue
+
     const source = fs.readFileSync(file, 'utf8')
     if (!participatesInDevicePrincipalModel(source)) continue
     const next = replaceIdentityTerms(source)
