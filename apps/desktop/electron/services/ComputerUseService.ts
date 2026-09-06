@@ -42,8 +42,12 @@ export class ComputerUseService {
     _enabled: boolean,
     _disabledTools?: string[],
   ): Promise<void> {
-    // Deliberate no-op. Provider exposure is the authenticated per-thread T3
-    // MCP endpoint. Never write ~/.claude.json, ~/.codex/config.toml,
-    // ~/.cursor/mcp.json, or ~/.config/opencode/opencode.json here.
+    // Provider exposure is the authenticated per-thread T3 MCP endpoint. Never
+    // write ~/.claude.json, ~/.codex/config.toml, ~/.cursor/mcp.json, or
+    // ~/.config/opencode/opencode.json here. A settings-policy change does,
+    // however, revoke every current Computer Use session immediately so stale
+    // element indexes/cursor state and worker-spawn environment cannot survive
+    // a capability change.
+    this.runtime.resetAll()
   }
 }
