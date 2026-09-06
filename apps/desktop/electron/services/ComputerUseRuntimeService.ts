@@ -1,13 +1,17 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 
-import type { AppSettings, ComputerUseDiagnostics } from '../../../../shared/electronApiTypes'
+import type { ComputerUseDiagnostics } from '../../../../shared/electronApiTypes'
 import { resolveUnpackagedBuildDir } from '../runtime/runtimeManifest'
+import {
+  readComputerUseAppSettings,
+  type ComputerUseAppSettings,
+} from './computerUseSettings'
 
 const require = createRequire(import.meta.url)
 
@@ -22,10 +26,7 @@ const COMPUTER_USE_TOOLS = new Set([
   'press_key',
   'set_value',
 ])
-
-const READ_ONLY_TOOLS = new Set(['list_apps', 'get_app_state'])
 const UPSTREAM_VERSION = '0.3.3'
-const UPSTREAM_REVISION = '41c5294cfe4735baca03f9c82b4de99d191a0b49'
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const CALL_TIMEOUT_MS = 45_000
 
@@ -51,15 +52,6 @@ export interface ComputerUseToolResult {
   isError: boolean
 }
 
-interface ComputerUseCallRequest {
-  environmentId?: string
-  threadId?: string
-  providerSessionId?: string
-  providerInstanceId?: string
-  tool?: string
-  arguments?: unknown
-}
-
 interface PendingWorkerRequest {
   resolve: (result: ComputerUseToolResult) => void
   reject: (error: Error) => void
@@ -67,10 +59,7 @@ interface PendingWorkerRequest {
 }
 
 function failure(message: string): ComputerUseToolResult {
-  return {
-    content: [{ type: 'text', text: message }],
-    isError: true,
-  }
+  return { content: [{ type: 'text', text: message }], isError: true }
 }
 
 function parseToolResult(raw: string): ComputerUseToolResult {
@@ -86,7 +75,9 @@ function parseToolResult(raw: string): ComputerUseToolResult {
       isError: parsed.isError === true,
     }
   } catch (error) {
-    return failure(`Computer Use returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
+    return failure(
+      `Computer Use returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 }
 
@@ -111,16 +102,20 @@ function safeTokenEquals(received: string, expected: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right)
 }
 
-function normalizeDisabledTools(settings: AppSettings): Set<string> {
+function disabledTools(settings: ComputerUseAppSettings): Set<string> {
   return new Set(
     (settings.disabledComputerUseTools ?? []).filter((tool) => COMPUTER_USE_TOOLS.has(tool)),
   )
 }
 
-function validateActionPolicy(settings: AppSettings, tool: string, args: unknown): string | null {
+function validateActionPolicy(
+  settings: ComputerUseAppSettings,
+  tool: string,
+  args: unknown,
+): string | null {
   if (!settings.computerUseEnabled) return 'Computer Use is disabled in Cozea Settings.'
   if (!COMPUTER_USE_TOOLS.has(tool)) return `Unknown Computer Use tool: ${tool}`
-  if (normalizeDisabledTools(settings).has(tool)) {
+  if (disabledTools(settings).has(tool)) {
     return `Computer Use capability '${tool}' is disabled in Cozea Settings.`
   }
   if (
@@ -145,10 +140,7 @@ class WorkerMcpSession {
   constructor(binaryPath: string) {
     this.child = spawn(binaryPath, ['mcp'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        OPEN_COMPUTER_USE_AGENT_SOCKET_NAMESPACE: `cozea-${process.pid}`,
-      },
+      env: { ...process.env },
       windowsHide: true,
     })
     this.output = readline.createInterface({ input: this.child.stdout })
@@ -245,25 +237,17 @@ export interface ComputerUseRuntimeEnvironment {
 export class ComputerUseRuntimeService {
   private static instance: ComputerUseRuntimeService | null = null
 
-  static getInstance(deps?: { loadSettings: () => AppSettings }): ComputerUseRuntimeService {
-    if (!this.instance) {
-      if (!deps) throw new Error('ComputerUseRuntimeService requires loadSettings on first use.')
-      this.instance = new ComputerUseRuntimeService(deps.loadSettings)
-    }
+  static getInstance(): ComputerUseRuntimeService {
+    if (!this.instance) this.instance = new ComputerUseRuntimeService()
     return this.instance
   }
 
-  private readonly loadSettings: () => AppSettings
   private nativeAddon: NativeComputerUseAddon | null | undefined
   private readonly workerSessions = new Map<string, WorkerMcpSession>()
   private server: Server | null = null
   private endpoint: string | null = null
   private readonly token = randomBytes(32).toString('base64url')
   private actionTail: Promise<unknown> = Promise.resolve()
-
-  private constructor(loadSettings: () => AppSettings) {
-    this.loadSettings = loadSettings
-  }
 
   private loadNativeAddon(): NativeComputerUseAddon | null {
     if (this.nativeAddon !== undefined) return this.nativeAddon
@@ -304,7 +288,7 @@ export class ComputerUseRuntimeService {
   }
 
   async callTool(sessionId: string, tool: string, args: unknown): Promise<ComputerUseToolResult> {
-    const settings = this.loadSettings()
+    const settings = readComputerUseAppSettings()
     const policyError = validateActionPolicy(settings, tool, args)
     if (policyError) return failure(policyError)
 
@@ -317,14 +301,15 @@ export class ComputerUseRuntimeService {
     const execute = async () => {
       if (process.platform === 'darwin') {
         const addon = this.loadNativeAddon()
-        if (!addon) return failure('Cozea Computer Use native runtime is not available. Rebuild the app runtime.')
+        if (!addon) {
+          return failure('Cozea Computer Use native runtime is not available. Rebuild the app runtime.')
+        }
         try {
           return parseToolResult(await addon.callTool(sessionId, tool, JSON.stringify(args ?? {})))
         } catch (error) {
           return failure(error instanceof Error ? error.message : String(error))
         }
       }
-
       try {
         return await this.workerSession(sessionId).call(tool, args)
       } catch (error) {
@@ -332,9 +317,9 @@ export class ComputerUseRuntimeService {
       }
     }
 
-    // OpenComputerUseKit carries mutable element-index/cursor state. Serialize
-    // all calls so two Cozea agents cannot race a snapshot against another
-    // thread's action or simultaneously drive the desktop.
+    // The upstream service carries mutable element-index and cursor state.
+    // Serialize every call so two agent threads cannot race the desktop or
+    // invalidate each other's snapshot/action sequence.
     return this.runSerialized(execute)
   }
 
@@ -346,27 +331,18 @@ export class ComputerUseRuntimeService {
           installed: false,
           accessibility: false,
           screenRecording: false,
-          backend: 'OpenComputerUseKit',
-          upstreamRevision: UPSTREAM_REVISION,
           error: 'Native Computer Use runtime is not prepared.',
         }
       }
       try {
         const parsed = JSON.parse(addon.diagnostics()) as ComputerUseDiagnostics
-        return {
-          ...parsed,
-          installed: true,
-          backend: 'OpenComputerUseKit',
-          upstreamRevision: UPSTREAM_REVISION,
-        }
+        return { ...parsed, installed: true, version: parsed.version ?? UPSTREAM_VERSION }
       } catch (error) {
         return {
           installed: true,
           version: UPSTREAM_VERSION,
           accessibility: false,
           screenRecording: false,
-          backend: 'OpenComputerUseKit',
-          upstreamRevision: UPSTREAM_REVISION,
           error: error instanceof Error ? error.message : String(error),
         }
       }
@@ -379,25 +355,18 @@ export class ComputerUseRuntimeService {
       path: binaryPath,
       accessibility: true,
       screenRecording: true,
-      backend: process.platform === 'win32' ? 'UIAutomation' : 'AT-SPI',
-      upstreamRevision: UPSTREAM_REVISION,
       ...(fs.existsSync(binaryPath) ? {} : { error: 'Bundled Computer Use worker is missing.' }),
     }
   }
 
   requestPermission(target: 'accessibility' | 'screenRecording'): boolean {
     if (process.platform !== 'darwin') return true
-    const addon = this.loadNativeAddon()
-    if (!addon) return false
-    return addon.requestPermission(target)
+    return this.loadNativeAddon()?.requestPermission(target) ?? false
   }
 
   turnEnded(sessionId: string): void {
-    if (process.platform === 'darwin') {
-      this.loadNativeAddon()?.turnEnded(sessionId)
-      return
-    }
-    this.workerSessions.get(sessionId)?.turnEnded()
+    if (process.platform === 'darwin') this.loadNativeAddon()?.turnEnded(sessionId)
+    else this.workerSessions.get(sessionId)?.turnEnded()
   }
 
   resetSession(sessionId: string): void {
@@ -417,10 +386,7 @@ export class ComputerUseRuntimeService {
 
   async startBroker(): Promise<ComputerUseRuntimeEnvironment> {
     if (this.server && this.endpoint) return { endpoint: this.endpoint, token: this.token }
-
-    this.server = createServer((request, response) => {
-      void this.handleHttpRequest(request, response)
-    })
+    this.server = createServer((request, response) => void this.handleHttpRequest(request, response))
     await new Promise<void>((resolve, reject) => {
       this.server!.once('error', reject)
       this.server!.listen(0, '127.0.0.1', () => {
@@ -429,7 +395,9 @@ export class ComputerUseRuntimeService {
       })
     })
     const address = this.server.address()
-    if (!address || typeof address === 'string') throw new Error('Computer Use broker failed to bind TCP.')
+    if (!address || typeof address === 'string') {
+      throw new Error('Computer Use broker failed to bind TCP.')
+    }
     this.endpoint = `http://127.0.0.1:${address.port}`
     return { endpoint: this.endpoint, token: this.token }
   }
@@ -481,8 +449,11 @@ export class ComputerUseRuntimeService {
       return
     }
     try {
-      const body = await this.readBody(request)
-      const input = JSON.parse(body) as ComputerUseCallRequest
+      const input = JSON.parse(await this.readBody(request)) as {
+        threadId?: unknown
+        tool?: unknown
+        arguments?: unknown
+      }
       const threadId = typeof input.threadId === 'string' ? input.threadId.trim() : ''
       const tool = typeof input.tool === 'string' ? input.tool.trim() : ''
       if (!threadId || !tool) {
@@ -490,20 +461,17 @@ export class ComputerUseRuntimeService {
         return
       }
       const result = await this.callTool(threadId, tool, input.arguments ?? {})
-      this.writeJson(response, result.isError ? 409 : 200, result)
+      // A valid MCP tool call may itself produce isError=true. Keep that as a
+      // 200 result so the MCP adapter preserves the upstream result envelope.
+      this.writeJson(response, 200, result)
     } catch (error) {
-      this.writeJson(
-        response,
-        500,
-        failure(error instanceof Error ? error.message : String(error)),
-      )
+      this.writeJson(response, 500, failure(error instanceof Error ? error.message : String(error)))
     }
   }
 }
 
 export const __computerUseRuntimeTesting = {
   COMPUTER_USE_TOOLS,
-  READ_ONLY_TOOLS,
   validateActionPolicy,
   parseToolResult,
 }
