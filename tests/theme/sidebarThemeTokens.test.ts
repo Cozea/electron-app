@@ -40,9 +40,9 @@ describe('left sidebar theme tokens', () => {
   })
 
   it('uses a stronger but still translucent glass tint for chromatic themes', () => {
-    // Light mode's surface is pure white, so this weight is how white the
-    // sidebar reads; too low and the window backdrop makes it look grey.
-    expect(readCustomProperty(readRule(':root'), '--left-sidebar-glass-color-weight')).toBe('52%')
+    // Light mode's surfaces are pale enough to mask the macOS vibrancy material,
+    // so its weight stays low to leave the native sidebar backdrop visible.
+    expect(readCustomProperty(readRule(':root'), '--left-sidebar-glass-color-weight')).toBe('30%')
     expect(readCustomProperty(readRule('.dark'), '--left-sidebar-glass-color-weight')).toBe('30%')
 
     for (const theme of CUSTOM_THEMES) {

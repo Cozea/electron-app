@@ -1,4 +1,5 @@
 import * as React from "react";
+import "@/features/projects/pages/SkillBuildsView.css";
 import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects/model/agentSkillsSnapshot";
 
 import { Logo } from "@/components/Logo";
@@ -486,16 +487,7 @@ export function SkillBuildsView() {
 
   return (
     <div
-      style={HUB_TOKENS}
-      className={cn(
-        "relative flex h-full min-h-0 flex-col",
-        // The lit field is the page, not a panel inside it: it rises toward
-        // the middle and falls away at the edges, which is what makes the
-        // plates sitting on it read as raised.
-        "bg-[radial-gradient(120%_95%_at_50%_40%,color-mix(in_oklch,var(--foreground)_7%,var(--background))_0%,var(--background)_62%)]",
-        "after:pointer-events-none after:absolute after:inset-0 after:z-[4] after:content-['']",
-        "after:bg-[radial-gradient(76%_64%_at_50%_46%,transparent_46%,color-mix(in_oklch,var(--foreground)_7%,transparent)_100%)]",
-      )}
+      className="skill-builds-surface relative flex h-full min-h-0 flex-col bg-background"
     >
       <div className="relative z-[5] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-8 pt-6 pb-5 sm:px-10">
         {loadError && snapshot ? <p role="status" className="px-6 py-2 text-sm text-destructive">{loadError} — showing the last local snapshot.</p> : null}
@@ -689,19 +681,6 @@ export const HUB_CHARGE_STAGE_DELAY_S = { plate: 0, stub: 0.42, diagonal: 0.82, 
 const HUB_STAMP = "8W7F1 1A1T1 21TRG";
 
 /**
- * Structure colours are derived from the theme's foreground rather than fixed,
- * so the diagram re-skins with the app instead of carrying its own palette.
- */
-const HUB_TOKENS = {
-  "--hub-ln": "color-mix(in oklch, var(--foreground) 20%, transparent)",
-  "--hub-ln-hi": "color-mix(in oklch, var(--foreground) 45%, transparent)",
-  "--hub-fill": "color-mix(in oklch, var(--foreground) 4%, transparent)",
-  "--hub-fill-hi": "color-mix(in oklch, var(--foreground) 8%, transparent)",
-  "--hub-trace": "color-mix(in oklch, var(--foreground) 15%, transparent)",
-  "--hub-micro": "color-mix(in oklch, var(--foreground) 32%, transparent)",
-} as React.CSSProperties;
-
-/**
  * The loadout screen: the build at the centre, each provider a plate around it
  * carrying the number of that build's skills it would run, joined by traces.
  * Clicking a plate opens what that provider actually gets.
@@ -771,8 +750,8 @@ function ProviderHub({
           className={cn(
             // Sized by the height it is given, not the width: a fixed-ratio
             // box driven by `w-full` overflows a short pane instead of
-            // shrinking (measured: 117px over at a 620px pane). The lit field
-            // it used to carry is now the page's, so this box is transparent.
+            // shrinking (measured: 117px over at a 620px pane). Page-level
+            // surface styling stays outside this transparent diagram box.
             "relative h-full max-h-[560px] w-auto max-w-full",
             "aspect-[900/560]",
           )}
@@ -799,15 +778,10 @@ function ProviderHub({
             type="button"
             onClick={() => onOpenShared()}
             aria-label={`Cozea skills: ${shared.length} carried by every provider`}
-            className="group absolute top-1/2 left-1/2 z-[2] aspect-square w-[20.6%] -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+            className="skill-builds-core-button group absolute top-1/2 left-1/2 z-[2] aspect-square w-[20.6%] -translate-x-1/2 -translate-y-1/2 cursor-pointer focus-visible:outline-none"
           >
             <span
-              className={cn(
-                "absolute inset-0 rotate-45 rounded-[3px] border border-[var(--hub-ln-hi)] transition-colors",
-                "bg-[linear-gradient(150deg,color-mix(in_oklch,var(--foreground)_10%,var(--background)),color-mix(in_oklch,var(--foreground)_3%,var(--background)))]",
-                "shadow-[0_0_28px_color-mix(in_oklch,var(--foreground)_8%,transparent)]",
-                "group-hover:border-foreground/60",
-              )}
+              className="skill-builds-core-plate absolute inset-0 rotate-45 rounded-[3px] border border-[var(--hub-ln-hi)]"
             />
             {/* The ring nearest the middle holds steady instead of pulsing:
                 an active build reads as lit, and one running ring is enough
@@ -816,7 +790,7 @@ function ProviderHub({
               className={cn(
                 "absolute inset-[12%] rotate-45 rounded-[2px] border transition-colors",
                 isActive
-                  ? "border-foreground/70 opacity-100 shadow-[0_0_12px_color-mix(in_oklch,var(--foreground)_30%,transparent)]"
+                  ? "skill-builds-active-ring opacity-100"
                   : "border-[var(--hub-ln)] opacity-55",
               )}
             />
@@ -845,7 +819,7 @@ function ProviderHub({
                     // Longer than the wiring's dash: the core is the arrival.
                     strokeDasharray="42 58"
                     style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.core}s` }}
-                    className="cozea-hub-charge text-foreground/85 drop-shadow-[0_0_6px_color-mix(in_oklch,var(--foreground)_65%,transparent)]"
+                    className="cozea-hub-charge skill-builds-charge-strong"
                   />
                 ))}
               </svg>
@@ -979,7 +953,7 @@ function HubTraces({ charged }: { charged: boolean }) {
           fill="none"
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
-          className="text-foreground/80 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
+          className="skill-builds-charge"
         >
           {HUB_CHARGE_STUBS.map((d) => (
             <path
@@ -1050,7 +1024,7 @@ function ProviderNode({
         viewBox={`0 0 ${slot.w} ${slot.h}`}
         preserveAspectRatio="none"
         aria-hidden="true"
-        className="absolute inset-0 size-full drop-shadow-[0_0_10px_color-mix(in_oklch,var(--foreground)_5%,transparent)]"
+        className="skill-builds-provider-plate absolute inset-0 size-full"
       >
         <path
           d={slot.d}
@@ -1073,7 +1047,7 @@ function ProviderNode({
                 pathLength={100}
                 strokeDasharray="26 74"
                 style={{ animationDelay: `${HUB_CHARGE_STAGE_DELAY_S.plate}s` }}
-                className="cozea-hub-charge text-foreground/80 drop-shadow-[0_0_5px_color-mix(in_oklch,var(--foreground)_60%,transparent)]"
+                className="cozea-hub-charge skill-builds-charge"
               />
             ))
           : null}
@@ -1208,7 +1182,7 @@ function DetailSheet({
   }, [onSwitch]);
 
   return (
-    <div style={HUB_TOKENS} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <header className="relative flex shrink-0 items-center justify-center gap-4 px-5 pt-3 pb-3">
         {/* Back and the tally are pinned to opposite ends so neither can
             land on the other, leaving the middle free for the agent. */}
@@ -1239,7 +1213,7 @@ function DetailSheet({
         <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-[var(--hub-ln)]" />
         <span
           aria-hidden="true"
-          className="absolute bottom-0 left-1/2 h-0.5 w-[210px] -translate-x-1/2 bg-foreground/55"
+          className="absolute bottom-0 left-1/2 h-0.5 w-[210px] -translate-x-1/2 bg-[var(--hub-charge)]"
         />
       </header>
 
@@ -1476,7 +1450,7 @@ function BuildStrip({
   };
 
   return (
-    <div style={HUB_TOKENS} className="relative shrink-0 pt-3">
+    <div className="relative shrink-0 pt-3">
       <Button
         variant="outline"
         size="icon-xl"
@@ -1528,7 +1502,7 @@ function BuildStrip({
               {isSelected ? (
                 <span
                   aria-hidden="true"
-                  className="absolute inset-x-3 top-0 h-px bg-foreground/55"
+                  className="absolute inset-x-3 top-0 h-px bg-[var(--hub-charge)]"
                 />
               ) : null}
               <span

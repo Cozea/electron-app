@@ -194,7 +194,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
 
   return (
     <div
-      className="mt-2 rounded-lg bg-secondary p-2.5"
+      className="mt-2 rounded-lg bg-[var(--assistant-change-card-surface)] p-2.5"
       data-changed-files-state={expanded ? "expanded" : "preview"}
     >
       <div className="group mb-2 flex items-center justify-between gap-2 pr-2 pl-1.5 pt-1">
@@ -268,7 +268,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               <button
                 key={file.path}
                 type="button"
-                className="inline-flex max-w-48 items-center gap-1 rounded-md border border-border/70 bg-background/45 px-1.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex max-w-48 items-center gap-1 rounded-md border border-[var(--assistant-change-chip-border)] bg-[var(--assistant-change-chip-surface)] px-1.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title={file.path}
                 aria-label={`Open diff for ${file.path}`}
                 onClick={() => onOpenTurnDiff(turnId, file.path)}

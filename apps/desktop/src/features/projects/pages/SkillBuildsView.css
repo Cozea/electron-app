@@ -1,0 +1,78 @@
+.skill-builds-surface {
+  --hub-ln: oklch(0.8 0 0);
+  --hub-ln-hi: oklch(0.52 0 0);
+  --hub-fill: var(--content-surface);
+  --hub-fill-hi: oklch(0.93 0 0);
+  --hub-trace: oklch(0.84 0 0);
+  --hub-micro: oklch(0.5 0 0);
+  --hub-charge: oklch(0.48 0 0);
+  --hub-charge-strong: oklch(0.36 0 0);
+  --hub-charge-glow: oklch(0.42 0 0 / 18%);
+  --hub-charge-glow-strong: oklch(0.32 0 0 / 22%);
+  --hub-active-ring: var(--hub-charge-strong);
+  --hub-active-ring-shadow: 0 8px 22px oklch(0.32 0 0 / 14%);
+  --hub-core-fill: var(--content-surface);
+  --hub-core-shadow: 0 12px 30px oklch(0.3 0 0 / 10%);
+  --hub-core-hover-fill: oklch(0.91 0 0);
+  --hub-core-hover-shadow: 0 14px 34px oklch(0.28 0 0 / 16%);
+  --hub-plate-shadow: 0 8px 18px oklch(0.3 0 0 / 7%);
+}
+
+:is(.dark, .navy, .wine, .clay, .forest) .skill-builds-surface {
+  --hub-ln: color-mix(in oklch, var(--foreground) 20%, transparent);
+  --hub-ln-hi: color-mix(in oklch, var(--foreground) 45%, transparent);
+  --hub-fill: color-mix(in oklch, var(--foreground) 4%, transparent);
+  --hub-fill-hi: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --hub-trace: color-mix(in oklch, var(--foreground) 15%, transparent);
+  --hub-micro: color-mix(in oklch, var(--foreground) 32%, transparent);
+  --hub-charge: color-mix(in oklch, var(--foreground) 80%, transparent);
+  --hub-charge-strong: color-mix(in oklch, var(--foreground) 85%, transparent);
+  --hub-charge-glow: color-mix(in oklch, var(--foreground) 60%, transparent);
+  --hub-charge-glow-strong: color-mix(in oklch, var(--foreground) 65%, transparent);
+  --hub-active-ring: color-mix(in oklch, var(--foreground) 70%, transparent);
+  --hub-active-ring-shadow: 0 0 12px color-mix(in oklch, var(--foreground) 30%, transparent);
+  --hub-core-fill: linear-gradient(
+    150deg,
+    color-mix(in oklch, var(--foreground) 10%, var(--background)),
+    color-mix(in oklch, var(--foreground) 3%, var(--background))
+  );
+  --hub-core-shadow: 0 0 28px color-mix(in oklch, var(--foreground) 8%, transparent);
+  --hub-core-hover-fill: color-mix(in oklch, var(--foreground) 14%, var(--background));
+  --hub-core-hover-shadow: 0 0 34px color-mix(in oklch, var(--foreground) 14%, transparent);
+  --hub-plate-shadow: 0 0 10px color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.skill-builds-core-plate {
+  background: var(--hub-core-fill);
+  box-shadow: var(--hub-core-shadow);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.skill-builds-core-button:hover .skill-builds-core-plate,
+.skill-builds-core-button:focus-visible .skill-builds-core-plate {
+  border-color: var(--hub-charge);
+  background: var(--hub-core-hover-fill);
+  box-shadow: var(--hub-core-hover-shadow);
+}
+
+.skill-builds-provider-plate {
+  filter: drop-shadow(var(--hub-plate-shadow));
+}
+
+.skill-builds-charge {
+  color: var(--hub-charge);
+  filter: drop-shadow(0 0 5px var(--hub-charge-glow));
+}
+
+.skill-builds-charge-strong {
+  color: var(--hub-charge-strong);
+  filter: drop-shadow(0 0 6px var(--hub-charge-glow-strong));
+}
+
+.skill-builds-active-ring {
+  border-color: var(--hub-active-ring);
+  box-shadow: var(--hub-active-ring-shadow);
+}

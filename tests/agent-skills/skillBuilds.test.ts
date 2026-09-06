@@ -810,7 +810,15 @@ describe("the core's two rings", () => {
     expect(block).not.toContain("cozea-hub-charge");
     // Steady and brighter while active, dim otherwise.
     expect(block).toContain("isActive");
-    expect(block).toContain("border-foreground/70");
+    // The lit styling moved into CSS so light mode can pick its own tone; the
+    // class is the contract, and the stylesheet still has to carry the values.
+    expect(block).toContain("skill-builds-active-ring");
+    const stylesheet = fs.readFileSync(
+      path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.css"),
+      "utf8",
+    );
+    expect(stylesheet).toContain(".skill-builds-active-ring");
+    expect(stylesheet).toMatch(/--hub-active-ring:\s*color-mix\(in oklch, var\(--foreground\) 70%/);
   });
 
   it("draws a longer dash at the core than along the wiring", () => {
