@@ -12,18 +12,18 @@ export function ProjectShellTitleBarLeft() {
   const sidebarChromeOpen = isMobile ? openMobile : state === "expanded";
   const showTitlebarTrigger = isMobile ? !openMobile : state === "collapsed";
 
+  if (!showTitlebarTrigger) return null;
+
   return (
-    <div className="workbench-header-toolbar flex min-w-0 items-center gap-1.5">
-      {showTitlebarTrigger ? (
-        <SidebarTrigger
-          className={cn(
-            "h-7 w-7 shrink-0 rounded-md",
-            sidebarChromeOpen
-              ? "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground"
-              : "text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground",
-          )}
-        />
-      ) : null}
+    <div className="workbench-header-toolbar flex min-w-0 items-center">
+      <SidebarTrigger
+        className={cn(
+          "h-7 w-7 shrink-0 rounded-md",
+          sidebarChromeOpen
+            ? "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground"
+            : "text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground",
+        )}
+      />
     </div>
   );
 }

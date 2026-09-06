@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   EMPTY_DEV_SERVER_AUXILIARY_PROCESSES,
   MAX_DEV_SERVER_AUXILIARY_PROCESSES,
@@ -142,7 +143,7 @@ export function DevServerProcessesDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 overflow-y-auto px-5">
+        <ScrollArea scrollFade fadeSize="1.5rem" className="min-h-0 flex-1" viewportClassName="px-5">
           <div className="flex h-12 items-center justify-between border-b border-border/60">
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-foreground">
@@ -259,7 +260,7 @@ export function DevServerProcessesDialog({
               {t("workbench.devserver.processes.add")}
             </Button>
           ) : null}
-        </div>
+        </ScrollArea>
 
         <DialogFooter className="border-t border-border/60 px-5 py-4">
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

@@ -2,19 +2,12 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 
-import { useIsMobile } from "@/hooks/use-mobile"
+import { COMPACT_WINDOW_BREAKPOINT_PX, useIsMobile } from "@/hooks/use-mobile"
 import { useWindowChrome } from "@/hooks/useWindowChrome"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -41,7 +34,6 @@ function getSidebarStateFromCookie(): boolean | null {
   return null
 }
 const SIDEBAR_WIDTH = "16rem"
-const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 const SIDEBAR_MAC_TOP_INSET_PX = 36
@@ -86,18 +78,26 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void
 }) {
   const isMobile = useIsMobile()
-  const [openMobile, setOpenMobile] = React.useState(false)
+  const wasAutoCollapsedRef = React.useRef(false)
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
   // Initialize from cookie so the user's last open/closed choice is restored.
   const [_open, _setOpen] = React.useState(() => {
     const saved = getSidebarStateFromCookie()
-    return saved !== null ? saved : defaultOpen
+    const preferred = saved !== null ? saved : defaultOpen
+    if (typeof window !== "undefined" && window.innerWidth < COMPACT_WINDOW_BREAKPOINT_PX) {
+      if (preferred) {
+        wasAutoCollapsedRef.current = true
+      }
+      return false
+    }
+    return preferred
   })
   const open = openProp ?? _open
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
+      wasAutoCollapsedRef.current = false
       const openState = typeof value === "function" ? value(open) : value
       if (setOpenProp) {
         setOpenProp(openState)
@@ -113,8 +113,37 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
-  }, [isMobile, setOpen, setOpenMobile])
+    setOpen((value) => !value)
+  }, [setOpen])
+
+  // Responsive auto-collapse when available horizontal space shrinks below compact breakpoint
+  const previousIsMobileRef = React.useRef(isMobile)
+  React.useEffect(() => {
+    const wasMobile = previousIsMobileRef.current
+    previousIsMobileRef.current = isMobile
+
+    if (wasMobile === isMobile) return
+
+    if (isMobile) {
+      // Transitioning to compact window: smoothly auto-collapse without overwriting cookie preference
+      if (open) {
+        wasAutoCollapsedRef.current = true
+        if (setOpenProp) {
+          setOpenProp(false)
+        } else {
+          _setOpen(false)
+        }
+      }
+    } else if (wasAutoCollapsedRef.current) {
+      // Transitioning out of compact window: restore if previously auto-collapsed
+      wasAutoCollapsedRef.current = false
+      if (setOpenProp) {
+        setOpenProp(true)
+      } else {
+        _setOpen(true)
+      }
+    }
+  }, [isMobile, open, setOpenProp])
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -140,11 +169,6 @@ function SidebarProvider({
 
   React.useEffect(() => {
     if (typeof window === "undefined") return
-
-    if (isMobile) {
-      previousDesktopOpenRef.current = null
-      return
-    }
 
     const previousOpen = previousDesktopOpenRef.current
     previousDesktopOpenRef.current = open
@@ -174,7 +198,7 @@ function SidebarProvider({
     return () => {
       timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId))
     }
-  }, [isMobile, open, state])
+  }, [open, state])
 
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
@@ -182,11 +206,11 @@ function SidebarProvider({
       open,
       setOpen,
       isMobile,
-      openMobile,
-      setOpenMobile,
+      openMobile: open,
+      setOpenMobile: setOpen,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isMobile, toggleSidebar]
   )
 
   return (
@@ -238,12 +262,12 @@ function Sidebar({
   rootClassName?: string
   rootStyle?: React.CSSProperties
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { state } = useSidebar()
   const windowChrome = useWindowChrome()
   const sideBoundary = side === "left" ? "bdry-r bdry-sidebar" : "bdry-l bdry-sidebar"
   const desktopRootWidth =
     collapsible === "offcanvas" && state === "collapsed" ? "0px" : "var(--sidebar-width)"
-  const shouldRenderWindowChromeInset = windowChromeAware && !isMobile && windowChrome.isMac
+  const shouldRenderWindowChromeInset = windowChromeAware && windowChrome.isMac
   const macWindowChromeInset = shouldRenderWindowChromeInset ? (
     windowChromeEndAddon ? (
       <div
@@ -276,7 +300,7 @@ function Sidebar({
   ) : null
 
   const desktopNonMacWindowChromeAccessory =
-    windowChromeAware && !isMobile && !windowChrome.isMac && windowChromeEndAddon ? (
+    windowChromeAware && !windowChrome.isMac && windowChromeEndAddon ? (
       <div className="flex shrink-0 items-center justify-end px-2 pt-2">
         <div className="titlebar-no-drag">{windowChromeEndAddon}</div>
       </div>
@@ -304,39 +328,10 @@ function Sidebar({
     )
   }
 
-  if (isMobile) {
-    return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-        <SheetContent
-          data-sidebar="sidebar"
-          data-slot="sidebar"
-          data-mobile="true"
-          className={cn(
-            "text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden",
-            sideBoundary
-          )}
-          style={
-            {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-              ...containerStyle,
-            } as React.CSSProperties
-          }
-          side={side}
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
-    )
-  }
-
   return (
     <div
       className={cn(
-        "group peer relative hidden h-full shrink-0 text-sidebar-foreground transition-[width,flex-basis] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:block",
+        "group peer relative block h-full shrink-0 text-sidebar-foreground transition-[width,flex-basis] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
         rootClassName
       )}
       data-state={state}
@@ -369,7 +364,7 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         className={cn(
-          "absolute inset-y-0 z-10 hidden h-full w-(--sidebar-width) transition-[left,right,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:flex",
+          "absolute inset-y-0 z-10 flex h-full w-(--sidebar-width) transition-[left,right,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -660,7 +655,7 @@ function SidebarMenuButton({
   tooltip?: string | React.ComponentProps<typeof TooltipContent>
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const Comp = asChild ? Slot : "button"
-  const { isMobile, state } = useSidebar()
+  const { state } = useSidebar()
 
   const button = (
     <Comp
@@ -688,7 +683,7 @@ function SidebarMenuButton({
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent
         side="right"
-        hidden={state !== "collapsed" || isMobile}
+        hidden={state !== "collapsed"}
         {...tooltip}
       />
     </Tooltip>

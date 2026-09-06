@@ -25,7 +25,6 @@ import {
 } from "@/features/tasks/model/taskFocusOverlay";
 import { useLocation, useSearchParams } from "@/lib/router";
 import { useTheme } from "@/contexts/ThemeContext";
-import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
 import { ProjectSyncIndicator } from "@/features/projects/ui/ProjectSyncIndicator";
 import { WorkbenchHeaderBranchControl } from "@/features/workbench/WorkbenchHeaderBranchControl";
 import { useProjectWorkbenchSearchParamSync } from "@/features/workbench/hooks/useProjectWorkbenchSearchParamSync";
@@ -168,31 +167,28 @@ export function ProjectWorkbenchSurface() {
   const headerWorkbench = useMemo(
     () => (
       <div className="flex min-w-0 items-center gap-2">
-        <ProjectShellTitleBarLeft />
-        <div className="flex min-w-0 items-center gap-2">
-          <div
-            className="flex h-6 min-w-0 max-w-[min(320px,42vw)] items-center text-[11px] font-normal text-foreground"
-            title={projectName}
-          >
-            <span className="truncate">{projectName}</span>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-            <div className="inline-flex h-6 items-center rounded-md bg-secondary px-0.5 text-muted-foreground/85 transition-colors hover:bg-accent/80">
-              {/* Lane/branch state is read from context inside the control so
-                  this element stays identity-stable while lanes settle. */}
-              <WorkbenchHeaderBranchControl
-                triggerClassName="h-6 min-h-6 gap-px rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
-                trailing={
-                  project?._id ? (
-                    <ProjectSyncIndicator
-                      variant="compact"
-                      inheritPillTextColor
-                      className="h-5 w-5 shrink-0 rounded-none bg-transparent shadow-none"
-                    />
-                  ) : null
-                }
-              />
-            </div>
+        <div
+          className="flex h-6 min-w-0 max-w-[min(320px,42vw)] items-center text-[11px] font-normal text-foreground"
+          title={projectName}
+        >
+          <span className="truncate">{projectName}</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+          <div className="inline-flex h-6 items-center rounded-md bg-secondary px-0.5 text-muted-foreground/85 transition-colors hover:bg-accent/80">
+            {/* Lane/branch state is read from context inside the control so
+                this element stays identity-stable while lanes settle. */}
+            <WorkbenchHeaderBranchControl
+              triggerClassName="h-6 min-h-6 gap-px rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
+              trailing={
+                project?._id ? (
+                  <ProjectSyncIndicator
+                    variant="compact"
+                    inheritPillTextColor
+                    className="h-5 w-5 shrink-0 rounded-none bg-transparent shadow-none"
+                  />
+                ) : null
+              }
+            />
           </div>
         </div>
       </div>

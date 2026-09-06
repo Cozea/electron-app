@@ -4,9 +4,12 @@ import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects
 import { useProjectHeader } from "@/lib/useProjectHeader";
 
 import { Logo } from "@/components/Logo";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
+import { HeaderBackButton } from "@/components/ui/header-back-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { SearchInput } from "@/components/ui/search-input";
 import { appToast } from "@/lib/appToast";
 import { ensureNativeApi } from "@/lib/nativeApi";
 import { useSearchParams } from "@/lib/router";
@@ -509,25 +512,14 @@ export function SkillBuildsView() {
   const headerLeft = React.useMemo(() => {
     if (isEditing) return null;
     if (openDetail) {
-      return (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => setOpenDetail(null)}
-        >
-          <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
-          Back
-        </Button>
-      );
+      return <HeaderBackButton onClick={() => setOpenDetail(null)} />;
     }
     return (
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+        className="h-7 gap-1.5 rounded-full px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/15 [:hover,[data-pressed]]:bg-foreground/10 dark:[:hover,[data-pressed]]:bg-foreground/15 transition-colors"
         onClick={() => {
           const next = new URLSearchParams(searchParams);
           next.delete("view");
@@ -1687,18 +1679,12 @@ function BuildEditor({
       </header>
 
       <div className="shrink-0 space-y-2.5 border-b border-border/40 px-5 py-3">
-        <div className="relative">
-          <HugeiconsIcon
-            icon={__SearchHugeIcon}
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/70"
-          />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search skills to add..."
-            className="h-9 pl-9"
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onValueChange={setQuery}
+          sizeVariant="compact"
+          placeholder="Search skills to add..."
+        />
 
         {/* Browsing by category beats scrolling 39 skills looking for one. */}
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1720,7 +1706,7 @@ function BuildEditor({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1" viewportClassName="p-3">
         {groups.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">No matching skills.</p>
         ) : (
@@ -1786,7 +1772,7 @@ function BuildEditor({
             );
           })
         )}
-      </div>
+      </ScrollArea>
     </>
   );
 }

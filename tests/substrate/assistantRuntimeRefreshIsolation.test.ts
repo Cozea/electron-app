@@ -126,9 +126,7 @@ describe('assistant runtime snapshot refresh isolation', () => {
 
     expect(getSnapshot).toHaveBeenCalledTimes(1)
     first.resolve(snapshot('project-first', 1))
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(getSnapshot).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(2))
 
     second.resolve(snapshot('project-second', 2))
     await expect(refreshOne).resolves.toMatchObject({ snapshotSequence: 2 })

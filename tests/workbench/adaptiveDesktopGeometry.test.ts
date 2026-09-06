@@ -26,6 +26,7 @@ const approvalPanel = source(
 const pendingInput = source(
   "apps/desktop/src/features/assistant/chat/ComposerPendingUserInputPanel.tsx",
 );
+const sidebar = source("apps/desktop/src/components/ui/sidebar.tsx");
 
 describe("adaptive desktop geometry", () => {
   it("keeps desktop primitive density stable across BrowserWindow widths", () => {
@@ -86,5 +87,18 @@ describe("adaptive desktop geometry", () => {
     expect(geometryCss).not.toContain("grid-template-areas");
     expect(geometryCss).not.toContain("flex-direction: column");
     expect(geometryCss).not.toContain("display: none; /* pane */");
+  });
+
+  it("preserves smooth sidebar collapse transitions without snapping across compact window widths", () => {
+    // The sidebar must remain a continuously rendered desktop offcanvas component;
+    // it must not abruptly swap to an unmounted Sheet or use hidden md:block/md:flex.
+    expect(sidebar).not.toMatch(/hidden\s+[^"]*md:block/);
+    expect(sidebar).not.toMatch(/hidden\s+[^"]*md:flex/);
+    expect(sidebar).not.toContain("<Sheet");
+    // The outer sidebar element must use block layout so sidebar-gap does not become an in-flow flex column pushing sidebar-container
+    expect(sidebar).toMatch(/group\s+peer\s+relative\s+block\s+h-full/);
+    // Responsive auto-collapse must track the compact breakpoint and transition state
+    expect(sidebar).toContain("COMPACT_WINDOW_BREAKPOINT_PX");
+    expect(sidebar).toContain("wasAutoCollapsedRef");
   });
 });

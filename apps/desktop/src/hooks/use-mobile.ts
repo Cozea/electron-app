@@ -8,7 +8,10 @@ import * as React from "react"
 export const COMPACT_WINDOW_BREAKPOINT_PX = 768
 
 export function useIsCompactWindow() {
-  const [isCompactWindow, setIsCompactWindow] = React.useState<boolean | undefined>(undefined)
+  const [isCompactWindow, setIsCompactWindow] = React.useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return window.innerWidth < COMPACT_WINDOW_BREAKPOINT_PX
+  })
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${COMPACT_WINDOW_BREAKPOINT_PX - 1}px)`)
@@ -20,7 +23,7 @@ export function useIsCompactWindow() {
     return () => mql.removeEventListener("change", onChange)
   }, [])
 
-  return !!isCompactWindow
+  return isCompactWindow
 }
 
 /**

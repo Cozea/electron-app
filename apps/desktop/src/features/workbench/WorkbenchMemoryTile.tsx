@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ProjectMemoryNodeState } from "@shared/electronApiTypes"
 
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   buildMemoryLayout,
   hitTestMemoryLayout,
@@ -680,7 +681,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
             </div>
           ) : run.updating ? (
             <div className="flex items-center justify-center gap-2">
-              <span className="cozea-loader size-3.5" aria-hidden />
+              <Spinner size="sm" aria-hidden />
               <span className="text-[12px] text-muted-foreground">
                 {run.updating.agentName} {t("workbench.memory.update.working")}
               </span>

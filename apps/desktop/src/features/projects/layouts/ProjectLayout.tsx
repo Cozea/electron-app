@@ -450,8 +450,11 @@ export function ProjectLayout({
       location.pathname.includes("/skills") &&
       new URLSearchParams(location.search).get("view") === "builds",
   });
+  const isStoreView = pathname.endsWith("/store");
+  const isSkillsRoute = pathname.includes("/skills");
   // Check if we are on views that need full-bleed content (no padding)
-  const shouldRemovePadding = isWorkbenchView || isChangesView || isBuildsView;
+  const shouldRemovePadding =
+    isWorkbenchView || isChangesView || isBuildsView || isStoreView || isSkillsRoute;
 
   // Runtime readiness alone is not enough: it only means a workspace is mounted,
   // which happens well before the device token is re-established on the

@@ -11,6 +11,7 @@ import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { useTranslation } from "@/lib/i18n"
 import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot"
 import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer"
@@ -137,7 +138,7 @@ function RuntimePreviewStartState({
     <div className="absolute inset-0 flex items-center justify-center bg-content-surface p-6 text-center">
       {status === "starting" ? (
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <div className="cozea-loader" />
+          <Spinner size="md" />
           <span className="font-medium text-foreground whitespace-nowrap">
             Starting Dev Server…
           </span>

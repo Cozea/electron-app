@@ -739,35 +739,6 @@ body {
   animation: cozea-diff-badge-enter 180ms ease-out;
 }
 
-.cozea-loader {
-  height: 3px;
-  width: 60px;
-  background: linear-gradient(var(--muted-foreground) 0 0) right/51% 100% no-repeat;
-  display: flex;
-  animation: cozea-loader-0 2s linear infinite;
-}
-.cozea-loader:before,
-.cozea-loader:after {
-  content: "";
-  width: 15px;
-  background: var(--muted-foreground);
-  animation: cozea-loader-1 2s linear infinite;
-}
-.cozea-loader:after {
-  animation-delay: -1s;
-  --s:-1;
-}
-
-@keyframes cozea-loader-1 {
-  0%,100%{transform:scaleX(var(--s,1)) rotate(0)}
-  25%,75%   {transform:scaleX(var(--s,1)) rotate(180deg)}
-}
-
-@keyframes cozea-loader-0 {
-  0%,49.9%{transform:scaleX( 1)}
-  50%,100%{transform:scaleX(-1)}
-}
-
 .preview-loading-spinner {
   --square: 26px;
   --offset: 30px;

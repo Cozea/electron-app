@@ -78,7 +78,7 @@ import {
 } from "../lib/projectMutationPresentation";
 import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup";
 import { detachDeletedProjectFromUi } from "@/features/projects/lib/detachDeletedProjectFromUi";
-import type { ProjectDeleteConfirmOptions } from "@/features/projects/ui/ProjectDeleteDialog";
+import { confirmProjectDeletion } from "@/features/projects/ui/ProjectDeleteDialog";
 import { withProjectMutationTimeout } from "@/features/projects/lib/projectMutationTimeout";
 import {
   selectProjectWorkbench,
@@ -90,11 +90,6 @@ import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
 import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";
 import { openCommandPalette } from "@/features/workbench/command-palette/commandPaletteBus";
 
-const LazyProjectDeleteDialog = React.lazy(() =>
-  import("./ProjectDeleteDialog").then((module) => ({
-    default: module.ProjectDeleteDialog,
-  })),
-);
 const LazyProjectRenameDialog = React.lazy(() =>
   import("./ProjectRenameDialog").then((module) => ({
     default: module.ProjectRenameDialog,
@@ -178,10 +173,6 @@ export function ProjectSidebar({
   const [renameValue, setRenameValue] = React.useState("");
   const [renameError, setRenameError] = React.useState<string | null>(null);
   const [isRenamingProject, setIsRenamingProject] = React.useState(false);
-  const [projectPendingDelete, setProjectPendingDelete] = React.useState<SidebarProjectItem | null>(
-    null,
-  );
-  const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [isDeletingProject, setIsDeletingProject] = React.useState(false);
   const [devAppPublishing, setDevAppPublishing] = React.useState<{
     projectId: string;
@@ -897,54 +888,55 @@ export function ProjectSidebar({
     [convexUserId, restoreProject],
   );
 
-  const handleStartDeleteProject = React.useCallback((project: SidebarProjectItem) => {
-    setProjectPendingDelete(project);
-    setDeleteError(null);
-  }, []);
-
-  const handleConfirmDeleteProject = React.useCallback(
-    async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
-      if (!projectPendingDelete || !convexUserId || isDeletingProject) {
+  const handleStartDeleteProject = React.useCallback(
+    async (project: SidebarProjectItem) => {
+      if (!convexUserId || isDeletingProject) {
         return;
       }
 
+      const projectId = String(project.id ?? project._id);
+      const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
+        projectId,
+        projectName: project.name,
+      });
+
+      if (!confirmed) return;
+
       setIsDeletingProject(true);
-      setDeleteError(null);
-      const deletedProject = projectPendingDelete;
-      const deletedProjectId = String(deletedProject._id);
+      const deletedProjectId = projectId;
       try {
         await withProjectMutationTimeout(
           deleteProject({
-            projectId: deletedProject._id,
+            projectId: (project._id ?? project.id) as Id<"projects">,
             userId: convexUserId,
-            // Server still validates the name; UI no longer requires retyping it.
-            confirmName: deletedProject.name,
+            confirmName: project.name,
           }),
           "Deleting this project is taking longer than expected. Check your connection and try again.",
         );
 
-        // Detach + leave the dead route before local disk cleanup so the
-        // workbench cannot keep hosting a deleted project.
         detachDeletedProjectFromUi(deletedProjectId);
-        setProjectPendingDelete(null);
         navigate("/projects", { replace: true });
 
         await cleanupDeletedProjectLocally(deletedProjectId, {
           keepLocalFiles,
-          projectSlug: deletedProject.slug,
+          projectSlug: project.slug,
         });
       } catch (error) {
         const presentation = formatProjectDeleteError(error);
-        setDeleteError(
-          presentation.detail
-            ? `${presentation.message} ${presentation.detail}`
-            : presentation.message,
-        );
+        const message = presentation.detail
+          ? `${presentation.message} ${presentation.detail}`
+          : presentation.message;
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          title: "Delete Failed",
+          message: "Failed to delete project",
+          detail: message,
+        });
       } finally {
         setIsDeletingProject(false);
       }
     },
-    [convexUserId, deleteProject, isDeletingProject, navigate, projectPendingDelete],
+    [cleanupDeletedProjectLocally, convexUserId, deleteProject, isDeletingProject, navigate],
   );
 
   const handleSyncProject = React.useCallback(
@@ -1174,24 +1166,6 @@ export function ProjectSidebar({
             onConfirm={handleConfirmRenameProject}
             isSaving={isRenamingProject}
             errorMessage={renameError}
-          />
-        </React.Suspense>
-      ) : null}
-      {projectPendingDelete ? (
-        <React.Suspense fallback={null}>
-          <LazyProjectDeleteDialog
-            open
-            onOpenChange={(open) => {
-              if (!open && !isDeletingProject) {
-                setProjectPendingDelete(null);
-                setDeleteError(null);
-              }
-            }}
-            projectId={String(projectPendingDelete._id)}
-            projectName={projectPendingDelete.name}
-            onConfirm={handleConfirmDeleteProject}
-            isDeleting={isDeletingProject}
-            errorMessage={deleteError}
           />
         </React.Suspense>
       ) : null}

@@ -5,7 +5,8 @@ import {
 } from "react";
 
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { LayoutToggles, SidebarInsetToggle } from "@/components/layouts/LayoutToggles";
+import { LayoutToggles } from "@/components/layouts/LayoutToggles";
+import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
@@ -191,7 +192,7 @@ export function UnifiedHeader({
         </div>
         <div className="flex h-10 w-full items-stretch gap-0.5" style={headerContentStyle}>
           <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-            <SidebarInsetToggle />
+            <ProjectShellTitleBarLeft />
           </div>
           <div className="min-h-0 min-w-0 flex-1" aria-hidden="true" />
           <div
@@ -241,8 +242,8 @@ export function UnifiedHeader({
         </div>
       )}
       <div className="flex h-10 w-full items-stretch gap-3 max-md:gap-1.5" style={headerContentStyle}>
-        <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-          <SidebarInsetToggle />
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 titlebar-no-drag">
+          <ProjectShellTitleBarLeft />
           {compactHeaderActions ? (
             <div className="shared-header-action-pills flex min-w-0 items-center">{header}</div>
           ) : (

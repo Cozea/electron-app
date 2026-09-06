@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import * as React from "react";
 
 import { EmptyTaskRuns } from "@/features/projects/pages/EmptyTaskRuns";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ScheduledTask, ScheduledTaskRun, ScheduledTaskRunStatus } from "@shared/scheduledTasks";
 
 const RUN_TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
@@ -80,11 +81,11 @@ function RunStatusBadge({ status }: { status: ScheduledTaskRunStatus }) {
   return (
     <Badge
       variant="outline"
-      size="sm"
       className={cn(
-        copy.tone === "ok" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-        copy.tone === "error" && "border-destructive/40 bg-destructive/10 text-destructive",
-        copy.tone === "muted" && "text-muted-foreground",
+        "h-5 rounded-full border-0 px-2 text-[11px] font-medium",
+        copy.tone === "ok" && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+        copy.tone === "error" && "bg-destructive/15 text-destructive",
+        copy.tone === "muted" && "bg-muted/60 text-muted-foreground",
       )}
     >
       {copy.label}
@@ -178,68 +179,68 @@ export function ScheduledTaskDetail({
   return (
     <div className="flex min-h-0 flex-1">
       {/* Results: its own scroll container. */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6">
         <p
           className={cn(
-            "sticky top-0 z-10 -mx-6 bg-background/85 px-6 py-3 text-sm tabular-nums backdrop-blur",
+            "shrink-0 -mx-6 bg-background/85 px-6 py-3 text-sm tabular-nums backdrop-blur",
             task.enabled ? "text-muted-foreground" : "text-amber-700 dark:text-amber-500",
           )}
         >
           {task.enabled ? summary : `${summary} · resumes only when you start it again`}
         </p>
         {selectedRun ? (
-          <div className="mx-auto max-w-[640px] space-y-6 py-6">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <RunStatusBadge status={selectedRun.status} />
-                <span className="text-sm tabular-nums text-muted-foreground">
-                  {RUN_TIME_FORMAT.format(new Date(selectedRun.ranAt))}
-                </span>
-                {selectedRun.id === runs[0]?.id ? (
-                  <Badge variant="secondary" size="sm">
-                    Latest
-                  </Badge>
-                ) : null}
+          <ScrollArea scrollFade className="min-h-0 flex-1">
+            <div className="mx-auto max-w-[640px] space-y-6 py-6">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <RunStatusBadge status={selectedRun.status} />
+                  <span className="text-sm tabular-nums text-muted-foreground">
+                    {RUN_TIME_FORMAT.format(new Date(selectedRun.ranAt))}
+                  </span>
+                  {selectedRun.id === runs[0]?.id ? (
+                    <Badge variant="secondary" className="h-5 rounded-full px-2 text-[11px] font-medium">
+                      Latest
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {RUN_STATUS_COPY[selectedRun.status].detail}
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {RUN_STATUS_COPY[selectedRun.status].detail}
-              </p>
-            </div>
 
-            {selectedRun.error ? (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
-                <p className="text-xs leading-relaxed text-destructive">{selectedRun.error}</p>
-              </div>
-            ) : null}
+              {selectedRun.error ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                  <p className="text-xs leading-relaxed text-destructive">{selectedRun.error}</p>
+                </div>
+              ) : null}
 
-            <section className="space-y-2">
-              <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                What it was asked to do
-              </h3>
-              <p className="rounded-xl border border-border/60 bg-card/40 p-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
-                {task.prompt}
-              </p>
-            </section>
-
-            {selectedRun.threadId ? (
               <section className="space-y-2">
                 <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Conversation
+                  What it was asked to do
                 </h3>
-                <p className="text-sm text-muted-foreground">
-                  This run opened its own chat, which holds everything it produced. Find it in
-                  chat history under this task's name.
-                </p>
-                <p className="font-mono text-xs break-all text-muted-foreground/70">
-                  {selectedRun.threadId}
+                <p className="rounded-xl border border-border/60 bg-card/40 p-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                  {task.prompt}
                 </p>
               </section>
-            ) : null}
-          </div>
+
+              {selectedRun.threadId ? (
+                <section className="space-y-2">
+                  <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Conversation
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    This run opened its own chat, which holds everything it produced. Find it in
+                    chat history under this task's name.
+                  </p>
+                  <p className="font-mono text-xs break-all text-muted-foreground/70">
+                    {selectedRun.threadId}
+                  </p>
+                </section>
+              ) : null}
+            </div>
+          </ScrollArea>
         ) : (
-          // Centred in the pane rather than pinned to the top of it, which is
-          // where a scroll container would otherwise leave it.
-          <div className="flex min-h-full items-center justify-center py-6">
+          <div className="flex min-h-0 flex-1 items-center justify-center p-6">
             <EmptyTaskRuns />
           </div>
         )}
@@ -251,29 +252,31 @@ export function ScheduledTaskDetail({
         {runs.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">Nothing has run yet.</p>
         ) : (
-          <ul className="min-h-0 flex-1 overflow-y-auto pb-4">
-            {runs.map((run) => {
-              const isSelected = run.id === (selectedRun?.id ?? null);
-              return (
-                <li key={run.id} className="border-t border-border/50 first:border-t-0">
-                  <button
-                    type="button"
-                    onClick={() => onSelectRun(run.id)}
-                    aria-current={isSelected}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left transition-colors",
-                      isSelected ? "bg-muted/60" : "hover:bg-muted/30",
-                    )}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                      {formatHistoryTime(run.ranAt)}
-                    </span>
-                    <RunMark run={run} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <ScrollArea scrollFade className="min-h-0 flex-1">
+            <ul className="pb-4">
+              {runs.map((run) => {
+                const isSelected = run.id === (selectedRun?.id ?? null);
+                return (
+                  <li key={run.id} className="border-t border-border/50 first:border-t-0">
+                    <button
+                      type="button"
+                      onClick={() => onSelectRun(run.id)}
+                      aria-current={isSelected}
+                      className={cn(
+                        "flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left transition-colors",
+                        isSelected ? "bg-muted/60" : "hover:bg-muted/30",
+                      )}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                        {formatHistoryTime(run.ranAt)}
+                      </span>
+                      <RunMark run={run} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </ScrollArea>
         )}
       </aside>
     </div>

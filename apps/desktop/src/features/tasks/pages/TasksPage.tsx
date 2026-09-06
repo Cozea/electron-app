@@ -13,6 +13,7 @@ import {
   type TaskOverlayPayload,
 } from '@/features/tasks/model/taskFocusOverlay'
 import type { ProjectScannedRoute } from '@shared/electronApiTypes'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { GroupedVirtuoso } from 'react-virtuoso'
 import { useTranslation } from '@/lib/i18n'
 import { useViewTransitionNavigate } from '@/lib/navigation'
@@ -1419,7 +1420,7 @@ export function TasksPage({
     <div
       role={isEmbedded ? undefined : 'dialog'}
       aria-modal={isEmbedded ? undefined : true}
-      aria-labelledby={isEmbedded ? undefined : 'tasks-modal-title'}
+      aria-label={isEmbedded ? undefined : t('tasks.header.title')}
       className={cn(
         'flex h-full w-full flex-col overflow-hidden bg-background',
         !isEmbedded &&
@@ -1427,19 +1428,10 @@ export function TasksPage({
       )}
       onClick={(event) => event.stopPropagation()}
     >
-      <div className={cn("border-b border-border/60", isEmbedded ? "px-4 py-3" : "px-6 py-5")}>
+      <div className={cn("relative", isEmbedded ? "px-4 py-3" : "px-6 pt-5 pb-3")}>
         {!isEmbedded ? (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h1 id="tasks-modal-title" className="text-xl font-semibold text-foreground">
-                  {t('tasks.header.title')}
-                </h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {t('tasks.header.desc')}
-                </p>
-              </div>
-
+            <div className="flex items-center justify-end gap-4">
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   size="sm"
@@ -1527,7 +1519,8 @@ export function TasksPage({
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col px-5 py-5">
+      <ScrollArea scrollFade className="min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col px-5 py-5">
         {project === null ? (
           <div className="flex h-full items-center justify-center p-6">
             <Empty>
@@ -1642,8 +1635,9 @@ export function TasksPage({
           </div>
         )}
       </div>
-    </div>
-  )
+    </ScrollArea>
+  </div>
+)
 
   return (
     <>

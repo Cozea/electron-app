@@ -1,4 +1,5 @@
 import { app, safeStorage } from 'electron'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -82,26 +83,38 @@ function isDesktopWorkbenchLocator(value: unknown): value is DesktopWorkbenchLoc
 
 async function atomicWrite(filePath: string, data: Buffer | string): Promise<void> {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
-  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`
   await fs.promises.writeFile(temporaryPath, data, { mode: 0o600 })
   try {
     await fs.promises.rename(temporaryPath, filePath)
   } catch (error) {
-    await fs.promises.rm(filePath, { force: true }).catch(() => undefined)
-    await fs.promises.rename(temporaryPath, filePath).catch(async (renameError) => {
-      await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined)
-      throw renameError ?? error
-    })
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined)
+    throw error
   }
 }
 
 export class DesktopBootstrapStore {
+  private writeQueues = new Map<string, Promise<void>>()
+
   private get sessionPath(): string {
     return path.join(app.getPath('userData'), SESSION_FILE_NAME)
   }
 
   private get navigationPath(): string {
     return path.join(app.getPath('userData'), NAVIGATION_FILE_NAME)
+  }
+
+  private async enqueueWrite(filePath: string, writeFn: () => Promise<void>): Promise<void> {
+    const previous = this.writeQueues.get(filePath) ?? Promise.resolve()
+    const next = previous.catch(() => undefined).then(writeFn)
+    this.writeQueues.set(filePath, next)
+    try {
+      await next
+    } finally {
+      if (this.writeQueues.get(filePath) === next) {
+        this.writeQueues.delete(filePath)
+      }
+    }
   }
 
   async getInitialSnapshot(): Promise<DesktopBootstrapSnapshot> {
@@ -125,11 +138,11 @@ export class DesktopBootstrapStore {
       throw new Error('Secure storage is unavailable for the desktop bootstrap session.')
     }
     const encrypted = safeStorage.encryptString(JSON.stringify(session))
-    await atomicWrite(this.sessionPath, encrypted)
+    await this.enqueueWrite(this.sessionPath, () => atomicWrite(this.sessionPath, encrypted))
   }
 
   async clearSession(): Promise<void> {
-    await fs.promises.rm(this.sessionPath, { force: true })
+    await this.enqueueWrite(this.sessionPath, () => fs.promises.rm(this.sessionPath, { force: true }))
   }
 
   async setLastWorkbenchRoute(entry: DesktopWorkbenchLocator): Promise<void> {
@@ -175,6 +188,8 @@ export class DesktopBootstrapStore {
   }
 
   private async writeNavigation(state: StoredNavigationState): Promise<void> {
-    await atomicWrite(this.navigationPath, `${JSON.stringify(state)}\n`)
+    await this.enqueueWrite(this.navigationPath, () =>
+      atomicWrite(this.navigationPath, `${JSON.stringify(state)}\n`),
+    )
   }
 }

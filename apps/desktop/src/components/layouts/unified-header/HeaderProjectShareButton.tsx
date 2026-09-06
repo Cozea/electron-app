@@ -12,6 +12,7 @@ import { getPersonalProjectContactsCacheKey } from "@/lib/queryCacheKeys";
 import { isLocalDeviceEmail } from "@/lib/userDisplay";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
 
   Dialog,
@@ -570,7 +571,7 @@ export function HeaderProjectShareButton({
               onPointerDown={prewarmPersonalContacts}
             >
               {roleCheckPending || shareStatePending ? (
-                <div className="loader text-muted-foreground" />
+                <Spinner size="sm" className="text-muted-foreground" />
               ) : (
                 <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
               )}
@@ -733,7 +734,7 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === roleActionKey ? (
-                                  <div className="loader mr-1" />
+                                  <Spinner size="xs" className="mr-1" />
                                 ) : null}
                                 {(t as any)("share.role." + existingMember.role) ?? "Role"}
                                 <HugeiconsIcon icon={__ChevronDownHugeIcon} className="h-3.5 w-3.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
@@ -754,9 +755,9 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === removeActionKey ? (
-                                  <div className="loader" />
+                                  <Spinner size="xs" />
                                 ) : (
-                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="h-2.5 w-2.5" />
+                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="size-3.5" />
                                 )}
                                 <span className="sr-only">Remove member</span>
                               </Button>
@@ -778,9 +779,9 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === resendActionKey ? (
-                                  <div className="loader mr-1.5" />
+                                  <Spinner size="xs" className="mr-1.5" />
                                 ) : (
-                                  <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-1.5 h-2.5 w-2.5" />
+                                  <HugeiconsIcon icon={__RefreshCwHugeIcon} className="mr-1.5 size-3" />
                                 )}
                                 Resend
                               </Button>
@@ -799,9 +800,9 @@ export function HeaderProjectShareButton({
                                 }}
                               >
                                 {teamActionKey === cancelActionKey ? (
-                                  <div className="loader" />
+                                  <Spinner size="xs" />
                                 ) : (
-                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="h-2.5 w-2.5" />
+                                  <HugeiconsIcon icon={__Trash2HugeIcon} className="size-3.5" />
                                 )}
                                 <span className="sr-only">Cancel invite</span>
                               </Button>
@@ -925,9 +926,9 @@ export function HeaderProjectShareButton({
                     disabled={inviteMembers.length === 0 || isSubmitting}
                   >
                     {isSubmitting ? (
-                      <div className="loader mr-2" />
+                      <Spinner size="sm" className="mr-2" />
                     ) : (
-                      <HugeiconsIcon icon={__SendHugeIcon} className="mr-2 h-2.5 w-2.5" />
+                      <HugeiconsIcon icon={__SendHugeIcon} className="mr-2 size-3.5" />
                     )}
                     {t("share.sendInvites")}
                   </Button>
@@ -970,9 +971,9 @@ export function HeaderProjectShareButton({
                       title="Copy link"
                     >
                       {joinLinkAction === "copy" ? (
-                        <div className="loader" />
+                        <Spinner size="xs" />
                       ) : (
-                        <HugeiconsIcon icon={__CopyHugeIcon} className="h-2.5 w-2.5" />
+                        <HugeiconsIcon icon={__CopyHugeIcon} className="size-3.5" />
                       )}
                       <span className="sr-only">Copy link</span>
                     </Button>
@@ -1014,9 +1015,9 @@ export function HeaderProjectShareButton({
                       }}
                     >
                       {joinLinkAction === "rotate" || joinLinkAction === "disable" ? (
-                        <div className="loader" />
+                        <Spinner size="xs" />
                       ) : (
-                        <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-2.5 w-2.5" />
+                        <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="size-3.5" />
                       )}
                       <span className="sr-only">Link options</span>
                     </Button>

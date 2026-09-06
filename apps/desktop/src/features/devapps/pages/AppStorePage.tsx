@@ -13,12 +13,14 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
-import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { SearchInput } from "@/components/ui/search-input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
+import { appToast } from "@/lib/appToast"
 import {
   buildAppStoreSections,
   buildInstalledRail,
@@ -180,7 +182,9 @@ export function AppStorePage() {
   }
 
   const copyRef = (ref: string) => {
-    void navigator.clipboard.writeText(ref).catch(() => undefined)
+    navigator.clipboard.writeText(ref).then(() => {
+      appToast.success({ title: t("common.copied") })
+    }).catch(() => undefined)
   }
 
   const handleRefresh = () => {
@@ -207,7 +211,7 @@ export function AppStorePage() {
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="size-7 text-muted-foreground hover:text-foreground"
+                className="size-7 text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label={t("common.manage")}
                 onClick={async (event) => {
                   event.preventDefault()
@@ -307,7 +311,7 @@ export function AppStorePage() {
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="size-7 text-muted-foreground hover:text-foreground"
+                className="size-7 text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label="Options"
                 disabled={isPending}
                 onClick={handleOrgMenu}
@@ -330,7 +334,7 @@ export function AppStorePage() {
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  className="size-7 text-muted-foreground hover:text-foreground"
+                  className="size-7 text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                   aria-label="Options"
                   disabled={isPending}
                   onClick={handleOrgMenu}
@@ -458,57 +462,83 @@ export function AppStorePage() {
   const showEmptyState = sections.length === 0 && !orgLoading
 
   return (
-    <div className="mx-auto w-full max-w-[960px] space-y-6 px-6 pt-4 pb-10">
-      {installationError || installationsError ? (
-        <div
-          className="flex items-center gap-3 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          role="alert"
-        >
-          <span className="min-w-0 flex-1">{installationError ?? installationsError}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Dismiss"
-            onClick={() => setInstallationError(null)}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mx-auto w-full max-w-[960px] shrink-0 space-y-4 px-6 pt-4 pb-3">
+        {installationError || installationsError ? (
+          <div
+            className="flex items-center gap-3 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            role="alert"
           >
-            ×
-          </Button>
-        </div>
-      ) : null}
+            <span className="min-w-0 flex-1">{installationError ?? installationsError}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss"
+              onClick={() => setInstallationError(null)}
+            >
+              ×
+            </Button>
+          </div>
+        ) : null}
 
-      <header className="space-y-1">
-        <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
-          {t("appStore.page.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">{t("appStore.page.subtitle")}</p>
-      </header>
+        <header className="space-y-1">
+          <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
+            {t("appStore.page.title")}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t("appStore.page.subtitle")}</p>
+        </header>
 
-      <div className="sticky top-[-1rem] z-20 -mx-6 bg-background/95 px-6 pt-3 pb-2 backdrop-blur-md">
-        <div className="relative">
-          <HugeiconsIcon
-            icon={__SearchHugeIcon}
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/70"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onBlur={() => setParam("q", query.trim() ? query : null, { replace: true })}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') setParam("q", query.trim() ? query : null, { replace: true })
-            }}
-            placeholder={t("appStore.searchPlaceholder")}
-            className="h-11 rounded-search bg-muted pl-9 text-sm"
-          />
-        </div>
-        {/* Soft edge fade right under the search bar matching assistant fade */}
-        <div
-          className="pointer-events-none absolute -bottom-4 left-0 right-0 h-4 bg-gradient-to-b from-background/95 via-background/60 to-transparent"
-          aria-hidden
+        <SearchInput
+          value={query}
+          onValueChange={setQuery}
+          onClear={() => {
+            setQuery("")
+            setParam("q", null, { replace: true })
+          }}
+          onBlur={() => setParam("q", query.trim() ? query : null, { replace: true })}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') setParam("q", query.trim() ? query : null, { replace: true })
+          }}
+          placeholder={t("appStore.searchPlaceholder")}
         />
+
+        {orgScopeEnabled ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(["builtin", "organization"] as const).map((tab) => {
+              const isActive = scope === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setParam("scope", tab === "builtin" ? null : tab)}
+                  className={cn(
+                    "cursor-pointer rounded-full px-3 py-1 text-[11px] font-medium transition-colors inline-flex items-center gap-1.5",
+                    isActive
+                      ? "bg-secondary text-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  <span>
+                    {tab === "builtin"
+                      ? t("appStore.page.badgeBuiltIn")
+                      : t("appStore.page.privateDevApps")}
+                  </span>
+                  {query.trim() && !isActive && matchCounts[tab] > 0 ? (
+                    <span className="text-[10px] tabular-nums text-muted-foreground/70">
+                      {matchCounts[tab]}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
+
+      <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1">
+        <div className="mx-auto w-full max-w-[960px] space-y-6 px-6 pt-2 pb-16">
 
       {rail.length > 0 ? (
         <section className="space-y-2">
@@ -566,33 +596,6 @@ export function AppStorePage() {
             </div>
           </TooltipProvider>
         </section>
-      ) : null}
-
-      {orgScopeEnabled ? (
-        <div className="flex items-end border-b border-border/60">
-          {(["builtin", "organization"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setParam("scope", tab === "builtin" ? null : tab)}
-              className={cn(
-                "relative inline-flex items-center gap-1.5 px-3 pt-1.5 pb-2.5 text-[13px] font-medium transition-colors",
-                scope === tab
-                  ? "text-foreground after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:bg-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tab === "builtin"
-                ? t("appStore.page.badgeBuiltIn")
-                : t("appStore.page.privateDevApps")}
-              {query.trim() && scope !== tab && matchCounts[tab] > 0 ? (
-                <span className="text-[11px] tabular-nums text-muted-foreground">
-                  {matchCounts[tab]}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
       ) : null}
 
       {orgLoading && scope === "organization" ? (
@@ -669,11 +672,8 @@ export function AppStorePage() {
         </Empty>
       ) : null}
 
-      {/* Soft edge fade right at the bottom of the screen matching assistant fade */}
-      <div
-        className="pointer-events-none sticky bottom-[-1rem] -mx-6 -mt-8 h-8 bg-gradient-to-t from-background via-background/70 to-transparent z-10"
-        aria-hidden
-      />
+        </div>
+      </ScrollArea>
     </div>
   )
 }
