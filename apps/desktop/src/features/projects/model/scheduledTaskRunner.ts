@@ -159,25 +159,28 @@ export async function runScheduledTask(
   })
   const threadId = newThreadId()
   const createdAt = new Date().toISOString()
-
-  await orchestration.dispatchCommand({
-    type: "thread.create",
-    commandId: newCommandId(),
-    threadId,
-    projectId,
-    title: task.name,
-    modelSelection,
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-    branch: null,
-    worktreePath: null,
-    createdAt,
-  })
-
   const previousTurnId = useStore.getState().threadTurnStateById[threadId]?.latestTurn?.turnId ?? null
+
+  // This must succeed before a scheduled conversation exists. Main derives
+  // allow/deny from the persisted task and rejects CU-required tasks when the
+  // global master switch is off, so unattended runs fail closed.
   await controlScheduledTaskComputerUsePolicy(task.id, threadId, "prepare")
 
   try {
+    await orchestration.dispatchCommand({
+      type: "thread.create",
+      commandId: newCommandId(),
+      threadId,
+      projectId,
+      title: task.name,
+      modelSelection,
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      branch: null,
+      worktreePath: null,
+      createdAt,
+    })
+
     await orchestration.dispatchCommand({
       type: "thread.turn.start",
       commandId: newCommandId(),
