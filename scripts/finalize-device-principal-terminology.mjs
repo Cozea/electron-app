@@ -16,6 +16,7 @@ const alwaysTransform = new Set([
   'apps/desktop/src/features/workspace/WorkspaceRuntimeHosts.tsx',
   'apps/desktop/src/features/workspace/workspaceRuntimePolicy.ts',
   'apps/desktop/src/lib/yjs/origins.ts',
+  'tests/workspace/workspaceRuntimePolicy.test.ts',
 ])
 
 const allowedExtensions = new Set(['.ts', '.tsx'])
