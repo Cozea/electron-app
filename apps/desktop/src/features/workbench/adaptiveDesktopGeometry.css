@@ -68,6 +68,22 @@
   .dv-groupview:has([data-workbench-tile-type="assistantChat"]) [class~="right-2"][class~="sm:right-6"] {
     right: 0.5rem !important;
   }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="px-3"][class~="sm:px-4"] {
+    padding-inline: 0.75rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="pb-2.5"][class~="sm:pb-3"] {
+    padding-bottom: 0.625rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="pt-1.5"][class~="sm:pt-2"] {
+    padding-top: 0.375rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="text-[12px]"][class~="sm:text-[13px]"] {
+    font-size: 12px !important;
+  }
 }
 
 @container cozea-workbench-pane (min-width: 28rem) {
@@ -89,5 +105,63 @@
 
   .dv-groupview:has([data-workbench-tile-type="assistantChat"]) [class~="sm:right-6"] {
     right: 1.5rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="sm:px-4"] {
+    padding-inline: 1rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="sm:pb-3"] {
+    padding-bottom: 0.75rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="sm:pt-2"] {
+    padding-top: 0.5rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="sm:text-[13px]"] {
+    font-size: 13px !important;
+  }
+}
+
+/* Selection already defines its spacious behavioral mode at 720px wide. Tie
+ * the remaining md: visual tokens to the same pane width instead of viewport. */
+@container cozea-workbench-pane (max-width: 44.999rem) {
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="text-2xl"][class~="md:text-3xl"] {
+    font-size: 1.5rem !important;
+    line-height: 2rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="size-6"][class~="md:size-7"] {
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="px-3"][class~="md:px-6"] {
+    padding-inline: 0.75rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="px-2"][class~="md:px-0"] {
+    padding-inline: 0.5rem !important;
+  }
+}
+
+@container cozea-workbench-pane (min-width: 45rem) {
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="md:text-3xl"] {
+    font-size: 1.875rem !important;
+    line-height: 2.25rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="md:size-7"] {
+    width: 1.75rem !important;
+    height: 1.75rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="md:px-6"] {
+    padding-inline: 1.5rem !important;
+  }
+
+  .dv-groupview:has([data-workbench-tile-type="selection"]) [class~="md:px-0"] {
+    padding-inline: 0 !important;
   }
 }
