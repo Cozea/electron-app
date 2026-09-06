@@ -82,24 +82,36 @@ pub fn request_permission(target: String) -> Result<bool> {
 }
 
 #[napi]
-pub fn turn_ended(session_id: String) -> Result<()> {
-    let _guard = lock_operations()?;
-    let session_id = to_c_string(&session_id, "sessionId")?;
-    unsafe { cozea_computer_use_turn_ended(session_id.as_ptr()) };
-    Ok(())
+pub async fn turn_ended(session_id: String) -> Result<()> {
+    tokio::task::spawn_blocking(move || {
+        let _guard = lock_operations()?;
+        let session_id = to_c_string(&session_id, "sessionId")?;
+        unsafe { cozea_computer_use_turn_ended(session_id.as_ptr()) };
+        Ok(())
+    })
+    .await
+    .map_err(|error| Error::from_reason(format!("Computer Use worker join failed: {error}")))?
 }
 
 #[napi]
-pub fn reset_session(session_id: String) -> Result<()> {
-    let _guard = lock_operations()?;
-    let session_id = to_c_string(&session_id, "sessionId")?;
-    unsafe { cozea_computer_use_reset_session(session_id.as_ptr()) };
-    Ok(())
+pub async fn reset_session(session_id: String) -> Result<()> {
+    tokio::task::spawn_blocking(move || {
+        let _guard = lock_operations()?;
+        let session_id = to_c_string(&session_id, "sessionId")?;
+        unsafe { cozea_computer_use_reset_session(session_id.as_ptr()) };
+        Ok(())
+    })
+    .await
+    .map_err(|error| Error::from_reason(format!("Computer Use worker join failed: {error}")))?
 }
 
 #[napi]
-pub fn reset_all() -> Result<()> {
-    let _guard = lock_operations()?;
-    unsafe { cozea_computer_use_reset_all() };
-    Ok(())
+pub async fn reset_all() -> Result<()> {
+    tokio::task::spawn_blocking(move || {
+        let _guard = lock_operations()?;
+        unsafe { cozea_computer_use_reset_all() };
+        Ok(())
+    })
+    .await
+    .map_err(|error| Error::from_reason(format!("Computer Use worker join failed: {error}")))?
 }
