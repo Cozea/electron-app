@@ -44,6 +44,13 @@ native/**/target/
 external/
 packages/pty/target/
 
+# Same for the computer-use bridge: Cargo output plus the napi artifacts it
+# generates next to the crate. `git add -A` otherwise stages ~700 files.
+packages/computer-use-native/target/
+packages/computer-use-native/*.node
+packages/computer-use-native/index.js
+packages/computer-use-native/index.d.ts
+
 # Duplicate lockfile
 package-lock 2.json
 

@@ -11,6 +11,7 @@ import {
   joinLocalDateTime,
   matchesFilter,
   matchesTaskSearch,
+  emptyDraftForTests,
   isReasoningDescriptor,
   modelChoicesFor,
   projectTargets,
@@ -328,5 +329,24 @@ describe("a task's run history", () => {
     expect(unreadMarkup).toContain("Unread");
     // A run that started and has been read carries no mark at all.
     expect(readMarkup).not.toContain("Unread");
+  });
+
+  it("names tomorrow rather than leaving a bare date to decode", () => {
+    const now = at(2026, 9, 6, 10, 11);
+
+    expect(formatHistoryTime(at(2026, 9, 7, 9, 0), now)).toBe("Tomorrow at 9:00 AM");
+    expect(formatHistoryTime(at(2026, 9, 6, 9, 0), now)).toBe("Today at 9:00 AM");
+  });
+
+  it("starts a new task at the next 9am, today when the morning is still ahead", () => {
+    // Before 9: the first run is this morning, not a day away.
+    const early = new Date(emptyDraftForTests(at(2026, 9, 6, 7, 30)).startAt);
+    expect(early.getDate()).toBe(6);
+    expect(early.getHours()).toBe(9);
+
+    // After 9: the next 9am is tomorrow.
+    const late = new Date(emptyDraftForTests(at(2026, 9, 6, 10, 11)).startAt);
+    expect(late.getDate()).toBe(7);
+    expect(late.getHours()).toBe(9);
   });
 });
