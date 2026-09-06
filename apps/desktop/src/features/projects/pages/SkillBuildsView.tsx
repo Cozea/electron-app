@@ -1,6 +1,7 @@
 import * as React from "react";
 import "@/features/projects/pages/SkillBuildsView.css";
 import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects/model/agentSkillsSnapshot";
+import { useProjectHeader } from "@/lib/useProjectHeader";
 
 import { Logo } from "@/components/Logo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -485,11 +486,106 @@ export function SkillBuildsView() {
     }
   }, [draftName, draftSkillIds, runMutation]);
 
+  const headerLeft = React.useMemo(() => {
+    if (isEditing) return null;
+    if (openDetail) {
+      return (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setOpenDetail(null)}
+        >
+          <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
+          Back
+        </Button>
+      );
+    }
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+        onClick={() => {
+          const next = new URLSearchParams(searchParams);
+          next.delete("view");
+          setSearchParams(next);
+        }}
+      >
+        <HugeiconsIcon icon={__LibraryHugeIcon} className="size-3.5" />
+        All skills
+      </Button>
+    );
+  }, [isEditing, openDetail, searchParams, setSearchParams]);
+
+  const headerCenter = React.useMemo(() => {
+    if (isEditing) {
+      return (
+        <span className="text-sm font-semibold tracking-tight text-foreground">
+          {draftName ? `Edit: ${draftName}` : "New build"}
+        </span>
+      );
+    }
+    if (openDetail) {
+      return (
+        <span className="text-sm font-semibold tracking-tight text-foreground">
+          {openDetail === "cozea" ? "Cozea" : BUILD_PROVIDER_LABELS[openDetail]}
+        </span>
+      );
+    }
+    return selectedBuild ? (
+      <span className="text-sm font-semibold tracking-tight text-foreground">
+        {selectedBuild.name}
+      </span>
+    ) : null;
+  }, [draftName, isEditing, openDetail, selectedBuild]);
+
+  const isCurrentActive = Boolean(
+    selectedBuild && snapshot?.activeBuildId === selectedBuild.id,
+  );
+
+  const headerRight = React.useMemo(() => {
+    if (isEditing || openDetail || !selectedBuild) return null;
+    return (
+      <Button
+        type="button"
+        size="sm"
+        className="h-7 rounded-full text-xs font-medium"
+        onClick={() =>
+          void runMutation(
+            `apply:${selectedBuild.id}`,
+            () => window.electronAPI.agentSkills.applyBuild({ buildId: selectedBuild.id }),
+            `${selectedBuild.name} activated`,
+          )
+        }
+        disabled={isCurrentActive || busyKey === `apply:${selectedBuild.id}`}
+      >
+        {busyKey === `apply:${selectedBuild.id}`
+          ? "Activating…"
+          : isCurrentActive
+            ? "Activated"
+            : "Activate build"}
+      </Button>
+    );
+  }, [busyKey, isCurrentActive, isEditing, openDetail, runMutation, selectedBuild]);
+
+  useProjectHeader(headerLeft, headerCenter, {
+    rightAddon: headerRight,
+    hideShare: true,
+  });
+
   return (
     <div
-      className="skill-builds-surface relative flex h-full min-h-0 flex-col bg-background"
+      className={cn(
+        "skill-builds-surface relative flex h-full min-h-0 flex-col",
+        "bg-[radial-gradient(135%_110%_at_50%_40%,color-mix(in_oklch,var(--foreground)_8%,var(--background))_0%,color-mix(in_oklch,var(--foreground)_2.5%,var(--background))_55%,var(--background)_100%)]",
+        "after:pointer-events-none after:absolute after:inset-0 after:z-[4] after:content-['']",
+        "after:bg-[radial-gradient(85%_75%_at_50%_46%,transparent_45%,color-mix(in_oklch,var(--foreground)_4%,transparent)_100%)]",
+      )}
     >
-      <div className="relative z-[5] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-8 pt-6 pb-5 sm:px-10">
+      <div className="relative z-[5] mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col px-6 pt-11 pb-4 sm:px-10">
         {loadError && snapshot ? <p role="status" className="px-6 py-2 text-sm text-destructive">{loadError} — showing the last local snapshot.</p> : null}
         {loadError && !snapshot ? (
           <p className="p-6 text-sm text-destructive">{loadError}</p>
@@ -686,73 +782,35 @@ const HUB_STAMP = "8W7F1 1A1T1 21TRG";
  * Clicking a plate opens what that provider actually gets.
  */
 function ProviderHub({
-  build,
   loadout,
   skills,
   isActive,
-  busyKey,
   onOpenProvider,
   onOpenShared,
-  onOpenAllSkills,
-  onEquip,
 }: {
-  build: AgentSkillBuild;
+  build?: AgentSkillBuild;
   loadout: AgentSkillRecord[];
   skills: AgentSkillRecord[];
   isActive: boolean;
-  busyKey: string | null;
+  busyKey?: string | null;
   onOpenProvider: (provider: AgentSkillProvider) => void;
   onOpenShared: () => void;
-  onOpenAllSkills: () => void;
-  onEquip: () => void;
+  onOpenAllSkills?: () => void;
+  onEquip?: () => void;
 }) {
   const counts = providerSkillCounts(loadout);
   const shared = cozeaSkills(loadout);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* The build names the page: centred like any page title, with the one
-          action that belongs to the whole build parked on the right. No
-          status badge — that button already reads "Activated" when active. */}
-      <header className="relative flex shrink-0 items-center justify-center px-1 pb-3">
-        {/* The way back to the library, mirroring the build action opposite. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute top-1/2 left-0 -translate-y-1/2"
-          onClick={onOpenAllSkills}
-        >
-          <HugeiconsIcon icon={__LibraryHugeIcon} />
-          All skills
-        </Button>
-        {/* Reserves room for the button on each side, so the title truncates
-            instead of running under one on a narrow pane. */}
-        <h1 className="max-w-[calc(100%-280px)] truncate text-2xl font-bold tracking-tight text-foreground">
-          {build.name}
-        </h1>
-        <div className="absolute top-1/2 right-0 -translate-y-1/2">
-          <Button
-            size="sm"
-            onClick={onEquip}
-            disabled={isActive || busyKey === `apply:${build.id}`}
-          >
-            {busyKey === `apply:${build.id}`
-              ? "Activating…"
-              : isActive
-                ? "Activated"
-                : "Activate build"}
-          </Button>
-        </div>
-      </header>
-
       <div className="flex min-h-0 flex-1 items-center justify-center">
         <div
           className={cn(
             // Sized by the height it is given, not the width: a fixed-ratio
             // box driven by `w-full` overflows a short pane instead of
-            // shrinking (measured: 117px over at a 620px pane). Page-level
-            // surface styling stays outside this transparent diagram box.
-            "relative h-full max-h-[560px] w-auto max-w-full",
+            // shrinking (measured: 117px over at a 620px pane). The lit field
+            // it used to carry is now the page's, so this box is transparent.
+            "relative h-full max-h-[640px] w-auto max-w-full",
             "aspect-[900/560]",
           )}
         >
@@ -1144,7 +1202,7 @@ function DetailSheet({
   onToggle,
   onOpenSkill,
   onSwitch,
-  onBack,
+  onBack: _onBack,
 }: {
   detail: AgentSkillProvider | "cozea";
   candidates: AgentSkillRecord[];
@@ -1153,7 +1211,7 @@ function DetailSheet({
   onToggle: (skillId: string) => void;
   onOpenSkill: (skillId: string) => void;
   onSwitch: (direction: -1 | 1) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }) {
   const isShared = detail === "cozea";
   const chosen = new Set(buildSkillIds);
@@ -1184,18 +1242,6 @@ function DetailSheet({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <header className="relative flex shrink-0 items-center justify-center gap-4 px-5 pt-3 pb-3">
-        {/* Back and the tally are pinned to opposite ends so neither can
-            land on the other, leaving the middle free for the agent. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute top-1/2 left-1 h-7 -translate-y-1/2 px-2"
-          onClick={onBack}
-        >
-          <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-          Back
-        </Button>
-
         <RingKey label="A" onClick={() => onSwitch(-1)} />
         <span className="flex items-center gap-2.5">
           {Mark ? (

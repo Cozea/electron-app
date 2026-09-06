@@ -1,20 +1,11 @@
 import { useCallback, useEffect, useState, type DragEvent } from "react"
 import { Navigate } from "@/lib/router"
 import { useQuery } from "convex/react"
-import { FolderLibraryIcon as __FolderLibraryHugeIcon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { Button } from "@/components/ui/button"
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@/components/ui/empty"
+import { EmptyFolder } from "@/components/ui/empty-folder"
 import {
   buildWorkbenchHref,
   clearLastWorkbenchRoute,
@@ -23,7 +14,6 @@ import {
 import { browseForDirectory } from "@/lib/browseForDirectory"
 import { resolveDroppedLocalFolderPath } from "@/lib/resolveDroppedLocalFolderPath"
 import { useTranslation } from "@/lib/i18n"
-import { cn } from "@/lib/utils"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 import { featureFlags } from "@/lib/featureFlags"
 
@@ -50,19 +40,6 @@ export function ProjectsLaunchPage() {
     shouldUseLegacyRestore && legacyLastWorkbenchRoute?.projectId && convexUserId
       ? {
           projectId: legacyLastWorkbenchRoute.projectId as Id<"projects">,
-        }
-      : "skip",
-  )
-
-  const projectsPage = useQuery(
-    api.projects.listPageForCurrentUser,
-    !shouldUseLegacyRestore && convexUserId
-      ? {
-          userId: convexUserId,
-          statusFilter: "all",
-          sortBy: "last_modified",
-          page: 1,
-          pageSize: 1,
         }
       : "skip",
   )
@@ -186,92 +163,30 @@ export function ProjectsLaunchPage() {
     )
   }
 
-  const fallbackProject = projectsPage?.items?.[0] ?? null
-  const hasProjects = Boolean(fallbackProject?._id)
-
   return (
-    <div className="flex min-h-full flex-1 items-center justify-center">
-      <div className="w-full max-w-xl p-6 md:p-10">
-        <Empty className="py-6">
-          {hasProjects ? (
-            <EmptyHeader>
-              <EmptyTitle>{t("projects.selectProject")}</EmptyTitle>
-              <EmptyDescription>
-                {t("projects.selectProjectDesc")}
-              </EmptyDescription>
-            </EmptyHeader>
-          ) : null}
-          <EmptyContent className="w-full max-w-md">
-            <div
-              role="button"
-              tabIndex={0}
-              aria-disabled={isSelectingFolder}
-              aria-label={t("projects.dropRepoAriaLabel")}
-              onClick={() => {
-                if (!isSelectingFolder) {
-                  void handleBrowse()
-                }
-              }}
-              onKeyDown={(event) => {
-                if (isSelectingFolder) {
-                  return
-                }
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault()
-                  void handleBrowse()
-                }
-              }}
-              onDragEnter={handleDragEnter}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={cn(
-                "flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl px-6 py-10 text-center transition-colors",
-                isDragActive
-                  ? "bg-primary/5"
-                  : "bg-secondary/20 hover:bg-secondary/30",
-                isSelectingFolder && "pointer-events-none opacity-70",
-              )}
-            >
-              {isSelectingFolder ? (
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-              ) : (
-                <HugeiconsIcon
-                  icon={__FolderLibraryHugeIcon}
-                  className={cn(
-                    "size-8",
-                    isDragActive ? "text-primary" : "text-muted-foreground",
-                  )}
-                />
-              )}
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {isSelectingFolder
-                    ? t("projects.dropRepoImporting")
-                    : isDragActive
-                      ? t("projects.dropRepoActive")
-                      : t("projects.dropRepoTitle")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("projects.dropRepoHint")}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isSelectingFolder}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void handleBrowse()
-                }}
-              >
-                {t("projects.dropRepoBrowse")}
-              </Button>
-            </div>
-          </EmptyContent>
-        </Empty>
-      </div>
+    <div className="flex min-h-full flex-1 items-center justify-center p-6 md:p-12">
+      <EmptyFolder
+        title={
+          isSelectingFolder
+            ? t("projects.dropRepoImporting")
+            : isDragActive
+              ? t("projects.dropRepoActive")
+              : t("projects.dropRepoTitle")
+        }
+        description={t("projects.dropRepoHint")}
+        browseLabel={t("projects.dropRepoBrowse")}
+        isDragActive={isDragActive}
+        isSelectingFolder={isSelectingFolder}
+        onBrowse={() => {
+          if (!isSelectingFolder) {
+            void handleBrowse()
+          }
+        }}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      />
     </div>
   )
 }

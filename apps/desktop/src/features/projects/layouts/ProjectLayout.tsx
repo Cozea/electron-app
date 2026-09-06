@@ -445,8 +445,13 @@ export function ProjectLayout({
     ? formatActorDisplayName(user.firstName || user.email, "User")
     : null;
 
+  const isBuildsView = useLocation({
+    select: (location) =>
+      location.pathname.includes("/skills") &&
+      new URLSearchParams(location.search).get("view") === "builds",
+  });
   // Check if we are on views that need full-bleed content (no padding)
-  const shouldRemovePadding = isWorkbenchView || isChangesView;
+  const shouldRemovePadding = isWorkbenchView || isChangesView || isBuildsView;
 
   const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime;
   const presenceHeaderAddon = useMemo(
@@ -495,10 +500,11 @@ export function ProjectLayout({
         layoutMode="embedded"
         leftWindowControlsInset
         compactHeaderActions
+        className={isBuildsView ? "absolute top-0 left-0 right-0 z-40" : undefined}
         {...chromeHeader}
       />
     ),
-    [chromeHeader],
+    [chromeHeader, isBuildsView],
   );
 
   const handleRepairAction = useCallback(
