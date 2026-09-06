@@ -5,14 +5,19 @@
   "license": "AGPL-3.0-or-later",
   "napi": {
     "name": "cozea_computer_use",
-    "targets": [
-      "aarch64-apple-darwin",
-      "x86_64-apple-darwin"
-    ]
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin"
+      ]
+    }
   },
   "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform"
+    "build:arm64": "napi build --platform --release --target aarch64-apple-darwin",
+    "build:x64": "napi build --platform --release --target x86_64-apple-darwin",
+    "build:debug:arm64": "napi build --platform --target aarch64-apple-darwin",
+    "build:debug:x64": "napi build --platform --target x86_64-apple-darwin"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.14.7"
