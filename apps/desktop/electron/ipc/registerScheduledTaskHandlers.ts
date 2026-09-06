@@ -105,7 +105,10 @@ export function registerScheduledTaskHandlers(
     const service = await getScheduledTaskService()
     const result = service.remove(options)
     if (result.success) {
-      ComputerUseRuntimeService.getInstance().clearScheduledTaskPolicy(options.taskId)
+      // Removing the task must not widen an already-running scheduled turn to
+      // inherit. Keep/reduce its authority to deny until authoritative terminal
+      // lifecycle cleanup removes the policy.
+      ComputerUseRuntimeService.getInstance().revokeScheduledTaskPolicy(options.taskId)
     }
     return result
   })
