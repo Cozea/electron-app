@@ -82,7 +82,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const [pendingAvatarDataUrl, setPendingAvatarDataUrl] = useState<string | null>(null)
   const [removeAvatar, setRemoveAvatar] = useState(false)
   const [savedDeviceName, setSavedDeviceName] = useState("")
-  const [savedAvatarUrl, setSavedAvatarUrl] = useState<string | null>(null)
   const [savingPresentation, setSavingPresentation] = useState(false)
   const [processingAvatar, setProcessingAvatar] = useState(false)
   const [presentationError, setPresentationError] = useState<string | null>(null)
@@ -95,7 +94,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     setDeviceName(profile.displayName)
     setSavedDeviceName(profile.displayName)
     setAvatarUrl(profile.avatarUrl)
-    setSavedAvatarUrl(profile.avatarUrl)
     setPendingAvatarDataUrl(null)
     setRemoveAvatar(false)
   }, [profile]);

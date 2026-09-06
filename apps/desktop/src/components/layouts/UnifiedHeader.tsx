@@ -7,7 +7,6 @@ import {
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { LayoutToggles, SidebarInsetToggle } from "@/components/layouts/LayoutToggles";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
 import { HeaderInboxButton } from "./unified-header/HeaderInboxButton";
@@ -68,7 +67,6 @@ export function UnifiedHeader({
   projectInviteContext = null,
   editorProjectPath = null,
 }: UnifiedHeaderProps) {
-  const { user } = useAuth();
   const windowChrome = useWindowChrome();
   const sidebar = useOptionalSidebar();
   const shouldShowWindowsCaptionSpacer = windowChrome.isWindows;
@@ -107,10 +105,7 @@ export function UnifiedHeader({
     layoutMode === "embedded"
       ? cn(relaxMacTitlebarLeadingPadding ? "pl-2" : "pl-4", "pr-1.5")
       : "pl-4 pr-2";
-  const hasLocalDeviceProfile = Boolean(
-    user?.email?.trim().toLowerCase().endsWith("@local.cozea.app"),
-  );
-  const shouldShowInbox = !hideInbox && !hasLocalDeviceProfile;
+  const shouldShowInbox = !hideInbox;
 
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
 

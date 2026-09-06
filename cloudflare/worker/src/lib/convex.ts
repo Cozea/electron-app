@@ -111,9 +111,9 @@ interface ProjectAccessResult {
 }
 
 interface DevicePrincipalInfo {
-  userId: string
+  principalId: string
   identityKey: string
-  deviceLabel: string
+  displayName: string
   platform: string
   encryptionPublicKeyJwk: string
   encryptionPublicKeyAlgorithm: string
@@ -310,40 +310,26 @@ export async function createCollabSessionFromConvex(
   // authorization source in the pure device-principal model.
   const access = await runServerQuery<ProjectAccessResult>(env, 'projectMembers:getProjectAccessForServer', {
     projectId: body.projectId,
-    userId: principal.userId,
+    userId: principal.principalId,
   })
   if (!access.canAccess || !access.canEdit) {
     throw new Error('The authenticated device cannot access this project')
   }
 
-  // collabDevices remains temporarily because encryption bootstrap still reads
-  // it. Populate it exclusively from canonical principal state so it cannot
-  // become a second identity/presentation authority.
-  await runMutation(env, 'yjs:registerCollabDevice', {
-    serverSecret: env.AI_GATEWAY_SECRET,
-    userId: principal.userId,
-    deviceId: principal.identityKey,
-    deviceLabel: principal.deviceLabel,
-    platform: principal.platform,
-    publicKeyJwk: principal.encryptionPublicKeyJwk,
-    publicKeyAlgorithm: principal.encryptionPublicKeyAlgorithm,
-    fingerprint: principal.encryptionFingerprint,
-  })
-
   const roomId = `project:${body.projectId}`
   const encryption = await runServerQuery<EncryptionBootstrapResult>(env, 'yjs:getEncryptionBootstrap', {
     projectId: body.projectId,
     roomId,
-    userId: principal.userId,
+    userId: principal.principalId,
     deviceId: principal.identityKey,
   })
 
   return {
-    userId: principal.userId,
+    userId: principal.principalId,
     projectId: body.projectId,
     roomId,
     deviceId: principal.identityKey,
-    deviceLabel: principal.deviceLabel,
+    deviceLabel: principal.displayName,
     deviceFingerprint: principal.encryptionFingerprint,
     devicePublicKeyJwk: principal.encryptionPublicKeyJwk,
     encryption,

@@ -40,13 +40,6 @@ const ProjectJoinPage = createLazyRouteComponent(
     })),
   "routeLoading.projectInvite",
 );
-const ProjectInvitePage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/ProjectInvitePage").then((module) => ({
-      default: module.ProjectInvitePage,
-    })),
-  "routeLoading.projectInvite",
-);
 const LegacyProjectRedirectPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/LegacyProjectRedirectPage").then((module) => ({
@@ -300,11 +293,6 @@ const projectJoinRoute = createRoute({
   component: ProjectJoinPage,
 });
 
-const projectInviteRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: "/invite/$inviteId",
-  component: ProjectInvitePage,
-});
 
 const joinProjectRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -682,7 +670,6 @@ export const routeTree = rootRoute.addChildren([
     projectsAgentSkillsRoute,
     projectNewRoute,
     projectJoinRoute,
-    projectInviteRoute,
     projectBuildRoute,
     projectRoute.addChildren([
       projectIndexRoute,

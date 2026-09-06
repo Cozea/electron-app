@@ -111,7 +111,17 @@ export const getProjectTombstones = query({
       .query("fileTombstones")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect()
-    return tombstones.filter((t) => t.expiresAt > now)
+    const active = tombstones.filter((t) => t.expiresAt > now)
+    return await Promise.all(active.map(async (tombstone) => {
+      let deletedByName: string | null = null
+      if (tombstone.deletedBy) {
+        const principal = await ctx.db.get(tombstone.deletedBy)
+        if (principal) deletedByName = deviceDisplayName(principal)
+      } else if (tombstone.deletedByAgent) {
+        deletedByName = tombstone.deletedByAgent
+      }
+      return { ...tombstone, deletedByName }
+    }))
   },
 })
 

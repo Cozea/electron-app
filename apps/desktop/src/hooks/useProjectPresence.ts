@@ -14,10 +14,6 @@ interface UseProjectPresenceOptions {
   // Current principal ID is retained client-side for self-filtering only. The
   // server derives the heartbeat actor from device auth.
   userId: Id<"devicePrincipals"> | null | undefined
-  // Transitional caller shape. Presentation is no longer sent to the server.
-  userName: string | null | undefined
-  userEmail: string | null | undefined
-  userAvatarUrl?: string | null
   activeFile?: string | null
   activeRoute?: string | null
 }
@@ -26,7 +22,6 @@ export interface PresenceUser {
   id: string
   userId: Id<"devicePrincipals">
   userName: string
-  userEmail: string
   userAvatarUrl?: string
   activeTab?: string
   activeFile?: string

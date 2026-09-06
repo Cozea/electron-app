@@ -731,7 +731,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                       <SettingsRow key={member.membershipId} isFirst={index === 0}>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-xs font-medium text-foreground">
-                            {member.deviceLabel || t("settings.account.thisDevice")}
+                            {member.displayName || t("settings.account.thisDevice")}
                           </p>
                           <PublicIdDisclosure
                             value={member.identityKey}

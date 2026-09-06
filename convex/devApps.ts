@@ -560,7 +560,7 @@ export const publish = mutation({
       ...(args.arch ? { arch: args.arch } : {}),
       ...(args.permissionSetHash ? { permissionSetHash: args.permissionSetHash } : {}),
       ...(user.identityKey ? { publisherIdentityKey: user.identityKey } : {}),
-      ...(user.deviceLabel ? { publisherDeviceLabel: user.deviceLabel } : {}),
+      ...(user.displayName ? { publisherDeviceLabel: user.displayName } : {}),
       createdBy: user._id,
       createdAt: now,
     })

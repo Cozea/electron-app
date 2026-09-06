@@ -25,7 +25,6 @@ import { CheckpointDiffWorkerProvider } from '../components/changes/CheckpointDi
 import { useTranslation } from '@/lib/i18n'
 import { useGitChangesStore } from '@/features/source-control/model/gitChangesStore'
 import { useChangesSidebarStore } from '@/features/source-control/model/changesSidebarStore'
-import { formatActorDisplayName } from '@/lib/userDisplay'
 import { useTheme } from '@/contexts/ThemeContext'
 import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
 import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
@@ -508,7 +507,7 @@ function getVisibleSearchableFileDiffs(input: {
 }
 
 function ChangeGroupHeaderPrefix({ group }: { group: ChangeGroup }) {
-  const displayUserName = formatActorDisplayName(group.userName);
+  const displayUserName = group.userName || "This device";
 
   return (
     <div className="flex min-w-0 items-center gap-2 border-r border-border/60 pr-3">

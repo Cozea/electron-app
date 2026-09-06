@@ -77,7 +77,7 @@ interface ManualTaskMarkerRecord {
 interface ManualTaskClaimantRecord {
   id: string
   name: string
-  email?: string
+  identityKey?: string
   avatarUrl?: string | null
 }
 
@@ -96,7 +96,7 @@ interface ManualTaskRecord {
 interface ManualTaskAssigneeRecord {
   userId?: string
   name: string
-  email?: string
+  identityKey?: string
   avatarUrl?: string | null
 }
 
@@ -142,25 +142,16 @@ interface TaskClaimant {
 interface TaskClaimantCandidate {
   id: string
   name: string
-  email: string
+  identityKey: string
   avatarUrl?: string | null
   searchText: string
 }
 
-interface ClaimantUserSummary {
-  id?: string
-  email?: string | null
-  firstName?: string | null
-  lastName?: string | null
-  profileImageUrl?: string | null
-}
-
 interface ClaimantMemberSourceRecord {
   userId: string
-  displayName?: string | null
-  secondaryLabel?: string | null
-  contactEmail?: string | null
-  user: ClaimantUserSummary | null
+  identityKey: string
+  displayName: string
+  avatarUrl?: string | null
 }
 
 interface TaskContextAttachment {
@@ -300,11 +291,11 @@ function createDefaultManualTaskMarkers(t?: any): ManualTaskMarkerRecord[] {
 
 function getClaimantIdentityKey(claimant: {
   id?: string
-  email?: string | null
+  identityKey?: string | null
   name?: string | null
 }): string {
-  const email = claimant.email?.trim().toLowerCase()
-  if (email) return `email:${email}`
+  const identityKey = claimant.identityKey?.trim().toLowerCase()
+  if (identityKey) return `device:${identityKey}`
 
   const id = claimant.id?.trim()
   if (id) return `id:${id}`
@@ -313,23 +304,9 @@ function getClaimantIdentityKey(claimant: {
   return `name:${name || '?'}`
 }
 
-function formatClaimantName(user: ClaimantUserSummary | null | undefined, fallback: string): string {
-  const first = user?.firstName?.trim() ?? ''
-  const last = user?.lastName?.trim() ?? ''
-  const fullName = [first, last].filter(Boolean).join(' ')
-
-  if (fullName) return fullName
-  if (user?.email?.trim()) return user.email.trim()
-
-  return fallback
-}
-
 function getDisplayFirstName(name: string): string {
   const normalized = name.trim()
   if (!normalized) return ''
-
-  const emailPrefix = normalized.split('@')[0]?.trim()
-  if (normalized.includes('@') && emailPrefix) return emailPrefix
 
   return normalized.split(/\s+/)[0] ?? normalized
 }
@@ -364,13 +341,13 @@ function normalizeManualTaskClaimants(value: unknown): ManualTaskClaimantRecord[
     const name = candidate.name.trim()
     if (!name) return []
 
-    const email =
-      typeof candidate.email === 'string' && candidate.email.trim().length > 0
-        ? candidate.email.trim().toLowerCase()
+    const identityKey =
+      typeof candidate.identityKey === 'string' && candidate.identityKey.trim().length > 0
+        ? candidate.identityKey.trim().toLowerCase()
         : undefined
     const key = getClaimantIdentityKey({
       id: candidate.id,
-      email,
+      identityKey,
       name,
     })
 
@@ -384,7 +361,7 @@ function normalizeManualTaskClaimants(value: unknown): ManualTaskClaimantRecord[
             ? candidate.id
             : `claimant-${index}-${normalizeSearchValue(name).replace(/\s+/g, '-') || index}`,
         name,
-        email,
+        identityKey,
         avatarUrl:
           typeof candidate.avatarUrl === 'string' && candidate.avatarUrl.trim().length > 0
             ? candidate.avatarUrl
@@ -616,7 +593,7 @@ function getPrimaryAssigneeRecord(
   return {
     userId: primary.id,
     name: primary.name,
-    email: primary.email,
+    identityKey: primary.identityKey,
     avatarUrl: primary.avatarUrl ?? null,
   }
 }
@@ -854,33 +831,23 @@ export function TasksPage({
     const byIdentity = new Map<string, TaskClaimantCandidate>()
 
     for (const member of sourceMembers) {
-      const email = (
-        member.contactEmail ??
-        member.secondaryLabel ??
-        member.user?.email ??
-        member.displayName ??
-        String(member.userId)
-      )
-        .trim()
-        .toLowerCase()
-      if (!email) continue
-
-      const name = member.displayName?.trim() || formatClaimantName(member.user, email)
+      const identityKey = member.identityKey.trim().toLowerCase()
+      if (!identityKey) continue
+      const name = member.displayName.trim() || identityKey
       const candidate: TaskClaimantCandidate = {
-        id: String(member.user?.id ?? member.userId),
+        id: String(member.userId),
         name,
-        email,
-        avatarUrl: member.user?.profileImageUrl ?? null,
-        searchText: normalizeSearchValue(`${name} ${email}`),
+        identityKey,
+        avatarUrl: member.avatarUrl ?? null,
+        searchText: normalizeSearchValue(`${name} ${identityKey}`),
       }
-
       byIdentity.set(getClaimantIdentityKey(candidate), candidate)
     }
 
     return Array.from(byIdentity.values()).sort((left, right) => {
       const nameCompare = left.name.localeCompare(right.name)
       if (nameCompare !== 0) return nameCompare
-      return left.email.localeCompare(right.email)
+      return left.identityKey.localeCompare(right.identityKey)
     })
   }, [projectMembers])
   const selectedDraftClaimantKeys = useMemo(
@@ -1120,7 +1087,7 @@ export function TasksPage({
                 ? {
                     userId: assignee.userId as Id<'devicePrincipals'> | undefined,
                     name: assignee.name,
-                    email: assignee.email,
+                    identityKey: assignee.identityKey,
                     avatarUrl: assignee.avatarUrl ?? undefined,
                   }
                 : undefined,
@@ -1361,7 +1328,7 @@ export function TasksPage({
           ? {
               userId: assignee.userId as Id<'devicePrincipals'> | undefined,
               name: assignee.name,
-              email: assignee.email,
+              identityKey: assignee.identityKey,
               avatarUrl: assignee.avatarUrl ?? undefined,
             }
           : undefined,
@@ -1772,7 +1739,7 @@ export function TasksPage({
                                     {candidate.name}
                                   </span>
                                   <span className="block truncate text-xs text-muted-foreground">
-                                    {candidate.email}
+                                    {candidate.identityKey}
                                   </span>
                                 </div>
                               </button>

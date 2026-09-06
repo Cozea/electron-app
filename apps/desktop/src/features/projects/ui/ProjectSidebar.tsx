@@ -114,10 +114,8 @@ const LazyOrgAttachDialog = React.lazy(() =>
 /** Content-only: renders inside the persistent AppSidebarShell. */
 interface ProjectSidebarProps {
   user?: {
-    email: string;
-    firstName?: string | null;
-    lastName?: string | null;
-    profileImageUrl?: string | null;
+    displayName?: string | null;
+    avatarUrl?: string | null;
   } | null;
   projectId?: Id<"projects"> | null;
   presenceUsers?: unknown[];

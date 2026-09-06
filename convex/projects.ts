@@ -381,7 +381,6 @@ export const create = mutation({
     await ctx.db.insert("projectMembers", {
       projectId,
       userId: args.userId,
-      contactEmail: user.email,
       role: "project_manager",
       addedAt: now,
       addedBy: args.userId,
@@ -961,14 +960,6 @@ async function deleteProjectPurgeStage(
     case 11: {
       const rows = await ctx.db
         .query("projectStorageUsage")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 12: {
-      const rows = await ctx.db
-        .query("projectInvites")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)

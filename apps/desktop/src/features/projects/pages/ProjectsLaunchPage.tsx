@@ -21,7 +21,7 @@ export function ProjectsLaunchPage() {
   const { principalId, user } = useAuth()
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
-  const workspaceSelectionId = user?.id ?? "local-device"
+  const workspaceSelectionId = user?.identityKey ?? "local-device"
   const [ignoredWorkspaceSelectionId, setIgnoredWorkspaceSelectionId] = useState<string | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
   const [isSelectingFolder, setIsSelectingFolder] = useState(false)

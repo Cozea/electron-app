@@ -30,7 +30,6 @@ const TASK_MARKER_VALIDATOR = v.object({
 const TASK_ASSIGNEE_VALIDATOR = v.object({
   userId: v.optional(v.id("devicePrincipals")),
   name: v.string(),
-  email: v.optional(v.string()),
   avatarUrl: v.optional(v.string()),
 })
 
@@ -50,14 +49,9 @@ type TaskMarker = {
 type TaskAssignee = {
   userId?: Id<"devicePrincipals">
   name: string
-  email?: string
   avatarUrl?: string
 }
 
-function normalizeEmail(value: string | undefined): string | undefined {
-  const normalized = value?.trim().toLowerCase()
-  return normalized ? normalized : undefined
-}
 
 function normalizeText(value: string | undefined): string {
   return value?.trim() ?? ""
@@ -126,10 +120,6 @@ function sanitizeAssignee(assignee: TaskAssignee | undefined): TaskAssignee | un
     sanitized.userId = assignee.userId
   }
 
-  const email = normalizeEmail(assignee.email)
-  if (email) {
-    sanitized.email = email
-  }
 
   const avatarUrl = normalizeText(assignee.avatarUrl)
   if (avatarUrl) {

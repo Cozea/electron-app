@@ -43,7 +43,6 @@ import {
   ensureProjectSwitchStarted,
   markProjectSwitchPhase,
 } from "@/lib/performance/projectSwitchMarks";
-import { formatActorDisplayName } from "@/lib/userDisplay";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
@@ -190,17 +189,11 @@ function PendingTeamSetupEffect({
 function ProjectPresenceHeaderAddon({
   projectId,
   principalId,
-  userName,
-  userEmail,
-  userAvatarUrl,
   isWorkbenchView,
   projectBasePath,
 }: {
   projectId: Id<"projects"> | null;
   principalId: Id<"devicePrincipals"> | null;
-  userName: string | null;
-  userEmail: string | null;
-  userAvatarUrl: string | null;
   isWorkbenchView: boolean;
   projectBasePath: string | null;
 }) {
@@ -215,9 +208,6 @@ function ProjectPresenceHeaderAddon({
   const { otherUsers: presenceUsers } = useProjectPresence({
     projectId,
     userId: principalId,
-    userName,
-    userEmail,
-    userAvatarUrl,
     activeFile: presenceActiveFile,
     activeRoute: presenceActiveRoute,
   });
@@ -441,9 +431,6 @@ export function ProjectLayout({
     });
   }, [laneState]);
 
-  const displayUserName = user
-    ? formatActorDisplayName(user.firstName || user.email, "User")
-    : null;
 
   const isBuildsView = useLocation({
     select: (location) =>
@@ -462,9 +449,6 @@ export function ProjectLayout({
       <ProjectPresenceHeaderAddon
         projectId={presenceGateOpen ? project?._id ?? null : null}
         principalId={presenceGateOpen ? principalId ?? null : null}
-        userName={presenceGateOpen ? displayUserName : null}
-        userEmail={presenceGateOpen ? user?.email || null : null}
-        userAvatarUrl={shouldEnableProjectRuntime ? user?.profileImageUrl || null : null}
         isWorkbenchView={isWorkbenchView}
         projectBasePath={projectBasePath}
       />
@@ -474,9 +458,6 @@ export function ProjectLayout({
       project?._id,
       principalId,
       isConvexAuthReady,
-      displayUserName,
-      user?.email,
-      user?.profileImageUrl,
       shouldEnableProjectRuntime,
       isWorkbenchView,
       projectBasePath,

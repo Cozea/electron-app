@@ -117,7 +117,7 @@ export function ProjectWorkbenchSurface() {
     ),
   );
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions);
-  const workspaceSelectionId = user?.id ?? "local-device";
+  const workspaceSelectionId = user?.identityKey ?? "local-device";
   const currentWorkspaceRuntimeId = useMemo(
     () =>
       resolveWorkspaceRuntimeId({

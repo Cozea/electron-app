@@ -967,64 +967,6 @@ export const maybeCompactProject = mutation({
   },
 })
 
-export const registerCollabDevice = mutation({
-  args: {
-    serverSecret: v.string(),
-    userId: v.id("devicePrincipals"),
-    deviceId: v.string(),
-    deviceLabel: v.string(),
-    platform: v.string(),
-    publicKeyJwk: v.string(),
-    publicKeyAlgorithm: v.string(),
-    fingerprint: v.string(),
-  },
-  handler: async (ctx, args) => {
-    assertGatewaySecret(args.serverSecret)
-    const existing = await ctx.db
-      .query("collabDevices")
-      .withIndex("by_user_and_device", (q) =>
-        q.eq("userId", args.userId).eq("deviceId", args.deviceId),
-      )
-      .first()
-
-    const now = Date.now()
-    if (existing) {
-      if (typeof existing.revokedAt === "number") {
-        await ctx.db.patch(existing._id, {
-          deviceLabel: args.deviceLabel,
-          platform: args.platform,
-          lastSeenAt: now,
-        })
-        return { deviceId: args.deviceId, created: false, revoked: true }
-      }
-
-      await ctx.db.patch(existing._id, {
-        deviceLabel: args.deviceLabel,
-        platform: args.platform,
-        publicKeyJwk: args.publicKeyJwk,
-        publicKeyAlgorithm: args.publicKeyAlgorithm,
-        fingerprint: args.fingerprint,
-        lastSeenAt: now,
-      })
-      return { deviceId: args.deviceId, created: false, revoked: false }
-    }
-
-    await ctx.db.insert("collabDevices", {
-      userId: args.userId,
-      deviceId: args.deviceId,
-      deviceLabel: args.deviceLabel,
-      platform: args.platform,
-      publicKeyJwk: args.publicKeyJwk,
-      publicKeyAlgorithm: args.publicKeyAlgorithm,
-      fingerprint: args.fingerprint,
-      createdAt: now,
-      lastSeenAt: now,
-    })
-
-    return { deviceId: args.deviceId, created: true, revoked: false }
-  },
-})
-
 export const getEncryptionBootstrap = query({
   args: {
     serverSecret: v.string(),
@@ -1037,14 +979,8 @@ export const getEncryptionBootstrap = query({
     assertGatewaySecret(args.serverSecret)
     await assertCollaborationAccess(ctx, args.projectId)
     const roomId = args.roomId || defaultRoomId(args.projectId)
-    const registeredDevice = await ctx.db
-      .query("collabDevices")
-      .withIndex("by_user_and_device", (q) =>
-        q.eq("userId", args.userId).eq("deviceId", args.deviceId),
-      )
-      .first()
-
-    if (registeredDevice && typeof registeredDevice.revokedAt === "number") {
+    const principal = await ctx.db.get(args.userId)
+    if (!principal || principal.identityKey !== args.deviceId || principal.status === "revoked") {
       return {
         roomId,
         encryptionRequired: true,
@@ -1190,15 +1126,6 @@ export const createKeyRequest = mutation({
       throw new ConvexError("A device can request an encryption key only for itself")
     }
     await assertCollaborationWriteAllowed(ctx, args.projectId, 0)
-    const device = await ctx.db
-      .query("collabDevices")
-      .withIndex("by_user_and_device", (q) =>
-        q.eq("userId", args.recipientUserId).eq("deviceId", args.recipientDeviceId),
-      )
-      .first()
-    if (device && typeof device.revokedAt === "number") {
-      throw new Error("This device has been revoked from encrypted collaboration")
-    }
 
     const existing = await ctx.db
       .query("projectCollabKeyRequests")
@@ -1328,13 +1255,11 @@ export const listCollabRoomDevices = query({
 
     const devices = await Promise.all(
       [...deviceIds].map(async (deviceId) => {
-        const device = await ctx.db
-          .query("collabDevices")
-          .withIndex("by_device", (q) => q.eq("deviceId", deviceId))
-          .first()
-        if (!device) {
-          return null
-        }
+        const principal = await ctx.db
+          .query("devicePrincipals")
+          .withIndex("by_identity_key", (q) => q.eq("identityKey", deviceId))
+          .unique()
+        if (!principal) return null
 
         const deviceWrappedKeys = wrappedKeys
           .filter((entry) => entry.recipientDeviceId === deviceId)
@@ -1344,16 +1269,16 @@ export const listCollabRoomDevices = query({
           .sort((a, b) => b.requestedAt - a.requestedAt)[0]
 
         return {
-          userId: device.userId,
-          deviceId: device.deviceId,
-          deviceLabel: device.deviceLabel,
-          platform: device.platform,
-          fingerprint: device.fingerprint,
-          publicKeyJwk: device.publicKeyJwk,
-          publicKeyAlgorithm: device.publicKeyAlgorithm,
-          createdAt: device.createdAt,
-          lastSeenAt: device.lastSeenAt,
-          revokedAt: device.revokedAt ?? null,
+          userId: principal._id,
+          deviceId: principal.identityKey,
+          deviceLabel: principal.displayName,
+          platform: principal.platform,
+          fingerprint: principal.encryptionFingerprint,
+          publicKeyJwk: principal.encryptionPublicKeyJwk,
+          publicKeyAlgorithm: principal.encryptionPublicKeyAlgorithm,
+          createdAt: principal.createdAt,
+          lastSeenAt: principal.lastAuthenticatedAt,
+          revokedAt: principal.revokedAt ?? null,
           hasWrappedKey: deviceWrappedKeys.some((entry) => typeof entry.revokedAt !== "number"),
           wrappedKeyVersion: deviceWrappedKeys[0]?.keyVersion ?? null,
           hasPendingRequest: Boolean(pendingRequest),
@@ -1792,21 +1717,6 @@ export const resetEncryptedRoom = mutation({
       })
     }
 
-    if (args.userId && args.retainDeviceId) {
-      const retainedDevice = await ctx.db
-        .query("collabDevices")
-        .withIndex("by_user_and_device", (q) =>
-          q.eq("userId", args.userId!).eq("deviceId", args.retainDeviceId!),
-        )
-        .first()
-
-      if (retainedDevice && typeof retainedDevice.revokedAt === "number") {
-        await ctx.db.patch(retainedDevice._id, {
-          revokedAt: undefined,
-          lastSeenAt: now,
-        })
-      }
-    }
 
     const { removedUpdateBytes, removedSnapshotBytes } = await deleteAllProjectCollabPayloads(
       ctx,
