@@ -87,8 +87,8 @@ export function EmptyFolder({
         <div
           className={cn(
             "relative mx-auto flex h-full w-[88%] justify-center rounded-2xl border overflow-visible transition-colors duration-200",
-            "bg-[#202024] border-white/[0.1] dark:bg-[#1a1a1e] dark:border-white/[0.08]",
-            isDragActive && "border-primary/60 shadow-[0_0_30px_rgba(255,255,255,0.08)]",
+            "bg-[var(--empty-folder-back)] border-[var(--empty-folder-edge)]",
+            isDragActive && "border-primary/60 shadow-[0_0_30px_var(--empty-folder-edge)]",
           )}
         >
           {/* Fanning-out code & file pages */}
@@ -169,8 +169,8 @@ export function EmptyFolder({
                 d="M104.615 0.350494L33.1297 0.838776C32.7542 0.841362 32.3825 0.881463 32.032 0.918854C31.6754 0.956907 31.3392 0.992086 31.0057 0.992096H31.0047C30.6871 0.99235 30.3673 0.962051 30.0272 0.929596C29.6927 0.897686 29.3384 0.863802 28.9803 0.866119L13.2693 0.967682H13.2527L13.2352 0.969635C13.1239 0.981406 13.0121 0.986674 12.9002 0.986237H9.91388C8.33299 0.958599 6.76052 1.22345 5.27423 1.76651H5.27325C4.33579 2.11246 3.48761 2.66213 2.7879 3.37393L2.49689 3.68839L2.492 3.69424C1.62667 4.73882 1.00023 5.96217 0.656067 7.27725C0.653324 7.28773 0.654065 7.29886 0.652161 7.30948C0.3098 8.62705 0.257231 10.0048 0.499817 11.3446L12.2147 114.399L12.2156 114.411L12.2176 114.423C12.6046 116.568 13.7287 118.508 15.3934 119.902C17.058 121.297 19.1572 122.056 21.3231 122.049V122.05H215.379C217.76 122.02 220.064 121.192 221.926 119.698V119.697C223.657 118.384 224.857 116.485 225.305 114.35L225.307 114.339L235.914 53.3798L235.968 53.1093L235.97 53.0985L235.971 53.0888C236.134 51.8978 236.044 50.685 235.705 49.5321C235.307 48.1669 234.63 46.9005 233.717 45.8144L233.383 45.4296C232.58 44.5553 231.614 43.8449 230.539 43.3398C229.311 42.7628 227.971 42.4685 226.616 42.4774H146.746C144.063 42.4705 141.423 41.8004 139.056 40.5263C136.691 39.2522 134.671 37.4127 133.175 35.1689L113.548 5.05948L113.544 5.05362L113.539 5.04776C112.545 3.65165 111.238 2.51062 109.722 1.72061C108.266 0.886502 106.627 0.422235 104.952 0.365143V0.364166L104.633 0.350494H104.615Z"
                 className={cn(
                   "transition-colors duration-200",
-                  "fill-[#2b2b30] stroke-white/[0.14] dark:fill-[#252529] dark:stroke-white/[0.12]",
-                  isDragActive && "stroke-primary/70 fill-[#2f2f35]",
+                  "fill-[var(--empty-folder-flap)] stroke-[var(--empty-folder-edge)]",
+                  isDragActive && "stroke-primary/70 fill-[var(--empty-folder-flap-active)]",
                 )}
                 strokeWidth="1.5"
               />
@@ -179,10 +179,10 @@ export function EmptyFolder({
             {/* Folder Tab Detail */}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pt-8">
               <div className="mb-2.5 flex gap-11">
-                <div className="size-2.5 rounded-full bg-white/20 dark:bg-white/15" />
-                <div className="size-2.5 rounded-full bg-white/20 dark:bg-white/15" />
+                <div className="size-2.5 rounded-full bg-[var(--empty-folder-mark)]" />
+                <div className="size-2.5 rounded-full bg-[var(--empty-folder-mark)]" />
               </div>
-              <div className="h-1 w-9 rounded-full bg-white/20 dark:bg-white/15" />
+              <div className="h-1 w-9 rounded-full bg-[var(--empty-folder-mark)]" />
             </div>
           </div>
         </motion.div>
@@ -229,7 +229,11 @@ function FileCard({
   icon?: typeof __FolderLibraryHugeIcon;
 }) {
   return (
-    <div className="h-full w-full rounded-xl border border-white/[0.1] bg-[#2a2a2f] p-3.5 shadow-2xl dark:bg-[#202024] dark:border-white/[0.08]">
+    // The card is --card, so --muted-foreground on it is the same pairing the
+    // rest of the app uses and stays legible in every theme. Previously the card
+    // was a fixed near-black while the label kept the theme-aware token, so in
+    // light themes it rendered dark grey on near-black and vanished.
+    <div className="h-full w-full rounded-xl border border-[var(--empty-folder-edge)] bg-[var(--empty-folder-page)] p-3.5 shadow-2xl">
       <div className="flex items-center gap-1.5 mb-2.5">
         {IconComponent ? (
           <HugeiconsIcon icon={IconComponent} className="size-3 text-muted-foreground" />
@@ -237,16 +241,16 @@ function FileCard({
         <span className="font-mono text-[10px] text-muted-foreground truncate">{tag}</span>
       </div>
       <div className="flex flex-col gap-1.5">
-        <div className="h-1.5 w-full rounded-full bg-white/15" />
+        <div className="h-1.5 w-full rounded-full bg-[var(--empty-folder-line)]" />
         <div className="flex gap-1.5">
-          <div className="h-1.5 flex-1 rounded-full bg-white/10" />
-          <div className="h-1.5 w-1/3 rounded-full bg-white/10" />
+          <div className="h-1.5 flex-1 rounded-full bg-[var(--empty-folder-line-soft)]" />
+          <div className="h-1.5 w-1/3 rounded-full bg-[var(--empty-folder-line-soft)]" />
         </div>
         <div className="flex gap-1.5">
-          <div className="h-1.5 w-1/2 rounded-full bg-white/10" />
-          <div className="h-1.5 flex-1 rounded-full bg-white/10" />
+          <div className="h-1.5 w-1/2 rounded-full bg-[var(--empty-folder-line-soft)]" />
+          <div className="h-1.5 flex-1 rounded-full bg-[var(--empty-folder-line-soft)]" />
         </div>
-        <div className="h-1.5 w-2/3 rounded-full bg-white/10" />
+        <div className="h-1.5 w-2/3 rounded-full bg-[var(--empty-folder-line-soft)]" />
       </div>
     </div>
   );

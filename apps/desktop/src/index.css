@@ -47,6 +47,26 @@
   --border: oklch(0.84 0 0);
   --input: oklch(0.86 0 0);
   --ring: oklch(0.55 0 0);
+  /*
+   * Empty-folder illustration.
+   *
+   * Derived from --card / --card-foreground rather than hard-coded per theme,
+   * and deliberately NOT using the `dark:` variant: that variant is defined as
+   * `&:is(.dark *)`, and applyThemeClass() puts exactly one mutually exclusive
+   * theme class on <html>, so `dark:` never matches navy/wine/clay/forest. A
+   * mix against the card tokens re-resolves correctly under all six.
+   *
+   * --card-foreground always contrasts with --card, so marks and labels stay
+   * legible whichever way the theme flips.
+   */
+  --empty-folder-back: color-mix(in oklch, var(--card), var(--card-foreground) 10%);
+  --empty-folder-flap: color-mix(in oklch, var(--card), var(--card-foreground) 16%);
+  --empty-folder-flap-active: color-mix(in oklch, var(--card), var(--card-foreground) 22%);
+  --empty-folder-page: var(--card);
+  --empty-folder-edge: color-mix(in oklch, var(--card-foreground), transparent 88%);
+  --empty-folder-mark: color-mix(in oklch, var(--card-foreground), transparent 78%);
+  --empty-folder-line: color-mix(in oklch, var(--card-foreground), transparent 84%);
+  --empty-folder-line-soft: color-mix(in oklch, var(--card-foreground), transparent 90%);
   --chart-1: oklch(0.62 0.14 255);
   --chart-2: oklch(0.65 0.12 170);
   --chart-3: oklch(0.66 0.12 310);
