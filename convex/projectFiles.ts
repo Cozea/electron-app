@@ -13,7 +13,7 @@ import {
 async function requireProjectAccess(
   ctx: Pick<QueryCtx | MutationCtx, "db">,
   projectId: Id<"projects">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<void> {
   if (!(await canAccessProject(ctx, projectId, userId))) {
     throw new ConvexError("You do not have access to this project")
@@ -24,7 +24,7 @@ async function requireProjectAccess(
 async function requireProjectEdit(
   ctx: Pick<MutationCtx, "db">,
   projectId: Id<"projects">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<void> {
   if (!(await canEditProject(ctx, projectId, userId))) {
     throw new ConvexError("You do not have permission to modify this project's files")
@@ -35,7 +35,7 @@ async function requireProjectEdit(
 export const generateUploadUrl = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     await requireProjectEdit(ctx, args.projectId, args.userId)
@@ -47,7 +47,7 @@ export const generateUploadUrl = mutation({
 export const getFileUrl = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
@@ -71,7 +71,7 @@ export const getFileUrl = query({
 export const saveFile = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     storageId: v.id("_storage"),
     fileName: v.string(),
     filePath: v.string(),
@@ -138,7 +138,7 @@ export const saveFile = mutation({
 
 // List all active files for a project
 export const listForProject = query({
-  args: { projectId: v.id("projects"), userId: v.id("users") },
+  args: { projectId: v.id("projects"), userId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
     await requireProjectAccess(ctx, args.projectId, args.userId)
     const files = await ctx.db
@@ -160,7 +160,7 @@ export const listForProject = query({
 
 // Get download URL for a specific file
 export const getDownloadUrl = query({
-  args: { fileId: v.id("projectFiles"), userId: v.id("users") },
+  args: { fileId: v.id("projectFiles"), userId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId)
     if (!file) throw new Error("File not found")
@@ -175,7 +175,7 @@ export const getDownloadUrl = query({
 export const deleteFile = mutation({
   args: {
     fileId: v.id("projectFiles"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId)
@@ -211,7 +211,7 @@ export const deleteFile = mutation({
 
 // Get file count for a project
 export const getFileCount = query({
-  args: { projectId: v.id("projects"), userId: v.id("users") },
+  args: { projectId: v.id("projects"), userId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
     await requireProjectAccess(ctx, args.projectId, args.userId)
     const files = await ctx.db
@@ -231,7 +231,7 @@ export const getFileCount = query({
 
 // Get manifest of all active files for sync comparison
 export const getManifestForProject = query({
-  args: { projectId: v.id("projects"), userId: v.id("users") },
+  args: { projectId: v.id("projects"), userId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
     await requireProjectAccess(ctx, args.projectId, args.userId)
     const files = await ctx.db
@@ -257,7 +257,7 @@ export const getManifestForProject = query({
 export const saveFiles = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     files: v.array(
       v.object({
         storageId: v.id("_storage"),
@@ -342,7 +342,7 @@ export const saveFiles = mutation({
 export const saveFileContent = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     path: v.string(),
     content: v.string(),
     checksum: v.string(),
@@ -386,7 +386,7 @@ export const saveFileContent = mutation({
 export const markFilesDeleted = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     filePaths: v.array(v.string()),
   },
   handler: async (ctx, args) => {

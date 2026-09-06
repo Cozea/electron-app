@@ -33,12 +33,12 @@ function getUserDisplayName(user: {
 }
 
 export function HeaderInboxButton() {
-  const { convexUserId, user } = useAuth();
+  const { principalId, user } = useAuth();
   const acceptInvite = useMutation(api.projectInvites.acceptInvite);
   const declineInvite = useMutation(api.projectInvites.declineInvite);
   const incomingInvites = useQuery(
     api.projectInvites.listIncomingForUser,
-    convexUserId ? { userId: convexUserId } : "skip",
+    principalId ? { userId: principalId } : "skip",
   );
   const [activeInviteAction, setActiveInviteAction] = useState<{
     inviteId: Id<"projectInvites">;
@@ -69,7 +69,7 @@ export function HeaderInboxButton() {
 
   const handleInviteAction = useCallback(
     async (inviteId: Id<"projectInvites">, action: "accept" | "decline") => {
-      if (action === "accept" && !convexUserId) return;
+      if (action === "accept" && !principalId) return;
       setInviteActionError(null);
       setActiveInviteAction({ inviteId, action });
 
@@ -78,7 +78,7 @@ export function HeaderInboxButton() {
           const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity();
           await acceptInvite({
             inviteId,
-            userId: convexUserId!,
+            userId: principalId!,
             deviceId: deviceIdentity.deviceId,
             deviceLabel: deviceIdentity.deviceLabel,
             platform: deviceIdentity.platform,
@@ -95,7 +95,7 @@ export function HeaderInboxButton() {
         setActiveInviteAction(null);
       }
     },
-    [acceptInvite, convexUserId, declineInvite],
+    [acceptInvite, principalId, declineInvite],
   );
 
   if (hasLocalDeviceProfile) {

@@ -194,7 +194,7 @@ function sanitizeRelease(
       ? { sourceRevision: optionalString(value.sourceRevision) }
       : {}),
     sourceFingerprint,
-    createdBy: createdBy as Id<"users">,
+    createdBy: createdBy as Id<"devicePrincipals">,
     createdAt: value.createdAt,
   };
 }
@@ -266,8 +266,8 @@ function sanitizeEntry(value: unknown): LocalProjectDevAppCatalogEntry | null {
     name,
     ...(description ? { description } : {}),
     status: publicationValue.status === "archived" ? "archived" : "active",
-    createdBy: createdBy as Id<"users">,
-    updatedBy: updatedBy as Id<"users">,
+    createdBy: createdBy as Id<"devicePrincipals">,
+    updatedBy: updatedBy as Id<"devicePrincipals">,
     createdAt: publicationValue.createdAt,
     updatedAt: publicationValue.updatedAt,
   };

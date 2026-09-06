@@ -506,10 +506,10 @@ export function ScheduledTasksView() {
 
   const tasks = snapshot?.tasks ?? [];
   const computerUseEnabled = snapshot?.computerUseEnabled ?? false;
-  const { convexUserId } = useAuth();
+  const { principalId } = useAuth();
   const accessibleProjects = useQuery(
     api.projects.listSummariesForCurrentUser,
-    convexUserId ? { userId: convexUserId } : "skip",
+    principalId ? { userId: principalId } : "skip",
   );
   const availableProjects = React.useMemo(
     () => projectTargets(accessibleProjects, catalog?.entries ?? {}),

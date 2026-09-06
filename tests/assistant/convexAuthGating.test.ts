@@ -75,11 +75,11 @@ describe("convex auth gating", () => {
     expect(code).toContain("[skip, queryName, JSON.stringify(convexToJson(argsObject))]")
   });
 
-  it("gates every authenticated query in the share button on convexUserId", () => {
+  it("gates every authenticated query in the share button on principalId", () => {
     // getByEmails previously gated only on the email list, so invite-email
     // enrichment could crash the view during the auth gap.
     expect(shareButton).toContain(
-      "convexUserId && inviteEmailCandidates.length > 0",
+      "principalId && inviteEmailCandidates.length > 0",
     );
   });
 });

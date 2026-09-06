@@ -287,7 +287,7 @@ export const ensureDevicePrincipalFromServer = mutation({
     }
 
     const avatarUrl = principal.avatarStorageId ? await ctx.storage.getUrl(principal.avatarStorageId) : null
-    const workspaceName = `${principal.displayName} Workspace`
+    const workspaceName = \`\${principal.displayName} Workspace\`
     return {
       principalId: principal._id,
       user: {
@@ -298,10 +298,10 @@ export const ensureDevicePrincipalFromServer = mutation({
         platform: principal.platform,
       },
       personalWorkspace: {
-        id: `local-membership:${identityKey}`,
-        workspaceId: `local:${identityKey}`,
+        id: \`local-membership:\${identityKey}\`,
+        workspaceId: \`local:\${identityKey}\`,
         workspaceName,
-        organizationId: `local:${identityKey}`,
+        organizationId: \`local:\${identityKey}\`,
         organizationName: workspaceName,
         role: "admin" as const,
         status: "active" as const,

@@ -101,7 +101,7 @@ export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
   private workspaceId: string | null
-  private userId: Id<"users">
+  private userId: Id<"devicePrincipals">
   private userName: string
   private convex: ConvexReactClient
   private pendingChanges: Map<string, PendingChange> = new Map()
@@ -115,7 +115,7 @@ export class ProjectFilesPersistence {
     projectId: Id<"projects">,
     workspaceId: string | null,
     convex: ConvexReactClient,
-    userId: Id<"users">,
+    userId: Id<"devicePrincipals">,
     userName: string = 'Unknown'
   ) {
     this.filesMap = filesMap

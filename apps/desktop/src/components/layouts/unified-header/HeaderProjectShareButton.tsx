@@ -57,7 +57,7 @@ export function HeaderProjectShareButton({
   projectName?: string | null;
 }) {
   const { t } = useTranslation();
-  const { convexUserId } = useAuth();
+  const { principalId } = useAuth();
   const convex = useConvex();
   const syncContext = useOptionalProjectSyncContext();
   const inviteMember = useMutation(api.projectInvites.inviteMember);
@@ -70,23 +70,23 @@ export function HeaderProjectShareButton({
   const updateProjectMemberRole = useMutation(api.projectMembers.updateRole);
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    projectId && convexUserId ? { projectId, userId: convexUserId } : "skip",
+    projectId && principalId ? { projectId, userId: principalId } : "skip",
   );
   const projectMembers = useQuery(
     api.projectMembers.listMembers,
-    projectId && convexUserId ? { projectId, viewerUserId: convexUserId } : "skip",
+    projectId && principalId ? { projectId, viewerUserId: principalId } : "skip",
   );
   const joinLinkState = useQuery(
     api.projectJoinLinks.getForProject,
-    projectId && convexUserId ? { projectId, userId: convexUserId } : "skip",
+    projectId && principalId ? { projectId, userId: principalId } : "skip",
   );
   const pendingProjectInvites = useQuery(
     api.projectInvites.listForProject,
-    projectId && convexUserId ? { projectId, viewerUserId: convexUserId } : "skip",
+    projectId && principalId ? { projectId, viewerUserId: principalId } : "skip",
   );
   const project = useQuery(
     api.projects.getAccessibleById,
-    projectId && convexUserId
+    projectId && principalId
       ? {
           projectId,
         }
@@ -120,17 +120,17 @@ export function HeaderProjectShareButton({
     [inviteMembers],
   );
   // `users.getByEmails` is an authenticatedQuery like every other query here, so
-  // it needs the same `convexUserId` gate the rest of this component uses.
+  // it needs the same `principalId` gate the rest of this component uses.
   // Without it a lookup issued before the device token lands rejects with
   // "Authentication required", and useQuery rethrows that into the route error
   // boundary — taking down the whole view over invite-email enrichment.
   const inviteLookup = useQuery(
-    api.users.getByEmails,
-    convexUserId && inviteEmailCandidates.length > 0
+    api.devicePrincipals.getByEmails,
+    principalId && inviteEmailCandidates.length > 0
       ? { emails: inviteEmailCandidates }
       : "skip",
   );
-  const personalContactsCacheKey = getPersonalProjectContactsCacheKey(convexUserId, projectId);
+  const personalContactsCacheKey = getPersonalProjectContactsCacheKey(principalId, projectId);
   const personalContacts = useQueryCache((state) => {
     const entry = state.cache[personalContactsCacheKey];
     if (!entry) return undefined;
@@ -146,9 +146,9 @@ export function HeaderProjectShareButton({
     }
     return next;
   }, [inviteLookup]);
-  const roleCheckPending = Boolean(projectId && convexUserId && memberRole === undefined);
-  const shareStatePending = Boolean(projectId && convexUserId && joinLinkState === undefined);
-  const canInvite = Boolean(projectId && convexUserId && memberRole === "project_manager");
+  const roleCheckPending = Boolean(projectId && principalId && memberRole === undefined);
+  const shareStatePending = Boolean(projectId && principalId && joinLinkState === undefined);
+  const canInvite = Boolean(projectId && principalId && memberRole === "project_manager");
   const activeJoinLink = joinLinkState?.activeLink ?? null;
   const canSendProjectInvites = canInvite;
   const canManageJoinLinks = canInvite;
@@ -195,7 +195,7 @@ export function HeaderProjectShareButton({
   }, [emailInput, personalContacts, unavailableContactEmails]);
 
   useEffect(() => {
-    if (!isInviteOpen || !convexUserId || !projectId) return;
+    if (!isInviteOpen || !principalId || !projectId) return;
 
     let cancelled = false;
     const queryCache = useQueryCache.getState();
@@ -211,7 +211,7 @@ export function HeaderProjectShareButton({
     void scheduleTask(async () => {
       try {
         const contacts = await convex.query(api.projectInvites.listPersonalContactsForUser, {
-          userId: convexUserId,
+          userId: principalId,
           projectId,
         });
         if (cancelled) return;
@@ -230,10 +230,10 @@ export function HeaderProjectShareButton({
     return () => {
       cancelled = true;
     };
-  }, [convex, convexUserId, isInviteOpen, personalContactsCacheKey, projectId]);
+  }, [convex, principalId, isInviteOpen, personalContactsCacheKey, projectId]);
 
   const prewarmPersonalContacts = useCallback(() => {
-    if (!convexUserId || !projectId) return;
+    if (!principalId || !projectId) return;
 
     const queryCache = useQueryCache.getState();
     if (
@@ -248,7 +248,7 @@ export function HeaderProjectShareButton({
     void scheduleTask(async () => {
       try {
         const contacts = await convex.query(api.projectInvites.listPersonalContactsForUser, {
-          userId: convexUserId,
+          userId: principalId,
           projectId,
         });
         if (contacts !== undefined) {
@@ -258,7 +258,7 @@ export function HeaderProjectShareButton({
         // Ignore prewarm failures and let the live modal query resolve normally.
       }
     }, "background");
-  }, [convex, convexUserId, personalContactsCacheKey, projectId]);
+  }, [convex, principalId, personalContactsCacheKey, projectId]);
 
   const flushProjectBeforeShare = useCallback(async () => {
     if (!syncContext?.collaborationEnabled) return;
@@ -271,15 +271,15 @@ export function HeaderProjectShareButton({
   }, [activeJoinLink, isInviteOpen]);
 
   const handleProjectMemberRoleChange = useCallback(
-    async (memberUserId: Id<"users">, nextRole: ProjectInviteRole) => {
-      if (!projectId || !project || !convexUserId || !canManagePersonalProjectAccess) return;
+    async (memberUserId: Id<"devicePrincipals">, nextRole: ProjectInviteRole) => {
+      if (!projectId || !project || !principalId || !canManagePersonalProjectAccess) return;
       const actionKey = `role:${String(memberUserId)}`;
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
         await updateProjectMemberRole({
           projectId,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
           memberUserId,
           newRole: nextRole,
         });
@@ -289,19 +289,19 @@ export function HeaderProjectShareButton({
         setTeamActionKey(null);
       }
     },
-    [canManagePersonalProjectAccess, convexUserId, project, projectId, updateProjectMemberRole],
+    [canManagePersonalProjectAccess, principalId, project, projectId, updateProjectMemberRole],
   );
 
   const handleProjectMemberRemove = useCallback(
-    async (memberUserId: Id<"users">) => {
-      if (!projectId || !project || !convexUserId || !canManagePersonalProjectAccess) return;
+    async (memberUserId: Id<"devicePrincipals">) => {
+      if (!projectId || !project || !principalId || !canManagePersonalProjectAccess) return;
       const actionKey = `remove:${String(memberUserId)}`;
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
         await removeProjectMember({
           projectId,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
           memberUserId,
         });
       } catch (error) {
@@ -312,7 +312,7 @@ export function HeaderProjectShareButton({
     },
     [
       canManagePersonalProjectAccess,
-      convexUserId,
+      principalId,
       project,
       projectId,
       removeProjectMember,
@@ -321,29 +321,29 @@ export function HeaderProjectShareButton({
 
   const handleProjectInviteResend = useCallback(
     async (inviteId: Id<"projectInvites">) => {
-      if (!project || !convexUserId || !canManagePersonalProjectAccess) return;
+      if (!project || !principalId || !canManagePersonalProjectAccess) return;
       const actionKey = `resend:${String(inviteId)}`;
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
-        await resendProjectInvite({ inviteId, actorUserId: convexUserId });
+        await resendProjectInvite({ inviteId, actorUserId: principalId });
       } catch (error) {
         setTeamError(cleanConvexError(error, "Failed to resend invite"));
       } finally {
         setTeamActionKey(null);
       }
     },
-    [canManagePersonalProjectAccess, convexUserId, project, resendProjectInvite],
+    [canManagePersonalProjectAccess, principalId, project, resendProjectInvite],
   );
 
   const handleProjectInviteCancel = useCallback(
     async (inviteId: Id<"projectInvites">) => {
-      if (!project || !convexUserId || !canManagePersonalProjectAccess) return;
+      if (!project || !principalId || !canManagePersonalProjectAccess) return;
       const actionKey = `cancel:${String(inviteId)}`;
       setTeamActionKey(actionKey);
       setTeamError(null);
       try {
-        await cancelProjectInvite({ inviteId, actorUserId: convexUserId });
+        await cancelProjectInvite({ inviteId, actorUserId: principalId });
       } catch (error) {
         setTeamError(cleanConvexError(error, "Failed to cancel invite"));
       } finally {
@@ -353,7 +353,7 @@ export function HeaderProjectShareButton({
     [
       cancelProjectInvite,
       canManagePersonalProjectAccess,
-      convexUserId,
+      principalId,
       project,
     ],
   );
@@ -418,7 +418,7 @@ export function HeaderProjectShareButton({
   }, []);
 
   const handleSendInvites = useCallback(async () => {
-    if (!projectId || !convexUserId || !canSendProjectInvites || inviteMembers.length === 0) return;
+    if (!projectId || !principalId || !canSendProjectInvites || inviteMembers.length === 0) return;
 
     setIsSubmitting(true);
     setInviteError(null);
@@ -435,7 +435,7 @@ export function HeaderProjectShareButton({
             projectId,
             email: member.email,
             role: member.role,
-            invitedBy: convexUserId,
+            invitedBy: principalId,
           });
           if (result.emailDelivery === "not_configured") {
             deliveryNotConfiguredCount += 1;
@@ -471,7 +471,7 @@ export function HeaderProjectShareButton({
     }
   }, [
     canSendProjectInvites,
-    convexUserId,
+    principalId,
     flushProjectBeforeShare,
     handleInviteOpenChange,
     inviteMember,
@@ -480,7 +480,7 @@ export function HeaderProjectShareButton({
   ]);
 
   const handleCopyJoinLink = useCallback(async () => {
-    if (!projectId || !convexUserId || !canManageJoinLinks) return;
+    if (!projectId || !principalId || !canManageJoinLinks) return;
     setJoinLinkAction("copy");
     setJoinLinkError(null);
     setJoinLinkNotice(null);
@@ -489,7 +489,7 @@ export function HeaderProjectShareButton({
       await flushProjectBeforeShare();
       const link = await createOrUpdateActiveLink({
         projectId,
-        actorUserId: convexUserId,
+        actorUserId: principalId,
         role: joinLinkRole,
       });
       const shareUrl = buildProjectJoinUrl(
@@ -508,7 +508,7 @@ export function HeaderProjectShareButton({
     }
   }, [
     canManageJoinLinks,
-    convexUserId,
+    principalId,
     createOrUpdateActiveLink,
     flushProjectBeforeShare,
     joinLinkRole,
@@ -516,7 +516,7 @@ export function HeaderProjectShareButton({
   ]);
 
   const handleRotateJoinLink = useCallback(async () => {
-    if (!projectId || !convexUserId || !canManageJoinLinks) return;
+    if (!projectId || !principalId || !canManageJoinLinks) return;
     setJoinLinkAction("rotate");
     setJoinLinkError(null);
     setJoinLinkNotice(null);
@@ -524,7 +524,7 @@ export function HeaderProjectShareButton({
     try {
       await rotateJoinLink({
         projectId,
-        actorUserId: convexUserId,
+        actorUserId: principalId,
         role: joinLinkRole,
       });
       setJoinLinkNotice("Invite link rotated.");
@@ -533,10 +533,10 @@ export function HeaderProjectShareButton({
     } finally {
       setJoinLinkAction(null);
     }
-  }, [canManageJoinLinks, convexUserId, joinLinkRole, projectId, rotateJoinLink]);
+  }, [canManageJoinLinks, principalId, joinLinkRole, projectId, rotateJoinLink]);
 
   const handleDisableJoinLink = useCallback(async () => {
-    if (!projectId || !convexUserId || !canManageJoinLinks) return;
+    if (!projectId || !principalId || !canManageJoinLinks) return;
     setJoinLinkAction("disable");
     setJoinLinkError(null);
     setJoinLinkNotice(null);
@@ -544,7 +544,7 @@ export function HeaderProjectShareButton({
     try {
       await revokeJoinLink({
         projectId,
-        actorUserId: convexUserId,
+        actorUserId: principalId,
       });
       setJoinLinkNotice("Invite link disabled.");
     } catch (error) {
@@ -552,7 +552,7 @@ export function HeaderProjectShareButton({
     } finally {
       setJoinLinkAction(null);
     }
-  }, [canManageJoinLinks, convexUserId, projectId, revokeJoinLink]);
+  }, [canManageJoinLinks, principalId, projectId, revokeJoinLink]);
 
   return (
     <Dialog open={isInviteOpen} onOpenChange={handleInviteOpenChange}>
@@ -709,7 +709,7 @@ export function HeaderProjectShareButton({
                                 disabled={
                                   isSubmitting ||
                                   !canManagePersonalProjectAccess ||
-                                  existingMember.userId === convexUserId
+                                  existingMember.userId === principalId
                                 }
                                 onClick={async (event) => {
                                   event.preventDefault()
@@ -724,7 +724,7 @@ export function HeaderProjectShareButton({
                                     enabled:
                                       existingMember.role !== option.value &&
                                       teamActionKey !== roleActionKey &&
-                                      existingMember.userId !== convexUserId,
+                                      existingMember.userId !== principalId,
                                   }))
                                   const action = await showDesktopContextMenu(items, position)
                                   if (action) {
@@ -746,7 +746,7 @@ export function HeaderProjectShareButton({
                                 disabled={
                                   isSubmitting ||
                                   !canManagePersonalProjectAccess ||
-                                  existingMember.userId === convexUserId ||
+                                  existingMember.userId === principalId ||
                                   teamActionKey === removeActionKey
                                 }
                                 onClick={() => {

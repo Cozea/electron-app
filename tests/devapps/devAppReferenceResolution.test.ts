@@ -56,15 +56,15 @@ type ResolutionCtx = Parameters<typeof resolvePublicationReferenceRecord>[0];
 function createFixture() {
   const organizationId = asId<"organizations">("org_1");
   const publicationId = asId<"devAppPublications">("pub_1");
-  const userId = asId<"users">("user_1");
-  const outsiderId = asId<"users">("user_outside");
+  const userId = asId<"devicePrincipals">("user_1");
+  const outsiderId = asId<"devicePrincipals">("user_outside");
   const release1Id = asId<"devAppReleases">("release_1");
   const release2Id = asId<"devAppReleases">("release_2");
   const organization = {
     _id: organizationId,
     groupId: "czg_reference_resolution",
     name: "Acme",
-    createdBy: asId<"users">("user_owner"),
+    createdBy: asId<"devicePrincipals">("user_owner"),
     createdAt: 1,
     updatedAt: 1,
   };

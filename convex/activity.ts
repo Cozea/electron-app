@@ -86,7 +86,7 @@ function shouldExcludeActivityPath(filePath: string): boolean {
 export const logFileChange = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
     checkpointGroupId: v.optional(v.string()),
     filePath: v.string(),
     changeType: v.union(
@@ -355,7 +355,7 @@ export const cleanupOldActivity = mutation({
 export const addComment = mutation({
   args: {
     changeId: v.id("fileChanges"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     content: v.string(),
     parentCommentId: v.optional(v.id("changeComments")),
   },
@@ -414,7 +414,7 @@ export const addComment = mutation({
 export const getCommentsForChange = query({
   args: {
     changeId: v.id("fileChanges"),
-    viewerUserId: v.optional(v.id("users")),
+    viewerUserId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const comments = await ctx.db
@@ -486,7 +486,7 @@ export const getCommentsForChange = query({
 export const toggleCommentReaction = mutation({
   args: {
     commentId: v.id("changeComments"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     emoji: v.string(),
   },
   handler: async (ctx, args) => {
@@ -570,7 +570,7 @@ export const getCommentCountsForChanges = query({
 export const getUnreadChangesCount = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     lastSeenTimestamp: v.number(),
   },
   handler: async (ctx, args) => {
@@ -598,7 +598,7 @@ export const getUnreadChangesCount = query({
 export const deleteComment = mutation({
   args: {
     commentId: v.id("changeComments"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const comment = await ctx.db.get(args.commentId)

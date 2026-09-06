@@ -85,7 +85,7 @@ export const ProjectSidebarTreeItem = React.memo(
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = selection.isExpanded || context.isCurrentProject
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project])
-    const { convexUserId } = useAuth()
+    const { principalId } = useAuth()
     const convex = useConvex()
     // Pushed catalog snapshot: no per-row resolveProject IPC. The layout still
     // does a fresh, candidate-scanning resolution when a project is opened.
@@ -178,13 +178,13 @@ export const ProjectSidebarTreeItem = React.memo(
         workspaceId,
         collabBranch,
         convex,
-        userId: convexUserId ?? null,
+        userId: principalId ?? null,
       })
     }, [
       collabBranch,
       context.isCurrentProject,
       convex,
-      convexUserId,
+      principalId,
       project.id,
       project.slug,
       workspaceId,

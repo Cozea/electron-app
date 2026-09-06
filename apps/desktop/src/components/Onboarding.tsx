@@ -18,7 +18,7 @@ function initials(value: string): string {
 
 export function Onboarding() {
   const { isConvexAuthReady, refreshToken } = useAuth()
-  const updateDevicePresentation = useMutation(api.users.updateDevicePresentation)
+  const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const [deviceName, setDeviceName] = useState('')

@@ -15,7 +15,7 @@ export interface ProjectAccessState {
 export async function getProjectMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<Doc<"projectMembers"> | null> {
   return await ctx.db
     .query("projectMembers")
@@ -26,7 +26,7 @@ export async function getProjectMembership(
 export async function getProjectAccessState(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<ProjectAccessState> {
   const project = await ctx.db.get(projectId)
   if (!project || project.status === "deleted") {
@@ -49,7 +49,7 @@ export async function getProjectAccessState(
 export async function canAccessProject(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   const access = await getProjectAccessState(ctx, projectId, userId)
   if (!access.project) return false
@@ -62,7 +62,7 @@ export async function canAccessProject(
 export async function canEditProject(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   const access = await getProjectAccessState(ctx, projectId, userId)
   if (!access.project) {
@@ -81,7 +81,7 @@ export async function canEditProject(
 export async function canManageProject(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   const access = await getProjectAccessState(ctx, projectId, userId)
   if (!access.project) {
@@ -101,7 +101,7 @@ export async function canManageProject(
 export async function canArchiveProject(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   return await canManageProject(ctx, projectId, userId)
 }

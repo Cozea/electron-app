@@ -21,7 +21,7 @@ export interface OrganizationAccessState {
 export async function getOrganizationMembership(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<Doc<"organizationMembers"> | null> {
   return await ctx.db
     .query("organizationMembers")
@@ -34,7 +34,7 @@ export async function getOrganizationMembership(
 export async function getOrganizationAccessState(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<OrganizationAccessState> {
   const organization = await ctx.db.get(organizationId)
   if (!organization?.groupId || !isGroupIdentityKey(organization.groupId)) {
@@ -52,7 +52,7 @@ export async function getOrganizationAccessState(
 export async function isOrgMember(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<boolean> {
   const access = await getOrganizationAccessState(ctx, organizationId, userId)
   return access.organization !== null && (access.isCreator || access.membership !== null)
@@ -61,7 +61,7 @@ export async function isOrgMember(
 export async function requireOrgMember(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<{ organization: DeviceOrganization; membership: Doc<"organizationMembers"> | null }> {
   const access = await getOrganizationAccessState(ctx, organizationId, userId)
   if (!access.organization || (!access.isCreator && !access.membership)) {
@@ -73,7 +73,7 @@ export async function requireOrgMember(
 export async function requireOrgAdmin(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<{ organization: DeviceOrganization }> {
   const access = await getOrganizationAccessState(ctx, organizationId, userId)
   if (!access.organization) {

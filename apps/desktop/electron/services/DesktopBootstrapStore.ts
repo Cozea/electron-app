@@ -41,8 +41,8 @@ function isDesktopBootstrapSession(value: unknown): value is DesktopBootstrapSes
     value.accessToken.length > 0 &&
     typeof value.expiresAt === 'number' &&
     Number.isFinite(value.expiresAt) &&
-    typeof value.convexUserId === 'string' &&
-    value.convexUserId.length > 0 &&
+    typeof value.principalId === 'string' &&
+    value.principalId.length > 0 &&
     typeof user.id === 'string' &&
     user.id.length > 0 &&
     typeof user.deviceId === 'string' &&

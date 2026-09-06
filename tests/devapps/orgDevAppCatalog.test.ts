@@ -18,7 +18,7 @@ interface OrganizationDoc {
   _id: Id<"organizations">
   groupId: string
   name: string
-  createdBy: Id<"users">
+  createdBy: Id<"devicePrincipals">
   createdAt: number
   updatedAt: number
 }
@@ -26,10 +26,10 @@ interface OrganizationDoc {
 interface OrganizationMemberDoc {
   _id: Id<"organizationMembers">
   organizationId: Id<"organizations">
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
   role: "admin" | "member"
   addedAt: number
-  addedBy: Id<"users">
+  addedBy: Id<"devicePrincipals">
 }
 
 interface TestTables {
@@ -90,9 +90,9 @@ function createCtx(tables: TestTables): OrgAccessCtx {
 
 describe("org DevApp catalog access", () => {
   const orgId = asId<"organizations">("org_1")
-  const adminId = asId<"users">("user_admin")
-  const memberId = asId<"users">("user_member")
-  const outsiderId = asId<"users">("user_out")
+  const adminId = asId<"devicePrincipals">("user_admin")
+  const memberId = asId<"devicePrincipals">("user_member")
+  const outsiderId = asId<"devicePrincipals">("user_out")
 
   const ctx = createCtx({
     organizations: [

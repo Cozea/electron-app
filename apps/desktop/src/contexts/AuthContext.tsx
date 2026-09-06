@@ -12,7 +12,7 @@ import { featureFlags } from '@/lib/featureFlags'
 
 interface AuthContextType {
   user: User | null
-  convexUserId: Id<"users"> | null
+  principalId: Id<"devicePrincipals"> | null
   accessToken: string | null
   personalWorkspace: PersonalWorkspaceMembership | null
   isAuthenticated: boolean
@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // becomes live cloud authority. Convex user id + bearer token stay null until
   // a fresh device challenge succeeds in this process.
   const [user, setUser] = useState<User | null>(() => bootstrapSession?.user ?? null)
-  const [convexUserId, setConvexUserId] = useState<Id<"users"> | null>(null)
+  const [principalId, setConvexUserId] = useState<Id<"devicePrincipals"> | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [personalWorkspace, setPersonalWorkspace] = useState<PersonalWorkspaceMembership | null>(
     () => bootstrapSession?.personalWorkspace ?? null,
@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null)
     setAccessToken(localProfile.accessToken)
     setUser(localProfile.user)
-    setConvexUserId(localProfile.convexUserId)
+    setConvexUserId(localProfile.principalId)
     setPersonalWorkspace(localProfile.personalWorkspace)
   }, [])
 
@@ -181,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextType>(
     () => ({
       user,
-      convexUserId,
+      principalId,
       accessToken,
       personalWorkspace,
       isAuthenticated: Boolean(user),
@@ -197,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       authError,
       accessToken,
-      convexUserId,
+      principalId,
       isLoading,
       isRevalidating,
       login,

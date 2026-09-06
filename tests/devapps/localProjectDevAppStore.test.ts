@@ -32,7 +32,7 @@ class MemoryStorage implements Storage {
 }
 
 const projectId = "local-project:one" as Id<"projects">;
-const userId = "local-user:one" as Id<"users">;
+const userId = "local-user:one" as Id<"devicePrincipals">;
 const logoDataUrl = "data:image/webp;base64,UklGRjEyMzRXRUJQ";
 const updatedLogoDataUrl = "data:image/webp;base64,UklGRjU2NzhXRUJQ";
 

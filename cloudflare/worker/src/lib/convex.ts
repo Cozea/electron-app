@@ -51,7 +51,7 @@ export async function persistDeviceAuthChallengeInConvex(
   env: Env,
   args: { nonce: string; identityKey: string; requestFingerprint?: string; expiresAt: number },
 ): Promise<void> {
-  await runMutation(env, 'users:createDeviceAuthChallengeFromServer', {
+  await runMutation(env, 'devicePrincipals:createDeviceAuthChallengeFromServer', {
     serverSecret: env.AI_GATEWAY_SECRET,
     ...args,
   })
@@ -61,7 +61,7 @@ export async function consumeDeviceAuthChallengeInConvex(
   env: Env,
   args: { nonce: string; identityKey: string },
 ): Promise<void> {
-  await runMutation(env, 'users:consumeDeviceAuthChallengeFromServer', {
+  await runMutation(env, 'devicePrincipals:consumeDeviceAuthChallengeFromServer', {
     serverSecret: env.AI_GATEWAY_SECRET,
     ...args,
   })
@@ -91,7 +91,7 @@ export async function ensureDevicePrincipalFromConvex(
   env: Env,
   identity: DeviceAuthChallengeClaims,
 ): Promise<LocalDeviceProfileInfo> {
-  return runMutation<LocalDeviceProfileInfo>(env, 'users:ensureDevicePrincipalFromServer', {
+  return runMutation<LocalDeviceProfileInfo>(env, 'devicePrincipals:ensureDevicePrincipalFromServer', {
     serverSecret: env.AI_GATEWAY_SECRET,
     identityKey: identity.identityKey,
     deviceLabel: identity.deviceLabel,
@@ -128,7 +128,7 @@ export async function requireActiveDeviceAccessInConvex(
   env: Env,
   auth: DeviceAccessClaims,
 ): Promise<DevicePrincipalInfo> {
-  const principal = await runServerQuery<DevicePrincipalInfo | null>(env, 'users:getDevicePrincipalForServer', {
+  const principal = await runServerQuery<DevicePrincipalInfo | null>(env, 'devicePrincipals:getDevicePrincipalForServer', {
     identityKey: auth.sub,
   })
   if (

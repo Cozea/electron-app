@@ -114,7 +114,7 @@ interface ActiveRoomKeyRecord {
   roomId: string
   keyVersion: number
   status: "active" | "rotating" | "revoked"
-  createdByUserId: Id<"users">
+  createdByUserId: Id<"devicePrincipals">
   createdByDeviceId: string
   createdAt: number
   rotatedAt?: number
@@ -125,7 +125,7 @@ interface WrappedRoomKeyRecord {
   projectId: Id<"projects">
   roomId: string
   keyVersion: number
-  recipientUserId: Id<"users">
+  recipientUserId: Id<"devicePrincipals">
   recipientDeviceId: string
   senderDeviceId: string
   senderPublicKeyJwk: string
@@ -144,7 +144,7 @@ interface RecoveryKitRecord {
   wrappedKey: string
   salt: string
   iterations: number
-  createdByUserId: Id<"users">
+  createdByUserId: Id<"devicePrincipals">
   createdByDeviceId: string
   createdAt: number
   revokedAt?: number
@@ -970,7 +970,7 @@ export const maybeCompactProject = mutation({
 export const registerCollabDevice = mutation({
   args: {
     serverSecret: v.string(),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     deviceId: v.string(),
     deviceLabel: v.string(),
     platform: v.string(),
@@ -1030,7 +1030,7 @@ export const getEncryptionBootstrap = query({
     serverSecret: v.string(),
     projectId: v.id("projects"),
     roomId: v.optional(v.string()),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
@@ -1105,7 +1105,7 @@ export const initializeEncryptedRoom = mutation({
   args: {
     projectId: v.id("projects"),
     roomId: v.optional(v.string()),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     deviceId: v.string(),
     keyVersion: v.number(),
     wrapAlgorithm: v.string(),
@@ -1179,7 +1179,7 @@ export const createKeyRequest = mutation({
   args: {
     projectId: v.id("projects"),
     roomId: v.string(),
-    recipientUserId: v.id("users"),
+    recipientUserId: v.id("devicePrincipals"),
     recipientDeviceId: v.string(),
     recipientPublicKeyJwk: v.string(),
     recipientFingerprint: v.string(),
@@ -1375,7 +1375,7 @@ export const storeWrappedRoomKey = mutation({
     projectId: v.id("projects"),
     roomId: v.string(),
     keyVersion: v.number(),
-    recipientUserId: v.id("users"),
+    recipientUserId: v.id("devicePrincipals"),
     recipientDeviceId: v.string(),
     senderDeviceId: v.string(),
     senderPublicKeyJwk: v.string(),
@@ -1454,7 +1454,7 @@ export const storeRecoveryKit = mutation({
     wrappedKey: v.string(),
     salt: v.string(),
     iterations: v.number(),
-    createdByUserId: v.id("users"),
+    createdByUserId: v.id("devicePrincipals"),
     createdByDeviceId: v.string(),
   },
   handler: async (ctx, args) => {
@@ -1563,13 +1563,13 @@ export const rotateEncryptedRoomKey = mutation({
   args: {
     projectId: v.id("projects"),
     roomId: v.optional(v.string()),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     initiatedByDeviceId: v.string(),
     encryptedSnapshot: v.bytes(),
     createdByClientId: v.optional(v.string()),
     wrappedKeys: v.array(
       v.object({
-        recipientUserId: v.id("users"),
+        recipientUserId: v.id("devicePrincipals"),
         recipientDeviceId: v.string(),
         senderPublicKeyJwk: v.string(),
         wrapAlgorithm: v.string(),
@@ -1715,7 +1715,7 @@ export const resetEncryptedRoom = mutation({
   args: {
     projectId: v.id("projects"),
     roomId: v.optional(v.string()),
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
     retainDeviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

@@ -32,7 +32,7 @@ export const acquireLock = mutation({
     projectId: v.id("projects"),
     filePath: v.string(),
     // Transitional caller field. Lock ownership is derived from device auth.
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
     ttlMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -149,7 +149,7 @@ export const releaseLock = mutation({
   args: {
     projectId: v.id("projects"),
     filePath: v.string(),
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)
@@ -207,7 +207,7 @@ export const getLock = query({
       trafficLight,
       lockedByUser: lockedByDevice
         ? {
-            id: lockedByDevice._id as Id<"users">,
+            id: lockedByDevice._id as Id<"devicePrincipals">,
             name: displayName(lockedByDevice),
             profileImageUrl: lockedByDevice.profileImageUrl ?? null,
           }

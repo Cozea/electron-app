@@ -38,7 +38,7 @@ function sessionFixture(): DesktopBootstrapSession {
   return {
     accessToken: 'secret-access-token',
     expiresAt: 2_000_000_000,
-    convexUserId: 'user_1',
+    principalId: 'user_1',
     user: {
       id: 'device-user-1',
       deviceId: 'device-1',

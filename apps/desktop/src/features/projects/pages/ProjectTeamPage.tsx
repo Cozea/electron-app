@@ -40,7 +40,7 @@ interface TeamTableRow {
   date: number
   avatarUrl?: string | null
   isSelf: boolean
-  userId?: Id<'users'>
+  userId?: Id<'devicePrincipals'>
   inviteId?: Id<'projectInvites'>
 }
 
@@ -71,7 +71,7 @@ function formatMemberName(member: {
     lastName?: string | null
     email?: string | null
   } | null
-  userId: Id<'users'>
+  userId: Id<'devicePrincipals'>
 }): string {
   if (member.displayName?.trim()) return member.displayName.trim()
   const first = member.user?.firstName?.trim() ?? ''
@@ -126,7 +126,7 @@ function formatDate(timestamp: number): string {
 }
 
 export function ProjectTeamPage() {
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const { project } = useAccessibleProject()
   const { t } = useTranslation()
 
@@ -137,18 +137,18 @@ export function ProjectTeamPage() {
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    project?._id && convexUserId
-      ? { projectId: project._id, userId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, userId: principalId }
       : 'skip'
   )
   const members = useQuery(
     api.projectMembers.listMembers,
-    project?._id && convexUserId ? { projectId: project._id, viewerUserId: convexUserId } : 'skip'
+    project?._id && principalId ? { projectId: project._id, viewerUserId: principalId } : 'skip'
   )
   const pendingInvites = useQuery(
     api.projectInvites.listForProject,
-    project?._id && convexUserId
-      ? { projectId: project._id, viewerUserId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, viewerUserId: principalId }
       : 'skip'
   )
 
@@ -161,7 +161,7 @@ export function ProjectTeamPage() {
   const hasResolvedTeamRows = members !== undefined && pendingInvites !== undefined
 
   const isManager = memberRole === 'project_manager'
-  const canManageTeam = Boolean(convexUserId) && isManager
+  const canManageTeam = Boolean(principalId) && isManager
 
   const filteredRows = useMemo(() => {
     const memberRows: TeamTableRow[] = (members ?? []).map((member) => {
@@ -174,7 +174,7 @@ export function ProjectTeamPage() {
         status: 'active',
         date: member.addedAt,
         avatarUrl: member.user?.profileImageUrl ?? null,
-        isSelf: convexUserId === member.userId,
+        isSelf: principalId === member.userId,
         userId: member.userId,
       }
     })
@@ -215,7 +215,7 @@ export function ProjectTeamPage() {
       return sortDirection === 'asc' ? comparison : -comparison
     })
   }, [
-    convexUserId,
+    principalId,
     members,
     pendingInvites,
     roleFilter,
@@ -224,15 +224,15 @@ export function ProjectTeamPage() {
   ])
 
   const handleRoleChange = useCallback(
-    async (memberUserId: Id<'users'>, nextRole: ProjectRole) => {
-      if (!project?._id || !project || !convexUserId || !canManageTeam) return
+    async (memberUserId: Id<'devicePrincipals'>, nextRole: ProjectRole) => {
+      if (!project?._id || !project || !principalId || !canManageTeam) return
       const actionKey = `role:${String(memberUserId)}`
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
         await updateMemberRole({
           projectId: project._id,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
           memberUserId,
           newRole: nextRole,
         })
@@ -244,22 +244,22 @@ export function ProjectTeamPage() {
     },
     [
       canManageTeam,
-      convexUserId,
+      principalId,
       project,
       updateMemberRole,
     ]
   )
 
   const handleRemoveMember = useCallback(
-    async (memberUserId: Id<'users'>) => {
-      if (!project?._id || !project || !convexUserId || !canManageTeam) return
+    async (memberUserId: Id<'devicePrincipals'>) => {
+      if (!project?._id || !project || !principalId || !canManageTeam) return
       const actionKey = `remove:${String(memberUserId)}`
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
         await removeMember({
           projectId: project._id,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
           memberUserId,
         })
       } catch (error) {
@@ -270,7 +270,7 @@ export function ProjectTeamPage() {
     },
     [
       canManageTeam,
-      convexUserId,
+      principalId,
       project,
       removeMember,
     ]
@@ -278,14 +278,14 @@ export function ProjectTeamPage() {
 
   const handleCancelInvite = useCallback(
     async (inviteId: Id<'projectInvites'>) => {
-      if (!project || !convexUserId || !canManageTeam) return
+      if (!project || !principalId || !canManageTeam) return
       const actionKey = `cancel:${String(inviteId)}`
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
         await cancelInvite({
           inviteId,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
         })
       } catch (error) {
         setTeamError(cleanConvexError(error, t('team.error.cancelInvite')))
@@ -293,19 +293,19 @@ export function ProjectTeamPage() {
         setTeamActionKey(null)
       }
     },
-    [cancelInvite, canManageTeam, convexUserId, project]
+    [cancelInvite, canManageTeam, principalId, project]
   )
 
   const handleResendInvite = useCallback(
     async (inviteId: Id<'projectInvites'>) => {
-      if (!project || !convexUserId || !canManageTeam) return
+      if (!project || !principalId || !canManageTeam) return
       const actionKey = `resend:${String(inviteId)}`
       setTeamActionKey(actionKey)
       setTeamError(null)
       try {
         await resendInvite({
           inviteId,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
         })
       } catch (error) {
         setTeamError(cleanConvexError(error, t('team.error.resendInvite')))
@@ -313,7 +313,7 @@ export function ProjectTeamPage() {
         setTeamActionKey(null)
       }
     },
-    [canManageTeam, convexUserId, resendInvite, project]
+    [canManageTeam, principalId, resendInvite, project]
   )
 
   const handleOpenRoleFilterMenu = useCallback(

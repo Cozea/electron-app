@@ -32,7 +32,7 @@ export function useAgentFileSync(
   yjsDoc: YjsProjectDoc | null,
   workspaceId: string | null,
   projectId: Id<'projects'> | null,
-  userId: Id<'users'> | null
+  userId: Id<'devicePrincipals'> | null
 ): void {
   const coordinatorRef = useRef<SyncCoordinator | null>(null)
 

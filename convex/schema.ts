@@ -84,60 +84,34 @@ const devAppRuntimeReleaseImageValidator = v.object({
 
 export default defineSchema({
   // Device principals. In the product model one physical device is one user.
-  users: defineTable({
-    // Canonical public identity and public key bindings. Optional at the storage
-    // boundary only so pre-cutover test rows can remain inert; every active
-    // device principal is created and validated with all fields present.
-    identityKey: v.optional(v.string()),
-    deviceLabel: v.optional(v.string()),
-    platform: v.optional(v.string()),
-    encryptionPublicKeyJwk: v.optional(v.string()),
-    encryptionPublicKeyAlgorithm: v.optional(v.string()),
-    encryptionFingerprint: v.optional(v.string()),
-    signingPublicKeyJwk: v.optional(v.string()),
-    signingPublicKeyAlgorithm: v.optional(v.string()),
-    signingFingerprint: v.optional(v.string()),
-    status: v.optional(v.union(v.literal("active"), v.literal("revoked"))),
-    signingKeyVersion: v.optional(v.number()),
-    tokenValidAfter: v.optional(v.number()),
-    lastAuthenticatedAt: v.optional(v.number()),
+  devicePrincipals: defineTable({
+    identityKey: v.string(),
+    displayName: v.string(),
+    avatarStorageId: v.optional(v.id("_storage")),
+    platform: v.string(),
+    encryptionPublicKeyJwk: v.string(),
+    encryptionPublicKeyAlgorithm: v.string(),
+    encryptionFingerprint: v.string(),
+    signingPublicKeyJwk: v.string(),
+    signingPublicKeyAlgorithm: v.string(),
+    signingFingerprint: v.string(),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    signingKeyVersion: v.number(),
+    tokenValidAfter: v.number(),
+    lastAuthenticatedAt: v.number(),
     revokedAt: v.optional(v.number()),
     revocationReason: v.optional(v.string()),
-
-    // Transitional contact/profile fields used by project-sharing surfaces. They are not
-    // authentication identifiers; authenticated authority comes from identityKey.
-    workosId: v.string(),
-    email: v.string(),
-    normalizedEmail: v.optional(v.string()),
-    firstName: v.optional(v.string()),
-    lastName: v.optional(v.string()),
-    profileImageUrl: v.optional(v.string()),
-    jobTitle: v.optional(v.string()),
-
-    // User preferences
     preferences: v.optional(
       v.object({
-        // Legacy compatibility for existing production docs from older Radon-backed builds.
-        radonToken: v.optional(v.string()),
         theme: v.optional(v.union(v.literal("light"), v.literal("dark"), v.literal("system"))),
         defaultModel: v.optional(v.string()),
-        emailNotifications: v.optional(v.boolean()),
         pushNotifications: v.optional(v.boolean()),
       }),
     ),
-
-    // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),
-    lastLoginAt: v.optional(v.number()),
-  })
-    .index("by_identity_key", ["identityKey"])
-    .index("by_workos_id", ["workosId"])
-    .index("by_email", ["email"])
-    .index("by_normalized_email", ["normalizedEmail"]),
+  }).index("by_identity_key", ["identityKey"]),
 
-  // Short-lived proof-of-possession challenges. A challenge must be consumed
-  // atomically before an access token is issued, preventing replay.
   deviceAuthChallenges: defineTable({
     nonce: v.string(),
     identityKey: v.string(),
@@ -359,13 +333,13 @@ export default defineSchema({
     ),
     syncError: v.optional(v.string()),
     lastSyncAt: v.optional(v.number()),
-    lastSyncBy: v.optional(v.id("users")),
+    lastSyncBy: v.optional(v.id("devicePrincipals")),
 
     // Collaborative editing state (for future traffic control)
     sharedFilesVersion: v.optional(v.number()),
     lastSharedUpdate: v.optional(v.number()),
 
-    createdBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
     createdAt: v.number(),
     updatedAt: v.number(),
     organizationId: v.optional(v.id("organizations")),
@@ -462,11 +436,10 @@ export default defineSchema({
   // Project members with expanded roles
   projectMembers: defineTable({
     projectId: v.id("projects"),
-    userId: v.id("users"),
-    contactEmail: v.optional(v.string()),
+    userId: v.id("devicePrincipals"),
     role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     addedAt: v.number(),
-    addedBy: v.id("users"),
+    addedBy: v.id("devicePrincipals"),
     // Per-user local path for this project (machine-specific)
     localPath: v.optional(v.string()),
     // Sync tracking (per-user, per-project)
@@ -484,8 +457,7 @@ export default defineSchema({
     groupId: v.optional(v.string()),
     name: v.string(),
     // Historical WorkOS metadata is not an authentication authority.
-    createdBy: v.optional(v.id("users")),
-    workosId: v.optional(v.string()),
+    createdBy: v.optional(v.id("devicePrincipals")),
     slug: v.optional(v.string()),
     iconColor: v.optional(v.any()),
     iconKey: v.optional(v.any()),
@@ -500,10 +472,10 @@ export default defineSchema({
 
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     role: v.union(v.literal("admin"), v.literal("member")),
     addedAt: v.number(),
-    addedBy: v.id("users"),
+    addedBy: v.id("devicePrincipals"),
   })
     .index("by_organization", ["organizationId"])
     .index("by_user", ["userId"])
@@ -520,7 +492,7 @@ export default defineSchema({
       v.literal("cancelled"),
       v.literal("expired"),
     ),
-    createdBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
     createdAt: v.number(),
     expiresAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -531,31 +503,16 @@ export default defineSchema({
   organizationRecoveryGrants: defineTable({
     organizationId: v.id("organizations"),
     verifierHash: v.string(),
-    createdBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
     createdAt: v.number(),
     expiresAt: v.number(),
     consumedAt: v.optional(v.number()),
-    consumedBy: v.optional(v.id("users")),
+    consumedBy: v.optional(v.id("devicePrincipals")),
     revokedAt: v.optional(v.number()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_verifier_hash", ["verifierHash"]),
 
-  organizationInvites: defineTable({
-    organizationId: v.id("organizations"),
-    email: v.string(),
-    role: v.union(v.literal("admin"), v.literal("member")),
-    invitedBy: v.id("users"),
-    invitedAt: v.number(),
-    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("expired")),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_email", ["email"])
-    .index("by_organization_and_status", ["organizationId", "status"]),
-
-  // Org-private DevApps. One publication per source project; updates point at
-  // a new immutable artifact release. Legacy recipe fields remain optional so
-  // empty historical docs still validate.
   devAppPublications: defineTable({
     projectId: v.id("projects"),
     organizationId: v.optional(v.id("organizations")),
@@ -565,8 +522,8 @@ export default defineSchema({
     description: v.optional(v.string()),
     logoDataUrl: v.optional(v.string()),
     status: v.union(v.literal("active"), v.literal("archived")),
-    createdBy: v.id("users"),
-    updatedBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
+    updatedBy: v.id("devicePrincipals"),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -596,7 +553,7 @@ export default defineSchema({
     runtimeSourceDigest: v.optional(v.string()),
     packageManifestDigest: v.optional(v.string()),
     runtimeImage: v.optional(devAppRuntimeReleaseImageValidator),
-    createdBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
     createdAt: v.number(),
   })
     .index("by_publication", ["publicationId"])
@@ -609,7 +566,7 @@ export default defineSchema({
   devAppArtifactUploads: defineTable({
     projectId: v.id("projects"),
     organizationId: v.id("organizations"),
-    createdBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
     storageId: v.optional(v.id("_storage")),
     contentHash: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
@@ -631,26 +588,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_runtime_build_id", ["runtimeBuildId"]),
 
-  projectTrustedDevices: defineTable({
-    projectId: v.id("projects"),
-    userId: v.optional(v.id("users")),
-    deviceId: v.string(),
-    deviceLabel: v.string(),
-    platform: v.optional(v.string()),
-    fingerprint: v.optional(v.string()),
-    role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
-    addedAt: v.number(),
-    addedByUserId: v.optional(v.id("users")),
-    addedByDeviceId: v.optional(v.string()),
-    lastSeenAt: v.optional(v.number()),
-    revokedAt: v.optional(v.number()),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_device", ["projectId", "deviceId"])
-    .index("by_project_and_user", ["projectId", "userId"])
-    .index("by_device", ["deviceId"]),
-
-  // Per-project storage accounting aggregate used for local/cloud repair jobs.
   projectStorageUsage: defineTable({
     projectId: v.id("projects"),
     totalBytes: v.number(),
@@ -670,19 +607,6 @@ export default defineSchema({
   }).index("by_project", ["projectId"]),
 
   // Project invites for pending team members
-  projectInvites: defineTable({
-    projectId: v.id("projects"),
-    email: v.string(),
-    role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
-    invitedBy: v.id("users"),
-    invitedAt: v.number(),
-    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("expired")),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_email", ["email"])
-    .index("by_project_and_status", ["projectId", "status"]),
-
-  // Shared project tasks created from the task board UI.
   projectTasks: defineTable({
     projectId: v.id("projects"),
     taskKey: v.string(),
@@ -692,9 +616,8 @@ export default defineSchema({
     deadlineDate: v.optional(v.string()),
     assignee: v.optional(
       v.object({
-        userId: v.optional(v.id("users")),
+        userId: v.optional(v.id("devicePrincipals")),
         name: v.string(),
-        email: v.optional(v.string()),
         avatarUrl: v.optional(v.string()),
       }),
     ),
@@ -711,12 +634,12 @@ export default defineSchema({
       }),
     ),
     checkedMarkerIds: v.array(v.string()),
-    createdBy: v.id("users"),
-    updatedBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
+    updatedBy: v.id("devicePrincipals"),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
-    completedBy: v.optional(v.id("users")),
+    completedBy: v.optional(v.id("devicePrincipals")),
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_task_key", ["projectId", "taskKey"]),
@@ -728,17 +651,17 @@ export default defineSchema({
     storageId: v.string(),
     status: v.union(v.literal("planned"), v.literal("active"), v.literal("done")),
     checkedMarkerIds: v.array(v.string()),
-    updatedBy: v.id("users"),
+    updatedBy: v.id("devicePrincipals"),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
-    completedBy: v.optional(v.id("users")),
+    completedBy: v.optional(v.id("devicePrincipals")),
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_source_and_storage", ["projectId", "source", "storageId"]),
 
   // Inbox items for task assignment and completion events.
   projectTaskNotifications: defineTable({
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     projectId: v.id("projects"),
     kind: v.union(v.literal("assigned"), v.literal("completed")),
     taskSource: v.union(
@@ -756,23 +679,42 @@ export default defineSchema({
       label: v.string(),
       title: v.string(),
     }),
-    actorUserId: v.optional(v.id("users")),
+    actorUserId: v.optional(v.id("devicePrincipals")),
     createdAt: v.number(),
   })
     .index("by_user_and_created", ["userId", "createdAt"])
     .index("by_project_and_created", ["projectId", "createdAt"]),
 
   // Project join links for personal-project collaboration sharing
+  projectDeviceEnrollments: defineTable({
+    projectId: v.id("projects"),
+    targetIdentityKey: v.string(),
+    role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("rejected"),
+      v.literal("cancelled"),
+      v.literal("expired"),
+    ),
+    createdBy: v.id("devicePrincipals"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_status", ["projectId", "status"])
+    .index("by_target_and_status", ["targetIdentityKey", "status"]),
+
   projectJoinLinks: defineTable({
     projectId: v.id("projects"),
     token: v.string(),
     role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     status: v.union(v.literal("active"), v.literal("revoked")),
-    createdBy: v.id("users"),
+    createdBy: v.id("devicePrincipals"),
     createdAt: v.number(),
     updatedAt: v.number(),
     revokedAt: v.optional(v.number()),
-    revokedBy: v.optional(v.id("users")),
+    revokedBy: v.optional(v.id("devicePrincipals")),
     useCount: v.number(),
     lastUsedAt: v.optional(v.number()),
   })
@@ -793,7 +735,7 @@ export default defineSchema({
     ),
 
     // Who has the lock (human)
-    lockedBy: v.optional(v.id("users")),
+    lockedBy: v.optional(v.id("devicePrincipals")),
     lockedAt: v.optional(v.number()),
 
     // Who has the lock (agent) - traffic light red
@@ -803,9 +745,9 @@ export default defineSchema({
     expiresAt: v.optional(v.number()), // Auto-expire for agent locks
 
     // For merge tracking
-    pendingMerges: v.optional(v.array(v.id("users"))), // Users with local changes waiting to merge
+    pendingMerges: v.optional(v.array(v.id("devicePrincipals"))), // Users with local changes waiting to merge
     lastMergedAt: v.optional(v.number()),
-    lastMergedBy: v.optional(v.id("users")),
+    lastMergedBy: v.optional(v.id("devicePrincipals")),
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_path", ["projectId", "filePath"])
@@ -818,7 +760,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     filePath: v.string(),
     deletedAt: v.number(),
-    deletedBy: v.optional(v.id("users")),
+    deletedBy: v.optional(v.id("devicePrincipals")),
     deletedByAgent: v.optional(v.string()),
     // TTL: tombstones auto-expire after 7 days
     expiresAt: v.number(),
@@ -848,7 +790,7 @@ export default defineSchema({
     previousVersionId: v.optional(v.id("projectFiles")),
 
     // Upload tracking
-    uploadedBy: v.id("users"),
+    uploadedBy: v.id("devicePrincipals"),
     uploadedAt: v.number(),
 
     // Status
@@ -868,29 +810,12 @@ export default defineSchema({
   // ============================================
 
   // Collaboration-capable device identities. Only public metadata is stored here.
-  collabDevices: defineTable({
-    userId: v.id("users"),
-    deviceId: v.string(),
-    deviceLabel: v.string(),
-    platform: v.string(),
-    publicKeyJwk: v.string(),
-    publicKeyAlgorithm: v.string(),
-    fingerprint: v.string(),
-    createdAt: v.number(),
-    lastSeenAt: v.number(),
-    revokedAt: v.optional(v.number()),
-  })
-    .index("by_user_and_device", ["userId", "deviceId"])
-    .index("by_device", ["deviceId"])
-    .index("by_user", ["userId"]),
-
-  // One logical room-key record per encrypted collaboration room/version.
   projectCollabRoomKeys: defineTable({
     projectId: v.id("projects"),
     roomId: v.string(),
     keyVersion: v.number(),
     status: v.union(v.literal("active"), v.literal("rotating"), v.literal("revoked")),
-    createdByUserId: v.id("users"),
+    createdByUserId: v.id("devicePrincipals"),
     createdByDeviceId: v.string(),
     createdAt: v.number(),
     rotatedAt: v.optional(v.number()),
@@ -903,7 +828,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     roomId: v.string(),
     keyVersion: v.number(),
-    recipientUserId: v.id("users"),
+    recipientUserId: v.id("devicePrincipals"),
     recipientDeviceId: v.string(),
     senderDeviceId: v.string(),
     senderPublicKeyJwk: v.string(),
@@ -920,7 +845,7 @@ export default defineSchema({
   projectCollabKeyRequests: defineTable({
     projectId: v.id("projects"),
     roomId: v.string(),
-    recipientUserId: v.id("users"),
+    recipientUserId: v.id("devicePrincipals"),
     recipientDeviceId: v.string(),
     recipientPublicKeyJwk: v.string(),
     recipientFingerprint: v.string(),
@@ -940,7 +865,7 @@ export default defineSchema({
     wrappedKey: v.string(),
     salt: v.string(),
     iterations: v.number(),
-    createdByUserId: v.id("users"),
+    createdByUserId: v.id("devicePrincipals"),
     createdByDeviceId: v.string(),
     createdAt: v.number(),
     revokedAt: v.optional(v.number()),
@@ -1000,11 +925,10 @@ export default defineSchema({
   // Project presence - tracks who is actively viewing/editing a project
   projectPresence: defineTable({
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
 
     // User display info (denormalized for fast reads)
     userName: v.string(),
-    userEmail: v.string(),
     userAvatarUrl: v.optional(v.string()),
 
     // Activity tracking
@@ -1038,7 +962,7 @@ export default defineSchema({
   // File changes - tracks individual file edits for activity feed
   fileChanges: defineTable({
     projectId: v.id("projects"),
-    userId: v.optional(v.id("users")), // Optional for agent changes
+    userId: v.optional(v.id("devicePrincipals")), // Optional for agent changes
     checkpointGroupId: v.optional(v.string()),
 
     // File info
@@ -1084,7 +1008,7 @@ export default defineSchema({
   changeComments: defineTable({
     changeId: v.id("fileChanges"),
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
 
     // Comment content
     content: v.string(),
@@ -1112,7 +1036,7 @@ export default defineSchema({
     commentId: v.id("changeComments"),
     changeId: v.id("fileChanges"),
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     emoji: v.string(),
     createdAt: v.number(),
   })
@@ -1133,7 +1057,7 @@ export default defineSchema({
     description: v.optional(v.string()),
     category: v.string(), // image, audio, video, document, other
     tags: v.optional(v.array(v.string())),
-    uploadedBy: v.id("users"),
+    uploadedBy: v.id("devicePrincipals"),
     uploadedAt: v.number(),
     aiAnalysis: v.optional(
       v.object({
@@ -1156,7 +1080,7 @@ export default defineSchema({
   // ============================================
   deploymentJobs: defineTable({
     projectId: v.id("projects"),
-    requestedBy: v.id("users"),
+    requestedBy: v.id("devicePrincipals"),
     target: v.union(v.literal("preview"), v.literal("production")),
     provider: v.union(v.literal("railway")),
     commitSha: v.optional(v.string()),

@@ -54,7 +54,7 @@ describe('desktop-first loading architecture', () => {
     const session = read('apps/desktop/src/lib/deviceSession.ts')
 
     expect(auth).toContain('const [user, setUser] = useState<User | null>(() => bootstrapSession?.user ?? null)')
-    expect(auth).toContain('const [convexUserId, setConvexUserId] = useState<Id<"users"> | null>(null)')
+    expect(auth).toContain('const [principalId, setConvexUserId] = useState<Id<"devicePrincipals"> | null>(null)')
     expect(auth).toContain('const [accessToken, setAccessToken] = useState<string | null>(null)')
     expect(auth).toContain('bootstrapLocalDeviceSession({ force: true })')
     expect(session).not.toContain('seedDeviceSession')

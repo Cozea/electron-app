@@ -168,7 +168,7 @@ export class ReconnectionProtocol {
             // Get who deleted it
             let deletedBy: string | null = null
             if (tombstone.deletedBy) {
-              const user = await this.convex.query(api.users.getById, {
+              const user = await this.convex.query(api.devicePrincipals.getById, {
                 userId: tombstone.deletedBy,
               })
               if (user) {

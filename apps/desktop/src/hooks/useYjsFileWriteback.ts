@@ -25,7 +25,7 @@ export function useYjsFileWriteback(
   workspaceId: string | null,
   _gitCwd: string | null,
   projectId: Id<'projects'> | null,
-  userId: Id<'users'> | null
+  userId: Id<'devicePrincipals'> | null
 ): void {
   const pendingWritesRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const DEBOUNCE_MS = 500 // Wait 500ms after last change before writing

@@ -3,7 +3,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel";
 export type ProjectInviteRole = "project_manager" | "developer" | "designer" | "viewer";
 
 export type InviteLookupUser = {
-  id: Id<"users">;
+  id: Id<"devicePrincipals">;
   email: string;
   firstName?: string | null;
   lastName?: string | null;
@@ -20,7 +20,7 @@ export interface ProjectRepoAccessRecord {
   accessState: "pending" | "granted" | "needs_identity" | "manual_required" | "revoked" | "error";
   errorMessage?: string;
   inviteEmail?: string;
-  memberUserId?: Id<"users">;
+  memberUserId?: Id<"devicePrincipals">;
   providerAccountHandle?: string;
 }
 

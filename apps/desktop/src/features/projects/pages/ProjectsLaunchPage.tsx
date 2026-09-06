@@ -18,7 +18,7 @@ import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 import { featureFlags } from "@/lib/featureFlags"
 
 export function ProjectsLaunchPage() {
-  const { convexUserId, user } = useAuth()
+  const { principalId, user } = useAuth()
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const workspaceSelectionId = user?.id ?? "local-device"
@@ -37,7 +37,7 @@ export function ProjectsLaunchPage() {
   const shouldUseLegacyRestore = !featureFlags.desktopBootstrap && Boolean(legacyLastWorkbenchRoute)
   const restoredProject = useQuery(
     api.projects.getAccessibleById,
-    shouldUseLegacyRestore && legacyLastWorkbenchRoute?.projectId && convexUserId
+    shouldUseLegacyRestore && legacyLastWorkbenchRoute?.projectId && principalId
       ? {
           projectId: legacyLastWorkbenchRoute.projectId as Id<"projects">,
         }

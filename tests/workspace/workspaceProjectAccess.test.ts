@@ -17,7 +17,7 @@ interface OrganizationDoc {
 }
 
 interface UserDoc {
-  _id: Id<'users'>
+  _id: Id<'devicePrincipals'>
   workosId: string
   email: string
 }
@@ -25,7 +25,7 @@ interface UserDoc {
 interface MemberDoc {
   _id: Id<'members'>
   organizationId: Id<'organizations'>
-  userId: Id<'users'>
+  userId: Id<'devicePrincipals'>
   role: OrganizationRole
   roleId?: Id<'organizationRoles'> | null
   permissionGrants?: string[]
@@ -40,16 +40,16 @@ interface ProjectDoc {
   slug: string
   name: string
   status: ProjectStatus
-  createdBy: Id<'users'>
+  createdBy: Id<'devicePrincipals'>
 }
 
 interface ProjectMemberDoc {
   _id: Id<'projectMembers'>
   projectId: Id<'projects'>
-  userId: Id<'users'>
+  userId: Id<'devicePrincipals'>
   role: ProjectRole
   addedAt: number
-  addedBy: Id<'users'>
+  addedBy: Id<'devicePrincipals'>
 }
 
 interface OrganizationRoleDoc {
@@ -149,7 +149,7 @@ function createCtx(tables: Partial<TestTables>) {
 
 describe('workspace project access', () => {
   it('keeps personal workspace owner access without a project membership row', async () => {
-    const ownerId = asId<'users'>('user_owner')
+    const ownerId = asId<'devicePrincipals'>('user_owner')
     const personalOrgId = asId<'organizations'>('org_personal')
     const projectId = asId<'projects'>('project_personal_owner')
     const ctx = createCtx({
@@ -176,8 +176,8 @@ describe('workspace project access', () => {
   })
 
   it('preserves personal project invite access for invited viewers', async () => {
-    const ownerId = asId<'users'>('user_owner')
-    const inviteeId = asId<'users'>('user_invited')
+    const ownerId = asId<'devicePrincipals'>('user_owner')
+    const inviteeId = asId<'devicePrincipals'>('user_invited')
     const personalOrgId = asId<'organizations'>('org_personal_invite')
     const projectId = asId<'projects'>('project_personal_invite')
     const ctx = createCtx({
@@ -215,8 +215,8 @@ describe('workspace project access', () => {
   })
 
   it('keeps explicit org project membership authoritative for project edit access', async () => {
-    const ownerId = asId<'users'>('user_workspace_owner')
-    const userId = asId<'users'>('user_project_editor')
+    const ownerId = asId<'devicePrincipals'>('user_workspace_owner')
+    const userId = asId<'devicePrincipals'>('user_project_editor')
     const orgId = asId<'organizations'>('org_workspace_editor')
     const projectId = asId<'projects'>('project_workspace_editor')
     const ctx = createCtx({

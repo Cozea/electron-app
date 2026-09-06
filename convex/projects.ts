@@ -1,21 +1,3 @@
-import { ConvexError, v } from "convex/values"
-
-import { internal } from "./_generated/api"
-import type { Doc, Id, TableNames } from "./_generated/dataModel"
-import {
-  internalMutation,
-  query as baseQuery,
-  type MutationCtx,
-  type QueryCtx,
-} from "./_generated/server"
-import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
-import { requireAuthenticatedDevice } from "./lib/deviceAuth"
-import {
-  buildPendingProjectInviteRecord,
-  findPendingProjectInviteByEmail,
-  findUserByNormalizedEmail,
-  normalizeProjectInviteEmail,
-} from "./lib/projectSharing"
 import {
   canAccessProject,
   canArchiveProject,
@@ -34,14 +16,6 @@ import {
   type ProjectsPageResult,
 } from "./lib/projectPagination"
 import { isOrgMember } from "./lib/orgAccess"
-
-type ProjectTeamSeedMember = {
-  email: string
-  name?: string
-  role: Doc<"projectMembers">["role"]
-  isCurrentUser?: boolean
-  profileImageUrl?: string | null
-}
 
 type RepoSourceInput = {
   provider: string
@@ -81,7 +55,7 @@ const generatedPlanValidator = v.object({
 
 async function listCollaboratorProjectsForUser(
   ctx: Pick<QueryCtx | MutationCtx, "db">,
-  userId: Id<"users">,
+  userId: Id<"devicePrincipals">,
 ): Promise<
   Array<
     Doc<"projects"> & {
@@ -149,101 +123,6 @@ async function ensureUniqueSlug(
 
     slug = `${baseSlug}-${counter}`
     counter += 1
-  }
-}
-
-async function seedProjectTeamAccess(
-  ctx: Pick<MutationCtx, "db">,
-  args: {
-    projectId: Id<"projects">
-    actorUserId: Id<"users">
-    team?: ProjectTeamSeedMember[]
-    now: number
-  },
-): Promise<void> {
-  const teamMembers = args.team ?? []
-  if (teamMembers.length === 0) {
-    return
-  }
-
-  const actor = await ctx.db.get(args.actorUserId)
-  if (!actor) {
-    throw new Error("Actor not found")
-  }
-
-  const seenEmails = new Set<string>([normalizeProjectInviteEmail(actor.email)])
-
-  const existingMembers = await ctx.db
-    .query("projectMembers")
-    .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-    .collect()
-  const existingMemberUserIds = new Set(existingMembers.map((member) => String(member.userId)))
-
-  const pendingInvites = await ctx.db
-    .query("projectInvites")
-    .withIndex("by_project_and_status", (q) =>
-      q.eq("projectId", args.projectId).eq("status", "pending"),
-    )
-    .collect()
-  const pendingInviteEmails = new Set(
-    pendingInvites.map((invite) => normalizeProjectInviteEmail(invite.email)),
-  )
-
-  for (const member of teamMembers) {
-    const normalizedEmail = normalizeProjectInviteEmail(member.email)
-    if (!normalizedEmail || seenEmails.has(normalizedEmail)) {
-      continue
-    }
-    seenEmails.add(normalizedEmail)
-
-    const existingUser = await findUserByNormalizedEmail(ctx, normalizedEmail)
-
-    if (existingUser && String(existingUser._id) === String(args.actorUserId)) {
-      continue
-    }
-
-    if (existingUser) {
-      if (existingMemberUserIds.has(String(existingUser._id))) {
-        continue
-      }
-
-      await ctx.db.insert("projectMembers", {
-        projectId: args.projectId,
-        userId: existingUser._id,
-        contactEmail: normalizedEmail,
-        role: member.role,
-        addedAt: args.now,
-        addedBy: args.actorUserId,
-      })
-      existingMemberUserIds.add(String(existingUser._id))
-      continue
-    }
-
-    if (pendingInviteEmails.has(normalizedEmail)) {
-      continue
-    }
-
-    const existingInvite = await findPendingProjectInviteByEmail(
-      ctx,
-      args.projectId,
-      normalizedEmail,
-    )
-    if (existingInvite) {
-      pendingInviteEmails.add(normalizedEmail)
-      continue
-    }
-
-    await ctx.db.insert(
-      "projectInvites",
-      buildPendingProjectInviteRecord({
-        projectId: args.projectId,
-        email: normalizedEmail,
-        role: member.role,
-        invitedBy: args.actorUserId,
-        invitedAt: args.now,
-      }),
-    )
-    pendingInviteEmails.add(normalizedEmail)
   }
 }
 
@@ -329,7 +208,7 @@ async function upsertProjectArtifacts(
 
 export const create = mutation({
   args: {
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     name: v.string(),
     creationPath: v.union(v.literal("fresh"), v.literal("repo")),
     description: v.optional(v.string()),
@@ -496,13 +375,6 @@ export const create = mutation({
       addedBy: args.userId,
     })
 
-    await seedProjectTeamAccess(ctx, {
-      projectId,
-      actorUserId: args.userId,
-      team: args.team,
-      now,
-    })
-
     return {
       projectId,
       slug,
@@ -521,7 +393,7 @@ export const get = query({
 export const applyInitialTeamSetup = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
+    actorUserId: v.id("devicePrincipals"),
     team: v.array(
       v.object({
         email: v.string(),
@@ -543,20 +415,13 @@ export const applyInitialTeamSetup = mutation({
       throw new ConvexError("Only project managers can update the project team")
     }
 
-    await seedProjectTeamAccess(ctx, {
-      projectId: args.projectId,
-      actorUserId: args.actorUserId,
-      team: args.team,
-      now: Date.now(),
-    })
-
     return { ok: true }
   },
 })
 
 export const listForCurrentUser = query({
   args: {
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     return listCollaboratorProjectsForUser(ctx, args.userId)
@@ -570,7 +435,7 @@ export const listForCurrentUser = query({
  */
 export const listSummariesForCurrentUser = query({
   args: {
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const projects = await listCollaboratorProjectsForUser(ctx, args.userId)
@@ -594,7 +459,7 @@ export const listSummariesForCurrentUser = query({
 
 export const listPageForCurrentUser = query({
   args: {
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     statusFilter: v.union(
       v.literal("all"),
       v.literal("active"),
@@ -646,7 +511,7 @@ export const getAccessibleById = baseQuery({
 export const getAccessibleBySlug = query({
   args: {
     slug: v.string(),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const slug = args.slug.trim()
@@ -708,7 +573,7 @@ export const getAccessibleBySlug = query({
 export const update = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
     audience: v.optional(v.string()),
@@ -773,7 +638,7 @@ export const update = mutation({
 export const getArtifacts = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const canAccess = await canAccessProject(ctx, args.projectId, args.userId)
@@ -808,7 +673,7 @@ export const getArtifacts = query({
 export const setSourceControl = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     provider: v.string(),
     repoUrl: v.string(),
     defaultBranch: v.optional(v.string()),
@@ -867,7 +732,7 @@ export const setSourceControl = mutation({
 export const updateStatus = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     // Lifecycle statuses only. "archived"/"deleted" are intentionally excluded:
     // they must go through archive/deleteProject, which enforce
     // canArchiveProject and (for delete) name confirmation. Allowing them here
@@ -898,7 +763,7 @@ export const updateStatus = mutation({
 export const archive = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const canArchive = await canArchiveProject(ctx, args.projectId, args.userId)
@@ -918,7 +783,7 @@ export const archive = mutation({
 export const restore = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const canArchive = await canArchiveProject(ctx, args.projectId, args.userId)
@@ -938,7 +803,7 @@ export const restore = mutation({
 export const deleteProject = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     confirmName: v.string(),
   },
   handler: async (ctx, args) => {
@@ -1076,14 +941,6 @@ async function deleteProjectPurgeStage(
     case 9: {
       const rows = await ctx.db
         .query("projectMembers")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 10: {
-      const rows = await ctx.db
-        .query("projectTrustedDevices")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)

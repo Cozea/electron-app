@@ -77,11 +77,11 @@ export function NavUser({
   user: RawUser | FormattedUser | null | undefined
 }) {
   const { theme, setTheme } = useTheme()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
   const fallback = formatFallbackUser(user, t("nav.thisComputer"))
-  const principal = useQuery(api.users.getCurrent, convexUserId ? {} : "skip")
+  const principal = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip")
 
   const menuTitle = principal?.deviceLabel?.trim() || fallback.name || t("nav.thisComputer")
   const avatarUrl = principal?.profileImageUrl ?? fallback.profileImageUrl ?? null

@@ -155,7 +155,7 @@ async function loadCheckpointPatch(input: {
 export interface ActivityFeedItem {
   id: Id<'fileChanges'>
   checkpointGroupId?: string
-  userId?: Id<'users'>
+  userId?: Id<'devicePrincipals'>
   filePath: string
   oldPath?: string
   changeType: 'create' | 'modify' | 'delete' | 'rename'

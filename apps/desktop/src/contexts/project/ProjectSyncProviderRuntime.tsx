@@ -35,7 +35,7 @@ function AgentFileSyncBridge({
   children,
 }: {
   projectId: Id<"projects"> | null
-  userId: Id<"users"> | null
+  userId: Id<"devicePrincipals"> | null
   workspaceId: string | null
   gitCwd: string | null
   children: ReactNode
@@ -85,7 +85,7 @@ export function ProjectSyncProviderRuntime({
   renderDeleteConflictDialog = true,
 }: ProjectSyncProviderRuntimeProps) {
   const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
-  const resolvedUserId = (userId ?? "__inactive_user__") as Id<"users">
+  const resolvedUserId = (userId ?? "__inactive_user__") as Id<"devicePrincipals">
   const resolvedUserName = userName ?? "User"
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)

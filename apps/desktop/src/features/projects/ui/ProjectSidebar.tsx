@@ -152,7 +152,7 @@ export function ProjectSidebar({
     select: (location) => new URLSearchParams(location.search).get("view"),
   });
   const { openProjectCreationMenu } = useProjectCreationMenu();
-  const { convexUserId } = useAuth();
+  const { principalId } = useAuth();
   const convex = useConvex();
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project: currentProject, projectIdParam } = useAccessibleProject();
@@ -210,15 +210,15 @@ export function ProjectSidebar({
   // subscribes only to the fields it renders (no generatedPlan/buildContract).
   const accessibleProjects = useQuery(
     api.projects.listSummariesForCurrentUser,
-    convexUserId
+    principalId
       ? {
-          userId: convexUserId,
+          userId: principalId,
         }
       : "skip",
   );
   const publisherStatus = useQuery(
     api.devApps.listPublisherStatus,
-    featureFlags.projectDevApps && convexUserId ? {} : "skip",
+    featureFlags.projectDevApps && principalId ? {} : "skip",
   );
   const projectDevAppStateByProjectId = React.useMemo(
     () =>
@@ -540,7 +540,7 @@ export function ProjectSidebar({
     }
   }, [projectSyncContext]);
 
-  const isProjectsLoading = Boolean(convexUserId) && accessibleProjects === undefined;
+  const isProjectsLoading = Boolean(principalId) && accessibleProjects === undefined;
   const currentWorkbenchPath = currentProjectId
     ? `${buildProjectPath(currentProjectId)}/workbench`
     : null;
@@ -650,7 +650,7 @@ export function ProjectSidebar({
       // Signed out, the old combined guard dropped the click with no dialog and
       // no log, so Publish looked like it did nothing at all.
       if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
-      if (!convexUserId) {
+      if (!principalId) {
         console.warn("[orgDevApp] Publish blocked: no authenticated Convex user.");
         await window.electronAPI.dialog.showMessageBox({
           type: "error",
@@ -705,7 +705,7 @@ export function ProjectSidebar({
         setDevAppPublishing(null);
       }
     },
-    [convex, convexUserId, t],
+    [convex, principalId, t],
   );
 
   const continuePublishAfterOrg = React.useCallback(
@@ -727,7 +727,7 @@ export function ProjectSidebar({
       mode: SidebarDevAppPublishMode,
     ) => {
       if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
-      if (!convexUserId) {
+      if (!principalId) {
         console.warn("[orgDevApp] Publish request blocked: no authenticated Convex user.");
         await window.electronAPI.dialog.showMessageBox({
           type: "error",
@@ -755,7 +755,7 @@ export function ProjectSidebar({
 
       await continuePublishAfterOrg(project, workspaceId, mode);
     },
-    [continuePublishAfterOrg, convexUserId, t],
+    [continuePublishAfterOrg, principalId, t],
   );
 
   const handleConfirmProjectDevAppLogo = React.useCallback(
@@ -791,7 +791,7 @@ export function ProjectSidebar({
 
   const handleConfirmRenameProject = React.useCallback(
     async (nextName: string) => {
-      if (!projectPendingRename || !convexUserId || isRenamingProject) return;
+      if (!projectPendingRename || !principalId || isRenamingProject) return;
 
       const trimmedName = nextName.trim();
       if (!trimmedName || trimmedName === projectPendingRename.name) return;
@@ -801,7 +801,7 @@ export function ProjectSidebar({
       try {
         await updateProject({
           projectId: projectPendingRename._id,
-          userId: convexUserId,
+          userId: principalId,
           name: trimmedName,
         });
         setProjectPendingRename(null);
@@ -816,12 +816,12 @@ export function ProjectSidebar({
         setIsRenamingProject(false);
       }
     },
-    [convexUserId, isRenamingProject, projectPendingRename, updateProject],
+    [principalId, isRenamingProject, projectPendingRename, updateProject],
   );
 
   const handleArchiveProject = React.useCallback(
     async (project: SidebarProjectItem) => {
-      if (!convexUserId) return;
+      if (!principalId) return;
 
       const result = await window.electronAPI.dialog.showMessageBox({
         type: "warning",
@@ -840,7 +840,7 @@ export function ProjectSidebar({
       try {
         await archiveProject({
           projectId: project._id,
-          userId: convexUserId,
+          userId: principalId,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to archive project";
@@ -855,12 +855,12 @@ export function ProjectSidebar({
         });
       }
     },
-    [archiveProject, convexUserId],
+    [archiveProject, principalId],
   );
 
   const handleRestoreProject = React.useCallback(
     async (project: SidebarProjectItem) => {
-      if (!convexUserId) return;
+      if (!principalId) return;
 
       const result = await window.electronAPI.dialog.showMessageBox({
         type: "question",
@@ -879,7 +879,7 @@ export function ProjectSidebar({
       try {
         await restoreProject({
           projectId: project._id,
-          userId: convexUserId,
+          userId: principalId,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to restore project";
@@ -894,7 +894,7 @@ export function ProjectSidebar({
         });
       }
     },
-    [convexUserId, restoreProject],
+    [principalId, restoreProject],
   );
 
   const handleStartDeleteProject = React.useCallback((project: SidebarProjectItem) => {
@@ -904,7 +904,7 @@ export function ProjectSidebar({
 
   const handleConfirmDeleteProject = React.useCallback(
     async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
-      if (!projectPendingDelete || !convexUserId || isDeletingProject) {
+      if (!projectPendingDelete || !principalId || isDeletingProject) {
         return;
       }
 
@@ -916,7 +916,7 @@ export function ProjectSidebar({
         await withProjectMutationTimeout(
           deleteProject({
             projectId: deletedProject._id,
-            userId: convexUserId,
+            userId: principalId,
             // Server still validates the name; UI no longer requires retyping it.
             confirmName: deletedProject.name,
           }),
@@ -944,7 +944,7 @@ export function ProjectSidebar({
         setIsDeletingProject(false);
       }
     },
-    [convexUserId, deleteProject, isDeletingProject, navigate, projectPendingDelete],
+    [principalId, deleteProject, isDeletingProject, navigate, projectPendingDelete],
   );
 
   const handleSyncProject = React.useCallback(
@@ -1109,7 +1109,7 @@ export function ProjectSidebar({
                           ? "published"
                           : "unpublished",
                       devAppPublishingMode: isPublishingDevApp ? devAppPublishing.mode : null,
-                      canPublishDevApp: featureFlags.projectDevApps && Boolean(convexUserId),
+                      canPublishDevApp: featureFlags.projectDevApps && Boolean(principalId),
                       prefetchedLaneState:
                         project.id === currentProjectId ? displayedCurrentLaneState : undefined,
                       prefetchedActiveLane:
@@ -1224,7 +1224,7 @@ export function ProjectSidebar({
               }
             }}
             onAttach={async (organizationId) => {
-              if (!convexUserId || !projectPendingOrgAttach) return;
+              if (!principalId || !projectPendingOrgAttach) return;
               const pending = projectPendingOrgAttach;
               await attachProjectToOrg({
                 organizationId,
@@ -1238,7 +1238,7 @@ export function ProjectSidebar({
               );
             }}
             onCreate={async (name) => {
-              if (!convexUserId || !projectPendingOrgAttach) return;
+              if (!principalId || !projectPendingOrgAttach) return;
               const pending = projectPendingOrgAttach;
               const created = await createAndAttachProjectOrg({
                 projectId: pending.project._id,

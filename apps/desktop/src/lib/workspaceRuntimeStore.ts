@@ -32,7 +32,7 @@ const BACKGROUND_FROZEN_IDLE_MS = 10 * 60 * 1000
 export interface WorkspaceRuntimeConfig {
   workspaceId: string
   projectId: Id<"projects"> | null
-  userId: Id<"users"> | null
+  userId: Id<"devicePrincipals"> | null
   userName: string | null
   projectSlug: string | null
   laneId: string

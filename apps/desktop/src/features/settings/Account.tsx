@@ -51,14 +51,14 @@ function initials(value: string): string {
 }
 
 export function Account({ surface = "page", route: _route }: AccountProps) {
-  const { user, convexUserId } = useAuth();
+  const { user, principalId } = useAuth();
   const { t } = useTranslation();
 
-  const profile = useQuery(api.users.getCurrent, convexUserId ? {} : "skip");
+  const profile = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip");
 
-  const updatePreferencesMutation = useMutation(api.users.updatePreferences);
-  const updateDevicePresentation = useMutation(api.users.updateDevicePresentation);
-  const revokeCurrentDevice = useMutation(api.users.revokeCurrentDevice);
+  const updatePreferencesMutation = useMutation(api.devicePrincipals.updatePreferences);
+  const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation);
+  const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({
@@ -96,7 +96,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const presentationDirty = normalizedDeviceName !== savedDeviceName || avatarUrl !== savedAvatarUrl
 
   const handlePrefChange = async (key: keyof UserPrefs, value: boolean) => {
-    if (!convexUserId) return;
+    if (!principalId) return;
 
     const newPrefs = { ...userPrefs, [key]: value };
     setUserPrefs(newPrefs);
@@ -112,7 +112,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   };
 
   const savePresentation = async () => {
-    if (!convexUserId || !normalizedDeviceName || savingPresentation || processingAvatar) return
+    if (!principalId || !normalizedDeviceName || savingPresentation || processingAvatar) return
     setSavingPresentation(true)
     setPresentationError(null)
     try {

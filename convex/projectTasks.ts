@@ -28,7 +28,7 @@ const TASK_MARKER_VALIDATOR = v.object({
   label: v.string(),
 })
 const TASK_ASSIGNEE_VALIDATOR = v.object({
-  userId: v.optional(v.id("users")),
+  userId: v.optional(v.id("devicePrincipals")),
   name: v.string(),
   email: v.optional(v.string()),
   avatarUrl: v.optional(v.string()),
@@ -48,7 +48,7 @@ type TaskMarker = {
   label: string
 }
 type TaskAssignee = {
-  userId?: Id<"users">
+  userId?: Id<"devicePrincipals">
   name: string
   email?: string
   avatarUrl?: string
@@ -151,7 +151,7 @@ function sanitizeContext(context: TaskContext): TaskContext {
 async function getAccessibleProject(
   ctx: Pick<MutationCtx | QueryCtx, "db">,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<Doc<"projects">> {
   const canAccess = await canAccessProjectByWorkspaceOrMembership(
     ctx,
@@ -181,7 +181,7 @@ async function assertAssignableAssignee(
   const projectMembership = await ctx.db
     .query("projectMembers")
     .withIndex("by_project_and_user", (q) =>
-      q.eq("projectId", project._id).eq("userId", assignee.userId as Id<"users">)
+      q.eq("projectId", project._id).eq("userId", assignee.userId as Id<"devicePrincipals">)
     )
     .first()
 
@@ -198,7 +198,7 @@ async function insertAssignmentNotification(
   taskStorageId: string,
   taskTitle: string,
   taskContext: TaskContext,
-  actorUserId: Id<"users">
+  actorUserId: Id<"devicePrincipals">
 ): Promise<void> {
   if (!assignee?.userId) return
 
@@ -218,7 +218,7 @@ async function insertAssignmentNotification(
 async function insertCompletionNotifications(
   ctx: MutationCtx,
   project: Doc<"projects">,
-  actorUserId: Id<"users">,
+  actorUserId: Id<"devicePrincipals">,
   taskSource: TaskSource,
   taskStorageId: string,
   taskTitle: string,
@@ -254,7 +254,7 @@ async function insertCompletionNotifications(
 export const listForProject = query({
   args: {
     projectId: v.id("projects"),
-    viewerUserId: v.id("users"),
+    viewerUserId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     await getAccessibleProject(ctx, args.projectId, args.viewerUserId)
@@ -276,7 +276,7 @@ export const listForProject = query({
 export const listSharedStatesForProject = query({
   args: {
     projectId: v.id("projects"),
-    viewerUserId: v.id("users"),
+    viewerUserId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     await getAccessibleProject(ctx, args.projectId, args.viewerUserId)
@@ -291,7 +291,7 @@ export const listSharedStatesForProject = query({
 export const getOverlayTaskState = query({
   args: {
     projectId: v.id("projects"),
-    viewerUserId: v.id("users"),
+    viewerUserId: v.id("devicePrincipals"),
     source: TASK_SOURCE_VALIDATOR,
     storageId: v.string(),
   },
@@ -333,7 +333,7 @@ export const getOverlayTaskState = query({
 
 export const listInboxForUser = query({
   args: {
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const notifications = await ctx.db
@@ -380,7 +380,7 @@ export const listInboxForUser = query({
 export const createManualTask = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
+    actorUserId: v.id("devicePrincipals"),
     taskKey: v.string(),
     title: v.string(),
     description: v.string(),
@@ -451,7 +451,7 @@ export const createManualTask = mutation({
 export const setManualTaskCheckedMarkers = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
+    actorUserId: v.id("devicePrincipals"),
     taskKey: v.string(),
     checkedMarkerIds: v.array(v.string()),
   },
@@ -503,7 +503,7 @@ export const setManualTaskCheckedMarkers = mutation({
 export const setSharedTaskCheckedMarkers = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
+    actorUserId: v.id("devicePrincipals"),
     source: SYNTHETIC_TASK_SOURCE_VALIDATOR,
     storageId: v.string(),
     totalMarkerCount: v.number(),
@@ -575,7 +575,7 @@ export const setSharedTaskCheckedMarkers = mutation({
 export const migrateLocalBoardState = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
+    actorUserId: v.id("devicePrincipals"),
     manualTasks: v.array(
       v.object({
         taskKey: v.string(),
@@ -703,7 +703,7 @@ export const migrateLocalBoardState = mutation({
 
 export const dismissInboxItems = mutation({
   args: {
-    userId: v.id("users"),
+    userId: v.id("devicePrincipals"),
     notificationIds: v.array(v.id("projectTaskNotifications")),
   },
   handler: async (ctx, args) => {

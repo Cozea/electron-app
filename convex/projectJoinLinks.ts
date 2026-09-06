@@ -56,7 +56,7 @@ export const getForProject = query({
   args: {
     projectId: v.id("projects"),
     // Transitional renderer argument. Authority is derived from ctx.auth.
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)
@@ -87,7 +87,7 @@ export const previewByToken = query({
   args: {
     token: v.string(),
     // Transitional only; current principal is derived from device auth.
-    viewerUserId: v.optional(v.id("users")),
+    viewerUserId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)
@@ -132,7 +132,7 @@ export const createOrUpdateActiveLink = mutation({
   args: {
     projectId: v.id("projects"),
     // Transitional renderer argument. Do not use it for authority.
-    actorUserId: v.optional(v.id("users")),
+    actorUserId: v.optional(v.id("devicePrincipals")),
     role: v.union(
       v.literal("project_manager"),
       v.literal("developer"),
@@ -199,7 +199,7 @@ export const createOrUpdateActiveLink = mutation({
 export const rotateLink = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.optional(v.id("users")),
+    actorUserId: v.optional(v.id("devicePrincipals")),
     role: v.union(
       v.literal("project_manager"),
       v.literal("developer"),
@@ -253,7 +253,7 @@ export const rotateLink = mutation({
 export const revokeLink = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.optional(v.id("users")),
+    actorUserId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)
@@ -291,7 +291,7 @@ export const joinByToken = mutation({
     // Transitional caller metadata. The authenticated canonical device is the
     // only identity used to create membership. These fields are removed once
     // the renderer contract is cut over.
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
     deviceId: v.optional(v.string()),
     deviceLabel: v.optional(v.string()),
     platform: v.optional(v.string()),

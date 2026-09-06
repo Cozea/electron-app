@@ -39,7 +39,7 @@ function normalizeWorkspaceId(workspaceId: string | null | undefined): string | 
 
 export function useProjectWorkspaceActions() {
   const navigate = useViewTransitionNavigate()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const updateProjectStatus = useMutation(api.projects.updateStatus)
   const cloneWorkspaceState = useProjectWorkbenchStore((state) => state.actions.cloneWorkspaceState)
   const closeRuntime = useWorkspaceRuntimeStore((state) => state.actions.closeRuntime)
@@ -80,11 +80,11 @@ export function useProjectWorkspaceActions() {
       // Finalize the create saga if this relink is the repair for a project
       // left stuck "provisioning" by an earlier crash. Other create flows
       // finalize on their own happy path; relink is the one that didn't.
-      if (project.status === "provisioning" && convexUserId) {
+      if (project.status === "provisioning" && principalId) {
         try {
           await updateProjectStatus({
             projectId: project._id,
-            userId: convexUserId,
+            userId: principalId,
             status: "active",
           })
         } catch (finalizeError) {
@@ -112,7 +112,7 @@ export function useProjectWorkspaceActions() {
 
       return nextWorkspaceId
     },
-    [cloneWorkspaceState, convexUserId, navigate, updateProjectStatus],
+    [cloneWorkspaceState, principalId, navigate, updateProjectStatus],
   )
 
   const closeProjectWorkspace = useCallback(

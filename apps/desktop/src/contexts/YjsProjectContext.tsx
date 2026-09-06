@@ -69,7 +69,7 @@ function randomDebugId(prefix: string): string {
 
 interface YjsProjectProviderProps {
   projectId: Id<"projects">
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
   userName: string
   workspaceId: string | null
   enabled?: boolean

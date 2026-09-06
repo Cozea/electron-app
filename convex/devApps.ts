@@ -203,7 +203,7 @@ export const getRuntimeBuildAuthorizationForServer = query({
     assertServerSecret(args.serverSecret)
     const [user, reservation] = await Promise.all([
       ctx.db
-        .query("users")
+        .query("devicePrincipals")
         .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
         .unique(),
       ctx.db.get(args.reservationId),
@@ -242,7 +242,7 @@ export const getRuntimePullAuthorizationForServer = query({
   handler: async (ctx, args) => {
     assertServerSecret(args.serverSecret)
     const user = await ctx.db
-      .query("users")
+      .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
       .unique()
     const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
@@ -273,7 +273,7 @@ export const getHostedRuntimeAuthorizationForServer = query({
   handler: async (ctx, args) => {
     assertServerSecret(args.serverSecret)
     const user = await ctx.db
-      .query("users")
+      .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
       .unique()
     const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
@@ -326,7 +326,7 @@ export const registerRuntimeBuildFromServer = mutation({
   handler: async (ctx, args) => {
     assertServerSecret(args.serverSecret)
     const user = await ctx.db
-      .query("users")
+      .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
       .unique()
     const reservation = await ctx.db.get(args.reservationId)

@@ -217,7 +217,7 @@ export const createDeviceEnrollment = mutation({
     }
 
     const targetUser = await ctx.db
-      .query("users")
+      .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey))
       .unique()
     if (!targetUser || targetUser.status === "revoked") {
@@ -349,7 +349,7 @@ export const cancelDeviceEnrollment = mutation({
 
 export const updateMemberRole = mutation({
   args: {
-    organizationId: v.id("organizations"), memberUserId: v.id("users"),
+    organizationId: v.id("organizations"), memberUserId: v.id("devicePrincipals"),
     role: v.union(v.literal("admin"), v.literal("member")),
   },
   handler: async (ctx, args) => {
@@ -374,7 +374,7 @@ export const updateMemberRole = mutation({
 })
 
 export const transferAdministration = mutation({
-  args: { organizationId: v.id("organizations"), memberUserId: v.id("users") },
+  args: { organizationId: v.id("organizations"), memberUserId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
     const { organization } = await requireOrgAdmin(ctx, args.organizationId, user._id)
@@ -397,7 +397,7 @@ export const createRecoveryGrantFromServer = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const actor = await ctx.db.query("users").withIndex("by_identity_key", (q) =>
+    const actor = await ctx.db.query("devicePrincipals").withIndex("by_identity_key", (q) =>
       q.eq("identityKey", normalizeDeviceIdentityKey(args.actorIdentityKey))).unique()
     if (!actor || actor.status === "revoked") throw new ConvexError("Active device not found")
     await requireOrgAdmin(ctx, args.organizationId, actor._id)
@@ -425,7 +425,7 @@ export const redeemRecoveryGrantFromServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const targetIdentityKey = normalizeDeviceIdentityKey(args.targetIdentityKey)
-    const target = await ctx.db.query("users").withIndex("by_identity_key", (q) =>
+    const target = await ctx.db.query("devicePrincipals").withIndex("by_identity_key", (q) =>
       q.eq("identityKey", targetIdentityKey)).unique()
     if (!target || target.status === "revoked") throw new ConvexError("Active replacement device not found")
     const grant = await ctx.db.query("organizationRecoveryGrants")
@@ -456,7 +456,7 @@ export const redeemRecoveryGrantFromServer = mutation({
 export const removeMember = mutation({
   args: {
     organizationId: v.id("organizations"),
-    memberUserId: v.id("users"),
+    memberUserId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)

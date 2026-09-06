@@ -8,8 +8,8 @@ export interface ProjectDevAppPublication {
   name: string;
   description?: string;
   status: "active" | "archived";
-  createdBy: Id<"users">;
-  updatedBy: Id<"users">;
+  createdBy: Id<"devicePrincipals">;
+  updatedBy: Id<"devicePrincipals">;
   createdAt: number;
   updatedAt: number;
 }
@@ -24,7 +24,7 @@ export interface ProjectDevAppRelease {
   devPort?: number;
   sourceRevision?: string;
   sourceFingerprint: string;
-  createdBy: Id<"users">;
+  createdBy: Id<"devicePrincipals">;
   createdAt: number;
 }
 
@@ -55,7 +55,7 @@ export interface AccessibleProjectDevApp {
 
 export type PublishProjectDevAppArgs = {
   projectId: Id<"projects">;
-  userId: Id<"users">;
+  userId: Id<"devicePrincipals">;
   name: string;
   description?: string;
   framework: string;

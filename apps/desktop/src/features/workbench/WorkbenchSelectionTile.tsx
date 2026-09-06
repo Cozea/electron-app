@@ -402,12 +402,12 @@ export function WorkbenchSelectionTile({
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const [developmentSources, setDevelopmentSources] = useState<DevAppDevelopmentSource[]>([])
   const normalizedRefSearch = searchQuery.trim()
   const parsedRef = useMemo(() => parseDevAppRef(normalizedRefSearch), [normalizedRefSearch])
   const isDevAppRefInput = normalizedRefSearch.startsWith(`${DEV_APP_REF_SCHEME}:`)
-  const canResolvePublicationRef = featureFlags.projectDevApps && Boolean(convexUserId)
+  const canResolvePublicationRef = featureFlags.projectDevApps && Boolean(principalId)
   const { installations } = useOrgDevAppInstallations()
   const resolvedPublicationRef = useQuery(
     api.devApps.resolveReference,

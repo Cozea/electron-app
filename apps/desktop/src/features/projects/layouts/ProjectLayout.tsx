@@ -88,14 +88,14 @@ interface ProjectLayoutLocationState {
  */
 function PendingTeamSetupEffect({
   projectId,
-  convexUserId,
+  principalId,
   projectSlug,
   projectName,
   runtimeWorkspaceId,
   routeProjectId,
 }: {
   projectId: Id<"projects">;
-  convexUserId: Id<"users">;
+  principalId: Id<"devicePrincipals">;
   projectSlug: string | null;
   projectName: string | null;
   runtimeWorkspaceId: string | null;
@@ -136,7 +136,7 @@ function PendingTeamSetupEffect({
       try {
         await applyInitialTeamSetup({
           projectId,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
           team: pendingTeamSetup,
         });
 
@@ -168,7 +168,7 @@ function PendingTeamSetupEffect({
     };
   }, [
     applyInitialTeamSetup,
-    convexUserId,
+    principalId,
     locationHref,
     runtimeWorkspaceId,
     navigate,
@@ -189,7 +189,7 @@ function PendingTeamSetupEffect({
  */
 function ProjectPresenceHeaderAddon({
   projectId,
-  convexUserId,
+  principalId,
   userName,
   userEmail,
   userAvatarUrl,
@@ -197,7 +197,7 @@ function ProjectPresenceHeaderAddon({
   projectBasePath,
 }: {
   projectId: Id<"projects"> | null;
-  convexUserId: Id<"users"> | null;
+  principalId: Id<"devicePrincipals"> | null;
   userName: string | null;
   userEmail: string | null;
   userAvatarUrl: string | null;
@@ -214,7 +214,7 @@ function ProjectPresenceHeaderAddon({
 
   const { otherUsers: presenceUsers } = useProjectPresence({
     projectId,
-    userId: convexUserId,
+    userId: principalId,
     userName,
     userEmail,
     userAvatarUrl,
@@ -251,7 +251,7 @@ export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
   const { t } = useTranslation();
-  const { convexUserId, isConvexAuthReady, user } = useAuth();
+  const { principalId, isConvexAuthReady, user } = useAuth();
   // Narrow location subscriptions: subscribing to the whole location object
   // re-renders this layout (and everything under it) on every navigation,
   // including no-op clicks to the current URL.
@@ -275,16 +275,16 @@ export function ProjectLayout({
   // Get project data (with caching)
   const freshProjectById = useQuery(
     api.projects.getAccessibleById,
-    routeProjectId && convexUserId
+    routeProjectId && principalId
       ? { projectId: routeProjectId as Id<"projects"> }
       : "skip",
   );
   const freshProjectBySlug = useQuery(
     api.projects.getAccessibleBySlug,
-    !routeProjectId && routeSlug && convexUserId
+    !routeProjectId && routeSlug && principalId
       ? {
           slug: routeSlug,
-          userId: convexUserId,
+          userId: principalId,
         }
       : "skip",
   );
@@ -461,7 +461,7 @@ export function ProjectLayout({
     () => (
       <ProjectPresenceHeaderAddon
         projectId={presenceGateOpen ? project?._id ?? null : null}
-        convexUserId={presenceGateOpen ? convexUserId ?? null : null}
+        principalId={presenceGateOpen ? principalId ?? null : null}
         userName={presenceGateOpen ? displayUserName : null}
         userEmail={presenceGateOpen ? user?.email || null : null}
         userAvatarUrl={shouldEnableProjectRuntime ? user?.profileImageUrl || null : null}
@@ -472,7 +472,7 @@ export function ProjectLayout({
     [
       presenceGateOpen,
       project?._id,
-      convexUserId,
+      principalId,
       isConvexAuthReady,
       displayUserName,
       user?.email,
@@ -775,10 +775,10 @@ export function ProjectLayout({
 
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
-      {project?._id && convexUserId ? (
+      {project?._id && principalId ? (
         <PendingTeamSetupEffect
           projectId={project._id}
-          convexUserId={convexUserId}
+          principalId={principalId}
           projectSlug={projectSlug}
           projectName={effectiveProjectName}
           runtimeWorkspaceId={runtimeWorkspaceId}
@@ -790,7 +790,7 @@ export function ProjectLayout({
           workspaceId={activeWorkspaceValue ? activeWorkspaceId : null}
           workspaceRevision={activeWorkspaceValue?.workspace.workspaceRevision ?? 1}
           projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-          userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
+          userId={shouldEnableProjectRuntime ? principalId ?? null : null}
           userName={displayUserName ?? "User"}
           laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
           projectSlug={projectSlug}

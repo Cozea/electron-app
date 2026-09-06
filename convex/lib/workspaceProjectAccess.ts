@@ -29,7 +29,7 @@ export interface WorkspaceProjectAccess {
 export async function getWorkspaceProjectAccess(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<WorkspaceProjectAccess> {
   const access = await getProjectAccessState(ctx, projectId, userId)
   return {
@@ -71,7 +71,7 @@ export function hasWorkspaceProjectPermission(
 export async function canAccessProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   return await canAccessProject(ctx, projectId, userId)
 }
@@ -79,7 +79,7 @@ export async function canAccessProjectByWorkspaceOrMembership(
 export async function canEditProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   return await canEditProject(ctx, projectId, userId)
 }
@@ -87,7 +87,7 @@ export async function canEditProjectByWorkspaceOrMembership(
 export async function canManageProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   return await canManageProject(ctx, projectId, userId)
 }
@@ -95,7 +95,7 @@ export async function canManageProjectByWorkspaceOrMembership(
 export async function canArchiveProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  userId: Id<"devicePrincipals">
 ): Promise<boolean> {
   return await canArchiveProject(ctx, projectId, userId)
 }

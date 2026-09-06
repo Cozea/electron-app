@@ -5,7 +5,7 @@ import type { PersonalWorkspaceMembership, User } from "@shared/types"
 export interface DeviceSession {
   accessToken: string
   expiresAt: number
-  convexUserId: Id<"users">
+  principalId: Id<"devicePrincipals">
   user: User
   personalWorkspace: PersonalWorkspaceMembership
 }
@@ -43,7 +43,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 function toBootstrapSession(session: DeviceSession): DesktopBootstrapSession {
   return {
     ...session,
-    convexUserId: String(session.convexUserId),
+    principalId: String(session.principalId),
   }
 }
 

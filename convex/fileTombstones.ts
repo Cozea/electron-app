@@ -15,7 +15,7 @@ export const createTombstone = mutation({
     projectId: v.id("projects"),
     filePath: v.string(),
     // Transitional caller field. Human/device attribution is derived from auth.
-    deletedBy: v.optional(v.id("users")),
+    deletedBy: v.optional(v.id("devicePrincipals")),
     deletedByAgent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

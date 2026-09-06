@@ -38,7 +38,7 @@ function relativePathFromExternalEvent(data: {
 export function useBinaryFileSync(
   projectId: Id<'projects'> | null,
   workspaceId: string | null,
-  userId: Id<'users'> | null
+  userId: Id<'devicePrincipals'> | null
 ): { pendingUploads: number } {
   const convex = useConvex()
   const binarySyncRef = useRef<BinaryFileSync | null>(null)

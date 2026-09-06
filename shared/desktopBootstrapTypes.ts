@@ -5,7 +5,7 @@ export const DESKTOP_BOOTSTRAP_VERSION = 1 as const
 export interface DesktopBootstrapSession {
   accessToken: string
   expiresAt: number
-  convexUserId: string
+  principalId: string
   user: User
   personalWorkspace: PersonalWorkspaceMembership
 }

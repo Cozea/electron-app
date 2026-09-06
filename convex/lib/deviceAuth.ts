@@ -6,7 +6,7 @@ import { isDeviceIdentityKey, isTokenIssuedAfterRevocationBoundary, normalizeDev
 
 type AuthenticatedCtx = Pick<QueryCtx | MutationCtx, "auth" | "db">
 
-export type DevicePrincipal = Doc<"users"> & {
+export type DevicePrincipal = Doc<"devicePrincipals"> & {
   identityKey: string
   deviceLabel: string
   platform: string
@@ -22,7 +22,7 @@ export type DevicePrincipal = Doc<"users"> & {
 }
 
 export function isRegisteredDevicePrincipal(
-  user: Doc<"users"> | null,
+  user: Doc<"devicePrincipals"> | null,
 ): user is DevicePrincipal {
   return Boolean(
     user &&
@@ -54,7 +54,7 @@ export async function requireAuthenticatedDevice(
     throw new ConvexError("Authenticated principal is not a Cozea device")
   }
   const user = await ctx.db
-    .query("users")
+    .query("devicePrincipals")
     .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey))
     .unique()
   if (!isRegisteredDevicePrincipal(user) || user.identityKey !== identityKey) {

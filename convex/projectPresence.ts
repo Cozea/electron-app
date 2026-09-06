@@ -16,7 +16,7 @@ const PRESENCE_TIMEOUT_MS = 60 * 1000
 export const heartbeat = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
     userName: v.optional(v.string()),
     userEmail: v.optional(v.string()),
     userAvatarUrl: v.optional(v.string()),
@@ -80,7 +80,7 @@ export const heartbeat = mutation({
 export const leave = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.optional(v.id("users")),
+    userId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)

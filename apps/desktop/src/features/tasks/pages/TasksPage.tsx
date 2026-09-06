@@ -789,13 +789,13 @@ export function TasksPage({
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
   const { project } = useAccessibleProject()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   // Plan pages live in the artifacts table (split off the project doc);
   // the query coalesces legacy inline fields server-side.
   const projectArtifacts = useQuery(
     api.projects.getArtifacts,
-    project?._id && convexUserId
-      ? { projectId: project._id, userId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, userId: principalId }
       : 'skip',
   )
   const syncContext = useOptionalProjectSyncContext()
@@ -826,14 +826,14 @@ export function TasksPage({
 
   const projectMembers = useQuery(
     api.projectMembers.listMembers,
-    project?._id && convexUserId
-      ? { projectId: project._id, viewerUserId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, viewerUserId: principalId }
       : 'skip',
   )
   const sharedManualTasks = useQuery(
     api.projectTasks.listForProject,
-    project?._id && convexUserId
-      ? { projectId: project._id, viewerUserId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, viewerUserId: principalId }
       : 'skip',
   )
 
@@ -1082,7 +1082,7 @@ export function TasksPage({
   useEffect(() => {
     if (
       !project?._id ||
-      !convexUserId ||
+      !principalId ||
       !projectId ||
       !defaultManualTaskContext ||
       typeof window === 'undefined'
@@ -1107,7 +1107,7 @@ export function TasksPage({
       try {
         await migrateLocalBoardState({
           projectId: project._id,
-          actorUserId: convexUserId,
+          actorUserId: principalId,
           manualTasks: storedManualTasks.map((task) => {
             const assignee = getPrimaryAssigneeRecord(task.claimants ?? [])
 
@@ -1118,7 +1118,7 @@ export function TasksPage({
               deadlineDate: task.deadlineDate,
               assignee: assignee
                 ? {
-                    userId: assignee.userId as Id<'users'> | undefined,
+                    userId: assignee.userId as Id<'devicePrincipals'> | undefined,
                     name: assignee.name,
                     email: assignee.email,
                     avatarUrl: assignee.avatarUrl ?? undefined,
@@ -1148,7 +1148,7 @@ export function TasksPage({
 
     void syncLocalState()
   }, [
-    convexUserId,
+    principalId,
     defaultManualTaskContext,
     migrateLocalBoardState,
     project?._id,
@@ -1337,7 +1337,7 @@ export function TasksPage({
   }
 
   async function handleCreateTask(): Promise<void> {
-    if (!project?._id || !convexUserId || !selectedDraftContext) return
+    if (!project?._id || !principalId || !selectedDraftContext) return
 
     const title = draftTitle.trim()
     const description = draftDescription.trim()
@@ -1352,14 +1352,14 @@ export function TasksPage({
 
       await createManualTask({
         projectId: project._id,
-        actorUserId: convexUserId,
+        actorUserId: principalId,
         taskKey: createTaskId(),
         title,
         description,
         deadlineDate: draftDeadlineDate || undefined,
         assignee: assignee
           ? {
-              userId: assignee.userId as Id<'users'> | undefined,
+              userId: assignee.userId as Id<'devicePrincipals'> | undefined,
               name: assignee.name,
               email: assignee.email,
               avatarUrl: assignee.avatarUrl ?? undefined,
@@ -1382,7 +1382,7 @@ export function TasksPage({
   }
 
   function handleToggleMarker(item: BoardItem, markerId: string): void {
-    if (!project?._id || !convexUserId) return
+    if (!project?._id || !principalId) return
 
     if (item.source !== 'manual') return
 
@@ -1400,7 +1400,7 @@ export function TasksPage({
 
     void setManualTaskCheckedMarkers({
       projectId: project._id,
-      actorUserId: convexUserId,
+      actorUserId: principalId,
       taskKey: item.storageId,
       checkedMarkerIds,
     })
@@ -1444,7 +1444,7 @@ export function TasksPage({
                 <Button
                   size="sm"
                   className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-                  disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks || project === null}
+                  disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
                   onClick={() => {
                     resetDraft()
                     setIsCreateDialogOpen(true)
@@ -1514,7 +1514,7 @@ export function TasksPage({
             <Button
               size="sm"
               className="h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs"
-              disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks || project === null}
+              disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
               onClick={() => {
                 resetDraft()
                 setIsCreateDialogOpen(true)
@@ -1561,7 +1561,7 @@ export function TasksPage({
                   <Button
                     type="button"
                     className="gap-2"
-                    disabled={!convexUserId || isCreatingTask || project === null}
+                    disabled={!principalId || isCreatingTask || project === null}
                     onClick={() => {
                       resetDraft()
                       setIsCreateDialogOpen(true)

@@ -90,7 +90,7 @@ export function WorkbenchOrgDevAppTile({
   containerApi,
 }: WorkbenchOrgDevAppTileProps) {
   const { t } = useTranslation()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const surfacePresentation = useDockviewBrowserSurfacePresentation(panelApi, containerApi)
   const [prepareError, setPrepareError] = useState<string | null>(null)
@@ -122,7 +122,7 @@ export function WorkbenchOrgDevAppTile({
 
   const remoteArtifact = useQuery(
     api.devApps.getArtifactUrl,
-    convexUserId && tile.devAppRef ? { ref: tile.devAppRef } : "skip",
+    principalId && tile.devAppRef ? { ref: tile.devAppRef } : "skip",
   )
   const artifact: ResolvedOrgDevAppArtifact | null | undefined =
     installedResolution === undefined ? undefined : (installedResolution?.artifact ?? remoteArtifact)

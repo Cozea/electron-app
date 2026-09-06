@@ -242,7 +242,7 @@ export function resolveWorkbenchTarget(
 }
 
 export function Organizations({ surface = "page", route: _route }: OrganizationsProps) {
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const { t } = useTranslation()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const activeWorkbench = useActiveWorkbenchScope()
@@ -272,34 +272,34 @@ export function Organizations({ surface = "page", route: _route }: Organizations
 
   const orgs = useQuery(
     api.organizations.listMine,
-    convexUserId ? {} : "skip",
+    principalId ? {} : "skip",
   )
   const [selectedOrgId, setSelectedOrgId] = useState<Id<"organizations"> | null>(null)
   const activeOrgId = selectedOrgId ?? orgs?.[0]?.organizationId ?? null
 
   const members = useQuery(
     api.organizations.listMembers,
-    convexUserId && activeOrgId
+    principalId && activeOrgId
       ? { organizationId: activeOrgId }
       : "skip",
   )
   const activeOrgDetails = useQuery(
     api.organizations.get,
-    convexUserId && activeOrgId ? { organizationId: activeOrgId } : "skip",
+    principalId && activeOrgId ? { organizationId: activeOrgId } : "skip",
   )
   const devApps = useQuery(
     api.devApps.listForOrganization,
-    convexUserId && activeOrgId
+    principalId && activeOrgId
       ? { organizationId: activeOrgId }
       : "skip",
   )
   const incomingEnrollments = useQuery(
     api.organizations.listIncomingEnrollments,
-    convexUserId ? {} : "skip",
+    principalId ? {} : "skip",
   )
   const pendingEnrollments = useQuery(
     api.organizations.listEnrollments,
-    convexUserId && activeOrgId && orgs?.find((org) => org.organizationId === activeOrgId)?.role === "admin"
+    principalId && activeOrgId && orgs?.find((org) => org.organizationId === activeOrgId)?.role === "admin"
       ? { organizationId: activeOrgId }
       : "skip",
   )
@@ -339,7 +339,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
 
   const inviteDevice = () => {
     const identityKey = deviceIdentityId.trim()
-    if (!convexUserId || !activeOrg || !identityKey || busy) return
+    if (!principalId || !activeOrg || !identityKey || busy) return
 
     void run(async () => {
       await createDeviceEnrollment({
@@ -471,9 +471,9 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                   value={orgName}
                   onChange={(event) => setOrgName(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && orgName.trim() && !busy && convexUserId) {
+                    if (event.key === "Enter" && orgName.trim() && !busy && principalId) {
                       void run(async () => {
-                        if (!convexUserId) return
+                        if (!principalId) return
                         const created = await createOrg({ name: orgName.trim() })
                         setOrgName("")
                         setIsCreatingOrg(false)
@@ -502,10 +502,10 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                 <Button
                   size="sm"
                   className="h-7 text-[11px]"
-                  disabled={busy || !convexUserId || !orgName.trim()}
+                  disabled={busy || !principalId || !orgName.trim()}
                   onClick={() =>
                     void run(async () => {
-                      if (!convexUserId) return
+                      if (!principalId) return
                       const created = await createOrg({ name: orgName.trim() })
                       setOrgName("")
                       setIsCreatingOrg(false)
@@ -739,7 +739,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                           />
                         </div>
                         <SettingsRowControl className="gap-2">
-                          {isAdmin && convexUserId !== member.userId ? (
+                          {isAdmin && principalId !== member.userId ? (
                             <>
                               <select
                                 className={cn(settingsNativeSelectClass, "h-7 text-xs font-normal py-0")}
@@ -943,7 +943,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                               disabled={busy}
                               onClick={() =>
                                 void run(async () => {
-                                  if (!convexUserId) return
+                                  if (!principalId) return
                                   await archiveDevApp({
                                     publicationId: app.publicationId,
                                   })

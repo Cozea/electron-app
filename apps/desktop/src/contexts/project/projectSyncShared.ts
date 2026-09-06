@@ -49,7 +49,7 @@ export function useOptionalProjectSyncContext() {
 export interface ProjectSyncProviderProps {
   children: ReactNode;
   projectId: Id<"projects"> | null;
-  userId: Id<"users"> | null;
+  userId: Id<"devicePrincipals"> | null;
   userName: string | null;
   workspaceId: string | null;
   workspaceRevision: number;

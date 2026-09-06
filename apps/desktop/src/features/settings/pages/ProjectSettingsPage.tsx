@@ -90,11 +90,11 @@ export function ProjectSettingsPage({
   const unsafeYjsApi = api as any
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const { project } = useAccessibleProject()
   const orgDevApp = useQuery(
     api.devApps.getForProject,
-    featureFlags.projectDevApps && project?._id && convexUserId
+    featureFlags.projectDevApps && project?._id && principalId
       ? { projectId: project._id }
       : 'skip',
   )
@@ -113,8 +113,8 @@ export function ProjectSettingsPage({
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    project?._id && convexUserId
-      ? { projectId: project._id, userId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, userId: principalId }
       : 'skip'
   )
   const isManager = memberRole === 'project_manager'
@@ -191,12 +191,12 @@ export function ProjectSettingsPage({
     name !== projectName ||
     description !== projectDescription
   )
-  const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
+  const canSave = Boolean(principalId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
   const collabSession = collabSessionResult.session
   const collabBootstrap = collabSession?.encryption ?? null
   const currentDeviceId = collabSession?.deviceId ?? null
   const collabScopeKey = project?._id ? String(project._id) : null
-  const canManageCollabSecurity = Boolean(project?._id && convexUserId && isManager)
+  const canManageCollabSecurity = Boolean(project?._id && principalId && isManager)
   const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
   const collabRotationRequired = collaborationDevices?.some((device) => device.rotationRequired) ?? false
 
@@ -204,7 +204,7 @@ export function ProjectSettingsPage({
     roomKeyBase64: string
     keyVersion: number
   }): Promise<string | null> => {
-    if (!project || !convexUserId || !collabSession) {
+    if (!project || !principalId || !collabSession) {
       return null
     }
 
@@ -216,7 +216,7 @@ export function ProjectSettingsPage({
       projectId: project._id,
       roomId: collabSession.roomId,
       keyVersion: args.keyVersion,
-      createdByUserId: convexUserId,
+      createdByUserId: principalId,
       createdByDeviceId: collabSession.deviceId,
       wrapAlgorithm: recoveryKit.wrapAlgorithm,
       wrappedKey: recoveryKit.wrappedKey,
@@ -227,14 +227,14 @@ export function ProjectSettingsPage({
     setGeneratedRecoveryCode(recoveryKit.recoveryCode)
     setShowRecoveryCodeDialog(true)
     return recoveryKit.recoveryCode
-  }, [collabSession, convexUserId, project, storeRecoveryKit])
+  }, [collabSession, principalId, project, storeRecoveryKit])
 
   const rotateRoomKeyWithCurrentRoom = useCallback(async (options?: {
     devices?: NonNullable<typeof collaborationDevices>
   }): Promise<number | null> => {
     if (
       !project ||
-      !convexUserId ||
+      !principalId ||
       !collabSession ||
       !collabBootstrap ||
       collabBootstrap.status !== 'ready' ||
@@ -327,7 +327,7 @@ export function ProjectSettingsPage({
     await rotateEncryptedRoomKey({
       projectId: project._id,
       roomId: collabSession.roomId,
-      userId: convexUserId,
+      userId: principalId,
       initiatedByDeviceId: collabSession.deviceId,
       encryptedSnapshot: nextSnapshotBytes.slice().buffer,
       createdByClientId: String(roomDoc.clientID),
@@ -360,14 +360,14 @@ export function ProjectSettingsPage({
     collabSession,
     collabSessionResult,
     collaborationDevices,
-    convexUserId,
+    principalId,
     project,
     rotateEncryptedRoomKey,
     syncCollabRoom,
   ])
 
   const handleSave = useCallback(async () => {
-    if (!project || !convexUserId) return
+    if (!project || !principalId) return
 
     const nextName = name.trim()
     if (!nextName) {
@@ -382,7 +382,7 @@ export function ProjectSettingsPage({
     try {
       await updateProject({
         projectId: project._id,
-        userId: convexUserId,
+        userId: principalId,
         name: nextName,
         description,
       })
@@ -392,7 +392,7 @@ export function ProjectSettingsPage({
       setIsSaving(false)
     }
   }, [
-    convexUserId,
+    principalId,
     description,
     hasChanges,
     name,
@@ -401,14 +401,14 @@ export function ProjectSettingsPage({
   ])
 
   const handleArchive = useCallback(async () => {
-    if (!project || !convexUserId) return
+    if (!project || !principalId) return
 
     setIsArchiving(true)
     setArchiveError(null)
     try {
       await archiveProject({
         projectId: project._id,
-        userId: convexUserId,
+        userId: principalId,
       })
       setShowArchiveDialog(false)
       navigate('/projects')
@@ -417,10 +417,10 @@ export function ProjectSettingsPage({
     } finally {
       setIsArchiving(false)
     }
-  }, [archiveProject, convexUserId, navigate, project])
+  }, [archiveProject, principalId, navigate, project])
 
   const handleDelete = useCallback(async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
-    if (!project || !convexUserId) return
+    if (!project || !principalId) return
 
     setIsDeleting(true)
     setDeleteError(null)
@@ -429,7 +429,7 @@ export function ProjectSettingsPage({
       await withProjectMutationTimeout(
         removeProject({
           projectId: project._id,
-          userId: convexUserId,
+          userId: principalId,
           // Server still validates the name; UI no longer requires retyping it.
           confirmName: project.name,
         }),
@@ -454,7 +454,7 @@ export function ProjectSettingsPage({
     } finally {
       setIsDeleting(false)
     }
-  }, [convexUserId, navigate, project, removeProject])
+  }, [principalId, navigate, project, removeProject])
 
   const handleSharePendingDevices = useCallback(async () => {
     if (
@@ -628,7 +628,7 @@ export function ProjectSettingsPage({
   const handleRecoverWithCode = useCallback(async () => {
     if (
       !project ||
-      !convexUserId ||
+      !principalId ||
       !collabSession ||
       !collabBootstrap ||
       collabBootstrap.status !== 'missing_for_device' ||
@@ -661,7 +661,7 @@ export function ProjectSettingsPage({
         projectId: project._id,
         roomId: collabSession.roomId,
         keyVersion: activeRecoveryKit.keyVersion,
-        recipientUserId: convexUserId,
+        recipientUserId: principalId,
         recipientDeviceId: collabSession.deviceId,
         senderDeviceId: wrapped.senderDeviceId,
         senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
@@ -683,7 +683,7 @@ export function ProjectSettingsPage({
     collabBootstrap,
     collabSession,
     collabSessionResult,
-    convexUserId,
+    principalId,
     project,
     recoveryCodeInput,
     storeWrappedRoomKey,
@@ -702,7 +702,7 @@ export function ProjectSettingsPage({
       await resetEncryptedRoom({
         projectId: project._id,
         roomId: collabSession.roomId,
-        userId: convexUserId ?? undefined,
+        userId: principalId ?? undefined,
         retainDeviceId: collabSession.deviceId,
       })
 
@@ -724,7 +724,7 @@ export function ProjectSettingsPage({
     collabScopeKey,
     collabSession,
     collabSessionResult,
-    convexUserId,
+    principalId,
     project,
     resetEncryptedRoom,
   ])
@@ -1140,7 +1140,7 @@ export function ProjectSettingsPage({
                         <Button
                           variant="outline"
                           className="h-7 text-[11px] text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
-                          disabled={!convexUserId || !isManager || project.status === 'archived'}
+                          disabled={!principalId || !isManager || project.status === 'archived'}
                           onClick={() => {
                             setShowArchiveDialog(true)
                             setArchiveError(null)
@@ -1158,7 +1158,7 @@ export function ProjectSettingsPage({
                       <SettingsRowControl>
                         <Button
                           variant="destructive"
-                          disabled={!convexUserId}
+                          disabled={!principalId}
                           className="h-7 text-[11px]"
                           onClick={() => {
                             setShowDeleteDialog(true)
@@ -1254,7 +1254,7 @@ export function ProjectSettingsPage({
             }}
             onConfirm={(logoDataUrl, devAppName) => {
               void (async () => {
-                if (!convexUserId) return
+                if (!principalId) return
                 try {
                   await updateDevAppIdentity({
                     publicationId: orgDevApp.publicationId,

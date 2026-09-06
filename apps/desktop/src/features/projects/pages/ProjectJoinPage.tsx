@@ -29,7 +29,7 @@ function cleanConvexError(error: unknown, fallback: string): string {
 export function ProjectJoinPage() {
   const navigate = useViewTransitionNavigate()
   const { token } = useParams()
-  const { convexUserId, isLoading } = useAuth()
+  const { principalId, isLoading } = useAuth()
   const joinByToken = useMutation(api.projectJoinLinks.joinByToken)
   const preview = useQuery(
     api.projectJoinLinks.previewByToken,
@@ -46,7 +46,7 @@ export function ProjectJoinPage() {
   }, [token])
 
   const runJoin = useCallback(async () => {
-    if (!token || !convexUserId) return
+    if (!token || !principalId) return
     setIsJoining(true)
     setJoinError(null)
 
@@ -61,7 +61,7 @@ export function ProjectJoinPage() {
     } finally {
       setIsJoining(false)
     }
-  }, [convexUserId, joinByToken, navigate, token])
+  }, [principalId, joinByToken, navigate, token])
 
   if (!token) {
     return (
@@ -126,7 +126,7 @@ export function ProjectJoinPage() {
     )
   }
 
-  if (!convexUserId) {
+  if (!principalId) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-lg">
