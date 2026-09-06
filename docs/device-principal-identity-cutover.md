@@ -1,6 +1,6 @@
 # Pure Device Principal Identity Cutover
 
-Status: active implementation plan
+Status: implemented on `codex/device-principal-identity-cutover`; automated verification green. Packaged two-device collaboration QA remains a manual pre-merge/product-validation step.
 
 ## Goal
 
@@ -253,6 +253,10 @@ Do not delete or move local project working directories as part of the identity 
 10. Delete dead account-era helpers/types/routes/i18n/docs.
 11. Reset test/dev identity data as needed and regenerate Convex types.
 12. Run typecheck, lint/build and identity/collaboration/project/DevApp tests; perform two-device packaged collaboration QA before merge.
+
+## Automated verification
+
+The branch verification gate passes desktop, Electron, Cloudflare-worker and test typechecks; lint; `git diff --check`; identity architecture tests; the full repository test suite; and the production build. The final branch workflow is read-only and cannot mutate the verified source tree.
 
 ## Required acceptance tests
 
