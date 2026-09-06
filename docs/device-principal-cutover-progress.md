@@ -12,24 +12,29 @@ This branch is intentionally breaking. Cozea has no compatibility requirement fo
 
 ## Implemented on this branch
 
+- canonical `devicePrincipals` schema/API replaces the account-era `users` model
+- WorkOS/email/first-name/last-name account identity fields and indexes are removed from the principal schema
 - device-auth refresh no longer overwrites user-selected presentation
-- explicit presentation-only mutation for device name/avatar
+- explicit presentation-only mutation for device name
+- avatars use Convex Storage with image/size validation and replacement cleanup
 - first-run device naming/avatar onboarding
 - sidebar and Device Identity settings consume canonical device presentation
+- email-keyed project and organization invite modules/routes are removed
+- explicit project and organization device enrollment flows use `czd_...` identity keys
 - join links authorize the authenticated device principal directly
 - join-link acceptance no longer creates a second trusted-device identity record
 - project presence derives principal/name/avatar from server-side authentication
 - file locks and tombstones derive actor identity from authenticated device authority
-- collaboration gateway registration uses canonical principal metadata rather than caller-supplied labels/keys
+- the duplicate `projectTrustedDevices` authorization path/table is removed
+- collaboration gateway authority and encryption metadata resolve from the canonical device principal
+- the duplicate `collabDevices` registry is removed from the active Yjs path
+- task assignment is being normalized to device identity instead of email identity
+- activity, organization membership, DevApp publisher attribution, and collaboration presentation use device-principal metadata
 - regression tests cover presentation isolation, onboarding, project principal authority, and collaboration authority
 
-## Remaining destructive cleanup
+## Validation remaining
 
-- remove account-era schema fields/indexes and email notification remnants
-- remove email-keyed project/organization invite paths and recent-contact caches
-- remove `projectTrustedDevices` as an authorization source/table
-- collapse duplicate collaboration device registry where room-key code permits
-- remove account-shaped shared/session types and synthetic local email semantics
-- normalize remaining activity/tasks/organization/DevApp attribution to device presentation
-- move avatar persistence from transitional optimized data URL to durable storage
-- update tests/docs and run full typecheck/lint/test/build gates
+- finish compiler-driven cleanup of any stale account-shaped renderer/task contracts
+- run desktop, Cloudflare, and test typechecks
+- run identity tests, lint, full tests, and production build
+- update PR status to ready only after the branch is green
