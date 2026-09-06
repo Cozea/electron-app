@@ -13,6 +13,7 @@ const sharedSwitch = source("apps/desktop/src/components/ui/switch.tsx");
 const assistantButton = source("apps/desktop/src/features/assistant/ui/button.tsx");
 const assistantInput = source("apps/desktop/src/features/assistant/ui/input.tsx");
 const compactWindowHook = source("apps/desktop/src/hooks/use-mobile.ts");
+const unifiedHeader = source("apps/desktop/src/components/layouts/UnifiedHeader.tsx");
 const dockviewCanvas = source("apps/desktop/src/features/workbench/WorkbenchDockviewCanvas.tsx");
 const tileChrome = source("apps/desktop/src/features/workbench/WorkbenchTileChrome.tsx");
 const geometryCss = source("apps/desktop/src/features/workbench/adaptiveDesktopGeometry.css");
@@ -44,6 +45,15 @@ describe("adaptive desktop geometry", () => {
     expect(compactWindowHook).toContain("COMPACT_WINDOW_BREAKPOINT_PX");
     expect(compactWindowHook).toContain("useIsCompactWindow");
     expect(compactWindowHook).toContain("export const useIsMobile = useIsCompactWindow");
+  });
+
+  it("gives the global title bar a compact-window pressure policy", () => {
+    // Center identity/content yields before actionable left/right chrome. This
+    // keeps the title bar one row high and avoids collisions with OS controls.
+    expect(unifiedHeader).toContain('data-unified-header-center="true"');
+    expect(unifiedHeader).toContain("max-md:hidden");
+    expect(unifiedHeader).toContain('data-unified-header-actions="true"');
+    expect(unifiedHeader).toContain("h-10");
   });
 
   it("establishes each Dockview group as the pane geometry boundary", () => {
