@@ -22,82 +22,80 @@
   --cozea-layer-menu: 9100;
   --cozea-layer-tooltip: 9200;
   --cozea-layer-toast: 9300;
-  /* Light shell: pure white background and white tiles */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --content-surface: oklch(1 0 0);
-  --surface-raised: oklch(0.97 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  /* Light shell: a light canvas with quieter gray content surfaces, so tiles
+     and the sidebar read as distinct layers rather than one sheet of white. */
+  --background: oklch(0.972 0 0);
+  --foreground: oklch(0.22 0 0);
+  --content-surface: oklch(0.95 0 0);
+  --surface-raised: oklch(0.94 0 0);
+  --card: oklch(0.95 0 0);
+  --card-foreground: oklch(0.22 0 0);
+  --popover: oklch(0.95 0 0);
+  --popover-foreground: oklch(0.22 0 0);
+  --primary: oklch(0.3 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.95 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.95 0 0);
-  --muted-foreground: oklch(0.50 0 0);
-  --accent: oklch(0.94 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.93 0 0);
+  --secondary-foreground: oklch(0.28 0 0);
+  --muted: oklch(0.94 0 0);
+  --muted-foreground: oklch(0.44 0 0);
+  --accent: oklch(0.91 0 0);
+  --accent-foreground: oklch(0.26 0 0);
   --table-row-hover: color-mix(in oklch, var(--secondary) 90%, var(--foreground) 10%);
   --table-row-selected: color-mix(in oklch, var(--secondary) 88%, var(--foreground) 12%);
-  --destructive: oklch(0.577 0.245 27.325);
-  --success: oklch(0.627 0.194 149.214);
-  --border: oklch(0.92 0 0);
-  --input: oklch(0.92 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --destructive: oklch(0.55 0.19 27.325);
+  --success: oklch(0.53 0.14 149.214);
+  --border: oklch(0.84 0 0);
+  --input: oklch(0.86 0 0);
+  --ring: oklch(0.55 0 0);
+  --chart-1: oklch(0.62 0.14 255);
+  --chart-2: oklch(0.65 0.12 170);
+  --chart-3: oklch(0.66 0.12 310);
+  --chart-4: oklch(0.71 0.13 85);
+  --chart-5: oklch(0.64 0.13 20);
   /* Match the workbench tiles (slight vibrancy translucency still applies). */
   --sidebar: var(--content-surface);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: color-mix(in oklch, var(--sidebar) 86%, var(--foreground) 14%);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.825 0.006 258);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-accent: color-mix(in oklch, var(--sidebar) 90%, var(--foreground) 10%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: oklch(0.8 0 0);
+  --sidebar-ring: var(--ring);
   --terminal-panel-bg: var(--content-surface);
   --tool-surface: color-mix(in oklch, var(--secondary) 80%, transparent);
   --tool-surface-foreground: var(--secondary-foreground);
-  --tool-border: color-mix(in oklch, var(--border) 72%, black 28%);
+  --tool-border: color-mix(in oklch, var(--border) 84%, var(--foreground) 16%);
   --tool-divider: var(--left-sidebar-border);
   --tool-diff-added-bg: color-mix(in oklab, #16a34a 12%, transparent);
   --tool-diff-deleted-bg: color-mix(in oklab, #dc2626 14%, transparent);
-  --tool-diff-added-gutter-bg: #22c55e;
-  --tool-diff-deleted-gutter-bg: #ef4444;
+  --tool-diff-added-gutter-bg: oklch(0.62 0.15 149.214);
+  --tool-diff-deleted-gutter-bg: oklch(0.6 0.18 27.325);
   --tool-diff-added-line-number-bg: color-mix(in oklab, #22c55e 16%, transparent);
   --tool-diff-deleted-line-number-bg: color-mix(in oklab, #ef4444 18%, transparent);
-  --tool-diff-added-line-number-fg: #4ade80;
-  --tool-diff-deleted-line-number-fg: #f87171;
+  --tool-diff-added-line-number-fg: oklch(0.43 0.14 149.214);
+  --tool-diff-deleted-line-number-fg: oklch(0.5 0.18 27.325);
   --main-nav-sidebar-surface: color-mix(in oklch, var(--sidebar), black 2%);
   --left-sidebar-surface: var(--content-surface);
-  /* Light mode's surface is pure white, so this weight is how white the sidebar
-     reads. Low values let the window backdrop dominate and the sidebar looks
-     grey; this keeps it near white while leaving enough of the vibrancy behind
-     it visible to still read as glass. */
-  --left-sidebar-glass-color-weight: 52%;
-  --left-sidebar-accent: color-mix(in oklch, var(--left-sidebar-surface) 86%, var(--foreground) 14%);
-  /* Resting tint for the sidebar search field. Light mode has to tint toward the
-     foreground: --background is pure white here, so tinting toward it lightens
-     the field instead of recessing it. The dark themes below keep tinting toward
-     their near-black background, which recesses correctly there. */
-  --left-sidebar-search-surface: color-mix(in oklch, transparent, var(--foreground) 7%);
-  --left-sidebar-border: color-mix(in oklch, var(--foreground) 12%, transparent);
+  /* Pale surfaces mask macOS vibrancy quickly; keep the tint light enough for
+     the native sidebar material to remain visible. */
+  --left-sidebar-glass-color-weight: 30%;
+  --left-sidebar-accent: color-mix(in oklch, var(--left-sidebar-surface) 90%, var(--foreground) 10%);
+  --left-sidebar-search-surface: color-mix(in oklch, transparent, var(--foreground) 6%);
+  --left-sidebar-border: color-mix(in oklch, var(--foreground) 10%, transparent);
   --app-scrollbar-size: 8px;
   --app-scrollbar-radius: 9999px;
   --app-scrollbar-track: transparent;
   --app-scrollbar-thumb: color-mix(in oklch, var(--foreground) 20%, transparent);
   --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
   --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
-  --assistant-composer-surface: oklch(1 0 0);
-  --assistant-user-message-surface: oklch(0.21 0.006 285.885);
-  --assistant-user-message-foreground: oklch(1 0 0);
-  --store-organization-accent: oklch(0.457 0.24 277.023);
-  --store-organization-accent-surface: oklch(0.585 0.233 277.117 / 10%);
+  --assistant-composer-surface: var(--content-surface);
+  --assistant-user-message-surface: var(--primary);
+  --assistant-user-message-foreground: var(--primary-foreground);
+  --assistant-change-card-surface: oklch(0.92 0 0);
+  --assistant-change-chip-surface: oklch(0.965 0 0);
+  --assistant-change-chip-border: oklch(0.8 0 0);
+  --store-organization-accent: oklch(0.52 0.18 277.023);
+  --store-organization-accent-surface: oklch(0.62 0.15 277.117 / 10%);
   /* Match VS Code workbench default body copy (see e.g. settingsEditor2.css, views.css, chat.css — 13px). */
   --app-copy-font-size: 13px;
   --app-copy-line-height: 20px;
@@ -1804,8 +1802,8 @@ body {
     var(--sidebar),
     transparent calc(100% - var(--sidebar-opacity) * 100%)
   );
-  --content-surface: oklch(1 0 0);
-  --surface-raised: oklch(0.97 0 0);
+  --content-surface: oklch(0.95 0 0);
+  --surface-raised: oklch(0.94 0 0);
 }
 
 .dark {
@@ -1835,6 +1833,9 @@ body {
 .forest,
 .clay {
   --left-sidebar-search-surface: color-mix(in oklch, transparent, var(--background) 25%);
+  --assistant-change-card-surface: var(--secondary);
+  --assistant-change-chip-surface: color-mix(in oklch, var(--background) 45%, transparent);
+  --assistant-change-chip-border: color-mix(in oklch, var(--border) 70%, transparent);
 }
 
 .bg-sidebar {

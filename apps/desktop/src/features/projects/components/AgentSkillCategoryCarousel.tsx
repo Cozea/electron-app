@@ -45,21 +45,38 @@ export function findCenteredIndex(
   return bestIndex;
 }
 
-export function findLeftAlignedIndex(
-  cardLefts: readonly number[],
-  scrollTarget: number,
+const CARD_WIDTH_RATIO = 0.62;
+const CARD_MAX_WIDTH = 960;
+const CARD_MIN_WIDTH = 320;
+const EDGE_INSET_MIN = 24;
+
+/**
+ * The card width, and the inset that leaves it centred.
+ *
+ * Both are derived from the track's own width rather than from each other. A
+ * card sized as a percentage of the *content* box cannot be centred by padding,
+ * because the padding then changes the width it is meant to be centring: solve
+ * that and the only answer is a card of zero width. Measuring one step earlier,
+ * from the track, breaks the circle.
+ */
+export function measureCarouselMetrics(trackWidth: number): {
+  cardWidth: number;
+  inset: number;
+} {
+  const cardWidth = Math.min(
+    CARD_MAX_WIDTH,
+    Math.max(CARD_MIN_WIDTH, trackWidth * CARD_WIDTH_RATIO),
+  );
+  return { cardWidth, inset: Math.max(EDGE_INSET_MIN, (trackWidth - cardWidth) / 2) };
+}
+
+/** Scroll offset that puts a card under the middle of the track. */
+export function centeredScrollTarget(
+  cardLeft: number,
+  cardWidth: number,
+  trackWidth: number,
 ): number {
-  if (cardLefts.length === 0) return 0;
-  let bestIndex = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  cardLefts.forEach((left, index) => {
-    const distance = Math.abs(left - scrollTarget);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = index;
-    }
-  });
-  return bestIndex;
+  return Math.max(0, cardLeft - (trackWidth - cardWidth) / 2);
 }
 
 /**
@@ -120,23 +137,34 @@ export function AgentSkillCategoryCarousel({
   const activeIndexRef = React.useRef(0);
   const [activeIndex, setActiveIndex] = React.useState(0);
 
-  const getLeftInset = React.useCallback(() => {
+  const [metrics, setMetrics] = React.useState(() => measureCarouselMetrics(960));
+
+  React.useLayoutEffect(() => {
     const track = trackRef.current;
-    if (!track) return 24;
-    return Math.max(24, (track.clientWidth - 960) / 2 + 24);
+    if (!track) return;
+    const measure = () => setMetrics(measureCarouselMetrics(track.clientWidth));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollTargetFor = React.useCallback((card: HTMLDivElement) => {
+    const track = trackRef.current;
+    if (!track) return 0;
+    return centeredScrollTarget(card.offsetLeft, card.offsetWidth, track.clientWidth);
   }, []);
 
   const measureActive = React.useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
-    const paddingLeft = getLeftInset();
     const currentScroll = track.scrollLeft;
     let bestIndex = 0;
     let bestDistance = Number.POSITIVE_INFINITY;
     cardRefs.current.forEach((card, index) => {
       if (!card) return;
-      const cardTargetScroll = Math.max(0, card.offsetLeft - paddingLeft);
-      const dist = Math.abs(cardTargetScroll - currentScroll);
+      const dist = Math.abs(scrollTargetFor(card) - currentScroll);
       if (dist < bestDistance) {
         bestDistance = dist;
         bestIndex = index;
@@ -152,7 +180,7 @@ export function AgentSkillCategoryCarousel({
     activeIndexRef.current = bestIndex;
     activeCategoryRef.current = groupsRef.current[bestIndex]?.category ?? null;
     setActiveIndex(bestIndex);
-  }, [getLeftInset]);
+  }, [scrollTargetFor]);
 
   const scrollToIndex = React.useCallback((index: number) => {
     const track = trackRef.current;
@@ -163,12 +191,8 @@ export function AgentSkillCategoryCarousel({
     activeIndexRef.current = clamped;
     activeCategoryRef.current = groupsRef.current[clamped]?.category ?? null;
     setActiveIndex(clamped);
-    const paddingLeft = getLeftInset();
-    track.scrollTo({
-      left: Math.max(0, card.offsetLeft - paddingLeft),
-      behavior: "smooth",
-    });
-  }, [getLeftInset]);
+    track.scrollTo({ left: scrollTargetFor(card), behavior: "smooth" });
+  }, [scrollTargetFor]);
 
   // Re-anchor on the same category when the list changes, without a slide:
   // the categories moved, so animating between them would be meaningless.
@@ -190,13 +214,9 @@ export function AgentSkillCategoryCarousel({
 
     const card = cardRefs.current[nextIndex];
     if (card) {
-      const paddingLeft = getLeftInset();
-      track.scrollTo({
-        left: Math.max(0, card.offsetLeft - paddingLeft),
-        behavior: "auto",
-      });
+      track.scrollTo({ left: scrollTargetFor(card), behavior: "auto" });
     }
-  }, [getLeftInset, groups]);
+  }, [groups, scrollTargetFor]);
 
   /*
    * One pill slides between chips rather than each chip lighting up its own
@@ -336,12 +356,8 @@ export function AgentSkillCategoryCarousel({
           "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           "focus-visible:outline-none",
         )}
-        style={{
-          paddingLeft: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
-          paddingRight: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
-          scrollPaddingLeft: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
-          scrollPaddingRight: "max(1.5rem, calc((100% - 960px) / 2 + 1.5rem))",
-        }}
+        /* Equal insets so the first and last cards can still reach the middle. */
+        style={{ paddingLeft: metrics.inset, paddingRight: metrics.inset }}
       >
         {groups.map((group, index) => {
           const isActive = index === activeIndex;
@@ -352,8 +368,9 @@ export function AgentSkillCategoryCarousel({
                 cardRefs.current[index] = node;
               }}
               aria-current={isActive ? "true" : undefined}
+              style={{ width: metrics.cardWidth }}
               className={cn(
-                "flex h-full w-[62%] min-w-[320px] shrink-0 snap-start flex-col",
+                "flex h-full shrink-0 snap-center flex-col",
                 "rounded-2xl border border-border/50 bg-card/40",
                 "transition-[opacity,transform] duration-300 ease-out",
                 isActive

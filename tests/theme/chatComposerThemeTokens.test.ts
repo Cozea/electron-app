@@ -54,7 +54,9 @@ describe("agent chat composer theme surface", () => {
   })
 
   it("maps the semantic surface for Light, Dark, and all chromatic themes", () => {
-    expect(stylesheet).toContain("--assistant-composer-surface: oklch(1 0 0);")
+    // Light mode's composer rides the content surface rather than a hardcoded
+    // white, so the shell can change tone without stranding the composer.
+    expect(stylesheet).toContain("--assistant-composer-surface: var(--content-surface);")
     expect(stylesheet).toContain("--assistant-composer-surface: var(--surface-raised);")
 
     const chromaticBlock = stylesheet.match(
@@ -69,7 +71,7 @@ describe("agent chat composer theme surface", () => {
     expect(messagesTimeline).not.toContain("bg-zinc-900 text-white")
     expect(messagesTimeline).not.toContain("dark:bg-surface-raised dark:text-foreground")
 
-    expect(stylesheet).toContain("--assistant-user-message-surface: oklch(0.21 0.006 285.885);")
+    expect(stylesheet).toContain("--assistant-user-message-surface: var(--primary);")
     expect(stylesheet).toContain("--assistant-user-message-surface: var(--surface-raised);")
     expect(stylesheet).toContain("--assistant-user-message-foreground: var(--foreground);")
     expect(readThemeBlock("navy")).toContain(

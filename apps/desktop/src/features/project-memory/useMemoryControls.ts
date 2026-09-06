@@ -92,8 +92,9 @@ const EMPTY_AGENTS: Array<{ tileId: string; name: string; agentKey: string }> = 
  */
 function useMemorySettings(workspaceId: string | null) {
   const [skills, setSkills] = useState<
-    Array<{ id: string; name: string; isCozeaDefault: boolean }>
+    Array<{ id: string; name: string; isCozeaDefault: boolean; enabled: boolean }>
   >([])
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
   const selectedId = useMemorySettingsStore((state) =>
     workspaceId ? (state.byWorkspace[workspaceId] ?? null) : null,
   )
@@ -126,14 +127,19 @@ function useMemorySettings(workspaceId: string | null) {
                 id: skill.id,
                 name: skill.name,
                 description: skill.description,
+                // Whether an agent would actually load it, which is what the
+                // active build decides.
+                enabled: skill.bindings.some((binding) => binding.enabled),
               })),
             ),
           ).map((entry) => ({
             id: entry.skill.id,
             name: entry.skill.name,
             isCozeaDefault: entry.isCozeaDefault,
+            enabled: entry.skill.enabled,
           })),
         )
+        setSkillsLoaded(true)
       })
       .catch(() => undefined)
     return () => {
@@ -141,14 +147,42 @@ function useMemorySettings(workspaceId: string | null) {
     }
   }, [])
 
+  /**
+   * The memory skills an agent could actually run: relevant to the map, and
+   * switched on by the active build. A stored choice pointing at a skill the
+   * build has since turned off is not one of them.
+   */
+  const selectableSkills = skills.filter((skill) => skill.enabled)
+
   const resolvedSkillId =
-    selectedId ?? skills.find((skill) => skill.isCozeaDefault)?.id ?? null
+    (selectedId && selectableSkills.some((skill) => skill.id === selectedId)
+      ? selectedId
+      : null) ??
+    selectableSkills.find((skill) => skill.isCozeaDefault)?.id ??
+    selectableSkills[0]?.id ??
+    null
+
+  /**
+   * Whether anything that could build the map is switched on.
+   *
+   * The library may hold a memory skill while the active build leaves it off,
+   * and in that case no agent can build anything. The tile says so rather than
+   * showing an empty map with no explanation.
+   */
+  const hasEnabledMemorySkill = selectableSkills.length > 0
+
+  /** Only true once the library has answered, so the tile cannot flash it. */
+  const knowsNoMemorySkillIsOn = skillsLoaded && !hasEnabledMemorySkill
 
   const label =
-    skills.find((skill) => skill.id === resolvedSkillId)?.name ?? DEFAULT_MEMORY_SKILL_LABEL
+    selectableSkills.find((skill) => skill.id === resolvedSkillId)?.name ??
+    DEFAULT_MEMORY_SKILL_LABEL
 
   return {
     skills,
+    selectableSkills,
+    hasEnabledMemorySkill,
+    knowsNoMemorySkillIsOn,
     resolvedSkillId,
     label,
     setForWorkspace,

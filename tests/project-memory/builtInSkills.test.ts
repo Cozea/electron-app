@@ -116,9 +116,53 @@ describe("built-in memory skill", () => {
     expect(text).toMatch(/never write a partial file/i)
   })
 
-  it("describes incremental updates so untouched nodes keep their identity", () => {
+  it("updates from git status letters, not by re-reading the project", () => {
     const text = memorySkill?.instructions ?? ""
-    expect(text).toMatch(/git diff --name-only/)
-    expect(text).toMatch(/leave the rest untouched/i)
+    // --name-only cannot tell a deletion from a modification, and the two are
+    // handled differently: one drops nodes, the other replaces them.
+    expect(text).toMatch(/git diff --name-status/)
+    expect(text).toMatch(/only the touched files/i)
+    expect(text).toMatch(/byte for byte/i)
+  })
+
+  it("drops the edges a re-extraction would otherwise strand", () => {
+    const text = memorySkill?.instructions ?? ""
+    // A link recorded against an untouched file can still name a symbol that
+    // has just been deleted. Missing this leaves dangling edges in the map.
+    expect(text).toMatch(/points at an id no longer present/i)
+    // Which is only possible because links carry the file they were read from.
+    expect(text).toMatch(/Carry `source_file` and `source_location` on \*\*every link\*\*/)
+  })
+
+  it("builds the containment spine a navigable map needs", () => {
+    const text = memorySkill?.instructions ?? ""
+    // Measured against real maps of this shape, `contains` is around a third
+    // of all links; a map without it is a pile of symbols with no structure.
+    expect(text).toMatch(/Emit a node for the file itself/i)
+    expect(text).toMatch(/`contains`/)
+    expect(text).toMatch(/_callable/)
+  })
+
+  it("warns that needless re-clustering fakes a project-wide change", () => {
+    const text = memorySkill?.instructions ?? ""
+    // The tile fingerprints community_name, so re-clustering paints every node
+    // "changed" while nothing moved.
+    expect(text).toMatch(/community_name/)
+    expect(text).toMatch(/turns "changed" while nothing actually moved/i)
+  })
+
+  it("says what to do with an import that leaves the extracted set", () => {
+    const text = memorySkill?.instructions ?? ""
+    // Building a real map surfaced this: without a rule, an import pointing out
+    // of scope either dangles or invites invented symbols for unread files.
+    expect(text).toMatch(/leaves the set of files you extracted/i)
+    expect(text).toMatch(/emit a node for the target\s+\*\*file\*\*/i)
+    expect(text).toMatch(/never invent symbol nodes for a file you have not read/i)
+  })
+
+  it("tells the agent to check its own output", () => {
+    const text = memorySkill?.instructions ?? ""
+    expect(text).toMatch(/score-memory-map\.mjs/)
+    expect(text).toMatch(/No link points at an id that is not in/i)
   })
 })

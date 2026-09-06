@@ -278,7 +278,11 @@ describe("saving and applying a build end to end", () => {
     expect(applied.snapshot.activeBuildId).toBe(saved.skillId);
   });
 
-  it("stops reporting a build as active once a skill is toggled beyond it", async () => {
+  it("keeps reporting the activated build after a skill is toggled beyond it", async () => {
+    // Activation used to be inferred by comparing the enabled set to each
+    // build, so one skill enabled outside it made the page claim nothing was
+    // active. The choice is recorded now: the user activated this build, and
+    // toggling a skill does not undo that.
     const alpha = await makeSkill("alpha");
     const beta = await makeSkill("beta");
     const svc = service();
@@ -286,7 +290,29 @@ describe("saving and applying a build end to end", () => {
     await svc.applyBuild(saved.skillId!);
 
     const after = await svc.setEnabled({ skillId: beta, enabled: true });
-    expect(after.snapshot.activeBuildId).toBeNull();
+    expect(after.snapshot.activeBuildId).toBe(saved.skillId);
+  });
+
+  it("survives a restart, since the choice is in state and not inferred", async () => {
+    const alpha = await makeSkill("alpha");
+    const svc = service();
+    const saved = await svc.saveBuild({ name: "Alpha only", skillIds: [alpha] });
+    await svc.applyBuild(saved.skillId!);
+
+    // A fresh service is what a relaunch gives us.
+    expect(service().list().activeBuildId).toBe(saved.skillId);
+  });
+
+  it("forgets the active build when that build is deleted", async () => {
+    const alpha = await makeSkill("alpha");
+    const svc = service();
+    const saved = await svc.saveBuild({ name: "Alpha only", skillIds: [alpha] });
+    await svc.applyBuild(saved.skillId!);
+
+    const deleted = await svc.deleteBuild(saved.skillId!);
+    // Not null: the seeded Default build is still here, and the fallback match
+    // can legitimately claim it. What matters is the deleted one is released.
+    expect(deleted.snapshot.activeBuildId).not.toBe(saved.skillId);
   });
 
   it("deletes a build without touching which skills are on", async () => {
@@ -784,7 +810,15 @@ describe("the core's two rings", () => {
     expect(block).not.toContain("cozea-hub-charge");
     // Steady and brighter while active, dim otherwise.
     expect(block).toContain("isActive");
-    expect(block).toContain("border-foreground/70");
+    // The lit styling moved into CSS so light mode can pick its own tone; the
+    // class is the contract, and the stylesheet still has to carry the values.
+    expect(block).toContain("skill-builds-active-ring");
+    const stylesheet = fs.readFileSync(
+      path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.css"),
+      "utf8",
+    );
+    expect(stylesheet).toContain(".skill-builds-active-ring");
+    expect(stylesheet).toMatch(/--hub-active-ring:\s*color-mix\(in oklch, var\(--foreground\) 70%/);
   });
 
   it("draws a longer dash at the core than along the wiring", () => {
