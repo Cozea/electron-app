@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const repositoryRoot = process.cwd()
-const read = (relativePath: string) =>
+const repositoryRoot: string = process.cwd()
+const read = (relativePath: string): string =>
   fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8')
 
 const UPSTREAM_COMMIT = '41c5294cfe4735baca03f9c82b4de99d191a0b49'
@@ -45,10 +45,60 @@ describe('Cozea-owned Computer Use runtime', () => {
     expect(runtime).toContain('timingSafeEqual')
   })
 
+  it('contains worker failures instead of allowing process-level errors', () => {
+    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
+    expect(runtime).toContain("this.child.on('error'")
+    expect(runtime).toContain("this.child.stdin.on('error'")
+    expect(runtime).toContain('private failAll(error: Error)')
+    expect(runtime).toContain('interface WorkerRpcMessage')
+    expect(runtime).toContain('parseToolResult(JSON.stringify(message.result))')
+    expect(runtime).toContain('server.closeAllConnections()')
+  })
+
+  it('sanitizes persisted Computer Use settings before policy evaluation', () => {
+    const settings = read('apps/desktop/electron/services/computerUseSettings.ts')
+    expect(settings).toContain('Array.isArray(raw.disabledComputerUseTools)')
+    expect(settings).toContain("typeof tool === 'string'")
+    expect(settings).toContain('raw.computerUseEnabled === true')
+    expect(settings).toContain('raw.computerUseAllowGlobalPointerFallbacks === true')
+  })
+
+  it('serializes native tool and lifecycle access through Rust and Swift', () => {
+    const rust = read('packages/computer-use-native/src/lib.rs')
+    expect(rust).toContain('fn lock_operations()')
+    expect(rust.match(/let _guard = lock_operations\(\)\?;/g)?.length).toBeGreaterThanOrEqual(5)
+
+    const swift = read(
+      'native/computer-use-bridge/Sources/CozeaComputerUseBridge/Bridge.swift',
+    )
+    expect(swift).toContain('private final class LockedMCPServer')
+    expect(swift).toContain('return server.handle(line: line)')
+    expect(swift).toContain('private var servers: [String: LockedMCPServer]')
+    expect(swift).toContain('turnEndedDetached(server: LockedMCPServer)')
+  })
+
+  it('builds and packages the native bridge for the active macOS architecture', () => {
+    const nativePackage = JSON.parse(read('packages/computer-use-native/package.json')) as {
+      napi?: { triples?: { additional?: string[] } }
+      scripts?: Record<string, string>
+    }
+    expect(nativePackage.napi?.triples?.additional).toEqual([
+      'aarch64-apple-darwin',
+      'x86_64-apple-darwin',
+    ])
+    expect(nativePackage.scripts?.['build:arm64']).toContain('--target aarch64-apple-darwin')
+    expect(nativePackage.scripts?.['build:x64']).toContain('--target x86_64-apple-darwin')
+
+    const preparation = read('scripts/prepare-computer-use-runtime.mjs')
+    expect(preparation).toContain("['lipo', '-archs', candidate]")
+    expect(preparation).toContain('dylibs.find(dylibMatchesCurrentArchitecture)')
+    expect(preparation).toContain('`build:debug:${napiArch}`')
+  })
+
   it('never discovers an external CLI or mutates provider home configuration', () => {
     const facade = read('apps/desktop/electron/services/ComputerUseService.ts')
     expect(facade).toContain('return null')
-    expect(facade).toContain('Deliberate no-op')
+    expect(facade).toContain('Never')
     expect(facade).not.toContain('writeFileSync')
     expect(facade).not.toContain("path.join(home, '.claude")
     expect(facade).not.toContain("path.join(home, '.codex")
@@ -76,5 +126,16 @@ describe('Cozea-owned Computer Use runtime', () => {
     expect(runtime).toContain("request.url === '/v1/turn-ended'")
     expect(runtime).toContain('this.turnEnded(threadId)')
     expect(runtime).toContain("'notifications/turn-ended'")
+  })
+
+  it('localizes and names the advanced physical-pointer control', () => {
+    const page = read('apps/desktop/src/features/settings/ComputerUse.tsx')
+    expect(page).toContain("t('settings.computerUse.advancedTitle')")
+    expect(page).toContain("t('settings.computerUse.advancedDescription')")
+    expect(page).toContain("aria-label={t('settings.computerUse.allowGlobalPointerFallback')}")
+
+    const translations = read('apps/desktop/src/lib/i18n/computerUse.ts')
+    expect(translations).toContain("'settings.computerUse.advancedTitle'")
+    expect(translations).toContain('Interacción avanzada')
   })
 })
