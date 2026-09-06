@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   SettingsDangerGroup,
   SettingsGroup,
@@ -14,6 +15,7 @@ import {
   SettingsSectionTitle,
 } from "@/features/settings/ui/SettingsChrome";
 import { PublicIdDisclosure } from "@/features/settings/ui/PublicIdDisclosure";
+import { optimizeProjectDevAppLogo } from "@/features/devapps/projectDevAppLogo";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -42,6 +44,12 @@ interface AccountProps {
   route?: string;
 }
 
+function initials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "D"
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
+}
+
 export function Account({ surface = "page", route: _route }: AccountProps) {
   const { user, convexUserId } = useAuth();
   const { t } = useTranslation();
@@ -49,11 +57,20 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const profile = useQuery(api.users.getCurrent, convexUserId ? {} : "skip");
 
   const updatePreferencesMutation = useMutation(api.users.updatePreferences);
+  const updateDevicePresentation = useMutation(api.users.updateDevicePresentation);
   const revokeCurrentDevice = useMutation(api.users.revokeCurrentDevice);
 
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({
     pushNotifications: true,
   });
+  const [deviceName, setDeviceName] = useState("")
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [savedDeviceName, setSavedDeviceName] = useState("")
+  const [savedAvatarUrl, setSavedAvatarUrl] = useState<string | null>(null)
+  const [savingPresentation, setSavingPresentation] = useState(false)
+  const [processingAvatar, setProcessingAvatar] = useState(false)
+  const [presentationError, setPresentationError] = useState<string | null>(null)
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
 
@@ -63,14 +80,20 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     setUserPrefs({
       pushNotifications: profile.preferences?.pushNotifications ?? true,
     });
-  }, [profile]);
 
-  const displayName = profile?.firstName
-    ? `${profile.firstName} ${profile.lastName || ""}`.trim()
-    : user?.firstName
-      ? `${user.firstName} ${user.lastName || ""}`.trim()
-      : t("settings.account.thisDevice");
+    const nextName = profile.deviceLabel?.trim()
+      || profile.firstName?.trim()
+      || t("settings.account.thisDevice")
+    const nextAvatar = profile.profileImageUrl ?? null
+    setDeviceName(nextName)
+    setSavedDeviceName(nextName)
+    setAvatarUrl(nextAvatar)
+    setSavedAvatarUrl(nextAvatar)
+  }, [profile, t]);
+
   const identityKey = profile?.identityKey ?? user?.deviceId ?? user?.id ?? "";
+  const normalizedDeviceName = deviceName.trim()
+  const presentationDirty = normalizedDeviceName !== savedDeviceName || avatarUrl !== savedAvatarUrl
 
   const handlePrefChange = async (key: keyof UserPrefs, value: boolean) => {
     if (!convexUserId) return;
@@ -88,23 +111,118 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     }
   };
 
+  const savePresentation = async () => {
+    if (!convexUserId || !normalizedDeviceName || savingPresentation || processingAvatar) return
+    setSavingPresentation(true)
+    setPresentationError(null)
+    try {
+      const result = await updateDevicePresentation({
+        displayName: normalizedDeviceName,
+        avatarUrl,
+      })
+      const nextName = result.displayName?.trim() || normalizedDeviceName
+      const nextAvatar = result.avatarUrl ?? null
+      setDeviceName(nextName)
+      setSavedDeviceName(nextName)
+      setAvatarUrl(nextAvatar)
+      setSavedAvatarUrl(nextAvatar)
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "Could not update this device")
+    } finally {
+      setSavingPresentation(false)
+    }
+  }
+
+  const chooseAvatar = async (file: File | null) => {
+    if (!file || processingAvatar) return
+    setProcessingAvatar(true)
+    setPresentationError(null)
+    try {
+      // Reuse the existing hardened square-image pipeline for this first slice.
+      // The final schema cutover will move principal avatars to Convex Storage
+      // and rename/extract this helper away from the DevApp-specific module.
+      setAvatarUrl(await optimizeProjectDevAppLogo(file))
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "Could not prepare this image")
+    } finally {
+      setProcessingAvatar(false)
+      if (avatarInputRef.current) avatarInputRef.current.value = ""
+    }
+  }
+
   const isProfileLoading = profile === undefined;
 
   return (
     <SettingsPageBody surface={surface}>
-      <SettingsPageHeader title={t("settings.nav.account")} />
+      <SettingsPageHeader title="Device Identity" />
+
       <section>
-        <SettingsSectionTitle>{t("settings.account.deviceProfileTitle")}</SettingsSectionTitle>
+        <SettingsSectionTitle>Device presentation</SettingsSectionTitle>
+        <SettingsSectionDescription>
+          This name and avatar identify this physical Cozea device to collaborators. They do not affect its cryptographic identity or access.
+        </SettingsSectionDescription>
         <SettingsGroup>
-          <div className="flex items-center gap-4 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
-              {profile?.jobTitle ? (
-                <p className="truncate text-[11px] text-muted-foreground">{profile.jobTitle}</p>
+          <div className="flex items-center gap-4 px-4 py-4">
+            <Avatar className="size-12 shrink-0 rounded-xl">
+              {avatarUrl ? <AvatarImage src={avatarUrl} alt={normalizedDeviceName || "This device"} /> : null}
+              <AvatarFallback className="rounded-xl text-sm font-medium">
+                {initials(normalizedDeviceName || "Device")}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1 space-y-2">
+              <Label htmlFor="device-display-name" className="text-xs">Device name</Label>
+              <Input
+                id="device-display-name"
+                value={deviceName}
+                onChange={(event) => setDeviceName(event.target.value)}
+                maxLength={80}
+                disabled={isProfileLoading || savingPresentation}
+                placeholder="My MacBook"
+                className="h-8"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp"
+                  className="hidden"
+                  onChange={(event) => void chooseAvatar(event.currentTarget.files?.[0] ?? null)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  disabled={processingAvatar || savingPresentation}
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  {processingAvatar ? "Preparing…" : avatarUrl ? "Change avatar" : "Add avatar"}
+                </Button>
+                {avatarUrl ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    disabled={processingAvatar || savingPresentation}
+                    onClick={() => setAvatarUrl(null)}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="ml-auto h-7 text-[11px]"
+                  disabled={!presentationDirty || !normalizedDeviceName || processingAvatar || savingPresentation}
+                  onClick={() => void savePresentation()}
+                >
+                  {savingPresentation ? "Saving…" : "Save"}
+                </Button>
+              </div>
+              {presentationError ? (
+                <p className="text-[11px] text-destructive" role="alert">{presentationError}</p>
               ) : null}
-              <p className="truncate text-[11px] text-muted-foreground">
-                {t("settings.account.localTrustedDevice")}
-              </p>
             </div>
           </div>
         </SettingsGroup>
@@ -115,7 +233,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
           <SettingsSectionTitle className="mb-0">{t("settings.account.deviceIdentity")}</SettingsSectionTitle>
         </div>
         <SettingsSectionDescription>
-          {t("settings.account.devicesDescription")}
+          The public device ID is stable for this cryptographic identity. Changing the name or avatar above does not change this ID.
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst className="items-center">
