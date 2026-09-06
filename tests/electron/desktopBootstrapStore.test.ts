@@ -38,14 +38,13 @@ function sessionFixture(): DesktopBootstrapSession {
   return {
     accessToken: 'secret-access-token',
     expiresAt: 2_000_000_000,
-    principalId: 'user_1',
+    principalId: 'principal_1',
     user: {
-      id: 'device-user-1',
-      deviceId: 'device-1',
-      email: 'test@example.com',
-      firstName: 'Test',
-      lastName: 'User',
-      profileImageUrl: null,
+      principalId: 'principal_1',
+      identityKey: 'czd_00000000000000000000000000',
+      displayName: 'Test device',
+      avatarUrl: null,
+      platform: 'darwin',
     },
     personalWorkspace: {
       id: 'membership-1',
@@ -65,7 +64,7 @@ function sessionFixture(): DesktopBootstrapSession {
 
 function routeFixture(): DesktopWorkbenchLocator {
   return {
-    workspaceSelectionId: 'device-user-1',
+    workspaceSelectionId: 'czd_00000000000000000000000000',
     projectId: 'project_1',
     laneId: 'collab',
     focusTileId: 'tile_1',
@@ -115,7 +114,7 @@ describe('DesktopBootstrapStore', () => {
   it('rejects encrypted session payloads that no longer match the runtime contract', async () => {
     const malformed = {
       ...sessionFixture(),
-      user: { id: 'device-user-1' },
+      user: { principalId: 'principal_1' },
     }
     const encrypted = Buffer.from(
       `enc:${Buffer.from(JSON.stringify(malformed), 'utf8').toString('base64')}`,
@@ -140,7 +139,7 @@ describe('DesktopBootstrapStore', () => {
     const route = routeFixture()
     await store.setLastWorkbenchRoute(route)
 
-    await store.clearLastWorkbenchRoute('some-other-user')
+    await store.clearLastWorkbenchRoute('some-other-device')
     expect((await store.getInitialSnapshot()).lastWorkbenchRoute).toEqual(route)
 
     await store.clearLastWorkbenchRoute(route.workspaceSelectionId)
