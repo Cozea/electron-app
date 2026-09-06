@@ -41,8 +41,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
-      - name: Install
-        run: bun install --frozen-lockfile
+      - name: Install validation dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
       - name: Typecheck desktop
         run: bun run typecheck
       - name: Typecheck cloudflare
