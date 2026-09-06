@@ -35,7 +35,7 @@ This branch is intentionally breaking. Cozea has no compatibility requirement fo
 
 ## Validation status
 
-The compiler-driven account-field cleanup is complete enough that the previous validation run was down to four Cozea TypeScript errors. Those four errors were repaired in `89dbee4`; this commit exists to trigger a fresh validation run on that repaired head because GitHub Actions does not recursively trigger workflows from its own bot push.
+Compiler-driven repair has removed the final stale task-assignee field from the current branch head. The prior validation run saw only that one Cozea desktop type error; the current head no longer contains it. This commit triggers validation against the repaired tree because GitHub Actions does not recursively trigger workflows from its own bot commits.
 
 Remaining validation gates:
 
