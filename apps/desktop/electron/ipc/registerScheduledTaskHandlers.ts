@@ -1,5 +1,6 @@
 import type { IpcMain } from 'electron'
 
+import { ComputerUseRuntimeService } from '../services/ComputerUseRuntimeService'
 import type {
   ScheduledTaskDraft,
   ScheduledTaskRunReport,
@@ -17,6 +18,12 @@ interface LazyScheduledTaskService {
   remove(options: { taskId: string }): unknown
 }
 
+type ScheduledTaskComputerUsePolicyAction = 'prepare' | 'clear'
+
+interface ScheduledTaskRunControl extends ScheduledTaskRunReport {
+  computerUsePolicy?: ScheduledTaskComputerUsePolicyAction
+}
+
 let servicePromise: Promise<LazyScheduledTaskService> | null = null
 
 function getScheduledTaskService(): Promise<LazyScheduledTaskService> {
@@ -25,6 +32,10 @@ function getScheduledTaskService(): Promise<LazyScheduledTaskService> {
       ScheduledTaskService.getInstance() as unknown as LazyScheduledTaskService,
   )
   return servicePromise
+}
+
+function reportThreadId(report: ScheduledTaskRunReport): string {
+  return typeof report.threadId === 'string' ? report.threadId.trim() : ''
 }
 
 /**
@@ -53,9 +64,36 @@ export function registerScheduledTaskHandlers(
     async (_event, options: { taskId: string; enabled: boolean }) =>
       (await getScheduledTaskService()).setEnabled(options),
   )
-  ipcMain.handle('scheduledTasks:markRun', async (_event, report: ScheduledTaskRunReport) =>
-    (await getScheduledTaskService()).markRun(report),
-  )
+  ipcMain.handle('scheduledTasks:markRun', async (_event, report: ScheduledTaskRunReport) => {
+    const service = await getScheduledTaskService()
+    const control = report as ScheduledTaskRunControl
+    const threadId = reportThreadId(report)
+
+    // The renderer only asks to prepare a scheduled thread. Main derives the
+    // actual allow/deny decision from the persisted task so unattended desktop
+    // authorization cannot be widened by a renderer-supplied boolean.
+    if (control.computerUsePolicy === 'prepare') {
+      if (!threadId) return { success: false, error: 'Scheduled task policy requires a thread.' }
+      const task = service.list().find((candidate) => candidate.id === report.taskId)
+      if (!task) return { success: false, error: 'That scheduled task no longer exists.' }
+      if (task.computerUse && deps.loadSettings().computerUseEnabled !== true) {
+        return { success: false, error: 'Computer Use is disabled in Settings.' }
+      }
+      ComputerUseRuntimeService.getInstance().setThreadPolicy(
+        threadId,
+        task.computerUse ? 'allow' : 'deny',
+      )
+      return { success: true, taskId: task.id }
+    }
+
+    if (control.computerUsePolicy === 'clear') {
+      if (!threadId) return { success: false, error: 'Scheduled task policy requires a thread.' }
+      ComputerUseRuntimeService.getInstance().clearThreadPolicy(threadId)
+      return { success: true, taskId: report.taskId }
+    }
+
+    return service.markRun(report)
+  })
   ipcMain.handle(
     'scheduledTasks:markRunSeen',
     async (_event, options: { taskId: string; runId: string }) =>
