@@ -27,7 +27,9 @@ jobs:
           submodules: false
 
       - name: Apply deterministic review fixes
-        run: node scripts/review-fix-device-principal.mjs
+        run: |
+          node scripts/prepare-review-fix-driver.mjs
+          node scripts/review-fix-device-principal.mjs
 
       - name: Initialize pinned T3 source
         run: |
