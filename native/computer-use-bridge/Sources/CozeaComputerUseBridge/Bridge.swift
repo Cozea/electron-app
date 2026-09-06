@@ -7,19 +7,30 @@ import OpenComputerUseKit
 private let upstreamVersion = "0.3.3"
 private let upstreamRevision = "41c5294cfe4735baca03f9c82b4de99d191a0b49"
 
+private final class LockedMCPServer: @unchecked Sendable {
+    private let lock = NSLock()
+    private let server = StdioMCPServer()
+
+    func handle(line: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return server.handle(line: line)
+    }
+}
+
 private final class ComputerUseRuntimeStore: @unchecked Sendable {
     static let shared = ComputerUseRuntimeStore()
 
     private let lock = NSLock()
-    private var servers: [String: StdioMCPServer] = [:]
+    private var servers: [String: LockedMCPServer] = [:]
 
-    private func server(for sessionID: String) -> StdioMCPServer {
+    private func server(for sessionID: String) -> LockedMCPServer {
         lock.lock()
         defer { lock.unlock() }
         if let existing = servers[sessionID] {
             return existing
         }
-        let created = StdioMCPServer()
+        let created = LockedMCPServer()
         servers[sessionID] = created
         return created
     }
@@ -104,9 +115,9 @@ private final class ComputerUseRuntimeStore: @unchecked Sendable {
         lock.lock()
         let server = servers.removeValue(forKey: sessionID)
         lock.unlock()
-        if server != nil {
+        if let server {
             // The upstream MCP notification owns visual-cursor cleanup.
-            turnEndedDetached(server: server!)
+            turnEndedDetached(server: server)
         }
     }
 
@@ -120,7 +131,7 @@ private final class ComputerUseRuntimeStore: @unchecked Sendable {
         }
     }
 
-    private func turnEndedDetached(server: StdioMCPServer) {
+    private func turnEndedDetached(server: LockedMCPServer) {
         let request = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/turn-ended\",\"params\":{}}"
         _ = server.handle(line: request)
     }
