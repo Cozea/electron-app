@@ -19,12 +19,17 @@ import {
   type ReactNode,
 } from "react"
 
-import en, { type TranslationKey } from "./i18n/en"
+import {
+  computerUseTranslations,
+  type ComputerUseTranslationKey,
+} from "./i18n/computerUse"
+import en, { type TranslationKey as BaseTranslationKey } from "./i18n/en"
 import es from "./i18n/es"
 
 // ── Public types ──────────────────────────────────────────────────────
 
 export type Language = "en" | "es"
+export type TranslationKey = BaseTranslationKey | ComputerUseTranslationKey
 
 export interface LanguageOption {
   code: Language
@@ -39,8 +44,8 @@ export const LANGUAGES: readonly LanguageOption[] = [
 // ── Translation maps ─────────────────────────────────────────────────
 
 const translations: Record<Language, Record<TranslationKey, string>> = {
-  en,
-  es,
+  en: { ...en, ...computerUseTranslations.en },
+  es: { ...es, ...computerUseTranslations.es },
 }
 
 // ── Storage helpers ──────────────────────────────────────────────────
@@ -138,5 +143,3 @@ export function useTranslation(): {
 
   return { t, language }
 }
-
-export type { TranslationKey }
