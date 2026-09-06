@@ -441,9 +441,13 @@ export class ComputerUseRuntimeService {
   }
 
   async resetAll(): Promise<void> {
-    // Resetting native/worker state is also used to apply live global settings.
-    // Keep active scheduled-task authorization intact across that reset;
-    // otherwise a running scheduled deny could accidentally become inheritance.
+    // A live Computer Use settings change revokes active native/worker state.
+    // Scheduled deny stays deny, and an active scheduled allow is downgraded to
+    // deny so toggling settings back on cannot restore unattended authority in
+    // the same turn. A future scheduled run must prepare a fresh allow.
+    for (const [sessionId, policy] of this.threadPolicies) {
+      if (policy === 'allow') this.threadPolicies.set(sessionId, 'deny')
+    }
     try {
       await this.loadNativeAddon()?.resetAll()
     } finally {
