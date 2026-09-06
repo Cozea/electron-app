@@ -36,17 +36,17 @@ export function TaskFocusOverlay({
   onDismiss = null,
   className,
 }: TaskFocusOverlayProps) {
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const [isOpen, setIsOpen] = useState(true)
   const [isDismissed, setIsDismissed] = useState(false)
   const updateManualTask = useMutation(api.projectTasks.setManualTaskCheckedMarkers)
   const updateSharedTask = useMutation(api.projectTasks.setSharedTaskCheckedMarkers)
   const overlayState = useQuery(
     api.projectTasks.getOverlayTaskState,
-    task && convexUserId
+    task && principalId
       ? {
           projectId: task.projectId as Id<'projects'>,
-          viewerUserId: convexUserId,
+          viewerPrincipalId: principalId,
           source: task.source,
           storageId: task.storageId,
         }
@@ -71,7 +71,7 @@ export function TaskFocusOverlay({
   const checkedCount = markers.filter((marker) => marker.checked).length
 
   function handleToggleMarker(markerId: string): void {
-    if (!convexUserId) return
+    if (!principalId) return
 
     const previousMarkers = markers
     const nextMarkers = markers.map((marker) =>
@@ -93,7 +93,7 @@ export function TaskFocusOverlay({
         if (activeTask.source === 'manual') {
           await updateManualTask({
             projectId: activeTask.projectId as Id<'projects'>,
-            actorUserId: convexUserId,
+            actorPrincipalId: principalId,
             taskKey: activeTask.storageId,
             checkedMarkerIds,
           })
@@ -105,7 +105,7 @@ export function TaskFocusOverlay({
 
         await updateSharedTask({
           projectId: activeTask.projectId as Id<'projects'>,
-          actorUserId: convexUserId,
+          actorPrincipalId: principalId,
           source,
           storageId: activeTask.storageId,
           totalMarkerCount: activeTask.markers.length,

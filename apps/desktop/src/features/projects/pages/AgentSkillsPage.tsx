@@ -1122,8 +1122,7 @@ export function AgentSkillsPage() {
     }
   }, [runMutation, selectedSkill]);
 
-  const displayName =
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || "Cozea user";
+  const displayName = user?.displayName || "This device";
 
   /**
    * Leaving the detail. A skill handed over from elsewhere replays that

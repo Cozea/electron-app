@@ -7,24 +7,22 @@ import { useCollaborationActivityStore } from "@/features/collaboration/model/co
 import { useAuth } from "@/contexts/AuthContext"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 
-const HEARTBEAT_INTERVAL_MS = 30 * 1000 // 30 seconds
+const HEARTBEAT_INTERVAL_MS = 30 * 1000
 
 interface UseProjectPresenceOptions {
   projectId: Id<"projects"> | null | undefined
-  userId: Id<"users"> | null | undefined
-  userName: string | null | undefined
-  userEmail: string | null | undefined
-  userAvatarUrl?: string | null
+  // Current principal ID is retained client-side for self-filtering only. The
+  // server derives the heartbeat actor from device auth.
+  principalId: Id<"devicePrincipals"> | null | undefined
   activeFile?: string | null
   activeRoute?: string | null
 }
 
 export interface PresenceUser {
   id: string
-  userId: Id<"users">
-  userName: string
-  userEmail: string
-  userAvatarUrl?: string
+  principalId: Id<"devicePrincipals">
+  displayName: string
+  avatarUrl?: string
   activeTab?: string
   activeFile?: string
   activeRoute?: string
@@ -36,10 +34,7 @@ export interface PresenceUser {
 
 export function useProjectPresence({
   projectId,
-  userId,
-  userName,
-  userEmail,
-  userAvatarUrl,
+  principalId,
   activeFile,
   activeRoute,
 }: UseProjectPresenceOptions) {
@@ -64,7 +59,6 @@ export function useProjectPresence({
     lastActivityAt,
   })
 
-  // Determine active tab from current route
   const getActiveTab = useCallback(() => {
     const path = location.pathname
     if (path.includes("/workbench")) return "workbench"
@@ -85,21 +79,15 @@ export function useProjectPresence({
     }
   }, [activeFile, activeRoute, activeTab, isAiTyping, isAgentWorking, lastActivityAt])
 
-  // Send heartbeat
   const sendHeartbeat = useCallback(async () => {
-    if (!projectId || !userId || !userName || !userEmail) return
-    // Same gate as the query: without a device token the server rejects this,
-    // and the 30s interval would turn that into a steady warning drip.
-    if (!isConvexAuthReady) return
+    if (!projectId || !principalId || !isConvexAuthReady) return
 
     try {
       const snapshot = activitySnapshotRef.current
+      // Identity and presentation are intentionally absent. Convex derives the
+      // canonical device principal from ctx.auth and reads its name/avatar.
       await heartbeat({
         projectId,
-        userId,
-        userName,
-        userEmail,
-        userAvatarUrl: userAvatarUrl ?? undefined,
         activeTab: snapshot.activeTab,
         activeFile: snapshot.activeFile ?? undefined,
         activeRoute: snapshot.activeRoute ?? undefined,
@@ -110,50 +98,39 @@ export function useProjectPresence({
     } catch (error) {
       console.warn("[Presence] Heartbeat failed:", error)
     }
-  }, [heartbeat, isConvexAuthReady, projectId, userAvatarUrl, userEmail, userId, userName])
+  }, [heartbeat, isConvexAuthReady, projectId, principalId])
 
-  // Handle leaving
   const handleLeave = useCallback(async () => {
-    if (!projectId || !userId || !isConvexAuthReady) return
+    if (!projectId || !principalId || !isConvexAuthReady) return
 
     try {
-      await leave({ projectId, userId })
+      await leave({ projectId })
     } catch (error) {
       console.warn("[Presence] Leave failed:", error)
     }
-  }, [isConvexAuthReady, projectId, userId, leave])
+  }, [isConvexAuthReady, projectId, principalId, leave])
 
-  // Start heartbeat on mount, cleanup on unmount
   useEffect(() => {
-    if (!projectId || !userId || !userName || !userEmail) return
+    if (!projectId || !principalId) return
 
-    // Send initial heartbeat
-    sendHeartbeat()
-
-    // Set up interval
+    void sendHeartbeat()
     heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS)
 
-    // Cleanup on unmount
     return () => {
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current)
         heartbeatRef.current = null
       }
-      // Fire and forget leave - don't await to avoid blocking unmount
-      handleLeave()
+      void handleLeave()
     }
-  }, [projectId, userId, userName, userEmail, sendHeartbeat, handleLeave])
+  }, [projectId, principalId, sendHeartbeat, handleLeave])
 
-  // Send heartbeat when tab changes
   useEffect(() => {
-    if (projectId && userId) {
-      sendHeartbeat()
-    }
-  }, [activeTab, projectId, userId, sendHeartbeat])
+    if (projectId && principalId) void sendHeartbeat()
+  }, [activeTab, projectId, principalId, sendHeartbeat])
 
-  // Send an immediate transition heartbeat for typing/agent-status changes.
   useEffect(() => {
-    if (!projectId || !userId || !userName || !userEmail) return
+    if (!projectId || !principalId) return
     const now = Date.now()
     if (now - lastTransitionHeartbeatAtRef.current < 1000) return
     lastTransitionHeartbeatAtRef.current = now
@@ -165,36 +142,27 @@ export function useProjectPresence({
     isAiTyping,
     projectId,
     sendHeartbeat,
-    userEmail,
-    userId,
-    userName,
+    principalId,
   ])
 
-  // Handle page visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        sendHeartbeat()
-      }
+      if (document.visibilityState === "visible") void sendHeartbeat()
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange)
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
   }, [sendHeartbeat])
 
-  // Handle beforeunload to send leave
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // Use sendBeacon for reliable delivery on page close
-      if (projectId && userId) {
-        // Note: Can't use Convex mutation in beforeunload, but the heartbeat
-        // timeout will handle cleanup. This is a best-effort cleanup.
-      }
+      // Convex mutations cannot be reliably sent during beforeunload; expiry
+      // handles cleanup.
     }
 
     window.addEventListener("beforeunload", handleBeforeUnload)
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
-  }, [projectId, userId])
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -202,13 +170,6 @@ export function useProjectPresence({
     }
   }, [collaborationActions])
 
-  // Presence is a decorative avatar stack. It must never be able to take down
-  // the project view, so it skips until Convex actually holds a device token and
-  // reports a server rejection as an empty roster rather than throwing into the
-  // route error boundary. `getActiveUsers` is an `authenticatedQuery`: it
-  // rejects with "Authentication required" during the startup window where the
-  // shell is painted but auth has not been re-established, and with "The
-  // authenticated device cannot access this project" if membership is lost.
   const activeUsersQuery = useSafeConvexQuery(
     api.projectPresence.getActiveUsers,
     projectId && isConvexAuthReady ? { projectId } : "skip"
@@ -220,9 +181,7 @@ export function useProjectPresence({
   }, [activeUsersQuery.error, activeUsersQuery.status])
 
   const activeUsers = activeUsersQuery.data
-
-  // Filter out current user from the list for display purposes
-  const otherUsers = activeUsers?.filter((u) => u.userId !== userId) ?? []
+  const otherUsers = activeUsers?.filter((u) => u.principalId !== principalId) ?? []
 
   return {
     activeUsers: activeUsers ?? [],

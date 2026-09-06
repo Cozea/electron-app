@@ -1,9 +1,9 @@
 "use client";
 
-import { lazy, Suspense, type ReactNode, useRef, useCallback, useEffect, useMemo,  } from "react";
+import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/app/model/queryCache";
@@ -24,7 +24,6 @@ import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWo
 import { WorkspaceRepairScreen } from "@/features/workspace/WorkspaceRepairScreen";
 import { ActiveWorkspaceContext } from "@/contexts/workspace/ActiveWorkspaceContext";
 import {
-  buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
 } from "@/contexts/project/projectNavigationState";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
@@ -43,7 +42,6 @@ import {
   ensureProjectSwitchStarted,
   markProjectSwitchPhase,
 } from "@/lib/performance/projectSwitchMarks";
-import { formatActorDisplayName } from "@/lib/userDisplay";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
@@ -71,115 +69,6 @@ interface ProjectLayoutLocationState {
   projectSlug?: string | null;
   projectName?: string | null;
   preferredWorkspaceId?: string | null;
-  pendingTeamSetup?: Array<{
-    email: string;
-    name?: string;
-    role: "project_manager" | "developer" | "designer" | "viewer";
-    isCurrentUser?: boolean;
-    profileImageUrl?: string | null;
-  }>;
-}
-
-/**
- * Null-rendering sibling that owns the deferred team-setup flow. It subscribes
- * to `location.href` and navigation state, which change on every navigation —
- * isolating those subscriptions here keeps ProjectLayout (and the whole route
- * tree under it) from re-rendering when only the URL or state changed.
- */
-function PendingTeamSetupEffect({
-  projectId,
-  convexUserId,
-  projectSlug,
-  projectName,
-  runtimeWorkspaceId,
-  routeProjectId,
-}: {
-  projectId: Id<"projects">;
-  convexUserId: Id<"users">;
-  projectSlug: string | null;
-  projectName: string | null;
-  runtimeWorkspaceId: string | null;
-  routeProjectId: string | null;
-}) {
-  const navigate = useViewTransitionNavigate();
-  const locationHref = useLocation({ select: (location) => location.href });
-  const statePendingTeamSetup = useLocation({
-    select: (location) =>
-      (location.state as ProjectLayoutLocationState | null)?.pendingTeamSetup ?? null,
-  });
-  const applyInitialTeamSetup = useMutation(api.projects.applyInitialTeamSetup);
-  const appliedInitialTeamSetupKeysRef = useRef<Set<string>>(new Set());
-
-  const pendingTeamSetup = useMemo(
-    () => statePendingTeamSetup ?? [],
-    [statePendingTeamSetup],
-  );
-
-  useEffect(() => {
-    if (pendingTeamSetup.length === 0) {
-      return;
-    }
-
-    const pendingKey = `${String(projectId)}:${pendingTeamSetup
-      .map((member) => `${member.email}:${member.role}`)
-      .sort()
-      .join("|")}`;
-
-    if (appliedInitialTeamSetupKeysRef.current.has(pendingKey)) {
-      return;
-    }
-    appliedInitialTeamSetupKeysRef.current.add(pendingKey);
-
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        await applyInitialTeamSetup({
-          projectId,
-          actorUserId: convexUserId,
-          team: pendingTeamSetup,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextState =
-          runtimeWorkspaceId
-            ? buildProjectRouteNavigationState({
-                projectId: String(projectId) || (routeProjectId ?? null),
-                projectSlug,
-                projectName,
-                preferredWorkspaceId: runtimeWorkspaceId,
-              })
-            : null;
-        navigate(locationHref, {
-          replace: true,
-          state: nextState,
-        });
-      } catch (error) {
-        console.warn("[ProjectLayout] Failed to apply deferred initial team setup:", error);
-        appliedInitialTeamSetupKeysRef.current.delete(pendingKey);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    applyInitialTeamSetup,
-    convexUserId,
-    locationHref,
-    runtimeWorkspaceId,
-    navigate,
-    pendingTeamSetup,
-    projectSlug,
-    projectId,
-    routeProjectId,
-    projectName,
-  ]);
-
-  return null;
 }
 
 /**
@@ -189,18 +78,12 @@ function PendingTeamSetupEffect({
  */
 function ProjectPresenceHeaderAddon({
   projectId,
-  convexUserId,
-  userName,
-  userEmail,
-  userAvatarUrl,
+  principalId,
   isWorkbenchView,
   projectBasePath,
 }: {
   projectId: Id<"projects"> | null;
-  convexUserId: Id<"users"> | null;
-  userName: string | null;
-  userEmail: string | null;
-  userAvatarUrl: string | null;
+  principalId: Id<"devicePrincipals"> | null;
   isWorkbenchView: boolean;
   projectBasePath: string | null;
 }) {
@@ -214,10 +97,7 @@ function ProjectPresenceHeaderAddon({
 
   const { otherUsers: presenceUsers } = useProjectPresence({
     projectId,
-    userId: convexUserId,
-    userName,
-    userEmail,
-    userAvatarUrl,
+    principalId: principalId,
     activeFile: presenceActiveFile,
     activeRoute: presenceActiveRoute,
   });
@@ -226,7 +106,7 @@ function ProjectPresenceHeaderAddon({
     (presenceUser: PresenceUser) => {
       if (!projectBasePath) return;
       navigate(
-        `${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`,
+        `${projectBasePath}/workbench?changes=1&principalId=${encodeURIComponent(presenceUser.principalId)}`,
       );
     },
     [navigate, projectBasePath],
@@ -251,7 +131,7 @@ export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
   const { t } = useTranslation();
-  const { convexUserId, isConvexAuthReady, user } = useAuth();
+  const { principalId, isConvexAuthReady, user } = useAuth();
   // Narrow location subscriptions: subscribing to the whole location object
   // re-renders this layout (and everything under it) on every navigation,
   // including no-op clicks to the current URL.
@@ -275,16 +155,16 @@ export function ProjectLayout({
   // Get project data (with caching)
   const freshProjectById = useQuery(
     api.projects.getAccessibleById,
-    routeProjectId && convexUserId
+    routeProjectId && principalId
       ? { projectId: routeProjectId as Id<"projects"> }
       : "skip",
   );
   const freshProjectBySlug = useQuery(
     api.projects.getAccessibleBySlug,
-    !routeProjectId && routeSlug && convexUserId
+    !routeProjectId && routeSlug && principalId
       ? {
           slug: routeSlug,
-          userId: convexUserId,
+          principalId: principalId,
         }
       : "skip",
   );
@@ -441,9 +321,6 @@ export function ProjectLayout({
     });
   }, [laneState]);
 
-  const displayUserName = user
-    ? formatActorDisplayName(user.firstName || user.email, "User")
-    : null;
 
   const isBuildsView = useLocation({
     select: (location) =>
@@ -464,10 +341,7 @@ export function ProjectLayout({
     () => (
       <ProjectPresenceHeaderAddon
         projectId={presenceGateOpen ? project?._id ?? null : null}
-        convexUserId={presenceGateOpen ? convexUserId ?? null : null}
-        userName={presenceGateOpen ? displayUserName : null}
-        userEmail={presenceGateOpen ? user?.email || null : null}
-        userAvatarUrl={shouldEnableProjectRuntime ? user?.profileImageUrl || null : null}
+        principalId={presenceGateOpen ? principalId ?? null : null}
         isWorkbenchView={isWorkbenchView}
         projectBasePath={projectBasePath}
       />
@@ -475,11 +349,8 @@ export function ProjectLayout({
     [
       presenceGateOpen,
       project?._id,
-      convexUserId,
+      principalId,
       isConvexAuthReady,
-      displayUserName,
-      user?.email,
-      user?.profileImageUrl,
       shouldEnableProjectRuntime,
       isWorkbenchView,
       projectBasePath,
@@ -778,23 +649,13 @@ export function ProjectLayout({
 
   return (
     <ProjectRouteContext.Provider value={projectRouteContextValue}>
-      {project?._id && convexUserId ? (
-        <PendingTeamSetupEffect
-          projectId={project._id}
-          convexUserId={convexUserId}
-          projectSlug={projectSlug}
-          projectName={effectiveProjectName}
-          runtimeWorkspaceId={runtimeWorkspaceId}
-          routeProjectId={routeProjectId ?? null}
-        />
-      ) : null}
       <ActiveWorkspaceContext.Provider value={activeWorkspaceValue}>
         <ProjectSyncProvider
           workspaceId={activeWorkspaceValue ? activeWorkspaceId : null}
           workspaceRevision={activeWorkspaceValue?.workspace.workspaceRevision ?? 1}
           projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-          userId={shouldEnableProjectRuntime ? convexUserId ?? null : null}
-          userName={displayUserName ?? "User"}
+          principalId={shouldEnableProjectRuntime ? principalId ?? null : null}
+          displayName={user?.displayName ?? "This device"}
           laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
           projectSlug={projectSlug}
           gitCwd={activeWorkspaceValue ? activeGitRootPath : null}

@@ -47,7 +47,7 @@ export class BinaryFileSync {
     projectId: Id<'projects'>,
     _projectPath: string,
     _convex: ConvexReactClient,
-    _userId: Id<'users'>
+    _userId: Id<'devicePrincipals'>
   ) {
     this.projectId = projectId
   }

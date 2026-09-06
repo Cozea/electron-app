@@ -28,10 +28,11 @@ export interface CollabSession {
   collabWsUrl: string
   token: string
   protocolVersion: string
-  deviceId: string
-  deviceLabel?: string
-  deviceFingerprint?: string
-  devicePublicKeyJwk?: string
+  principalId: string
+  identityKey: string
+  displayName: string
+  encryptionFingerprint: string
+  encryptionPublicKeyJwk: string
   capabilities: CollabCapabilities
   encryption: CollabEncryptionBootstrap
 }
@@ -122,7 +123,6 @@ export function useCollabSession({
     setError(null)
 
     try {
-      const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
       const deviceSession = await getDeviceSession()
 
       const sessionResponse = await fetch(`${gatewayBaseUrl}/collab/session`, {
@@ -131,16 +131,7 @@ export function useCollabSession({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${deviceSession.accessToken}`,
         },
-        body: JSON.stringify({
-          projectId,
-          clientType: 'electron',
-          deviceId: deviceIdentity.deviceId,
-          deviceLabel: deviceIdentity.deviceLabel,
-          platform: deviceIdentity.platform,
-          publicKeyJwk: deviceIdentity.publicKeyJwk,
-          publicKeyAlgorithm: deviceIdentity.publicKeyAlgorithm,
-          fingerprint: deviceIdentity.fingerprint,
-        }),
+        body: JSON.stringify({ projectId, clientType: 'electron' }),
       })
 
       const sessionPayload = await parseJsonResponse(sessionResponse)
@@ -155,7 +146,7 @@ export function useCollabSession({
         !parsedSession?.capabilities ||
         !parsedSession?.token ||
         !parsedSession?.roomId ||
-        !parsedSession?.deviceId ||
+        !parsedSession?.identityKey ||
         !parsedSession?.collabWsUrl ||
         !parsedSession?.protocolVersion ||
         !parsedSession?.encryption
@@ -167,9 +158,6 @@ export function useCollabSession({
 
       const nextSession: CollabSession = {
         ...parsedSession,
-        deviceLabel: deviceIdentity.deviceLabel,
-        deviceFingerprint: deviceIdentity.fingerprint,
-        devicePublicKeyJwk: deviceIdentity.publicKeyJwk,
         capabilities: parsedCapabilities ?? {
           execution: 'vm',
           languageScope: ['typescript', 'javascript', 'json', 'markdown', 'html', 'css', 'yaml', 'shell'],

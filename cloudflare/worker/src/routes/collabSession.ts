@@ -24,11 +24,10 @@ export async function handleCollabSession(request: Request, env: Env): Promise<R
   const roomId = getRoomIdForProject(body.projectId)
   const protocolVersion = env.COLLAB_PROTOCOL_VERSION ?? COLLAB_PROTOCOL_VERSION
   const token = await signSessionToken(env, {
-    sub: sessionContext.userId,
-    userId: sessionContext.userId,
+    sub: sessionContext.identityKey,
+    principalId: sessionContext.principalId,
     projectId: sessionContext.projectId,
     roomId,
-    deviceId: sessionContext.deviceId,
     clientType: body.clientType,
     protocolVersion,
   })
@@ -39,10 +38,11 @@ export async function handleCollabSession(request: Request, env: Env): Promise<R
     collabWsUrl: toWsUrl(request, roomId),
     token,
     protocolVersion,
-    deviceId: sessionContext.deviceId,
-    deviceLabel: sessionContext.deviceLabel,
-    deviceFingerprint: sessionContext.deviceFingerprint,
-    devicePublicKeyJwk: sessionContext.devicePublicKeyJwk,
+    principalId: sessionContext.principalId,
+    identityKey: sessionContext.identityKey,
+    displayName: sessionContext.displayName,
+    encryptionFingerprint: sessionContext.encryptionFingerprint,
+    encryptionPublicKeyJwk: sessionContext.encryptionPublicKeyJwk,
     capabilities: getCollabCapabilities(env),
     encryption: sessionContext.encryption,
   }

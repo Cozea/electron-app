@@ -963,8 +963,8 @@ export interface FileChangeAttribution {
   sourceOrigin?: string
   actorType?: FileChangeActorType
   actorId?: string
-  userId?: string
-  userName?: string
+  principalId?: string
+  displayName?: string
   clientId?: string
   terminalId?: string
   terminalTitle?: string
@@ -1428,10 +1428,7 @@ export interface IntegrationToolResult {
 }
 
 export interface CollabDeviceIdentity {
-  deviceId: string
-  userId: string
   identityKey: string
-  deviceLabel: string
   platform: string
   publicKeyAlgorithm: string
   fingerprint: string
@@ -1442,8 +1439,6 @@ export interface CollabDeviceIdentity {
 }
 
 export interface CollabDeviceChallengeSignature {
-  deviceId: string
-  userId: string
   identityKey: string
   algorithm: string
   signature: string
@@ -1453,7 +1448,7 @@ export interface CollabWrappedRoomKeyResult {
   wrappedKey: string
   wrapAlgorithm: string
   senderPublicKeyJwk: string
-  senderDeviceId: string
+  senderIdentityKey: string
 }
 
 export interface CollabRecoveryKitResult {

@@ -37,12 +37,6 @@ export function parseSessionRequestBody(value: unknown): SessionRequestBody {
   return {
     projectId: getStringField(body.projectId, 'projectId', 200),
     clientType,
-    deviceId: getStringField(body.deviceId, 'deviceId', 200),
-    deviceLabel: getStringField(body.deviceLabel, 'deviceLabel', 200),
-    platform: getStringField(body.platform, 'platform', 100),
-    publicKeyJwk: getStringField(body.publicKeyJwk, 'publicKeyJwk', 20_000),
-    publicKeyAlgorithm: getStringField(body.publicKeyAlgorithm, 'publicKeyAlgorithm', 100),
-    fingerprint: getStringField(body.fingerprint, 'fingerprint', 200),
   }
 }
 
@@ -59,7 +53,6 @@ export function parseDeviceAuthChallengeRequest(value: unknown): DeviceAuthChall
 
   return {
     identityKey,
-    deviceLabel: getStringField(body.deviceLabel, 'deviceLabel', 200),
     platform: getStringField(body.platform, 'platform', 100),
     encryptionPublicKeyJwk: getStringField(body.encryptionPublicKeyJwk, 'encryptionPublicKeyJwk', 20_000),
     encryptionPublicKeyAlgorithm: getStringField(body.encryptionPublicKeyAlgorithm, 'encryptionPublicKeyAlgorithm', 100),

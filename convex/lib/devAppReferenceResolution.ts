@@ -15,7 +15,7 @@ type ReadDatabaseCtx = Pick<QueryCtx | MutationCtx, "db">;
 export async function resolvePublicationReferenceRecord(
   ctx: ReadDatabaseCtx,
   rawRef: string,
-  userId: Id<"users">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<{
   publication: Doc<"devAppPublications">;
   release: Doc<"devAppReleases">;
@@ -34,7 +34,7 @@ export async function resolvePublicationReferenceRecord(
     publication.organizationId !== organizationId ||
     publication.visibility !== "organization" ||
     publication.status !== "active" ||
-    !(await isOrgMember(ctx, organizationId, userId))
+    !(await isOrgMember(ctx, organizationId, principalId))
   ) {
     return null;
   }

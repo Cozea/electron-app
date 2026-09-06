@@ -31,7 +31,7 @@ interface ImportWorkspacePathResult {
 export function useLocalProjectImport() {
   const navigate = useViewTransitionNavigate()
   const convex = useConvex()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const deleteProject = useMutation(api.projects.deleteProject)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
@@ -125,8 +125,8 @@ export function useLocalProjectImport() {
       return "cancelled"
     }
 
-    if (!convexUserId) {
-      await showImportError("No project profile is ready right now.")
+    if (!principalId) {
+      await showImportError("No device identity is ready right now.")
       return "error"
     }
 
@@ -197,7 +197,7 @@ export function useLocalProjectImport() {
       const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
       const creationToken = globalThis.crypto.randomUUID()
       const result = await createProject({
-        userId: convexUserId,
+        principalId: principalId,
         name: projectName,
         template: "blank",
         creationPath: "repo",
@@ -226,7 +226,7 @@ export function useLocalProjectImport() {
         if (!result.resumed) {
           await deleteProject({
             projectId: result.projectId,
-            userId: convexUserId,
+            principalId: principalId,
             confirmName: projectName,
           }).catch((compensationError) => {
             console.warn(
@@ -244,7 +244,7 @@ export function useLocalProjectImport() {
       }
       await updateProjectStatus({
         projectId: result.projectId,
-        userId: convexUserId,
+        principalId: principalId,
         status: "active",
       })
       navigateToProjectWorkbench(
@@ -262,7 +262,7 @@ export function useLocalProjectImport() {
       return "error"
     }
   }, [
-    convexUserId,
+    principalId,
     convex,
     createProject,
     deleteProject,

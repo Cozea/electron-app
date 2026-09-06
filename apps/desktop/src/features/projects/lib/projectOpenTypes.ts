@@ -28,7 +28,7 @@ export interface ProjectOpenGitProjectLike {
   _id: Id<"projects">;
   name?: string | null;
   slug: string;
-  createdBy?: Id<"users"> | string | null;
+  createdBy?: Id<"devicePrincipals"> | string | null;
   gitRepository?: GitRepositoryMetadataLike | null;
   sourceControl?: ProjectOpenSourceControlLike | null;
   importedFrom?: ProjectImportedFromLike | null;

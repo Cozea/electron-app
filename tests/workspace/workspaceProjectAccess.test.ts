@@ -17,7 +17,7 @@ interface OrganizationDoc {
 }
 
 interface UserDoc {
-  _id: Id<'users'>
+  _id: Id<'devicePrincipals'>
   workosId: string
   email: string
 }
@@ -25,7 +25,7 @@ interface UserDoc {
 interface MemberDoc {
   _id: Id<'members'>
   organizationId: Id<'organizations'>
-  userId: Id<'users'>
+  principalId: Id<'devicePrincipals'>
   role: OrganizationRole
   roleId?: Id<'organizationRoles'> | null
   permissionGrants?: string[]
@@ -40,16 +40,16 @@ interface ProjectDoc {
   slug: string
   name: string
   status: ProjectStatus
-  createdBy: Id<'users'>
+  createdBy: Id<'devicePrincipals'>
 }
 
 interface ProjectMemberDoc {
   _id: Id<'projectMembers'>
   projectId: Id<'projects'>
-  userId: Id<'users'>
+  principalId: Id<'devicePrincipals'>
   role: ProjectRole
   addedAt: number
-  addedBy: Id<'users'>
+  addedBy: Id<'devicePrincipals'>
 }
 
 interface OrganizationRoleDoc {
@@ -149,7 +149,7 @@ function createCtx(tables: Partial<TestTables>) {
 
 describe('workspace project access', () => {
   it('keeps personal workspace owner access without a project membership row', async () => {
-    const ownerId = asId<'users'>('user_owner')
+    const ownerId = asId<'devicePrincipals'>('user_owner')
     const personalOrgId = asId<'organizations'>('org_personal')
     const projectId = asId<'projects'>('project_personal_owner')
     const ctx = createCtx({
@@ -176,8 +176,8 @@ describe('workspace project access', () => {
   })
 
   it('preserves personal project invite access for invited viewers', async () => {
-    const ownerId = asId<'users'>('user_owner')
-    const inviteeId = asId<'users'>('user_invited')
+    const ownerId = asId<'devicePrincipals'>('user_owner')
+    const inviteeId = asId<'devicePrincipals'>('user_invited')
     const personalOrgId = asId<'organizations'>('org_personal_invite')
     const projectId = asId<'projects'>('project_personal_invite')
     const ctx = createCtx({
@@ -202,7 +202,7 @@ describe('workspace project access', () => {
         {
           _id: asId<'projectMembers'>('pm_personal_viewer'),
           projectId,
-          userId: inviteeId,
+          principalId: inviteeId,
           role: 'viewer',
           addedAt: 1,
           addedBy: ownerId,
@@ -215,8 +215,8 @@ describe('workspace project access', () => {
   })
 
   it('keeps explicit org project membership authoritative for project edit access', async () => {
-    const ownerId = asId<'users'>('user_workspace_owner')
-    const userId = asId<'users'>('user_project_editor')
+    const ownerId = asId<'devicePrincipals'>('user_workspace_owner')
+    const principalId = asId<'devicePrincipals'>('user_project_editor')
     const orgId = asId<'organizations'>('org_workspace_editor')
     const projectId = asId<'projects'>('project_workspace_editor')
     const ctx = createCtx({
@@ -225,13 +225,13 @@ describe('workspace project access', () => {
       ],
       users: [
         { _id: ownerId, workosId: 'user_workspace_owner', email: 'owner@example.com' },
-        { _id: userId, workosId: 'user_project_editor', email: 'editor@example.com' },
+        { _id: principalId, workosId: 'user_project_editor', email: 'editor@example.com' },
       ],
       members: [
         {
           _id: asId<'members'>('member_workspace_editor'),
           organizationId: orgId,
-          userId,
+          principalId,
           role: 'viewer',
           permissionDenies: ['projects:view'],
         },
@@ -250,7 +250,7 @@ describe('workspace project access', () => {
         {
           _id: asId<'projectMembers'>('pm_workspace_editor'),
           projectId,
-          userId,
+          principalId,
           role: 'developer',
           addedAt: 1,
           addedBy: ownerId,
@@ -258,7 +258,7 @@ describe('workspace project access', () => {
       ],
     })
 
-    await expect(canAccessProjectByWorkspaceOrMembership(ctx, projectId, userId)).resolves.toBe(true)
-    await expect(canEditProjectByWorkspaceOrMembership(ctx, projectId, userId)).resolves.toBe(true)
+    await expect(canAccessProjectByWorkspaceOrMembership(ctx, projectId, principalId)).resolves.toBe(true)
+    await expect(canEditProjectByWorkspaceOrMembership(ctx, projectId, principalId)).resolves.toBe(true)
   })
 })

@@ -16,9 +16,9 @@ import { TerminalViewHostGate } from '@/features/terminal/TerminalViewHostGate'
 import { AppAgentRuntimeHost } from '@/substrate/AppAgentRuntimeHost'
 import { featureFlags } from '@/lib/featureFlags'
 
-const LazyLogin = lazy(() =>
-  import('./pages/Login').then((module) => ({
-    default: module.Login,
+const LazyDeviceSessionRecovery = lazy(() =>
+  import('./pages/DeviceSessionRecovery').then((module) => ({
+    default: module.DeviceSessionRecovery,
   })),
 )
 const LazyOnboarding = lazy(() =>
@@ -277,7 +277,7 @@ function AppContent() {
     }
     return (
       <LazySurface>
-        <LazyLogin />
+        <LazyDeviceSessionRecovery />
       </LazySurface>
     )
   }

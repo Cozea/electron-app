@@ -34,8 +34,8 @@ const LazyDeleteConflictDialog = lazy(() =>
 export function ProjectSyncProvider({
   children,
   projectId,
-  userId,
-  userName,
+  principalId,
+  displayName,
   laneId = null,
   projectSlug,
   gitCwd = null,
@@ -64,7 +64,7 @@ export function ProjectSyncProvider({
     [fallbackWorkspaceId, laneId, projectId, workspaceRevision],
   )
 
-  const canHostRuntime = Boolean(projectId && userId && fallbackWorkspaceId && runtimeId)
+  const canHostRuntime = Boolean(projectId && principalId && fallbackWorkspaceId && runtimeId)
 
   useEffect(() => {
     if (!canHostRuntime || !runtimeId || !fallbackWorkspaceId) {
@@ -73,8 +73,8 @@ export function ProjectSyncProvider({
 
     ensureRuntime({
       projectId,
-      userId,
-      userName,
+      principalId,
+      displayName,
       workspaceId: fallbackWorkspaceId,
       laneId: normalizeWorkspaceLaneId(laneId),
       workspaceRevision,
@@ -98,8 +98,8 @@ export function ProjectSyncProvider({
     projectId,
     projectSlug,
     sharedBranch,
-    userId,
-    userName,
+    principalId,
+    displayName,
     fallbackWorkspaceId,
     workspaceRevision,
     runtimeId,

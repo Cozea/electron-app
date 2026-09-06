@@ -203,7 +203,7 @@ export const getRuntimeBuildAuthorizationForServer = query({
     assertServerSecret(args.serverSecret)
     const [user, reservation] = await Promise.all([
       ctx.db
-        .query("users")
+        .query("devicePrincipals")
         .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
         .unique(),
       ctx.db.get(args.reservationId),
@@ -242,7 +242,7 @@ export const getRuntimePullAuthorizationForServer = query({
   handler: async (ctx, args) => {
     assertServerSecret(args.serverSecret)
     const user = await ctx.db
-      .query("users")
+      .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
       .unique()
     const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
@@ -273,7 +273,7 @@ export const getHostedRuntimeAuthorizationForServer = query({
   handler: async (ctx, args) => {
     assertServerSecret(args.serverSecret)
     const user = await ctx.db
-      .query("users")
+      .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
       .unique()
     const [publication, release] = await Promise.all([ctx.db.get(args.publicationId), ctx.db.get(args.releaseId)])
@@ -326,7 +326,7 @@ export const registerRuntimeBuildFromServer = mutation({
   handler: async (ctx, args) => {
     assertServerSecret(args.serverSecret)
     const user = await ctx.db
-      .query("users")
+      .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey))
       .unique()
     const reservation = await ctx.db.get(args.reservationId)
@@ -560,7 +560,7 @@ export const publish = mutation({
       ...(args.arch ? { arch: args.arch } : {}),
       ...(args.permissionSetHash ? { permissionSetHash: args.permissionSetHash } : {}),
       ...(user.identityKey ? { publisherIdentityKey: user.identityKey } : {}),
-      ...(user.deviceLabel ? { publisherDeviceLabel: user.deviceLabel } : {}),
+      ...(user.displayName ? { publisherDisplayName: user.displayName } : {}),
       createdBy: user._id,
       createdAt: now,
     })
@@ -688,7 +688,7 @@ export const listMine = query({
     const user = await requireAuthenticatedDevice(ctx)
     const memberships = await ctx.db
       .query("organizationMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_principal", (q) => q.eq("principalId", user._id))
       .collect()
 
     const grouped = await Promise.all(
@@ -735,7 +735,7 @@ export const listPublisherStatus = query({
     const user = await requireAuthenticatedDevice(ctx)
     const memberships = await ctx.db
       .query("projectMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_principal", (q) => q.eq("principalId", user._id))
       .collect()
 
     const rows = await Promise.all(
@@ -814,7 +814,7 @@ export const getArtifactUrl = query({
       arch: resolved.release.arch ?? null,
       permissionSetHash: resolved.release.permissionSetHash ?? null,
       publisherIdentityKey: resolved.release.publisherIdentityKey ?? null,
-      publisherDeviceLabel: resolved.release.publisherDeviceLabel ?? null,
+      publisherDisplayName: resolved.release.publisherDisplayName ?? null,
     }
   },
 })

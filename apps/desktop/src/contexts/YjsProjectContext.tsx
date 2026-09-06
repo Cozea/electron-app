@@ -69,8 +69,8 @@ function randomDebugId(prefix: string): string {
 
 interface YjsProjectProviderProps {
   projectId: Id<"projects">
-  userId: Id<"users">
-  userName: string
+  principalId: Id<"devicePrincipals">
+  displayName: string
   workspaceId: string | null
   enabled?: boolean
   documentScopeId?: string | null
@@ -82,8 +82,8 @@ interface YjsProjectProviderProps {
 
 export function YjsProjectProvider({
   projectId,
-  userId,
-  userName,
+  principalId,
+  displayName,
   workspaceId,
   enabled = true,
   documentScopeId = null,
@@ -118,9 +118,11 @@ export function YjsProjectProvider({
       collabWsUrl: collabSession.collabWsUrl,
       token: collabSession.token,
       protocolVersion: collabSession.protocolVersion,
-      deviceId: collabSession.deviceId,
-      deviceFingerprint: collabSession.deviceFingerprint,
-      devicePublicKeyJwk: collabSession.devicePublicKeyJwk,
+      principalId: collabSession.principalId,
+      identityKey: collabSession.identityKey,
+      displayName: collabSession.displayName,
+      encryptionFingerprint: collabSession.encryptionFingerprint,
+      encryptionPublicKeyJwk: collabSession.encryptionPublicKeyJwk,
       encryption: collabSession.encryption,
     }
   }, [collabSession, collaborationEnabled])
@@ -180,9 +182,9 @@ export function YjsProjectProvider({
       }
 
       doc.awareness.setLocalStateField("user", {
-        id: userId,
-        name: userName,
-        color: generateColor(userId),
+        id: principalId,
+        name: displayName,
+        color: generateColor(principalId),
       })
 
       const persistence = new ProjectFilesPersistence(
@@ -190,8 +192,8 @@ export function YjsProjectProvider({
         projectId,
         workspaceId,
         convex,
-        userId,
-        userName,
+        principalId,
+        displayName,
       )
       persistenceInstance = persistence
       persistenceRef.current = persistence
@@ -240,8 +242,8 @@ export function YjsProjectProvider({
     projectId,
     workspaceId,
     scopeKey,
-    userId,
-    userName,
+    principalId,
+    displayName,
     wsSession?.encryption.encryptionRequired,
   ])
 
@@ -257,23 +259,20 @@ export function YjsProjectProvider({
     }
 
     if (session.encryption.status === "room_not_initialized") {
-      if (!session.devicePublicKeyJwk) {
+      if (!session.encryptionPublicKeyJwk) {
         throw new Error("Missing local collaboration device public key")
       }
       const roomKeyBase64 = generateRoomKeyBase64()
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64,
-        recipientPublicKeyJwk: session.devicePublicKeyJwk,
+        recipientPublicKeyJwk: session.encryptionPublicKeyJwk,
       })
       await convex.mutation(api.yjs.initializeEncryptedRoom, {
         projectId,
         roomId: session.roomId,
-        userId,
-        deviceId: session.deviceId,
         keyVersion: session.encryption.activeKeyVersion ?? 1,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
-        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
       })
       return {
         encryptionEnabled: true,
@@ -299,14 +298,10 @@ export function YjsProjectProvider({
     }
 
     if (session.encryption.status === "missing_for_device") {
-      if (session.devicePublicKeyJwk) {
+      if (session.encryptionPublicKeyJwk) {
         await convex.mutation(api.yjs.createKeyRequest, {
           projectId,
           roomId: session.roomId,
-          recipientUserId: userId,
-          recipientDeviceId: session.deviceId,
-          recipientPublicKeyJwk: session.devicePublicKeyJwk,
-          recipientFingerprint: session.deviceFingerprint ?? session.deviceId,
         })
       }
       return null
@@ -321,7 +316,7 @@ export function YjsProjectProvider({
       roomKeyBase64: null,
       keyVersion: null,
     }
-  }, [convex, projectId, userId])
+  }, [convex, projectId, principalId])
 
   useEffect(() => {
     if (!enabled || !yjsDoc) {
@@ -427,7 +422,7 @@ export function YjsProjectProvider({
     projectId,
     resolveRoomEncryptionState,
     scopeKey,
-    userId,
+    principalId,
     yjsDoc,
     wsSession?.projectId,
     wsSession?.roomId,

@@ -38,14 +38,14 @@ function sessionFixture(): DesktopBootstrapSession {
   return {
     accessToken: 'secret-access-token',
     expiresAt: 2_000_000_000,
-    convexUserId: 'user_1',
+    principalId: 'principal_1',
     user: {
-      id: 'device-user-1',
-      deviceId: 'device-1',
-      email: 'test@example.com',
-      firstName: 'Test',
-      lastName: 'User',
-      profileImageUrl: null,
+      principalId: 'principal_1',
+      identityKey: 'czd_00000000000000000000000000',
+      displayName: 'Test device',
+      presentationConfigured: true,
+      avatarUrl: null,
+      platform: 'darwin',
     },
     personalWorkspace: {
       id: 'membership-1',
@@ -65,7 +65,7 @@ function sessionFixture(): DesktopBootstrapSession {
 
 function routeFixture(): DesktopWorkbenchLocator {
   return {
-    workspaceSelectionId: 'device-user-1',
+    workspaceSelectionId: 'czd_00000000000000000000000000',
     projectId: 'project_1',
     laneId: 'collab',
     focusTileId: 'tile_1',
@@ -96,14 +96,14 @@ describe('DesktopBootstrapStore', () => {
     expect(snapshot.lastWorkbenchRoute).toEqual(route)
 
     const encrypted = fs.readFileSync(
-      path.join(electronState.root, 'desktop-bootstrap-session.v1.enc'),
+      path.join(electronState.root, 'desktop-bootstrap-session.v2.enc'),
       'utf8',
     )
     expect(encrypted).not.toContain(session.accessToken)
   })
 
   it('treats corrupt local bootstrap files as missing instead of blocking launch', async () => {
-    fs.writeFileSync(path.join(electronState.root, 'desktop-bootstrap-session.v1.enc'), 'garbage')
+    fs.writeFileSync(path.join(electronState.root, 'desktop-bootstrap-session.v2.enc'), 'garbage')
     fs.writeFileSync(path.join(electronState.root, 'desktop-bootstrap-navigation.v1.json'), '{broken')
 
     const snapshot = await new DesktopBootstrapStore().getInitialSnapshot()
@@ -115,13 +115,13 @@ describe('DesktopBootstrapStore', () => {
   it('rejects encrypted session payloads that no longer match the runtime contract', async () => {
     const malformed = {
       ...sessionFixture(),
-      user: { id: 'device-user-1' },
+      user: { principalId: 'principal_1' },
     }
     const encrypted = Buffer.from(
       `enc:${Buffer.from(JSON.stringify(malformed), 'utf8').toString('base64')}`,
       'utf8',
     )
-    fs.writeFileSync(path.join(electronState.root, 'desktop-bootstrap-session.v1.enc'), encrypted)
+    fs.writeFileSync(path.join(electronState.root, 'desktop-bootstrap-session.v2.enc'), encrypted)
 
     expect((await new DesktopBootstrapStore().getInitialSnapshot()).session).toBeNull()
   })
@@ -132,7 +132,7 @@ describe('DesktopBootstrapStore', () => {
 
     await expect(store.storeSession(sessionFixture())).rejects.toThrow('Secure storage is unavailable')
     expect((await store.getInitialSnapshot()).session).toBeNull()
-    expect(fs.existsSync(path.join(electronState.root, 'desktop-bootstrap-session.v1.enc'))).toBe(false)
+    expect(fs.existsSync(path.join(electronState.root, 'desktop-bootstrap-session.v2.enc'))).toBe(false)
   })
 
   it('clears only the matching persisted workbench locator', async () => {
@@ -140,7 +140,7 @@ describe('DesktopBootstrapStore', () => {
     const route = routeFixture()
     await store.setLastWorkbenchRoute(route)
 
-    await store.clearLastWorkbenchRoute('some-other-user')
+    await store.clearLastWorkbenchRoute('some-other-device')
     expect((await store.getInitialSnapshot()).lastWorkbenchRoute).toEqual(route)
 
     await store.clearLastWorkbenchRoute(route.workspaceSelectionId)

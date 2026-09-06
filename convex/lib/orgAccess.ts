@@ -21,12 +21,12 @@ export interface OrganizationAccessState {
 export async function getOrganizationMembership(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<Doc<"organizationMembers"> | null> {
   return await ctx.db
     .query("organizationMembers")
-    .withIndex("by_organization_and_user", (q) =>
-      q.eq("organizationId", organizationId).eq("userId", userId),
+    .withIndex("by_organization_and_principal", (q) =>
+      q.eq("organizationId", organizationId).eq("principalId", principalId),
     )
     .first()
 }
@@ -34,36 +34,36 @@ export async function getOrganizationMembership(
 export async function getOrganizationAccessState(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<OrganizationAccessState> {
   const organization = await ctx.db.get(organizationId)
   if (!organization?.groupId || !isGroupIdentityKey(organization.groupId)) {
     return { organization: null, membership: null, isCreator: false }
   }
 
-  const membership = await getOrganizationMembership(ctx, organizationId, userId)
+  const membership = await getOrganizationMembership(ctx, organizationId, principalId)
   return {
     organization: organization as DeviceOrganization,
     membership,
-    isCreator: organization.createdBy === userId,
+    isCreator: organization.createdBy === principalId,
   }
 }
 
 export async function isOrgMember(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<boolean> {
-  const access = await getOrganizationAccessState(ctx, organizationId, userId)
+  const access = await getOrganizationAccessState(ctx, organizationId, principalId)
   return access.organization !== null && (access.isCreator || access.membership !== null)
 }
 
 export async function requireOrgMember(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<{ organization: DeviceOrganization; membership: Doc<"organizationMembers"> | null }> {
-  const access = await getOrganizationAccessState(ctx, organizationId, userId)
+  const access = await getOrganizationAccessState(ctx, organizationId, principalId)
   if (!access.organization || (!access.isCreator && !access.membership)) {
     throw new ConvexError("You are not a member of this organization")
   }
@@ -73,9 +73,9 @@ export async function requireOrgMember(
 export async function requireOrgAdmin(
   ctx: ReadDatabaseCtx,
   organizationId: Id<"organizations">,
-  userId: Id<"users">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<{ organization: DeviceOrganization }> {
-  const access = await getOrganizationAccessState(ctx, organizationId, userId)
+  const access = await getOrganizationAccessState(ctx, organizationId, principalId)
   if (!access.organization) {
     throw new ConvexError("Organization not found")
   }
@@ -112,7 +112,7 @@ export function toConsumerDevApp(input: {
     arch: string | null
     permissionSetHash: string | null
     publisherIdentityKey: string | null
-    publisherDeviceLabel: string | null
+    publisherDisplayName: string | null
     parts: DevAppParts
     runtimeSourceDigest: string | null
     packageManifestDigest: string | null
@@ -147,7 +147,7 @@ export function toConsumerDevApp(input: {
       arch: input.release.arch ?? null,
       permissionSetHash: input.release.permissionSetHash ?? null,
       publisherIdentityKey: input.release.publisherIdentityKey ?? null,
-      publisherDeviceLabel: input.release.publisherDeviceLabel ?? null,
+      publisherDisplayName: input.release.publisherDisplayName ?? null,
       parts: input.release.parts,
       runtimeSourceDigest: input.release.runtimeSourceDigest ?? null,
       packageManifestDigest: input.release.packageManifestDigest ?? null,

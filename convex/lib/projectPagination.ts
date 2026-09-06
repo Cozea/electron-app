@@ -16,9 +16,9 @@ export interface ProjectPageItem {
   status: Doc<"projects">["status"]
   createdAt: number
   updatedAt: number
-  createdBy: Id<"users">
+  createdBy: Id<"devicePrincipals">
   lastSyncAt?: number
-  lastSyncBy?: Id<"users">
+  lastSyncBy?: Id<"devicePrincipals">
   sourceControl?: Doc<"projects">["sourceControl"]
   gitRepository?: Doc<"projects">["gitRepository"]
   localPath: string | null

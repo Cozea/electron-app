@@ -26,12 +26,12 @@ const es: Record<TranslationKey, string> = {
   "common.copy": "Copiar",
   "common.copied": "Copiado",
 
-  // ── Inicio de sesión / Autenticación ────────────────────────────────
-  "login.welcome": "Bienvenido a Cozea",
-  "login.initializeDevice": "Inicializa este dispositivo para continuar",
-  "login.continueOnDevice": "Continuar en este dispositivo",
-  "login.preparingDevice": "Preparando dispositivo...",
-  "login.localIdentityNote":
+  // ── Sesión del dispositivo ────────────────────────────────
+  "deviceSession.welcome": "Bienvenido a Cozea",
+  "deviceSession.initializeDevice": "Inicializa este dispositivo para continuar",
+  "deviceSession.continueOnDevice": "Continuar en este dispositivo",
+  "deviceSession.preparingDevice": "Preparando dispositivo...",
+  "deviceSession.localIdentityNote":
     "Cozea usa una identidad local de confianza por defecto. El acceso de colaboración se otorga por proyecto.",
 
   // ── Incorporación ───────────────────────────────────────────────────

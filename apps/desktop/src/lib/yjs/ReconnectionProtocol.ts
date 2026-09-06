@@ -165,18 +165,7 @@ export class ReconnectionProtocol {
           const localContent = localFile.toString()
           // Only report as conflict if local file has content
           if (localContent.length > 0) {
-            // Get who deleted it
-            let deletedBy: string | null = null
-            if (tombstone.deletedBy) {
-              const user = await this.convex.query(api.users.getById, {
-                userId: tombstone.deletedBy,
-              })
-              if (user) {
-                deletedBy = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email
-              }
-            } else if (tombstone.deletedByAgent) {
-              deletedBy = tombstone.deletedByAgent
-            }
+            const deletedBy = tombstone.deletedByName ?? tombstone.deletedByAgent ?? null
 
             conflicts.push({
               filePath: tombstone.filePath,

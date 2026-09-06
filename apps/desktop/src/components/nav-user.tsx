@@ -1,20 +1,20 @@
 import * as React from "react"
+import { useQuery } from "convex/react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
+import { api } from "../../../../convex/_generated/api"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { useAuth } from "@/contexts/AuthContext"
 import { useTheme } from "@/contexts/ThemeContext"
-import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useTranslation } from "@/lib/i18n"
-import { formatLocalDeviceLabel, isLocalDeviceEmail } from "@/lib/userDisplay"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Settings02Icon as __SettingsHugeIcon } from "@hugeicons/core-free-icons"
 
 import {
   NAV_USER_THEME_OPTIONS,
@@ -24,128 +24,76 @@ import {
 
 type NavUserMenuAction =
   | "summary"
-  | "account-settings"
+  | "device-settings"
   | NavUserThemeMenuAction
   | "theme-group"
   | "separator-top"
   | "separator-bottom"
 
-// Raw user type from auth context
-interface RawUser {
-  email: string
-  firstName?: string | null
-  lastName?: string | null
+type DevicePresentation = {
+  displayName?: string | null
+  avatarUrl?: string | null
 }
 
-// Formatted user type for display
-interface FormattedUser {
-  name: string
-  email: string
+function initials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "D"
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
 }
 
-// Helper to format user data
-function formatUserData(user: RawUser | FormattedUser | null | undefined, fallbackLabel: string): FormattedUser {
-  if (!user) {
-    return { name: fallbackLabel, email: "" }
-  }
-
-  // Check if already formatted (has 'name' property)
-  if ('name' in user && typeof user.name === 'string') {
-    return user as FormattedUser
-  }
-
-  // Format from raw user
-  const rawUser = user as RawUser
-  const name = rawUser.firstName
-    ? `${rawUser.firstName}${rawUser.lastName ? ` ${rawUser.lastName}` : ""}`
-    : rawUser.email?.split("@")[0] || ""
-
-  return {
-    name,
-    email: rawUser.email || "",
-  }
-}
-
-export function NavUser({
-  user,
-}: {
-  user: RawUser | FormattedUser | null | undefined
-}) {
+export function NavUser({ user }: { user: DevicePresentation | null | undefined }) {
   const { theme, setTheme } = useTheme()
+  const { principalId } = useAuth()
   const { t } = useTranslation()
-  const userData = formatUserData(user, t("nav.thisComputer"))
   const navigate = useViewTransitionNavigate()
-  const { activeWorkspace: currentWorkspace } = useResolvedScope({ ignoreLocation: true })
-  const isLocalDeviceProfile = isLocalDeviceEmail(userData.email)
-  const menuTitleFallback = userData.name || t("common.user")
-  const formattedDeviceName = formatLocalDeviceLabel(menuTitleFallback)
-  const menuTitle = isLocalDeviceProfile
-    ? formattedDeviceName ? t("nav.thisDevice").replace("{device}", formattedDeviceName) : t("nav.thisComputer")
-    : userData.name
-  const menuSummarySublabel = isLocalDeviceProfile
-    ? t("nav.localComputer")
-    : currentWorkspace?.workspaceName || currentWorkspace?.organizationName || userData.email
+  const principal = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip")
+
+  const menuTitle = principal?.displayName?.trim() || user?.displayName?.trim() || t("nav.thisComputer")
+  const avatarUrl = principal?.avatarUrl ?? user?.avatarUrl ?? null
+  const menuSummarySublabel = t("nav.localComputer")
 
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
       const rect = event.currentTarget.getBoundingClientRect()
-      const items: ContextMenuItem<NavUserMenuAction>[] = []
-
-      if (menuTitle || menuSummarySublabel) {
-        items.push({
+      const items: ContextMenuItem<NavUserMenuAction>[] = [
+        {
           id: "summary",
           label: menuTitle,
-          sublabel: menuSummarySublabel || undefined,
+          sublabel: menuSummarySublabel,
           enabled: false,
-        })
-        items.push({ id: "separator-top", label: "", type: "separator" })
-      }
+        },
+        { id: "separator-top", label: "", type: "separator" },
+        {
+          id: "device-settings",
+          label: t("nav.userSettings"),
+          icon: getNativeMenuIcon("settings"),
+        },
+        {
+          id: "theme-group",
+          label: t("nav.theme"),
+          icon: getNativeMenuIcon("theme"),
+          submenu: NAV_USER_THEME_OPTIONS.map((option) => ({
+            id: option.id,
+            label: t(option.labelKey),
+            type: "radio",
+            checked: theme === option.theme,
+          })),
+        },
+        { id: "separator-bottom", label: "", type: "separator" },
+      ]
 
-      items.push({
-        id: "account-settings",
-        label: t("nav.userSettings"),
-        icon: getNativeMenuIcon("settings"),
-      })
-      items.push({
-        id: "theme-group",
-        label: t("nav.theme"),
-        icon: getNativeMenuIcon("theme"),
-        submenu: NAV_USER_THEME_OPTIONS.map((option) => ({
-          id: option.id,
-          label: t(option.labelKey),
-          type: "radio",
-          checked: theme === option.theme,
-        })),
-      })
-      items.push({ id: "separator-bottom", label: "", type: "separator" })
-
-      const position = {
+      const action = await showDesktopContextMenu(items, {
         x: Math.round(rect.left + rect.width / 2),
         y: Math.round(rect.top),
-      }
-
-      const action = await showDesktopContextMenu(items, position)
+      })
       const selectedTheme = resolveNavUserThemeAction(action)
-
       if (selectedTheme) {
         setTheme(selectedTheme)
         return
       }
-
-      switch (action) {
-        case "account-settings":
-          navigate("/projects/settings/account")
-          break
-      }
+      if (action === "device-settings") navigate("/projects/settings/account")
     },
-    [
-      menuSummarySublabel,
-      menuTitle,
-      navigate,
-      setTheme,
-      t,
-      theme,
-    ],
+    [menuSummarySublabel, menuTitle, navigate, setTheme, t, theme],
   )
 
   return (
@@ -160,11 +108,12 @@ export function NavUser({
           aria-label={t("nav.openUserMenu")}
           title={t("nav.openUserMenu")}
         >
-          <HugeiconsIcon
-            icon={__SettingsHugeIcon}
-            className="size-3.5 shrink-0 text-sidebar-foreground"
-            aria-hidden
-          />
+          <Avatar className="size-5 shrink-0 rounded-md">
+            {avatarUrl ? <AvatarImage src={avatarUrl} alt={menuTitle} /> : null}
+            <AvatarFallback className="rounded-md text-[9px] font-medium">
+              {initials(menuTitle)}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex min-w-0 flex-1 items-center text-left text-xs leading-none group-data-[collapsible=icon]:hidden">
             <span className="block w-full truncate font-normal leading-none text-sidebar-foreground">{menuTitle}</span>
           </div>

@@ -1,11 +1,11 @@
 import type { PersonalWorkspaceMembership, User } from './types'
 
-export const DESKTOP_BOOTSTRAP_VERSION = 1 as const
+export const DESKTOP_BOOTSTRAP_VERSION = 2 as const
 
 export interface DesktopBootstrapSession {
   accessToken: string
   expiresAt: number
-  convexUserId: string
+  principalId: string
   user: User
   personalWorkspace: PersonalWorkspaceMembership
 }
@@ -15,7 +15,6 @@ export interface DesktopWorkbenchLocator {
   projectId: string
   laneId: string
   focusTileId: string | null
-  /** Additive v1 fields; optional so already-persisted v1 snapshots remain valid. */
   workspaceId?: string | null
   projectName?: string | null
   collabBranch?: string | null

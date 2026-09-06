@@ -15,7 +15,7 @@ function assertGatewaySecret(secret: string | undefined) {
 export const enqueueForServer = mutation({
   args: {
     projectId: v.id("projects"),
-    requestedBy: v.id("users"),
+    requestedBy: v.id("devicePrincipals"),
     target: v.union(v.literal("preview"), v.literal("production")),
     provider: v.union(v.literal("railway")),
     commitSha: v.optional(v.string()),

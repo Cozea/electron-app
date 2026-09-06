@@ -25,10 +25,8 @@ import { useTranslation } from '@/lib/i18n'
 /** Content-only: renders inside the persistent AppSidebarShell. */
 interface SettingsSidebarProps {
   user?: {
-    email: string
-    firstName?: string | null
-    lastName?: string | null
-    profileImageUrl?: string | null
+    displayName?: string | null
+    avatarUrl?: string | null
   } | null
 }
 

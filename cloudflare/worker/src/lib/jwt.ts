@@ -188,7 +188,6 @@ export async function signDeviceAccessToken(
     sub: identityKey,
     iss: env.DEVICE_AUTH_ISSUER,
     aud: env.DEVICE_AUTH_AUDIENCE,
-    device_id: identityKey,
     identity_kind: 'device',
     jti: crypto.randomUUID(),
     key_version: keyVersion,
@@ -260,7 +259,6 @@ export async function verifyDeviceAccessToken(env: Env, token: string): Promise<
     claims.iss !== env.DEVICE_AUTH_ISSUER ||
     claims.aud !== env.DEVICE_AUTH_AUDIENCE ||
     claims.identity_kind !== 'device' ||
-    claims.sub !== claims.device_id ||
     typeof claims.jti !== 'string' ||
     claims.jti.length < 16 ||
     !Number.isInteger(claims.key_version) ||

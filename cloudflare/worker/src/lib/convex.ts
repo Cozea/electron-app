@@ -16,14 +16,14 @@ type AnyQueryReference = FunctionReference<'query', 'public', Record<string, unk
 type AnyMutationReference = FunctionReference<'mutation', 'public', Record<string, unknown>, unknown>
 
 interface LocalDeviceProfileInfo {
-  userId: string
+  principalId: string
   user: {
-    id: string
-    deviceId: string
-    email: string
-    firstName: string
-    lastName: null
-    profileImageUrl: null
+    principalId: string
+    identityKey: string
+    displayName: string
+    presentationConfigured: boolean
+    avatarUrl: string | null
+    platform: string
   }
   personalWorkspace: {
     id: string
@@ -34,11 +34,6 @@ interface LocalDeviceProfileInfo {
     role: 'admin'
     status: 'active'
     workspaceType: 'personal'
-  }
-  identity: {
-    deviceId: string
-    deviceLabel: string
-    fingerprint: string | null
   }
   authentication: {
     status: 'active'
@@ -51,7 +46,7 @@ export async function persistDeviceAuthChallengeInConvex(
   env: Env,
   args: { nonce: string; identityKey: string; requestFingerprint?: string; expiresAt: number },
 ): Promise<void> {
-  await runMutation(env, 'users:createDeviceAuthChallengeFromServer', {
+  await runMutation(env, 'devicePrincipals:createDeviceAuthChallengeFromServer', {
     serverSecret: env.AI_GATEWAY_SECRET,
     ...args,
   })
@@ -61,7 +56,7 @@ export async function consumeDeviceAuthChallengeInConvex(
   env: Env,
   args: { nonce: string; identityKey: string },
 ): Promise<void> {
-  await runMutation(env, 'users:consumeDeviceAuthChallengeFromServer', {
+  await runMutation(env, 'devicePrincipals:consumeDeviceAuthChallengeFromServer', {
     serverSecret: env.AI_GATEWAY_SECRET,
     ...args,
   })
@@ -91,10 +86,9 @@ export async function ensureDevicePrincipalFromConvex(
   env: Env,
   identity: DeviceAuthChallengeClaims,
 ): Promise<LocalDeviceProfileInfo> {
-  return runMutation<LocalDeviceProfileInfo>(env, 'users:ensureDevicePrincipalFromServer', {
+  return runMutation<LocalDeviceProfileInfo>(env, 'devicePrincipals:ensureDevicePrincipalFromServer', {
     serverSecret: env.AI_GATEWAY_SECRET,
     identityKey: identity.identityKey,
-    deviceLabel: identity.deviceLabel,
     platform: identity.platform,
     encryptionPublicKeyJwk: identity.encryptionPublicKeyJwk,
     encryptionPublicKeyAlgorithm: identity.encryptionPublicKeyAlgorithm,
@@ -111,9 +105,9 @@ interface ProjectAccessResult {
 }
 
 interface DevicePrincipalInfo {
-  userId: string
+  principalId: string
   identityKey: string
-  deviceLabel: string
+  displayName: string
   platform: string
   encryptionPublicKeyJwk: string
   encryptionPublicKeyAlgorithm: string
@@ -128,7 +122,7 @@ export async function requireActiveDeviceAccessInConvex(
   env: Env,
   auth: DeviceAccessClaims,
 ): Promise<DevicePrincipalInfo> {
-  const principal = await runServerQuery<DevicePrincipalInfo | null>(env, 'users:getDevicePrincipalForServer', {
+  const principal = await runServerQuery<DevicePrincipalInfo | null>(env, 'devicePrincipals:getDevicePrincipalForServer', {
     identityKey: auth.sub,
   })
   if (
@@ -183,8 +177,6 @@ export async function authorizeDevAppRuntimeBuildInConvex(
     },
   )
   if (!result.allowed) throw new Error('The DevApp runtime build is not authorized')
-  // The image repository is derived from the owning organization, so a build that
-  // cannot name one has nowhere it may be pushed.
   if (!result.organizationId) throw new Error('The DevApp runtime build has no owning organization')
   return { organizationId: result.organizationId }
 }
@@ -290,53 +282,30 @@ export async function createCollabSessionFromConvex(
   body: SessionRequestBody,
   auth: DeviceAccessClaims,
 ): Promise<ConvexSessionContext> {
-  if (auth.sub !== body.deviceId) {
-    throw new Error('Authenticated device does not match the collaboration device')
-  }
-  const localProfile = await requireActiveDeviceAccessInConvex(env, auth)
-  if (
-    localProfile.encryptionPublicKeyJwk !== body.publicKeyJwk ||
-    localProfile.encryptionPublicKeyAlgorithm !== body.publicKeyAlgorithm ||
-    localProfile.encryptionFingerprint !== body.fingerprint
-  ) {
-    throw new Error('Collaboration encryption key does not match the authenticated device')
-  }
+  const principal = await requireActiveDeviceAccessInConvex(env, auth)
   const access = await runServerQuery<ProjectAccessResult>(env, 'projectMembers:getProjectAccessForServer', {
     projectId: body.projectId,
-    userId: localProfile.userId,
-    deviceId: body.deviceId,
+    principalId: principal.principalId,
   })
   if (!access.canAccess || !access.canEdit) {
     throw new Error('The authenticated device cannot access this project')
   }
 
-  await runMutation(env, 'yjs:registerCollabDevice', {
-    serverSecret: env.AI_GATEWAY_SECRET,
-    userId: localProfile.userId,
-    deviceId: body.deviceId,
-    deviceLabel: body.deviceLabel,
-    platform: body.platform,
-    publicKeyJwk: body.publicKeyJwk,
-    publicKeyAlgorithm: body.publicKeyAlgorithm,
-    fingerprint: body.fingerprint,
-  })
-
   const roomId = `project:${body.projectId}`
   const encryption = await runServerQuery<EncryptionBootstrapResult>(env, 'yjs:getEncryptionBootstrap', {
     projectId: body.projectId,
     roomId,
-    userId: localProfile.userId,
-    deviceId: body.deviceId,
+    principalId: principal.principalId,
   })
 
   return {
-    userId: localProfile.userId,
+    principalId: principal.principalId,
+    identityKey: principal.identityKey,
+    displayName: principal.displayName,
     projectId: body.projectId,
     roomId,
-    deviceId: body.deviceId,
-    deviceLabel: localProfile.deviceLabel,
-    deviceFingerprint: body.fingerprint,
-    devicePublicKeyJwk: body.publicKeyJwk,
+    encryptionFingerprint: principal.encryptionFingerprint,
+    encryptionPublicKeyJwk: principal.encryptionPublicKeyJwk,
     encryption,
   }
 }

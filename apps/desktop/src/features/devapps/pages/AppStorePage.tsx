@@ -67,7 +67,7 @@ const SECTION_LABEL_KEYS = {
 
 export function AppStorePage() {
   const { t } = useTranslation()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -87,7 +87,7 @@ export function AppStorePage() {
   const { installations, loading: installationsLoading, error: installationsError, refresh } = useOrgDevAppInstallations()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
 
-  const orgScopeEnabled = featureFlags.projectDevApps && Boolean(convexUserId)
+  const orgScopeEnabled = featureFlags.projectDevApps && Boolean(principalId)
   const orgDevApps = useQuery(api.devApps.listMine, orgScopeEnabled ? {} : "skip")
 
   // The registry owns built-in matching, so search stays consistent with the

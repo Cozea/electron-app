@@ -194,7 +194,7 @@ function sanitizeRelease(
       ? { sourceRevision: optionalString(value.sourceRevision) }
       : {}),
     sourceFingerprint,
-    createdBy: createdBy as Id<"users">,
+    createdBy: createdBy as Id<"devicePrincipals">,
     createdAt: value.createdAt,
   };
 }
@@ -266,8 +266,8 @@ function sanitizeEntry(value: unknown): LocalProjectDevAppCatalogEntry | null {
     name,
     ...(description ? { description } : {}),
     status: publicationValue.status === "archived" ? "archived" : "active",
-    createdBy: createdBy as Id<"users">,
-    updatedBy: updatedBy as Id<"users">,
+    createdBy: createdBy as Id<"devicePrincipals">,
+    updatedBy: updatedBy as Id<"devicePrincipals">,
     createdAt: publicationValue.createdAt,
     updatedAt: publicationValue.updatedAt,
   };
@@ -367,7 +367,7 @@ function publishLocalEntry(
     devPort: args.devPort,
     sourceRevision: args.sourceRevision,
     sourceFingerprint: args.sourceFingerprint,
-    createdBy: args.userId,
+    createdBy: args.principalId,
     createdAt: now,
   };
   const publication: ProjectDevAppPublication = {
@@ -378,8 +378,8 @@ function publishLocalEntry(
     name: existing?.publication.name ?? args.name,
     description: args.description,
     status: "active",
-    createdBy: existing?.publication.createdBy ?? args.userId,
-    updatedBy: args.userId,
+    createdBy: existing?.publication.createdBy ?? args.principalId,
+    updatedBy: args.principalId,
     createdAt: existing?.publication.createdAt ?? now,
     updatedAt: now,
   };

@@ -32,7 +32,7 @@ export function useAgentFileSync(
   yjsDoc: YjsProjectDoc | null,
   workspaceId: string | null,
   projectId: Id<'projects'> | null,
-  userId: Id<'users'> | null
+  principalId: Id<'devicePrincipals'> | null
 ): void {
   const coordinatorRef = useRef<SyncCoordinator | null>(null)
 
@@ -44,11 +44,11 @@ export function useAgentFileSync(
 
     coordinatorRef.current = new SyncCoordinator({
       projectId,
-      actorId: userId ? String(userId) : 'watcher',
+      actorId: principalId ? String(principalId) : 'watcher',
       actorType: 'user',
       source: 'watcher',
     })
-  }, [projectId, userId])
+  }, [projectId, principalId])
 
   useEffect(() => {
     if (!yjsDoc || !workspaceId) return
@@ -78,7 +78,7 @@ export function useAgentFileSync(
             origin.actorId?.trim() ||
             origin.terminalId?.trim() ||
             origin.runId?.trim() ||
-            (userId ? String(userId) : 'watcher'),
+            (principalId ? String(principalId) : 'watcher'),
         }
       }
 
@@ -91,7 +91,7 @@ export function useAgentFileSync(
       return {
         source: 'watcher',
         actorType: 'user',
-        actorId: userId ? String(userId) : 'watcher',
+        actorId: principalId ? String(principalId) : 'watcher',
       }
     }
 
@@ -187,5 +187,5 @@ export function useAgentFileSync(
     return () => {
       for (const cleanup of cleanups) cleanup()
     }
-  }, [yjsDoc, workspaceId, userId])
+  }, [yjsDoc, workspaceId, principalId])
 }

@@ -17,9 +17,11 @@ export interface CollabSessionDescriptor {
   collabWsUrl: string
   token: string
   protocolVersion: string
-  deviceId: string
-  deviceFingerprint?: string
-  devicePublicKeyJwk?: string
+  principalId: string
+  identityKey: string
+  displayName: string
+  encryptionFingerprint: string
+  encryptionPublicKeyJwk: string
   encryption: {
     roomId: string
     encryptionRequired: boolean
@@ -603,8 +605,8 @@ export class CollabWsProvider {
             ? metadata.actorType
             : undefined,
         actorId: typeof metadata.actorId === 'string' ? metadata.actorId : null,
-        userId: typeof metadata.userId === 'string' ? metadata.userId : null,
-        userName: typeof metadata.userName === 'string' ? metadata.userName : null,
+        principalId: typeof metadata.principalId === 'string' ? metadata.principalId : null,
+        displayName: typeof metadata.displayName === 'string' ? metadata.displayName : null,
         checkpointGroupId:
           typeof metadata.checkpointGroupId === 'string' ? metadata.checkpointGroupId : null,
         clientId: typeof metadata.clientId === 'string' ? metadata.clientId : null,
@@ -656,8 +658,8 @@ export class CollabWsProvider {
       sourceOrigin: attribution?.sourceOrigin,
       actorType: attribution?.actorType,
       actorId: attribution?.actorId,
-      userId: attribution?.userId,
-      userName: attribution?.userName,
+      principalId: attribution?.principalId,
+      displayName: attribution?.displayName,
       terminalId: attribution?.terminalId,
       terminalTitle: attribution?.terminalTitle,
       terminalKind: attribution?.terminalKind,

@@ -4,12 +4,12 @@ import type {
 } from "./workspaceIdentity"
 
 export interface User {
-  id: string
-  deviceId: string
-  email: string
-  firstName: string | null
-  lastName: string | null
-  profileImageUrl: string | null
+  principalId: string
+  identityKey: string
+  displayName: string
+  presentationConfigured: boolean
+  avatarUrl: string | null
+  platform: string
 }
 
 export type WorkspaceType = "personal" | "organization"

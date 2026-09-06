@@ -3,11 +3,11 @@ import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { type MutationCtx } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import {
   getProjectMembership,
   getProjectShareScope,
   requireProjectManagerMembership,
-  trustProjectDevice,
 } from "./lib/projectSharing"
 
 type JoinLinkDoc = Doc<"projectJoinLinks">
@@ -55,18 +55,15 @@ async function createUniqueToken(ctx: MutationCtx): Promise<string> {
 export const getForProject = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const membership = await getProjectMembership(ctx, args.projectId, args.userId)
-    if (!membership) {
-      return null
-    }
+    const principal = await requireAuthenticatedDevice(ctx)
+    const membership = await getProjectMembership(ctx, args.projectId, principal._id)
+    if (!membership) return null
 
     const scope = await getProjectShareScope(ctx, args.projectId).catch(() => null)
-    if (!scope) {
-      return null
-    }
+    if (!scope) return null
+
     const canManage = membership.role === "project_manager"
     const activeLinks = await ctx.db
       .query("projectJoinLinks")
@@ -74,7 +71,6 @@ export const getForProject = query({
         q.eq("projectId", args.projectId).eq("status", "active")
       )
       .collect()
-
     const activeLink = pickNewestActiveLink(activeLinks)
 
     return {
@@ -88,32 +84,23 @@ export const getForProject = query({
 export const previewByToken = query({
   args: {
     token: v.string(),
-    viewerUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     const normalizedToken = args.token.trim()
-    if (!normalizedToken) {
-      return null
-    }
+    if (!normalizedToken) return null
 
     const link = await ctx.db
       .query("projectJoinLinks")
       .withIndex("by_token", (q) => q.eq("token", normalizedToken))
       .first()
-
-    if (!link) {
-      return null
-    }
+    if (!link) return null
 
     const scope = await getProjectShareScope(ctx, link.projectId).catch(() => null)
-    if (!scope) {
-      return null
-    }
+    if (!scope) return null
 
     const inviter = await ctx.db.get(link.createdBy)
-    const existingMembership = args.viewerUserId
-      ? await getProjectMembership(ctx, scope.project._id, args.viewerUserId)
-      : null
+    const existingMembership = await getProjectMembership(ctx, scope.project._id, principal._id)
 
     return {
       status: link.status,
@@ -126,10 +113,9 @@ export const previewByToken = query({
       inviter: inviter
         ? {
             id: inviter._id,
-            email: inviter.email,
-            firstName: inviter.firstName,
-            lastName: inviter.lastName,
-            profileImageUrl: inviter.profileImageUrl,
+            identityKey: inviter.identityKey,
+            displayName: inviter.displayName,
+            avatarUrl: inviter.avatarStorageId ? await ctx.storage.getUrl(inviter.avatarStorageId) : null,
           }
         : null,
       alreadyMember: Boolean(existingMembership),
@@ -141,7 +127,6 @@ export const previewByToken = query({
 export const createOrUpdateActiveLink = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
     role: v.union(
       v.literal("project_manager"),
       v.literal("developer"),
@@ -150,10 +135,11 @@ export const createOrUpdateActiveLink = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     await requireProjectManagerMembership(
       ctx,
       args.projectId,
-      args.actorUserId,
+      principal._id,
       "Only project managers can manage join links"
     )
 
@@ -173,7 +159,7 @@ export const createOrUpdateActiveLink = mutation({
         token: await createUniqueToken(ctx),
         role: args.role,
         status: "active",
-        createdBy: args.actorUserId,
+        createdBy: principal._id,
         createdAt: now,
         updatedAt: now,
         useCount: 0,
@@ -193,7 +179,7 @@ export const createOrUpdateActiveLink = mutation({
       await ctx.db.patch(duplicate._id, {
         status: "revoked",
         revokedAt: now,
-        revokedBy: args.actorUserId,
+        revokedBy: principal._id,
         updatedAt: now,
       })
     }
@@ -207,7 +193,6 @@ export const createOrUpdateActiveLink = mutation({
 export const rotateLink = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
     role: v.union(
       v.literal("project_manager"),
       v.literal("developer"),
@@ -216,10 +201,11 @@ export const rotateLink = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     await requireProjectManagerMembership(
       ctx,
       args.projectId,
-      args.actorUserId,
+      principal._id,
       "Only project managers can manage join links"
     )
 
@@ -235,7 +221,7 @@ export const rotateLink = mutation({
       await ctx.db.patch(link._id, {
         status: "revoked",
         revokedAt: now,
-        revokedBy: args.actorUserId,
+        revokedBy: principal._id,
         updatedAt: now,
       })
     }
@@ -245,7 +231,7 @@ export const rotateLink = mutation({
       token: await createUniqueToken(ctx),
       role: args.role,
       status: "active",
-      createdBy: args.actorUserId,
+      createdBy: principal._id,
       createdAt: now,
       updatedAt: now,
       useCount: 0,
@@ -260,13 +246,13 @@ export const rotateLink = mutation({
 export const revokeLink = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     await requireProjectManagerMembership(
       ctx,
       args.projectId,
-      args.actorUserId,
+      principal._id,
       "Only project managers can manage join links"
     )
 
@@ -282,7 +268,7 @@ export const revokeLink = mutation({
       await ctx.db.patch(link._id, {
         status: "revoked",
         revokedAt: now,
-        revokedBy: args.actorUserId,
+        revokedBy: principal._id,
         updatedAt: now,
       })
     }
@@ -294,17 +280,11 @@ export const revokeLink = mutation({
 export const joinByToken = mutation({
   args: {
     token: v.string(),
-    userId: v.id("users"),
-    deviceId: v.string(),
-    deviceLabel: v.string(),
-    platform: v.optional(v.string()),
-    fingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     const normalizedToken = args.token.trim()
-    if (!normalizedToken) {
-      throw new Error("Invalid join link")
-    }
+    if (!normalizedToken) throw new Error("Invalid join link")
 
     const link = await ctx.db
       .query("projectJoinLinks")
@@ -316,20 +296,10 @@ export const joinByToken = mutation({
     }
 
     const { project } = await getProjectShareScope(ctx, link.projectId)
-
-    const existingMembership = await getProjectMembership(ctx, project._id, args.userId)
+    const existingMembership = await getProjectMembership(ctx, project._id, principal._id)
     const now = Date.now()
+
     if (existingMembership) {
-      await trustProjectDevice(ctx, {
-        projectId: project._id,
-        userId: args.userId,
-        deviceId: args.deviceId,
-        deviceLabel: args.deviceLabel,
-        platform: args.platform,
-        fingerprint: args.fingerprint,
-        role: existingMembership.role,
-        addedByUserId: link.createdBy,
-      })
       await ctx.db.patch(link._id, {
         useCount: link.useCount + 1,
         lastUsedAt: now,
@@ -344,20 +314,10 @@ export const joinByToken = mutation({
 
     await ctx.db.insert("projectMembers", {
       projectId: project._id,
-      userId: args.userId,
+      principalId: principal._id,
       role: link.role,
       addedAt: now,
       addedBy: link.createdBy,
-    })
-    await trustProjectDevice(ctx, {
-      projectId: project._id,
-      userId: args.userId,
-      deviceId: args.deviceId,
-      deviceLabel: args.deviceLabel,
-      platform: args.platform,
-      fingerprint: args.fingerprint,
-      role: link.role,
-      addedByUserId: link.createdBy,
     })
 
     await ctx.db.patch(link._id, {

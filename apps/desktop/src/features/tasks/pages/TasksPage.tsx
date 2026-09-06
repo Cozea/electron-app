@@ -78,7 +78,7 @@ interface ManualTaskMarkerRecord {
 interface ManualTaskClaimantRecord {
   id: string
   name: string
-  email?: string
+  identityKey?: string
   avatarUrl?: string | null
 }
 
@@ -95,9 +95,9 @@ interface ManualTaskRecord {
 }
 
 interface ManualTaskAssigneeRecord {
-  userId?: string
+  principalId?: string
   name: string
-  email?: string
+  identityKey?: string
   avatarUrl?: string | null
 }
 
@@ -143,25 +143,16 @@ interface TaskClaimant {
 interface TaskClaimantCandidate {
   id: string
   name: string
-  email: string
+  identityKey: string
   avatarUrl?: string | null
   searchText: string
 }
 
-interface ClaimantUserSummary {
-  id?: string
-  email?: string | null
-  firstName?: string | null
-  lastName?: string | null
-  profileImageUrl?: string | null
-}
-
 interface ClaimantMemberSourceRecord {
-  userId: string
-  displayName?: string | null
-  secondaryLabel?: string | null
-  contactEmail?: string | null
-  user: ClaimantUserSummary | null
+  principalId: string
+  identityKey: string
+  displayName: string
+  avatarUrl?: string | null
 }
 
 interface TaskContextAttachment {
@@ -301,11 +292,11 @@ function createDefaultManualTaskMarkers(t?: any): ManualTaskMarkerRecord[] {
 
 function getClaimantIdentityKey(claimant: {
   id?: string
-  email?: string | null
+  identityKey?: string | null
   name?: string | null
 }): string {
-  const email = claimant.email?.trim().toLowerCase()
-  if (email) return `email:${email}`
+  const identityKey = claimant.identityKey?.trim().toLowerCase()
+  if (identityKey) return `device:${identityKey}`
 
   const id = claimant.id?.trim()
   if (id) return `id:${id}`
@@ -314,23 +305,9 @@ function getClaimantIdentityKey(claimant: {
   return `name:${name || '?'}`
 }
 
-function formatClaimantName(user: ClaimantUserSummary | null | undefined, fallback: string): string {
-  const first = user?.firstName?.trim() ?? ''
-  const last = user?.lastName?.trim() ?? ''
-  const fullName = [first, last].filter(Boolean).join(' ')
-
-  if (fullName) return fullName
-  if (user?.email?.trim()) return user.email.trim()
-
-  return fallback
-}
-
 function getDisplayFirstName(name: string): string {
   const normalized = name.trim()
   if (!normalized) return ''
-
-  const emailPrefix = normalized.split('@')[0]?.trim()
-  if (normalized.includes('@') && emailPrefix) return emailPrefix
 
   return normalized.split(/\s+/)[0] ?? normalized
 }
@@ -365,13 +342,13 @@ function normalizeManualTaskClaimants(value: unknown): ManualTaskClaimantRecord[
     const name = candidate.name.trim()
     if (!name) return []
 
-    const email =
-      typeof candidate.email === 'string' && candidate.email.trim().length > 0
-        ? candidate.email.trim().toLowerCase()
+    const identityKey =
+      typeof candidate.identityKey === 'string' && candidate.identityKey.trim().length > 0
+        ? candidate.identityKey.trim().toLowerCase()
         : undefined
     const key = getClaimantIdentityKey({
       id: candidate.id,
-      email,
+      identityKey,
       name,
     })
 
@@ -385,7 +362,7 @@ function normalizeManualTaskClaimants(value: unknown): ManualTaskClaimantRecord[
             ? candidate.id
             : `claimant-${index}-${normalizeSearchValue(name).replace(/\s+/g, '-') || index}`,
         name,
-        email,
+        identityKey,
         avatarUrl:
           typeof candidate.avatarUrl === 'string' && candidate.avatarUrl.trim().length > 0
             ? candidate.avatarUrl
@@ -615,9 +592,9 @@ function getPrimaryAssigneeRecord(
   if (!primary) return undefined
 
   return {
-    userId: primary.id,
+    principalId: primary.id,
     name: primary.name,
-    email: primary.email,
+    identityKey: primary.identityKey,
     avatarUrl: primary.avatarUrl ?? null,
   }
 }
@@ -631,7 +608,7 @@ function buildAssigneeClaimants(
   return [
     {
       id:
-        assignee.userId ||
+        assignee.principalId ||
         `${prefix}-${normalizeSearchValue(assignee.name).replace(/\s+/g, '-') || 'assignee'}`,
       name: assignee.name,
       avatarUrl: assignee.avatarUrl ?? null,
@@ -790,13 +767,13 @@ export function TasksPage({
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
   const { project } = useAccessibleProject()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   // Plan pages live in the artifacts table (split off the project doc);
   // the query coalesces legacy inline fields server-side.
   const projectArtifacts = useQuery(
     api.projects.getArtifacts,
-    project?._id && convexUserId
-      ? { projectId: project._id, userId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, principalId: principalId }
       : 'skip',
   )
   const syncContext = useOptionalProjectSyncContext()
@@ -827,14 +804,14 @@ export function TasksPage({
 
   const projectMembers = useQuery(
     api.projectMembers.listMembers,
-    project?._id && convexUserId
-      ? { projectId: project._id, viewerUserId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, viewerPrincipalId: principalId }
       : 'skip',
   )
   const sharedManualTasks = useQuery(
     api.projectTasks.listForProject,
-    project?._id && convexUserId
-      ? { projectId: project._id, viewerUserId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, viewerPrincipalId: principalId }
       : 'skip',
   )
 
@@ -855,33 +832,23 @@ export function TasksPage({
     const byIdentity = new Map<string, TaskClaimantCandidate>()
 
     for (const member of sourceMembers) {
-      const email = (
-        member.contactEmail ??
-        member.secondaryLabel ??
-        member.user?.email ??
-        member.displayName ??
-        String(member.userId)
-      )
-        .trim()
-        .toLowerCase()
-      if (!email) continue
-
-      const name = member.displayName?.trim() || formatClaimantName(member.user, email)
+      const identityKey = member.identityKey.trim().toLowerCase()
+      if (!identityKey) continue
+      const name = member.displayName.trim() || identityKey
       const candidate: TaskClaimantCandidate = {
-        id: String(member.user?.id ?? member.userId),
+        id: String(member.principalId),
         name,
-        email,
-        avatarUrl: member.user?.profileImageUrl ?? null,
-        searchText: normalizeSearchValue(`${name} ${email}`),
+        identityKey,
+        avatarUrl: member.avatarUrl ?? null,
+        searchText: normalizeSearchValue(`${name} ${identityKey}`),
       }
-
       byIdentity.set(getClaimantIdentityKey(candidate), candidate)
     }
 
     return Array.from(byIdentity.values()).sort((left, right) => {
       const nameCompare = left.name.localeCompare(right.name)
       if (nameCompare !== 0) return nameCompare
-      return left.email.localeCompare(right.email)
+      return left.identityKey.localeCompare(right.identityKey)
     })
   }, [projectMembers])
   const selectedDraftClaimantKeys = useMemo(
@@ -1083,7 +1050,7 @@ export function TasksPage({
   useEffect(() => {
     if (
       !project?._id ||
-      !convexUserId ||
+      !principalId ||
       !projectId ||
       !defaultManualTaskContext ||
       typeof window === 'undefined'
@@ -1108,7 +1075,7 @@ export function TasksPage({
       try {
         await migrateLocalBoardState({
           projectId: project._id,
-          actorUserId: convexUserId,
+          actorPrincipalId: principalId,
           manualTasks: storedManualTasks.map((task) => {
             const assignee = getPrimaryAssigneeRecord(task.claimants ?? [])
 
@@ -1119,10 +1086,9 @@ export function TasksPage({
               deadlineDate: task.deadlineDate,
               assignee: assignee
                 ? {
-                    userId: assignee.userId as Id<'users'> | undefined,
+                    principalId: assignee.principalId as Id<'devicePrincipals'> | undefined,
                     name: assignee.name,
-                    email: assignee.email,
-                    avatarUrl: assignee.avatarUrl ?? undefined,
+                          avatarUrl: assignee.avatarUrl ?? undefined,
                   }
                 : undefined,
               context: {
@@ -1149,7 +1115,7 @@ export function TasksPage({
 
     void syncLocalState()
   }, [
-    convexUserId,
+    principalId,
     defaultManualTaskContext,
     migrateLocalBoardState,
     project?._id,
@@ -1303,7 +1269,7 @@ export function TasksPage({
         {
           id: candidate.id,
           name: candidate.name,
-          email: candidate.email,
+          identityKey: candidate.identityKey,
           avatarUrl: candidate.avatarUrl ?? null,
         },
       ]
@@ -1338,7 +1304,7 @@ export function TasksPage({
   }
 
   async function handleCreateTask(): Promise<void> {
-    if (!project?._id || !convexUserId || !selectedDraftContext) return
+    if (!project?._id || !principalId || !selectedDraftContext) return
 
     const title = draftTitle.trim()
     const description = draftDescription.trim()
@@ -1353,16 +1319,15 @@ export function TasksPage({
 
       await createManualTask({
         projectId: project._id,
-        actorUserId: convexUserId,
+        actorPrincipalId: principalId,
         taskKey: createTaskId(),
         title,
         description,
         deadlineDate: draftDeadlineDate || undefined,
         assignee: assignee
           ? {
-              userId: assignee.userId as Id<'users'> | undefined,
+              principalId: assignee.principalId as Id<'devicePrincipals'> | undefined,
               name: assignee.name,
-              email: assignee.email,
               avatarUrl: assignee.avatarUrl ?? undefined,
             }
           : undefined,
@@ -1383,7 +1348,7 @@ export function TasksPage({
   }
 
   function handleToggleMarker(item: BoardItem, markerId: string): void {
-    if (!project?._id || !convexUserId) return
+    if (!project?._id || !principalId) return
 
     if (item.source !== 'manual') return
 
@@ -1401,7 +1366,7 @@ export function TasksPage({
 
     void setManualTaskCheckedMarkers({
       projectId: project._id,
-      actorUserId: convexUserId,
+      actorPrincipalId: principalId,
       taskKey: item.storageId,
       checkedMarkerIds,
     })
@@ -1436,7 +1401,7 @@ export function TasksPage({
                 <Button
                   size="sm"
                   className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-                  disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks || project === null}
+                  disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
                   onClick={() => {
                     resetDraft()
                     setIsCreateDialogOpen(true)
@@ -1506,7 +1471,7 @@ export function TasksPage({
             <Button
               size="sm"
               className="h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs"
-              disabled={!convexUserId || isCreatingTask || isSyncingLocalTasks || project === null}
+              disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
               onClick={() => {
                 resetDraft()
                 setIsCreateDialogOpen(true)
@@ -1554,7 +1519,7 @@ export function TasksPage({
                   <Button
                     type="button"
                     className="gap-2"
-                    disabled={!convexUserId || isCreatingTask || project === null}
+                    disabled={!principalId || isCreatingTask || project === null}
                     onClick={() => {
                       resetDraft()
                       setIsCreateDialogOpen(true)
@@ -1766,7 +1731,7 @@ export function TasksPage({
                                     {candidate.name}
                                   </span>
                                   <span className="block truncate text-xs text-muted-foreground">
-                                    {candidate.email}
+                                    {candidate.identityKey}
                                   </span>
                                 </div>
                               </button>

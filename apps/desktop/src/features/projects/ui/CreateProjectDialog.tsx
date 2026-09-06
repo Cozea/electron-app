@@ -104,7 +104,7 @@ export function CreateProjectDialog({
 }: CreateProjectDialogProps) {
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
   const { importPickedLocalFolder } = useLocalProjectImport()
@@ -301,7 +301,7 @@ export function CreateProjectDialog({
     (isLocalMode && localFolderPath.trim().length === 0)
 
   const handleSubmit = useCallback(async () => {
-    if (!convexUserId || isSubmitting) {
+    if (!principalId || isSubmitting) {
       return
     }
 
@@ -334,7 +334,7 @@ export function CreateProjectDialog({
     try {
       if (isFreshMode) {
         const result = await createProject({
-          userId: convexUserId,
+          principalId: principalId,
           name: trimmedName,
           template: "blank",
           creationPath: "fresh",
@@ -400,7 +400,7 @@ export function CreateProjectDialog({
 
         await updateProjectStatus({
           projectId: result.projectId,
-          userId: convexUserId,
+          principalId: principalId,
           status: "active",
         })
 
@@ -436,7 +436,7 @@ export function CreateProjectDialog({
       setIsSubmitting(false)
     }
   }, [
-    convexUserId,
+    principalId,
     createGitHubRepo,
     createProject,
     isSubmitting,

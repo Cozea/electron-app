@@ -24,12 +24,12 @@ const en = {
   "common.copy": "Copy",
   "common.copied": "Copied",
 
-  // ── Login / Auth ────────────────────────────────────────────────────
-  "login.welcome": "Welcome to Cozea",
-  "login.initializeDevice": "Initialize this device to continue",
-  "login.continueOnDevice": "Continue on this device",
-  "login.preparingDevice": "Preparing device...",
-  "login.localIdentityNote":
+  // ── Device session ────────────────────────────────────────────────────
+  "deviceSession.welcome": "Welcome to Cozea",
+  "deviceSession.initializeDevice": "Initialize this device to continue",
+  "deviceSession.continueOnDevice": "Continue on this device",
+  "deviceSession.preparingDevice": "Preparing device...",
+  "deviceSession.localIdentityNote":
     "Cozea uses a local trusted device identity by default. Collaboration access is granted per project.",
 
   // ── Onboarding ──────────────────────────────────────────────────────

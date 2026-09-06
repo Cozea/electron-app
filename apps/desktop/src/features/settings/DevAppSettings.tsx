@@ -80,7 +80,7 @@ function formatDevAppDate(timestamp?: number | null): string | null {
 
 export function DevAppSettings({ surface = "page", route: _route }: DevAppSettingsProps) {
   const { t } = useTranslation()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
@@ -92,7 +92,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
 
   const { installations, loading: installationsLoading, error: installationsError } = useOrgDevAppInstallations()
 
-  const orgScopeEnabled = featureFlags.projectDevApps && Boolean(convexUserId)
+  const orgScopeEnabled = featureFlags.projectDevApps && Boolean(principalId)
   const orgDevApps = useQuery(api.devApps.listMine, orgScopeEnabled ? {} : "skip")
 
   const builtinApps = useMemo(() => listStoreApps(), [])

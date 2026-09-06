@@ -127,7 +127,7 @@ export async function handleDeviceAuthComplete(request: Request, env: Env): Prom
   return jsonResponse({
     accessToken: access.token,
     expiresAt: access.expiresAt,
-    convexUserId: profile.userId,
+    principalId: profile.principalId,
     user: profile.user,
     personalWorkspace: profile.personalWorkspace,
   })

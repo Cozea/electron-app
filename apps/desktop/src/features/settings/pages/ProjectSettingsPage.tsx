@@ -79,7 +79,7 @@ interface ActiveRecoveryKit {
   salt: string
   iterations: number
   createdAt: number
-  createdByDeviceId: string
+  createdByIdentityKey: string
 }
 
 export function ProjectSettingsPage({
@@ -89,11 +89,11 @@ export function ProjectSettingsPage({
   const unsafeYjsApi = api as any
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const { project } = useAccessibleProject()
   const orgDevApp = useQuery(
     api.devApps.getForProject,
-    featureFlags.projectDevApps && project?._id && convexUserId
+    featureFlags.projectDevApps && project?._id && principalId
       ? { projectId: project._id }
       : 'skip',
   )
@@ -112,8 +112,8 @@ export function ProjectSettingsPage({
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    project?._id && convexUserId
-      ? { projectId: project._id, userId: convexUserId }
+    project?._id && principalId
+      ? { projectId: project._id, principalId: principalId }
       : 'skip'
   )
   const isManager = memberRole === 'project_manager'
@@ -182,12 +182,12 @@ export function ProjectSettingsPage({
     name !== projectName ||
     description !== projectDescription
   )
-  const canSave = Boolean(convexUserId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
+  const canSave = Boolean(principalId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
   const collabSession = collabSessionResult.session
   const collabBootstrap = collabSession?.encryption ?? null
-  const currentDeviceId = collabSession?.deviceId ?? null
+  const currentIdentityKey = collabSession?.identityKey ?? null
   const collabScopeKey = project?._id ? String(project._id) : null
-  const canManageCollabSecurity = Boolean(project?._id && convexUserId && isManager)
+  const canManageCollabSecurity = Boolean(project?._id && principalId && isManager)
   const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
   const collabRotationRequired = collaborationDevices?.some((device) => device.rotationRequired) ?? false
 
@@ -195,7 +195,7 @@ export function ProjectSettingsPage({
     roomKeyBase64: string
     keyVersion: number
   }): Promise<string | null> => {
-    if (!project || !convexUserId || !collabSession) {
+    if (!project || !principalId || !collabSession) {
       return null
     }
 
@@ -207,8 +207,6 @@ export function ProjectSettingsPage({
       projectId: project._id,
       roomId: collabSession.roomId,
       keyVersion: args.keyVersion,
-      createdByUserId: convexUserId,
-      createdByDeviceId: collabSession.deviceId,
       wrapAlgorithm: recoveryKit.wrapAlgorithm,
       wrappedKey: recoveryKit.wrappedKey,
       salt: recoveryKit.salt,
@@ -218,14 +216,14 @@ export function ProjectSettingsPage({
     setGeneratedRecoveryCode(recoveryKit.recoveryCode)
     setShowRecoveryCodeDialog(true)
     return recoveryKit.recoveryCode
-  }, [collabSession, convexUserId, project, storeRecoveryKit])
+  }, [collabSession, principalId, project, storeRecoveryKit])
 
   const rotateRoomKeyWithCurrentRoom = useCallback(async (options?: {
     devices?: NonNullable<typeof collaborationDevices>
   }): Promise<number | null> => {
     if (
       !project ||
-      !convexUserId ||
+      !principalId ||
       !collabSession ||
       !collabBootstrap ||
       collabBootstrap.status !== 'ready' ||
@@ -284,27 +282,23 @@ export function ProjectSettingsPage({
     })
 
     const wrappedKeys: Array<{
-      recipientUserId: NonNullable<typeof devices>[number]['userId']
-      recipientDeviceId: string
-      senderPublicKeyJwk: string
+      recipientPrincipalId: NonNullable<typeof devices>[number]['principalId']
       wrapAlgorithm: string
       wrappedKey: string
     }> = []
 
     for (const device of devices) {
-      if (device.revokedAt || !device.publicKeyJwk) {
+      if (device.revokedAt || !device.encryptionPublicKeyJwk) {
         continue
       }
 
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64: nextRoomKeyBase64,
-        recipientPublicKeyJwk: device.publicKeyJwk,
+        recipientPublicKeyJwk: device.encryptionPublicKeyJwk,
       })
 
       wrappedKeys.push({
-        recipientUserId: device.userId,
-        recipientDeviceId: device.deviceId,
-        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        recipientPrincipalId: device.principalId,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
       })
@@ -318,8 +312,6 @@ export function ProjectSettingsPage({
     await rotateEncryptedRoomKey({
       projectId: project._id,
       roomId: collabSession.roomId,
-      userId: convexUserId,
-      initiatedByDeviceId: collabSession.deviceId,
       encryptedSnapshot: nextSnapshotBytes.slice().buffer,
       createdByClientId: String(roomDoc.clientID),
       wrappedKeys,
@@ -351,14 +343,14 @@ export function ProjectSettingsPage({
     collabSession,
     collabSessionResult,
     collaborationDevices,
-    convexUserId,
+    principalId,
     project,
     rotateEncryptedRoomKey,
     syncCollabRoom,
   ])
 
   const handleSave = useCallback(async () => {
-    if (!project || !convexUserId) return
+    if (!project || !principalId) return
 
     const nextName = name.trim()
     if (!nextName) {
@@ -373,7 +365,7 @@ export function ProjectSettingsPage({
     try {
       await updateProject({
         projectId: project._id,
-        userId: convexUserId,
+        principalId: principalId,
         name: nextName,
         description,
       })
@@ -383,7 +375,7 @@ export function ProjectSettingsPage({
       setIsSaving(false)
     }
   }, [
-    convexUserId,
+    principalId,
     description,
     hasChanges,
     name,
@@ -392,13 +384,13 @@ export function ProjectSettingsPage({
   ])
 
   const handleArchive = useCallback(async () => {
-    if (!project || !convexUserId) return
+    if (!project || !principalId) return
 
     setIsArchiving(true)
     try {
       await archiveProject({
         projectId: project._id,
-        userId: convexUserId,
+        principalId: principalId,
       })
       navigate('/projects')
     } catch (error) {
@@ -412,10 +404,10 @@ export function ProjectSettingsPage({
     } finally {
       setIsArchiving(false)
     }
-  }, [archiveProject, convexUserId, navigate, project, t])
+  }, [archiveProject, principalId, navigate, project, t])
 
   const handleDelete = useCallback(async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
-    if (!project || !convexUserId) return
+    if (!project || !principalId) return
 
     setIsDeleting(true)
     const deletedProjectId = String(project._id)
@@ -423,7 +415,7 @@ export function ProjectSettingsPage({
       await withProjectMutationTimeout(
         removeProject({
           projectId: project._id,
-          userId: convexUserId,
+          principalId: principalId,
           // Server still validates the name; UI no longer requires retyping it.
           confirmName: project.name,
         }),
@@ -451,7 +443,7 @@ export function ProjectSettingsPage({
     } finally {
       setIsDeleting(false)
     }
-  }, [convexUserId, navigate, project, removeProject])
+  }, [principalId, navigate, project, removeProject])
 
   const handleSharePendingDevices = useCallback(async () => {
     if (
@@ -492,10 +484,7 @@ export function ProjectSettingsPage({
           projectId: project._id,
           roomId: collabSession.roomId,
           keyVersion: collabBootstrap.activeKeyVersion ?? 1,
-          recipientUserId: request.recipientUserId,
-          recipientDeviceId: request.recipientDeviceId,
-          senderDeviceId: wrapped.senderDeviceId,
-          senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+          keyRequestId: request._id,
           wrapAlgorithm: wrapped.wrapAlgorithm,
           wrappedKey: wrapped.wrappedKey,
         })
@@ -517,12 +506,12 @@ export function ProjectSettingsPage({
     storeWrappedRoomKey,
   ])
 
-  const handleRevokeDevice = useCallback(async (deviceId: string) => {
+  const handleRevokeDevice = useCallback(async (identityKey: string) => {
     if (!project || !collabSession) {
       return
     }
 
-    setCollabAction(`revoke:${deviceId}`)
+    setCollabAction(`revoke:${identityKey}`)
     setCollabError(null)
     setCollabNotice(null)
 
@@ -530,11 +519,11 @@ export function ProjectSettingsPage({
       await revokeCollabDevice({
         projectId: project._id,
         roomId: collabSession.roomId,
-        deviceId,
+        identityKey,
       })
       if (collabBootstrap?.status === 'ready' && collaborationDevices) {
         const nextDevices = collaborationDevices.map((device) =>
-          device.deviceId === deviceId
+          device.identityKey === identityKey
             ? { ...device, revokedAt: Date.now() }
             : device,
         )
@@ -625,12 +614,13 @@ export function ProjectSettingsPage({
   const handleRecoverWithCode = useCallback(async () => {
     if (
       !project ||
-      !convexUserId ||
+      !principalId ||
       !collabSession ||
       !collabBootstrap ||
       collabBootstrap.status !== 'missing_for_device' ||
-      !collabSession.devicePublicKeyJwk ||
+      !collabSession.encryptionPublicKeyJwk ||
       !activeRecoveryKit ||
+      !pendingKeyRequests ||
       !recoveryCodeInput.trim()
     ) {
       return
@@ -649,19 +639,25 @@ export function ProjectSettingsPage({
         wrapAlgorithm: activeRecoveryKit.wrapAlgorithm,
       })
 
+      const ownKeyRequest = pendingKeyRequests.find(
+        (request) =>
+          request.recipientPrincipalId === principalId &&
+          typeof request.fulfilledAt !== 'number',
+      )
+      if (!ownKeyRequest) {
+        throw new Error('No pending encryption key request exists for this device.')
+      }
+
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64,
-        recipientPublicKeyJwk: collabSession.devicePublicKeyJwk,
+        recipientPublicKeyJwk: collabSession.encryptionPublicKeyJwk,
       })
 
       await storeWrappedRoomKey({
         projectId: project._id,
         roomId: collabSession.roomId,
         keyVersion: activeRecoveryKit.keyVersion,
-        recipientUserId: convexUserId,
-        recipientDeviceId: collabSession.deviceId,
-        senderDeviceId: wrapped.senderDeviceId,
-        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        keyRequestId: ownKeyRequest._id,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
       })
@@ -680,7 +676,7 @@ export function ProjectSettingsPage({
     collabBootstrap,
     collabSession,
     collabSessionResult,
-    convexUserId,
+    principalId,
     project,
     recoveryCodeInput,
     storeWrappedRoomKey,
@@ -699,8 +695,6 @@ export function ProjectSettingsPage({
       await resetEncryptedRoom({
         projectId: project._id,
         roomId: collabSession.roomId,
-        userId: convexUserId ?? undefined,
-        retainDeviceId: collabSession.deviceId,
       })
 
       if (collabScopeKey) {
@@ -720,7 +714,7 @@ export function ProjectSettingsPage({
     collabScopeKey,
     collabSession,
     collabSessionResult,
-    convexUserId,
+    principalId,
     project,
     resetEncryptedRoom,
   ])
@@ -1037,7 +1031,7 @@ export function ProjectSettingsPage({
                         </SettingsRowControl>
                       </SettingsRow>
                     ) : null}
-                    {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.devicePublicKeyJwk ? (
+                    {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.encryptionPublicKeyJwk ? (
                       <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
                         <div className="flex min-w-0 flex-col gap-0.5">
                           <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoverWithCode')}</Label>
@@ -1074,7 +1068,7 @@ export function ProjectSettingsPage({
                       <div className="border-t border-border/40">
                         {collaborationDevices.map((device, index) => (
                           <div
-                            key={device.deviceId}
+                            key={device.identityKey}
                             className={cn(
                               'flex min-h-[50px] items-center justify-between gap-4 px-4 py-3',
                               index > 0 && 'border-t border-border/40',
@@ -1082,11 +1076,11 @@ export function ProjectSettingsPage({
                           >
                             <div className="flex min-w-0 flex-col gap-0.5">
                               <p className="truncate text-xs font-medium text-foreground">
-                                {device.deviceLabel}
-                                {device.deviceId === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
+                                {device.displayName}
+                                {device.identityKey === currentIdentityKey ? ` · ${t('settings.collab.thisDevice')}` : ''}
                               </p>
                               <p className="truncate text-[11px] text-muted-foreground">
-                                {device.platform} · {device.fingerprint.slice(0, 12)}
+                                {device.platform} · {device.encryptionFingerprint.slice(0, 12)}
                                 {device.hasPendingRequest ? ` · ${t('settings.collab.waitingForKey')}` : ''}
                                 {device.revokedAt ? ` · ${t('settings.collab.revoked')}` : ''}
                               </p>
@@ -1099,8 +1093,8 @@ export function ProjectSettingsPage({
                                 aria-label="Device options"
                                 disabled={
                                   Boolean(device.revokedAt) ||
-                                  device.deviceId === currentDeviceId ||
-                                  collabAction === `revoke:${device.deviceId}`
+                                  device.identityKey === currentIdentityKey ||
+                                  collabAction === `revoke:${device.identityKey}`
                                 }
                                 onClick={async (event) => {
                                   event.preventDefault()
@@ -1119,7 +1113,7 @@ export function ProjectSettingsPage({
 
                                   const action = await showDesktopContextMenu(items, position)
                                   if (action === "revoke") {
-                                    void handleRevokeDevice(device.deviceId)
+                                    void handleRevokeDevice(device.identityKey)
                                   }
                                 }}
                               >
@@ -1148,7 +1142,7 @@ export function ProjectSettingsPage({
                         <Button
                           variant="outline"
                           className="h-7 text-[11px] text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
-                          disabled={!convexUserId || !isManager || project.status === 'archived' || isArchiving}
+                          disabled={!principalId || !isManager || project.status === 'archived' || isArchiving}
                           onClick={async () => {
                             const result = await window.electronAPI.dialog.showMessageBox({
                               type: 'warning',
@@ -1177,7 +1171,7 @@ export function ProjectSettingsPage({
                       <SettingsRowControl>
                         <Button
                           variant="destructive"
-                          disabled={!convexUserId || isDeleting}
+                          disabled={!principalId || isDeleting}
                           className="h-7 text-[11px]"
                           onClick={async () => {
                             const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
@@ -1238,7 +1232,7 @@ export function ProjectSettingsPage({
             }}
             onConfirm={(logoDataUrl, devAppName) => {
               void (async () => {
-                if (!convexUserId) return
+                if (!principalId) return
                 try {
                   await updateDevAppIdentity({
                     publicationId: orgDevApp.publicationId,

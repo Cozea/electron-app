@@ -34,10 +34,10 @@ export function OrgAttachDialog({
   onCreate,
 }: OrgAttachDialogProps) {
   const { t } = useTranslation()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const orgs = useQuery(
     api.organizations.listMine,
-    convexUserId ? {} : "skip",
+    principalId ? {} : "skip",
   )
   const hasExistingOrgs = (orgs ?? []).length > 0
   const [mode, setMode] = useState<"existing" | "create">("existing")

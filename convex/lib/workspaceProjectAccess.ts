@@ -29,9 +29,9 @@ export interface WorkspaceProjectAccess {
 export async function getWorkspaceProjectAccess(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  principalId: Id<"devicePrincipals">
 ): Promise<WorkspaceProjectAccess> {
-  const access = await getProjectAccessState(ctx, projectId, userId)
+  const access = await getProjectAccessState(ctx, projectId, principalId)
   return {
     projectExists: access.project !== null,
     isCreator: access.isCreator,
@@ -71,31 +71,31 @@ export function hasWorkspaceProjectPermission(
 export async function canAccessProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  principalId: Id<"devicePrincipals">
 ): Promise<boolean> {
-  return await canAccessProject(ctx, projectId, userId)
+  return await canAccessProject(ctx, projectId, principalId)
 }
 
 export async function canEditProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  principalId: Id<"devicePrincipals">
 ): Promise<boolean> {
-  return await canEditProject(ctx, projectId, userId)
+  return await canEditProject(ctx, projectId, principalId)
 }
 
 export async function canManageProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  principalId: Id<"devicePrincipals">
 ): Promise<boolean> {
-  return await canManageProject(ctx, projectId, userId)
+  return await canManageProject(ctx, projectId, principalId)
 }
 
 export async function canArchiveProjectByWorkspaceOrMembership(
   ctx: ReadDatabaseCtx,
   projectId: Id<"projects">,
-  userId: Id<"users">
+  principalId: Id<"devicePrincipals">
 ): Promise<boolean> {
-  return await canArchiveProject(ctx, projectId, userId)
+  return await canArchiveProject(ctx, projectId, principalId)
 }

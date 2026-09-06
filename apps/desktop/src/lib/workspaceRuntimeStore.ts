@@ -32,8 +32,8 @@ const BACKGROUND_FROZEN_IDLE_MS = 10 * 60 * 1000
 export interface WorkspaceRuntimeConfig {
   workspaceId: string
   projectId: Id<"projects"> | null
-  userId: Id<"users"> | null
-  userName: string | null
+  principalId: Id<"devicePrincipals"> | null
+  displayName: string | null
   projectSlug: string | null
   laneId: string
   gitCwd: string | null
@@ -52,8 +52,8 @@ function workspaceRuntimeConfigsEqual(
   return (
     a.workspaceId === b.workspaceId &&
     a.projectId === b.projectId &&
-    a.userId === b.userId &&
-    a.userName === b.userName &&
+    a.principalId === b.principalId &&
+    a.displayName === b.displayName &&
     a.projectSlug === b.projectSlug &&
     a.laneId === b.laneId &&
     a.gitCwd === b.gitCwd &&

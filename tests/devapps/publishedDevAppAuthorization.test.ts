@@ -44,7 +44,7 @@ function fixtureInstallation(): OrgDevAppInstallation {
       arch: null,
       permissionSetHash: null,
       publisherIdentityKey: null,
-      publisherDeviceLabel: null,
+      publisherDisplayName: null,
       packageManifestDigest: `sha256:${"b".repeat(64)}`,
       runtimeSourceDigest: "c".repeat(64),
       runtimeImage: null,

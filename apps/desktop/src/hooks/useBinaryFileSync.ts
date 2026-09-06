@@ -38,19 +38,19 @@ function relativePathFromExternalEvent(data: {
 export function useBinaryFileSync(
   projectId: Id<'projects'> | null,
   workspaceId: string | null,
-  userId: Id<'users'> | null
+  principalId: Id<'devicePrincipals'> | null
 ): { pendingUploads: number } {
   const convex = useConvex()
   const binarySyncRef = useRef<BinaryFileSync | null>(null)
 
   // Initialize BinaryFileSync
   useEffect(() => {
-    if (!projectId || !workspaceId || !userId) {
+    if (!projectId || !workspaceId || !principalId) {
       binarySyncRef.current = null
       return
     }
 
-    binarySyncRef.current = new BinaryFileSync(projectId, workspaceId, convex, userId)
+    binarySyncRef.current = new BinaryFileSync(projectId, workspaceId, convex, principalId)
 
     // Process any queued uploads from previous sessions
     void binarySyncRef.current.processQueue()
@@ -59,7 +59,7 @@ export function useBinaryFileSync(
       binarySyncRef.current?.destroy()
       binarySyncRef.current = null
     }
-  }, [convex, projectId, workspaceId, userId])
+  }, [convex, projectId, workspaceId, principalId])
 
   // Handle local binary file changes
   useEffect(() => {

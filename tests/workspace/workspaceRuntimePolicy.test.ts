@@ -41,8 +41,8 @@ function createRuntime(
         ? workspaceId
         : input.configWorkspaceId) as WorkspaceRuntimeRecord["config"]["workspaceId"],
       projectId: "project-id" as WorkspaceRuntimeRecord["config"]["projectId"],
-      userId: "user-id" as WorkspaceRuntimeRecord["config"]["userId"],
-      userName: "Test User",
+      principalId: "user-id" as WorkspaceRuntimeRecord["config"]["principalId"],
+      displayName: "Test User",
       projectSlug: "project",
       laneId: "main",
       gitCwd: null,

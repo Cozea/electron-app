@@ -46,7 +46,7 @@ interface ResolvedOrgDevAppArtifact {
   arch: string | null
   permissionSetHash: string | null
   publisherIdentityKey: string | null
-  publisherDeviceLabel: string | null
+  publisherDisplayName: string | null
   parts: DevAppParts
 }
 
@@ -65,7 +65,7 @@ function artifactFromInstallation(installation: OrgDevAppInstallation): Resolved
     arch: installation.activeRelease.arch,
     permissionSetHash: installation.activeRelease.permissionSetHash,
     publisherIdentityKey: installation.activeRelease.publisherIdentityKey,
-    publisherDeviceLabel: installation.activeRelease.publisherDeviceLabel,
+    publisherDisplayName: installation.activeRelease.publisherDisplayName,
     parts: installation.activeRelease.parts,
   }
 }
@@ -90,7 +90,7 @@ export function WorkbenchOrgDevAppTile({
   containerApi,
 }: WorkbenchOrgDevAppTileProps) {
   const { t } = useTranslation()
-  const { convexUserId } = useAuth()
+  const { principalId } = useAuth()
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const surfacePresentation = useDockviewBrowserSurfacePresentation(panelApi, containerApi)
   const [prepareError, setPrepareError] = useState<string | null>(null)
@@ -122,7 +122,7 @@ export function WorkbenchOrgDevAppTile({
 
   const remoteArtifact = useQuery(
     api.devApps.getArtifactUrl,
-    convexUserId && tile.devAppRef ? { ref: tile.devAppRef } : "skip",
+    principalId && tile.devAppRef ? { ref: tile.devAppRef } : "skip",
   )
   const artifact: ResolvedOrgDevAppArtifact | null | undefined =
     installedResolution === undefined ? undefined : (installedResolution?.artifact ?? remoteArtifact)
