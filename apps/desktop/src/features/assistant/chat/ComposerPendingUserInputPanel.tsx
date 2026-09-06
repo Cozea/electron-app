@@ -138,7 +138,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       key={activeQuestion.id}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5 animate-in fade-in-0 slide-in-from-right-1 duration-150 motion-reduce:animate-none"
+      className="flex h-full min-h-0 flex-col px-4 py-3 @md/cozea-workbench-pane:px-5 animate-in fade-in-0 slide-in-from-right-1 duration-150 motion-reduce:animate-none"
     >
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">

@@ -16,7 +16,7 @@ export const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBann
   }, [getOverflowTitle, planTitle]);
 
   return (
-    <div className="px-4 py-3.5 sm:px-5 sm:py-4">
+    <div className="px-4 py-3.5 @md/cozea-workbench-pane:px-5 @md/cozea-workbench-pane:py-4">
       <div ref={containerRef} className="flex flex-wrap items-center gap-2">
         <span className="uppercase text-sm tracking-[0.2em]">Plan ready</span>
         {planTitle ? (

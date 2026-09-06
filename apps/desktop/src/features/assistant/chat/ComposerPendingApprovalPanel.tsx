@@ -18,7 +18,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
         : approval.requestKind === "file-change" ? "File-change approval requested" : approval.requestKind === "mcp-elicitation" ? "App access approval requested" : "Provider approval requested";
 
   return (
-    <div className="px-4 py-3.5 sm:px-5 sm:py-4">
+    <div className="px-4 py-3.5 @md/cozea-workbench-pane:px-5 @md/cozea-workbench-pane:py-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="uppercase text-sm tracking-[0.2em]">PENDING APPROVAL</span>
         <span className="text-sm font-medium">{approvalSummary}</span>

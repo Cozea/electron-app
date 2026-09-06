@@ -22,8 +22,10 @@ const panelSource = readSource(
  */
 describe("the composer's scroll chain in a small tile", () => {
   it("lets the undocked composer shrink, and caps it so the thread stays visible", () => {
+    // Spacing is adaptive presentation and must not be frozen to a viewport
+    // breakpoint here; this test owns only the vertical shrink contract.
     expect(surfaceSource).toMatch(
-      /className="flex max-h-\[70%\] min-h-0 flex-col px-3 pt-1\.5 pb-4 sm:px-5 sm:pt-2 sm:pb-5"/,
+      /className="flex max-h-\[70%\] min-h-0 flex-col/,
     );
   });
 
@@ -45,9 +47,9 @@ describe("the composer's scroll chain in a small tile", () => {
 
   it("scrolls the options inside the panel, below a question that stays put", () => {
     // Match the scroll-chain classes rather than the whole class string: the
-    // card also carries enter-animation utilities, and this assertion exists to
-    // catch a dropped `min-h-0`, not to freeze unrelated styling.
-    expect(panelSource).toMatch(/className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5[ "]/);
+    // card also carries enter-animation and pane-adaptation utilities, and this
+    // assertion exists to catch a dropped `min-h-0` only.
+    expect(panelSource).toMatch(/className="flex h-full min-h-0 flex-col/);
     expect(panelSource).toContain(
       'className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain"',
     );

@@ -24,18 +24,18 @@ const buttonVariants = cva(
         link: "border-transparent underline-offset-4 [:hover,[data-pressed]]:underline",
       },
       size: {
-        default: "h-9 px-[calc(--spacing(3)-1px)] sm:h-8",
-        sm: "h-8 gap-1.5 px-[calc(--spacing(2.5)-1px)] sm:h-7",
-        lg: "h-10 px-[calc(--spacing(3.5)-1px)] sm:h-9",
+        default: "h-8 px-[calc(--spacing(3)-1px)]",
+        sm: "h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)]",
+        lg: "h-9 px-[calc(--spacing(3.5)-1px)]",
         xl: "h-10 px-[calc(--spacing(4)-1px)] text-lg [&_svg:not([class*='size-'])]:size-4.5",
         xs: "h-6 gap-1 rounded-md px-[calc(--spacing(2)-1px)] text-sm before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
-        icon: "size-9 sm:size-8",
-        "icon-sm": "size-8 sm:size-7",
-        "icon-lg": "size-10 sm:size-9",
+        icon: "size-8",
+        "icon-sm": "size-7",
+        "icon-lg": "size-9",
         "icon-xl":
-          "size-11 sm:size-10 [&_svg:not([class*='size-'])]:size-5 sm:[&_svg:not([class*='size-'])]:size-4.5",
+          "size-10 [&_svg:not([class*='size-'])]:size-4.5",
         "icon-xs":
-          "size-7 rounded-md before:rounded-[calc(var(--radius-md)-1px)] sm:size-6 [&_svg:not([class*='size-'])]:size-4 sm:[&_svg:not([class*='size-'])]:size-3.5",
+          "size-6 rounded-md before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
       },
     },
     defaultVariants: {

@@ -11,6 +11,7 @@ import {
 
 import "dockview-react/dist/styles/dockview.css"
 import "@/features/workbench/workbench.css"
+import "@/features/workbench/adaptiveDesktopGeometry.css"
 
 import {
   WorkbenchDockHeaderActions,
