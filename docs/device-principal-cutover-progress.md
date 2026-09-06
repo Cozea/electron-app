@@ -35,11 +35,12 @@ This branch is intentionally breaking. Cozea has no compatibility requirement fo
 - device-auth challenge no longer carries an OS/device display label
 - collaboration-session requests carry only project ID + client type; identity, display, and encryption metadata are server-resolved from the authenticated principal
 - redundant `userId`/`deviceId` identity aliases were removed from local identity and collaboration-session JWT/contracts
+- collaboration session adapters and security-device presentation now expose `principalId`, `identityKey`, `displayName`, and canonical encryption-key fields
 - regression tests cover presentation isolation, onboarding, project principal authority, and collaboration authority
 
 ## Validation status
 
-The principal-only transport cleanup and its remaining renderer consumers have been repaired through commit `5aed0e8`. This commit triggers validation against that bot-produced tree because GitHub Actions does not recursively trigger workflows from its own bot commits.
+The collaboration-session adapters and encryption-device presentation query were normalized in bot repair commit `b3d8745`. This commit triggers validation against that repaired tree because GitHub Actions does not recursively trigger workflows from its own bot commits.
 
 Remaining validation gates:
 
