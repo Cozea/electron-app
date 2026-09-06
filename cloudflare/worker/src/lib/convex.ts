@@ -23,7 +23,7 @@ interface LocalDeviceProfileInfo {
     email: string
     firstName: string
     lastName: null
-    profileImageUrl: null
+    profileImageUrl: string | null
   }
   personalWorkspace: {
     id: string
@@ -183,8 +183,6 @@ export async function authorizeDevAppRuntimeBuildInConvex(
     },
   )
   if (!result.allowed) throw new Error('The DevApp runtime build is not authorized')
-  // The image repository is derived from the owning organization, so a build that
-  // cannot name one has nowhere it may be pushed.
   if (!result.organizationId) throw new Error('The DevApp runtime build has no owning organization')
   return { organizationId: result.organizationId }
 }
@@ -293,50 +291,61 @@ export async function createCollabSessionFromConvex(
   if (auth.sub !== body.deviceId) {
     throw new Error('Authenticated device does not match the collaboration device')
   }
-  const localProfile = await requireActiveDeviceAccessInConvex(env, auth)
+
+  const principal = await requireActiveDeviceAccessInConvex(env, auth)
+
+  // The request still carries the public ECDH material during this transitional
+  // slice, but the canonical registered principal is authoritative. A mismatch
+  // is rejected rather than accepted as a device re-registration.
   if (
-    localProfile.encryptionPublicKeyJwk !== body.publicKeyJwk ||
-    localProfile.encryptionPublicKeyAlgorithm !== body.publicKeyAlgorithm ||
-    localProfile.encryptionFingerprint !== body.fingerprint
+    principal.encryptionPublicKeyJwk !== body.publicKeyJwk ||
+    principal.encryptionPublicKeyAlgorithm !== body.publicKeyAlgorithm ||
+    principal.encryptionFingerprint !== body.fingerprint
   ) {
     throw new Error('Collaboration encryption key does not match the authenticated device')
   }
+
+  // Do not pass deviceId into the legacy trusted-device fallback. Direct
+  // project/organization membership of the authenticated principal is the
+  // authorization source in the pure device-principal model.
   const access = await runServerQuery<ProjectAccessResult>(env, 'projectMembers:getProjectAccessForServer', {
     projectId: body.projectId,
-    userId: localProfile.userId,
-    deviceId: body.deviceId,
+    userId: principal.userId,
   })
   if (!access.canAccess || !access.canEdit) {
     throw new Error('The authenticated device cannot access this project')
   }
 
+  // collabDevices remains temporarily because encryption bootstrap still reads
+  // it. Populate it exclusively from canonical principal state so it cannot
+  // become a second identity/presentation authority.
   await runMutation(env, 'yjs:registerCollabDevice', {
     serverSecret: env.AI_GATEWAY_SECRET,
-    userId: localProfile.userId,
-    deviceId: body.deviceId,
-    deviceLabel: body.deviceLabel,
-    platform: body.platform,
-    publicKeyJwk: body.publicKeyJwk,
-    publicKeyAlgorithm: body.publicKeyAlgorithm,
-    fingerprint: body.fingerprint,
+    userId: principal.userId,
+    deviceId: principal.identityKey,
+    deviceLabel: principal.deviceLabel,
+    platform: principal.platform,
+    publicKeyJwk: principal.encryptionPublicKeyJwk,
+    publicKeyAlgorithm: principal.encryptionPublicKeyAlgorithm,
+    fingerprint: principal.encryptionFingerprint,
   })
 
   const roomId = `project:${body.projectId}`
   const encryption = await runServerQuery<EncryptionBootstrapResult>(env, 'yjs:getEncryptionBootstrap', {
     projectId: body.projectId,
     roomId,
-    userId: localProfile.userId,
-    deviceId: body.deviceId,
+    userId: principal.userId,
+    deviceId: principal.identityKey,
   })
 
   return {
-    userId: localProfile.userId,
+    userId: principal.userId,
     projectId: body.projectId,
     roomId,
-    deviceId: body.deviceId,
-    deviceLabel: localProfile.deviceLabel,
-    deviceFingerprint: body.fingerprint,
-    devicePublicKeyJwk: body.publicKeyJwk,
+    deviceId: principal.identityKey,
+    deviceLabel: principal.deviceLabel,
+    deviceFingerprint: principal.encryptionFingerprint,
+    devicePublicKeyJwk: principal.encryptionPublicKeyJwk,
     encryption,
   }
 }
