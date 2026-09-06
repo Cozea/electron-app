@@ -23,7 +23,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           submodules: false
 
       - name: Initialize pinned T3 source
@@ -65,9 +65,7 @@ jobs:
         run: bun run lint
 
       - name: Check diff whitespace
-        run: |
-          git fetch origin main --depth=1
-          git diff --check origin/main...HEAD
+        run: git diff --check origin/main...HEAD
 
       - name: Identity architecture tests
         run: bunx vitest run tests/identity
