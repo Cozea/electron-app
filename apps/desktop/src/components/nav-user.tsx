@@ -24,45 +24,15 @@ import {
 
 type NavUserMenuAction =
   | "summary"
-  | "account-settings"
+  | "device-settings"
   | NavUserThemeMenuAction
   | "theme-group"
   | "separator-top"
   | "separator-bottom"
 
-// Transitional auth-session shape. The canonical display name/avatar are read
-// from the authenticated device principal below; these fields are fallback-only
-// until the session contract itself is renamed in the breaking cutover.
-interface RawUser {
-  email: string
-  firstName?: string | null
-  lastName?: string | null
-  profileImageUrl?: string | null
-}
-
-interface FormattedUser {
-  name: string
-  email: string
-  profileImageUrl?: string | null
-}
-
-function formatFallbackUser(
-  user: RawUser | FormattedUser | null | undefined,
-  fallbackLabel: string,
-): FormattedUser {
-  if (!user) return { name: fallbackLabel, email: "", profileImageUrl: null }
-  if ("name" in user && typeof user.name === "string") return user
-
-  const rawUser = user as RawUser
-  const name = rawUser.firstName
-    ? `${rawUser.firstName}${rawUser.lastName ? ` ${rawUser.lastName}` : ""}`
-    : rawUser.email?.split("@")[0] || fallbackLabel
-
-  return {
-    name,
-    email: rawUser.email || "",
-    profileImageUrl: rawUser.profileImageUrl ?? null,
-  }
+type DevicePresentation = {
+  displayName?: string | null
+  avatarUrl?: string | null
 }
 
 function initials(value: string): string {
@@ -71,71 +41,57 @@ function initials(value: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
 }
 
-export function NavUser({
-  user,
-}: {
-  user: RawUser | FormattedUser | null | undefined
-}) {
+export function NavUser({ user }: { user: DevicePresentation | null | undefined }) {
   const { theme, setTheme } = useTheme()
   const { principalId } = useAuth()
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
-  const fallback = formatFallbackUser(user, t("nav.thisComputer"))
   const principal = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip")
 
-  const menuTitle = principal?.deviceLabel?.trim() || fallback.name || t("nav.thisComputer")
-  const avatarUrl = principal?.profileImageUrl ?? fallback.profileImageUrl ?? null
+  const menuTitle = principal?.displayName?.trim() || user?.displayName?.trim() || t("nav.thisComputer")
+  const avatarUrl = principal?.avatarUrl ?? user?.avatarUrl ?? null
   const menuSummarySublabel = t("nav.localComputer")
 
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
       const rect = event.currentTarget.getBoundingClientRect()
-      const items: ContextMenuItem<NavUserMenuAction>[] = []
-
-      if (menuTitle || menuSummarySublabel) {
-        items.push({
+      const items: ContextMenuItem<NavUserMenuAction>[] = [
+        {
           id: "summary",
           label: menuTitle,
-          sublabel: menuSummarySublabel || undefined,
+          sublabel: menuSummarySublabel,
           enabled: false,
-        })
-        items.push({ id: "separator-top", label: "", type: "separator" })
-      }
+        },
+        { id: "separator-top", label: "", type: "separator" },
+        {
+          id: "device-settings",
+          label: t("nav.userSettings"),
+          icon: getNativeMenuIcon("settings"),
+        },
+        {
+          id: "theme-group",
+          label: t("nav.theme"),
+          icon: getNativeMenuIcon("theme"),
+          submenu: NAV_USER_THEME_OPTIONS.map((option) => ({
+            id: option.id,
+            label: t(option.labelKey),
+            type: "radio",
+            checked: theme === option.theme,
+          })),
+        },
+        { id: "separator-bottom", label: "", type: "separator" },
+      ]
 
-      items.push({
-        id: "account-settings",
-        label: t("nav.userSettings"),
-        icon: getNativeMenuIcon("settings"),
-      })
-      items.push({
-        id: "theme-group",
-        label: t("nav.theme"),
-        icon: getNativeMenuIcon("theme"),
-        submenu: NAV_USER_THEME_OPTIONS.map((option) => ({
-          id: option.id,
-          label: t(option.labelKey),
-          type: "radio",
-          checked: theme === option.theme,
-        })),
-      })
-      items.push({ id: "separator-bottom", label: "", type: "separator" })
-
-      const position = {
+      const action = await showDesktopContextMenu(items, {
         x: Math.round(rect.left + rect.width / 2),
         y: Math.round(rect.top),
-      }
-
-      const action = await showDesktopContextMenu(items, position)
+      })
       const selectedTheme = resolveNavUserThemeAction(action)
-
       if (selectedTheme) {
         setTheme(selectedTheme)
         return
       }
-
-      if (action === "account-settings") {
-        navigate("/projects/settings/account")
-      }
+      if (action === "device-settings") navigate("/projects/settings/account")
     },
     [menuSummarySublabel, menuTitle, navigate, setTheme, t, theme],
   )
