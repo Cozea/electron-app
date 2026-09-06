@@ -87,6 +87,7 @@ export default defineSchema({
   devicePrincipals: defineTable({
     identityKey: v.string(),
     displayName: v.string(),
+    presentationConfiguredAt: v.optional(v.number()),
     avatarStorageId: v.optional(v.id("_storage")),
     platform: v.string(),
     encryptionPublicKeyJwk: v.string(),

@@ -216,8 +216,6 @@ export function ProjectSettingsPage({
       projectId: project._id,
       roomId: collabSession.roomId,
       keyVersion: args.keyVersion,
-      createdByUserId: principalId,
-      createdByDeviceId: collabSession.identityKey,
       wrapAlgorithm: recoveryKit.wrapAlgorithm,
       wrappedKey: recoveryKit.wrappedKey,
       salt: recoveryKit.salt,
@@ -293,9 +291,7 @@ export function ProjectSettingsPage({
     })
 
     const wrappedKeys: Array<{
-      recipientUserId: NonNullable<typeof devices>[number]['principalId']
-      recipientDeviceId: string
-      senderPublicKeyJwk: string
+      recipientPrincipalId: NonNullable<typeof devices>[number]['principalId']
       wrapAlgorithm: string
       wrappedKey: string
     }> = []
@@ -311,9 +307,7 @@ export function ProjectSettingsPage({
       })
 
       wrappedKeys.push({
-        recipientUserId: device.principalId,
-        recipientDeviceId: device.identityKey,
-        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        recipientPrincipalId: device.principalId,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
       })
@@ -327,8 +321,6 @@ export function ProjectSettingsPage({
     await rotateEncryptedRoomKey({
       projectId: project._id,
       roomId: collabSession.roomId,
-      userId: principalId,
-      initiatedByDeviceId: collabSession.identityKey,
       encryptedSnapshot: nextSnapshotBytes.slice().buffer,
       createdByClientId: String(roomDoc.clientID),
       wrappedKeys,
@@ -495,10 +487,7 @@ export function ProjectSettingsPage({
           projectId: project._id,
           roomId: collabSession.roomId,
           keyVersion: collabBootstrap.activeKeyVersion ?? 1,
-          recipientUserId: request.recipientUserId,
-          recipientDeviceId: request.recipientDeviceId,
-          senderDeviceId: wrapped.senderDeviceId,
-          senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+          keyRequestId: request._id,
           wrapAlgorithm: wrapped.wrapAlgorithm,
           wrappedKey: wrapped.wrappedKey,
         })
@@ -634,6 +623,7 @@ export function ProjectSettingsPage({
       collabBootstrap.status !== 'missing_for_device' ||
       !collabSession.encryptionPublicKeyJwk ||
       !activeRecoveryKit ||
+      !pendingKeyRequests ||
       !recoveryCodeInput.trim()
     ) {
       return
@@ -652,6 +642,15 @@ export function ProjectSettingsPage({
         wrapAlgorithm: activeRecoveryKit.wrapAlgorithm,
       })
 
+      const ownKeyRequest = pendingKeyRequests.find(
+        (request) =>
+          request.recipientUserId === principalId &&
+          typeof request.fulfilledAt !== 'number',
+      )
+      if (!ownKeyRequest) {
+        throw new Error('No pending encryption key request exists for this device.')
+      }
+
       const wrapped = await window.electronAPI.collab.wrapRoomKey({
         roomKeyBase64,
         recipientPublicKeyJwk: collabSession.encryptionPublicKeyJwk,
@@ -661,10 +660,7 @@ export function ProjectSettingsPage({
         projectId: project._id,
         roomId: collabSession.roomId,
         keyVersion: activeRecoveryKit.keyVersion,
-        recipientUserId: principalId,
-        recipientDeviceId: collabSession.identityKey,
-        senderDeviceId: wrapped.senderDeviceId,
-        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
+        keyRequestId: ownKeyRequest._id,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
       })
@@ -702,8 +698,6 @@ export function ProjectSettingsPage({
       await resetEncryptedRoom({
         projectId: project._id,
         roomId: collabSession.roomId,
-        userId: principalId ?? undefined,
-        retainDeviceId: collabSession.identityKey,
       })
 
       if (collabScopeKey) {

@@ -37,8 +37,7 @@ function authenticatedBuilder<T extends Builder>(builder: T, mode: "read" | "wri
       }
       const projectId = args.projectId
       if (typeof projectId === "string") {
-        const isSelfKeyRequest = mode === "write" && typeof args.recipientDeviceId === "string"
-        const allowed = mode === "write" && !isSelfKeyRequest
+        const allowed = mode === "write"
           ? await canEditProject(ctx, projectId as never, device._id)
           : await canAccessProject(ctx, projectId as never, device._id)
         if (!allowed) throw new ConvexError("The authenticated device cannot access this project")

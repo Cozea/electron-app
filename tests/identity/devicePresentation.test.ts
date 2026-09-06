@@ -28,12 +28,13 @@ describe("device presentation authority boundary", () => {
 
     expect(existingPrincipalBranch).not.toContain("displayName:")
     expect(existingPrincipalBranch).not.toContain("avatarStorageId:")
-    expect(existingPrincipalBranch).toContain("encryptionPublicKeyJwk")
+    expect(existingPrincipalBranch).toContain("already bound to another encryption key")
     expect(existingPrincipalBranch).toContain("lastAuthenticatedAt")
+    expect(existingPrincipalBranch).not.toContain("encryptionPublicKeyJwk: args.encryptionPublicKeyJwk")
   })
 
   it("keeps display-name changes isolated from security state", () => {
-    const section = exportedSection("updateDevicePresentation", "generateAvatarUploadUrl")
+    const section = exportedSection("updateDevicePresentation", "commitAvatarUpload")
 
     expect(section).toContain("displayName")
     expect(section).not.toContain("signingPublicKey")
@@ -43,14 +44,14 @@ describe("device presentation authority boundary", () => {
     expect(section).not.toContain('status: "revoked"')
   })
 
-  it("keeps avatar changes isolated from security state", () => {
-    const section = exportedSection("setAvatar")
+  it("owns avatar storage server-side and keeps avatar changes isolated from security state", () => {
+    const upload = exportedSection("uploadAvatar", "removeAvatar")
+    const commit = exportedSection("commitAvatarUpload", "uploadAvatar")
 
-    expect(section).toContain("avatarStorageId")
-    expect(section).toContain("ctx.storage")
-    expect(section).not.toContain("signingPublicKey")
-    expect(section).not.toContain("encryptionPublicKey")
-    expect(section).not.toContain("signingKeyVersion")
-    expect(section).not.toContain("tokenValidAfter")
+    expect(upload).toContain("ctx.storage.store")
+    expect(upload).not.toContain("storageId: v.id")
+    expect(commit).toContain("avatarStorageId: args.storageId")
+    expect(commit).not.toContain("signingPublicKeyJwk:")
+    expect(commit).not.toContain("encryptionPublicKeyJwk:")
   })
 })

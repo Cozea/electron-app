@@ -156,7 +156,6 @@ export const getProjectAccessForServer = query({
   args: {
     projectId: v.id("projects"),
     userId: v.id("devicePrincipals"),
-    deviceId: v.optional(v.string()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
@@ -174,59 +173,6 @@ export const getProjectAccessForServer = query({
 // ============================================
 // MEMBER MUTATIONS
 // ============================================
-
-// Add a member to a project
-export const addMember = mutation({
-  args: {
-    projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"), // User performing the action
-    memberUserId: v.id("devicePrincipals"), // User being added
-    role: v.union(
-      v.literal("project_manager"),
-      v.literal("developer"),
-      v.literal("designer"),
-      v.literal("viewer")
-    ),
-  },
-  handler: async (ctx, args) => {
-    const { canManageTeam } = await getTeamManagementContext(
-      ctx,
-      args.projectId,
-      args.actorUserId
-    )
-    if (!canManageTeam) {
-      throw new Error("Unauthorized to add members")
-    }
-
-    // Check if user is already a member
-    const existingMembership = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.memberUserId)
-      )
-      .first()
-
-    if (existingMembership) {
-      throw new Error("User is already a member of this project")
-    }
-
-    // Verify the user exists
-    const user = await ctx.db.get(args.memberUserId)
-    if (!user) {
-      throw new Error("User not found")
-    }
-    const now = Date.now()
-    const membershipId = await ctx.db.insert("projectMembers", {
-      projectId: args.projectId,
-      userId: args.memberUserId,
-      role: args.role,
-      addedAt: now,
-      addedBy: args.actorUserId,
-    })
-
-    return membershipId
-  },
-})
 
 // Update a member's role
 export const updateRole = mutation({

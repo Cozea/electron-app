@@ -21,6 +21,7 @@ interface LocalDeviceProfileInfo {
     principalId: string
     identityKey: string
     displayName: string
+    presentationConfigured: boolean
     avatarUrl: string | null
     platform: string
   }
@@ -294,8 +295,7 @@ export async function createCollabSessionFromConvex(
   const encryption = await runServerQuery<EncryptionBootstrapResult>(env, 'yjs:getEncryptionBootstrap', {
     projectId: body.projectId,
     roomId,
-    userId: principal.principalId,
-    deviceId: principal.identityKey,
+    principalId: principal.principalId,
   })
 
   return {

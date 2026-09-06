@@ -1,6 +1,8 @@
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { action, internalMutation } from "./_generated/server"
+import { makeFunctionReference, type FunctionReference } from "convex/server"
 import { ConvexError, v } from "convex/values"
-import { isDeviceIdentityKey, normalizeDeviceIdentityKey } from "../shared/deviceIdentity"
+import { isDeviceIdentityKey, isTokenIssuedAfterRevocationBoundary, normalizeDeviceIdentityKey } from "../shared/deviceIdentity"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 
 function requireServerSecret(serverSecret: string): void {
@@ -19,6 +21,12 @@ const CHALLENGE_WINDOW_MS = 10 * 60 * 1_000
 const MAX_IDENTITY_CHALLENGES_PER_WINDOW = 12
 const MAX_FINGERPRINT_CHALLENGES_PER_WINDOW = 30
 const MAX_AVATAR_BYTES = 512 * 1024
+
+function isWebp(bytes: Uint8Array): boolean {
+  return bytes.byteLength >= 12 &&
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+}
 
 export const createDeviceAuthChallengeFromServer = mutation({
   args: {
@@ -101,14 +109,22 @@ export const ensureDevicePrincipalFromServer = mutation({
       .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey)).unique()
     if (principal) {
       if (principal.status === "revoked") throw new ConvexError("This device identity has been revoked")
-      if (principal.signingFingerprint !== args.signingFingerprint || principal.signingPublicKeyJwk !== args.signingPublicKeyJwk) {
+      if (
+        principal.signingFingerprint !== args.signingFingerprint ||
+        principal.signingPublicKeyJwk !== args.signingPublicKeyJwk ||
+        principal.signingPublicKeyAlgorithm !== args.signingPublicKeyAlgorithm
+      ) {
         throw new ConvexError("This device ID is already bound to another signing key")
+      }
+      if (
+        principal.encryptionFingerprint !== args.encryptionFingerprint ||
+        principal.encryptionPublicKeyJwk !== args.encryptionPublicKeyJwk ||
+        principal.encryptionPublicKeyAlgorithm !== args.encryptionPublicKeyAlgorithm
+      ) {
+        throw new ConvexError("This device ID is already bound to another encryption key")
       }
       await ctx.db.patch(principal._id, {
         platform: args.platform.trim() || "desktop",
-        encryptionPublicKeyJwk: args.encryptionPublicKeyJwk,
-        encryptionPublicKeyAlgorithm: args.encryptionPublicKeyAlgorithm,
-        encryptionFingerprint: args.encryptionFingerprint,
         lastAuthenticatedAt: now,
         updatedAt: now,
       })
@@ -142,6 +158,7 @@ export const ensureDevicePrincipalFromServer = mutation({
         principalId: String(principal._id),
         identityKey: principal.identityKey,
         displayName: principal.displayName,
+        presentationConfigured: typeof principal.presentationConfiguredAt === "number",
         avatarUrl,
         platform: principal.platform,
       },
@@ -211,6 +228,7 @@ export const getCurrent = query({
       principalId: principal._id,
       identityKey: principal.identityKey,
       displayName: principal.displayName,
+      presentationConfigured: typeof principal.presentationConfiguredAt === "number",
       avatarUrl,
       platform: principal.platform,
       preferences: principal.preferences,
@@ -247,36 +265,97 @@ export const updateDevicePresentation = mutation({
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)
     const displayName = normalizeDisplayName(args.displayName)
-    await ctx.db.patch(principal._id, { displayName, updatedAt: Date.now() })
+    const now = Date.now()
+    await ctx.db.patch(principal._id, {
+      displayName,
+      presentationConfiguredAt: principal.presentationConfiguredAt ?? now,
+      updatedAt: now,
+    })
     return { identityKey: principal.identityKey, displayName }
   },
 })
 
-export const generateAvatarUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuthenticatedDevice(ctx)
-    return await ctx.storage.generateUploadUrl()
+export const commitAvatarUpload = internalMutation({
+  args: {
+    identityKey: v.string(),
+    keyVersion: v.number(),
+    issuedAtSeconds: v.number(),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const identityKey = normalizeDeviceIdentityKey(args.identityKey)
+    const principal = await ctx.db.query("devicePrincipals")
+      .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey)).unique()
+    if (!principal || principal.status !== "active") throw new ConvexError("Authenticated device is not registered")
+    if (principal.signingKeyVersion !== args.keyVersion) throw new ConvexError("Device session has been revoked")
+    if (!isTokenIssuedAfterRevocationBoundary(args.issuedAtSeconds, principal.tokenValidAfter)) {
+      throw new ConvexError("Device session is no longer valid")
+    }
+    const previous = principal.avatarStorageId
+    await ctx.db.patch(principal._id, { avatarStorageId: args.storageId, updatedAt: Date.now() })
+    if (previous && previous !== args.storageId) await ctx.storage.delete(previous)
+    return { avatarUrl: await ctx.storage.getUrl(args.storageId) }
   },
 })
 
-export const setAvatar = mutation({
-  args: { storageId: v.union(v.id("_storage"), v.null()) },
+type CommitAvatarUploadArgs = {
+  identityKey: string
+  keyVersion: number
+  issuedAtSeconds: number
+  storageId: string
+}
+
+const commitAvatarUploadRef = makeFunctionReference<
+  "mutation",
+  CommitAvatarUploadArgs,
+  { avatarUrl: string | null }
+>("devicePrincipals:commitAvatarUpload") as unknown as FunctionReference<
+  "mutation",
+  "internal",
+  CommitAvatarUploadArgs,
+  { avatarUrl: string | null }
+>
+
+export const uploadAvatar = action({
+  args: { bytes: v.bytes() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) throw new Error("Authentication required")
+    const identityKey = normalizeDeviceIdentityKey(identity.subject)
+    if (!isDeviceIdentityKey(identityKey)) throw new Error("Authenticated principal is not a Cozea device")
+    const claims = identity as unknown as Record<string, unknown>
+    const keyVersion = claims.key_version
+    const issuedAtSeconds = claims.token_issued_at
+    if (!Number.isInteger(keyVersion) || typeof issuedAtSeconds !== "number") {
+      throw new Error("Device session claims are invalid")
+    }
+    const bytes = new Uint8Array(args.bytes)
+    if (bytes.byteLength <= 0 || bytes.byteLength > MAX_AVATAR_BYTES || !isWebp(bytes)) {
+      throw new Error("Avatar must be an optimized WebP image smaller than 512 KB")
+    }
+    const storageId = await ctx.storage.store(new Blob([args.bytes], { type: "image/webp" }))
+    try {
+      return await ctx.runMutation(commitAvatarUploadRef, {
+        identityKey,
+        keyVersion: keyVersion as number,
+        issuedAtSeconds,
+        storageId,
+      })
+    } catch (error) {
+      await ctx.storage.delete(storageId)
+      throw error
+    }
+  },
+})
+
+export const removeAvatar = mutation({
+  args: {},
+  handler: async (ctx) => {
     const principal = await requireAuthenticatedDevice(ctx)
     const previous = principal.avatarStorageId
-    if (args.storageId) {
-      const metadata = await ctx.db.system.get("_storage", args.storageId)
-      if (!metadata) throw new ConvexError("Uploaded avatar is unavailable")
-      if (metadata.size > MAX_AVATAR_BYTES) throw new ConvexError("Avatar is too large")
-      if (!metadata.contentType?.startsWith("image/")) throw new ConvexError("Avatar must be an image")
-    }
-    await ctx.db.patch(principal._id, {
-      avatarStorageId: args.storageId ?? undefined,
-      updatedAt: Date.now(),
-    })
-    if (previous && previous !== args.storageId) await ctx.storage.delete(previous)
-    return { avatarUrl: args.storageId ? await ctx.storage.getUrl(args.storageId) : null }
+    await ctx.db.patch(principal._id, { avatarStorageId: undefined, updatedAt: Date.now() })
+    if (previous) await ctx.storage.delete(previous)
+    return { avatarUrl: null }
   },
 })
 

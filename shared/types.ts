@@ -7,6 +7,7 @@ export interface User {
   principalId: string
   identityKey: string
   displayName: string
+  presentationConfigured: boolean
   avatarUrl: string | null
   platform: string
 }

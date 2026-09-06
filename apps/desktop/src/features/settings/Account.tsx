@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -51,19 +50,6 @@ function initials(value: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
 }
 
-async function uploadAvatar(uploadUrl: string, dataUrl: string): Promise<Id<"_storage">> {
-  const blob = await fetch(dataUrl).then((response) => response.blob())
-  const response = await fetch(uploadUrl, {
-    method: "POST",
-    headers: { "Content-Type": blob.type || "image/webp" },
-    body: blob,
-  })
-  if (!response.ok) throw new Error("Could not upload the device avatar")
-  const payload = await response.json() as { storageId?: Id<"_storage"> }
-  if (!payload.storageId) throw new Error("The avatar upload did not return a storage ID")
-  return payload.storageId
-}
-
 export function Account({ surface = "page", route: _route }: AccountProps) {
   const { user, principalId, refreshToken } = useAuth();
   const { t } = useTranslation();
@@ -71,8 +57,8 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
   const updatePreferencesMutation = useMutation(api.devicePrincipals.updatePreferences);
   const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation);
-  const generateAvatarUploadUrl = useMutation(api.devicePrincipals.generateAvatarUploadUrl);
-  const setAvatarMutation = useMutation(api.devicePrincipals.setAvatar);
+  const uploadAvatar = useAction(api.devicePrincipals.uploadAvatar);
+  const removeAvatarMutation = useMutation(api.devicePrincipals.removeAvatar);
   const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -142,11 +128,10 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     try {
       await updateDevicePresentation({ displayName: normalizedDeviceName })
       if (removeAvatar) {
-        await setAvatarMutation({ storageId: null })
+        await removeAvatarMutation({})
       } else if (pendingAvatarDataUrl) {
-        const uploadUrl = await generateAvatarUploadUrl({})
-        const storageId = await uploadAvatar(uploadUrl, pendingAvatarDataUrl)
-        await setAvatarMutation({ storageId })
+        const bytes = await fetch(pendingAvatarDataUrl).then((response) => response.arrayBuffer())
+        await uploadAvatar({ bytes })
       }
       const status = await refreshToken()
       if (status !== 'refreshed') throw new Error('Saved, but the local device session could not refresh')

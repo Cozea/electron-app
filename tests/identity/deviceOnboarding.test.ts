@@ -19,6 +19,7 @@ describe("device principal onboarding", () => {
     const section = principals.slice(start, end)
 
     expect(section).toContain('displayName: "This Device"')
+    expect(section).not.toContain("presentationConfiguredAt:")
     expect(section).not.toContain("deviceLabel")
     expect(section).not.toContain("email")
     expect(section).not.toContain("firstName")
@@ -26,7 +27,7 @@ describe("device principal onboarding", () => {
   })
 
   it("treats an unconfigured device as onboarding-required", () => {
-    expect(authContext).toContain("UNCONFIGURED_DEVICE_NAME = 'This Device'")
+    expect(authContext).toContain("!user.presentationConfigured")
     expect(authContext).toContain("needsOnboarding")
     expect(authContext).not.toContain("needsOnboarding: false")
   })

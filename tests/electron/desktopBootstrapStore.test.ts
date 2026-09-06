@@ -43,6 +43,7 @@ function sessionFixture(): DesktopBootstrapSession {
       principalId: 'principal_1',
       identityKey: 'czd_00000000000000000000000000',
       displayName: 'Test device',
+      presentationConfigured: true,
       avatarUrl: null,
       platform: 'darwin',
     },

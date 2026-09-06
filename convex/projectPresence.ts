@@ -6,19 +6,10 @@ import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 // Presence is considered stale after 60 seconds (2 missed heartbeats)
 const PRESENCE_TIMEOUT_MS = 60 * 1000
 
-/**
- * Update presence heartbeat for the authenticated device principal.
- *
- * Identity/presentation arguments remain optional only while the renderer is
- * being cut over. The server ignores them for authority and display; the
- * canonical principal row is the source of truth.
- */
+/** Update presence heartbeat for the authenticated device principal. */
 export const heartbeat = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.optional(v.id("devicePrincipals")),
-    userName: v.optional(v.string()),
-    userAvatarUrl: v.optional(v.string()),
     activeTab: v.optional(v.string()),
     activeFile: v.optional(v.string()),
     activeRoute: v.optional(v.string()),
@@ -76,7 +67,6 @@ export const heartbeat = mutation({
 export const leave = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)

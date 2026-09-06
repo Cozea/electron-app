@@ -270,12 +270,9 @@ export function YjsProjectProvider({
       await convex.mutation(api.yjs.initializeEncryptedRoom, {
         projectId,
         roomId: session.roomId,
-        userId,
-        deviceId: session.identityKey,
         keyVersion: session.encryption.activeKeyVersion ?? 1,
         wrapAlgorithm: wrapped.wrapAlgorithm,
         wrappedKey: wrapped.wrappedKey,
-        senderPublicKeyJwk: wrapped.senderPublicKeyJwk,
       })
       return {
         encryptionEnabled: true,
@@ -305,10 +302,6 @@ export function YjsProjectProvider({
         await convex.mutation(api.yjs.createKeyRequest, {
           projectId,
           roomId: session.roomId,
-          recipientUserId: userId,
-          recipientDeviceId: session.identityKey,
-          recipientPublicKeyJwk: session.encryptionPublicKeyJwk,
-          recipientFingerprint: session.encryptionFingerprint ?? session.identityKey,
         })
       }
       return null

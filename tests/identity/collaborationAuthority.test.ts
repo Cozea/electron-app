@@ -62,7 +62,9 @@ describe("collaboration authority boundary", () => {
     const section = exportedSection("storeWrappedRoomKey", "storeRecoveryKit")
     expect(section).toContain("canManageProject")
     expect(section).toContain("matching pending key request is required")
-    expect(section).toContain("pendingRequest.recipientUserId !== args.recipientUserId")
+    expect(section).toContain("keyRequestId")
+    expect(section).toContain("recipient.encryptionPublicKeyJwk !== pendingRequest.recipientPublicKeyJwk")
+    expect(section).toContain("principal.encryptionPublicKeyJwk")
   })
 
   it("keeps project revocation scoped and manager-only", () => {

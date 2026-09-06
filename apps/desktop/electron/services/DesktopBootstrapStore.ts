@@ -47,6 +47,7 @@ function isDesktopBootstrapSession(value: unknown): value is DesktopBootstrapSes
     typeof principal.identityKey === 'string' &&
     principal.identityKey.length > 0 &&
     typeof principal.displayName === 'string' &&
+    typeof principal.presentationConfigured === 'boolean' &&
     typeof principal.platform === 'string' &&
     isNullableString(principal.avatarUrl) &&
     typeof workspace.id === 'string' &&

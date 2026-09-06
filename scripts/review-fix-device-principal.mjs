@@ -190,10 +190,10 @@ replaceOnce(
   'import type { MutationCtx, QueryCtx } from "./_generated/server"',
   'import { mutation as baseMutation, type MutationCtx, type QueryCtx } from "./_generated/server"',
 )
-replaceOnce(
+replaceRegex(
   'convex/yjs.ts',
-  '    roomId: v.optional(v.string()),\n    userId: v.id("devicePrincipals"),\n    deviceId: v.string(),',
-  '    roomId: v.optional(v.string()),\n    principalId: v.id("devicePrincipals"),',
+  /(export const getEncryptionBootstrap = query\(\{[\s\S]*?roomId: v\.optional\(v\.string\(\)\),\n)    userId: v\.id\("devicePrincipals"\),\n    deviceId: v\.string\(\),/g,
+  '$1    principalId: v.id("devicePrincipals"),',
 )
 replaceOnce(
   'convex/yjs.ts',

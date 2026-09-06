@@ -25,7 +25,6 @@ interface AuthContextType {
 export type RefreshTokenStatus = 'refreshed' | 'retryable' | 'expired'
 
 const AuthContext = createContext<AuthContextType | null>(null)
-const UNCONFIGURED_DEVICE_NAME = 'This Device'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const bootstrapSession = featureFlags.shellFirstAuth
@@ -146,9 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [bootstrapLocalDeviceSession])
 
-  const needsOnboarding = Boolean(
-    user && (user.displayName.trim() || UNCONFIGURED_DEVICE_NAME) === UNCONFIGURED_DEVICE_NAME,
-  )
+  const needsOnboarding = Boolean(user && !user.presentationConfigured)
 
   const value = useMemo<AuthContextType>(
     () => ({
