@@ -337,18 +337,21 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
       </section>
 
       <section>
-        <SettingsSectionTitle>Advanced interaction</SettingsSectionTitle>
+        <SettingsSectionTitle>
+          {t('settings.computerUse.advancedTitle')}
+        </SettingsSectionTitle>
         <SettingsSectionDescription>
-          Background and accessibility-targeted actions remain preferred. Physical pointer fallback is only used when an agent explicitly requests Open Computer Use&apos;s global click method.
+          {t('settings.computerUse.advancedDescription')}
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow>
             <SettingsRowLabel
-              title="Allow physical pointer fallback"
-              description="Permit the upstream global pointer path to move and click the system cursor when targeted interaction is not appropriate. Off by default."
+              title={t('settings.computerUse.allowGlobalPointerFallback')}
+              description={t('settings.computerUse.allowGlobalPointerFallbackDescription')}
             />
             <SettingsRowControl>
               <Switch
+                aria-label={t('settings.computerUse.allowGlobalPointerFallback')}
                 checked={computerUseEnabled && allowGlobalPointerFallbacks}
                 disabled={!computerUseEnabled}
                 onCheckedChange={(checked) => void handleGlobalPointerFallbackToggle(checked)}
