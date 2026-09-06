@@ -4,7 +4,6 @@ import {
   DEFAULT_RUNTIME_MODE,
   type ProjectId,
   type ThreadId,
-  type TurnId,
 } from "@cozea/assistant-contracts"
 import {
   dueScheduledTasks,
@@ -29,15 +28,10 @@ import {
 
 const TICK_MS = 30_000
 
-type ScheduledTaskComputerUsePolicyAction = "prepare" | "clear"
-
 interface ScheduledTaskRunControl extends ScheduledTaskRunReport {
-  computerUsePolicy: ScheduledTaskComputerUsePolicyAction
+  computerUsePolicy: 'prepare'
   threadId: ThreadId
 }
-
-const activeComputerUsePolicies = new Map<ThreadId, string>()
-const computerUsePolicyWatchers = new Map<ThreadId, () => void>()
 
 function basename(pathValue: string): string {
   const trimmed = pathValue.replace(/[\\/]+$/, "")
@@ -45,67 +39,24 @@ function basename(pathValue: string): string {
   return index >= 0 ? trimmed.slice(index + 1) : trimmed
 }
 
-async function controlScheduledTaskComputerUsePolicy(
+/** Ask Electron main to derive and bind the persisted task's CU policy before launch. */
+async function prepareScheduledTaskComputerUsePolicy(
   taskId: string,
   threadId: ThreadId,
-  computerUsePolicy: ScheduledTaskComputerUsePolicyAction,
 ): Promise<void> {
-  const report: ScheduledTaskRunControl = {
+  const control: ScheduledTaskRunControl = {
     taskId,
     threadId,
     ranAt: Date.now(),
-    computerUsePolicy,
+    computerUsePolicy: 'prepare',
   }
-  const result = await window.electronAPI.scheduledTasks.markRun(report)
+  const result = await window.electronAPI.scheduledTasks.markRun(control)
   if (!result.success) {
-    throw new Error(result.error ?? `Could not ${computerUsePolicy} Computer Use policy.`)
+    throw new Error(result.error ?? 'Could not prepare Computer Use policy.')
   }
-  if (computerUsePolicy === "prepare") activeComputerUsePolicies.set(threadId, taskId)
-  else activeComputerUsePolicies.delete(threadId)
 }
 
-async function clearScheduledTaskComputerUsePolicy(taskId: string, threadId: ThreadId): Promise<void> {
-  await controlScheduledTaskComputerUsePolicy(taskId, threadId, "clear")
-}
-
-function watchScheduledTaskComputerUsePolicy(
-  taskId: string,
-  threadId: ThreadId,
-  previousTurnId: TurnId | null,
-): void {
-  computerUsePolicyWatchers.get(threadId)?.()
-
-  let unsubscribe: () => void = () => undefined
-  let clearing = false
-  const inspect = (state: ReturnType<typeof useStore.getState>): void => {
-    const latestTurn = state.threadTurnStateById[threadId]?.latestTurn ?? null
-    if (!latestTurn || latestTurn.turnId === previousTurnId || latestTurn.state === "running") return
-    if (
-      latestTurn.state !== "completed" &&
-      latestTurn.state !== "interrupted" &&
-      latestTurn.state !== "error"
-    ) {
-      return
-    }
-    unsubscribe()
-    computerUsePolicyWatchers.delete(threadId)
-    if (clearing) return
-    clearing = true
-    void clearScheduledTaskComputerUsePolicy(taskId, threadId).catch((error: unknown) => {
-      console.warn("[ScheduledTasks] Failed to clear Computer Use policy:", error)
-    })
-  }
-
-  unsubscribe = useStore.subscribe(inspect)
-  computerUsePolicyWatchers.set(threadId, unsubscribe)
-  inspect(useStore.getState())
-}
-
-/**
- * Resolve the assistant project that owns a working directory, creating one
- * when this is the first run there. Mirrors what a chat tile does on its first
- * send, because a scheduled run is the same thing without a person watching.
- */
+/** Resolve or create the assistant project that owns a scheduled run's working directory. */
 async function resolveAssistantProjectId(workspaceRoot: string): Promise<ProjectId> {
   const orchestration = ensureNativeApi().orchestration
   const existing =
@@ -128,8 +79,6 @@ async function resolveAssistantProjectId(workspaceRoot: string): Promise<Project
     })
     return projectId
   } catch (error: unknown) {
-    // The runtime rejects a duplicate by naming the project that already owns
-    // this root; adopting it is right, inventing a second one is not.
     const message = error instanceof Error ? error.message : String(error)
     const match = message.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/)
     if (match?.[1]) return match[1] as ProjectId
@@ -137,10 +86,7 @@ async function resolveAssistantProjectId(workspaceRoot: string): Promise<Project
   }
 }
 
-/**
- * Start one task as a real conversation: the run shows up in chat history like
- * any other, so a scheduled agent is never doing work nobody can see.
- */
+/** Start one scheduled task as a normal visible conversation with main-owned CU authorization. */
 export async function runScheduledTask(
   task: ScheduledTask,
   standaloneWorkspaceRoot: string,
@@ -154,66 +100,57 @@ export async function runScheduledTask(
   const modelSelection = normalizeModelSelection({
     provider,
     instanceId: scheduledTaskInstanceId(task.provider),
-    // The task carries the model and reasoning level chosen when it was saved,
-    // so a run does not drift with whatever the composer last used.
     model: task.model ?? DEFAULT_MODEL_BY_PROVIDER[provider],
     options: task.modelOptions,
   })
   const threadId = newThreadId()
   const createdAt = new Date().toISOString()
-  const previousTurnId = useStore.getState().threadTurnStateById[threadId]?.latestTurn?.turnId ?? null
 
-  // This must succeed before a scheduled conversation exists. Main derives
-  // allow/deny from the persisted task and rejects CU-required tasks when the
-  // global master switch is off, so unattended runs fail closed.
-  await controlScheduledTaskComputerUsePolicy(task.id, threadId, "prepare")
+  // Main derives allow/deny from persisted task state. This must succeed before
+  // the conversation exists so unattended desktop access always fails closed.
+  await prepareScheduledTaskComputerUsePolicy(task.id, threadId)
 
-  try {
-    await orchestration.dispatchCommand({
-      type: "thread.create",
-      commandId: newCommandId(),
-      threadId,
-      projectId,
-      title: task.name,
-      modelSelection,
-      runtimeMode: DEFAULT_RUNTIME_MODE,
-      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      branch: null,
-      worktreePath: null,
-      createdAt,
-    })
+  // If launch fails, the task-owned lease remains safely bound to this unused
+  // thread ID. The next preparation for the same task replaces that orphan;
+  // renderer code is never allowed to release an active policy.
+  await orchestration.dispatchCommand({
+    type: "thread.create",
+    commandId: newCommandId(),
+    threadId,
+    projectId,
+    title: task.name,
+    modelSelection,
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    branch: null,
+    worktreePath: null,
+    createdAt,
+  })
 
-    await orchestration.dispatchCommand({
-      type: "thread.turn.start",
-      commandId: newCommandId(),
-      threadId,
-      message: {
-        messageId: newMessageId(),
-        role: "user",
-        text: task.prompt,
-        attachments: [],
-      },
-      modelSelection,
-      titleSeed: task.name,
-      runtimeMode: DEFAULT_RUNTIME_MODE,
-      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-      createdAt,
-    })
-  } catch (error: unknown) {
-    await clearScheduledTaskComputerUsePolicy(task.id, threadId).catch(() => undefined)
-    throw error
-  }
+  await orchestration.dispatchCommand({
+    type: "thread.turn.start",
+    commandId: newCommandId(),
+    threadId,
+    message: {
+      messageId: newMessageId(),
+      role: "user",
+      text: task.prompt,
+      attachments: [],
+    },
+    modelSelection,
+    titleSeed: task.name,
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    createdAt,
+  })
 
-  // T3 already forwards turn-ended when a CU tool was actually used. This
-  // watcher covers the equally important no-CU path, including explicit deny
-  // tasks, by clearing the lease when the newly-started canonical turn settles.
-  watchScheduledTaskComputerUsePolicy(task.id, threadId, previousTurnId)
   return threadId
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
 let ticking = false
 
+/** Run all currently due tasks once, recording skips/failures instead of retrying every tick. */
 async function tick(): Promise<void> {
   if (ticking) return
   ticking = true
@@ -224,8 +161,6 @@ async function tick(): Promise<void> {
     if (due.length === 0) return
 
     for (const task of due) {
-      // Skipped runs are still recorded: a task that woke up hours late should
-      // move on to its next slot rather than fire a stale run or retry forever.
       if (isScheduledTaskStale(task, now)) {
         await window.electronAPI.scheduledTasks
           .markRun({
@@ -273,10 +208,7 @@ async function tick(): Promise<void> {
   }
 }
 
-/**
- * Runs while Cozea is open, which is the whole promise: nothing fires with the
- * app closed, and the card says when a run was missed.
- */
+/** Start the renderer scheduler while Cozea is open; main/T3 own CU policy lifetime. */
 export function startScheduledTaskRunner(): () => void {
   if (typeof window === "undefined" || !window.electronAPI?.scheduledTasks) {
     return () => undefined
@@ -287,12 +219,5 @@ export function startScheduledTaskRunner(): () => void {
   return () => {
     if (timer) clearInterval(timer)
     timer = null
-    for (const unsubscribe of computerUsePolicyWatchers.values()) unsubscribe()
-    computerUsePolicyWatchers.clear()
-    for (const [threadId, taskId] of activeComputerUsePolicies) {
-      void clearScheduledTaskComputerUsePolicy(taskId, threadId).catch((error: unknown) => {
-        console.warn("[ScheduledTasks] Failed to clear Computer Use policy during teardown:", error)
-      })
-    }
   }
 }
