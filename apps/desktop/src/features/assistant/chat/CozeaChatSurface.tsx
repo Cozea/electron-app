@@ -71,7 +71,11 @@ import {
 } from "@/features/assistant/chat/ModelPickerContent";
 import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner";
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
-import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation";
+import {
+  hasBlockingProviderBanner,
+  resolveProviderBannerKind,
+} from "@/features/assistant/chat/providerStatusPresentation";
+import { ProviderUpdateNotice } from "@/features/assistant/chat/ProviderUpdateNotice";
 import { ThreadRuntimeBanner } from "@/features/assistant/chat/ThreadRuntimeBanner";
 import type { PendingApproval, PendingUserInput } from "@/features/assistant/chat/session-logic";
 import { useAssistantThreadViewModel } from "@/features/assistant/chat/useAssistantThreadViewModel";
@@ -315,6 +319,12 @@ interface CozeaChatSurfaceProps {
   artifactUrlsById?: Readonly<Record<string, string>>;
   onOpenArtifact?: (artifactId: string) => void;
   providerSnapshot: ServerProvider | null;
+  /**
+   * Ends the live provider session so the next turn starts on a freshly
+   * installed provider version. Runs automatically once an in-place update
+   * lands.
+   */
+  onRestartAgent?: () => Promise<void>;
   isRunning: boolean;
   isBinding: boolean;
   isConfigLoading: boolean;
@@ -875,6 +885,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.isSending ||
     props.isInterrupting;
 
+  const providerBannerKind = resolveProviderBannerKind(props.providerSnapshot);
   const hasProviderBanner = hasBlockingProviderBanner(props.providerSnapshot);
 
   // The provider banner replaces the timeline and sending is impossible, so
@@ -2292,7 +2303,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         onPointerLeave={dockComposerOnHover ? composerDockHoverState.onPointerLeave : undefined}
         onPointerMove={dockComposerOnHover ? composerDockHoverState.onPointerMove : undefined}
       >
-        {hasProviderBanner && timelineEntries.length > 0 ? (
+        {providerBannerKind === "update-available" && timelineEntries.length > 0 ? (
+          <ProviderUpdateNotice
+            status={props.providerSnapshot}
+            isTurnRunning={props.isRunning || props.isSending}
+            onRestartAgent={props.onRestartAgent}
+          />
+        ) : hasProviderBanner && timelineEntries.length > 0 ? (
           <div
             role="status"
             className="shrink-0 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground"

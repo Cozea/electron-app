@@ -78,12 +78,27 @@ function SelectContent({
   children,
   position = "item-aligned",
   align = "center",
+  /**
+   * Base UI puts the selected item over the trigger, macOS style. Pass false
+   * for a form field, where a dropdown below the control reads better and the
+   * popup can match the field's width.
+   */
+  alignItemWithTrigger,
   style,
   ...props
-}: React.ComponentProps<typeof BaseSelect.Popup> & { position?: string; align?: string }) {
+}: React.ComponentProps<typeof BaseSelect.Popup> & {
+  position?: string
+  align?: string
+  alignItemWithTrigger?: boolean
+}) {
   return (
     <BaseSelect.Portal>
-      <BaseSelect.Positioner align={align as any} sideOffset={4} className="z-[var(--cozea-layer-menu)]">
+      <BaseSelect.Positioner
+        align={align as any}
+        sideOffset={4}
+        alignItemWithTrigger={alignItemWithTrigger}
+        className="z-[var(--cozea-layer-menu)]"
+      >
         <BaseSelect.Popup
           data-slot="select-content"
           className={cn(

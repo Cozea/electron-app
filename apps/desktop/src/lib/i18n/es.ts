@@ -818,6 +818,7 @@ const es: Record<TranslationKey, string> = {
   "agentSkills.filter.managed": "Mi biblioteca",
   "agentSkills.providers": "Activadas en",
   "nav.agentSkills": "Builds de agentes",
+  "nav.scheduledTasks": "Tareas Programadas",
 } as const
 
 export default es

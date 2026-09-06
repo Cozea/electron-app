@@ -807,6 +807,7 @@ const en = {
   "agentSkills.filter.managed": "My library",
   "agentSkills.providers": "Enabled in",
   "nav.agentSkills": "Agent Builds",
+  "nav.scheduledTasks": "Scheduled Tasks",
 } as const
 
 export type TranslationKey = keyof typeof en

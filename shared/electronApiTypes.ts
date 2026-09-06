@@ -1,5 +1,11 @@
 import type { Session } from './types'
 import type {
+  ScheduledTaskDraft,
+  ScheduledTaskMutationResult,
+  ScheduledTaskRunReport,
+  ScheduledTasksSnapshot,
+} from './scheduledTasks'
+import type {
   AttachExistingFolderRequest,
   AttachExistingFolderResult,
   BindExistingFolderRequest,
@@ -2505,6 +2511,26 @@ export interface ElectronAPI {
       setupName: string
       authorName: string
     }) => Promise<AgentSkillExportResult>
+  }
+  /**
+   * Agent runs the user set up once and Cozea repeats on a clock. Lives beside
+   * the skill library because both are configured from Agent Builds.
+   */
+  scheduledTasks: {
+    list: () => Promise<ScheduledTasksSnapshot>
+    save: (draft: ScheduledTaskDraft) => Promise<ScheduledTaskMutationResult>
+    setEnabled: (options: {
+      taskId: string
+      enabled: boolean
+    }) => Promise<ScheduledTaskMutationResult>
+    /** Records a run attempt, successful or not, so it is not retried forever. */
+    markRun: (report: ScheduledTaskRunReport) => Promise<ScheduledTaskMutationResult>
+    /** Clears a run's unread mark once someone has opened it. */
+    markRunSeen: (options: {
+      taskId: string
+      runId: string
+    }) => Promise<ScheduledTaskMutationResult>
+    remove: (options: { taskId: string }) => Promise<ScheduledTaskMutationResult>
   }
   contextMenu: {
     showTerminalSelection: (options: {

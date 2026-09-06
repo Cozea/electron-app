@@ -309,6 +309,63 @@ After building or updating, say in one short paragraph: how many nodes and links
 communities by name, and what changed since the previous build. If you skipped anything
 significant, say what and why.`
 
+export const SCHEDULE_SKILL_KEY = 'cozea.schedule-skill'
+export const SCHEDULE_SKILL_NAME = 'schedule-skill'
+
+const SCHEDULE_SKILL_INSTRUCTIONS = `Turn a request to schedule something into a task Cozea can
+put on a clock.
+
+When someone asks you to run something later, repeatedly, every morning, every Friday, or to
+keep an eye on something, answer normally **and** end your reply with one fenced
+\`cozea-scheduled-task\` block. Cozea reads that block and opens its Scheduled Tasks form
+filled in with it. The person reviews and saves.
+
+You never save the schedule yourself, and you should not claim it is scheduled. Say you have
+filled in the details and they can save it.
+
+## The block
+
+\`\`\`cozea-scheduled-task
+{
+  "name": "Morning news summary",
+  "prompt": "Search for today's top stories in AI and write me a short summary.",
+  "provider": "claude",
+  "computerUse": false,
+  "project": "current",
+  "startAt": "2026-09-06T09:00",
+  "repeat": { "unit": "days", "interval": 1 }
+}
+\`\`\`
+
+- \`name\` — a short label for the list. Required.
+- \`prompt\` — what you would want to be told at each run, written as an instruction to
+  whichever agent runs it. It runs with no one watching, so it must stand alone: no "as we
+  discussed", no reference to this conversation. Required.
+- \`provider\` — \`claude\`, \`codex\`, \`cursor\` or \`opencode\`. Omit it unless the person
+  asked for one.
+- \`model\` — a model slug, only when they named one. Omitted, the form starts from whatever
+  that provider was last used with, which is usually what they want.
+- \`computerUse\` — true only when the task genuinely has to drive the desktop: clicking
+  around an app, reading a window. Ordinary web or file work does not need it.
+- \`project\` — \`"current"\` for work on this project, an absolute path for another one, or
+  omit it entirely for a general task like reading the news. A general task runs in a scratch
+  folder and must not assume any repository is there.
+- \`startAt\` — local wall-clock time, \`YYYY-MM-DDThh:mm\`. Work out the real date: "tomorrow
+  at 9" is a date, not a phrase. If they name a weekday, use the next one.
+- \`repeat\` — \`unit\` is \`hours\`, \`days\`, \`weeks\` or \`months\`, with an \`interval\`.
+  Every day is \`{"unit":"days","interval":1}\`; every Friday is
+  \`{"unit":"weeks","interval":1}\` with \`startAt\` on a Friday. Omit \`repeat\` for a task
+  that runs once.
+
+## Getting it right
+
+Fill in everything you can infer, and leave out what you would be guessing at: a field you
+omit is one the person fills in, which is better than a wrong one they have to notice. If the
+request is too vague to write a standalone \`prompt\`, ask what they want the run to produce
+before emitting a block.
+
+One block per task. If they ask for three schedules, emit three blocks.`
+
 export const BUILT_IN_SKILLS: BuiltInSkillDefinition[] = [
   {
     key: MEMORY_SKILL_KEY,
@@ -316,6 +373,14 @@ export const BUILT_IN_SKILLS: BuiltInSkillDefinition[] = [
     description:
       "Build, consult, and maintain this project's memory map so every agent shares the same picture of the codebase.",
     instructions: MEMORY_SKILL_INSTRUCTIONS,
+    compatibleProviders: ALL_SKILL_PROVIDERS,
+  },
+  {
+    key: SCHEDULE_SKILL_KEY,
+    name: SCHEDULE_SKILL_NAME,
+    description:
+      "Turn a request to run something later or repeatedly into a scheduled task Cozea can fill in.",
+    instructions: SCHEDULE_SKILL_INSTRUCTIONS,
     compatibleProviders: ALL_SKILL_PROVIDERS,
   },
 ]

@@ -326,6 +326,26 @@ export function SkillBuildsView() {
     );
   }, [snapshot]);
 
+  /**
+   * Coming back from a skill's page, which remounts this view with its state
+   * lost. The params say which build and which provider page to reopen; they
+   * are consumed once read so reopening Builds later starts clean. Declared
+   * after the reconcile above so it wins on the same commit.
+   */
+  const detailParam = searchParams.get("detail");
+  const buildParam = searchParams.get("build");
+  React.useEffect(() => {
+    if (!detailParam && !buildParam) return;
+    if (buildParam) setSelectedBuildId(buildParam);
+    if (detailParam && DETAIL_RING.includes(detailParam as AgentSkillProvider | "cozea")) {
+      setOpenDetail(detailParam as AgentSkillProvider | "cozea");
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("detail");
+    next.delete("build");
+    setSearchParams(next, { replace: true });
+  }, [buildParam, detailParam, searchParams, setSearchParams]);
+
   const runMutation = React.useCallback(
     async (
       key: string,
@@ -528,13 +548,9 @@ export function SkillBuildsView() {
         </span>
       );
     }
-    if (openDetail) {
-      return (
-        <span className="text-sm font-semibold tracking-tight text-foreground">
-          {openDetail === "cozea" ? "Cozea" : BUILD_PROVIDER_LABELS[openDetail]}
-        </span>
-      );
-    }
+    // A provider page names itself in its own heading; repeating it in the
+    // header just said the same word twice.
+    if (openDetail) return null;
     return selectedBuild ? (
       <span className="text-sm font-semibold tracking-tight text-foreground">
         {selectedBuild.name}
@@ -633,9 +649,19 @@ export function SkillBuildsView() {
                 onOpenSkill={(skillId) => {
                   // Hands off to the skill's own page, which lives on the
                   // library side of this surface and reads the id from the URL.
+                  // `back` carries the way home: not just "Builds", but this
+                  // build's this provider page, since that is the page being
+                  // left and the one Back has to return to. Both are component
+                  // state here, so they only survive the trip in the URL.
+                  const home = new URLSearchParams(searchParams);
+                  home.set("view", "builds");
+                  home.set("detail", openDetail);
+                  home.set("build", selectedBuild.id);
+
                   const next = new URLSearchParams(searchParams);
                   next.delete("view");
                   next.set("skill", skillId);
+                  next.set("back", home.toString());
                   setSearchParams(next);
                 }}
                 onSwitch={(direction) =>

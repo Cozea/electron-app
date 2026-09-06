@@ -31,6 +31,7 @@ import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
 import { registerComputerUseHandlers } from './ipc/registerComputerUseHandlers'
+import { registerScheduledTaskHandlers } from './ipc/registerScheduledTaskHandlers'
 import { ComputerUseService } from './services/ComputerUseService'
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
@@ -1794,6 +1795,10 @@ registerSettingsStorageHandlers(ipcMain, {
 })
 
 registerComputerUseHandlers(ipcMain, {
+  loadSettings,
+})
+
+registerScheduledTaskHandlers(ipcMain, {
   loadSettings,
 })
 

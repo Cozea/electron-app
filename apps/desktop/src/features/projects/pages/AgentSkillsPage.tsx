@@ -26,6 +26,7 @@ import { useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useProjectHeader } from "@/lib/useProjectHeader";
 import { SkillBuildsView } from "@/features/projects/pages/SkillBuildsView";
+import { ScheduledTasksView } from "@/features/projects/pages/ScheduledTasksView";
 import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects/model/agentSkillsSnapshot";
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient";
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons";
@@ -501,7 +502,6 @@ interface SkillInspectorProps {
   skill: AgentSkillRecord;
   busyKey: string | null;
   changedProviders: AgentSkillProvider[];
-  onBack: () => void;
   onEdit: () => void;
   onCopy: () => void;
   onUpdate: () => void;
@@ -513,7 +513,6 @@ function SkillInspector({
   skill,
   busyKey,
   changedProviders,
-  onBack,
   onEdit,
   onCopy,
   onUpdate,
@@ -547,17 +546,6 @@ function SkillInspector({
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <SettingsPageBody className="max-w-3xl space-y-6">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="-ml-2 h-7 px-2 text-muted-foreground"
-          onClick={onBack}
-        >
-          <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-          All skills
-        </Button>
-
         {/* Title and actions share a row; the description gets the full column
             below them rather than being squeezed into what the buttons leave. */}
         <div>
@@ -900,6 +888,15 @@ export function AgentSkillsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: snapshot, error: loadError } = useAgentSkillsSnapshot();
   const [selectedSkillId, setSelectedSkillId] = React.useState<string | null>(null);
+  /**
+   * The query string Back should restore, handed over by whoever opened the
+   * skill. The detail is component state, not a route, so history has no entry
+   * to pop, and "go to Builds" is not enough either: the surface you left was a
+   * particular build's particular provider page. Whoever opens a skill knows
+   * how to describe its own state, so it encodes that rather than this page
+   * guessing. Null means the skill came from the library list behind it.
+   */
+  const [returnTo, setReturnTo] = React.useState<string | null>(null);
   const [editorMode, setEditorMode] = React.useState<"create" | "edit" | null>(null);
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
   const [changedProviders, setChangedProviders] = React.useState<AgentSkillProvider[]>([]);
@@ -941,8 +938,10 @@ export function AgentSkillsPage() {
     if (!skillParam || !snapshot) return;
     if (!snapshot.skills.some((skill) => skill.id === skillParam)) return;
     setSelectedSkillId(skillParam);
+    setReturnTo(searchParams.get("back"));
     const next = new URLSearchParams(searchParams);
     next.delete("skill");
+    next.delete("back");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, skillParam, snapshot]);
 
@@ -1124,6 +1123,36 @@ export function AgentSkillsPage() {
   const displayName =
     [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || "Cozea user";
 
+  /**
+   * Leaving the detail. A skill handed over from elsewhere replays that
+   * surface's own query string, so you land back on the exact page you left,
+   * not merely the section it belonged to. One opened from the library just
+   * closes onto the list behind it.
+   */
+  const closeDetail = React.useCallback(() => {
+    setSelectedSkillId(null);
+    setChangedProviders([]);
+    if (!returnTo) return;
+    setReturnTo(null);
+    setSearchParams(new URLSearchParams(returnTo));
+  }, [returnTo, setSearchParams]);
+
+  const headerBack = React.useMemo(
+    () => (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+        onClick={closeDetail}
+      >
+        <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
+        Back
+      </Button>
+    ),
+    [closeDetail],
+  );
+
   const headerFilter = React.useMemo(() => {
     if (!snapshot) return null;
     return (
@@ -1268,18 +1297,24 @@ export function AgentSkillsPage() {
     );
   }, [busyKey, displayName, loadSnapshot, runMutation]);
 
+  const onDetail = Boolean(selectedSkill) && !editorMode && !setupPack;
+
   useProjectHeader(
-    editorMode || selectedSkill || setupPack ? null : headerFilter,
+    onDetail ? headerBack : editorMode || selectedSkill || setupPack ? null : headerFilter,
     null,
     {
       rightAddon: editorMode || selectedSkill || setupPack ? null : headerActions,
       hideShare: true,
-      disabled: view === "builds",
+      disabled: view === "builds" || view === "schedules",
     },
   );
 
   if (view === "builds") {
     return <SkillBuildsView />;
+  }
+
+  if (view === "schedules") {
+    return <ScheduledTasksView />;
   }
 
   if (setupPack) {
@@ -1337,10 +1372,6 @@ export function AgentSkillsPage() {
         skill={selectedSkill}
         busyKey={busyKey}
         changedProviders={changedProviders}
-        onBack={() => {
-          setSelectedSkillId(null);
-          setChangedProviders([]);
-        }}
         onEdit={() => setEditorMode("edit")}
         onCopy={() => {
           void runMutation(
@@ -1454,6 +1485,7 @@ export function AgentSkillsPage() {
                       type="button"
                       onClick={() => {
                         setSelectedSkillId(skill.id);
+                        setReturnTo(null);
                         setChangedProviders([]);
                       }}
                       className="-my-1 flex min-w-0 flex-1 flex-col items-start rounded-md py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

@@ -193,6 +193,12 @@ interface WorkbenchAssistantTileControllerResult {
     annotation: PreviewAnnotationPayload,
     submission: PreviewAnnotationSubmission,
   ) => Promise<void>;
+  /**
+   * Ends the provider session bound to this thread so the next turn spawns a
+   * fresh one. Used after a provider update, where the live session still runs
+   * the previous binary.
+   */
+  stopAgentSession: () => Promise<void>;
   surfaceProps: ComponentProps<typeof CozeaChatSurface>;
 }
 
@@ -2498,6 +2504,21 @@ export function useWorkbenchAssistantTileController(
     }
   };
 
+  const stopAgentSession = async () => {
+    // A thread that never started, or one already stopped, has no process to
+    // end: the next turn starts on the updated binary either way.
+    if (!thread?.session || thread.session.status === "stopped") {
+      return;
+    }
+    ensureNativeApi();
+    await getOrchestration().dispatchCommand({
+      type: "thread.session.stop",
+      commandId: newCommandId(),
+      threadId: thread.id,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
   const composerStatus = (() => {
     const historyError =
       draftError ??
@@ -2582,6 +2603,7 @@ export function useWorkbenchAssistantTileController(
     artifacts,
     artifactMedia,
     attachPreviewAnnotation,
+    stopAgentSession,
     surfaceProps: {
       mediaBaseUrl,
       connectionStatus,
