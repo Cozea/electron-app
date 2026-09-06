@@ -2,7 +2,11 @@ import { useEffect, useSyncExternalStore } from 'react'
 import type { AppSettings } from '@shared/electronApiTypes'
 import { createLocalSnapshot } from '@/lib/localSnapshot'
 
-export const localSettings = createLocalSnapshot<AppSettings>({
+export type LocalAppSettings = AppSettings & {
+  computerUseAllowGlobalPointerFallbacks?: boolean
+}
+
+export const localSettings = createLocalSnapshot<LocalAppSettings>({
   read: () => window.electronAPI.settings.get(),
   connect: () => {
     const refresh = () => { void localSettings.refresh().catch(() => undefined) }
@@ -12,7 +16,7 @@ export const localSettings = createLocalSnapshot<AppSettings>({
 })
 
 let writes: Promise<unknown> = Promise.resolve()
-export function saveLocalSettings(patch: Partial<AppSettings>): Promise<{ success: boolean }> {
+export function saveLocalSettings(patch: Partial<LocalAppSettings>): Promise<{ success: boolean }> {
   const save = async () => {
     const current = await localSettings.ensure()
     const result = await window.electronAPI.settings.set(patch)
