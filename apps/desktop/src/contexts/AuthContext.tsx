@@ -39,6 +39,7 @@ interface AuthContextType {
 export type RefreshTokenStatus = 'refreshed' | 'retryable' | 'expired'
 
 const AuthContext = createContext<AuthContextType | null>(null)
+const UNCONFIGURED_DEVICE_NAME = 'This Device'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const bootstrapSession = featureFlags.shellFirstAuth
@@ -173,6 +174,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [bootstrapLocalDeviceSession])
 
+  const needsOnboarding = Boolean(
+    user && (user.firstName?.trim() || UNCONFIGURED_DEVICE_NAME) === UNCONFIGURED_DEVICE_NAME,
+  )
+
   const value = useMemo<AuthContextType>(
     () => ({
       user,
@@ -184,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       isRevalidating,
       authError,
-      needsOnboarding: false,
+      needsOnboarding,
       login,
       logout,
       refreshToken,
@@ -197,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRevalidating,
       login,
       logout,
+      needsOnboarding,
       personalWorkspace,
       refreshToken,
       user,
