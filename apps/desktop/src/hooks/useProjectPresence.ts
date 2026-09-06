@@ -1,9 +1,11 @@
 import { useEffect, useCallback, useRef } from "react"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useLocation } from '@/lib/router'
 import { useCollaborationActivityStore } from "@/features/collaboration/model/collaborationActivityStore"
+import { useAuth } from "@/contexts/AuthContext"
+import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 
 const HEARTBEAT_INTERVAL_MS = 30 * 1000 // 30 seconds
 
@@ -42,6 +44,7 @@ export function useProjectPresence({
   activeRoute,
 }: UseProjectPresenceOptions) {
   const location = useLocation()
+  const { isConvexAuthReady } = useAuth()
   const heartbeat = useMutation(api.projectPresence.heartbeat)
   const leave = useMutation(api.projectPresence.leave)
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null)
@@ -85,6 +88,9 @@ export function useProjectPresence({
   // Send heartbeat
   const sendHeartbeat = useCallback(async () => {
     if (!projectId || !userId || !userName || !userEmail) return
+    // Same gate as the query: without a device token the server rejects this,
+    // and the 30s interval would turn that into a steady warning drip.
+    if (!isConvexAuthReady) return
 
     try {
       const snapshot = activitySnapshotRef.current
@@ -104,18 +110,18 @@ export function useProjectPresence({
     } catch (error) {
       console.warn("[Presence] Heartbeat failed:", error)
     }
-  }, [heartbeat, projectId, userAvatarUrl, userEmail, userId, userName])
+  }, [heartbeat, isConvexAuthReady, projectId, userAvatarUrl, userEmail, userId, userName])
 
   // Handle leaving
   const handleLeave = useCallback(async () => {
-    if (!projectId || !userId) return
+    if (!projectId || !userId || !isConvexAuthReady) return
 
     try {
       await leave({ projectId, userId })
     } catch (error) {
       console.warn("[Presence] Leave failed:", error)
     }
-  }, [projectId, userId, leave])
+  }, [isConvexAuthReady, projectId, userId, leave])
 
   // Start heartbeat on mount, cleanup on unmount
   useEffect(() => {
@@ -196,11 +202,24 @@ export function useProjectPresence({
     }
   }, [collaborationActions])
 
-  // Query active users
-  const activeUsers = useQuery(
+  // Presence is a decorative avatar stack. It must never be able to take down
+  // the project view, so it skips until Convex actually holds a device token and
+  // reports a server rejection as an empty roster rather than throwing into the
+  // route error boundary. `getActiveUsers` is an `authenticatedQuery`: it
+  // rejects with "Authentication required" during the startup window where the
+  // shell is painted but auth has not been re-established, and with "The
+  // authenticated device cannot access this project" if membership is lost.
+  const activeUsersQuery = useSafeConvexQuery(
     api.projectPresence.getActiveUsers,
-    projectId ? { projectId } : "skip"
+    projectId && isConvexAuthReady ? { projectId } : "skip"
   )
+
+  useEffect(() => {
+    if (activeUsersQuery.status !== "error") return
+    console.warn("[Presence] Active-user query failed; hiding presence:", activeUsersQuery.error)
+  }, [activeUsersQuery.error, activeUsersQuery.status])
+
+  const activeUsers = activeUsersQuery.data
 
   // Filter out current user from the list for display purposes
   const otherUsers = activeUsers?.filter((u) => u.userId !== userId) ?? []
@@ -208,7 +227,8 @@ export function useProjectPresence({
   return {
     activeUsers: activeUsers ?? [],
     otherUsers,
-    isLoading: activeUsers === undefined,
+    isLoading: activeUsersQuery.status === "loading",
+    error: activeUsersQuery.error,
     sendHeartbeat,
   }
 }

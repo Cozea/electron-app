@@ -16,6 +16,17 @@ interface AuthContextType {
   accessToken: string | null
   personalWorkspace: PersonalWorkspaceMembership | null
   isAuthenticated: boolean
+  /**
+   * True only while Convex actually holds a device token.
+   *
+   * `isAuthenticated` is about the cached local identity, which is painted from
+   * the shell-first bootstrap long before any cloud call can succeed. Convex
+   * queries must gate on *this* instead: the bootstrap path deliberately calls
+   * `convex.clearAuth()` and re-establishes auth asynchronously, and every
+   * failure path clears it again. A query issued in that window is rejected by
+   * `requireAuthenticatedDevice` on the server.
+   */
+  isConvexAuthReady: boolean
   isLoading: boolean
   isRevalidating: boolean
   authError: string | null
@@ -169,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken,
       personalWorkspace,
       isAuthenticated: Boolean(user),
+      isConvexAuthReady: Boolean(accessToken),
       isLoading,
       isRevalidating,
       authError,

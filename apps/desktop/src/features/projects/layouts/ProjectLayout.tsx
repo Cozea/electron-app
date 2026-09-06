@@ -251,7 +251,7 @@ export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
   const { t } = useTranslation();
-  const { convexUserId, user } = useAuth();
+  const { convexUserId, isConvexAuthReady, user } = useAuth();
   // Narrow location subscriptions: subscribing to the whole location object
   // re-renders this layout (and everything under it) on every navigation,
   // including no-op clicks to the current URL.
@@ -453,7 +453,10 @@ export function ProjectLayout({
   // Check if we are on views that need full-bleed content (no padding)
   const shouldRemovePadding = isWorkbenchView || isChangesView || isBuildsView;
 
-  const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime;
+  // Runtime readiness alone is not enough: it only means a workspace is mounted,
+  // which happens well before the device token is re-established on the
+  // shell-first bootstrap path. Presence queries the cloud, so it waits for auth.
+  const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime && isConvexAuthReady;
   const presenceHeaderAddon = useMemo(
     () => (
       <ProjectPresenceHeaderAddon
@@ -470,6 +473,7 @@ export function ProjectLayout({
       presenceGateOpen,
       project?._id,
       convexUserId,
+      isConvexAuthReady,
       displayUserName,
       user?.email,
       user?.profileImageUrl,

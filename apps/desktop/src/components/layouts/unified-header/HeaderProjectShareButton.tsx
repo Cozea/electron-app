@@ -119,9 +119,16 @@ export function HeaderProjectShareButton({
       ),
     [inviteMembers],
   );
+  // `users.getByEmails` is an authenticatedQuery like every other query here, so
+  // it needs the same `convexUserId` gate the rest of this component uses.
+  // Without it a lookup issued before the device token lands rejects with
+  // "Authentication required", and useQuery rethrows that into the route error
+  // boundary — taking down the whole view over invite-email enrichment.
   const inviteLookup = useQuery(
     api.users.getByEmails,
-    inviteEmailCandidates.length > 0 ? { emails: inviteEmailCandidates } : "skip",
+    convexUserId && inviteEmailCandidates.length > 0
+      ? { emails: inviteEmailCandidates }
+      : "skip",
   );
   const personalContactsCacheKey = getPersonalProjectContactsCacheKey(convexUserId, projectId);
   const personalContacts = useQueryCache((state) => {
