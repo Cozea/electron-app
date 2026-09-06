@@ -32,6 +32,7 @@ build/runtime/**
 !build/runtime/
 !build/runtime/README.md
 build/local-automation/**
+build/computer-use-runtime/**
 build/devapp-container-runtime/**
 native/**/.build/
 native/**/.cache/
