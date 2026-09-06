@@ -104,11 +104,19 @@ function verifyUpstreamNpmPackage() {
   }
 }
 
+function dylibMatchesCurrentArchitecture(candidate) {
+  const expected = process.arch === 'arm64' ? 'arm64' : 'x86_64'
+  const archs = run('/usr/bin/xcrun', ['lipo', '-archs', candidate], { capture: true })
+    .split(/\s+/)
+    .filter(Boolean)
+  return archs.includes(expected)
+}
+
 function prepareMac() {
-  const script = debug ? 'build:debug' : 'build'
+  const napiArch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  const script = debug ? `build:debug:${napiArch}` : `build:${napiArch}`
   run('bun', ['run', '--cwd', nativePackageRoot, script])
 
-  const napiArch = process.arch === 'arm64' ? 'arm64' : 'x64'
   const addonName = `cozea_computer_use.darwin-${napiArch}.node`
   const addonCandidates = [
     path.join(nativePackageRoot, addonName),
@@ -121,8 +129,10 @@ function prepareMac() {
     path.join(swiftPackageRoot, '.build'),
     (_file, name) => name === 'libCozeaComputerUseBridge.dylib',
   ).sort((a, b) => Number(b.includes('/release/')) - Number(a.includes('/release/')))
-  const dylib = dylibs[0]
-  if (!dylib) fail('Swift bridge dylib was not produced.')
+  const dylib = dylibs.find(dylibMatchesCurrentArchitecture)
+  if (!dylib) {
+    fail(`Swift bridge dylib for ${process.arch} was not produced.`)
+  }
 
   fs.copyFileSync(addon, path.join(outputRoot, addonName))
   fs.copyFileSync(dylib, path.join(outputRoot, 'libCozeaComputerUseBridge.dylib'))
