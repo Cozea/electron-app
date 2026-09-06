@@ -35,9 +35,9 @@ interface NativeComputerUseAddon {
   listTools(): string
   diagnostics(): string
   requestPermission(target: 'accessibility' | 'screenRecording'): boolean
-  turnEnded(sessionId: string): void
-  resetSession(sessionId: string): void
-  resetAll(): void
+  turnEnded(sessionId: string): Promise<void>
+  resetSession(sessionId: string): Promise<void>
+  resetAll(): Promise<void>
 }
 
 interface ComputerUseContentItem {
@@ -381,22 +381,25 @@ export class ComputerUseRuntimeService {
     return this.loadNativeAddon()?.requestPermission(target) ?? false
   }
 
-  turnEnded(sessionId: string): void {
-    if (process.platform === 'darwin') this.loadNativeAddon()?.turnEnded(sessionId)
-    else this.workerSessions.get(sessionId)?.turnEnded()
+  async turnEnded(sessionId: string): Promise<void> {
+    if (process.platform === 'darwin') {
+      await this.loadNativeAddon()?.turnEnded(sessionId)
+      return
+    }
+    this.workerSessions.get(sessionId)?.turnEnded()
   }
 
-  resetSession(sessionId: string): void {
+  async resetSession(sessionId: string): Promise<void> {
     if (process.platform === 'darwin') {
-      this.loadNativeAddon()?.resetSession(sessionId)
+      await this.loadNativeAddon()?.resetSession(sessionId)
       return
     }
     this.workerSessions.get(sessionId)?.stop()
     this.workerSessions.delete(sessionId)
   }
 
-  resetAll(): void {
-    this.loadNativeAddon()?.resetAll()
+  async resetAll(): Promise<void> {
+    await this.loadNativeAddon()?.resetAll()
     for (const session of this.workerSessions.values()) session.stop()
     this.workerSessions.clear()
   }
@@ -420,7 +423,7 @@ export class ComputerUseRuntimeService {
   }
 
   async stopBroker(): Promise<void> {
-    this.resetAll()
+    await this.resetAll()
     const server = this.server
     this.server = null
     this.endpoint = null
@@ -473,7 +476,7 @@ export class ComputerUseRuntimeService {
           this.writeJson(response, 400, failure('Computer Use turn end requires threadId.'))
           return
         }
-        this.turnEnded(threadId)
+        await this.turnEnded(threadId)
         this.writeJson(response, 200, { ok: true })
       } catch (error) {
         this.writeJson(response, 500, failure(error instanceof Error ? error.message : String(error)))
