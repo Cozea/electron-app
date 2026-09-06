@@ -37,7 +37,7 @@ describe("convex auth gating", () => {
     expect(presence).toContain("projectId && isConvexAuthReady ? { projectId } : \"skip\"");
     // The heartbeat mutation shares the gate so a 30s interval cannot turn the
     // auth gap into a steady drip of rejected writes.
-    expect(presence).toContain("if (!isConvexAuthReady) return");
+    expect(presence).toContain("if (!projectId || !userId || !isConvexAuthReady) return");
   });
 
   it("keeps presence failures out of the route error boundary", () => {
@@ -76,10 +76,10 @@ describe("convex auth gating", () => {
   });
 
   it("gates every authenticated query in the share button on principalId", () => {
-    // getByEmails previously gated only on the email list, so invite-email
-    // enrichment could crash the view during the auth gap.
+    // All share-surface reads require a live authenticated device principal;
+    // cached shell presentation alone must never open cloud queries.
     expect(shareButton).toContain(
-      "principalId && inviteEmailCandidates.length > 0",
+      'projectId && principalId ? { projectId, userId: principalId } : "skip"',
     );
   });
 });
