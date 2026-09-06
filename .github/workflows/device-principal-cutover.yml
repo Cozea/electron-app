@@ -6,45 +6,9 @@ on:
       - codex/device-principal-identity-cutover
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  codemod:
-    if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-      - name: Repair embedded source templates
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('scripts/apply-device-principal-cutover.mjs')
-          s = p.read_text()
-          s = s.replace('const workspaceName = `${principal.displayName} Workspace`', r'const workspaceName = \`\${principal.displayName} Workspace\`')
-          s = s.replace('id: `local-membership:${identityKey}`', r'id: \`local-membership:\${identityKey}\`')
-          s = s.replace('workspaceId: `local:${identityKey}`', r'workspaceId: \`local:\${identityKey}\`')
-          s = s.replace('organizationId: `local:${identityKey}`', r'organizationId: \`local:\${identityKey}\`')
-          p.write_text(s)
-          PY
-      - name: Apply cutover
-        run: node scripts/apply-device-principal-cutover.mjs
-      - name: Commit cutover
-        run: |
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "No codemod changes"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "refactor(identity): complete device principal cutover [identity-codemod]"
-          git push origin HEAD:${GITHUB_REF_NAME}
-
   validate:
     runs-on: ubuntu-latest
     steps:
