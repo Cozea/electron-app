@@ -44,7 +44,10 @@ describe("the composer's scroll chain in a small tile", () => {
   });
 
   it("scrolls the options inside the panel, below a question that stays put", () => {
-    expect(panelSource).toContain('className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5"');
+    // Match the scroll-chain classes rather than the whole class string: the
+    // card also carries enter-animation utilities, and this assertion exists to
+    // catch a dropped `min-h-0`, not to freeze unrelated styling.
+    expect(panelSource).toMatch(/className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5[ "]/);
     expect(panelSource).toContain(
       'className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain"',
     );

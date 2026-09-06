@@ -11,7 +11,11 @@ describe("history integration safety contracts", () => {
     expect(controller.match(/type: "thread\.create"/g)).toHaveLength(1);
     const send = controller.slice(controller.indexOf("const sendTurn ="));
     expect(send).toContain('type: "thread.create"');
-    expect(controller).toContain("currentTile.threadId && !selectAssistantThreadById");
+    // Whitespace-insensitive: the guard is line-wrapped when it exceeds the
+    // print width. The contract is that it exists, not how it is formatted.
+    expect(controller).toMatch(
+      /currentTile\.threadId\s*&&\s*!selectAssistantThreadById/,
+    );
     expect(controller).toContain("This saved conversation is unavailable.");
   });
 
@@ -25,8 +29,15 @@ describe("history integration safety contracts", () => {
   });
 
   it("treats approval/input and every tracked operation as busy", () => {
-    const busy = controller.split("historyBusy:").at(-1)!.split("\n")[0]!;
+    // The value is a boolean chain that wraps across lines once it grows, so
+    // bound the slice at the next property key rather than at the next newline.
+    // Taking only the first line silently yielded an empty string, which made
+    // every assertion below vacuous.
+    const busy = controller.split("historyBusy:").at(-1)!.split(/\n\s{4}\w+:/)[0]!;
+    expect(busy.trim()).not.toBe("");
     for (const guard of [
+      "shellNeedsAttention",
+      "isInterrupting",
       "threadOperationCount",
       "isRunning",
       "isSending",
