@@ -1,0 +1,20 @@
+{
+  "name": "@cozea/computer-use-native",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "napi": {
+    "name": "cozea_computer_use",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.14.7"
+  }
+}
