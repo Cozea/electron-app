@@ -1,0 +1,33 @@
+/*
+ * Adaptive desktop geometry for the workbench.
+ *
+ * Window geometry belongs to the Electron shell; preview geometry belongs to
+ * the hosted guest. A Dockview group is the pane-geometry boundary shared by
+ * the group's tab/header chrome and its active panel content.
+ */
+.cozea-workbench-dockview .dv-groupview {
+  container-type: inline-size;
+  container-name: cozea-workbench-pane;
+}
+
+/* Let ordinary tabs surrender width earlier than pane controls. The existing
+ * Dockview overflow list remains the authoritative way to reach hidden tabs. */
+@container cozea-workbench-pane (max-width: 28rem) {
+  .cozea-workbench-dockview .dv-tab:not(:has(.cozea-workbench-tab--chrome-owned)) {
+    min-width: 4.5rem;
+  }
+
+  .cozea-workbench-dockview .cozea-workbench-header-actions,
+  .cozea-workbench-dockview .cozea-workbench-header-controls {
+    gap: 0.125rem;
+  }
+}
+
+/* A browser address field is the useful pressure sink: navigation/actions stay
+ * stable while the field consumes the remaining width. Do not wrap the header
+ * or change its height when a browser pane is narrow. */
+@container cozea-workbench-pane (max-width: 24rem) {
+  .cozea-workbench-dockview .cozea-workbench-header-controls [data-browser-address-group] {
+    padding-inline: 0.375rem;
+  }
+}
