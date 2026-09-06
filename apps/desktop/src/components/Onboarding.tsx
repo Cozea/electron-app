@@ -16,13 +16,28 @@ function initials(value: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('') || 'D'
 }
 
+async function uploadAvatarDataUrl(uploadUrl: string, dataUrl: string): Promise<string> {
+  const blob = await fetch(dataUrl).then((response) => response.blob())
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type || 'image/webp' },
+    body: blob,
+  })
+  if (!response.ok) throw new Error('Could not upload the device avatar.')
+  const payload = await response.json() as { storageId?: string }
+  if (!payload.storageId) throw new Error('The avatar upload did not return a storage ID.')
+  return payload.storageId
+}
+
 export function Onboarding() {
   const { isConvexAuthReady, refreshToken } = useAuth()
   const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation)
+  const generateAvatarUploadUrl = useMutation(api.devicePrincipals.generateAvatarUploadUrl)
+  const setAvatar = useMutation(api.devicePrincipals.setAvatar)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const [deviceName, setDeviceName] = useState('')
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [processingAvatar, setProcessingAvatar] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,10 +49,7 @@ export function Onboarding() {
     setProcessingAvatar(true)
     setError(null)
     try {
-      // Transitional reuse of the hardened square-image pipeline. The final
-      // schema slice moves principal avatars to Convex Storage and extracts a
-      // neutral shared image helper.
-      setAvatarUrl(await optimizeProjectDevAppLogo(file))
+      setAvatarPreview(await optimizeProjectDevAppLogo(file))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not prepare this image.')
     } finally {
@@ -51,17 +63,16 @@ export function Onboarding() {
     setSaving(true)
     setError(null)
     try {
-      await updateDevicePresentation({
-        displayName: normalizedDeviceName,
-        avatarUrl,
-      })
+      await updateDevicePresentation({ displayName: normalizedDeviceName })
+      if (avatarPreview) {
+        const uploadUrl = await generateAvatarUploadUrl({})
+        const storageId = await uploadAvatarDataUrl(uploadUrl, avatarPreview)
+        await setAvatar({ storageId: storageId as never })
+      }
 
-      // Refresh the bootstrap/session presentation immediately. The identity and
-      // keys remain unchanged; a successful refresh causes AuthContext to see the
-      // configured device name and exit onboarding.
       const status = await refreshToken()
       if (status !== 'refreshed') {
-        throw new Error('The device was named, but Cozea could not refresh its local session.')
+        throw new Error('The device was configured, but Cozea could not refresh its local session.')
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not configure this device.')
@@ -86,7 +97,7 @@ export function Onboarding() {
         <div className="space-y-5 rounded-xl border border-border/60 bg-card p-4">
           <div className="flex items-center gap-4">
             <Avatar className="size-14 shrink-0 rounded-xl">
-              {avatarUrl ? <AvatarImage src={avatarUrl} alt={normalizedDeviceName || 'This device'} /> : null}
+              {avatarPreview ? <AvatarImage src={avatarPreview} alt={normalizedDeviceName || 'This device'} /> : null}
               <AvatarFallback className="rounded-xl text-sm font-medium">
                 {initials(normalizedDeviceName || 'Device')}
               </AvatarFallback>
@@ -121,16 +132,16 @@ export function Onboarding() {
               disabled={saving || processingAvatar}
               onClick={() => avatarInputRef.current?.click()}
             >
-              {processingAvatar ? 'Preparing…' : avatarUrl ? 'Change avatar' : 'Add avatar'}
+              {processingAvatar ? 'Preparing…' : avatarPreview ? 'Change avatar' : 'Add avatar'}
             </Button>
-            {avatarUrl ? (
+            {avatarPreview ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 className="h-8 text-xs"
                 disabled={saving || processingAvatar}
-                onClick={() => setAvatarUrl(null)}
+                onClick={() => setAvatarPreview(null)}
               >
                 Remove
               </Button>
