@@ -33,16 +33,7 @@ export function ProjectJoinPage() {
   const joinByToken = useMutation(api.projectJoinLinks.joinByToken)
   const preview = useQuery(
     api.projectJoinLinks.previewByToken,
-    token
-      ? convexUserId
-        ? {
-            token,
-            viewerUserId: convexUserId,
-          }
-        : {
-            token,
-          }
-      : "skip"
+    token ? { token } : "skip"
   )
 
   const [isJoining, setIsJoining] = useState(false)
@@ -60,15 +51,10 @@ export function ProjectJoinPage() {
     setJoinError(null)
 
     try {
-      const deviceIdentity = await window.electronAPI.collab.ensureDeviceIdentity()
-      const result = await joinByToken({
-        token,
-        userId: convexUserId,
-        deviceId: deviceIdentity.deviceId,
-        deviceLabel: deviceIdentity.deviceLabel,
-        platform: deviceIdentity.platform,
-        fingerprint: deviceIdentity.fingerprint,
-      })
+      // The backend derives the joining device principal from authenticated
+      // device authority. The renderer deliberately sends no user/device ID,
+      // hostname, platform, or fingerprint as identity claims.
+      const result = await joinByToken({ token })
       navigate(buildProjectPath(String(result.projectId), "workbench"), { replace: true })
     } catch (error) {
       setJoinError(cleanConvexError(error, "Unable to join this project."))
@@ -222,14 +208,10 @@ export function ProjectJoinPage() {
             ) : (
               <Button
                 className="flex-1"
-                onClick={() => {
-                  void runJoin()
-                }}
+                onClick={() => void runJoin()}
                 disabled={isJoining}
               >
-                {isJoining ? (
-                  <div className="loader mr-2" />
-                ) : null}
+                {isJoining ? <div className="loader mr-2" /> : null}
                 Join project
               </Button>
             )}
