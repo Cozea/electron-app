@@ -19,9 +19,13 @@ describe("Convex endpoint authority boundary", () => {
       const source = readFileSync(file, "utf8")
       if (!/export const \w+\s*=\s*(?:query|mutation)\s*\(/.test(source)) continue
       const name = file.split("/").at(-1)
-      const deviceAuthenticated = source.includes("./lib/authenticatedFunctions")
-      const gatewayOnly = name === "deployments.ts" && source.includes("assertGatewaySecret")
-      if (!deviceAuthenticated && !gatewayOnly) failures.push(name ?? file)
+      const deviceAuthenticated =
+        source.includes("./lib/authenticatedFunctions") ||
+        source.includes("requireAuthenticatedDevice")
+      const gatewayProtected =
+        source.includes("assertGatewaySecret") &&
+        /serverSecret:\s*v\.string\(\)/.test(source)
+      if (!deviceAuthenticated && !gatewayProtected) failures.push(name ?? file)
     }
     expect(failures).toEqual([])
   })

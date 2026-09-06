@@ -1,4 +1,4 @@
-export const COLLAB_PROTOCOL_VERSION = '2.0'
+export const COLLAB_PROTOCOL_VERSION = '2.1'
 const DEFAULT_ALLOWED_HEADERS = 'Content-Type, Authorization'
 const DEFAULT_ALLOWED_METHODS = 'GET, POST, OPTIONS'
 
@@ -29,15 +29,13 @@ export interface ReadyMessage {
     serverTime: number
     headSeq: number
     resyncRequired: boolean
+    mediaClientId?: string
   }
 }
 
 export interface SyncRequestMessage {
   type: 'sync.request'
-  payload: {
-    roomId: string
-    knownSeq: number
-  }
+  payload: { roomId: string; knownSeq: number }
 }
 
 export interface SyncDeltaMessage {
@@ -47,6 +45,8 @@ export interface SyncDeltaMessage {
     fromSeq: number
     toSeq: number
     updatesBinary: string[]
+    headSeq?: number
+    hasMore?: boolean
   }
 }
 
@@ -96,9 +96,45 @@ export interface PresenceSnapshotMessage {
 
 export interface PresenceRemoveMessage {
   type: 'presence.remove'
+  payload: { roomId: string; clientIds: string[] }
+}
+
+export interface BarrierRequestMessage {
+  type: 'barrier.request'
+  payload: { roomId: string; requestId: string }
+}
+
+export interface BarrierReadyMessage {
+  type: 'barrier.ready'
+  payload: { roomId: string; requestId: string; sequence: number }
+}
+
+export interface BaseAdvancedMessage {
+  type: 'base.advanced'
   payload: {
     roomId: string
-    clientIds: string[]
+    commitSha: string
+    coveredThroughSequence: number
+  }
+}
+
+export interface MediaSignalMessage {
+  type: 'media.signal'
+  payload: {
+    roomId: string
+    targetClientId: string
+    sourceClientId: string
+    signal: unknown
+  }
+}
+
+export interface MediaStateMessage {
+  type: 'media.state'
+  payload: {
+    roomId: string
+    clientId: string
+    audio: boolean
+    screenShare: boolean
   }
 }
 
@@ -112,6 +148,9 @@ export type IncomingClientMessage =
   | SyncRequestMessage
   | UpdatePushMessage
   | PresencePushMessage
+  | BarrierRequestMessage
+  | MediaSignalMessage
+  | MediaStateMessage
 
 export type OutgoingServerMessage =
   | ReadyMessage
@@ -119,6 +158,10 @@ export type OutgoingServerMessage =
   | UpdateAckMessage
   | PresenceSnapshotMessage
   | PresenceRemoveMessage
+  | BarrierReadyMessage
+  | BaseAdvancedMessage
+  | MediaSignalMessage
+  | MediaStateMessage
   | ErrorMessage
 
 export function jsonResponse(body: unknown, init?: ResponseInit, origin?: string | null): Response {
@@ -140,18 +183,8 @@ export function protocolError(
   origin?: string | null,
 ): Response {
   return jsonResponse(
-    {
-      type: 'error',
-      payload: {
-        code,
-        message,
-        recoverable,
-      },
-    },
-    {
-      status: init?.status ?? 400,
-      headers: init?.headers,
-    },
+    { type: 'error', payload: { code, message, recoverable } },
+    { status: init?.status ?? 400, headers: init?.headers },
     origin,
   )
 }
@@ -174,8 +207,5 @@ export function corsHeaders(headers?: HeadersInit, origin?: string | null): Reco
 }
 
 export function preflightResponse(origin?: string | null): Response {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders(undefined, origin),
-  })
+  return new Response(null, { status: 204, headers: corsHeaders(undefined, origin) })
 }

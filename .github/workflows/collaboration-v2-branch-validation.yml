@@ -1,0 +1,70 @@
+name: Collaboration v2 branch validation
+
+on:
+  push:
+    branches:
+      - refactor/collaboration-v2-end-to-end
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collaboration-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Bootstrap repository
+        run: bun run bootstrap
+
+      - name: Install Electron runtime for tests
+        run: node node_modules/electron/install.js
+
+      - name: Typecheck renderer
+        run: bun run typecheck
+
+      - name: Typecheck Electron
+        run: bun run typecheck:electron
+
+      - name: Typecheck tests
+        run: bun run typecheck:tests
+
+      - name: Typecheck Cloudflare
+        run: bun run typecheck:cloudflare
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
+      - name: Upload validation logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-v2-validation-failure-${{ github.sha }}
+          path: |
+            npm-debug.log*
+            bun-error.log*
+            apps/desktop/*.log
+          if-no-files-found: ignore
+          retention-days: 7

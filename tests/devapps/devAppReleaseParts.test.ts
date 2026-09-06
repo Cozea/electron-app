@@ -7,7 +7,7 @@ import { ALL_DEV_APP_CAPABILITIES } from "@shared/devAppCapabilities"
 import { partsForPublishedRuntimeKind } from "@shared/devAppParts"
 
 const root = process.cwd()
-const schema = fs.readFileSync(path.join(root, "convex/schema.ts"), "utf8")
+const schema = fs.readFileSync(path.join(root, "convex/schema/base.ts"), "utf8")
 const devApps = fs.readFileSync(path.join(root, "convex/devApps.ts"), "utf8")
 const publishedManifest = fs.readFileSync(
   path.join(root, "apps/desktop/src/features/devapps/orgDevAppManifest.ts"),

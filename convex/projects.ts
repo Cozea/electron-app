@@ -973,7 +973,7 @@ export const deleteProject = mutation({
 })
 
 const PROJECT_PURGE_BATCH_SIZE = 64
-const PROJECT_PURGE_FINAL_STAGE = 29
+const PROJECT_PURGE_FINAL_STAGE = 34
 
 async function deleteRows<TableName extends TableNames>(
   ctx: MutationCtx,
@@ -1234,6 +1234,46 @@ async function deleteProjectPurgeStage(
         if (row.storageId) await ctx.storage.delete(row.storageId)
         await ctx.db.delete(row._id)
       }
+      return rows.length
+    }
+    case 29: {
+      const rows = await ctx.db
+        .query("collaborationRepositoryAccessEvents")
+        .withIndex("by_project_and_created", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 30: {
+      const rows = await ctx.db
+        .query("collaborationSessionEvents")
+        .withIndex("by_project_and_created_at", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 31: {
+      const rows = await ctx.db
+        .query("collaborationParticipants")
+        .withIndex("by_project_and_user", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 32: {
+      const rows = await ctx.db
+        .query("collaborationSessions")
+        .withIndex("by_project_and_status", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 33: {
+      const rows = await ctx.db
+        .query("collaborationRepositoryBindings")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
       return rows.length
     }
     default:
