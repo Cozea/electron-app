@@ -47,7 +47,7 @@ const preloadToolingPage = async () => {
 
 /** Translation keys for each settings surface label. */
 const SURFACE_LABEL_KEYS: Record<SettingsSurfaceId, TranslationKey> = {
-  account: "settings.nav.account",
+  account: "settings.account.deviceIdentity",
   appearance: "settings.nav.appearance",
   devapps: "settings.nav.devapps",
   organizations: "settings.nav.organizations",
@@ -64,14 +64,14 @@ export function getLocalizedSurfaceLabel(surfaceId: SettingsSurfaceId): string {
 export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
   {
     id: "account",
-    label: "Account",
+    label: "Device Identity",
     icon: UserCircleIcon,
     routes: { personal: "/settings/account" },
     storageMode: { personal: "local" },
     placements: ["drawer", "sidebar", "command", "settingsWindow"],
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadAccountPage,
-    commandKeywords: ["device", "profile", "settings"],
+    commandKeywords: ["device", "identity", "avatar", "settings"],
   },
   {
     id: "appearance",
