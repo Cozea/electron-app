@@ -3,11 +3,13 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   type ProjectId,
+  type ThreadId,
 } from "@cozea/assistant-contracts"
 import {
   dueScheduledTasks,
   isScheduledTaskStale,
   type ScheduledTask,
+  type ScheduledTaskRunReport,
 } from "@shared/scheduledTasks"
 
 import {
@@ -26,17 +28,35 @@ import {
 
 const TICK_MS = 30_000
 
+interface ScheduledTaskRunControl extends ScheduledTaskRunReport {
+  computerUsePolicy: 'prepare'
+  threadId: ThreadId
+}
+
 function basename(pathValue: string): string {
   const trimmed = pathValue.replace(/[\\/]+$/, "")
   const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"))
   return index >= 0 ? trimmed.slice(index + 1) : trimmed
 }
 
-/**
- * Resolve the assistant project that owns a working directory, creating one
- * when this is the first run there. Mirrors what a chat tile does on its first
- * send, because a scheduled run is the same thing without a person watching.
- */
+/** Ask Electron main to derive and bind the persisted task's CU policy before launch. */
+async function prepareScheduledTaskComputerUsePolicy(
+  taskId: string,
+  threadId: ThreadId,
+): Promise<void> {
+  const control: ScheduledTaskRunControl = {
+    taskId,
+    threadId,
+    ranAt: Date.now(),
+    computerUsePolicy: 'prepare',
+  }
+  const result = await window.electronAPI.scheduledTasks.markRun(control)
+  if (!result.success) {
+    throw new Error(result.error ?? 'Could not prepare Computer Use policy.')
+  }
+}
+
+/** Resolve or create the assistant project that owns a scheduled run's working directory. */
 async function resolveAssistantProjectId(workspaceRoot: string): Promise<ProjectId> {
   const orchestration = ensureNativeApi().orchestration
   const existing =
@@ -59,8 +79,6 @@ async function resolveAssistantProjectId(workspaceRoot: string): Promise<Project
     })
     return projectId
   } catch (error: unknown) {
-    // The runtime rejects a duplicate by naming the project that already owns
-    // this root; adopting it is right, inventing a second one is not.
     const message = error instanceof Error ? error.message : String(error)
     const match = message.match(/Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/)
     if (match?.[1]) return match[1] as ProjectId
@@ -68,10 +86,7 @@ async function resolveAssistantProjectId(workspaceRoot: string): Promise<Project
   }
 }
 
-/**
- * Start one task as a real conversation: the run shows up in chat history like
- * any other, so a scheduled agent is never doing work nobody can see.
- */
+/** Start one scheduled task as a normal visible conversation with main-owned CU authorization. */
 export async function runScheduledTask(
   task: ScheduledTask,
   standaloneWorkspaceRoot: string,
@@ -85,14 +100,18 @@ export async function runScheduledTask(
   const modelSelection = normalizeModelSelection({
     provider,
     instanceId: scheduledTaskInstanceId(task.provider),
-    // The task carries the model and reasoning level chosen when it was saved,
-    // so a run does not drift with whatever the composer last used.
     model: task.model ?? DEFAULT_MODEL_BY_PROVIDER[provider],
     options: task.modelOptions,
   })
   const threadId = newThreadId()
   const createdAt = new Date().toISOString()
 
+  // Main derives allow/deny from persisted task state. This must succeed before
+  // the conversation exists so unattended desktop access always fails closed.
+  await prepareScheduledTaskComputerUsePolicy(task.id, threadId)
+
+  // If thread creation itself fails, the policy is bound to an ID that never
+  // existed; a later run for the same task replaces that inert orphan.
   await orchestration.dispatchCommand({
     type: "thread.create",
     commandId: newCommandId(),
@@ -107,22 +126,37 @@ export async function runScheduledTask(
     createdAt,
   })
 
-  await orchestration.dispatchCommand({
-    type: "thread.turn.start",
-    commandId: newCommandId(),
-    threadId,
-    message: {
-      messageId: newMessageId(),
-      role: "user",
-      text: task.prompt,
-      attachments: [],
-    },
-    modelSelection,
-    titleSeed: task.name,
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-    createdAt,
-  })
+  try {
+    await orchestration.dispatchCommand({
+      type: "thread.turn.start",
+      commandId: newCommandId(),
+      threadId,
+      message: {
+        messageId: newMessageId(),
+        role: "user",
+        text: task.prompt,
+        attachments: [],
+      },
+      modelSelection,
+      titleSeed: task.name,
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      createdAt,
+    })
+  } catch (error: unknown) {
+    // Do not leave a user-reusable idle thread carrying the scheduled policy.
+    // Deletion is an authoritative orchestration mutation; the policy itself
+    // remains main-owned and will be replaced by the next run or cleared by
+    // task/broker teardown.
+    await orchestration
+      .dispatchCommand({
+        type: "thread.delete",
+        commandId: newCommandId(),
+        threadId,
+      })
+      .catch(() => undefined)
+    throw error
+  }
 
   return threadId
 }
@@ -130,6 +164,7 @@ export async function runScheduledTask(
 let timer: ReturnType<typeof setInterval> | null = null
 let ticking = false
 
+/** Run all currently due tasks once, recording skips/failures instead of retrying every tick. */
 async function tick(): Promise<void> {
   if (ticking) return
   ticking = true
@@ -140,8 +175,6 @@ async function tick(): Promise<void> {
     if (due.length === 0) return
 
     for (const task of due) {
-      // Skipped runs are still recorded: a task that woke up hours late should
-      // move on to its next slot rather than fire a stale run or retry forever.
       if (isScheduledTaskStale(task, now)) {
         await window.electronAPI.scheduledTasks
           .markRun({
@@ -149,6 +182,17 @@ async function tick(): Promise<void> {
             ranAt: now,
             status: "skipped",
             error: "Cozea was not running when this was due.",
+          })
+          .catch(() => undefined)
+        continue
+      }
+      if (task.computerUse && snapshot?.computerUseEnabled !== true) {
+        await window.electronAPI.scheduledTasks
+          .markRun({
+            taskId: task.id,
+            ranAt: now,
+            status: "skipped",
+            error: "Computer Use is disabled in Settings.",
           })
           .catch(() => undefined)
         continue
@@ -178,10 +222,7 @@ async function tick(): Promise<void> {
   }
 }
 
-/**
- * Runs while Cozea is open, which is the whole promise: nothing fires with the
- * app closed, and the card says when a run was missed.
- */
+/** Start the renderer scheduler while Cozea is open; main/T3 own CU policy lifetime. */
 export function startScheduledTaskRunner(): () => void {
   if (typeof window === "undefined" || !window.electronAPI?.scheduledTasks) {
     return () => undefined

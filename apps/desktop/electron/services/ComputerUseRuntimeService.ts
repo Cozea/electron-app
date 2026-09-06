@@ -30,6 +30,14 @@ const UPSTREAM_VERSION = '0.3.3'
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const CALL_TIMEOUT_MS = 45_000
 
+export type ComputerUseThreadPolicy = 'inherit' | 'allow' | 'deny'
+type ExplicitComputerUseThreadPolicy = Exclude<ComputerUseThreadPolicy, 'inherit'>
+
+interface ScheduledThreadPolicyEntry {
+  policy: ExplicitComputerUseThreadPolicy
+  scheduledTaskId: string
+}
+
 interface NativeComputerUseAddon {
   callTool(sessionId: string, tool: string, argumentsJson: string): Promise<string>
   listTools(): string
@@ -114,11 +122,16 @@ function disabledTools(settings: ComputerUseAppSettings): Set<string> {
   )
 }
 
+/** Apply per-thread scheduled authorization before the live global Computer Use policy. */
 function validateActionPolicy(
   settings: ComputerUseAppSettings,
   tool: string,
   args: unknown,
+  threadPolicy: ComputerUseThreadPolicy = 'inherit',
 ): string | null {
+  if (threadPolicy === 'deny') {
+    return 'Computer Use is not authorized for this scheduled task.'
+  }
   if (!settings.computerUseEnabled) return 'Computer Use is disabled in Cozea Settings.'
   if (!COMPUTER_USE_TOOLS.has(tool)) return `Unknown Computer Use tool: ${tool}`
   if (disabledTools(settings).has(tool)) {
@@ -261,6 +274,11 @@ export class ComputerUseRuntimeService {
 
   private nativeAddon: NativeComputerUseAddon | null | undefined
   private readonly workerSessions = new Map<string, WorkerMcpSession>()
+  private readonly activeRuntimeSessions = new Set<string>()
+  // Scheduled-task policy is lifecycle-bound, never timeout-bound. The task
+  // association lets a later run replace an orphaned pre-start lease safely.
+  private readonly threadPolicies = new Map<string, ScheduledThreadPolicyEntry>()
+  private readonly scheduledThreadByTask = new Map<string, string>()
   private server: Server | null = null
   private endpoint: string | null = null
   private readonly token = randomBytes(32).toString('base64url')
@@ -304,9 +322,69 @@ export class ComputerUseRuntimeService {
     return next
   }
 
+  /** Bind one scheduled task to one explicit thread policy, replacing its prior orphan if any. */
+  setScheduledThreadPolicy(
+    scheduledTaskId: string,
+    sessionId: string,
+    policy: ExplicitComputerUseThreadPolicy,
+  ): void {
+    const normalizedTaskId = scheduledTaskId.trim()
+    const normalizedSessionId = sessionId.trim()
+    if (!normalizedTaskId) throw new Error('Computer Use scheduled policy requires a task ID.')
+    if (!normalizedSessionId) throw new Error('Computer Use thread policy requires a thread ID.')
+
+    const previousSessionId = this.scheduledThreadByTask.get(normalizedTaskId)
+    if (previousSessionId && previousSessionId !== normalizedSessionId) {
+      this.clearThreadPolicy(previousSessionId)
+    }
+    this.clearThreadPolicy(normalizedSessionId)
+    this.threadPolicies.set(normalizedSessionId, {
+      policy,
+      scheduledTaskId: normalizedTaskId,
+    })
+    this.scheduledThreadByTask.set(normalizedTaskId, normalizedSessionId)
+  }
+
+  /** Clear an explicit policy and its reverse task association. */
+  clearThreadPolicy(sessionId: string): void {
+    const normalizedSessionId = sessionId.trim()
+    const entry = this.threadPolicies.get(normalizedSessionId)
+    this.threadPolicies.delete(normalizedSessionId)
+    if (
+      entry &&
+      this.scheduledThreadByTask.get(entry.scheduledTaskId) === normalizedSessionId
+    ) {
+      this.scheduledThreadByTask.delete(entry.scheduledTaskId)
+    }
+  }
+
+  /** Clear any prepared policy owned by a scheduled task, for example on task deletion. */
+  clearScheduledTaskPolicy(scheduledTaskId: string): void {
+    const sessionId = this.scheduledThreadByTask.get(scheduledTaskId.trim())
+    if (sessionId) this.clearThreadPolicy(sessionId)
+  }
+
+  /** Revoke an active scheduled allow without widening a deny or ending the provider turn. */
+  revokeScheduledTaskPolicy(scheduledTaskId: string): void {
+    const sessionId = this.scheduledThreadByTask.get(scheduledTaskId.trim())
+    if (!sessionId) return
+    const entry = this.threadPolicies.get(sessionId)
+    if (entry?.policy === 'allow') entry.policy = 'deny'
+  }
+
+  private threadPolicy(sessionId: string): ComputerUseThreadPolicy {
+    return this.threadPolicies.get(sessionId.trim())?.policy ?? 'inherit'
+  }
+
   async callTool(sessionId: string, tool: string, args: unknown): Promise<ComputerUseToolResult> {
+    const normalizedSessionId = sessionId.trim()
     const settings = readComputerUseAppSettings()
-    const policyError = validateActionPolicy(settings, tool, args)
+    const policyError = validateActionPolicy(
+      settings,
+      tool,
+      args,
+      this.threadPolicy(normalizedSessionId),
+    )
     if (policyError) return failure(policyError)
 
     if (settings.computerUseAllowGlobalPointerFallbacks) {
@@ -321,14 +399,19 @@ export class ComputerUseRuntimeService {
         if (!addon) {
           return failure('Cozea Computer Use native runtime is not available. Rebuild the app runtime.')
         }
+        this.activeRuntimeSessions.add(normalizedSessionId)
         try {
-          return parseToolResult(await addon.callTool(sessionId, tool, JSON.stringify(args ?? {})))
+          return parseToolResult(
+            await addon.callTool(normalizedSessionId, tool, JSON.stringify(args ?? {})),
+          )
         } catch (error) {
           return failure(error instanceof Error ? error.message : String(error))
         }
       }
       try {
-        return await this.workerSession(sessionId).call(tool, args)
+        const worker = this.workerSession(normalizedSessionId)
+        this.activeRuntimeSessions.add(normalizedSessionId)
+        return await worker.call(tool, args)
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error))
       }
@@ -381,27 +464,50 @@ export class ComputerUseRuntimeService {
     return this.loadNativeAddon()?.requestPermission(target) ?? false
   }
 
+  /** Handle an authoritative accepted terminal turn from T3. */
   async turnEnded(sessionId: string): Promise<void> {
+    const normalizedSessionId = sessionId.trim()
+    const hadActiveRuntime = this.activeRuntimeSessions.delete(normalizedSessionId)
+    this.clearThreadPolicy(normalizedSessionId)
+
+    // T3 forwards every accepted terminal session. Avoid touching the native
+    // runtime for unrelated threads that never used Computer Use.
+    if (!hadActiveRuntime) return
     if (process.platform === 'darwin') {
-      await this.loadNativeAddon()?.turnEnded(sessionId)
+      await this.loadNativeAddon()?.turnEnded(normalizedSessionId)
       return
     }
-    this.workerSessions.get(sessionId)?.turnEnded()
+    this.workerSessions.get(normalizedSessionId)?.turnEnded()
   }
 
   async resetSession(sessionId: string): Promise<void> {
-    if (process.platform === 'darwin') {
-      await this.loadNativeAddon()?.resetSession(sessionId)
-      return
+    const normalizedSessionId = sessionId.trim()
+    this.activeRuntimeSessions.delete(normalizedSessionId)
+    try {
+      if (process.platform === 'darwin') {
+        await this.loadNativeAddon()?.resetSession(normalizedSessionId)
+        return
+      }
+      this.workerSessions.get(normalizedSessionId)?.stop()
+      this.workerSessions.delete(normalizedSessionId)
+    } finally {
+      this.clearThreadPolicy(normalizedSessionId)
     }
-    this.workerSessions.get(sessionId)?.stop()
-    this.workerSessions.delete(sessionId)
   }
 
   async resetAll(): Promise<void> {
-    await this.loadNativeAddon()?.resetAll()
-    for (const session of this.workerSessions.values()) session.stop()
-    this.workerSessions.clear()
+    // Live settings changes revoke current CU execution. Scheduled deny stays
+    // deny, while allow becomes deny for the rest of that accepted turn.
+    for (const entry of this.threadPolicies.values()) {
+      if (entry.policy === 'allow') entry.policy = 'deny'
+    }
+    this.activeRuntimeSessions.clear()
+    try {
+      await this.loadNativeAddon()?.resetAll()
+    } finally {
+      for (const session of this.workerSessions.values()) session.stop()
+      this.workerSessions.clear()
+    }
   }
 
   async startBroker(): Promise<ComputerUseRuntimeEnvironment> {
@@ -424,6 +530,8 @@ export class ComputerUseRuntimeService {
 
   async stopBroker(): Promise<void> {
     await this.resetAll()
+    this.threadPolicies.clear()
+    this.scheduledThreadByTask.clear()
     const server = this.server
     this.server = null
     this.endpoint = null
@@ -514,4 +622,6 @@ export const __computerUseRuntimeTesting = {
   COMPUTER_USE_TOOLS,
   validateActionPolicy,
   parseToolResult,
+  threadPolicy: (runtime: ComputerUseRuntimeService, sessionId: string) =>
+    runtime['threadPolicy'](sessionId),
 }
