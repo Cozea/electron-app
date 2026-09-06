@@ -26,6 +26,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Bun's `localStorage` global is a hollow object here, and zustand caches
+    // it at import time; see tests/helpers/webStorage.ts.
+    setupFiles: ["./tests/helpers/webStorage.ts"],
     // Several suites parse the repo with the TS compiler API or spawn child
     // processes (CLI boot, mock ACP agents); under full-suite load or on CI
     // the default 5s limit flakes.
