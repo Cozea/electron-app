@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, useRef } from "react";
-import { HugeiconsIcon } from '@hugeicons/react'
-import { CheckmarkCircle02Icon as __CheckIconHugeIcon } from '@hugeicons/core-free-icons'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { CheckmarkCircle02Icon as __CheckIconHugeIcon } from "@hugeicons/core-free-icons";
 
 import { type ApprovalRequestId } from "@cozea/assistant-contracts";
 
@@ -70,6 +70,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
   const autoAdvanceTimerRef = useRef<number | null>(null);
+  const questionCardRef = useRef<HTMLDivElement>(null);
+  const previousQuestionIdRef = useRef<string | null>(activeQuestion?.id ?? null);
 
   // Clear auto-advance timer on unmount
   useEffect(() => {
@@ -79,6 +81,18 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       }
     };
   }, [isVisible, questionIndex, isResponding]);
+
+  // Advancing replaces the keyed question card. Restore focus before paint so
+  // numeric shortcuts keep working on the next question without an extra click.
+  useLayoutEffect(() => {
+    const nextQuestionId = activeQuestion?.id ?? null;
+    const previousQuestionId = previousQuestionIdRef.current;
+    previousQuestionIdRef.current = nextQuestionId;
+    if (!nextQuestionId || previousQuestionId === nextQuestionId || !isVisible || isResponding) {
+      return;
+    }
+    questionCardRef.current?.focus({ preventScroll: true });
+  }, [activeQuestion?.id, isResponding, isVisible]);
 
   const selectOptionAndAutoAdvance = useCallback(
     (questionId: string, optionLabel: string) => {
@@ -103,7 +117,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     const value = pendingUserInputShortcutValue(activeQuestion, event.key, {
       visible: isVisible,
       responding: isResponding,
-      editing: target instanceof HTMLElement && (target.isContentEditable || Boolean(target.closest("input, textarea"))),
+      editing:
+        target instanceof HTMLElement &&
+        (target.isContentEditable || Boolean(target.closest("input, textarea"))),
       modified: event.metaKey || event.ctrlKey || event.altKey,
     });
     if (value === null) return;
@@ -117,7 +133,13 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   }
 
   return (
-    <div tabIndex={0} onKeyDown={handleKeyDown} className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5">
+    <div
+      ref={questionCardRef}
+      key={activeQuestion.id}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      className="flex h-full min-h-0 flex-col px-4 py-3 sm:px-5 animate-in fade-in-0 slide-in-from-right-1 duration-150 motion-reduce:animate-none"
+    >
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           {prompt.questions.length > 1 ? (
@@ -126,7 +148,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             </span>
           ) : null}
           <span className="text-[11px] font-semibold text-muted-foreground/50">
-            {activeQuestion.header.charAt(0).toUpperCase() + activeQuestion.header.slice(1).toLowerCase()}
+            {activeQuestion.header.charAt(0).toUpperCase() +
+              activeQuestion.header.slice(1).toLowerCase()}
           </span>
         </div>
       </div>
@@ -141,7 +164,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               aria-pressed={isSelected}
               type="button"
               disabled={isResponding}
-              onClick={() => selectOptionAndAutoAdvance(activeQuestion.id, option.value ?? option.label)}
+              onClick={() =>
+                selectOptionAndAutoAdvance(activeQuestion.id, option.value ?? option.label)
+              }
               className={cn(
                 "group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all duration-150",
                 isSelected
@@ -171,7 +196,10 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 ) : null}
               </div>
               {isSelected ? (
-                <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 shrink-0 text-foreground" />
+                <HugeiconsIcon
+                  icon={__CheckIconHugeIcon}
+                  className="size-3.5 shrink-0 text-foreground"
+                />
               ) : null}
             </button>
           );

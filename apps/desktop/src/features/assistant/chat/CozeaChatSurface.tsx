@@ -14,9 +14,9 @@ import {
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
   type TurnId,
-} from "@cozea/assistant-contracts"
-import type { TerminalContextDraft } from "@/features/assistant/lib/terminalContext"
-import type { PreviewAnnotationPayload } from "@cozea/contracts/t3/ipc"
+} from "@cozea/assistant-contracts";
+import type { TerminalContextDraft } from "@/features/assistant/lib/terminalContext";
+import type { PreviewAnnotationPayload } from "@cozea/contracts/t3/ipc";
 import {
   type ClipboardEventHandler,
   memo,
@@ -28,74 +28,71 @@ import {
   useMemo,
   useRef,
   useState,
-} from "react"
+} from "react";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { AppOverlayPortal } from "@/components/ui/app-overlay-portal"
-import { ComposerPendingApprovalActions } from "@/features/assistant/chat/ComposerPendingApprovalActions"
-import { ComposerPendingApprovalPanel } from "@/features/assistant/chat/ComposerPendingApprovalPanel"
-import { AsyncQuestionPanel } from "./AsyncQuestionPanel"
-import { ComposerPendingUserInputPanel } from "@/features/assistant/chat/ComposerPendingUserInputPanel"
-import { ComposerPlanFollowUpBanner } from "@/features/assistant/chat/ComposerPlanFollowUpBanner"
-import { ContextWindowMeter } from "@/features/assistant/chat/ContextWindowMeter"
+} from "@/components/ui/dropdown-menu";
+import { AppOverlayPortal } from "@/components/ui/app-overlay-portal";
+import { ComposerPendingApprovalActions } from "@/features/assistant/chat/ComposerPendingApprovalActions";
+import { ComposerPendingApprovalPanel } from "@/features/assistant/chat/ComposerPendingApprovalPanel";
+import { AsyncQuestionPanel } from "./AsyncQuestionPanel";
+import { ComposerPendingUserInputPanel } from "@/features/assistant/chat/ComposerPendingUserInputPanel";
+import { ComposerPlanFollowUpBanner } from "@/features/assistant/chat/ComposerPlanFollowUpBanner";
+import { ContextWindowMeter } from "@/features/assistant/chat/ContextWindowMeter";
 import type {
   ExpandedImageItem,
   ExpandedImagePreview,
-} from "@/features/assistant/chat/ExpandedImagePreview"
-import { buildExpandedImagePreview } from "@/features/assistant/chat/ExpandedImagePreview"
-import { MessagesTimeline } from "@/features/assistant/chat/MessagesTimeline"
-import { ChatMediaProvider } from "./ChatMedia"
-import { ChatArtifactTemplateProvider } from "./ChatArtifactTemplate"
-import { appendTemplateUsePrompt, type CodexArtifactTemplate } from "./chatArtifactTemplates"
-import { useCommittedChatCallback } from "./useChatRenderStability"
+} from "@/features/assistant/chat/ExpandedImagePreview";
+import { buildExpandedImagePreview } from "@/features/assistant/chat/ExpandedImagePreview";
+import { MessagesTimeline } from "@/features/assistant/chat/MessagesTimeline";
+import { ChatMediaProvider } from "./ChatMedia";
+import { ChatArtifactTemplateProvider } from "./ChatArtifactTemplate";
+import { appendTemplateUsePrompt, type CodexArtifactTemplate } from "./chatArtifactTemplates";
+import { useCommittedChatCallback } from "./useChatRenderStability";
 import {
   questionCursorKey,
   retainQuestionCursors,
   setQuestionCursor,
   type QuestionCursors,
-} from "@/features/assistant/chat/questionCursorState"
-import { ChatConnectionNotice } from "./ChatConnectionNotice"
-import type { SubscriptionStatus } from "@/substrate/subscriptionSupervisor"
-import { ProviderModelPicker } from "@/features/assistant/chat/ProviderModelPicker"
-import { shouldDismissModelPickerOnPointerDown } from "@/features/assistant/chat/modelPickerDismissal"
+} from "@/features/assistant/chat/questionCursorState";
+import { ChatConnectionNotice } from "./ChatConnectionNotice";
+import type { SubscriptionStatus } from "@/substrate/subscriptionSupervisor";
+import { ProviderModelPicker } from "@/features/assistant/chat/ProviderModelPicker";
+import { shouldDismissModelPickerOnPointerDown } from "@/features/assistant/chat/modelPickerDismissal";
 import {
   ModelPickerContent,
   type ModelPickerPrimaryView,
-} from "@/features/assistant/chat/ModelPickerContent"
-import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner"
-import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction"
-import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation"
-import { ThreadRuntimeBanner } from "@/features/assistant/chat/ThreadRuntimeBanner"
-import type {
-  PendingApproval,
-  PendingUserInput,
-} from "@/features/assistant/chat/session-logic"
-import { useAssistantThreadViewModel } from "@/features/assistant/chat/useAssistantThreadViewModel"
-import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "@/features/assistant/chat/ComposerPromptEditor"
-import { ComposerPreviewAnnotationCards } from "@/features/assistant/chat/ComposerPreviewAnnotationCards"
+} from "@/features/assistant/chat/ModelPickerContent";
+import { ProviderStatusBanner } from "@/features/assistant/chat/ProviderStatusBanner";
+import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
+import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation";
+import { ThreadRuntimeBanner } from "@/features/assistant/chat/ThreadRuntimeBanner";
+import type { PendingApproval, PendingUserInput } from "@/features/assistant/chat/session-logic";
+import { useAssistantThreadViewModel } from "@/features/assistant/chat/useAssistantThreadViewModel";
+import {
+  ComposerPromptEditor,
+  type ComposerPromptEditorHandle,
+} from "@/features/assistant/chat/ComposerPromptEditor";
+import { ComposerPreviewAnnotationCards } from "@/features/assistant/chat/ComposerPreviewAnnotationCards";
 import {
   INITIAL_COMPOSER_EXPANSION_STATE,
   nextComposerExpansionState,
-} from "@/features/assistant/chat/composerExpansion"
+} from "@/features/assistant/chat/composerExpansion";
 import {
   detectComposerTrigger,
   replaceTextRange,
   collapseExpandedComposerCursor,
   expandCollapsedComposerCursor,
-} from "@/features/assistant/composer-logic"
-import {
-  basenameOfPath,
-  getVscodeIconUrlForEntry,
-} from "@/features/assistant/vscode-icons"
-import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWindow"
-import type { AccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits"
+} from "@/features/assistant/composer-logic";
+import { basenameOfPath, getVscodeIconUrlForEntry } from "@/features/assistant/vscode-icons";
+import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWindow";
+import type { AccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits";
 import {
   buildPendingUserInputAnswers,
   pendingUserInputDraftFromAnswer,
@@ -104,13 +101,13 @@ import {
   derivePendingUserInputProgress,
   findFirstUnansweredPendingUserInputQuestionIndex,
   type PendingUserInputDraftAnswer,
-} from "@/features/assistant/pendingUserInput"
-import { type Thread } from "@/features/assistant/model/types"
-import { useElementPointerHover } from "@/hooks/useElementPointerHover"
-import { cn } from "@/lib/utils"
-import { useTranslation } from "@/lib/i18n"
+} from "@/features/assistant/pendingUserInput";
+import { type Thread } from "@/features/assistant/model/types";
+import { useElementPointerHover } from "@/hooks/useElementPointerHover";
+import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 
-import { HugeiconsIcon } from "@hugeicons/react"
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Add01Icon as __PlusIconHugeIcon,
   AlertCircleIcon as __CircleAlertIconHugeIcon,
@@ -123,11 +120,11 @@ import {
   LeftToRightListBulletIcon as __ListTodoIconHugeIcon,
   LockIcon as __LockIconHugeIcon,
   Mic01Icon as __Mic01IconHugeIcon,
-} from "@hugeicons/core-free-icons"
+} from "@hugeicons/core-free-icons";
 
-export type UserInputAnswerDrafts = Record<string, Record<string, string | string[]>>
+export type UserInputAnswerDrafts = Record<string, Record<string, string | string[]>>;
 
-export type ComposerMode = "debug" | "plan" | "ask" | "default" | null
+export type ComposerMode = "debug" | "plan" | "ask" | "default" | null;
 
 function DebugBugIcon({ className }: { className?: string }) {
   return (
@@ -153,82 +150,82 @@ function DebugBugIcon({ className }: { className?: string }) {
       <path d="M22 13h-4" />
       <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
     </svg>
-  )
+  );
 }
 
 export interface ProviderModelOptionsByProvider {
-  antigravity: ReadonlyArray<{ slug: string; name: string }>
-  codex: ReadonlyArray<{ slug: string; name: string }>
-  claudeAgent: ReadonlyArray<{ slug: string; name: string }>
-  cursor: ReadonlyArray<{ slug: string; name: string }>
-  opencode: ReadonlyArray<{ slug: string; name: string }>
+  antigravity: ReadonlyArray<{ slug: string; name: string }>;
+  codex: ReadonlyArray<{ slug: string; name: string }>;
+  claudeAgent: ReadonlyArray<{ slug: string; name: string }>;
+  cursor: ReadonlyArray<{ slug: string; name: string }>;
+  opencode: ReadonlyArray<{ slug: string; name: string }>;
 }
 
 export interface ComposerImageDraft {
-  id: string
-  name: string
-  mimeType: string
-  sizeBytes: number
-  previewUrl: string
-  file?: File
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  previewUrl: string;
+  file?: File;
 }
 
 type ComposerPathMenuItem = {
-  id: string
-  type: "path"
-  path: string
-  kind: "file" | "directory"
-  description: string
-}
+  id: string;
+  type: "path";
+  path: string;
+  kind: "file" | "directory";
+  description: string;
+};
 
 type ComposerSlashMenuItem =
   | {
-      id: string
-      type: "slash-command"
-      command: "model" | "plan" | "default" | "clear" | "help" | "debug" | "ask"
-      label: string
-      description: string
+      id: string;
+      type: "slash-command";
+      command: "model" | "plan" | "default" | "clear" | "help" | "debug" | "ask";
+      label: string;
+      description: string;
     }
   | {
-      id: string
-      type: "provider-slash-command"
-      command: ServerProviderSlashCommand
-      label: string
-      description: string
+      id: string;
+      type: "provider-slash-command";
+      command: ServerProviderSlashCommand;
+      label: string;
+      description: string;
     }
   | {
-      id: string
-      type: "model"
-      provider: ProviderKind
-      model: string
-      label: string
-      description: string
-    }
+      id: string;
+      type: "model";
+      provider: ProviderKind;
+      model: string;
+      label: string;
+      description: string;
+    };
 
 type ComposerSkillMenuItem = {
-  id: string
-  type: "skill"
-  skill: ServerProviderSkill
-  label: string
-  description: string
-}
+  id: string;
+  type: "skill";
+  skill: ServerProviderSkill;
+  label: string;
+  description: string;
+};
 
-type ComposerMenuItem = ComposerPathMenuItem | ComposerSlashMenuItem | ComposerSkillMenuItem
+type ComposerMenuItem = ComposerPathMenuItem | ComposerSlashMenuItem | ComposerSkillMenuItem;
 
 // Breathing room between the last timeline row and the composer. The composer
 // card carries its own top margin, so this only guards against rounding.
-const DOCKED_COMPOSER_SCROLL_CLEARANCE_PX = 4
-const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128
-const MODEL_PICKER_PANEL_TRANSITION_MS = 150
+const DOCKED_COMPOSER_SCROLL_CLEARANCE_PX = 4;
+const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128;
+const MODEL_PICKER_PANEL_TRANSITION_MS = 150;
 
 function includesNormalized(value: string, query: string): boolean {
-  return value.toLowerCase().includes(query.toLowerCase())
+  return value.toLowerCase().includes(query.toLowerCase());
 }
 
 function parentPathOf(projectPath: string): string {
-  const normalizedPath = projectPath.replace(/\\/g, "/")
-  const index = normalizedPath.lastIndexOf("/")
-  return index > 0 ? normalizedPath.slice(0, index) : ""
+  const normalizedPath = projectPath.replace(/\\/g, "/");
+  const index = normalizedPath.lastIndexOf("/");
+  return index > 0 ? normalizedPath.slice(0, index) : "";
 }
 
 function buildComposerPathMenuItems(
@@ -236,14 +233,14 @@ function buildComposerPathMenuItems(
   query: string,
   limit = 80,
 ): ComposerPathMenuItem[] {
-  const normalizedQuery = query.trim()
-  const includeAll = normalizedQuery.length === 0 || normalizedQuery === "."
-  const byPath = new Map<string, ComposerPathMenuItem>()
+  const normalizedQuery = query.trim();
+  const includeAll = normalizedQuery.length === 0 || normalizedQuery === ".";
+  const byPath = new Map<string, ComposerPathMenuItem>();
 
   const addItem = (projectPath: string, kind: ComposerPathMenuItem["kind"]) => {
-    const normalizedPath = projectPath.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "")
+    const normalizedPath = projectPath.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
     if (!normalizedPath || byPath.has(`${kind}:${normalizedPath}`)) {
-      return
+      return;
     }
 
     if (
@@ -251,7 +248,7 @@ function buildComposerPathMenuItems(
       !includesNormalized(normalizedPath, normalizedQuery) &&
       !includesNormalized(basenameOfPath(normalizedPath), normalizedQuery)
     ) {
-      return
+      return;
     }
 
     byPath.set(`${kind}:${normalizedPath}`, {
@@ -260,142 +257,142 @@ function buildComposerPathMenuItems(
       path: normalizedPath,
       kind,
       description: parentPathOf(normalizedPath),
-    })
-  }
+    });
+  };
 
   for (const file of files) {
-    const normalizedPath = file.path.replace(/\\/g, "/").replace(/^\/+/, "").trim()
-    if (!normalizedPath) continue
+    const normalizedPath = file.path.replace(/\\/g, "/").replace(/^\/+/, "").trim();
+    if (!normalizedPath) continue;
 
-    const parts = normalizedPath.split("/").filter(Boolean)
+    const parts = normalizedPath.split("/").filter(Boolean);
     for (let index = 1; index < parts.length; index += 1) {
-      addItem(parts.slice(0, index).join("/"), "directory")
+      addItem(parts.slice(0, index).join("/"), "directory");
     }
-    addItem(normalizedPath, "file")
+    addItem(normalizedPath, "file");
   }
 
   return Array.from(byPath.values())
     .sort((left, right) => {
       if (left.kind !== right.kind) {
-        return left.kind === "directory" ? -1 : 1
+        return left.kind === "directory" ? -1 : 1;
       }
-      return left.path.localeCompare(right.path)
+      return left.path.localeCompare(right.path);
     })
-    .slice(0, limit)
+    .slice(0, limit);
 }
 
 function filterSlashItems<T extends { label: string; description: string }>(
   items: ReadonlyArray<T>,
   query: string,
 ): T[] {
-  const normalizedQuery = query.trim().replace(/^\/+/, "").toLowerCase()
-  if (!normalizedQuery) return [...items]
+  const normalizedQuery = query.trim().replace(/^\/+/, "").toLowerCase();
+  if (!normalizedQuery) return [...items];
   return items.filter(
     (item) =>
       includesNormalized(item.label, normalizedQuery) ||
       includesNormalized(item.description, normalizedQuery),
-  )
+  );
 }
 
 interface CozeaChatSurfaceProps {
-  isChatVisible?: boolean
-  mediaBaseUrl?: string | null
-  connectionStatus?: SubscriptionStatus | null
-  isRuntimeReady: boolean
+  isChatVisible?: boolean;
+  mediaBaseUrl?: string | null;
+  connectionStatus?: SubscriptionStatus | null;
+  isRuntimeReady: boolean;
   /** When set, gates composer/send/model picker. Defaults to `isRuntimeReady`. */
-  isChatReady?: boolean
-  runtimeErrorMessage: string | null
-  workspaceId: string | null
+  isChatReady?: boolean;
+  runtimeErrorMessage: string | null;
+  workspaceId: string | null;
   /**
    * Absolute filesystem root of the bound workspace. Used only to trim
    * absolute tool/changedFiles paths down to a `projectName/relative/path`
    * label in the timeline. This is the real path, NOT the opaque
    * `workspaceId` catalog id (which only resolves file opens in main).
    */
-  workspaceRoot?: string | null
-  thread: Thread | null
-  artifactUrlsById?: Readonly<Record<string, string>>
-  onOpenArtifact?: (artifactId: string) => void
-  providerSnapshot: ServerProvider | null
-  isRunning: boolean
-  isBinding: boolean
-  isConfigLoading: boolean
-  bindingError: string | null
-  timelineRef: RefObject<HTMLDivElement | null>
-  pendingApprovals: PendingApproval[]
-  pendingUserInputs: PendingUserInput[]
-  activeRequestKey: string | null
-  userInputDrafts: UserInputAnswerDrafts
-  activeContextWindow: ContextWindowSnapshot | null
-  activeAccountUsage: AccountUsageLimitSnapshot | null
-  composerStatus: ReactNode
-  composer: string
-  composerCursor: number
-  composerImages: ReadonlyArray<ComposerImageDraft>
-  previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>
-  terminalContexts: ReadonlyArray<TerminalContextDraft>
-  onRemoveTerminalContext: (contextId: string) => void
-  isSending: boolean
-  pendingTurnStartStartedAtIso?: string | null
-  isInterrupting: boolean
-  isForceStopAvailable?: boolean
-  isRevertingCheckpoint?: boolean
-  selectedProvider: ProviderKind
-  selectedModelSelection: ModelSelection
-  selectedRuntimeMode: RuntimeMode
-  selectedInteractionMode: ProviderInteractionMode
-  providers: ReadonlyArray<ServerProvider>
-  modelOptionsByProvider: ProviderModelOptionsByProvider
-  modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>
+  workspaceRoot?: string | null;
+  thread: Thread | null;
+  artifactUrlsById?: Readonly<Record<string, string>>;
+  onOpenArtifact?: (artifactId: string) => void;
+  providerSnapshot: ServerProvider | null;
+  isRunning: boolean;
+  isBinding: boolean;
+  isConfigLoading: boolean;
+  bindingError: string | null;
+  timelineRef: RefObject<HTMLDivElement | null>;
+  pendingApprovals: PendingApproval[];
+  pendingUserInputs: PendingUserInput[];
+  activeRequestKey: string | null;
+  userInputDrafts: UserInputAnswerDrafts;
+  activeContextWindow: ContextWindowSnapshot | null;
+  activeAccountUsage: AccountUsageLimitSnapshot | null;
+  composerStatus: ReactNode;
+  composer: string;
+  composerCursor: number;
+  composerImages: ReadonlyArray<ComposerImageDraft>;
+  previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+  terminalContexts: ReadonlyArray<TerminalContextDraft>;
+  onRemoveTerminalContext: (contextId: string) => void;
+  isSending: boolean;
+  pendingTurnStartStartedAtIso?: string | null;
+  isInterrupting: boolean;
+  isForceStopAvailable?: boolean;
+  isRevertingCheckpoint?: boolean;
+  selectedProvider: ProviderKind;
+  selectedModelSelection: ModelSelection;
+  selectedRuntimeMode: RuntimeMode;
+  selectedInteractionMode: ProviderInteractionMode;
+  providers: ReadonlyArray<ServerProvider>;
+  modelOptionsByProvider: ProviderModelOptionsByProvider;
+  modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   onProviderModelChange: (
     provider: ProviderKind,
     model: string,
     instanceId?: ProviderInstanceId,
-  ) => void | Promise<void>
-  onModelOptionChange: (id: string, value: string | boolean) => void | Promise<void>
-  onToggleInteractionMode: () => void | Promise<void>
-  onToggleRuntimeMode: () => void | Promise<void>
-  onComposerChange: (nextValue: string, nextCursor: number) => void
+  ) => void | Promise<void>;
+  onModelOptionChange: (id: string, value: string | boolean) => void | Promise<void>;
+  onToggleInteractionMode: () => void | Promise<void>;
+  onToggleRuntimeMode: () => void | Promise<void>;
+  onComposerChange: (nextValue: string, nextCursor: number) => void;
   onComposerCommandKey: (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
-  ) => boolean
-  onComposerPaste: ClipboardEventHandler<HTMLElement>
-  onAttachFiles: (files: File[]) => void
-  onRemoveComposerImage: (imageId: string) => void
-  onRemovePreviewAnnotation: (annotationId: string) => void
-  compactUnavailableReason?: string | null
-  onCompact?: () => void | Promise<void>
-  onSend: (overridePrompt?: string) => void | Promise<void>
-  onInterrupt: () => void | Promise<void>
+  ) => boolean;
+  onComposerPaste: ClipboardEventHandler<HTMLElement>;
+  onAttachFiles: (files: File[]) => void;
+  onRemoveComposerImage: (imageId: string) => void;
+  onRemovePreviewAnnotation: (annotationId: string) => void;
+  compactUnavailableReason?: string | null;
+  onCompact?: () => void | Promise<void>;
+  onSend: (overridePrompt?: string) => void | Promise<void>;
+  onInterrupt: () => void | Promise<void>;
   onApprovalDecision: (
     requestId: string,
     decision: ProviderApprovalDecision,
-  ) => void | Promise<void>
+  ) => void | Promise<void>;
   onUserInputDraftChange: (
     requestId: string,
     questionId: string,
     value: string | string[],
     cursor?: number,
-  ) => void
-  onSubmitUserInput: (requestId: string) => void | Promise<void>
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void | Promise<void>
-  onDismissThreadError?: () => void
-  onRevertToTurnCount?: (turnCount: number) => void | Promise<void>
+  ) => void;
+  onSubmitUserInput: (requestId: string) => void | Promise<void>;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void | Promise<void>;
+  onDismissThreadError?: () => void;
+  onRevertToTurnCount?: (turnCount: number) => void | Promise<void>;
   /** Workbench tiles: bottom composer floats and expands on card hover or focus (like the browser omnibar). */
-  dockComposerOnHover?: boolean
+  dockComposerOnHover?: boolean;
 }
 
 function isNonEmptyReactNode(node: ReactNode): boolean {
   if (node == null || node === false) {
-    return false
+    return false;
   }
-  return true
+  return true;
 }
 
 function resolveTimelineTheme(): "light" | "dark" {
   if (typeof document !== "undefined") {
-    const classes = document.documentElement.classList
+    const classes = document.documentElement.classList;
     if (
       classes.contains("dark") ||
       classes.contains("navy") ||
@@ -403,29 +400,29 @@ function resolveTimelineTheme(): "light" | "dark" {
       classes.contains("clay") ||
       classes.contains("forest")
     ) {
-      return "dark"
+      return "dark";
     }
   }
-  return "light"
+  return "light";
 }
 
 function planTitleFromMarkdown(markdown: string): string | null {
   const lines = markdown
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter(Boolean);
 
   if (lines.length === 0) {
-    return null
+    return null;
   }
 
-  const heading = lines.find((line) => line.startsWith("#"))
+  const heading = lines.find((line) => line.startsWith("#"));
   if (!heading) {
-    return null
+    return null;
   }
 
-  const normalized = heading.replace(/^#+\s*/, "").trim()
-  return normalized.length > 0 ? normalized : null
+  const normalized = heading.replace(/^#+\s*/, "").trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function toPendingUserInputDraftAnswers(
@@ -433,15 +430,15 @@ function toPendingUserInputDraftAnswers(
   drafts: Record<string, string | string[]> | undefined,
 ): Record<string, PendingUserInputDraftAnswer> {
   if (!request) {
-    return {}
+    return {};
   }
 
-  const next: Record<string, PendingUserInputDraftAnswer> = {}
+  const next: Record<string, PendingUserInputDraftAnswer> = {};
   for (const question of request.questions) {
-    const value = drafts?.[question.id]
-    next[question.id] = pendingUserInputDraftFromAnswer(question, value)
+    const value = drafts?.[question.id];
+    next[question.id] = pendingUserInputDraftFromAnswer(question, value);
   }
-  return next
+  return next;
 }
 
 function renderSendIcon(isBusy: boolean) {
@@ -465,7 +462,7 @@ function renderSendIcon(isBusy: boolean) {
           strokeDasharray="20 12"
         />
       </svg>
-    )
+    );
   }
 
   return (
@@ -478,7 +475,7 @@ function renderSendIcon(isBusy: boolean) {
         strokeLinejoin="round"
       />
     </svg>
-  )
+  );
 }
 
 function SkillGlyph({ className }: { className?: string }) {
@@ -497,90 +494,87 @@ function SkillGlyph({ className }: { className?: string }) {
       <path d="m3.3 7 8.7 5 8.7-5" />
       <path d="M12 22V12" />
     </svg>
-  )
+  );
 }
 
-const NO_REVERT_TURNS: ReadonlyMap<MessageId, number> = new Map()
+const NO_REVERT_TURNS: ReadonlyMap<MessageId, number> = new Map();
 
 export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatSurfaceProps) {
-  const { t } = useTranslation()
-  const isChatReady = props.isChatReady ?? props.isRuntimeReady
-  const resolvedTheme = resolveTimelineTheme()
-  const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
-  const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null)
-  const [composerMode, setComposerMode] = useState<ComposerMode>(null)
+  const { t } = useTranslation();
+  const isChatReady = props.isChatReady ?? props.isRuntimeReady;
+  const resolvedTheme = resolveTimelineTheme();
+  const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
+  const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
+  const [composerMode, setComposerMode] = useState<ComposerMode>(null);
   const activeMode: "debug" | "plan" | "ask" | null =
     composerMode === "default"
       ? null
-      : (composerMode ?? (props.selectedInteractionMode === "plan" ? "plan" : null))
+      : (composerMode ?? (props.selectedInteractionMode === "plan" ? "plan" : null));
 
   const updateComposerMode = useCallback(
     (nextMode: "debug" | "plan" | "ask" | null) => {
       if (nextMode === null) {
-        setComposerMode("default")
+        setComposerMode("default");
         if (props.selectedInteractionMode === "plan") {
-          void props.onToggleInteractionMode()
+          void props.onToggleInteractionMode();
         }
       } else if (nextMode === "plan") {
-        setComposerMode("plan")
+        setComposerMode("plan");
         if (props.selectedInteractionMode !== "plan") {
-          void props.onToggleInteractionMode()
+          void props.onToggleInteractionMode();
         }
       } else {
-        setComposerMode(nextMode)
+        setComposerMode(nextMode);
         if (props.selectedInteractionMode === "plan") {
-          void props.onToggleInteractionMode()
+          void props.onToggleInteractionMode();
         }
       }
     },
     [props.selectedInteractionMode, props.onToggleInteractionMode],
-  )
+  );
   const [pendingQuestionIndexByRequestId, setPendingQuestionIndexByRequestId] = useState<
     Record<string, number>
-  >({})
-  const [composerDockFocused, setComposerDockFocused] = useState(false)
-  const [isDragOverSurface, setIsDragOverSurface] = useState(false)
-  const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([])
-  const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false)
-  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
-  const [modelPickerView, setModelPickerView] = useState<ModelPickerPrimaryView>("models")
-  const [shouldRenderModelPicker, setShouldRenderModelPicker] = useState(false)
-  const [isModelPickerVisible, setIsModelPickerVisible] = useState(false)
-  const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
-  const dockComposerOnHover = Boolean(props.dockComposerOnHover)
+  >({});
+  const [composerDockFocused, setComposerDockFocused] = useState(false);
+  const [isDragOverSurface, setIsDragOverSurface] = useState(false);
+  const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([]);
+  const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false);
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
+  const [modelPickerView, setModelPickerView] = useState<ModelPickerPrimaryView>("models");
+  const [shouldRenderModelPicker, setShouldRenderModelPicker] = useState(false);
+  const [isModelPickerVisible, setIsModelPickerVisible] = useState(false);
+  const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
+  const dockComposerOnHover = Boolean(props.dockComposerOnHover);
   const composerDockHoverState = useElementPointerHover<HTMLDivElement>({
     enabled: dockComposerOnHover,
-  })
-  const composerDockHover = composerDockHoverState.isHovered
+  });
+  const composerDockHover = composerDockHoverState.isHovered;
   const previewAnnotationImageIds = useMemo(
     () => new Set(props.previewAnnotations.map((annotation) => annotation.id)),
     [props.previewAnnotations],
-  )
+  );
   const regularComposerImages = useMemo(
     () => props.composerImages.filter((image) => !previewAnnotationImageIds.has(image.id)),
     [previewAnnotationImageIds, props.composerImages],
-  )
-  const dragDepthRef = useRef(0)
-  const composerFileInputRef = useRef<HTMLInputElement | null>(null)
-  const composerEditorRef = useRef<ComposerPromptEditorHandle | null>(null)
-  const templateFocusFrameRef = useRef<number | null>(null)
-  const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map())
-  const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null)
-  const modelPickerPanelRef = useRef<HTMLDivElement | null>(null)
-  const modelPickerTriggerRef = useRef<HTMLDivElement | null>(null)
-  const modelPickerAnimationFrameRef = useRef<number | null>(null)
-  const modelPickerCloseTimerRef = useRef<number | null>(null)
-  const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0)
+  );
+  const dragDepthRef = useRef(0);
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerEditorRef = useRef<ComposerPromptEditorHandle | null>(null);
+  const templateFocusFrameRef = useRef<number | null>(null);
+  const composerQueryCacheRef = useRef<Map<string, ComposerPathMenuItem[]>>(new Map());
+  const dockedComposerFrameRef = useRef<HTMLDivElement | null>(null);
+  const modelPickerPanelRef = useRef<HTMLDivElement | null>(null);
+  const modelPickerTriggerRef = useRef<HTMLDivElement | null>(null);
+  const modelPickerAnimationFrameRef = useRef<number | null>(null);
+  const modelPickerCloseTimerRef = useRef<number | null>(null);
+  const [dockedComposerMeasuredInsetPx, setDockedComposerMeasuredInsetPx] = useState(0);
 
-  const handleModelPickerOpenChange = useCallback(
-    (open: boolean, view: ModelPickerPrimaryView) => {
-      if (open) {
-        setModelPickerView(view)
-      }
-      setIsModelPickerOpen(open)
-    },
-    [],
-  )
+  const handleModelPickerOpenChange = useCallback((open: boolean, view: ModelPickerPrimaryView) => {
+    if (open) {
+      setModelPickerView(view);
+    }
+    setIsModelPickerOpen(open);
+  }, []);
 
   const {
     activeTurn,
@@ -604,11 +598,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     isRevertingCheckpoint: props.isRevertingCheckpoint,
     pendingUserInputs: props.pendingUserInputs,
     selectedInteractionMode: props.selectedInteractionMode,
-  })
-  const activePendingApproval = props.pendingApprovals[0] ?? null
-  const blockingUserInputs = useMemo(() => props.pendingUserInputs.filter((request) => request.responseMode !== "message"), [props.pendingUserInputs])
-  const asyncUserInputs = useMemo(() => props.pendingUserInputs.filter((request) => request.responseMode === "message"), [props.pendingUserInputs])
-  const activePendingUserInput = blockingUserInputs[0] ?? null
+  });
+  const activePendingApproval = props.pendingApprovals[0] ?? null;
+  const blockingUserInputs = useMemo(
+    () => props.pendingUserInputs.filter((request) => request.responseMode !== "message"),
+    [props.pendingUserInputs],
+  );
+  const asyncUserInputs = useMemo(
+    () => props.pendingUserInputs.filter((request) => request.responseMode === "message"),
+    [props.pendingUserInputs],
+  );
+  const activePendingUserInput = blockingUserInputs[0] ?? null;
   const activePendingDraftAnswers = useMemo(
     () =>
       toPendingUserInputDraftAnswers(
@@ -618,13 +618,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           : undefined,
       ),
     [activePendingUserInput, props.userInputDrafts],
-  )
+  );
   const defaultPendingQuestionIndex = activePendingUserInput
     ? findFirstUnansweredPendingUserInputQuestionIndex(
         activePendingUserInput.questions,
         activePendingDraftAnswers,
       )
-    : 0
+    : 0;
   const activePendingQuestionIndex = activePendingUserInput
     ? Math.max(
         0,
@@ -634,7 +634,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           Math.max(activePendingUserInput.questions.length - 1, 0),
         ),
       )
-    : 0
+    : 0;
   const activePendingProgress = useMemo(
     () =>
       activePendingUserInput
@@ -645,48 +645,50 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           )
         : null,
     [activePendingDraftAnswers, activePendingQuestionIndex, activePendingUserInput],
-  )
+  );
   const activePendingResolvedAnswers = useMemo(
     () =>
       activePendingUserInput
         ? buildPendingUserInputAnswers(activePendingUserInput.questions, activePendingDraftAnswers)
         : null,
     [activePendingDraftAnswers, activePendingUserInput],
-  )
+  );
   const activePendingIsResponding = activePendingUserInput
     ? props.activeRequestKey === String(activePendingUserInput.requestId)
-    : false
-  const isComposerApprovalState = activePendingApproval !== null
+    : false;
+  const isComposerApprovalState = activePendingApproval !== null;
   const hasComposerHeader =
-    isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt
-  const composerValue = activePendingProgress?.customAnswer ?? props.composer
-  const [questionCursors, setQuestionCursors] = useState<QuestionCursors>({})
-  const activeQuestionCursorKey = activePendingUserInput && activePendingProgress?.activeQuestion
-    ? questionCursorKey(
-        props.thread?.id,
-        String(activePendingUserInput.requestId),
-        activePendingProgress.activeQuestion.id,
-      )
-    : null
+    isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt;
+  const composerValue = activePendingProgress?.customAnswer ?? props.composer;
+  const [questionCursors, setQuestionCursors] = useState<QuestionCursors>({});
+  const activeQuestionCursorKey =
+    activePendingUserInput && activePendingProgress?.activeQuestion
+      ? questionCursorKey(
+          props.thread?.id,
+          String(activePendingUserInput.requestId),
+          activePendingProgress.activeQuestion.id,
+        )
+      : null;
   const composerCursor = activeQuestionCursorKey
-    ? questionCursors[activeQuestionCursorKey] ?? collapseExpandedComposerCursor(composerValue, composerValue.length)
-    : props.composerCursor
+    ? (questionCursors[activeQuestionCursorKey] ??
+      collapseExpandedComposerCursor(composerValue, composerValue.length))
+    : props.composerCursor;
   const [composerExpansionState, setComposerExpansionState] = useState(
     INITIAL_COMPOSER_EXPANSION_STATE,
-  )
+  );
 
   const composerExpandedCursor = useMemo(
     () => expandCollapsedComposerCursor(composerValue, composerCursor),
     [composerValue, composerCursor],
-  )
+  );
   const composerTrigger = useMemo(
     () => detectComposerTrigger(composerValue, composerExpandedCursor),
     [composerValue, composerExpandedCursor],
-  )
-  const composerPathTrigger = composerTrigger?.kind === "path" ? composerTrigger : null
-  const composerSlashTrigger = composerTrigger?.kind === "slash-command" ? composerTrigger : null
-  const composerModelTrigger = composerTrigger?.kind === "slash-model" ? composerTrigger : null
-  const composerSkillTrigger = composerTrigger?.kind === "skill" ? composerTrigger : null
+  );
+  const composerPathTrigger = composerTrigger?.kind === "path" ? composerTrigger : null;
+  const composerSlashTrigger = composerTrigger?.kind === "slash-command" ? composerTrigger : null;
+  const composerModelTrigger = composerTrigger?.kind === "slash-model" ? composerTrigger : null;
+  const composerSkillTrigger = composerTrigger?.kind === "skill" ? composerTrigger : null;
   const slashMenuItems = useMemo<ComposerSlashMenuItem[]>(() => {
     const builtInItems: ComposerSlashMenuItem[] = [
       {
@@ -738,7 +740,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         label: "/help",
         description: "Show available commands and provider skills",
       },
-    ]
+    ];
     const providerItems: ComposerSlashMenuItem[] = (
       props.providerSnapshot?.slashCommands ?? []
     ).map((command) => ({
@@ -747,9 +749,21 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       command,
       label: `/${command.name}`,
       description: command.description ?? command.input?.hint ?? "Run provider command",
-    }))
-    return filterSlashItems([...builtInItems.filter((item) => item.type !== "slash-command" || item.command !== "plan" || (props.selectedProvider !== "antigravity" && props.providerSnapshot?.showInteractionModeToggle !== false)), ...providerItems], composerSlashTrigger?.query ?? "")
-  }, [composerSlashTrigger?.query, props.providerSnapshot?.slashCommands, props.selectedProvider])
+    }));
+    return filterSlashItems(
+      [
+        ...builtInItems.filter(
+          (item) =>
+            item.type !== "slash-command" ||
+            item.command !== "plan" ||
+            (props.selectedProvider !== "antigravity" &&
+              props.providerSnapshot?.showInteractionModeToggle !== false),
+        ),
+        ...providerItems,
+      ],
+      composerSlashTrigger?.query ?? "",
+    );
+  }, [composerSlashTrigger?.query, props.providerSnapshot?.slashCommands, props.selectedProvider]);
   const modelMenuItems = useMemo<ComposerSlashMenuItem[]>(() => {
     const allItems = (
       Object.entries(props.modelOptionsByProvider) as Array<
@@ -764,9 +778,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         label: model.name,
         description: `${provider} · ${model.slug}`,
       })),
-    )
-    return filterSlashItems(allItems, composerModelTrigger?.query ?? "")
-  }, [composerModelTrigger?.query, props.modelOptionsByProvider])
+    );
+    return filterSlashItems(allItems, composerModelTrigger?.query ?? "");
+  }, [composerModelTrigger?.query, props.modelOptionsByProvider]);
   const skillMenuItems = useMemo<ComposerSkillMenuItem[]>(() => {
     const allItems = (props.providerSnapshot?.skills ?? [])
       .filter((skill) => skill.enabled)
@@ -776,9 +790,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         skill,
         label: skill.displayName ?? skill.name,
         description: skill.shortDescription ?? skill.description ?? skill.scope ?? "Provider skill",
-      }))
-    return filterSlashItems(allItems, composerSkillTrigger?.query ?? "")
-  }, [composerSkillTrigger?.query, props.providerSnapshot?.skills, props.selectedProvider])
+      }));
+    return filterSlashItems(allItems, composerSkillTrigger?.query ?? "");
+  }, [composerSkillTrigger?.query, props.providerSnapshot?.skills, props.selectedProvider]);
   const composerMenuItems = composerPathTrigger
     ? composerPathMenuItems
     : composerSlashTrigger
@@ -787,61 +801,64 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ? modelMenuItems
         : composerSkillTrigger
           ? skillMenuItems
-          : []
+          : [];
   const composerMenuOpen = Boolean(
     composerPathTrigger || composerSlashTrigger || composerModelTrigger || composerSkillTrigger,
-  )
-  const visibleComposerMenuItems = composerMenuItems.slice(0, composerPathTrigger ? 3 : 6)
+  );
+  const visibleComposerMenuItems = composerMenuItems.slice(0, composerPathTrigger ? 3 : 6);
   const hiddenComposerMenuItemCount = Math.max(
     0,
     composerMenuItems.length - visibleComposerMenuItems.length,
-  )
+  );
   const composerDisabled =
     !isChatReady ||
     props.isBinding ||
     isComposerApprovalState ||
     activePendingIsResponding ||
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false ||
-    (!activePendingProgress && props.isSending)
-  const canUseArtifactTemplate = !composerDisabled && activePendingUserInput === null
+    (!activePendingProgress && props.isSending);
+  const canUseArtifactTemplate = !composerDisabled && activePendingUserInput === null;
   const handleUseArtifactTemplate = useCommittedChatCallback((template: CodexArtifactTemplate) => {
-    if (!canUseArtifactTemplate) return
+    if (!canUseArtifactTemplate) return;
     // Ordinary drafts and request answers are deliberately separate state.
-    const draft = appendTemplateUsePrompt(props.composer, template)
-    props.onComposerChange(draft, collapseExpandedComposerCursor(draft, draft.length))
-    if (templateFocusFrameRef.current !== null) cancelAnimationFrame(templateFocusFrameRef.current)
+    const draft = appendTemplateUsePrompt(props.composer, template);
+    props.onComposerChange(draft, collapseExpandedComposerCursor(draft, draft.length));
+    if (templateFocusFrameRef.current !== null) cancelAnimationFrame(templateFocusFrameRef.current);
     templateFocusFrameRef.current = requestAnimationFrame(() => {
-      templateFocusFrameRef.current = null
-      composerEditorRef.current?.focusAtEnd()
-    })
-  })
-  useLayoutEffect(() => () => {
-    if (templateFocusFrameRef.current !== null) {
-      cancelAnimationFrame(templateFocusFrameRef.current)
-      templateFocusFrameRef.current = null
-    }
-  }, [props.thread?.id, canUseArtifactTemplate, props.isChatVisible])
-  const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation"
+      templateFocusFrameRef.current = null;
+      composerEditorRef.current?.focusAtEnd();
+    });
+  });
+  useLayoutEffect(
+    () => () => {
+      if (templateFocusFrameRef.current !== null) {
+        cancelAnimationFrame(templateFocusFrameRef.current);
+        templateFocusFrameRef.current = null;
+      }
+    },
+    [props.thread?.id, canUseArtifactTemplate, props.isChatVisible],
+  );
+  const stopButtonLabel = props.isForceStopAvailable ? "Force stop agent" : "Stop generation";
   const attachDisabled =
-    !isChatReady || props.isRunning || isComposerApprovalState || activePendingUserInput !== null
-  const imageSizeLimitLabel = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`
-  const markdownCwd = props.workspaceId ?? undefined
-  const workspaceIdForFileActions = props.workspaceId ?? undefined
+    !isChatReady || props.isRunning || isComposerApprovalState || activePendingUserInput !== null;
+  const imageSizeLimitLabel = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
+  const markdownCwd = props.workspaceId ?? undefined;
+  const workspaceIdForFileActions = props.workspaceId ?? undefined;
   const threadRuntimeBannerState = props.isInterrupting
     ? "interrupting"
     : phase === "error" || phase === "interrupted" || phase === "connecting"
       ? phase
-      : null
+      : null;
   const threadRuntimeDetail =
-    props.thread?.session?.lastError ?? props.thread?.error ?? props.runtimeErrorMessage ?? null
+    props.thread?.session?.lastError ?? props.thread?.error ?? props.runtimeErrorMessage ?? null;
 
   const handleComposerDockBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
-    const next = event.relatedTarget as Node | null
+    const next = event.relatedTarget as Node | null;
     if (next && event.currentTarget.contains(next)) {
-      return
+      return;
     }
-    setComposerDockFocused(false)
-  }, [])
+    setComposerDockFocused(false);
+  }, []);
   const dockComposerChromeReasons =
     composerDockHover ||
     composerDockFocused ||
@@ -855,112 +872,103 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     props.previewAnnotations.length > 0 ||
     props.isRunning ||
     props.isSending ||
-    props.isInterrupting
+    props.isInterrupting;
 
-  const hasProviderBanner = hasBlockingProviderBanner(props.providerSnapshot)
+  const hasProviderBanner = hasBlockingProviderBanner(props.providerSnapshot);
 
   // The provider banner replaces the timeline and sending is impossible, so
   // the composer must follow the same derived condition (hover included).
-  const composerSuppressed = !props.workspaceId || hasProviderBanner
+  const composerSuppressed = !props.workspaceId || hasProviderBanner;
 
   // Empty thread: keep the composer visible so new sessions have an obvious input.
   const showComposerDockChrome =
     !composerSuppressed &&
-    (!dockComposerOnHover || dockComposerChromeReasons || timelineEntries.length === 0)
+    (!dockComposerOnHover || dockComposerChromeReasons || timelineEntries.length === 0);
 
   const reserveScrollSpaceForDockedComposer =
-    dockComposerOnHover && dockComposerChromeReasons && !composerSuppressed
+    dockComposerOnHover && dockComposerChromeReasons && !composerSuppressed;
 
   useLayoutEffect(() => {
-    if (!dockComposerOnHover || !reserveScrollSpaceForDockedComposer) {
-      setDockedComposerMeasuredInsetPx(0)
-      return
+    if (!dockComposerOnHover) {
+      setDockedComposerMeasuredInsetPx(0);
+      return;
     }
 
-    const frame = dockedComposerFrameRef.current
-    if (!frame) {
-      return
-    }
+    const frame = dockedComposerFrameRef.current;
+    if (!frame) return;
 
     const findDockContent = () =>
-      frame.querySelector<HTMLElement>("[data-chat-composer-dock-content]")
+      frame.querySelector<HTMLElement>("[data-chat-composer-dock-content]");
 
-    let animationFrameId: number | null = null
     const updateInset = () => {
-      const dockContent = findDockContent()
-      const frameRect = frame.getBoundingClientRect()
-      // Measure to the frame's bottom rather than the composer's own height so
-      // the frame's bottom padding is reserved too; otherwise the last row sits
-      // that many pixels behind the composer.
-      const occupiedHeight = dockContent
-        ? Math.max(0, frameRect.bottom - dockContent.getBoundingClientRect().top)
-        : frameRect.height
-      const nextInset = Math.ceil(occupiedHeight + DOCKED_COMPOSER_SCROLL_CLEARANCE_PX)
-      setDockedComposerMeasuredInsetPx((currentInset) => {
-        if (Math.abs(currentInset - nextInset) < 1) {
-          return currentInset
-        }
-        return nextInset
-      })
-    }
+      const dockContent = findDockContent();
+      if (!dockContent) return;
+      // Measure intrinsic content, not the animated max-height. That gives the
+      // timeline one semantic target height while the existing composer shell
+      // animates toward it, instead of emitting a React inset update every frame.
+      const contentElement = dockContent.firstElementChild;
+      const contentElementHeight =
+        contentElement instanceof HTMLElement
+          ? Math.max(contentElement.scrollHeight, contentElement.getBoundingClientRect().height)
+          : 0;
+      const intrinsicContentHeight = Math.max(dockContent.scrollHeight, contentElementHeight);
+      const frameBottomPadding =
+        Number.parseFloat(window.getComputedStyle(frame).paddingBottom) || 0;
+      const nextInset = Math.ceil(
+        intrinsicContentHeight + frameBottomPadding + DOCKED_COMPOSER_SCROLL_CLEARANCE_PX,
+      );
+      setDockedComposerMeasuredInsetPx((currentInset) =>
+        Math.abs(currentInset - nextInset) < 1 ? currentInset : nextInset,
+      );
+    };
 
-    updateInset()
-    animationFrameId = window.requestAnimationFrame(updateInset)
+    updateInset();
+    if (typeof ResizeObserver === "undefined") return;
 
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        if (animationFrameId !== null) {
-          window.cancelAnimationFrame(animationFrameId)
-        }
-      }
-    }
-
-    const resizeObserver = new ResizeObserver(updateInset)
-    resizeObserver.observe(frame)
-    const dockContent = findDockContent()
+    const resizeObserver = new ResizeObserver(updateInset);
+    resizeObserver.observe(frame);
+    const dockContent = findDockContent();
     if (dockContent) {
-      resizeObserver.observe(dockContent)
+      resizeObserver.observe(dockContent);
+      if (dockContent.firstElementChild instanceof HTMLElement) {
+        resizeObserver.observe(dockContent.firstElementChild);
+      }
     }
 
-    return () => {
-      if (animationFrameId !== null) {
-        window.cancelAnimationFrame(animationFrameId)
-      }
-      resizeObserver.disconnect()
-    }
-  }, [dockComposerOnHover, reserveScrollSpaceForDockedComposer])
+    return () => resizeObserver.disconnect();
+  }, [dockComposerOnHover, reserveScrollSpaceForDockedComposer]);
 
   const dockedComposerScrollInsetPx = reserveScrollSpaceForDockedComposer
     ? dockedComposerMeasuredInsetPx || DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX
-    : 0
+    : 0;
   useEffect(() => {
     if (modelPickerAnimationFrameRef.current !== null) {
-      window.cancelAnimationFrame(modelPickerAnimationFrameRef.current)
-      modelPickerAnimationFrameRef.current = null
+      window.cancelAnimationFrame(modelPickerAnimationFrameRef.current);
+      modelPickerAnimationFrameRef.current = null;
     }
     if (modelPickerCloseTimerRef.current !== null) {
-      window.clearTimeout(modelPickerCloseTimerRef.current)
-      modelPickerCloseTimerRef.current = null
+      window.clearTimeout(modelPickerCloseTimerRef.current);
+      modelPickerCloseTimerRef.current = null;
     }
 
     if (isModelPickerOpen) {
-      setShouldRenderModelPicker(true)
+      setShouldRenderModelPicker(true);
       modelPickerAnimationFrameRef.current = window.requestAnimationFrame(() => {
-        modelPickerAnimationFrameRef.current = null
-        setIsModelPickerVisible(true)
-      })
-      return
+        modelPickerAnimationFrameRef.current = null;
+        setIsModelPickerVisible(true);
+      });
+      return;
     }
 
-    setIsModelPickerVisible(false)
+    setIsModelPickerVisible(false);
     modelPickerCloseTimerRef.current = window.setTimeout(() => {
-      modelPickerCloseTimerRef.current = null
-      setShouldRenderModelPicker(false)
-    }, MODEL_PICKER_PANEL_TRANSITION_MS)
-  }, [isModelPickerOpen])
+      modelPickerCloseTimerRef.current = null;
+      setShouldRenderModelPicker(false);
+    }, MODEL_PICKER_PANEL_TRANSITION_MS);
+  }, [isModelPickerOpen]);
 
   useEffect(() => {
-    if (!isModelPickerOpen) return
+    if (!isModelPickerOpen) return;
 
     const handleDocumentPointerDown = (event: PointerEvent) => {
       if (
@@ -970,79 +978,79 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           trigger: modelPickerTriggerRef.current,
         })
       ) {
-        setIsModelPickerOpen(false)
+        setIsModelPickerOpen(false);
       }
-    }
+    };
 
-    document.addEventListener("pointerdown", handleDocumentPointerDown, true)
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
     return () => {
-      document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
-    }
-  }, [isModelPickerOpen])
+      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+    };
+  }, [isModelPickerOpen]);
 
   useEffect(() => {
     return () => {
       if (modelPickerAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(modelPickerAnimationFrameRef.current)
+        window.cancelAnimationFrame(modelPickerAnimationFrameRef.current);
       }
       if (modelPickerCloseTimerRef.current !== null) {
-        window.clearTimeout(modelPickerCloseTimerRef.current)
+        window.clearTimeout(modelPickerCloseTimerRef.current);
       }
-    }
-  }, [])
+    };
+  }, []);
 
-  const surfaceRef = useRef<HTMLDivElement | null>(null)
-  const [surfaceHeightPx, setSurfaceHeightPx] = useState(0)
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const [surfaceHeightPx, setSurfaceHeightPx] = useState(0);
 
   useLayoutEffect(() => {
-    const el = surfaceRef.current
-    if (!el) return
+    const el = surfaceRef.current;
+    if (!el) return;
     const updateHeight = () => {
-      setSurfaceHeightPx(el.getBoundingClientRect().height)
-    }
-    updateHeight()
-    const ro = new ResizeObserver(updateHeight)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+      setSurfaceHeightPx(el.getBoundingClientRect().height);
+    };
+    updateHeight();
+    const ro = new ResizeObserver(updateHeight);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const maxModelPickerHeightPx = useMemo(() => {
-    if (surfaceHeightPx <= 0) return 360
-    const available = surfaceHeightPx - 80
-    return Math.max(240, Math.min(420, Math.floor(available)))
-  }, [surfaceHeightPx])
+    if (surfaceHeightPx <= 0) return 360;
+    const available = surfaceHeightPx - 80;
+    return Math.max(240, Math.min(420, Math.floor(available)));
+  }, [surfaceHeightPx]);
 
   useEffect(() => {
     if (!activePendingUserInput) {
-      return
+      return;
     }
 
-    const requestId = String(activePendingUserInput.requestId)
+    const requestId = String(activePendingUserInput.requestId);
     setPendingQuestionIndexByRequestId((current) => {
       if (requestId in current) {
-        return current
+        return current;
       }
       return {
         ...current,
         [requestId]: defaultPendingQuestionIndex,
-      }
-    })
-  }, [activePendingUserInput, defaultPendingQuestionIndex])
+      };
+    });
+  }, [activePendingUserInput, defaultPendingQuestionIndex]);
 
   useEffect(() => {
     const activeRequestIds = new Set(
       props.pendingUserInputs.map((request) => String(request.requestId)),
-    )
+    );
     setPendingQuestionIndexByRequestId((current) => {
       const nextEntries = Object.entries(current).filter(([requestId]) =>
         activeRequestIds.has(requestId),
-      )
+      );
       if (nextEntries.length === Object.keys(current).length) {
-        return current
+        return current;
       }
-      return Object.fromEntries(nextEntries)
-    })
-  }, [props.pendingUserInputs])
+      return Object.fromEntries(nextEntries);
+    });
+  }, [props.pendingUserInputs]);
 
   useEffect(() => {
     const activeKeys = new Set(
@@ -1051,126 +1059,128 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           questionCursorKey(props.thread?.id, String(request.requestId), question.id),
         ),
       ),
-    )
-    setQuestionCursors((current) => retainQuestionCursors(current, activeKeys))
-  }, [props.pendingUserInputs, props.thread?.id])
+    );
+    setQuestionCursors((current) => retainQuestionCursors(current, activeKeys));
+  }, [props.pendingUserInputs, props.thread?.id]);
 
   useEffect(() => {
     if (!composerPathTrigger || !props.workspaceId) {
-      setComposerPathMenuItems([])
-      setIsComposerMenuLoading(false)
-      return
+      setComposerPathMenuItems([]);
+      setIsComposerMenuLoading(false);
+      return;
     }
-    const workspaceId = props.workspaceId
+    const workspaceId = props.workspaceId;
 
-    const normalizedQuery = composerPathTrigger.query.trim()
-    const effectiveQuery = normalizedQuery.length > 0 ? normalizedQuery : "."
-    const cacheKey = `${workspaceId}::${effectiveQuery.toLowerCase()}`
-    const cached = composerQueryCacheRef.current.get(cacheKey)
+    const normalizedQuery = composerPathTrigger.query.trim();
+    const effectiveQuery = normalizedQuery.length > 0 ? normalizedQuery : ".";
+    const cacheKey = `${workspaceId}::${effectiveQuery.toLowerCase()}`;
+    const cached = composerQueryCacheRef.current.get(cacheKey);
     if (cached) {
-      setComposerPathMenuItems(cached)
-      setIsComposerMenuLoading(false)
+      setComposerPathMenuItems(cached);
+      setIsComposerMenuLoading(false);
     } else {
-      setIsComposerMenuLoading(true)
+      setIsComposerMenuLoading(true);
     }
 
-    let cancelled = false
+    let cancelled = false;
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         try {
-          const result = await window.electronAPI.project.listFiles({ workspaceId })
-          if (cancelled) return
+          const result = await window.electronAPI.project.listFiles({ workspaceId });
+          if (cancelled) return;
           const nextItems =
             result.success && result.files
               ? buildComposerPathMenuItems(result.files, effectiveQuery, 80)
-              : []
-          composerQueryCacheRef.current.set(cacheKey, nextItems)
-          setComposerPathMenuItems(nextItems)
-          setIsComposerMenuLoading(false)
+              : [];
+          composerQueryCacheRef.current.set(cacheKey, nextItems);
+          setComposerPathMenuItems(nextItems);
+          setIsComposerMenuLoading(false);
         } catch {
-          if (cancelled) return
-          setComposerPathMenuItems([])
-          setIsComposerMenuLoading(false)
+          if (cancelled) return;
+          setComposerPathMenuItems([]);
+          setIsComposerMenuLoading(false);
         }
-      })()
-    }, 120)
+      })();
+    }, 120);
 
     return () => {
-      cancelled = true
-      window.clearTimeout(timeoutId)
-    }
-  }, [composerPathTrigger, props.workspaceId])
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [composerPathTrigger, props.workspaceId]);
 
   useEffect(() => {
     if (!composerMenuOpen) {
-      setComposerHighlightedItemId(null)
-      return
+      setComposerHighlightedItemId(null);
+      return;
     }
     if (composerMenuItems.length === 0) {
-      setComposerHighlightedItemId(null)
-      return
+      setComposerHighlightedItemId(null);
+      return;
     }
     setComposerHighlightedItemId((current) =>
       current && composerMenuItems.some((item) => item.id === current)
         ? current
         : composerMenuItems[0]!.id,
-    )
-  }, [composerMenuItems, composerMenuOpen])
+    );
+  }, [composerMenuItems, composerMenuOpen]);
 
   const toggleWorkGroup = useCallback((groupId: string) => {
     setExpandedWorkGroups((current) => ({
       ...current,
       [groupId]: !current[groupId],
-    }))
-  }, [])
+    }));
+  }, []);
 
   const handleExpandImage = useCallback((preview: ExpandedImagePreview) => {
-    setExpandedImage(preview)
-  }, [])
+    setExpandedImage(preview);
+  }, []);
 
   const closeExpandedImage = () => {
-    setExpandedImage(null)
-  }
+    setExpandedImage(null);
+  };
 
   const navigateExpandedImage = (offset: number) => {
     setExpandedImage((current) => {
       if (!current || current.images.length <= 1) {
-        return current
+        return current;
       }
-      const nextIndex = (current.index + offset + current.images.length) % current.images.length
+      const nextIndex = (current.index + offset + current.images.length) % current.images.length;
       return {
         ...current,
         index: nextIndex,
-      }
-    })
-  }
+      };
+    });
+  };
 
   const handleComposerChange = (nextValue: string, nextCursor: number) => {
     if (activePendingProgress?.activeQuestion && activePendingUserInput) {
       if (activeQuestionCursorKey) {
-        setQuestionCursors((current) => setQuestionCursor(current, activeQuestionCursorKey, nextCursor))
+        setQuestionCursors((current) =>
+          setQuestionCursor(current, activeQuestionCursorKey, nextCursor),
+        );
       }
       props.onUserInputDraftChange(
         String(activePendingUserInput.requestId),
         activePendingProgress.activeQuestion.id,
         nextValue,
-      )
-      return
+      );
+      return;
     }
 
-    props.onComposerChange(nextValue, nextCursor)
-  }
+    props.onComposerChange(nextValue, nextCursor);
+  };
 
   const setActivePendingQuestionIndex = (requestId: string, nextIndex: number) => {
     setPendingQuestionIndexByRequestId((current) => ({
       ...current,
       [requestId]: nextIndex,
-    }))
-  }
+    }));
+  };
 
   const handleAdvancePendingQuestion = () => {
     if (!activePendingUserInput || !activePendingProgress) {
-      return
+      return;
     }
     setActivePendingQuestionIndex(
       String(activePendingUserInput.requestId),
@@ -1178,119 +1188,125 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         activePendingProgress.questionIndex + 1,
         activePendingUserInput.questions.length - 1,
       ),
-    )
-  }
+    );
+  };
 
   const handlePreviousPendingQuestion = () => {
     if (!activePendingUserInput || !activePendingProgress) {
-      return
+      return;
     }
     setActivePendingQuestionIndex(
       String(activePendingUserInput.requestId),
       Math.max(activePendingProgress.questionIndex - 1, 0),
-    )
-  }
+    );
+  };
 
   const handleSelectPendingUserInputOption = (questionId: string, optionLabel: string) => {
     if (!activePendingUserInput) {
-      return
+      return;
     }
-    const question = activePendingUserInput.questions.find((entry) => entry.id === questionId)
-    if (!question) return
-    const next = togglePendingUserInputOptionSelection(question, activePendingDraftAnswers[questionId], optionLabel)
-    const value = resolvePendingUserInputAnswer(question, next) ?? (question.multiSelect ? [] : "")
-    props.onUserInputDraftChange(String(activePendingUserInput.requestId), questionId, value)
-  }
+    const question = activePendingUserInput.questions.find((entry) => entry.id === questionId);
+    if (!question) return;
+    const next = togglePendingUserInputOptionSelection(
+      question,
+      activePendingDraftAnswers[questionId],
+      optionLabel,
+    );
+    const value = resolvePendingUserInputAnswer(question, next) ?? (question.multiSelect ? [] : "");
+    props.onUserInputDraftChange(String(activePendingUserInput.requestId), questionId, value);
+  };
 
   const handleSubmitPendingUserInput = () => {
     if (!activePendingUserInput) {
-      return
+      return;
     }
-    void props.onSubmitUserInput(String(activePendingUserInput.requestId))
-  }
+    void props.onSubmitUserInput(String(activePendingUserInput.requestId));
+  };
 
   const handleRevertUserMessage = useCommittedChatCallback((messageId: MessageId) => {
-    const turnCount = revertTurnCountByUserMessageId.get(messageId)
+    const turnCount = revertTurnCountByUserMessageId.get(messageId);
     if (typeof turnCount !== "number") {
-      return
+      return;
     }
-    void props.onRevertToTurnCount?.(turnCount)
-  })
-  const handleOpenTurnDiff = useCommittedChatCallback(props.onOpenTurnDiff)
-  const handleOpenArtifact = useCommittedChatCallback((artifactId: string) => props.onOpenArtifact?.(artifactId))
+    void props.onRevertToTurnCount?.(turnCount);
+  });
+  const handleOpenTurnDiff = useCommittedChatCallback(props.onOpenTurnDiff);
+  const handleOpenArtifact = useCommittedChatCallback((artifactId: string) =>
+    props.onOpenArtifact?.(artifactId),
+  );
 
   const expandedImageItem: ExpandedImageItem | null = expandedImage
     ? (expandedImage.images[expandedImage.index] ?? null)
-    : null
+    : null;
 
   const handleSurfaceDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return
-    event.preventDefault()
-    dragDepthRef.current += 1
-    setIsDragOverSurface(true)
-  }
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDragOverSurface(true);
+  };
 
   const handleSurfaceDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "copy"
-    setIsDragOverSurface(true)
-  }
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragOverSurface(true);
+  };
 
   const handleSurfaceDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return
-    event.preventDefault()
-    const nextTarget = event.relatedTarget
-    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
     // Leaving the container should fully clear drag state.
-    dragDepthRef.current = 0
-    setIsDragOverSurface(false)
-  }
+    dragDepthRef.current = 0;
+    setIsDragOverSurface(false);
+  };
 
   const handleSurfaceDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) return
-    event.preventDefault()
-    dragDepthRef.current = 0
-    setIsDragOverSurface(false)
-    const files = Array.from(event.dataTransfer.files)
-    if (files.length === 0) return
-    props.onAttachFiles(files)
-  }
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDragOverSurface(false);
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length === 0) return;
+    props.onAttachFiles(files);
+  };
 
   const applyComposerMentionItem = (item: { path: string }) => {
-    if (!composerPathTrigger) return
-    const replacement = `@${item.path} `
+    if (!composerPathTrigger) return;
+    const replacement = `@${item.path} `;
     const replacementRangeEnd =
       composerValue[composerPathTrigger.rangeEnd] === " "
         ? composerPathTrigger.rangeEnd + 1
-        : composerPathTrigger.rangeEnd
+        : composerPathTrigger.rangeEnd;
     const next = replaceTextRange(
       composerValue,
       composerPathTrigger.rangeStart,
       replacementRangeEnd,
       replacement,
-    )
-    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
-    props.onComposerChange(next.text, collapsedCursor)
-    setComposerHighlightedItemId(null)
-  }
+    );
+    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+    props.onComposerChange(next.text, collapsedCursor);
+    setComposerHighlightedItemId(null);
+  };
 
   const clearComposerTriggerRange = (rangeStart: number, rangeEnd: number) => {
-    const next = replaceTextRange(composerValue, rangeStart, rangeEnd, "")
-    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
-    props.onComposerChange(next.text, collapsedCursor)
-    setComposerHighlightedItemId(null)
-  }
+    const next = replaceTextRange(composerValue, rangeStart, rangeEnd, "");
+    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+    props.onComposerChange(next.text, collapsedCursor);
+    setComposerHighlightedItemId(null);
+  };
 
   const applyComposerSlashItem = (item: ComposerSlashMenuItem) => {
     if (item.type === "model") {
-      if (!composerModelTrigger) return
-      void props.onProviderModelChange(item.provider, item.model)
-      clearComposerTriggerRange(composerModelTrigger.rangeStart, composerModelTrigger.rangeEnd)
-      return
+      if (!composerModelTrigger) return;
+      void props.onProviderModelChange(item.provider, item.model);
+      clearComposerTriggerRange(composerModelTrigger.rangeStart, composerModelTrigger.rangeEnd);
+      return;
     }
 
-    if (!composerSlashTrigger) return
+    if (!composerSlashTrigger) return;
 
     if (item.type === "slash-command") {
       if (item.command === "model") {
@@ -1299,17 +1315,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           composerSlashTrigger.rangeStart,
           composerSlashTrigger.rangeEnd,
           "/model ",
-        )
-        const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
-        props.onComposerChange(next.text, collapsedCursor)
-        setComposerHighlightedItemId(null)
-        return
+        );
+        const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+        props.onComposerChange(next.text, collapsedCursor);
+        setComposerHighlightedItemId(null);
+        return;
       }
 
       if (item.command === "clear") {
-        props.onComposerChange("", 0)
-        setComposerHighlightedItemId(null)
-        return
+        props.onComposerChange("", 0);
+        setComposerHighlightedItemId(null);
+        return;
       }
 
       if (item.command === "help") {
@@ -1318,100 +1334,108 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           composerSlashTrigger.rangeStart,
           composerSlashTrigger.rangeEnd,
           "What commands and skills are available?",
-        )
-        const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
-        props.onComposerChange(next.text, collapsedCursor)
-        setComposerHighlightedItemId(null)
-        return
+        );
+        const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+        props.onComposerChange(next.text, collapsedCursor);
+        setComposerHighlightedItemId(null);
+        return;
       }
 
       if (item.command === "debug") {
-        updateComposerMode("debug")
-        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
-        return
+        updateComposerMode("debug");
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd);
+        return;
       }
       if (item.command === "ask") {
-        updateComposerMode("ask")
-        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
-        return
+        updateComposerMode("ask");
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd);
+        return;
       }
       if (item.command === "plan") {
-        updateComposerMode("plan")
-        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
-        return
+        updateComposerMode("plan");
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd);
+        return;
       }
       if (item.command === "default") {
-        updateComposerMode(null)
-        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
-        return
+        updateComposerMode(null);
+        clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd);
+        return;
       }
-      clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd)
-      return
+      clearComposerTriggerRange(composerSlashTrigger.rangeStart, composerSlashTrigger.rangeEnd);
+      return;
     }
 
-    if (item.command.name === "compact" && props.onCompact) { void props.onCompact(); setComposerHighlightedItemId(null); return }
+    if (item.command.name === "compact" && props.onCompact) {
+      void props.onCompact();
+      setComposerHighlightedItemId(null);
+      return;
+    }
 
-    const replacement = `/${item.command.name} `
+    const replacement = `/${item.command.name} `;
     const replacementRangeEnd =
       composerValue[composerSlashTrigger.rangeEnd] === " "
         ? composerSlashTrigger.rangeEnd + 1
-        : composerSlashTrigger.rangeEnd
+        : composerSlashTrigger.rangeEnd;
     const next = replaceTextRange(
       composerValue,
       composerSlashTrigger.rangeStart,
       replacementRangeEnd,
       replacement,
-    )
-    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor)
-    props.onComposerChange(next.text, collapsedCursor)
-    setComposerHighlightedItemId(null)
-  }
+    );
+    const collapsedCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+    props.onComposerChange(next.text, collapsedCursor);
+    setComposerHighlightedItemId(null);
+  };
 
   const applyComposerMenuItem = (item: ComposerMenuItem) => {
     if (item.type === "path") {
-      applyComposerMentionItem(item)
-      return
+      applyComposerMentionItem(item);
+      return;
     }
     if (item.type === "skill") {
-      if (!composerSkillTrigger) return
-      const replacement = `$${item.skill.name} `
+      if (!composerSkillTrigger) return;
+      const replacement = `$${item.skill.name} `;
       const replacementRangeEnd =
         composerValue[composerSkillTrigger.rangeEnd] === " "
           ? composerSkillTrigger.rangeEnd + 1
-          : composerSkillTrigger.rangeEnd
+          : composerSkillTrigger.rangeEnd;
       const next = replaceTextRange(
         composerValue,
         composerSkillTrigger.rangeStart,
         replacementRangeEnd,
         replacement,
-      )
-      props.onComposerChange(next.text, next.cursor)
-      setComposerHighlightedItemId(null)
-      return
+      );
+      props.onComposerChange(next.text, next.cursor);
+      setComposerHighlightedItemId(null);
+      return;
     }
-    applyComposerSlashItem(item)
-  }
+    applyComposerSlashItem(item);
+  };
 
   const handleSendWithMode = useCallback(async () => {
-    const trimmed = composerValue.trim()
+    const trimmed = composerValue.trim();
     if (activeMode === "debug") {
       const promptToSend =
-        trimmed && !trimmed.toLowerCase().startsWith("[debug") && !trimmed.toLowerCase().startsWith("/debug")
+        trimmed &&
+        !trimmed.toLowerCase().startsWith("[debug") &&
+        !trimmed.toLowerCase().startsWith("/debug")
           ? `[Debug Mode: Troubleshoot and diagnose this issue]\n${trimmed}`
-          : trimmed
-      await props.onSend(promptToSend)
-      return
+          : trimmed;
+      await props.onSend(promptToSend);
+      return;
     }
     if (activeMode === "ask") {
       const promptToSend =
-        trimmed && !trimmed.toLowerCase().startsWith("[ask") && !trimmed.toLowerCase().startsWith("/ask")
+        trimmed &&
+        !trimmed.toLowerCase().startsWith("[ask") &&
+        !trimmed.toLowerCase().startsWith("/ask")
           ? `[Ask Mode: Answer questions and explain without making file changes]\n${trimmed}`
-          : trimmed
-      await props.onSend(promptToSend)
-      return
+          : trimmed;
+      await props.onSend(promptToSend);
+      return;
     }
-    await props.onSend()
-  }, [activeMode, composerValue, props])
+    await props.onSend();
+  }, [activeMode, composerValue, props]);
 
   const handleComposerCommandKey = (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
@@ -1421,22 +1445,22 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       if (key === "ArrowDown" || key === "ArrowUp") {
         const currentIndex = composerMenuItems.findIndex(
           (item) => item.id === composerHighlightedItemId,
-        )
-        const fallbackIndex = key === "ArrowDown" ? -1 : 0
-        const normalizedIndex = currentIndex >= 0 ? currentIndex : fallbackIndex
-        const offset = key === "ArrowDown" ? 1 : -1
+        );
+        const fallbackIndex = key === "ArrowDown" ? -1 : 0;
+        const normalizedIndex = currentIndex >= 0 ? currentIndex : fallbackIndex;
+        const offset = key === "ArrowDown" ? 1 : -1;
         const nextIndex =
-          (normalizedIndex + offset + composerMenuItems.length) % composerMenuItems.length
-        setComposerHighlightedItemId(composerMenuItems[nextIndex]?.id ?? null)
-        return true
+          (normalizedIndex + offset + composerMenuItems.length) % composerMenuItems.length;
+        setComposerHighlightedItemId(composerMenuItems[nextIndex]?.id ?? null);
+        return true;
       }
       if (key === "Enter" || key === "Tab") {
         const selected =
           composerMenuItems.find((item) => item.id === composerHighlightedItemId) ??
-          composerMenuItems[0]
+          composerMenuItems[0];
         if (selected) {
-          applyComposerMenuItem(selected)
-          return true
+          applyComposerMenuItem(selected);
+          return true;
         }
       }
     }
@@ -1444,110 +1468,104 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       if (activePendingProgress) {
         // Match the visible Next/Submit controls; Enter must not skip an
         // unanswered question or resubmit a request awaiting acknowledgement.
-        event.preventDefault()
-        event.stopPropagation()
-        if (activePendingIsResponding) return true
+        event.preventDefault();
+        event.stopPropagation();
+        if (activePendingIsResponding) return true;
         if (activePendingProgress.isLastQuestion) {
-          if (activePendingResolvedAnswers) handleSubmitPendingUserInput()
+          if (activePendingResolvedAnswers) handleSubmitPendingUserInput();
         } else if (activePendingProgress.canAdvance) {
-          handleAdvancePendingQuestion()
+          handleAdvancePendingQuestion();
         }
-        return true
+        return true;
       }
-      event.preventDefault()
-      event.stopPropagation()
-      void handleSendWithMode()
-      return true
+      event.preventDefault();
+      event.stopPropagation();
+      void handleSendWithMode();
+      return true;
     }
-    return props.onComposerCommandKey(key, event)
-  }
+    return props.onComposerCommandKey(key, event);
+  };
 
   useEffect(() => {
     const clearDragState = () => {
-      dragDepthRef.current = 0
-      setIsDragOverSurface(false)
-    }
-    window.addEventListener("drop", clearDragState)
-    window.addEventListener("dragend", clearDragState)
+      dragDepthRef.current = 0;
+      setIsDragOverSurface(false);
+    };
+    window.addEventListener("drop", clearDragState);
+    window.addEventListener("dragend", clearDragState);
     return () => {
-      window.removeEventListener("drop", clearDragState)
-      window.removeEventListener("dragend", clearDragState)
-    }
-  }, [])
+      window.removeEventListener("drop", clearDragState);
+      window.removeEventListener("dragend", clearDragState);
+    };
+  }, []);
 
   const handleComposerFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.currentTarget.files ? Array.from(event.currentTarget.files) : []
+    const files = event.currentTarget.files ? Array.from(event.currentTarget.files) : [];
     if (files.length > 0) {
-      props.onAttachFiles(files)
+      props.onAttachFiles(files);
     }
     // Allow selecting the same file repeatedly.
-    event.currentTarget.value = ""
-  }
+    event.currentTarget.value = "";
+  };
 
   const hasActiveComposerHeader = Boolean(
-    hasComposerHeader ||
-    (showPlanFollowUpPrompt && activeProposedPlan),
-  )
+    hasComposerHeader || (showPlanFollowUpPrompt && activeProposedPlan),
+  );
 
   const hasAttachments = Boolean(
     props.previewAnnotations.length > 0 || regularComposerImages.length > 0,
-  )
+  );
 
   const hasStructuralComposerContent = Boolean(
-    hasAttachments ||
-    hasActiveComposerHeader ||
-    props.composerStatus,
-  )
-  const hasExplicitLineBreak = composerValue.includes("\n")
+    hasAttachments || hasActiveComposerHeader || props.composerStatus,
+  );
+  const hasExplicitLineBreak = composerValue.includes("\n");
   const isStackedComposer = Boolean(
-    hasStructuralComposerContent ||
-    hasExplicitLineBreak ||
-    composerExpansionState.isMultiLine,
-  )
+    hasStructuralComposerContent || hasExplicitLineBreak || composerExpansionState.isMultiLine,
+  );
   const handleMeasuredComposerLinesChange = useCallback(
     (measuredLines: number, promptLength: number) => {
       setComposerExpansionState((current) =>
         nextComposerExpansionState(current, measuredLines, promptLength),
-      )
+      );
     },
     [],
-  )
+  );
 
   const resolvedPlaceholder = useMemo(() => {
     if (isComposerApprovalState) {
       return (
-        activePendingApproval?.detail ??
-        (t as any)("assistant.chat.placeholder.resolveApproval")
-      )
+        activePendingApproval?.detail ?? (t as any)("assistant.chat.placeholder.resolveApproval")
+      );
     }
     if (activePendingProgress) {
-      return (t as any)("assistant.chat.placeholder.customAnswer")
+      return (t as any)("assistant.chat.placeholder.customAnswer");
     }
     if (showPlanFollowUpPrompt) {
-      return (t as any)("assistant.chat.placeholder.planFeedback")
+      return (t as any)("assistant.chat.placeholder.planFeedback");
     }
     if (props.isInterrupting) {
       return props.isForceStopAvailable
         ? (t as any)("assistant.chat.placeholder.forceStop")
-        : (t as any)("assistant.chat.placeholder.stopping")
+        : (t as any)("assistant.chat.placeholder.stopping");
     }
     if (props.runtimeErrorMessage) {
-      return (t as any)("assistant.chat.placeholder.runtimeUnavailable")
+      return (t as any)("assistant.chat.placeholder.runtimeUnavailable");
     }
-    if (phase === "error") return (t as any)("assistant.chat.placeholder.error")
-    if (phase === "interrupted") return (t as any)("assistant.chat.placeholder.interrupted")
-    if (phase === "stopped") return (t as any)("assistant.chat.placeholder.stopped")
-    if (phase === "disconnected") return (t as any)("assistant.chat.placeholder.disconnected")
+    if (phase === "error") return (t as any)("assistant.chat.placeholder.error");
+    if (phase === "interrupted") return (t as any)("assistant.chat.placeholder.interrupted");
+    if (phase === "stopped") return (t as any)("assistant.chat.placeholder.stopped");
+    if (phase === "disconnected") return (t as any)("assistant.chat.placeholder.disconnected");
     if (activeMode === "debug") {
-      return "Debug and troubleshoot issues..."
+      return "Debug and troubleshoot issues...";
     }
     if (activeMode === "plan") {
-      return "Create an implementation plan..."
+      return "Create an implementation plan...";
     }
     if (activeMode === "ask") {
-      return "Ask anything about this project..."
+      return "Ask anything about this project...";
     }
-    return (t as any)("assistant.chat.placeholder.default")
+    return (t as any)("assistant.chat.placeholder.default");
   }, [
     isComposerApprovalState,
     activePendingApproval?.detail,
@@ -1559,7 +1577,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     phase,
     activeMode,
     t,
-  ])
+  ]);
 
   const renderModeChip = () => {
     if (activeMode === "debug") {
@@ -1570,9 +1588,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <button
             type="button"
             onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              updateComposerMode(null)
+              e.preventDefault();
+              e.stopPropagation();
+              updateComposerMode(null);
             }}
             className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-rose-600/70 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-400/80 dark:hover:bg-rose-500/25 dark:hover:text-rose-200 transition-colors cursor-pointer"
             aria-label="Remove debug mode"
@@ -1581,19 +1599,22 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
           </button>
         </div>
-      )
+      );
     }
     if (activeMode === "plan") {
       return (
         <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
-          <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
+          <HugeiconsIcon
+            icon={__ListTodoIconHugeIcon}
+            className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
+          />
           <span>Plan</span>
           <button
             type="button"
             onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              updateComposerMode(null)
+              e.preventDefault();
+              e.stopPropagation();
+              updateComposerMode(null);
             }}
             className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-amber-700/70 hover:bg-amber-500/25 hover:text-amber-800 dark:text-amber-400/80 dark:hover:bg-amber-500/25 dark:hover:text-amber-200 transition-colors cursor-pointer"
             aria-label="Remove plan mode"
@@ -1602,19 +1623,22 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
           </button>
         </div>
-      )
+      );
     }
     if (activeMode === "ask") {
       return (
         <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
-          <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-3.5 shrink-0 text-sky-700 dark:text-sky-400" />
+          <HugeiconsIcon
+            icon={__ChatIconHugeIcon}
+            className="size-3.5 shrink-0 text-sky-700 dark:text-sky-400"
+          />
           <span>Ask</span>
           <button
             type="button"
             onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              updateComposerMode(null)
+              e.preventDefault();
+              e.stopPropagation();
+              updateComposerMode(null);
             }}
             className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-sky-700/70 hover:bg-sky-500/25 hover:text-sky-800 dark:text-sky-400/80 dark:hover:bg-sky-500/25 dark:hover:text-sky-200 transition-colors cursor-pointer"
             aria-label="Remove ask mode"
@@ -1623,10 +1647,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
           </button>
         </div>
-      )
+      );
     }
-    return null
-  }
+    return null;
+  };
 
   const renderPlusDropdown = () => (
     <DropdownMenu>
@@ -1651,7 +1675,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           onClick={() => composerFileInputRef.current?.click()}
           title={`Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`}
         >
-          <HugeiconsIcon icon={__ImageAdd01IconHugeIcon} className="size-4 mr-2 text-muted-foreground" />
+          <HugeiconsIcon
+            icon={__ImageAdd01IconHugeIcon}
+            className="size-4 mr-2 text-muted-foreground"
+          />
           Attach Images
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -1663,14 +1690,17 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           <span className="flex-1">Debug Mode</span>
           {activeMode === "debug" && <span className="text-xs text-rose-400">✓</span>}
         </DropdownMenuItem>
-        {props.selectedProvider !== "antigravity" && props.providerSnapshot?.showInteractionModeToggle !== false ? <DropdownMenuItem
-          onClick={() => updateComposerMode(activeMode === "plan" ? null : "plan")}
-          className={cn(activeMode === "plan" && "bg-amber-500/10 text-amber-400")}
-        >
-          <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 mr-2 text-amber-400" />
-          <span className="flex-1">Plan Mode</span>
-          {activeMode === "plan" && <span className="text-xs text-amber-400">✓</span>}
-        </DropdownMenuItem> : null}
+        {props.selectedProvider !== "antigravity" &&
+        props.providerSnapshot?.showInteractionModeToggle !== false ? (
+          <DropdownMenuItem
+            onClick={() => updateComposerMode(activeMode === "plan" ? null : "plan")}
+            className={cn(activeMode === "plan" && "bg-amber-500/10 text-amber-400")}
+          >
+            <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 mr-2 text-amber-400" />
+            <span className="flex-1">Plan Mode</span>
+            {activeMode === "plan" && <span className="text-xs text-amber-400">✓</span>}
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           onClick={() => updateComposerMode(activeMode === "ask" ? null : "ask")}
           className={cn(activeMode === "ask" && "bg-sky-500/10 text-sky-400")}
@@ -1680,35 +1710,55 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           {activeMode === "ask" && <span className="text-xs text-sky-400">✓</span>}
         </DropdownMenuItem>
         {activeMode !== null && (
-          <DropdownMenuItem
-            onClick={() => updateComposerMode(null)}
-          >
+          <DropdownMenuItem onClick={() => updateComposerMode(null)}>
             <HugeiconsIcon icon={__XIconHugeIcon} className="size-4 mr-2 text-muted-foreground" />
             Clear Mode
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        {props.onCompact && props.providerSnapshot?.slashCommands?.some((command) => command.name === "compact") ? (
-          <DropdownMenuItem disabled={Boolean(props.compactUnavailableReason)} title={props.compactUnavailableReason ?? "Summarize provider context; keep chat history and your draft"} onClick={() => void props.onCompact?.()}>
+        {props.onCompact &&
+        props.providerSnapshot?.slashCommands?.some((command) => command.name === "compact") ? (
+          <DropdownMenuItem
+            disabled={Boolean(props.compactUnavailableReason)}
+            title={
+              props.compactUnavailableReason ??
+              "Summarize provider context; keep chat history and your draft"
+            }
+            onClick={() => void props.onCompact?.()}
+          >
             Compact context
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onClick={() => void props.onToggleRuntimeMode()}>
           <HugeiconsIcon
-            icon={props.selectedRuntimeMode === "full-access" ? __CircleAlertIconHugeIcon : __LockIconHugeIcon}
+            icon={
+              props.selectedRuntimeMode === "full-access"
+                ? __CircleAlertIconHugeIcon
+                : __LockIconHugeIcon
+            }
             className="size-4 mr-2"
           />
-          <span>Runtime: {props.selectedRuntimeMode === "full-access" ? "Full access" : "Approval required"}</span>
+          <span>
+            Runtime:{" "}
+            {props.selectedRuntimeMode === "full-access" ? "Full access" : "Approval required"}
+          </span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 
-  const latestUserMessage = props.thread?.messages.findLast((message) => message.role === "user")
-  const latestCompaction = props.thread?.activities.findLast((activity) => activity.kind === "context-compaction")
-  const compactionStatus = latestUserMessage?.text.trim().toLowerCase() === "/compact"
-    ? props.isRunning ? "Compacting context…" : latestCompaction && latestCompaction.createdAt >= latestUserMessage.createdAt ? latestCompaction.summary : null
-    : null
+  const latestUserMessage = props.thread?.messages.findLast((message) => message.role === "user");
+  const latestCompaction = props.thread?.activities.findLast(
+    (activity) => activity.kind === "context-compaction",
+  );
+  const compactionStatus =
+    latestUserMessage?.text.trim().toLowerCase() === "/compact"
+      ? props.isRunning
+        ? "Compacting context…"
+        : latestCompaction && latestCompaction.createdAt >= latestUserMessage.createdAt
+          ? latestCompaction.summary
+          : null
+      : null;
 
   const renderSendOrStopButton = () => {
     if (activePendingProgress) {
@@ -1732,10 +1782,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             className="h-7 rounded-full px-3 text-xs"
             onClick={() => {
               if (activePendingProgress.isLastQuestion) {
-                handleSubmitPendingUserInput()
-                return
+                handleSubmitPendingUserInput();
+                return;
               }
-              handleAdvancePendingQuestion()
+              handleAdvancePendingQuestion();
             }}
             disabled={
               activePendingIsResponding ||
@@ -1751,11 +1801,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 : "Next"}
           </Button>
         </div>
-      )
+      );
     }
 
-    const hasContextRing = Boolean(props.activeContextWindow)
-    const buttonSizeClass = hasContextRing ? "size-6.5" : "size-8"
+    const hasContextRing = Boolean(props.activeContextWindow);
+    const buttonSizeClass = hasContextRing ? "size-6.5" : "size-8";
 
     const isSendDisabled =
       !isChatReady ||
@@ -1763,7 +1813,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         props.composerImages.length === 0 &&
         props.previewAnnotations.length === 0) ||
       props.isSending ||
-      props.isBinding
+      props.isBinding;
 
     const buttonElement = props.isRunning ? (
       <button
@@ -1773,7 +1823,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           buttonSizeClass,
         )}
         onClick={() => {
-          void props.onInterrupt()
+          void props.onInterrupt();
         }}
         aria-label={stopButtonLabel}
         title={stopButtonLabel}
@@ -1808,7 +1858,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       >
         {renderSendIcon(props.isSending)}
       </button>
-    )
+    );
 
     if (hasContextRing && props.activeContextWindow) {
       // Always on hover, including while the agent is running: the ring is
@@ -1821,25 +1871,25 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         >
           {buttonElement}
         </ContextWindowMeter>
-      )
+      );
     }
 
-    return buttonElement
-  }
+    return buttonElement;
+  };
 
-  const composerModeChip = renderModeChip()
+  const composerModeChip = renderModeChip();
 
   const composerForm = (
     <form
       onSubmit={(event) => {
-        event.preventDefault()
-        void handleSendWithMode()
+        event.preventDefault();
+        void handleSendWithMode();
       }}
       className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col"
     >
       {/* Autocomplete Menu (floating above) */}
       {composerMenuOpen ? (
-        <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 w-[min(34rem,100%)] max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl p-1.5 transition-all duration-150 dark:border-white/[0.08]">
+        <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 w-[min(34rem,100%)] max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl p-1.5 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 dark:border-white/[0.08] motion-reduce:animate-none">
           <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
             {composerPathTrigger
               ? "Files & Folders"
@@ -1874,10 +1924,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                       : "text-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                   onMouseEnter={() => {
-                    setComposerHighlightedItemId(item.id)
+                    setComposerHighlightedItemId(item.id);
                   }}
                   onClick={() => {
-                    applyComposerMenuItem(item)
+                    applyComposerMenuItem(item);
                   }}
                 >
                   {item.type === "path" ? (
@@ -1925,10 +1975,15 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       ) : null}
 
       {/* Floating Model Picker */}
-      {isModelPickerVisible && shouldRenderModelPicker ? (
+      {shouldRenderModelPicker ? (
         <div
           ref={modelPickerPanelRef}
-          className="absolute bottom-[calc(100%+8px)] right-0 z-50 w-64 max-w-[95vw] overflow-hidden rounded-[18px] border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl transition-all duration-200 dark:border-white/[0.08]"
+          className={cn(
+            "absolute bottom-[calc(100%+8px)] right-0 z-50 w-64 max-w-[95vw] overflow-hidden rounded-[18px] border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl transition-[opacity,transform] duration-150 ease-out dark:border-white/[0.08] motion-reduce:transition-none",
+            isModelPickerVisible
+              ? "translate-y-0 scale-100 opacity-100"
+              : "pointer-events-none translate-y-1 scale-[0.985] opacity-0",
+          )}
           style={{ maxHeight: `${maxModelPickerHeightPx}px` }}
         >
           <div className="w-full" style={{ maxHeight: `${maxModelPickerHeightPx}px` }}>
@@ -1946,8 +2001,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               initialView={modelPickerView}
               onRequestClose={() => setIsModelPickerOpen(false)}
               onProviderModelChange={(provider, model, instanceId) => {
-                void props.onProviderModelChange(provider, model, instanceId)
-                setIsModelPickerOpen(false)
+                void props.onProviderModelChange(provider, model, instanceId);
+                setIsModelPickerOpen(false);
               }}
             />
           </div>
@@ -1982,9 +2037,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       ) : null}
 
       {/* One surface and one editor subtree at every size. CSS order and
-        * flex-basis move the same controls beneath the prompt once it wraps;
-        * the Lexical editor never remounts, so focus and selection survive
-        * both expansion and collapse. */}
+       * flex-basis move the same controls beneath the prompt once it wraps;
+       * the Lexical editor never remounts, so focus and selection survive
+       * both expansion and collapse. */}
       <div
         data-chat-composer-layout={isStackedComposer ? "stacked" : "inline"}
         className={cn(
@@ -1994,11 +2049,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             : "items-center gap-1.5 rounded-full p-1.5",
         )}
       >
-        {props.composerStatus ? <div className="basis-full mb-2">{props.composerStatus}</div> : null}
-        {props.thread ? asyncUserInputs.map((request) => (
-          <AsyncQuestionPanel key={String(request.requestId)} threadId={props.thread!.id} request={request}
-            responding={props.activeRequestKey === String(request.requestId)} onSubmit={props.onSubmitUserInput} />
-        )) : null}
+        {props.composerStatus ? (
+          <div className="basis-full mb-2">{props.composerStatus}</div>
+        ) : null}
+        {props.thread
+          ? asyncUserInputs.map((request) => (
+              <AsyncQuestionPanel
+                key={String(request.requestId)}
+                threadId={props.thread!.id}
+                request={request}
+                responding={props.activeRequestKey === String(request.requestId)}
+                onSubmit={props.onSubmitUserInput}
+              />
+            ))
+          : null}
         {activePendingApproval ? (
           <div className="basis-full border-b border-white/[0.08] bg-background/20 rounded-xl mb-2 overflow-hidden">
             <ComposerPendingApprovalPanel
@@ -2007,11 +2071,21 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             />
             <div className="p-2 flex items-center justify-end gap-2">
               <ComposerPendingApprovalActions
-                options={activePendingApproval.options?.length ? activePendingApproval.options : activePendingApproval.options !== undefined || activePendingApproval.requestKind === "other" ? [{ decision: "decline", label: "Decline" }, { decision: "cancel", label: "Cancel turn" }] : undefined}
+                options={
+                  activePendingApproval.options?.length
+                    ? activePendingApproval.options
+                    : activePendingApproval.options !== undefined ||
+                        activePendingApproval.requestKind === "other"
+                      ? [
+                          { decision: "decline", label: "Decline" },
+                          { decision: "cancel", label: "Cancel turn" },
+                        ]
+                      : undefined
+                }
                 requestId={ApprovalRequestId.makeUnsafe(String(activePendingApproval.requestId))}
                 isResponding={props.activeRequestKey === String(activePendingApproval.requestId)}
                 onRespondToApproval={async (requestId, decision) => {
-                  await props.onApprovalDecision(String(requestId), decision)
+                  await props.onApprovalDecision(String(requestId), decision);
                 }}
               />
             </div>
@@ -2050,8 +2124,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               images={props.composerImages}
               onRemove={props.onRemovePreviewAnnotation}
               onExpandImage={(imageId) => {
-                const preview = buildExpandedImagePreview(props.composerImages, imageId)
-                if (preview) handleExpandImage(preview)
+                const preview = buildExpandedImagePreview(props.composerImages, imageId);
+                if (preview) handleExpandImage(preview);
               }}
             />
           </div>
@@ -2070,9 +2144,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                     className="h-full w-full cursor-zoom-in"
                     aria-label={`Preview ${image.name}`}
                     onClick={() => {
-                      const preview = buildExpandedImagePreview(regularComposerImages, image.id)
-                      if (!preview) return
-                      handleExpandImage(preview)
+                      const preview = buildExpandedImagePreview(regularComposerImages, image.id);
+                      if (!preview) return;
+                      handleExpandImage(preview);
                     }}
                   >
                     <img
@@ -2086,7 +2160,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                     size="icon"
                     className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90"
                     onClick={() => {
-                      props.onRemoveComposerImage(image.id)
+                      props.onRemoveComposerImage(image.id);
                     }}
                     aria-label={`Remove ${image.name}`}
                   >
@@ -2125,9 +2199,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           data-chat-composer-prompt="true"
           className={cn(
             "min-w-0",
-            isStackedComposer
-              ? "order-2 basis-full px-1 py-0.5"
-              : "order-3 flex-1 px-1",
+            isStackedComposer ? "order-2 basis-full px-1 py-0.5" : "order-3 flex-1 px-1",
             composerDisabled && "opacity-70",
           )}
         >
@@ -2178,7 +2250,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : null}
       </div>
     </form>
-  )
+  );
 
   return (
     <div
@@ -2189,7 +2261,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       onDragLeave={handleSurfaceDragLeave}
       onDrop={handleSurfaceDrop}
     >
-      {compactionStatus ? <div role="status" className="shrink-0 px-4 py-2 text-xs text-muted-foreground">{compactionStatus}</div> : null}
+      {compactionStatus ? (
+        <div role="status" className="shrink-0 px-4 py-2 text-xs text-muted-foreground">
+          {compactionStatus}
+        </div>
+      ) : null}
       {isDragOverSurface && (
         <div className="absolute top-[1px] bottom-[1px] left-[1px] right-[1px] z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-sm text-center rounded-[inherit]">
           <HugeiconsIcon
@@ -2213,8 +2289,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         onPointerMove={dockComposerOnHover ? composerDockHoverState.onPointerMove : undefined}
       >
         {hasProviderBanner && timelineEntries.length > 0 ? (
-          <div role="status" className="shrink-0 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
-            This provider is unavailable. Saved history is still readable; reconnect or update the provider to continue.
+          <div
+            role="status"
+            className="shrink-0 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground"
+          >
+            This provider is unavailable. Saved history is still readable; reconnect or update the
+            provider to continue.
           </div>
         ) : null}
         <ChatConnectionNotice status={props.connectionStatus} />
@@ -2230,43 +2310,66 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
-            <ChatArtifactTemplateProvider onUse={canUseArtifactTemplate ? handleUseArtifactTemplate : undefined}>
-            <ChatMediaProvider threadId={props.thread?.id ?? ""} baseUrl={props.mediaBaseUrl ?? null}>
-            <MessagesTimeline
-              waitingFor={props.pendingApprovals.length > 0 ? "approval" : blockingUserInputs.length > 0 ? "question" : null}
-              activities={props.thread?.activities}
-              isChatVisible={props.isChatVisible}
-              revealImmediately={props.isInterrupting || phase === "error" || phase === "interrupted" || phase === "stopped" || phase === "disconnected"}
-              key={props.thread?.id ?? "cozea-chat-surface-empty"}
-              hasMessages={timelineEntries.length > 0}
-              isWorking={isWorking}
-              selectedProvider={props.selectedProvider}
-              activeTurnInProgress={isWorking || !latestTurnSettled}
-              activeTurnId={activeTurn?.turnId ?? null}
-              latestTurn={activeTurn}
-              runningTurnId={props.thread?.session?.status === "running" ? props.thread.session.activeTurnId : null}
-              activeWorkStartedAt={activeWorkStartedAt}
-              isWorkActive={isWorkActive}
-              generationStatusPhase={generationStatusPhase}
-              scrollContainerRef={props.timelineRef}
-              timelineEntries={timelineEntries}
-              turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
-              expandedWorkGroups={expandedWorkGroups}
-              onToggleWorkGroup={toggleWorkGroup}
-              onOpenTurnDiff={handleOpenTurnDiff}
-              revertTurnCountByUserMessageId={props.onRevertToTurnCount ? revertTurnCountByUserMessageId : NO_REVERT_TURNS}
-              onRevertUserMessage={handleRevertUserMessage}
-              isRevertingCheckpoint={Boolean(props.isRevertingCheckpoint)}
-              onImageExpand={handleExpandImage}
-              markdownCwd={markdownCwd}
-              dockedComposerScrollInsetPx={dockedComposerScrollInsetPx}
-              resolvedTheme={resolvedTheme}
-              workspaceId={workspaceIdForFileActions}
-              workspaceRoot={props.workspaceRoot ?? undefined}
-              artifactUrlsById={props.artifactUrlsById}
-              onOpenArtifact={props.onOpenArtifact ? handleOpenArtifact : undefined}
-            />
-            </ChatMediaProvider>
+            <ChatArtifactTemplateProvider
+              onUse={canUseArtifactTemplate ? handleUseArtifactTemplate : undefined}
+            >
+              <ChatMediaProvider
+                threadId={props.thread?.id ?? ""}
+                baseUrl={props.mediaBaseUrl ?? null}
+              >
+                <MessagesTimeline
+                  waitingFor={
+                    props.pendingApprovals.length > 0
+                      ? "approval"
+                      : blockingUserInputs.length > 0
+                        ? "question"
+                        : null
+                  }
+                  activities={props.thread?.activities}
+                  isChatVisible={props.isChatVisible}
+                  revealImmediately={
+                    props.isInterrupting ||
+                    phase === "error" ||
+                    phase === "interrupted" ||
+                    phase === "stopped" ||
+                    phase === "disconnected"
+                  }
+                  key={props.thread?.id ?? "cozea-chat-surface-empty"}
+                  hasMessages={timelineEntries.length > 0}
+                  isWorking={isWorking}
+                  selectedProvider={props.selectedProvider}
+                  activeTurnInProgress={isWorking || !latestTurnSettled}
+                  activeTurnId={activeTurn?.turnId ?? null}
+                  latestTurn={activeTurn}
+                  runningTurnId={
+                    props.thread?.session?.status === "running"
+                      ? props.thread.session.activeTurnId
+                      : null
+                  }
+                  activeWorkStartedAt={activeWorkStartedAt}
+                  isWorkActive={isWorkActive}
+                  generationStatusPhase={generationStatusPhase}
+                  scrollContainerRef={props.timelineRef}
+                  timelineEntries={timelineEntries}
+                  turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
+                  expandedWorkGroups={expandedWorkGroups}
+                  onToggleWorkGroup={toggleWorkGroup}
+                  onOpenTurnDiff={handleOpenTurnDiff}
+                  revertTurnCountByUserMessageId={
+                    props.onRevertToTurnCount ? revertTurnCountByUserMessageId : NO_REVERT_TURNS
+                  }
+                  onRevertUserMessage={handleRevertUserMessage}
+                  isRevertingCheckpoint={Boolean(props.isRevertingCheckpoint)}
+                  onImageExpand={handleExpandImage}
+                  markdownCwd={markdownCwd}
+                  dockedComposerScrollInsetPx={dockedComposerScrollInsetPx}
+                  resolvedTheme={resolvedTheme}
+                  workspaceId={workspaceIdForFileActions}
+                  workspaceRoot={props.workspaceRoot ?? undefined}
+                  artifactUrlsById={props.artifactUrlsById}
+                  onOpenArtifact={props.onOpenArtifact ? handleOpenArtifact : undefined}
+                />
+              </ChatMediaProvider>
             </ChatArtifactTemplateProvider>
           </div>
         )}
@@ -2285,13 +2388,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               <div
                 data-chat-composer-dock-content="true"
                 className={cn(
-                  "relative z-[1] flex w-full min-h-0 flex-col transition-all duration-200 ease-out",
+                  "relative z-[1] flex w-full min-h-0 flex-col transition-[max-height,transform,opacity] duration-200 ease-out motion-reduce:transition-none",
                   showComposerDockChrome
                     ? "max-h-full translate-y-0 opacity-100 pointer-events-auto"
                     : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
                 )}
                 onFocusCapture={() => {
-                  setComposerDockFocused(true)
+                  setComposerDockFocused(true);
                 }}
                 onBlurCapture={handleComposerDockBlurCapture}
               >
@@ -2318,67 +2421,67 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             aria-modal="true"
             aria-label="Expanded image preview"
           >
-          <button
-            type="button"
-            className="absolute inset-0 z-0 cursor-zoom-out"
-            aria-label="Close image preview"
-            onClick={closeExpandedImage}
-          />
-          {expandedImage.images.length > 1 ? (
-            <Button
+            <button
               type="button"
-              size="icon"
-              variant="ghost"
-              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
-              aria-label="Previous image"
-              onClick={() => {
-                navigateExpandedImage(-1)
-              }}
-            >
-              <HugeiconsIcon icon={__ChevronLeftIconHugeIcon} className="size-5" />
-            </Button>
-          ) : null}
-          <div className="relative isolate z-10 max-h-[92vh] max-w-[92vw]">
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="absolute right-2 top-2"
-              onClick={closeExpandedImage}
+              className="absolute inset-0 z-0 cursor-zoom-out"
               aria-label="Close image preview"
-            >
-              <HugeiconsIcon icon={__XIconHugeIcon} className="size-4" />
-            </Button>
-            <img
-              src={expandedImageItem.src}
-              alt={expandedImageItem.name}
-              className="max-h-[86vh] max-w-[92vw] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
-              draggable={false}
+              onClick={closeExpandedImage}
             />
-            <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-muted-foreground/80">
-              {expandedImageItem.name}
-              {expandedImage.images.length > 1
-                ? ` (${expandedImage.index + 1}/${expandedImage.images.length})`
-                : ""}
-            </p>
-          </div>
-          {expandedImage.images.length > 1 ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
-              aria-label="Next image"
-              onClick={() => {
-                navigateExpandedImage(1)
-              }}
-            >
-              <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="size-5" />
-            </Button>
-          ) : null}
+            {expandedImage.images.length > 1 ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
+                aria-label="Previous image"
+                onClick={() => {
+                  navigateExpandedImage(-1);
+                }}
+              >
+                <HugeiconsIcon icon={__ChevronLeftIconHugeIcon} className="size-5" />
+              </Button>
+            ) : null}
+            <div className="relative isolate z-10 max-h-[92vh] max-w-[92vw]">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="absolute right-2 top-2"
+                onClick={closeExpandedImage}
+                aria-label="Close image preview"
+              >
+                <HugeiconsIcon icon={__XIconHugeIcon} className="size-4" />
+              </Button>
+              <img
+                src={expandedImageItem.src}
+                alt={expandedImageItem.name}
+                className="max-h-[86vh] max-w-[92vw] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
+                draggable={false}
+              />
+              <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-muted-foreground/80">
+                {expandedImageItem.name}
+                {expandedImage.images.length > 1
+                  ? ` (${expandedImage.index + 1}/${expandedImage.images.length})`
+                  : ""}
+              </p>
+            </div>
+            {expandedImage.images.length > 1 ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
+                aria-label="Next image"
+                onClick={() => {
+                  navigateExpandedImage(1);
+                }}
+              >
+                <HugeiconsIcon icon={__ChevronRightIconHugeIcon} className="size-5" />
+              </Button>
+            ) : null}
           </div>
         </AppOverlayPortal>
       ) : null}
     </div>
-  )
-})
+  );
+});

@@ -21,7 +21,7 @@ export const AssistantResponseActions = memo(function AssistantResponseActions({
   return (
     <div
       data-response-actions={message.id}
-      className="mt-1 flex items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60"
+      className="mt-1 flex items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 motion-reduce:animate-none"
     >
       <div className="flex items-center gap-1.5">
         <MessageCopyButton text={message.text} />

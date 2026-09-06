@@ -269,10 +269,14 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
         });
     }
   }
+  // Working, Thinking and Waiting are three presentations of one active-tail
+  // slot. Keep its row identity stable so the virtualizer updates that slot
+  // instead of removing one measured row and inserting another.
+  const lifecycleRowId = "active-turn-lifecycle-row";
   if (input.waitingFor) {
     result.push({
       kind: "input-waiting",
-      id: "input-waiting-row",
+      id: lifecycleRowId,
       requestKind: input.waitingFor,
       createdAt: input.activeWorkStartedAt ?? "",
     });
@@ -280,13 +284,13 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
     if (input.generationStatusPhase === "thinking") {
       result.push({
         kind: "thinking",
-        id: "thinking-indicator-row",
+        id: lifecycleRowId,
         createdAt: input.activeWorkStartedAt ?? "",
       });
     } else if (!phase.active) {
       result.push({
         kind: "turn-status",
-        id: `turn-status:${input.runningTurnId ?? input.activeTurnId ?? "pending"}`,
+        id: lifecycleRowId,
         createdAt: input.activeWorkStartedAt ?? "",
         startedAt: input.activeWorkStartedAt,
         summary: null,

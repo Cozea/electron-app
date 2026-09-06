@@ -1,14 +1,12 @@
-
-
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon,
   ArrowUpDownIcon as __ChevronsUpDownIconHugeIcon,
   FileValidationIcon as __FileDiffIconHugeIcon,
-} from '@hugeicons/core-free-icons'
+} from "@hugeicons/core-free-icons";
 
 import { type TurnId } from "@cozea/assistant-contracts";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type TurnDiffFileChange } from "@/features/assistant/model/types";
 import { buildTurnDiffTree, summarizeTurnDiffStats, type TurnDiffTreeNode } from "./turnDiffTree";
 import {
@@ -78,14 +76,19 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
             style={{ paddingLeft: `${leftPadding}px` }}
             onClick={() => toggleDirectory(node.path, depth === 0)}
           >
-            <HugeiconsIcon icon={__ChevronRightIconHugeIcon}
+            <HugeiconsIcon
+              icon={__ChevronRightIconHugeIcon}
               aria-hidden="true"
               className={cn(
                 "size-3.5 shrink-0 text-muted-foreground/70 transition-transform group-hover:text-foreground/80",
                 isExpanded && "rotate-90",
               )}
             />
-            <NativeProjectFolderIcon folderPath={node.path} className="size-3.5" imgClassName="size-3.5" />
+            <NativeProjectFolderIcon
+              folderPath={node.path}
+              className="size-3.5"
+              imgClassName="size-3.5"
+            />
             <span
               className="truncate font-mono text-[11px] text-muted-foreground/90 group-hover:text-foreground/90"
               title={getNodeTitle(Boolean(node.stat && hasNonZeroStat(node.stat)))}
@@ -137,7 +140,11 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     );
   };
 
-  return <div ref={containerRef} className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
+  return (
+    <div ref={containerRef} className="space-y-0.5">
+      {treeNodes.map((node) => renderTreeNode(node, 0))}
+    </div>
+  );
 });
 
 function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {
@@ -189,24 +196,56 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   const summaryStat = useMemo(() => summarizeTurnDiffStats(files), [files]);
   const scopeSummary = useMemo(() => summarizeChangedFileScopes(files), [files]);
   const previewFiles = useMemo(() => selectChangedFilePreview(files), [files]);
+  // `expanded` includes the automatic "latest small diff" presentation rule.
+  // Latch that initial positive decision into the parent map so virtualization
+  // cannot forget it when this card leaves and later re-enters the viewport.
+  const [displayExpanded, setDisplayExpanded] = useState(expanded);
+  const userChoseExpansionRef = useRef(false);
+  const automaticExpansionPersistedRef = useRef(false);
+  const renderedTurnIdRef = useRef(turnId);
+  useLayoutEffect(() => {
+    if (renderedTurnIdRef.current !== turnId) {
+      renderedTurnIdRef.current = turnId;
+      userChoseExpansionRef.current = false;
+      automaticExpansionPersistedRef.current = false;
+      setDisplayExpanded(expanded);
+      return;
+    }
+    if (!userChoseExpansionRef.current && expanded) {
+      setDisplayExpanded(true);
+      if (!automaticExpansionPersistedRef.current) {
+        automaticExpansionPersistedRef.current = true;
+        onExpandedChange(true);
+      }
+    }
+  }, [expanded, onExpandedChange, turnId]);
+  const setExpanded = useCallback(
+    (nextExpanded: boolean) => {
+      userChoseExpansionRef.current = true;
+      automaticExpansionPersistedRef.current = true;
+      setDisplayExpanded(nextExpanded);
+      onExpandedChange(nextExpanded);
+    },
+    [onExpandedChange],
+  );
 
   if (files.length === 0) return null;
 
   return (
     <div
       className="mt-2 rounded-lg bg-secondary p-2.5"
-      data-changed-files-state={expanded ? "expanded" : "preview"}
+      data-changed-files-state={displayExpanded ? "expanded" : "preview"}
     >
       <div className="group mb-2 flex items-center justify-between gap-2 pr-2 pl-1.5 pt-1">
         <button
           type="button"
-          aria-expanded={expanded}
+          aria-expanded={displayExpanded}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-[11px] font-normal text-muted-foreground/60 transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => onExpandedChange(!expanded)}
+          onClick={() => setExpanded(!displayExpanded)}
         >
           <HugeiconsIcon
             icon={__ChevronRightIconHugeIcon}
-            className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")}
+            className={cn("size-3.5 shrink-0 transition-transform", displayExpanded && "rotate-90")}
             aria-hidden="true"
           />
           <span>
@@ -219,7 +258,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               <DiffStatLabel additions={summaryStat.additions} deletions={summaryStat.deletions} />
             </div>
           )}
-          {expanded && (
+          {displayExpanded && (
             <button
               type="button"
               className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
@@ -241,7 +280,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
           </button>
         </div>
       </div>
-      {expanded ? (
+      {displayExpanded ? (
         <ChangedFilesTree
           key={`changed-files-tree:${turnId}`}
           turnId={turnId}
@@ -286,7 +325,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               <button
                 type="button"
                 className="rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => onExpandedChange(true)}
+                onClick={() => setExpanded(true)}
               >
                 Show all {files.length} files
               </button>

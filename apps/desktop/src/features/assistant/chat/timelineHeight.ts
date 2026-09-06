@@ -6,12 +6,21 @@ import { measureTextLineCountAtWidthAtLeastOne } from "@/lib/text/pretextMeasure
 const LINE_HEIGHT_PX = 18;
 const ASSISTANT_BASE_HEIGHT_PX = 72;
 const USER_BASE_HEIGHT_PX = 88;
-const ATTACHMENTS_PER_ROW = 2;
-// Attachment thumbnails render with `max-h-[220px]` plus ~8px row gap.
-const USER_ATTACHMENT_ROW_HEIGHT_PX = 228;
-const USER_BUBBLE_WIDTH_RATIO = 0.8;
+const TIMELINE_MAX_CONTENT_WIDTH_PX = 768;
+const TIMELINE_NARROW_HORIZONTAL_PADDING_PX = 24;
+const TIMELINE_WIDE_HORIZONTAL_PADDING_PX = 40;
+const TIMELINE_SM_BREAKPOINT_PX = 640;
+const USER_BUBBLE_NARROW_WIDTH_RATIO = 0.85;
+const USER_BUBBLE_WIDE_WIDTH_RATIO = 0.75;
 const USER_BUBBLE_HORIZONTAL_PADDING_PX = 32;
 const ASSISTANT_MESSAGE_HORIZONTAL_PADDING_PX = 8;
+// MessageAttachments renders fixed `h-24 w-32` thumbnails with `gap-2` and
+// `mb-1`. Keep the estimate tied to those real dimensions so LegendList does
+// not correct a stale 220px-thumbnail assumption after first paint.
+const ATTACHMENT_CARD_WIDTH_PX = 128;
+const ATTACHMENT_CARD_HEIGHT_PX = 96;
+const ATTACHMENT_GAP_PX = 8;
+const ATTACHMENT_MARGIN_BOTTOM_PX = 4;
 const USER_MESSAGE_FONT = "400 12px Inter";
 const ASSISTANT_MESSAGE_FONT = "400 12px Inter";
 const MIN_TEXT_LAYOUT_WIDTH_PX = 32;
@@ -30,18 +39,73 @@ function isFinitePositiveNumber(value: number | null | undefined): value is numb
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-function estimateUserTextWidthPx(timelineWidthPx: number | null): number {
+function estimateTimelineContentWidthPx(timelineWidthPx: number | null): number {
   if (!isFinitePositiveNumber(timelineWidthPx)) return MIN_TEXT_LAYOUT_WIDTH_PX;
-  const bubbleWidthPx = timelineWidthPx * USER_BUBBLE_WIDTH_RATIO;
-  return Math.max(MIN_TEXT_LAYOUT_WIDTH_PX, bubbleWidthPx - USER_BUBBLE_HORIZONTAL_PADDING_PX);
+  const horizontalPadding =
+    timelineWidthPx >= TIMELINE_SM_BREAKPOINT_PX
+      ? TIMELINE_WIDE_HORIZONTAL_PADDING_PX
+      : TIMELINE_NARROW_HORIZONTAL_PADDING_PX;
+  return Math.max(
+    MIN_TEXT_LAYOUT_WIDTH_PX,
+    Math.min(TIMELINE_MAX_CONTENT_WIDTH_PX, timelineWidthPx - horizontalPadding),
+  );
+}
+
+function estimateUserBubbleWidthPx(timelineWidthPx: number | null): number {
+  const contentWidthPx = estimateTimelineContentWidthPx(timelineWidthPx);
+  if (!isFinitePositiveNumber(timelineWidthPx)) return contentWidthPx;
+  const widthRatio =
+    timelineWidthPx >= TIMELINE_SM_BREAKPOINT_PX
+      ? USER_BUBBLE_WIDE_WIDTH_RATIO
+      : USER_BUBBLE_NARROW_WIDTH_RATIO;
+  return Math.max(MIN_TEXT_LAYOUT_WIDTH_PX, contentWidthPx * widthRatio);
+}
+
+function estimateUserTextWidthPx(timelineWidthPx: number | null): number {
+  return Math.max(
+    MIN_TEXT_LAYOUT_WIDTH_PX,
+    estimateUserBubbleWidthPx(timelineWidthPx) - USER_BUBBLE_HORIZONTAL_PADDING_PX,
+  );
 }
 
 function estimateAssistantTextWidthPx(timelineWidthPx: number | null): number {
-  if (!isFinitePositiveNumber(timelineWidthPx)) return MIN_TEXT_LAYOUT_WIDTH_PX;
   return Math.max(
     MIN_TEXT_LAYOUT_WIDTH_PX,
-    timelineWidthPx - ASSISTANT_MESSAGE_HORIZONTAL_PADDING_PX,
+    estimateTimelineContentWidthPx(timelineWidthPx) - ASSISTANT_MESSAGE_HORIZONTAL_PADDING_PX,
   );
+}
+
+function estimateAttachmentGalleryHeightPx(
+  attachmentCount: number,
+  availableWidthPx: number,
+): number {
+  if (attachmentCount <= 0) return 0;
+  const cardsPerRow = Math.max(
+    1,
+    Math.floor(
+      (Math.max(ATTACHMENT_CARD_WIDTH_PX, availableWidthPx) + ATTACHMENT_GAP_PX) /
+        (ATTACHMENT_CARD_WIDTH_PX + ATTACHMENT_GAP_PX),
+    ),
+  );
+  const rows = Math.ceil(attachmentCount / cardsPerRow);
+  return (
+    rows * ATTACHMENT_CARD_HEIGHT_PX +
+    Math.max(0, rows - 1) * ATTACHMENT_GAP_PX +
+    ATTACHMENT_MARGIN_BOTTOM_PX
+  );
+}
+
+/** Pure attachment geometry used by the renderer estimate and Node-side tests. */
+export function estimateTimelineAttachmentGalleryHeight(
+  role: "user" | "assistant",
+  attachmentCount: number,
+  timelineWidthPx: number | null,
+): number {
+  const availableWidthPx =
+    role === "user"
+      ? estimateUserBubbleWidthPx(timelineWidthPx)
+      : estimateTimelineContentWidthPx(timelineWidthPx);
+  return estimateAttachmentGalleryHeightPx(attachmentCount, availableWidthPx);
 }
 
 export function estimateTimelineMessageHeight(
@@ -56,7 +120,12 @@ export function estimateTimelineMessageHeight(
       textWidth,
       { whiteSpace: "pre-wrap" },
     );
-    return ASSISTANT_BASE_HEIGHT_PX + estimatedLines * LINE_HEIGHT_PX;
+    const attachmentHeight = estimateTimelineAttachmentGalleryHeight(
+      "assistant",
+      message.attachments?.length ?? 0,
+      layout.timelineWidthPx,
+    );
+    return ASSISTANT_BASE_HEIGHT_PX + estimatedLines * LINE_HEIGHT_PX + attachmentHeight;
   }
 
   if (message.role === "user") {
@@ -77,9 +146,11 @@ export function estimateTimelineMessageHeight(
       textWidth,
       { whiteSpace: "pre-wrap" },
     );
-    const attachmentCount = message.attachments?.length ?? 0;
-    const attachmentRows = Math.ceil(attachmentCount / ATTACHMENTS_PER_ROW);
-    const attachmentHeight = attachmentRows * USER_ATTACHMENT_ROW_HEIGHT_PX;
+    const attachmentHeight = estimateTimelineAttachmentGalleryHeight(
+      "user",
+      message.attachments?.length ?? 0,
+      layout.timelineWidthPx,
+    );
     return USER_BASE_HEIGHT_PX + estimatedLines * LINE_HEIGHT_PX + attachmentHeight;
   }
 
