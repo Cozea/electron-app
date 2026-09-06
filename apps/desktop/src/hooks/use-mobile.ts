@@ -1,19 +1,30 @@
 import * as React from "react"
 
-const MOBILE_BREAKPOINT = 768
+/**
+ * Cozea is a desktop application. This threshold does not identify a mobile
+ * device; it identifies a BrowserWindow that is too narrow to permanently
+ * reserve desktop shell chrome such as the primary sidebar.
+ */
+export const COMPACT_WINDOW_BREAKPOINT_PX = 768
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+export function useIsCompactWindow() {
+  const [isCompactWindow, setIsCompactWindow] = React.useState<boolean | undefined>(undefined)
 
   React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+    const mql = window.matchMedia(`(max-width: ${COMPACT_WINDOW_BREAKPOINT_PX - 1}px)`)
     const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+      setIsCompactWindow(window.innerWidth < COMPACT_WINDOW_BREAKPOINT_PX)
     }
     mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    setIsCompactWindow(window.innerWidth < COMPACT_WINDOW_BREAKPOINT_PX)
     return () => mql.removeEventListener("change", onChange)
   }, [])
 
-  return !!isMobile
+  return !!isCompactWindow
 }
+
+/**
+ * Compatibility alias for the shadcn-derived sidebar API. New desktop shell
+ * code should use `useIsCompactWindow` and compact-window terminology.
+ */
+export const useIsMobile = useIsCompactWindow
