@@ -24,7 +24,6 @@ import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWo
 import { WorkspaceRepairScreen } from "@/features/workspace/WorkspaceRepairScreen";
 import { ActiveWorkspaceContext } from "@/contexts/workspace/ActiveWorkspaceContext";
 import {
-  buildProjectRouteNavigationState,
   resolveTrustedProjectRouteNavigationState,
 } from "@/contexts/project/projectNavigationState";
 import { useProjectChromeHeader } from "@/features/projects/hooks/useProjectChromeHeader";
