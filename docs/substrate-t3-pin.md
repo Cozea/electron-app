@@ -5,7 +5,7 @@ Date: 2026-09-06
 | Field | Value |
 | --- | --- |
 | Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Required pin SHA | `632e8dcc970d878f272750132e55427b310fe581` (`632e8dcc`) |
+| Required pin SHA | `16e7fec17b68dd9d703bbcb211e309658e425893` (`16e7fec1`) |
 | Recorded by | Parent repository `vendor/t3code` gitlink |
 | Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
