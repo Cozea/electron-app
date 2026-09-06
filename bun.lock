@@ -176,6 +176,13 @@
         "@cozea/contracts": "file:../contracts",
       },
     },
+    "packages/computer-use-native": {
+      "name": "@cozea/computer-use-native",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@napi-rs/cli": "^2.14.7",
+      },
+    },
     "packages/contracts": {
       "name": "@cozea/contracts",
       "dependencies": {
@@ -343,6 +350,8 @@
     "@codemirror/view": ["@codemirror/view@6.43.9", "", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-sTuUzTpPMFebRhg6dawChoKKgndIwfjmJgKVxBefPElcU2NwQ6AFroupk0SFqEerQyZOGRfDNnSN8Dw/lMAsXw=="],
 
     "@cozea/client-runtime": ["@cozea/client-runtime@workspace:packages/client-runtime"],
+
+    "@cozea/computer-use-native": ["@cozea/computer-use-native@workspace:packages/computer-use-native"],
 
     "@cozea/contracts": ["@cozea/contracts@workspace:packages/contracts"],
 

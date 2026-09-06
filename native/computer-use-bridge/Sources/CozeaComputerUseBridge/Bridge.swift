@@ -239,8 +239,11 @@ public func cozeaComputerUseRequestPermission(_ targetPointer: UnsafePointer<CCh
     guard let target = string(targetPointer) else { return false }
     switch target {
     case "accessibility":
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [promptKey: true] as CFDictionary
+        // `kAXTrustedCheckOptionPrompt` is imported as a global `var`, which
+        // Swift 6 rejects as shared mutable state. Its value is the documented,
+        // stable key string, so naming it directly keeps the same call without
+        // reaching through the global.
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     case "screenRecording":
         if CGPreflightScreenCaptureAccess() { return true }
