@@ -16,7 +16,7 @@ env:
 
 jobs:
   validate:
-    name: Principal terminology cleanup
+    name: Finalize device principal cutover
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -26,8 +26,8 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Apply final principal terminology cleanup
-        run: node scripts/finalize-device-principal-terminology.mjs
+      - name: Apply final release cleanup
+        run: node scripts/finalize-device-principal-release.mjs
 
       - name: Initialize pinned T3 source
         run: |
@@ -85,14 +85,14 @@ jobs:
       - name: Production build
         run: bun run build
 
-      - name: Commit verified terminology cleanup
+      - name: Commit verified finalization
         run: |
           if [ -z "$(git status --porcelain)" ]; then
-            echo "No terminology cleanup to commit."
+            echo "No finalization changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "refactor(identity): finish principal terminology cleanup"
+          git commit -m "chore(identity): freeze device principal cutover"
           git push origin HEAD:codex/device-principal-identity-cutover
