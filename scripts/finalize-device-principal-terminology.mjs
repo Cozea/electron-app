@@ -10,8 +10,20 @@ const roots = [
   'tests',
 ]
 
+const alwaysTransform = new Set([
+  'apps/desktop/src/components/presence/PresenceAvatarGroup.tsx',
+  'apps/desktop/src/contexts/project/ProjectSyncContext.tsx',
+  'apps/desktop/src/features/workspace/WorkspaceRuntimeHosts.tsx',
+  'apps/desktop/src/features/workspace/workspaceRuntimePolicy.ts',
+  'apps/desktop/src/lib/yjs/origins.ts',
+])
+
 const allowedExtensions = new Set(['.ts', '.tsx'])
 const skippedDirectories = new Set(['node_modules', 'vendor', '_generated', 'dist', 'out'])
+
+function normalizePath(value) {
+  return value.split(path.sep).join('/')
+}
 
 function collectFiles(root, output = []) {
   if (!fs.existsSync(root)) return output
@@ -27,8 +39,9 @@ function collectFiles(root, output = []) {
   return output
 }
 
-function participatesInDevicePrincipalModel(source) {
+function participatesInDevicePrincipalModel(file, source) {
   return (
+    alwaysTransform.has(normalizePath(file)) ||
     source.includes('devicePrincipals') ||
     source.includes('principalId') ||
     source.includes('identityKey') ||
@@ -50,7 +63,7 @@ function replaceIdentityTerms(source) {
   next = next.replace(/([A-Za-z][A-Za-z0-9]*)DeviceId\b/g, '$1IdentityKey')
   next = next.replace(/\bdeviceId\b/g, 'identityKey')
 
-  // Presence stores principal presentation, not account-shaped user presentation.
+  // Presence/attribution stores principal presentation, not account-shaped user presentation.
   next = next.replace(/\buserName\b/g, 'displayName')
   next = next.replace(/\buserAvatarUrl\b/g, 'avatarUrl')
 
@@ -69,10 +82,10 @@ for (const root of roots) {
   for (const file of collectFiles(root)) {
     // Identity tests are the independent oracle for forbidden legacy names;
     // do not rewrite their assertion strings while cleaning implementation callers.
-    if (file.startsWith(`tests${path.sep}identity${path.sep}`)) continue
+    if (normalizePath(file).startsWith('tests/identity/')) continue
 
     const source = fs.readFileSync(file, 'utf8')
-    if (!participatesInDevicePrincipalModel(source)) continue
+    if (!participatesInDevicePrincipalModel(file, source)) continue
     const next = replaceIdentityTerms(source)
     if (next === source) continue
     fs.writeFileSync(file, next)
