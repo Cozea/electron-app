@@ -23,6 +23,7 @@ jobs:
           node scripts/fix-device-principal-pass3.mjs
           node scripts/fix-device-principal-pass4.mjs
           node scripts/fix-device-principal-pass5.mjs
+          node scripts/fix-device-principal-pass6.mjs
       - name: Commit repairs
         run: |
           if git diff --quiet; then
