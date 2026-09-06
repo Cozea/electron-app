@@ -16,7 +16,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
       - name: Apply compiler repair pass
         run: node scripts/fix-device-principal-pass1.mjs
       - name: Commit repairs
@@ -36,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
