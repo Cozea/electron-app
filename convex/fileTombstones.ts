@@ -1,24 +1,28 @@
 import { internalMutation } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import { v } from "convex/values"
 
-const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
-/**
- * Create a tombstone when a file is deleted.
- * Used to detect delete-vs-edit conflicts on reconnection.
- */
+function deviceDisplayName(device: { deviceLabel?: string; identityKey?: string }): string {
+  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"
+}
+
+/** Create a tombstone when a file is deleted. */
 export const createTombstone = mutation({
   args: {
     projectId: v.id("projects"),
     filePath: v.string(),
+    // Transitional caller field. Human/device attribution is derived from auth.
     deletedBy: v.optional(v.id("users")),
     deletedByAgent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     const now = Date.now()
+    const deletedBy = args.deletedByAgent ? undefined : principal._id
 
-    // Check if tombstone already exists
     const existing = await ctx.db
       .query("fileTombstones")
       .withIndex("by_project_and_path", (q) =>
@@ -27,31 +31,26 @@ export const createTombstone = mutation({
       .first()
 
     if (existing) {
-      // Update existing tombstone
       await ctx.db.patch(existing._id, {
         deletedAt: now,
-        deletedBy: args.deletedBy,
+        deletedBy,
         deletedByAgent: args.deletedByAgent,
         expiresAt: now + TOMBSTONE_TTL_MS,
       })
       return existing._id
     }
 
-    // Create new tombstone
     return await ctx.db.insert("fileTombstones", {
       projectId: args.projectId,
       filePath: args.filePath,
       deletedAt: now,
-      deletedBy: args.deletedBy,
+      deletedBy,
       deletedByAgent: args.deletedByAgent,
       expiresAt: now + TOMBSTONE_TTL_MS,
     })
   },
 })
 
-/**
- * Remove a tombstone when a file is recreated.
- */
 export const removeTombstone = mutation({
   args: {
     projectId: v.id("projects"),
@@ -74,9 +73,6 @@ export const removeTombstone = mutation({
   },
 })
 
-/**
- * Check if a file has a tombstone (was deleted).
- */
 export const getTombstone = query({
   args: {
     projectId: v.id("projects"),
@@ -90,21 +86,12 @@ export const getTombstone = query({
       )
       .first()
 
-    if (!tombstone) return null
+    if (!tombstone || tombstone.expiresAt < Date.now()) return null
 
-    // Check if expired
-    if (tombstone.expiresAt < Date.now()) {
-      return null
-    }
-
-    // Get who deleted it
     let deletedByName: string | null = null
     if (tombstone.deletedBy) {
-      const user = await ctx.db.get(tombstone.deletedBy)
-      if (user) {
-        deletedByName =
-          `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email
-      }
+      const device = await ctx.db.get(tombstone.deletedBy)
+      if (device) deletedByName = deviceDisplayName(device)
     } else if (tombstone.deletedByAgent) {
       deletedByName = tombstone.deletedByAgent
     }
@@ -116,10 +103,6 @@ export const getTombstone = query({
   },
 })
 
-/**
- * Get all tombstones for a project.
- * Useful for checking conflicts on reconnection.
- */
 export const getProjectTombstones = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -128,15 +111,10 @@ export const getProjectTombstones = query({
       .query("fileTombstones")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect()
-
-    // Filter out expired tombstones
     return tombstones.filter((t) => t.expiresAt > now)
   },
 })
 
-/**
- * Cleanup expired tombstones for a specific project.
- */
 export const cleanupExpiredTombstones = mutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -147,32 +125,22 @@ export const cleanupExpiredTombstones = mutation({
       .filter((q) => q.lt(q.field("expiresAt"), now))
       .collect()
 
-    for (const tombstone of expired) {
-      await ctx.db.delete(tombstone._id)
-    }
-
+    for (const tombstone of expired) await ctx.db.delete(tombstone._id)
     return { deleted: expired.length }
   },
 })
 
-/**
- * Cleanup ALL expired tombstones across all projects.
- * Called by daily cron job.
- */
 export const cleanupAllExpiredTombstones = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now()
 
-    // Get all expired tombstones
     const expired = await ctx.db
       .query("fileTombstones")
       .withIndex("by_expires_at", (q) => q.lt("expiresAt", now))
       .collect()
 
-    for (const tombstone of expired) {
-      await ctx.db.delete(tombstone._id)
-    }
+    for (const tombstone of expired) await ctx.db.delete(tombstone._id)
 
     const dayMs = 24 * 60 * 60_000
     const oldChallenges = await ctx.db.query("deviceAuthChallenges")
