@@ -8,6 +8,7 @@ import {
   dueScheduledTasks,
   isScheduledTaskStale,
   type ScheduledTask,
+  type ScheduledTaskRunReport,
 } from "@shared/scheduledTasks"
 
 import {
@@ -26,10 +27,76 @@ import {
 
 const TICK_MS = 30_000
 
+type ScheduledTaskComputerUsePolicyAction = "prepare" | "clear"
+
+interface ScheduledTaskRunControl extends ScheduledTaskRunReport {
+  computerUsePolicy: ScheduledTaskComputerUsePolicyAction
+  threadId: string
+}
+
+const activeComputerUsePolicies = new Map<string, string>()
+const computerUsePolicyWatchers = new Map<string, () => void>()
+
 function basename(pathValue: string): string {
   const trimmed = pathValue.replace(/[\\/]+$/, "")
   const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"))
   return index >= 0 ? trimmed.slice(index + 1) : trimmed
+}
+
+async function controlScheduledTaskComputerUsePolicy(
+  taskId: string,
+  threadId: string,
+  computerUsePolicy: ScheduledTaskComputerUsePolicyAction,
+): Promise<void> {
+  const report: ScheduledTaskRunControl = {
+    taskId,
+    threadId,
+    ranAt: Date.now(),
+    computerUsePolicy,
+  }
+  const result = await window.electronAPI.scheduledTasks.markRun(report)
+  if (!result.success) {
+    throw new Error(result.error ?? `Could not ${computerUsePolicy} Computer Use policy.`)
+  }
+  if (computerUsePolicy === "prepare") activeComputerUsePolicies.set(threadId, taskId)
+  else activeComputerUsePolicies.delete(threadId)
+}
+
+async function clearScheduledTaskComputerUsePolicy(taskId: string, threadId: string): Promise<void> {
+  await controlScheduledTaskComputerUsePolicy(taskId, threadId, "clear")
+}
+
+function watchScheduledTaskComputerUsePolicy(
+  taskId: string,
+  threadId: string,
+  previousTurnId: string | null,
+): void {
+  computerUsePolicyWatchers.get(threadId)?.()
+
+  let unsubscribe: () => void = () => undefined
+  let clearing = false
+  const inspect = (state: ReturnType<typeof useStore.getState>): void => {
+    const latestTurn = state.threadTurnStateById[threadId]?.latestTurn ?? null
+    if (!latestTurn || latestTurn.turnId === previousTurnId || latestTurn.state === "running") return
+    if (
+      latestTurn.state !== "completed" &&
+      latestTurn.state !== "interrupted" &&
+      latestTurn.state !== "error"
+    ) {
+      return
+    }
+    unsubscribe()
+    computerUsePolicyWatchers.delete(threadId)
+    if (clearing) return
+    clearing = true
+    void clearScheduledTaskComputerUsePolicy(taskId, threadId).catch((error: unknown) => {
+      console.warn("[ScheduledTasks] Failed to clear Computer Use policy:", error)
+    })
+  }
+
+  unsubscribe = useStore.subscribe(inspect)
+  computerUsePolicyWatchers.set(threadId, unsubscribe)
+  inspect(useStore.getState())
 }
 
 /**
@@ -107,23 +174,35 @@ export async function runScheduledTask(
     createdAt,
   })
 
-  await orchestration.dispatchCommand({
-    type: "thread.turn.start",
-    commandId: newCommandId(),
-    threadId,
-    message: {
-      messageId: newMessageId(),
-      role: "user",
-      text: task.prompt,
-      attachments: [],
-    },
-    modelSelection,
-    titleSeed: task.name,
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-    createdAt,
-  })
+  const previousTurnId = useStore.getState().threadTurnStateById[threadId]?.latestTurn?.turnId ?? null
+  await controlScheduledTaskComputerUsePolicy(task.id, threadId, "prepare")
 
+  try {
+    await orchestration.dispatchCommand({
+      type: "thread.turn.start",
+      commandId: newCommandId(),
+      threadId,
+      message: {
+        messageId: newMessageId(),
+        role: "user",
+        text: task.prompt,
+        attachments: [],
+      },
+      modelSelection,
+      titleSeed: task.name,
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      createdAt,
+    })
+  } catch (error: unknown) {
+    await clearScheduledTaskComputerUsePolicy(task.id, threadId).catch(() => undefined)
+    throw error
+  }
+
+  // T3 already forwards turn-ended when a CU tool was actually used. This
+  // watcher covers the equally important no-CU path, including explicit deny
+  // tasks, by clearing the lease when the newly-started canonical turn settles.
+  watchScheduledTaskComputerUsePolicy(task.id, threadId, previousTurnId)
   return threadId
 }
 
@@ -149,6 +228,17 @@ async function tick(): Promise<void> {
             ranAt: now,
             status: "skipped",
             error: "Cozea was not running when this was due.",
+          })
+          .catch(() => undefined)
+        continue
+      }
+      if (task.computerUse && snapshot?.computerUseEnabled !== true) {
+        await window.electronAPI.scheduledTasks
+          .markRun({
+            taskId: task.id,
+            ranAt: now,
+            status: "skipped",
+            error: "Computer Use is disabled in Settings.",
           })
           .catch(() => undefined)
         continue
@@ -192,5 +282,12 @@ export function startScheduledTaskRunner(): () => void {
   return () => {
     if (timer) clearInterval(timer)
     timer = null
+    for (const unsubscribe of computerUsePolicyWatchers.values()) unsubscribe()
+    computerUsePolicyWatchers.clear()
+    for (const [threadId, taskId] of activeComputerUsePolicies) {
+      void clearScheduledTaskComputerUsePolicy(taskId, threadId).catch((error: unknown) => {
+        console.warn("[ScheduledTasks] Failed to clear Computer Use policy during teardown:", error)
+      })
+    }
   }
 }
