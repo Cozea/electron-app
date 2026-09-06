@@ -1,15 +1,9 @@
 import type { ServerConfig } from "@cozea/assistant-contracts"
 
 import { useAssistantRuntimeMetadata } from "@/features/assistant/model/assistantRuntimeMetadataStore"
-import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
-import { useT3Cutover } from "@/substrate/useT3Cutover"
 
+/** Read app-owned agent runtime metadata without creating another T3 session. */
 export function useAssistantServerConfig(enabled: boolean) {
-  const substrateTransport = useSubstrateChatTransport()
-  useT3Cutover({
-    substrateActive: substrateTransport.active,
-    shadowBaseUrl: substrateTransport.shadowBaseUrl,
-  })
   const metadata = useAssistantRuntimeMetadata()
 
   return {
