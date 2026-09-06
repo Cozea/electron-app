@@ -91,6 +91,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
   const { t } = useTranslation()
   const { data: savedSettings } = useLocalSettings()
   const computerUseEnabled = savedSettings?.computerUseEnabled ?? false
+  const allowGlobalPointerFallbacks = savedSettings?.computerUseAllowGlobalPointerFallbacks ?? false
   const disabledTools = React.useMemo(
     () => new Set(savedSettings?.disabledComputerUseTools ?? []),
     [savedSettings?.disabledComputerUseTools],
@@ -154,6 +155,17 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
     [savedSettings?.disabledComputerUseTools],
   )
 
+  const handleGlobalPointerFallbackToggle = React.useCallback(async (checked: boolean) => {
+    try {
+      await saveLocalSettings({ computerUseAllowGlobalPointerFallbacks: checked })
+    } catch (err) {
+      appToast.error({
+        title: 'Computer Use',
+        description: err instanceof Error ? err.message : 'Failed to update pointer policy.',
+      })
+    }
+  }, [])
+
   const handleOpenPermission = React.useCallback(
     async (target: 'accessibility' | 'screenRecording') => {
       try {
@@ -175,7 +187,6 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
         description={t('settings.computerUse.description')}
       />
 
-      {/* Master Enablement Switch */}
       <section>
         <SettingsGroup>
           <SettingsRow>
@@ -194,7 +205,6 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
         </SettingsGroup>
       </section>
 
-      {/* System Diagnostics & Permissions */}
       <section>
         <div className="flex items-center justify-between pb-1">
           <div>
@@ -222,7 +232,6 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
         </div>
 
         <SettingsGroup>
-          {/* Accessibility Permission */}
           <SettingsRow>
             <SettingsRowLabel
               title={t('settings.computerUse.accessibility')}
@@ -256,7 +265,6 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
             </SettingsRowControl>
           </SettingsRow>
 
-          {/* Screen Recording Permission */}
           <SettingsRow>
             <SettingsRowLabel
               title={t('settings.computerUse.screenRecording')}
@@ -292,7 +300,6 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
         </SettingsGroup>
       </section>
 
-      {/* Available Tools as Toggles */}
       <section>
         <SettingsSectionTitle>{t('settings.computerUse.toolsTitle')}</SettingsSectionTitle>
         <SettingsSectionDescription>
@@ -326,6 +333,28 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
               )
             })}
           </div>
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>Advanced interaction</SettingsSectionTitle>
+        <SettingsSectionDescription>
+          Background and accessibility-targeted actions remain preferred. Physical pointer fallback is only used when an agent explicitly requests Open Computer Use&apos;s global click method.
+        </SettingsSectionDescription>
+        <SettingsGroup>
+          <SettingsRow>
+            <SettingsRowLabel
+              title="Allow physical pointer fallback"
+              description="Permit the upstream global pointer path to move and click the system cursor when targeted interaction is not appropriate. Off by default."
+            />
+            <SettingsRowControl>
+              <Switch
+                checked={computerUseEnabled && allowGlobalPointerFallbacks}
+                disabled={!computerUseEnabled}
+                onCheckedChange={(checked) => void handleGlobalPointerFallbackToggle(checked)}
+              />
+            </SettingsRowControl>
+          </SettingsRow>
         </SettingsGroup>
       </section>
     </SettingsPageBody>
