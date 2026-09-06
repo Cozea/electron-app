@@ -63,10 +63,25 @@ describe('Cozea-owned Computer Use runtime', () => {
     expect(settings).toContain('raw.computerUseAllowGlobalPointerFallbacks === true')
   })
 
-  it('serializes native tool and lifecycle access through Rust and Swift', () => {
+  it('serializes native tool and lifecycle access without blocking Electron JS', () => {
     const rust = read('packages/computer-use-native/src/lib.rs')
     expect(rust).toContain('fn lock_operations()')
     expect(rust.match(/let _guard = lock_operations\(\)\?;/g)?.length).toBeGreaterThanOrEqual(5)
+    expect(rust).toContain('pub async fn turn_ended')
+    expect(rust).toContain('pub async fn reset_session')
+    expect(rust).toContain('pub async fn reset_all')
+    expect(rust.match(/tokio::task::spawn_blocking/g)?.length).toBeGreaterThanOrEqual(4)
+
+    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
+    expect(runtime).toContain('turnEnded(sessionId: string): Promise<void>')
+    expect(runtime).toContain('resetSession(sessionId: string): Promise<void>')
+    expect(runtime).toContain('resetAll(): Promise<void>')
+    expect(runtime).toContain('async turnEnded(sessionId: string): Promise<void>')
+    expect(runtime).toContain('await this.turnEnded(threadId)')
+    expect(runtime).toContain('await this.resetAll()')
+
+    const facade = read('apps/desktop/electron/services/ComputerUseService.ts')
+    expect(facade).toContain('await this.runtime.resetAll()')
 
     const swift = read(
       'native/computer-use-bridge/Sources/CozeaComputerUseBridge/Bridge.swift',
@@ -93,6 +108,14 @@ describe('Cozea-owned Computer Use runtime', () => {
     expect(preparation).toContain("['lipo', '-archs', candidate]")
     expect(preparation).toContain('dylibs.find(dylibMatchesCurrentArchitecture)')
     expect(preparation).toContain('`build:debug:${napiArch}`')
+  })
+
+  it('keeps the typed T3 pin compatible with contract synchronization', () => {
+    const constants = read('apps/desktop/electron/substrate/constants.ts')
+    expect(constants).toContain('SUBSTRATE_T3_PIN_SHA: string =')
+
+    const sync = read('scripts/vendor/sync-t3-contracts.mjs')
+    expect(sync).toContain('SUBSTRATE_T3_PIN_SHA\\s*(?::\\s*string)?\\s*=\\s*')
   })
 
   it('never discovers an external CLI or mutates provider home configuration', () => {
@@ -124,7 +147,7 @@ describe('Cozea-owned Computer Use runtime', () => {
   it('accepts authenticated turn-end notifications from the managed T3 runtime', () => {
     const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
     expect(runtime).toContain("request.url === '/v1/turn-ended'")
-    expect(runtime).toContain('this.turnEnded(threadId)')
+    expect(runtime).toContain('await this.turnEnded(threadId)')
     expect(runtime).toContain("'notifications/turn-ended'")
   })
 
