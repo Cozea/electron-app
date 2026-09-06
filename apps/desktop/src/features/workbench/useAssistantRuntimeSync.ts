@@ -8,8 +8,6 @@ import { createOrchestrationRecoveryCoordinator } from "@/features/assistant/mod
 
 let subscriberCount = 0
 let unsubscribeDomainEvents: (() => void) | null = null
-let activeRefresh: Promise<void> | null = null
-let queuedRefresh = false
 
 const coordinator = createOrchestrationRecoveryCoordinator()
 
@@ -22,6 +20,25 @@ const coordinator = createOrchestrationRecoveryCoordinator()
 const FIRST_HYDRATION_THREAD_BATCH = 8
 
 type AssistantRuntimeSnapshot = Awaited<ReturnType<NativeApi["orchestration"]["getSnapshot"]>>
+
+interface SnapshotRefreshState {
+  active: Promise<AssistantRuntimeSnapshot> | null
+  queued: boolean
+}
+
+// A renderer can briefly see two NativeApi instances while T3 reconnects. Never
+// let one runtime's in-flight refresh satisfy a caller that explicitly supplied
+// another runtime instance.
+const snapshotRefreshByApi = new Map<NativeApi, SnapshotRefreshState>()
+
+function snapshotRefreshState(api: NativeApi): SnapshotRefreshState {
+  let state = snapshotRefreshByApi.get(api)
+  if (!state) {
+    state = { active: null, queued: false }
+    snapshotRefreshByApi.set(api, state)
+  }
+  return state
+}
 
 function yieldToMain(): Promise<void> {
   const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
@@ -48,7 +65,7 @@ async function applySnapshotToStore(snapshot: AssistantRuntimeSnapshot) {
   }
 }
 
-async function performSnapshotSync(api: NativeApi = ensureNativeApi()) {
+async function performSnapshotSync(api: NativeApi): Promise<AssistantRuntimeSnapshot> {
   const snapshot = await api.orchestration.getSnapshot()
   await applySnapshotToStore(snapshot)
   await flushPendingAssistantProjectDeletions({
@@ -63,30 +80,45 @@ async function performSnapshotSync(api: NativeApi = ensureNativeApi()) {
       useStore.getState().applyOrchestrationDomainEvents(coalesced)
     }
   }
+  return snapshot
 }
 
 /**
  * Coalesced full read-model refresh (initial hydrate + explicit invalidation).
- * Callers that already own a ready NativeApi can pass it to avoid deferred
- * transport discovery during a background operation.
+ * Calls sharing a NativeApi reuse one in-flight refresh; calls for a different
+ * NativeApi never await or consume another runtime's snapshot.
  */
-export async function refreshAssistantRuntimeSnapshot(api?: NativeApi): Promise<void> {
-  queuedRefresh = true
+export async function refreshAssistantRuntimeSnapshot(
+  api: NativeApi = ensureNativeApi(),
+): Promise<AssistantRuntimeSnapshot> {
+  const state = snapshotRefreshState(api)
+  state.queued = true
 
-  if (activeRefresh) {
-    return activeRefresh
+  if (state.active) {
+    return state.active
   }
 
-  activeRefresh = (async () => {
-    while (queuedRefresh) {
-      queuedRefresh = false
-      await performSnapshotSync(api)
+  let latestSnapshot: AssistantRuntimeSnapshot | null = null
+  const active = (async () => {
+    while (state.queued) {
+      state.queued = false
+      latestSnapshot = await performSnapshotSync(api)
     }
-  })().finally(() => {
-    activeRefresh = null
-  })
+    if (!latestSnapshot) {
+      throw new Error("Assistant runtime snapshot refresh produced no snapshot.")
+    }
+    return latestSnapshot
+  })()
+  state.active = active
 
-  return activeRefresh
+  try {
+    return await active
+  } finally {
+    if (state.active === active) {
+      state.active = null
+      if (!state.queued) snapshotRefreshByApi.delete(api)
+    }
+  }
 }
 
 let pendingDomainEvents: OrchestrationEvent[] = []
@@ -132,7 +164,7 @@ function ensureDomainEventSubscription() {
 
   unsubscribeDomainEvents = api.orchestration.onDomainEvent((event: OrchestrationEvent) => {
     const action = coordinator.classifyDomainEvent(event.sequence)
-    if (action === "ignore") return;
+    if (action === "ignore") return
 
     pendingDomainEvents.push(event)
 
@@ -160,8 +192,6 @@ function releaseDomainEventSubscription() {
 
   unsubscribeDomainEvents()
   unsubscribeDomainEvents = null
-  activeRefresh = null
-  queuedRefresh = false
   pendingDomainEvents = []
   flushMicrotaskScheduled = false
   coordinator.failSnapshotRecovery()
