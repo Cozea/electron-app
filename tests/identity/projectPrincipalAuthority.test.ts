@@ -32,11 +32,12 @@ describe("direct device-principal project authority", () => {
     const heartbeat = section(presence, "heartbeat")
 
     expect(heartbeat).toContain("requireAuthenticatedDevice(ctx)")
-    expect(heartbeat).toContain("principal.deviceLabel")
-    expect(heartbeat).toContain("principal.profileImageUrl")
-    expect(heartbeat).toContain('userEmail: ""')
+    expect(heartbeat).toContain("principal.displayName")
+    expect(heartbeat).toContain("principal.avatarStorageId")
+    expect(heartbeat).toContain("ctx.storage.getUrl")
     expect(heartbeat).not.toContain("userName: args.userName")
     expect(heartbeat).not.toContain("userAvatarUrl: args.userAvatarUrl")
+    expect(heartbeat).not.toContain("userEmail")
   })
 
   it("does not send identity/presentation claims in renderer presence heartbeats", () => {
