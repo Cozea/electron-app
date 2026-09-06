@@ -37,7 +37,7 @@ function hasPermission(role: ProjectRole, permission: Permission): boolean {
 async function getTeamManagementContext(
   ctx: Pick<MutationCtx, "db">,
   projectId: Id<"projects">,
-  actorUserId: Id<"devicePrincipals">
+  actorPrincipalId: Id<"devicePrincipals">
 ) {
   const project = await ctx.db.get(projectId)
   if (!project || project.status === "deleted") {
@@ -46,8 +46,8 @@ async function getTeamManagementContext(
 
   const actorMembership = await ctx.db
     .query("projectMembers")
-    .withIndex("by_project_and_user", (q) =>
-      q.eq("projectId", projectId).eq("userId", actorUserId)
+    .withIndex("by_project_and_principal", (q) =>
+      q.eq("projectId", projectId).eq("principalId", actorPrincipalId)
     )
     .first()
 
@@ -68,14 +68,14 @@ async function getTeamManagementContext(
 
 // List all members of a project
 export const listMembers = query({
-  args: { projectId: v.id("projects"), viewerUserId: v.id("devicePrincipals") },
+  args: { projectId: v.id("projects"), viewerPrincipalId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
-    const canAccess = await canAccessProjectByWorkspaceOrMembership(ctx, args.projectId, args.viewerUserId)
+    const canAccess = await canAccessProjectByWorkspaceOrMembership(ctx, args.projectId, args.viewerPrincipalId)
     if (!canAccess) return []
     const memberships = await ctx.db.query("projectMembers")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect()
     return await Promise.all(memberships.map(async (membership) => {
-      const principal = await ctx.db.get(membership.userId)
+      const principal = await ctx.db.get(membership.principalId)
       return {
         ...membership,
         displayName: principal?.displayName ?? "Unknown device",
@@ -91,13 +91,13 @@ export const listMembers = query({
 export const getMemberRole = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const canAccess = await canAccessProjectByWorkspaceOrMembership(
       ctx,
       args.projectId,
-      args.userId
+      args.principalId
     )
     if (!canAccess) {
       return null
@@ -105,8 +105,8 @@ export const getMemberRole = query({
 
     const membership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.principalId)
       )
       .first()
 
@@ -118,13 +118,13 @@ export const getMemberRole = query({
 export const isMember = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const membership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.principalId)
       )
       .first()
 
@@ -136,15 +136,15 @@ export const isMember = query({
 export const isProjectMemberForServer = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
     const membership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.principalId)
       )
       .first()
     return !!membership
@@ -155,15 +155,15 @@ export const isProjectMemberForServer = query({
 export const getProjectAccessForServer = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
     assertGatewaySecret(args.serverSecret)
 
     const [canAccess, canEdit] = await Promise.all([
-      canAccessProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
-      canEditProjectByWorkspaceOrMembership(ctx, args.projectId, args.userId),
+      canAccessProjectByWorkspaceOrMembership(ctx, args.projectId, args.principalId),
+      canEditProjectByWorkspaceOrMembership(ctx, args.projectId, args.principalId),
     ])
 
     return { canAccess, canEdit }
@@ -178,8 +178,8 @@ export const getProjectAccessForServer = query({
 export const updateRole = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
-    memberUserId: v.id("devicePrincipals"),
+    actorPrincipalId: v.id("devicePrincipals"),
+    memberPrincipalId: v.id("devicePrincipals"),
     newRole: v.union(
       v.literal("project_manager"),
       v.literal("developer"),
@@ -191,7 +191,7 @@ export const updateRole = mutation({
     const { canManageTeam } = await getTeamManagementContext(
       ctx,
       args.projectId,
-      args.actorUserId
+      args.actorPrincipalId
     )
     if (!canManageTeam) {
       throw new Error("Unauthorized to change member roles")
@@ -200,8 +200,8 @@ export const updateRole = mutation({
     // Get target membership
     const targetMembership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.memberUserId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.memberPrincipalId)
       )
       .first()
 
@@ -210,7 +210,7 @@ export const updateRole = mutation({
     }
 
     // Prevent changing own role
-    if (args.actorUserId === args.memberUserId) {
+    if (args.actorPrincipalId === args.memberPrincipalId) {
       throw new Error("Cannot change your own role")
     }
 
@@ -237,14 +237,14 @@ export const updateRole = mutation({
 export const removeMember = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
-    memberUserId: v.id("devicePrincipals"),
+    actorPrincipalId: v.id("devicePrincipals"),
+    memberPrincipalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const { canManageTeam } = await getTeamManagementContext(
       ctx,
       args.projectId,
-      args.actorUserId
+      args.actorPrincipalId
     )
     if (!canManageTeam) {
       throw new Error("Unauthorized to remove members")
@@ -253,8 +253,8 @@ export const removeMember = mutation({
     // Get target membership
     const targetMembership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.memberUserId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.memberPrincipalId)
       )
       .first()
 
@@ -263,7 +263,7 @@ export const removeMember = mutation({
     }
 
     // Prevent self-removal
-    if (args.actorUserId === args.memberUserId) {
+    if (args.actorPrincipalId === args.memberPrincipalId) {
       throw new Error("Cannot remove yourself from the project")
     }
 
@@ -288,13 +288,13 @@ export const removeMember = mutation({
 export const leaveProject = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const membership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.principalId)
       )
       .first()
 
@@ -323,7 +323,7 @@ export const leaveProject = mutation({
 export const transferOwnership = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
+    actorPrincipalId: v.id("devicePrincipals"),
     newOwnerId: v.id("devicePrincipals"),
     demoteSelf: v.optional(v.boolean()),
     newRoleForSelf: v.optional(
@@ -334,8 +334,8 @@ export const transferOwnership = mutation({
     // Verify actor is a project manager
     const actorMembership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.actorUserId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.actorPrincipalId)
       )
       .first()
 
@@ -346,8 +346,8 @@ export const transferOwnership = mutation({
     // Get new owner's membership
     const newOwnerMembership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.newOwnerId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.newOwnerId)
       )
       .first()
 
@@ -390,13 +390,13 @@ export const getMemberCount = query({
 export const getMemberLocalPath = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const canAccess = await canAccessProjectByWorkspaceOrMembership(
       ctx,
       args.projectId,
-      args.userId
+      args.principalId
     )
     if (!canAccess) {
       return null
@@ -404,8 +404,8 @@ export const getMemberLocalPath = query({
 
     const membership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.principalId)
       )
       .first()
 
@@ -417,7 +417,7 @@ export const getMemberLocalPath = query({
 export const updateMemberLocalPath = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     localPath: v.string(),
   },
   handler: async (ctx, args) => {
@@ -428,19 +428,19 @@ export const updateMemberLocalPath = mutation({
 
     const membership = await ctx.db
       .query("projectMembers")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", args.userId)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", args.principalId)
       )
       .first()
 
-    if (!membership && project.createdBy === args.userId) {
+    if (!membership && project.createdBy === args.principalId) {
       const now = Date.now()
       await ctx.db.insert("projectMembers", {
         projectId: args.projectId,
-        userId: args.userId,
+        principalId: args.principalId,
         role: "project_manager",
         addedAt: now,
-        addedBy: args.userId,
+        addedBy: args.principalId,
         localPath: args.localPath,
       })
 

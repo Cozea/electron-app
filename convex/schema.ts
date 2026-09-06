@@ -437,7 +437,7 @@ export default defineSchema({
   // Project members with expanded roles
   projectMembers: defineTable({
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     addedAt: v.number(),
     addedBy: v.id("devicePrincipals"),
@@ -448,8 +448,8 @@ export default defineSchema({
     cloudPathsAtLastSync: v.optional(v.array(v.string())),
   })
     .index("by_project", ["projectId"])
-    .index("by_user", ["userId"])
-    .index("by_project_and_user", ["projectId", "userId"]),
+    .index("by_principal", ["principalId"])
+    .index("by_project_and_principal", ["projectId", "principalId"]),
 
   // Device groups. Membership always points to device-backed user principals.
   organizations: defineTable({
@@ -473,14 +473,14 @@ export default defineSchema({
 
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     role: v.union(v.literal("admin"), v.literal("member")),
     addedAt: v.number(),
     addedBy: v.id("devicePrincipals"),
   })
     .index("by_organization", ["organizationId"])
-    .index("by_user", ["userId"])
-    .index("by_organization_and_user", ["organizationId", "userId"]),
+    .index("by_principal", ["principalId"])
+    .index("by_organization_and_principal", ["organizationId", "principalId"]),
 
   organizationDeviceEnrollments: defineTable({
     organizationId: v.id("organizations"),
@@ -617,7 +617,7 @@ export default defineSchema({
     deadlineDate: v.optional(v.string()),
     assignee: v.optional(
       v.object({
-        userId: v.optional(v.id("devicePrincipals")),
+        principalId: v.optional(v.id("devicePrincipals")),
         name: v.string(),
         avatarUrl: v.optional(v.string()),
       }),
@@ -662,7 +662,7 @@ export default defineSchema({
 
   // Inbox items for task assignment and completion events.
   projectTaskNotifications: defineTable({
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     projectId: v.id("projects"),
     kind: v.union(v.literal("assigned"), v.literal("completed")),
     taskSource: v.union(
@@ -680,10 +680,10 @@ export default defineSchema({
       label: v.string(),
       title: v.string(),
     }),
-    actorUserId: v.optional(v.id("devicePrincipals")),
+    actorPrincipalId: v.optional(v.id("devicePrincipals")),
     createdAt: v.number(),
   })
-    .index("by_user_and_created", ["userId", "createdAt"])
+    .index("by_principal_and_created", ["principalId", "createdAt"])
     .index("by_project_and_created", ["projectId", "createdAt"]),
 
   // Project join links for personal-project collaboration sharing
@@ -816,8 +816,8 @@ export default defineSchema({
     roomId: v.string(),
     keyVersion: v.number(),
     status: v.union(v.literal("active"), v.literal("rotating"), v.literal("revoked")),
-    createdByUserId: v.id("devicePrincipals"),
-    createdByDeviceId: v.string(),
+    createdByPrincipalId: v.id("devicePrincipals"),
+    createdByIdentityKey: v.string(),
     createdAt: v.number(),
     rotatedAt: v.optional(v.number()),
   })
@@ -829,16 +829,16 @@ export default defineSchema({
     projectId: v.id("projects"),
     roomId: v.string(),
     keyVersion: v.number(),
-    recipientUserId: v.id("devicePrincipals"),
-    recipientDeviceId: v.string(),
-    senderDeviceId: v.string(),
+    recipientPrincipalId: v.id("devicePrincipals"),
+    recipientIdentityKey: v.string(),
+    senderIdentityKey: v.string(),
     senderPublicKeyJwk: v.string(),
     wrapAlgorithm: v.string(),
     wrappedKey: v.string(),
     createdAt: v.number(),
     revokedAt: v.optional(v.number()),
   })
-    .index("by_project_room_and_recipient", ["projectId", "roomId", "recipientDeviceId"])
+    .index("by_project_room_and_recipient", ["projectId", "roomId", "recipientIdentityKey"])
     .index("by_project_room_and_key_version", ["projectId", "roomId", "keyVersion"]),
 
   // Pending room-key requests when a new collaborator device needs access
@@ -846,15 +846,15 @@ export default defineSchema({
   projectCollabKeyRequests: defineTable({
     projectId: v.id("projects"),
     roomId: v.string(),
-    recipientUserId: v.id("devicePrincipals"),
-    recipientDeviceId: v.string(),
+    recipientPrincipalId: v.id("devicePrincipals"),
+    recipientIdentityKey: v.string(),
     recipientPublicKeyJwk: v.string(),
     recipientFingerprint: v.string(),
     requestedAt: v.number(),
     fulfilledAt: v.optional(v.number()),
   })
     .index("by_project_and_room", ["projectId", "roomId"])
-    .index("by_project_room_and_device", ["projectId", "roomId", "recipientDeviceId"]),
+    .index("by_project_room_and_device", ["projectId", "roomId", "recipientIdentityKey"]),
 
   // Optional recovery kits for encrypted collaboration rooms.
   // The server stores only encrypted room-key backups, never plaintext keys.
@@ -866,8 +866,8 @@ export default defineSchema({
     wrappedKey: v.string(),
     salt: v.string(),
     iterations: v.number(),
-    createdByUserId: v.id("devicePrincipals"),
-    createdByDeviceId: v.string(),
+    createdByPrincipalId: v.id("devicePrincipals"),
+    createdByIdentityKey: v.string(),
     createdAt: v.number(),
     revokedAt: v.optional(v.number()),
   })
@@ -926,11 +926,11 @@ export default defineSchema({
   // Project presence - tracks who is actively viewing/editing a project
   projectPresence: defineTable({
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
 
     // User display info (denormalized for fast reads)
-    userName: v.string(),
-    userAvatarUrl: v.optional(v.string()),
+    displayName: v.string(),
+    avatarUrl: v.optional(v.string()),
 
     // Activity tracking
     lastHeartbeat: v.number(), // Updated every 30s by client
@@ -952,8 +952,8 @@ export default defineSchema({
     ),
   })
     .index("by_project", ["projectId"])
-    .index("by_project_and_user", ["projectId", "userId"])
-    .index("by_user", ["userId"])
+    .index("by_project_and_principal", ["projectId", "principalId"])
+    .index("by_principal", ["principalId"])
     .index("by_heartbeat", ["lastHeartbeat"]),
 
   // ============================================
@@ -963,7 +963,7 @@ export default defineSchema({
   // File changes - tracks individual file edits for activity feed
   fileChanges: defineTable({
     projectId: v.id("projects"),
-    userId: v.optional(v.id("devicePrincipals")), // Optional for agent changes
+    principalId: v.optional(v.id("devicePrincipals")), // Optional for agent changes
     checkpointGroupId: v.optional(v.string()),
 
     // File info
@@ -996,26 +996,26 @@ export default defineSchema({
     changeTimestamp: v.optional(v.number()),
 
     // User display info (denormalized for fast reads)
-    userName: v.optional(v.string()),
+    displayName: v.optional(v.string()),
     userColor: v.optional(v.string()),
 
     timestamp: v.number(),
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_time", ["projectId", "timestamp"])
-    .index("by_user", ["userId"]),
+    .index("by_principal", ["principalId"]),
 
   // Comments on file changes (for code review / collaboration)
   changeComments: defineTable({
     changeId: v.id("fileChanges"),
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
 
     // Comment content
     content: v.string(),
 
     // User display info (denormalized for fast reads)
-    userName: v.string(),
+    displayName: v.string(),
     userColor: v.string(),
     userImage: v.optional(v.string()),
 
@@ -1030,21 +1030,21 @@ export default defineSchema({
   })
     .index("by_change", ["changeId"])
     .index("by_project", ["projectId"])
-    .index("by_user", ["userId"]),
+    .index("by_principal", ["principalId"]),
 
   // Emoji reactions on change comments
   changeCommentReactions: defineTable({
     commentId: v.id("changeComments"),
     changeId: v.id("fileChanges"),
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     emoji: v.string(),
     createdAt: v.number(),
   })
     .index("by_comment", ["commentId"])
     .index("by_change", ["changeId"])
-    .index("by_comment_and_user", ["commentId", "userId"])
-    .index("by_user", ["userId"]),
+    .index("by_comment_and_principal", ["commentId", "principalId"])
+    .index("by_principal", ["principalId"]),
 
   // Project assets (images, videos, PDFs, etc.)
   projectAssets: defineTable({

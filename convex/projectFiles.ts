@@ -13,9 +13,9 @@ import {
 async function requireProjectAccess(
   ctx: Pick<QueryCtx | MutationCtx, "db">,
   projectId: Id<"projects">,
-  userId: Id<"devicePrincipals">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<void> {
-  if (!(await canAccessProject(ctx, projectId, userId))) {
+  if (!(await canAccessProject(ctx, projectId, principalId))) {
     throw new ConvexError("You do not have access to this project")
   }
 }
@@ -24,9 +24,9 @@ async function requireProjectAccess(
 async function requireProjectEdit(
   ctx: Pick<MutationCtx, "db">,
   projectId: Id<"projects">,
-  userId: Id<"devicePrincipals">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<void> {
-  if (!(await canEditProject(ctx, projectId, userId))) {
+  if (!(await canEditProject(ctx, projectId, principalId))) {
     throw new ConvexError("You do not have permission to modify this project's files")
   }
 }
@@ -35,10 +35,10 @@ async function requireProjectEdit(
 export const generateUploadUrl = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    await requireProjectEdit(ctx, args.projectId, args.userId)
+    await requireProjectEdit(ctx, args.projectId, args.principalId)
     return await ctx.storage.generateUploadUrl()
   },
 })
@@ -47,11 +47,11 @@ export const generateUploadUrl = mutation({
 export const getFileUrl = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    await requireProjectAccess(ctx, args.projectId, args.userId)
+    await requireProjectAccess(ctx, args.projectId, args.principalId)
 
     // Verify the storage object actually belongs to this project before minting
     // a URL, otherwise a project member could download any file in the deployment.
@@ -71,7 +71,7 @@ export const getFileUrl = query({
 export const saveFile = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     storageId: v.id("_storage"),
     fileName: v.string(),
     filePath: v.string(),
@@ -80,7 +80,7 @@ export const saveFile = mutation({
     checksum: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireProjectEdit(ctx, args.projectId, args.userId)
+    await requireProjectEdit(ctx, args.projectId, args.principalId)
     const now = Date.now()
 
     const project = await ctx.db.get(args.projectId)
@@ -118,7 +118,7 @@ export const saveFile = mutation({
       checksum: args.checksum,
       version: existing ? existing.version + 1 : 1,
       previousVersionId: existing?._id,
-      uploadedBy: args.userId,
+      uploadedBy: args.principalId,
       uploadedAt: now,
       status: "active",
     })
@@ -138,9 +138,9 @@ export const saveFile = mutation({
 
 // List all active files for a project
 export const listForProject = query({
-  args: { projectId: v.id("projects"), userId: v.id("devicePrincipals") },
+  args: { projectId: v.id("projects"), principalId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
-    await requireProjectAccess(ctx, args.projectId, args.userId)
+    await requireProjectAccess(ctx, args.projectId, args.principalId)
     const files = await ctx.db
       .query("projectFiles")
       .withIndex("by_project_and_status", (q) =>
@@ -160,11 +160,11 @@ export const listForProject = query({
 
 // Get download URL for a specific file
 export const getDownloadUrl = query({
-  args: { fileId: v.id("projectFiles"), userId: v.id("devicePrincipals") },
+  args: { fileId: v.id("projectFiles"), principalId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId)
     if (!file) throw new Error("File not found")
-    await requireProjectAccess(ctx, file.projectId, args.userId)
+    await requireProjectAccess(ctx, file.projectId, args.principalId)
 
     const url = await ctx.storage.getUrl(file.storageId)
     return { file, url }
@@ -175,12 +175,12 @@ export const getDownloadUrl = query({
 export const deleteFile = mutation({
   args: {
     fileId: v.id("projectFiles"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId)
     if (!file) throw new Error("File not found")
-    await requireProjectEdit(ctx, file.projectId, args.userId)
+    await requireProjectEdit(ctx, file.projectId, args.principalId)
     const project = await ctx.db.get(file.projectId)
     if (!project) throw new Error("Project not found")
     const storageAccounting = await getProjectStorageAccountingState(ctx, file.projectId)
@@ -211,9 +211,9 @@ export const deleteFile = mutation({
 
 // Get file count for a project
 export const getFileCount = query({
-  args: { projectId: v.id("projects"), userId: v.id("devicePrincipals") },
+  args: { projectId: v.id("projects"), principalId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
-    await requireProjectAccess(ctx, args.projectId, args.userId)
+    await requireProjectAccess(ctx, args.projectId, args.principalId)
     const files = await ctx.db
       .query("projectFiles")
       .withIndex("by_project_and_status", (q) =>
@@ -231,9 +231,9 @@ export const getFileCount = query({
 
 // Get manifest of all active files for sync comparison
 export const getManifestForProject = query({
-  args: { projectId: v.id("projects"), userId: v.id("devicePrincipals") },
+  args: { projectId: v.id("projects"), principalId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
-    await requireProjectAccess(ctx, args.projectId, args.userId)
+    await requireProjectAccess(ctx, args.projectId, args.principalId)
     const files = await ctx.db
       .query("projectFiles")
       .withIndex("by_project_and_status", (q) =>
@@ -257,7 +257,7 @@ export const getManifestForProject = query({
 export const saveFiles = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     files: v.array(
       v.object({
         storageId: v.id("_storage"),
@@ -270,7 +270,7 @@ export const saveFiles = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireProjectEdit(ctx, args.projectId, args.userId)
+    await requireProjectEdit(ctx, args.projectId, args.principalId)
     const now = Date.now()
     const results: Array<{ path: string; fileId: string }> = []
 
@@ -316,7 +316,7 @@ export const saveFiles = mutation({
         checksum: file.checksum,
         version: existing ? existing.version + 1 : 1,
         previousVersionId: existing?._id,
-        uploadedBy: args.userId,
+        uploadedBy: args.principalId,
         uploadedAt: now,
         status: "active",
       })
@@ -342,14 +342,14 @@ export const saveFiles = mutation({
 export const saveFileContent = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     path: v.string(),
     content: v.string(),
     checksum: v.string(),
     mtime: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireProjectEdit(ctx, args.projectId, args.userId)
+    await requireProjectEdit(ctx, args.projectId, args.principalId)
     // Find existing file at this path
     const existing = await ctx.db
       .query("projectFiles")
@@ -386,11 +386,11 @@ export const saveFileContent = mutation({
 export const markFilesDeleted = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     filePaths: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireProjectEdit(ctx, args.projectId, args.userId)
+    await requireProjectEdit(ctx, args.projectId, args.principalId)
     const project = await ctx.db.get(args.projectId)
     if (!project) throw new Error("Project not found")
     const storageAccounting = await getProjectStorageAccountingState(ctx, args.projectId)

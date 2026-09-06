@@ -210,7 +210,7 @@ export function ProjectSidebar({
     api.projects.listSummariesForCurrentUser,
     principalId
       ? {
-          userId: principalId,
+          principalId: principalId,
         }
       : "skip",
   );
@@ -799,7 +799,7 @@ export function ProjectSidebar({
       try {
         await updateProject({
           projectId: projectPendingRename._id,
-          userId: principalId,
+          principalId: principalId,
           name: trimmedName,
         });
         setProjectPendingRename(null);
@@ -838,7 +838,7 @@ export function ProjectSidebar({
       try {
         await archiveProject({
           projectId: project._id,
-          userId: principalId,
+          principalId: principalId,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to archive project";
@@ -877,7 +877,7 @@ export function ProjectSidebar({
       try {
         await restoreProject({
           projectId: project._id,
-          userId: principalId,
+          principalId: principalId,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to restore project";
@@ -914,7 +914,7 @@ export function ProjectSidebar({
         await withProjectMutationTimeout(
           deleteProject({
             projectId: deletedProject._id,
-            userId: principalId,
+            principalId: principalId,
             // Server still validates the name; UI no longer requires retyping it.
             confirmName: deletedProject.name,
           }),

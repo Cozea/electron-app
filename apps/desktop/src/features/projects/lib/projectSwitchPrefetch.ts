@@ -20,7 +20,7 @@ export interface PrefetchProjectSwitchInput {
   workspaceId?: string | null
   collabBranch?: string | null
   convex: Pick<ConvexReactClient, "query">
-  userId: Id<"devicePrincipals"> | null
+  principalId: Id<"devicePrincipals"> | null
 }
 
 const prefetchInflight = new Set<string>()
@@ -31,7 +31,7 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
     return
   }
 
-  const inflightKey = `${projectId}::${input.workspaceId ?? ""}::${input.userId ?? ""}`
+  const inflightKey = `${projectId}::${input.workspaceId ?? ""}::${input.principalId ?? ""}`
   if (prefetchInflight.has(inflightKey)) {
     return
   }
@@ -45,12 +45,12 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
         tasks.push(import("@/features/projects/pages/ProjectWorkbenchPage"))
       }
 
-      if (input.userId) {
+      if (input.principalId) {
         tasks.push(
           prefetchLayoutProject({
             convex: input.convex,
             projectId,
-            userId: input.userId,
+            principalId: input.principalId,
           }),
         )
       }
@@ -88,7 +88,7 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
 export async function prefetchLayoutProject(input: {
   convex: Pick<ConvexReactClient, "query">
   projectId: string
-  userId: Id<"devicePrincipals">
+  principalId: Id<"devicePrincipals">
 }): Promise<void> {
   const cacheKey = layoutProjectQueryCacheKey(input.projectId, null)
   const cached = useQueryCache.getState().get(cacheKey)

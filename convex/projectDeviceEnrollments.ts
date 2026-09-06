@@ -89,7 +89,7 @@ export const resolve = mutation({
     if (!existing) {
       await ctx.db.insert("projectMembers", {
         projectId: enrollment.projectId,
-        userId: principal._id,
+        principalId: principal._id,
         role: enrollment.role,
         addedAt: now,
         addedBy: enrollment.createdBy,

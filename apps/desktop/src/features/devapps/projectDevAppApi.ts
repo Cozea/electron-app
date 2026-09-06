@@ -55,7 +55,7 @@ export interface AccessibleProjectDevApp {
 
 export type PublishProjectDevAppArgs = {
   projectId: Id<"projects">;
-  userId: Id<"devicePrincipals">;
+  principalId: Id<"devicePrincipals">;
   name: string;
   description?: string;
   framework: string;

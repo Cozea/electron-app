@@ -94,7 +94,7 @@ interface ManualTaskRecord {
 }
 
 interface ManualTaskAssigneeRecord {
-  userId?: string
+  principalId?: string
   name: string
   identityKey?: string
   avatarUrl?: string | null
@@ -148,7 +148,7 @@ interface TaskClaimantCandidate {
 }
 
 interface ClaimantMemberSourceRecord {
-  userId: string
+  principalId: string
   identityKey: string
   displayName: string
   avatarUrl?: string | null
@@ -591,7 +591,7 @@ function getPrimaryAssigneeRecord(
   if (!primary) return undefined
 
   return {
-    userId: primary.id,
+    principalId: primary.id,
     name: primary.name,
     identityKey: primary.identityKey,
     avatarUrl: primary.avatarUrl ?? null,
@@ -607,7 +607,7 @@ function buildAssigneeClaimants(
   return [
     {
       id:
-        assignee.userId ||
+        assignee.principalId ||
         `${prefix}-${normalizeSearchValue(assignee.name).replace(/\s+/g, '-') || 'assignee'}`,
       name: assignee.name,
       avatarUrl: assignee.avatarUrl ?? null,
@@ -772,7 +772,7 @@ export function TasksPage({
   const projectArtifacts = useQuery(
     api.projects.getArtifacts,
     project?._id && principalId
-      ? { projectId: project._id, userId: principalId }
+      ? { projectId: project._id, principalId: principalId }
       : 'skip',
   )
   const syncContext = useOptionalProjectSyncContext()
@@ -804,13 +804,13 @@ export function TasksPage({
   const projectMembers = useQuery(
     api.projectMembers.listMembers,
     project?._id && principalId
-      ? { projectId: project._id, viewerUserId: principalId }
+      ? { projectId: project._id, viewerPrincipalId: principalId }
       : 'skip',
   )
   const sharedManualTasks = useQuery(
     api.projectTasks.listForProject,
     project?._id && principalId
-      ? { projectId: project._id, viewerUserId: principalId }
+      ? { projectId: project._id, viewerPrincipalId: principalId }
       : 'skip',
   )
 
@@ -835,7 +835,7 @@ export function TasksPage({
       if (!identityKey) continue
       const name = member.displayName.trim() || identityKey
       const candidate: TaskClaimantCandidate = {
-        id: String(member.userId),
+        id: String(member.principalId),
         name,
         identityKey,
         avatarUrl: member.avatarUrl ?? null,
@@ -1074,7 +1074,7 @@ export function TasksPage({
       try {
         await migrateLocalBoardState({
           projectId: project._id,
-          actorUserId: principalId,
+          actorPrincipalId: principalId,
           manualTasks: storedManualTasks.map((task) => {
             const assignee = getPrimaryAssigneeRecord(task.claimants ?? [])
 
@@ -1085,7 +1085,7 @@ export function TasksPage({
               deadlineDate: task.deadlineDate,
               assignee: assignee
                 ? {
-                    userId: assignee.userId as Id<'devicePrincipals'> | undefined,
+                    principalId: assignee.principalId as Id<'devicePrincipals'> | undefined,
                     name: assignee.name,
                           avatarUrl: assignee.avatarUrl ?? undefined,
                   }
@@ -1318,14 +1318,14 @@ export function TasksPage({
 
       await createManualTask({
         projectId: project._id,
-        actorUserId: principalId,
+        actorPrincipalId: principalId,
         taskKey: createTaskId(),
         title,
         description,
         deadlineDate: draftDeadlineDate || undefined,
         assignee: assignee
           ? {
-              userId: assignee.userId as Id<'devicePrincipals'> | undefined,
+              principalId: assignee.principalId as Id<'devicePrincipals'> | undefined,
               name: assignee.name,
               avatarUrl: assignee.avatarUrl ?? undefined,
             }
@@ -1365,7 +1365,7 @@ export function TasksPage({
 
     void setManualTaskCheckedMarkers({
       projectId: project._id,
-      actorUserId: principalId,
+      actorPrincipalId: principalId,
       taskKey: item.storageId,
       checkedMarkerIds,
     })

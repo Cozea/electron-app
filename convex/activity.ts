@@ -53,10 +53,10 @@ const EXCLUDED_ACTIVITY_FILE_SUFFIXES = [
   ".eslintcache",
 ]
 
-function generateColor(userId: string): string {
+function generateColor(principalId: string): string {
   let hash = 0
-  for (let i = 0; i < userId.length; i++) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash)
+  for (let i = 0; i < principalId.length; i++) {
+    hash = principalId.charCodeAt(i) + ((hash << 5) - hash)
   }
   return COLORS[Math.abs(hash) % COLORS.length]
 }
@@ -86,7 +86,7 @@ function shouldExcludeActivityPath(filePath: string): boolean {
 export const logFileChange = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.optional(v.id("devicePrincipals")),
+    principalId: v.optional(v.id("devicePrincipals")),
     checkpointGroupId: v.optional(v.string()),
     filePath: v.string(),
     changeType: v.union(
@@ -113,7 +113,7 @@ export const logFileChange = mutation({
       )
     ),
     actorId: v.optional(v.string()),
-    userName: v.optional(v.string()),
+    displayName: v.optional(v.string()),
     terminalId: v.optional(v.string()),
     terminalTitle: v.optional(v.string()),
     terminalKind: v.optional(v.string()),
@@ -131,7 +131,7 @@ export const logFileChange = mutation({
   handler: async (ctx, args) => {
     const {
       projectId,
-      userId,
+      principalId,
       checkpointGroupId,
       filePath,
       changeType,
@@ -142,7 +142,7 @@ export const logFileChange = mutation({
       sourceOrigin,
       actorType,
       actorId,
-      userName,
+      displayName,
       terminalId,
       terminalTitle,
       terminalKind,
@@ -161,11 +161,11 @@ export const logFileChange = mutation({
     }
 
     // Generate color for user
-    const userColor = userId ? generateColor(userId) : "#6b7280"
+    const userColor = principalId ? generateColor(principalId) : "#6b7280"
 
     return await ctx.db.insert("fileChanges", {
       projectId,
-      userId,
+      principalId,
       checkpointGroupId,
       filePath,
       changeType,
@@ -177,7 +177,7 @@ export const logFileChange = mutation({
       sourceOrigin,
       actorType,
       actorId,
-      userName,
+      displayName,
       terminalId,
       terminalTitle,
       terminalKind,
@@ -217,15 +217,15 @@ export const getRecentActivity = query({
       .filter((change) => !shouldExcludeActivityPath(change.filePath))
       .slice(0, limit)
 
-    const uniqueUserIds = new Map<string, typeof visibleChanges[number]["userId"]>()
+    const uniqueUserIds = new Map<string, typeof visibleChanges[number]["principalId"]>()
     for (const change of visibleChanges) {
-      if (!change.userId) continue
-      uniqueUserIds.set(change.userId.toString(), change.userId)
+      if (!change.principalId) continue
+      uniqueUserIds.set(change.principalId.toString(), change.principalId)
     }
 
     const userImageEntries = await Promise.all(
-      Array.from(uniqueUserIds.entries()).map(async ([userKey, userId]) => {
-        const user = userId ? await ctx.db.get(userId) : null
+      Array.from(uniqueUserIds.entries()).map(async ([userKey, principalId]) => {
+        const user = principalId ? await ctx.db.get(principalId) : null
         return [userKey, user?.avatarStorageId ? (await ctx.storage.getUrl(user.avatarStorageId)) ?? undefined : undefined] as const
       })
     )
@@ -233,7 +233,7 @@ export const getRecentActivity = query({
 
     const results = visibleChanges.map((change) => ({
       id: change._id,
-      userId: change.userId,
+      principalId: change.principalId,
       checkpointGroupId: change.checkpointGroupId,
       filePath: change.filePath,
       oldPath: change.oldPath,
@@ -245,7 +245,7 @@ export const getRecentActivity = query({
       sourceOrigin: change.sourceOrigin,
       actorType: change.actorType,
       actorId: change.actorId,
-      userName: change.userName || "Unknown",
+      displayName: change.displayName || "Unknown",
       terminalId: change.terminalId,
       terminalTitle: change.terminalTitle,
       terminalKind: change.terminalKind,
@@ -257,7 +257,7 @@ export const getRecentActivity = query({
       workspaceId: change.workspaceId,
       gitCwd: change.gitCwd,
       userColor: change.userColor || "#6b7280",
-      userImage: change.userId ? userImages.get(change.userId.toString()) : undefined,
+      userImage: change.principalId ? userImages.get(change.principalId.toString()) : undefined,
       isAgent: change.origin === "agent",
       changeTimestamp: change.changeTimestamp,
       timestamp: change.timestamp,
@@ -355,12 +355,12 @@ export const cleanupOldActivity = mutation({
 export const addComment = mutation({
   args: {
     changeId: v.id("fileChanges"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     content: v.string(),
     parentCommentId: v.optional(v.id("changeComments")),
   },
   handler: async (ctx, args) => {
-    const { changeId, userId, content, parentCommentId } = args
+    const { changeId, principalId, content, parentCommentId } = args
 
     // Get the change to get the projectId
     const change = await ctx.db.get(changeId)
@@ -369,7 +369,7 @@ export const addComment = mutation({
     }
 
     // Get user info
-    const user = await ctx.db.get(userId)
+    const user = await ctx.db.get(principalId)
     if (!user) {
       throw new Error("User not found")
     }
@@ -387,15 +387,15 @@ export const addComment = mutation({
       }
     }
 
-    const userName = user.displayName
-    const userColor = generateColor(userId)
+    const displayName = user.displayName
+    const userColor = generateColor(principalId)
 
     const commentId = await ctx.db.insert("changeComments", {
       changeId,
       projectId: change.projectId,
-      userId,
+      principalId,
       content,
-      userName,
+      displayName,
       userColor,
       userImage: user.avatarStorageId ? (await ctx.storage.getUrl(user.avatarStorageId)) ?? undefined : undefined,
       parentCommentId,
@@ -414,7 +414,7 @@ export const addComment = mutation({
 export const getCommentsForChange = query({
   args: {
     changeId: v.id("fileChanges"),
-    viewerUserId: v.optional(v.id("devicePrincipals")),
+    viewerPrincipalId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const comments = await ctx.db
@@ -449,7 +449,7 @@ export const getCommentsForChange = query({
       }
 
       reactionSummary.count += 1
-      if (args.viewerUserId && reaction.userId === args.viewerUserId) {
+      if (args.viewerPrincipalId && reaction.principalId === args.viewerPrincipalId) {
         reactionSummary.reactedByViewer = true
       }
 
@@ -460,10 +460,10 @@ export const getCommentsForChange = query({
     return comments.map((comment) => ({
       id: comment._id,
       changeId: comment.changeId,
-      userId: comment.userId,
+      principalId: comment.principalId,
       parentCommentId: comment.parentCommentId,
       content: comment.content,
-      userName: comment.userName,
+      displayName: comment.displayName,
       userColor: comment.userColor,
       userImage: comment.userImage,
       createdAt: comment.createdAt,
@@ -486,11 +486,11 @@ export const getCommentsForChange = query({
 export const toggleCommentReaction = mutation({
   args: {
     commentId: v.id("changeComments"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     emoji: v.string(),
   },
   handler: async (ctx, args) => {
-    const { commentId, userId, emoji } = args
+    const { commentId, principalId, emoji } = args
 
     if (!ALLOWED_COMMENT_REACTIONS.has(emoji)) {
       throw new Error("Unsupported reaction emoji")
@@ -503,8 +503,8 @@ export const toggleCommentReaction = mutation({
 
     const existingReactions = await ctx.db
       .query("changeCommentReactions")
-      .withIndex("by_comment_and_user", (q) =>
-        q.eq("commentId", commentId).eq("userId", userId)
+      .withIndex("by_comment_and_principal", (q) =>
+        q.eq("commentId", commentId).eq("principalId", principalId)
       )
       .filter((q) => q.eq(q.field("emoji"), emoji))
       .collect()
@@ -518,7 +518,7 @@ export const toggleCommentReaction = mutation({
       commentId,
       changeId: comment.changeId,
       projectId: comment.projectId,
-      userId,
+      principalId,
       emoji,
       createdAt: Date.now(),
     })
@@ -570,11 +570,11 @@ export const getCommentCountsForChanges = query({
 export const getUnreadChangesCount = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     lastSeenTimestamp: v.number(),
   },
   handler: async (ctx, args) => {
-    const { projectId, userId, lastSeenTimestamp } = args
+    const { projectId, principalId, lastSeenTimestamp } = args
 
     // Get all changes since the last seen timestamp
     const changes = await ctx.db
@@ -585,7 +585,7 @@ export const getUnreadChangesCount = query({
 
     // Count only changes from other users (not the current user)
     const unreadCount = changes.filter(
-      (change) => change.userId !== userId && !shouldExcludeActivityPath(change.filePath)
+      (change) => change.principalId !== principalId && !shouldExcludeActivityPath(change.filePath)
     ).length
 
     return unreadCount
@@ -598,7 +598,7 @@ export const getUnreadChangesCount = query({
 export const deleteComment = mutation({
   args: {
     commentId: v.id("changeComments"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const comment = await ctx.db.get(args.commentId)
@@ -607,7 +607,7 @@ export const deleteComment = mutation({
     }
 
     // Only allow the author to delete their comment
-    if (comment.userId !== args.userId) {
+    if (comment.principalId !== args.principalId) {
       throw new Error("Not authorized to delete this comment")
     }
 

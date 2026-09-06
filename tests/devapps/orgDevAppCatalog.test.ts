@@ -26,7 +26,7 @@ interface OrganizationDoc {
 interface OrganizationMemberDoc {
   _id: Id<"organizationMembers">
   organizationId: Id<"organizations">
-  userId: Id<"devicePrincipals">
+  principalId: Id<"devicePrincipals">
   role: "admin" | "member"
   addedAt: number
   addedBy: Id<"devicePrincipals">
@@ -109,7 +109,7 @@ describe("org DevApp catalog access", () => {
       {
         _id: asId<"organizationMembers">("mem_admin"),
         organizationId: orgId,
-        userId: adminId,
+        principalId: adminId,
         role: "admin",
         addedAt: 1,
         addedBy: adminId,
@@ -117,7 +117,7 @@ describe("org DevApp catalog access", () => {
       {
         _id: asId<"organizationMembers">("mem_member"),
         organizationId: orgId,
-        userId: memberId,
+        principalId: memberId,
         role: "member",
         addedAt: 1,
         addedBy: adminId,

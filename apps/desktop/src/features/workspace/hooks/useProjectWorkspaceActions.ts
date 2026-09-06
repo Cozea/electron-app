@@ -84,7 +84,7 @@ export function useProjectWorkspaceActions() {
         try {
           await updateProjectStatus({
             projectId: project._id,
-            userId: principalId,
+            principalId: principalId,
             status: "active",
           })
         } catch (finalizeError) {

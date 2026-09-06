@@ -285,7 +285,7 @@ export async function createCollabSessionFromConvex(
   const principal = await requireActiveDeviceAccessInConvex(env, auth)
   const access = await runServerQuery<ProjectAccessResult>(env, 'projectMembers:getProjectAccessForServer', {
     projectId: body.projectId,
-    userId: principal.principalId,
+    principalId: principal.principalId,
   })
   if (!access.canAccess || !access.canEdit) {
     throw new Error('The authenticated device cannot access this project')

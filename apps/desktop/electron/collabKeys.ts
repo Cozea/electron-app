@@ -59,7 +59,7 @@ export interface WrappedRoomKeyDescriptor {
   wrappedKey: string
   wrapAlgorithm: typeof WRAP_ALGORITHM
   senderPublicKeyJwk: string
-  senderDeviceId: string
+  senderIdentityKey: string
 }
 
 export interface RecoveryKitDescriptor {
@@ -405,7 +405,7 @@ export async function wrapRoomKeyForRecipient(args: {
     JSON.stringify({
       v: 1,
       alg: WRAP_ALGORITHM,
-      senderDeviceId: identity.identityKey,
+      senderIdentityKey: identity.identityKey,
       senderFingerprint: identity.fingerprint,
     }),
   )
@@ -432,7 +432,7 @@ export async function wrapRoomKeyForRecipient(args: {
     wrappedKey: JSON.stringify(envelope),
     wrapAlgorithm: WRAP_ALGORITHM,
     senderPublicKeyJwk: JSON.stringify(identity.publicKeyJwk),
-    senderDeviceId: identity.identityKey,
+    senderIdentityKey: identity.identityKey,
   }
 }
 

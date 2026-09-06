@@ -56,7 +56,7 @@ type ResolutionCtx = Parameters<typeof resolvePublicationReferenceRecord>[0];
 function createFixture() {
   const organizationId = asId<"organizations">("org_1");
   const publicationId = asId<"devAppPublications">("pub_1");
-  const userId = asId<"devicePrincipals">("user_1");
+  const principalId = asId<"devicePrincipals">("user_1");
   const outsiderId = asId<"devicePrincipals">("user_outside");
   const release1Id = asId<"devAppReleases">("release_1");
   const release2Id = asId<"devAppReleases">("release_2");
@@ -76,8 +76,8 @@ function createFixture() {
     visibility: "organization" as const,
     name: "Inventory",
     status: "active" as "active" | "archived",
-    createdBy: userId,
-    updatedBy: userId,
+    createdBy: principalId,
+    updatedBy: principalId,
     createdAt: 1,
     updatedAt: 2,
   };
@@ -93,7 +93,7 @@ function createFixture() {
       contentHash: "a".repeat(64),
       runtimeKind: "static" as const,
       parts: { view: { source: "package" as const } },
-      createdBy: userId,
+      createdBy: principalId,
       createdAt: 1,
     },
     {
@@ -107,7 +107,7 @@ function createFixture() {
       contentHash: "b".repeat(64),
       runtimeKind: "static" as const,
       parts: { view: { source: "package" as const } },
-      createdBy: userId,
+      createdBy: principalId,
       createdAt: 2,
     },
   ];
@@ -115,7 +115,7 @@ function createFixture() {
     {
       _id: asId<"organizationMembers">("membership_1"),
       organizationId,
-      userId,
+      principalId,
       role: "member" as const,
       addedAt: 1,
       addedBy: organization.createdBy,
@@ -142,7 +142,7 @@ function createFixture() {
     },
   } as unknown as ResolutionCtx;
 
-  return { ctx, organizationId, publicationId, publication, userId, outsiderId };
+  return { ctx, organizationId, publicationId, publication, principalId, outsiderId };
 }
 
 describe("durable DevApp publication resolution", () => {
@@ -162,10 +162,10 @@ describe("durable DevApp publication resolution", () => {
     });
 
     await expect(
-      resolvePublicationReferenceRecord(fixture.ctx, latestRef, fixture.userId),
+      resolvePublicationReferenceRecord(fixture.ctx, latestRef, fixture.principalId),
     ).resolves.toMatchObject({ release: { version: 2 } });
     await expect(
-      resolvePublicationReferenceRecord(fixture.ctx, pinnedRef, fixture.userId),
+      resolvePublicationReferenceRecord(fixture.ctx, pinnedRef, fixture.principalId),
     ).resolves.toMatchObject({ release: { version: 1 } });
   });
 
@@ -190,14 +190,14 @@ describe("durable DevApp publication resolution", () => {
       resolvePublicationReferenceRecord(
         fixture.ctx,
         makeRef("org_wrong", "latest"),
-        fixture.userId,
+        fixture.principalId,
       ),
     ).resolves.toBeNull();
     await expect(
       resolvePublicationReferenceRecord(
         fixture.ctx,
         makeRef(fixture.organizationId, 99),
-        fixture.userId,
+        fixture.principalId,
       ),
     ).resolves.toBeNull();
 
@@ -206,7 +206,7 @@ describe("durable DevApp publication resolution", () => {
       resolvePublicationReferenceRecord(
         fixture.ctx,
         makeRef(fixture.organizationId, "latest"),
-        fixture.userId,
+        fixture.principalId,
       ),
     ).resolves.toBeNull();
   });

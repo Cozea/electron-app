@@ -97,7 +97,7 @@ function ProjectPresenceHeaderAddon({
 
   const { otherUsers: presenceUsers } = useProjectPresence({
     projectId,
-    userId: principalId,
+    principalId: principalId,
     activeFile: presenceActiveFile,
     activeRoute: presenceActiveRoute,
   });
@@ -106,7 +106,7 @@ function ProjectPresenceHeaderAddon({
     (presenceUser: PresenceUser) => {
       if (!projectBasePath) return;
       navigate(
-        `${projectBasePath}/workbench?changes=1&userId=${encodeURIComponent(presenceUser.userId)}`,
+        `${projectBasePath}/workbench?changes=1&principalId=${encodeURIComponent(presenceUser.principalId)}`,
       );
     },
     [navigate, projectBasePath],
@@ -164,7 +164,7 @@ export function ProjectLayout({
     !routeProjectId && routeSlug && principalId
       ? {
           slug: routeSlug,
-          userId: principalId,
+          principalId: principalId,
         }
       : "skip",
   );
@@ -651,8 +651,8 @@ export function ProjectLayout({
           workspaceId={activeWorkspaceValue ? activeWorkspaceId : null}
           workspaceRevision={activeWorkspaceValue?.workspace.workspaceRevision ?? 1}
           projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
-          userId={shouldEnableProjectRuntime ? principalId ?? null : null}
-          userName={user?.displayName ?? "This device"}
+          principalId={shouldEnableProjectRuntime ? principalId ?? null : null}
+          displayName={user?.displayName ?? "This device"}
           laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
           projectSlug={projectSlug}
           gitCwd={activeWorkspaceValue ? activeGitRootPath : null}

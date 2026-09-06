@@ -13,16 +13,16 @@ interface UseProjectPresenceOptions {
   projectId: Id<"projects"> | null | undefined
   // Current principal ID is retained client-side for self-filtering only. The
   // server derives the heartbeat actor from device auth.
-  userId: Id<"devicePrincipals"> | null | undefined
+  principalId: Id<"devicePrincipals"> | null | undefined
   activeFile?: string | null
   activeRoute?: string | null
 }
 
 export interface PresenceUser {
   id: string
-  userId: Id<"devicePrincipals">
-  userName: string
-  userAvatarUrl?: string
+  principalId: Id<"devicePrincipals">
+  displayName: string
+  avatarUrl?: string
   activeTab?: string
   activeFile?: string
   activeRoute?: string
@@ -34,7 +34,7 @@ export interface PresenceUser {
 
 export function useProjectPresence({
   projectId,
-  userId,
+  principalId,
   activeFile,
   activeRoute,
 }: UseProjectPresenceOptions) {
@@ -80,7 +80,7 @@ export function useProjectPresence({
   }, [activeFile, activeRoute, activeTab, isAiTyping, isAgentWorking, lastActivityAt])
 
   const sendHeartbeat = useCallback(async () => {
-    if (!projectId || !userId || !isConvexAuthReady) return
+    if (!projectId || !principalId || !isConvexAuthReady) return
 
     try {
       const snapshot = activitySnapshotRef.current
@@ -98,20 +98,20 @@ export function useProjectPresence({
     } catch (error) {
       console.warn("[Presence] Heartbeat failed:", error)
     }
-  }, [heartbeat, isConvexAuthReady, projectId, userId])
+  }, [heartbeat, isConvexAuthReady, projectId, principalId])
 
   const handleLeave = useCallback(async () => {
-    if (!projectId || !userId || !isConvexAuthReady) return
+    if (!projectId || !principalId || !isConvexAuthReady) return
 
     try {
       await leave({ projectId })
     } catch (error) {
       console.warn("[Presence] Leave failed:", error)
     }
-  }, [isConvexAuthReady, projectId, userId, leave])
+  }, [isConvexAuthReady, projectId, principalId, leave])
 
   useEffect(() => {
-    if (!projectId || !userId) return
+    if (!projectId || !principalId) return
 
     void sendHeartbeat()
     heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS)
@@ -123,14 +123,14 @@ export function useProjectPresence({
       }
       void handleLeave()
     }
-  }, [projectId, userId, sendHeartbeat, handleLeave])
+  }, [projectId, principalId, sendHeartbeat, handleLeave])
 
   useEffect(() => {
-    if (projectId && userId) void sendHeartbeat()
-  }, [activeTab, projectId, userId, sendHeartbeat])
+    if (projectId && principalId) void sendHeartbeat()
+  }, [activeTab, projectId, principalId, sendHeartbeat])
 
   useEffect(() => {
-    if (!projectId || !userId) return
+    if (!projectId || !principalId) return
     const now = Date.now()
     if (now - lastTransitionHeartbeatAtRef.current < 1000) return
     lastTransitionHeartbeatAtRef.current = now
@@ -142,7 +142,7 @@ export function useProjectPresence({
     isAiTyping,
     projectId,
     sendHeartbeat,
-    userId,
+    principalId,
   ])
 
   useEffect(() => {
@@ -181,7 +181,7 @@ export function useProjectPresence({
   }, [activeUsersQuery.error, activeUsersQuery.status])
 
   const activeUsers = activeUsersQuery.data
-  const otherUsers = activeUsers?.filter((u) => u.userId !== userId) ?? []
+  const otherUsers = activeUsers?.filter((u) => u.principalId !== principalId) ?? []
 
   return {
     activeUsers: activeUsers ?? [],

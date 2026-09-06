@@ -29,13 +29,13 @@ interface ProjectSyncProviderRuntimeProps extends ProjectSyncProviderProps {
 
 function AgentFileSyncBridge({
   projectId,
-  userId,
+  principalId,
   workspaceId,
   gitCwd,
   children,
 }: {
   projectId: Id<"projects"> | null
-  userId: Id<"devicePrincipals"> | null
+  principalId: Id<"devicePrincipals"> | null
   workspaceId: string | null
   gitCwd: string | null
   children: ReactNode
@@ -59,9 +59,9 @@ function AgentFileSyncBridge({
     }
   }, [workspaceId, yjsDoc])
 
-  useAgentFileSync(yjsDoc, workspaceId, projectId, userId)
-  useBinaryFileSync(projectId, workspaceId, userId)
-  useYjsFileWriteback(yjsDoc, workspaceId, gitCwd, projectId, userId)
+  useAgentFileSync(yjsDoc, workspaceId, projectId, principalId)
+  useBinaryFileSync(projectId, workspaceId, principalId)
+  useYjsFileWriteback(yjsDoc, workspaceId, gitCwd, projectId, principalId)
 
   return <>{children}</>
 }
@@ -69,8 +69,8 @@ function AgentFileSyncBridge({
 export function ProjectSyncProviderRuntime({
   children,
   projectId,
-  userId,
-  userName,
+  principalId,
+  displayName,
   laneId: _laneId = null,
   projectSlug: _projectSlug,
   workspaceId,
@@ -85,8 +85,8 @@ export function ProjectSyncProviderRuntime({
   renderDeleteConflictDialog = true,
 }: ProjectSyncProviderRuntimeProps) {
   const resolvedProjectId = (projectId ?? "__inactive_project__") as Id<"projects">
-  const resolvedUserId = (userId ?? "__inactive_user__") as Id<"devicePrincipals">
-  const resolvedUserName = userName ?? "User"
+  const resolvedPrincipalId = (principalId ?? "__inactive_user__") as Id<"devicePrincipals">
+  const resolvedUserName = displayName ?? "User"
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
 
@@ -96,7 +96,7 @@ export function ProjectSyncProviderRuntime({
     setLastSyncAt(initialLastSyncAt ?? null)
   }, [initialLastSyncAt])
 
-  const canSync = Boolean(projectId && userId && workspaceId)
+  const canSync = Boolean(projectId && principalId && workspaceId)
   const sharedCollaborationEnabled = canSync && collaborationEnabled
   const collaborationMode: "shared" | "local" = sharedCollaborationEnabled ? "shared" : "local"
 
@@ -254,8 +254,8 @@ export function ProjectSyncProviderRuntime({
     <ProjectSyncContext.Provider value={syncContextValue}>
       <YjsProjectProvider
         projectId={resolvedProjectId}
-        userId={resolvedUserId}
-        userName={resolvedUserName}
+        principalId={resolvedPrincipalId}
+        displayName={resolvedUserName}
         workspaceId={workspaceId}
         enabled={canSync}
         documentScopeId={documentScopeId}
@@ -266,7 +266,7 @@ export function ProjectSyncProviderRuntime({
         {renderDeleteConflictDialog ? <DeleteConflictDialog /> : null}
         <AgentFileSyncBridge
           projectId={projectId}
-          userId={userId}
+          principalId={principalId}
           workspaceId={workspaceId}
           gitCwd={gitCwd}
         >

@@ -53,8 +53,8 @@ export function extractAttributionOrigin(origin: unknown): FileChangeAttribution
         ? raw.actorType
         : undefined,
     actorId: typeof raw.actorId === 'string' ? raw.actorId : undefined,
-    userId: typeof raw.userId === 'string' ? raw.userId : undefined,
-    userName: typeof raw.userName === 'string' ? raw.userName : undefined,
+    principalId: typeof raw.principalId === 'string' ? raw.principalId : undefined,
+    displayName: typeof raw.displayName === 'string' ? raw.displayName : undefined,
     clientId: typeof raw.clientId === 'string' ? raw.clientId : undefined,
     terminalId: typeof raw.terminalId === 'string' ? raw.terminalId : undefined,
     terminalTitle: typeof raw.terminalTitle === 'string' ? raw.terminalTitle : undefined,
@@ -91,8 +91,8 @@ export function makeRemoteYjsOrigin(input: {
   sourceOrigin?: string | null
   actorType?: FileChangeAttribution['actorType'] | null
   actorId?: string | null
-  userId?: string | null
-  userName?: string | null
+  principalId?: string | null
+  displayName?: string | null
   checkpointGroupId?: string | null
   clientId?: string | null
   terminalId?: string | null
@@ -113,8 +113,8 @@ export function makeRemoteYjsOrigin(input: {
     sourceOrigin: input.sourceOrigin ?? undefined,
     actorType: input.actorType ?? undefined,
     actorId: input.actorId ?? undefined,
-    userId: input.userId ?? undefined,
-    userName: input.userName ?? undefined,
+    principalId: input.principalId ?? undefined,
+    displayName: input.displayName ?? undefined,
     checkpointGroupId: input.checkpointGroupId ?? undefined,
     clientId: input.clientId ?? undefined,
     terminalId: input.terminalId ?? undefined,

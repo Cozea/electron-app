@@ -688,7 +688,7 @@ export const listMine = query({
     const user = await requireAuthenticatedDevice(ctx)
     const memberships = await ctx.db
       .query("organizationMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_principal", (q) => q.eq("principalId", user._id))
       .collect()
 
     const grouped = await Promise.all(
@@ -735,7 +735,7 @@ export const listPublisherStatus = query({
     const user = await requireAuthenticatedDevice(ctx)
     const memberships = await ctx.db
       .query("projectMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_principal", (q) => q.eq("principalId", user._id))
       .collect()
 
     const rows = await Promise.all(

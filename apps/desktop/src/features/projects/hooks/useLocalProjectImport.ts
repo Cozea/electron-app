@@ -197,7 +197,7 @@ export function useLocalProjectImport() {
       const provider = existingRemoteUrl ? deriveProviderFromRepoUrl(existingRemoteUrl) : null
       const creationToken = globalThis.crypto.randomUUID()
       const result = await createProject({
-        userId: principalId,
+        principalId: principalId,
         name: projectName,
         template: "blank",
         creationPath: "repo",
@@ -226,7 +226,7 @@ export function useLocalProjectImport() {
         if (!result.resumed) {
           await deleteProject({
             projectId: result.projectId,
-            userId: principalId,
+            principalId: principalId,
             confirmName: projectName,
           }).catch((compensationError) => {
             console.warn(
@@ -244,7 +244,7 @@ export function useLocalProjectImport() {
       }
       await updateProjectStatus({
         projectId: result.projectId,
-        userId: principalId,
+        principalId: principalId,
         status: "active",
       })
       navigateToProjectWorkbench(

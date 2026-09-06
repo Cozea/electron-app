@@ -114,8 +114,8 @@ interface ActiveRoomKeyRecord {
   roomId: string
   keyVersion: number
   status: "active" | "rotating" | "revoked"
-  createdByUserId: Id<"devicePrincipals">
-  createdByDeviceId: string
+  createdByPrincipalId: Id<"devicePrincipals">
+  createdByIdentityKey: string
   createdAt: number
   rotatedAt?: number
 }
@@ -125,9 +125,9 @@ interface WrappedRoomKeyRecord {
   projectId: Id<"projects">
   roomId: string
   keyVersion: number
-  recipientUserId: Id<"devicePrincipals">
-  recipientDeviceId: string
-  senderDeviceId: string
+  recipientPrincipalId: Id<"devicePrincipals">
+  recipientIdentityKey: string
+  senderIdentityKey: string
   senderPublicKeyJwk: string
   wrapAlgorithm: string
   wrappedKey: string
@@ -144,8 +144,8 @@ interface RecoveryKitRecord {
   wrappedKey: string
   salt: string
   iterations: number
-  createdByUserId: Id<"devicePrincipals">
-  createdByDeviceId: string
+  createdByPrincipalId: Id<"devicePrincipals">
+  createdByIdentityKey: string
   createdAt: number
   revokedAt?: number
 }
@@ -240,14 +240,14 @@ async function getWrappedRoomKeyForDevice(
   args: {
     projectId: Id<"projects">
     roomId: string
-    deviceId: string
+    identityKey: string
     keyVersion: number
   },
 ): Promise<WrappedRoomKeyRecord | null> {
   const candidates = await ctx.db
     .query("projectCollabWrappedKeys")
     .withIndex("by_project_room_and_recipient", (q) =>
-      q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientDeviceId", args.deviceId),
+      q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientIdentityKey", args.identityKey),
     )
     .collect()
 
@@ -1008,7 +1008,7 @@ export const getEncryptionBootstrap = query({
     const wrappedKey = await getWrappedRoomKeyForDevice(ctx, {
       projectId: args.projectId,
       roomId,
-      deviceId: principal.identityKey,
+      identityKey: principal.identityKey,
       keyVersion: activeRoomKey.keyVersion,
     })
 
@@ -1066,12 +1066,12 @@ export const initializeEncryptedRoom = mutation({
     const now = Date.now()
     await ctx.db.insert("projectCollabRoomKeys", {
       projectId: args.projectId, roomId, keyVersion, status: "active",
-      createdByUserId: principal._id, createdByDeviceId: principal.identityKey, createdAt: now,
+      createdByPrincipalId: principal._id, createdByIdentityKey: principal.identityKey, createdAt: now,
     })
     await ctx.db.insert("projectCollabWrappedKeys", {
       projectId: args.projectId, roomId, keyVersion,
-      recipientUserId: principal._id, recipientDeviceId: principal.identityKey,
-      senderDeviceId: principal.identityKey, senderPublicKeyJwk: principal.encryptionPublicKeyJwk,
+      recipientPrincipalId: principal._id, recipientIdentityKey: principal.identityKey,
+      senderIdentityKey: principal.identityKey, senderPublicKeyJwk: principal.encryptionPublicKeyJwk,
       wrapAlgorithm: args.wrapAlgorithm, wrappedKey: args.wrappedKey, createdAt: now,
     })
     if (removedUpdateBytes > 0 || removedSnapshotBytes > 0) {
@@ -1092,12 +1092,12 @@ export const createKeyRequest = baseMutation({
     }
     const existing = await ctx.db.query("projectCollabKeyRequests")
       .withIndex("by_project_room_and_device", (q) =>
-        q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientDeviceId", principal.identityKey))
+        q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientIdentityKey", principal.identityKey))
       .first()
     const now = Date.now()
     const payload = {
-      recipientUserId: principal._id,
-      recipientDeviceId: principal.identityKey,
+      recipientPrincipalId: principal._id,
+      recipientIdentityKey: principal.identityKey,
       recipientPublicKeyJwk: principal.encryptionPublicKeyJwk,
       recipientFingerprint: principal.encryptionFingerprint,
       requestedAt: now,
@@ -1169,7 +1169,7 @@ export const getActiveRecoveryKit = query({
       salt: recoveryKit.salt,
       iterations: recoveryKit.iterations,
       createdAt: recoveryKit.createdAt,
-      createdByDeviceId: recoveryKit.createdByDeviceId,
+      createdByIdentityKey: recoveryKit.createdByIdentityKey,
     }
   },
 })
@@ -1202,25 +1202,25 @@ export const listCollabRoomDevices = query({
 
     const deviceIds = new Set<string>()
     for (const entry of wrappedKeys) {
-      deviceIds.add(entry.recipientDeviceId)
+      deviceIds.add(entry.recipientIdentityKey)
     }
     for (const request of pendingRequests) {
-      deviceIds.add(request.recipientDeviceId)
+      deviceIds.add(request.recipientIdentityKey)
     }
 
     const devices = await Promise.all(
-      [...deviceIds].map(async (deviceId) => {
+      [...deviceIds].map(async (identityKey) => {
         const principal = await ctx.db
           .query("devicePrincipals")
-          .withIndex("by_identity_key", (q) => q.eq("identityKey", deviceId))
+          .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey))
           .unique()
         if (!principal) return null
 
         const deviceWrappedKeys = wrappedKeys
-          .filter((entry) => entry.recipientDeviceId === deviceId)
+          .filter((entry) => entry.recipientIdentityKey === identityKey)
           .sort((a, b) => b.createdAt - a.createdAt)
         const pendingRequest = pendingRequests
-          .filter((entry) => entry.recipientDeviceId === deviceId && typeof entry.fulfilledAt !== "number")
+          .filter((entry) => entry.recipientIdentityKey === identityKey && typeof entry.fulfilledAt !== "number")
           .sort((a, b) => b.requestedAt - a.requestedAt)[0]
 
         return {
@@ -1274,11 +1274,11 @@ export const storeWrappedRoomKey = mutation({
     ) {
       throw new ConvexError("A matching pending key request is required before sharing access")
     }
-    const recipient = await ctx.db.get(pendingRequest.recipientUserId)
+    const recipient = await ctx.db.get(pendingRequest.recipientPrincipalId)
     if (
       !recipient ||
       recipient.status === "revoked" ||
-      recipient.identityKey !== pendingRequest.recipientDeviceId ||
+      recipient.identityKey !== pendingRequest.recipientIdentityKey ||
       recipient.encryptionPublicKeyJwk !== pendingRequest.recipientPublicKeyJwk ||
       recipient.encryptionFingerprint !== pendingRequest.recipientFingerprint
     ) {
@@ -1286,12 +1286,12 @@ export const storeWrappedRoomKey = mutation({
     }
     const existing = await ctx.db.query("projectCollabWrappedKeys")
       .withIndex("by_project_room_and_recipient", (q) =>
-        q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientDeviceId", recipient.identityKey))
+        q.eq("projectId", args.projectId).eq("roomId", args.roomId).eq("recipientIdentityKey", recipient.identityKey))
       .collect()
     const matching = existing.find((entry) => entry.keyVersion === args.keyVersion && typeof entry.revokedAt !== "number")
     const now = Date.now()
     const wrapped = {
-      senderDeviceId: principal.identityKey,
+      senderIdentityKey: principal.identityKey,
       senderPublicKeyJwk: principal.encryptionPublicKeyJwk,
       wrapAlgorithm: args.wrapAlgorithm,
       wrappedKey: args.wrappedKey,
@@ -1300,7 +1300,7 @@ export const storeWrappedRoomKey = mutation({
     if (matching) await ctx.db.patch(matching._id, wrapped)
     else await ctx.db.insert("projectCollabWrappedKeys", {
       projectId: args.projectId, roomId: args.roomId, keyVersion: args.keyVersion,
-      recipientUserId: recipient._id, recipientDeviceId: recipient.identityKey, ...wrapped,
+      recipientPrincipalId: recipient._id, recipientIdentityKey: recipient.identityKey, ...wrapped,
     })
     await ctx.db.patch(pendingRequest._id, { fulfilledAt: now })
     return { stored: true }
@@ -1362,8 +1362,8 @@ export const storeRecoveryKit = mutation({
       wrappedKey: args.wrappedKey,
       salt: args.salt,
       iterations: Math.max(1, Math.floor(args.iterations)),
-      createdByUserId: user._id,
-      createdByDeviceId: user.identityKey,
+      createdByPrincipalId: user._id,
+      createdByIdentityKey: user.identityKey,
       createdAt: now,
     })
 
@@ -1375,7 +1375,7 @@ export const revokeCollabDevice = mutation({
   args: {
     projectId: v.id("projects"),
     roomId: v.optional(v.string()),
-    deviceId: v.string(),
+    identityKey: v.string(),
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
@@ -1389,7 +1389,7 @@ export const revokeCollabDevice = mutation({
     const wrappedKeys = await ctx.db
       .query("projectCollabWrappedKeys")
       .withIndex("by_project_room_and_recipient", (q) =>
-        q.eq("projectId", args.projectId).eq("roomId", roomId).eq("recipientDeviceId", args.deviceId),
+        q.eq("projectId", args.projectId).eq("roomId", roomId).eq("recipientIdentityKey", args.identityKey),
       )
       .collect()
     for (const entry of wrappedKeys) {
@@ -1402,7 +1402,7 @@ export const revokeCollabDevice = mutation({
     const pendingRequests = await ctx.db
       .query("projectCollabKeyRequests")
       .withIndex("by_project_room_and_device", (q) =>
-        q.eq("projectId", args.projectId).eq("roomId", roomId).eq("recipientDeviceId", args.deviceId),
+        q.eq("projectId", args.projectId).eq("roomId", roomId).eq("recipientIdentityKey", args.identityKey),
       )
       .collect()
     for (const request of pendingRequests) {
@@ -1509,8 +1509,8 @@ export const rotateEncryptedRoomKey = mutation({
       roomId,
       keyVersion: nextKeyVersion,
       status: "active",
-      createdByUserId: user._id,
-      createdByDeviceId: user.identityKey,
+      createdByPrincipalId: user._id,
+      createdByIdentityKey: user.identityKey,
       createdAt: now,
     })
 
@@ -1526,9 +1526,9 @@ export const rotateEncryptedRoomKey = mutation({
         projectId: args.projectId,
         roomId,
         keyVersion: nextKeyVersion,
-        recipientUserId: recipient._id,
-        recipientDeviceId: recipient.identityKey,
-        senderDeviceId: user.identityKey,
+        recipientPrincipalId: recipient._id,
+        recipientIdentityKey: recipient.identityKey,
+        senderIdentityKey: user.identityKey,
         senderPublicKeyJwk: user.encryptionPublicKeyJwk,
         wrapAlgorithm: wrappedKey.wrapAlgorithm,
         wrappedKey: wrappedKey.wrappedKey,

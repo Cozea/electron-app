@@ -32,7 +32,7 @@ class MemoryStorage implements Storage {
 }
 
 const projectId = "local-project:one" as Id<"projects">;
-const userId = "local-user:one" as Id<"devicePrincipals">;
+const principalId = "local-user:one" as Id<"devicePrincipals">;
 const logoDataUrl = "data:image/webp;base64,UklGRjEyMzRXRUJQ";
 const updatedLogoDataUrl = "data:image/webp;base64,UklGRjU2NzhXRUJQ";
 
@@ -41,7 +41,7 @@ function createPublishArgs(
 ): PublishLocalProjectDevAppArgs {
   return {
     projectId,
-    userId,
+    principalId,
     name: "Local dashboard",
     description: "Runs from this machine",
     framework: "vite-react",

@@ -101,8 +101,8 @@ export class ProjectFilesPersistence {
   private filesMap: Y.Map<Y.Text>
   private projectId: Id<"projects">
   private workspaceId: string | null
-  private userId: Id<"devicePrincipals">
-  private userName: string
+  private principalId: Id<"devicePrincipals">
+  private displayName: string
   private convex: ConvexReactClient
   private pendingChanges: Map<string, PendingChange> = new Map()
   private pendingDeletes: Map<string, PendingDelete> = new Map()
@@ -115,15 +115,15 @@ export class ProjectFilesPersistence {
     projectId: Id<"projects">,
     workspaceId: string | null,
     convex: ConvexReactClient,
-    userId: Id<"devicePrincipals">,
-    userName: string = 'Unknown'
+    principalId: Id<"devicePrincipals">,
+    displayName: string = 'Unknown'
   ) {
     this.filesMap = filesMap
     this.projectId = projectId
     this.workspaceId = workspaceId
     this.convex = convex
-    this.userId = userId
-    this.userName = userName
+    this.principalId = principalId
+    this.displayName = displayName
 
     // Initialize previous contents for existing files
     for (const [path, text] of filesMap.entries()) {
@@ -267,7 +267,7 @@ export class ProjectFilesPersistence {
           try {
             await this.convex.mutation(api.activity.logFileChange, {
               projectId: this.projectId,
-              userId: this.userId,
+              principalId: this.principalId,
               filePath: path,
               changeType: 'delete',
               additions: 0,
@@ -277,7 +277,7 @@ export class ProjectFilesPersistence {
               sourceOrigin: attribution.sourceOrigin,
               actorType: attribution.actorType,
               actorId: attribution.actorId,
-              userName: this.userName,
+              displayName: this.displayName,
               terminalId: attribution.terminalId,
               terminalTitle: attribution.terminalTitle,
               terminalKind: attribution.terminalKind,
@@ -295,7 +295,7 @@ export class ProjectFilesPersistence {
             await this.convex.mutation(api.fileTombstones.createTombstone, {
               projectId: this.projectId,
               filePath: path,
-              deletedByAgent: attribution.origin === 'agent' ? this.userName : undefined,
+              deletedByAgent: attribution.origin === 'agent' ? this.displayName : undefined,
             })
           } catch (error) {
             console.error(`[ProjectFilesPersistence] Failed to log delete for ${path}:`, error)
@@ -327,7 +327,7 @@ export class ProjectFilesPersistence {
         try {
           await this.convex.mutation(api.activity.logFileChange, {
             projectId: this.projectId,
-            userId: this.userId,
+            principalId: this.principalId,
             filePath: path,
             changeType: isNewFile ? 'create' : 'modify',
             additions,
@@ -337,7 +337,7 @@ export class ProjectFilesPersistence {
             sourceOrigin: attribution.sourceOrigin,
             actorType: attribution.actorType,
             actorId: attribution.actorId,
-            userName: this.userName,
+            displayName: this.displayName,
             terminalId: attribution.terminalId,
             terminalTitle: attribution.terminalTitle,
             terminalKind: attribution.terminalKind,
@@ -373,7 +373,7 @@ export class ProjectFilesPersistence {
         const captureResult = await window.electronAPI.workspaceSync.gitCaptureCheckpoint({
           workspaceId: this.workspaceId,
           checkpointId: checkpointGroupId,
-          authorName: this.userName,
+          authorName: this.displayName,
         })
         if (!captureResult.success) {
           console.error('[ProjectFilesPersistence] Failed to capture checkpoint:', captureResult.error)

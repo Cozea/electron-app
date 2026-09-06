@@ -32,7 +32,7 @@ function normalizeOrgName(name: string): string {
 async function revokeOrganizationProjectKeys(
   ctx: MutationCtx,
   organizationId: Id<"organizations">,
-  deviceId: string,
+  identityKey: string,
   now: number,
 ): Promise<number> {
   const projects = await ctx.db.query("projects")
@@ -42,13 +42,13 @@ async function revokeOrganizationProjectKeys(
     const roomId = `project:${project._id}`
     const wrapped = await ctx.db.query("projectCollabWrappedKeys")
       .withIndex("by_project_room_and_recipient", (q) =>
-        q.eq("projectId", project._id).eq("roomId", roomId).eq("recipientDeviceId", deviceId)).collect()
+        q.eq("projectId", project._id).eq("roomId", roomId).eq("recipientIdentityKey", identityKey)).collect()
     for (const key of wrapped) {
       if (!key.revokedAt) await ctx.db.patch(key._id, { revokedAt: now })
     }
     const pending = await ctx.db.query("projectCollabKeyRequests")
       .withIndex("by_project_room_and_device", (q) =>
-        q.eq("projectId", project._id).eq("roomId", roomId).eq("recipientDeviceId", deviceId)).collect()
+        q.eq("projectId", project._id).eq("roomId", roomId).eq("recipientIdentityKey", identityKey)).collect()
     for (const request of pending) {
       if (!request.fulfilledAt) await ctx.db.patch(request._id, { fulfilledAt: now })
     }
@@ -85,7 +85,7 @@ export const create = mutation({
 
     await ctx.db.insert("organizationMembers", {
       organizationId,
-      userId: user._id,
+      principalId: user._id,
       role: "admin",
       addedAt: now,
       addedBy: user._id,
@@ -118,7 +118,7 @@ export const listMine = query({
     const user = await requireAuthenticatedDevice(ctx)
     const memberships = await ctx.db
       .query("organizationMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_principal", (q) => q.eq("principalId", user._id))
       .collect()
 
     const rows = await Promise.all(
@@ -180,10 +180,10 @@ export const listMembers = query({
 
     const rows = await Promise.all(
       memberships.map(async (membership) => {
-        const user = await ctx.db.get(membership.userId)
+        const user = await ctx.db.get(membership.principalId)
         return {
           membershipId: membership._id,
-          userId: membership.userId,
+          principalId: membership.principalId,
           role: membership.role,
           addedAt: membership.addedAt,
           identityKey: user?.identityKey ?? "",
@@ -223,8 +223,8 @@ export const createDeviceEnrollment = mutation({
 
     const existing = await ctx.db
       .query("organizationMembers")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", targetUser._id),
+      .withIndex("by_organization_and_principal", (q) =>
+        q.eq("organizationId", args.organizationId).eq("principalId", targetUser._id),
       )
       .unique()
     if (existing) {
@@ -310,13 +310,13 @@ export const resolveDeviceEnrollment = mutation({
       return { accepted: false }
     }
     const existing = await ctx.db.query("organizationMembers")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", enrollment.organizationId).eq("userId", user._id),
+      .withIndex("by_organization_and_principal", (q) =>
+        q.eq("organizationId", enrollment.organizationId).eq("principalId", user._id),
       ).unique()
     if (!existing) {
       await ctx.db.insert("organizationMembers", {
         organizationId: enrollment.organizationId,
-        userId: user._id,
+        principalId: user._id,
         role: enrollment.role,
         addedAt: now,
         addedBy: enrollment.createdBy,
@@ -346,22 +346,22 @@ export const cancelDeviceEnrollment = mutation({
 
 export const updateMemberRole = mutation({
   args: {
-    organizationId: v.id("organizations"), memberUserId: v.id("devicePrincipals"),
+    organizationId: v.id("organizations"), memberPrincipalId: v.id("devicePrincipals"),
     role: v.union(v.literal("admin"), v.literal("member")),
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
     const { organization } = await requireOrgAdmin(ctx, args.organizationId, user._id)
     const membership = await ctx.db.query("organizationMembers")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", args.memberUserId),
+      .withIndex("by_organization_and_principal", (q) =>
+        q.eq("organizationId", args.organizationId).eq("principalId", args.memberPrincipalId),
       ).unique()
     if (!membership) throw new ConvexError("Organization member not found")
     if (membership.role === "admin" && args.role === "member") {
       const admins = await ctx.db.query("organizationMembers")
         .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
         .filter((q) => q.eq(q.field("role"), "admin")).collect()
-      if (admins.length <= 1 || organization.createdBy === args.memberUserId) {
+      if (admins.length <= 1 || organization.createdBy === args.memberPrincipalId) {
         throw new ConvexError("Transfer ownership before demoting the last or owning admin")
       }
     }
@@ -371,18 +371,18 @@ export const updateMemberRole = mutation({
 })
 
 export const transferAdministration = mutation({
-  args: { organizationId: v.id("organizations"), memberUserId: v.id("devicePrincipals") },
+  args: { organizationId: v.id("organizations"), memberPrincipalId: v.id("devicePrincipals") },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
     const { organization } = await requireOrgAdmin(ctx, args.organizationId, user._id)
     if (organization.createdBy !== user._id) throw new ConvexError("Only the owning admin can transfer ownership")
     const membership = await ctx.db.query("organizationMembers")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", args.memberUserId),
+      .withIndex("by_organization_and_principal", (q) =>
+        q.eq("organizationId", args.organizationId).eq("principalId", args.memberPrincipalId),
       ).unique()
     if (!membership) throw new ConvexError("Organization member not found")
     await ctx.db.patch(membership._id, { role: "admin" })
-    await ctx.db.patch(args.organizationId, { createdBy: args.memberUserId, updatedAt: Date.now() })
+    await ctx.db.patch(args.organizationId, { createdBy: args.memberPrincipalId, updatedAt: Date.now() })
     return { transferred: true }
   },
 })
@@ -432,11 +432,11 @@ export const redeemRecoveryGrantFromServer = mutation({
       throw new ConvexError("Recovery grant is expired, used, or invalid")
     }
     const existing = await ctx.db.query("organizationMembers")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", grant.organizationId).eq("userId", target._id)).unique()
+      .withIndex("by_organization_and_principal", (q) =>
+        q.eq("organizationId", grant.organizationId).eq("principalId", target._id)).unique()
     if (!existing) {
       await ctx.db.insert("organizationMembers", {
-        organizationId: grant.organizationId, userId: target._id, role: "admin",
+        organizationId: grant.organizationId, principalId: target._id, role: "admin",
         addedAt: now, addedBy: grant.createdBy,
       })
     }
@@ -453,22 +453,22 @@ export const redeemRecoveryGrantFromServer = mutation({
 export const removeMember = mutation({
   args: {
     organizationId: v.id("organizations"),
-    memberUserId: v.id("devicePrincipals"),
+    memberPrincipalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedDevice(ctx)
     const { organization } = await requireOrgAdmin(ctx, args.organizationId, user._id)
-    if (args.memberUserId === organization.createdBy) {
+    if (args.memberPrincipalId === organization.createdBy) {
       throw new ConvexError("The organization creator cannot be removed")
     }
-    if (args.memberUserId === user._id) {
+    if (args.memberPrincipalId === user._id) {
       throw new ConvexError("Admins cannot remove themselves")
     }
 
     const membership = await ctx.db
       .query("organizationMembers")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", args.memberUserId),
+      .withIndex("by_organization_and_principal", (q) =>
+        q.eq("organizationId", args.organizationId).eq("principalId", args.memberPrincipalId),
       )
       .first()
     if (!membership) {
@@ -481,7 +481,7 @@ export const removeMember = mutation({
       if (admins.length <= 1) throw new ConvexError("An organization must retain at least one admin")
     }
 
-    const removed = await ctx.db.get(args.memberUserId)
+    const removed = await ctx.db.get(args.memberPrincipalId)
     await ctx.db.delete(membership._id)
     const projectsNeedingRotation = removed?.identityKey
       ? await revokeOrganizationProjectKeys(ctx, args.organizationId, removed.identityKey, Date.now())
@@ -548,7 +548,7 @@ export const createAndAttachProject = mutation({
 
     await ctx.db.insert("organizationMembers", {
       organizationId: created,
-      userId: user._id,
+      principalId: user._id,
       role: "admin",
       addedAt: Date.now(),
       addedBy: user._id,

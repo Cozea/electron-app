@@ -80,7 +80,7 @@ interface ActiveRecoveryKit {
   salt: string
   iterations: number
   createdAt: number
-  createdByDeviceId: string
+  createdByIdentityKey: string
 }
 
 export function ProjectSettingsPage({
@@ -114,7 +114,7 @@ export function ProjectSettingsPage({
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
     project?._id && principalId
-      ? { projectId: project._id, userId: principalId }
+      ? { projectId: project._id, principalId: principalId }
       : 'skip'
   )
   const isManager = memberRole === 'project_manager'
@@ -194,7 +194,7 @@ export function ProjectSettingsPage({
   const canSave = Boolean(principalId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
   const collabSession = collabSessionResult.session
   const collabBootstrap = collabSession?.encryption ?? null
-  const currentDeviceId = collabSession?.identityKey ?? null
+  const currentIdentityKey = collabSession?.identityKey ?? null
   const collabScopeKey = project?._id ? String(project._id) : null
   const canManageCollabSecurity = Boolean(project?._id && principalId && isManager)
   const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
@@ -374,7 +374,7 @@ export function ProjectSettingsPage({
     try {
       await updateProject({
         projectId: project._id,
-        userId: principalId,
+        principalId: principalId,
         name: nextName,
         description,
       })
@@ -400,7 +400,7 @@ export function ProjectSettingsPage({
     try {
       await archiveProject({
         projectId: project._id,
-        userId: principalId,
+        principalId: principalId,
       })
       setShowArchiveDialog(false)
       navigate('/projects')
@@ -421,7 +421,7 @@ export function ProjectSettingsPage({
       await withProjectMutationTimeout(
         removeProject({
           projectId: project._id,
-          userId: principalId,
+          principalId: principalId,
           // Server still validates the name; UI no longer requires retyping it.
           confirmName: project.name,
         }),
@@ -509,12 +509,12 @@ export function ProjectSettingsPage({
     storeWrappedRoomKey,
   ])
 
-  const handleRevokeDevice = useCallback(async (deviceId: string) => {
+  const handleRevokeDevice = useCallback(async (identityKey: string) => {
     if (!project || !collabSession) {
       return
     }
 
-    setCollabAction(`revoke:${deviceId}`)
+    setCollabAction(`revoke:${identityKey}`)
     setCollabError(null)
     setCollabNotice(null)
 
@@ -522,11 +522,11 @@ export function ProjectSettingsPage({
       await revokeCollabDevice({
         projectId: project._id,
         roomId: collabSession.roomId,
-        deviceId,
+        identityKey,
       })
       if (collabBootstrap?.status === 'ready' && collaborationDevices) {
         const nextDevices = collaborationDevices.map((device) =>
-          device.identityKey === deviceId
+          device.identityKey === identityKey
             ? { ...device, revokedAt: Date.now() }
             : device,
         )
@@ -644,7 +644,7 @@ export function ProjectSettingsPage({
 
       const ownKeyRequest = pendingKeyRequests.find(
         (request) =>
-          request.recipientUserId === principalId &&
+          request.recipientPrincipalId === principalId &&
           typeof request.fulfilledAt !== 'number',
       )
       if (!ownKeyRequest) {
@@ -1069,7 +1069,7 @@ export function ProjectSettingsPage({
                             <div className="flex min-w-0 flex-col gap-0.5">
                               <p className="truncate text-xs font-medium text-foreground">
                                 {device.displayName}
-                                {device.identityKey === currentDeviceId ? ` · ${t('settings.collab.thisDevice')}` : ''}
+                                {device.identityKey === currentIdentityKey ? ` · ${t('settings.collab.thisDevice')}` : ''}
                               </p>
                               <p className="truncate text-[11px] text-muted-foreground">
                                 {device.platform} · {device.encryptionFingerprint.slice(0, 12)}
@@ -1085,7 +1085,7 @@ export function ProjectSettingsPage({
                                 aria-label="Device options"
                                 disabled={
                                   Boolean(device.revokedAt) ||
-                                  device.identityKey === currentDeviceId ||
+                                  device.identityKey === currentIdentityKey ||
                                   collabAction === `revoke:${device.identityKey}`
                                 }
                                 onClick={async (event) => {

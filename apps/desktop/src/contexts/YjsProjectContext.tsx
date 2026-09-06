@@ -69,8 +69,8 @@ function randomDebugId(prefix: string): string {
 
 interface YjsProjectProviderProps {
   projectId: Id<"projects">
-  userId: Id<"devicePrincipals">
-  userName: string
+  principalId: Id<"devicePrincipals">
+  displayName: string
   workspaceId: string | null
   enabled?: boolean
   documentScopeId?: string | null
@@ -82,8 +82,8 @@ interface YjsProjectProviderProps {
 
 export function YjsProjectProvider({
   projectId,
-  userId,
-  userName,
+  principalId,
+  displayName,
   workspaceId,
   enabled = true,
   documentScopeId = null,
@@ -182,9 +182,9 @@ export function YjsProjectProvider({
       }
 
       doc.awareness.setLocalStateField("user", {
-        id: userId,
-        name: userName,
-        color: generateColor(userId),
+        id: principalId,
+        name: displayName,
+        color: generateColor(principalId),
       })
 
       const persistence = new ProjectFilesPersistence(
@@ -192,8 +192,8 @@ export function YjsProjectProvider({
         projectId,
         workspaceId,
         convex,
-        userId,
-        userName,
+        principalId,
+        displayName,
       )
       persistenceInstance = persistence
       persistenceRef.current = persistence
@@ -242,8 +242,8 @@ export function YjsProjectProvider({
     projectId,
     workspaceId,
     scopeKey,
-    userId,
-    userName,
+    principalId,
+    displayName,
     wsSession?.encryption.encryptionRequired,
   ])
 
@@ -316,7 +316,7 @@ export function YjsProjectProvider({
       roomKeyBase64: null,
       keyVersion: null,
     }
-  }, [convex, projectId, userId])
+  }, [convex, projectId, principalId])
 
   useEffect(() => {
     if (!enabled || !yjsDoc) {
@@ -422,7 +422,7 @@ export function YjsProjectProvider({
     projectId,
     resolveRoomEncryptionState,
     scopeKey,
-    userId,
+    principalId,
     yjsDoc,
     wsSession?.projectId,
     wsSession?.roomId,

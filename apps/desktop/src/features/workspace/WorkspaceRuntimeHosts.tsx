@@ -40,15 +40,15 @@ function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {
 const WorkspaceRuntimeHost = memo(function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
   const { config, runtimeId, workspaceId } = record
 
-  if (!config.projectId || !config.userId || !config.workspaceId) {
+  if (!config.projectId || !config.principalId || !config.workspaceId) {
     return null
   }
 
   return (
     <ProjectSyncProviderRuntime
       projectId={config.projectId}
-      userId={config.userId}
-      userName={config.userName}
+      principalId={config.principalId}
+      displayName={config.displayName}
       laneId={config.laneId}
       workspaceId={workspaceId}
       workspaceRevision={config.workspaceRevision}

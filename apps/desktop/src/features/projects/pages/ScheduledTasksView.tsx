@@ -509,7 +509,7 @@ export function ScheduledTasksView() {
   const { principalId } = useAuth();
   const accessibleProjects = useQuery(
     api.projects.listSummariesForCurrentUser,
-    principalId ? { userId: principalId } : "skip",
+    principalId ? { principalId: principalId } : "skip",
   );
   const availableProjects = React.useMemo(
     () => projectTargets(accessibleProjects, catalog?.entries ?? {}),

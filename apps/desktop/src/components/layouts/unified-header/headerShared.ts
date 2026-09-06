@@ -20,7 +20,7 @@ export interface ProjectRepoAccessRecord {
   accessState: "pending" | "granted" | "needs_identity" | "manual_required" | "revoked" | "error";
   errorMessage?: string;
   inviteEmail?: string;
-  memberUserId?: Id<"devicePrincipals">;
+  memberPrincipalId?: Id<"devicePrincipals">;
   providerAccountHandle?: string;
 }
 

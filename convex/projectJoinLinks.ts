@@ -314,7 +314,7 @@ export const joinByToken = mutation({
 
     await ctx.db.insert("projectMembers", {
       projectId: project._id,
-      userId: principal._id,
+      principalId: principal._id,
       role: link.role,
       addedAt: now,
       addedBy: link.createdBy,

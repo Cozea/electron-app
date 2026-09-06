@@ -25,14 +25,14 @@ export const heartbeat = mutation({
 
     const existing = await ctx.db
       .query("projectPresence")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", principal._id)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", principal._id)
       )
       .first()
 
     const presentation = {
-      userName: displayName,
-      userAvatarUrl: avatarUrl,
+      displayName: displayName,
+      avatarUrl: avatarUrl,
     }
 
     if (existing) {
@@ -49,7 +49,7 @@ export const heartbeat = mutation({
     } else {
       await ctx.db.insert("projectPresence", {
         projectId: args.projectId,
-        userId: principal._id,
+        principalId: principal._id,
         ...presentation,
         lastHeartbeat: now,
         lastActivityAt: args.lastActivityAt ?? now,
@@ -72,8 +72,8 @@ export const leave = mutation({
     const principal = await requireAuthenticatedDevice(ctx)
     const presence = await ctx.db
       .query("projectPresence")
-      .withIndex("by_project_and_user", (q) =>
-        q.eq("projectId", args.projectId).eq("userId", principal._id)
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", args.projectId).eq("principalId", principal._id)
       )
       .first()
 
@@ -102,9 +102,9 @@ export const getActiveUsers = query({
       )
       .map((p) => ({
         id: p._id,
-        userId: p.userId,
-        userName: p.userName,
-        userAvatarUrl: p.userAvatarUrl,
+        principalId: p.principalId,
+        displayName: p.displayName,
+        avatarUrl: p.avatarUrl,
         activeTab: p.activeTab,
         activeFile: p.activeFile,
         activeRoute: p.activeRoute,

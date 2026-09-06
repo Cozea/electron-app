@@ -36,8 +36,8 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
-function getUserColor(userId: string): string {
-  // Generate a consistent color based on userId
+function getUserColor(principalId: string): string {
+  // Generate a consistent color based on principalId
   const colors = [
     "#ef4444", // red
     "#f97316", // orange
@@ -50,8 +50,8 @@ function getUserColor(userId: string): string {
     "#ec4899", // pink
   ]
   let hash = 0
-  for (let i = 0; i < userId.length; i++) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash)
+  for (let i = 0; i < principalId.length; i++) {
+    hash = principalId.charCodeAt(i) + ((hash << 5) - hash)
   }
   return colors[Math.abs(hash) % colors.length]
 }
@@ -124,7 +124,7 @@ export function PresenceAvatarGroup({
       if (activityDelta !== 0) return activityDelta
 
       // Deterministic tie-breaker prevents jitter when activity timestamps match.
-      return a.userId.localeCompare(b.userId)
+      return a.principalId.localeCompare(b.principalId)
     })
   }, [users])
   if (sortedUsers.length === 0) return null
@@ -137,10 +137,10 @@ export function PresenceAvatarGroup({
       <div className={cn("flex items-center", className)}>
         <div className="flex -space-x-2">
           {visibleUsers.map((user, index) => {
-            const color = getUserColor(user.userId)
+            const color = getUserColor(user.principalId)
             const TabIcon = getTabIcon(user.activeTab)
             return (
-              <Tooltip key={user.userId}>
+              <Tooltip key={user.principalId}>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
@@ -155,21 +155,21 @@ export function PresenceAvatarGroup({
                     <Avatar
                       className="h-6 w-6 border-2 border-border/70 bg-background"
                     >
-                      {user.userAvatarUrl ? (
-                        <AvatarImage src={user.userAvatarUrl} alt={user.userName} />
+                      {user.avatarUrl ? (
+                        <AvatarImage src={user.avatarUrl} alt={user.displayName} />
                       ) : null}
                       <AvatarFallback
                         className="text-[10px] font-medium"
                         style={{ backgroundColor: color, color: "white" }}
                       >
-                        {getInitials(user.userName)}
+                        {getInitials(user.displayName)}
                       </AvatarFallback>
                     </Avatar>
                     {renderActivityBubble(user)}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="flex flex-col gap-0.5">
-                  <p className="font-medium">{user.userName}</p>
+                  <p className="font-medium">{user.displayName}</p>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <TabIcon className="h-3 w-3 shrink-0" />
                     <span>{formatTabName(user.activeTab)}</span>

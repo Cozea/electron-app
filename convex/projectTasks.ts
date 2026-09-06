@@ -28,7 +28,7 @@ const TASK_MARKER_VALIDATOR = v.object({
   label: v.string(),
 })
 const TASK_ASSIGNEE_VALIDATOR = v.object({
-  userId: v.optional(v.id("devicePrincipals")),
+  principalId: v.optional(v.id("devicePrincipals")),
   name: v.string(),
   avatarUrl: v.optional(v.string()),
 })
@@ -47,7 +47,7 @@ type TaskMarker = {
   label: string
 }
 type TaskAssignee = {
-  userId?: Id<"devicePrincipals">
+  principalId?: Id<"devicePrincipals">
   name: string
   avatarUrl?: string
 }
@@ -116,8 +116,8 @@ function sanitizeAssignee(assignee: TaskAssignee | undefined): TaskAssignee | un
     name,
   }
 
-  if (assignee.userId) {
-    sanitized.userId = assignee.userId
+  if (assignee.principalId) {
+    sanitized.principalId = assignee.principalId
   }
 
 
@@ -141,12 +141,12 @@ function sanitizeContext(context: TaskContext): TaskContext {
 async function getAccessibleProject(
   ctx: Pick<MutationCtx | QueryCtx, "db">,
   projectId: Id<"projects">,
-  userId: Id<"devicePrincipals">
+  principalId: Id<"devicePrincipals">
 ): Promise<Doc<"projects">> {
   const canAccess = await canAccessProjectByWorkspaceOrMembership(
     ctx,
     projectId,
-    userId
+    principalId
   )
 
   if (!canAccess) {
@@ -166,12 +166,12 @@ async function assertAssignableAssignee(
   project: Doc<"projects">,
   assignee: TaskAssignee | undefined
 ): Promise<void> {
-  if (!assignee?.userId) return
+  if (!assignee?.principalId) return
 
   const projectMembership = await ctx.db
     .query("projectMembers")
-    .withIndex("by_project_and_user", (q) =>
-      q.eq("projectId", project._id).eq("userId", assignee.userId as Id<"devicePrincipals">)
+    .withIndex("by_project_and_principal", (q) =>
+      q.eq("projectId", project._id).eq("principalId", assignee.principalId as Id<"devicePrincipals">)
     )
     .first()
 
@@ -188,19 +188,19 @@ async function insertAssignmentNotification(
   taskStorageId: string,
   taskTitle: string,
   taskContext: TaskContext,
-  actorUserId: Id<"devicePrincipals">
+  actorPrincipalId: Id<"devicePrincipals">
 ): Promise<void> {
-  if (!assignee?.userId) return
+  if (!assignee?.principalId) return
 
   await ctx.db.insert("projectTaskNotifications", {
-    userId: assignee.userId,
+    principalId: assignee.principalId,
     projectId: project._id,
     kind: "assigned",
     taskSource: "manual",
     taskStorageId,
     taskTitle,
     taskContext,
-    actorUserId,
+    actorPrincipalId,
     createdAt: Date.now(),
   })
 }
@@ -208,7 +208,7 @@ async function insertAssignmentNotification(
 async function insertCompletionNotifications(
   ctx: MutationCtx,
   project: Doc<"projects">,
-  actorUserId: Id<"devicePrincipals">,
+  actorPrincipalId: Id<"devicePrincipals">,
   taskSource: TaskSource,
   taskStorageId: string,
   taskTitle: string,
@@ -223,19 +223,19 @@ async function insertCompletionNotifications(
   const now = Date.now()
 
   for (const membership of memberships) {
-    const key = String(membership.userId)
+    const key = String(membership.principalId)
     if (uniqueUserIds.has(key)) continue
     uniqueUserIds.add(key)
 
     await ctx.db.insert("projectTaskNotifications", {
-      userId: membership.userId,
+      principalId: membership.principalId,
       projectId: project._id,
       kind: "completed",
       taskSource,
       taskStorageId,
       taskTitle,
       taskContext,
-      actorUserId,
+      actorPrincipalId,
       createdAt: now,
     })
   }
@@ -244,10 +244,10 @@ async function insertCompletionNotifications(
 export const listForProject = query({
   args: {
     projectId: v.id("projects"),
-    viewerUserId: v.id("devicePrincipals"),
+    viewerPrincipalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    await getAccessibleProject(ctx, args.projectId, args.viewerUserId)
+    await getAccessibleProject(ctx, args.projectId, args.viewerPrincipalId)
 
     const tasks = await ctx.db
       .query("projectTasks")
@@ -266,10 +266,10 @@ export const listForProject = query({
 export const listSharedStatesForProject = query({
   args: {
     projectId: v.id("projects"),
-    viewerUserId: v.id("devicePrincipals"),
+    viewerPrincipalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    await getAccessibleProject(ctx, args.projectId, args.viewerUserId)
+    await getAccessibleProject(ctx, args.projectId, args.viewerPrincipalId)
 
     return await ctx.db
       .query("projectTaskStates")
@@ -281,12 +281,12 @@ export const listSharedStatesForProject = query({
 export const getOverlayTaskState = query({
   args: {
     projectId: v.id("projects"),
-    viewerUserId: v.id("devicePrincipals"),
+    viewerPrincipalId: v.id("devicePrincipals"),
     source: TASK_SOURCE_VALIDATOR,
     storageId: v.string(),
   },
   handler: async (ctx, args) => {
-    await getAccessibleProject(ctx, args.projectId, args.viewerUserId)
+    await getAccessibleProject(ctx, args.projectId, args.viewerPrincipalId)
 
     if (args.source === "manual") {
       const task = await ctx.db
@@ -323,12 +323,12 @@ export const getOverlayTaskState = query({
 
 export const listInboxForUser = query({
   args: {
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const notifications = await ctx.db
       .query("projectTaskNotifications")
-      .withIndex("by_user_and_created", (q) => q.eq("userId", args.userId))
+      .withIndex("by_principal_and_created", (q) => q.eq("principalId", args.principalId))
       .order("desc")
       .take(24)
 
@@ -336,7 +336,7 @@ export const listInboxForUser = query({
       notifications.map(async (notification) => {
         const [project, actor] = await Promise.all([
           ctx.db.get(notification.projectId),
-          notification.actorUserId ? ctx.db.get(notification.actorUserId) : Promise.resolve(null),
+          notification.actorPrincipalId ? ctx.db.get(notification.actorPrincipalId) : Promise.resolve(null),
         ])
 
         if (!project || project.status === "deleted") {
@@ -369,7 +369,7 @@ export const listInboxForUser = query({
 export const createManualTask = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
+    actorPrincipalId: v.id("devicePrincipals"),
     taskKey: v.string(),
     title: v.string(),
     description: v.string(),
@@ -379,7 +379,7 @@ export const createManualTask = mutation({
     markers: v.array(TASK_MARKER_VALIDATOR),
   },
   handler: async (ctx, args) => {
-    const project = await getAccessibleProject(ctx, args.projectId, args.actorUserId)
+    const project = await getAccessibleProject(ctx, args.projectId, args.actorPrincipalId)
     const taskKey = normalizeText(args.taskKey) || `task-${Date.now()}`
     const title = normalizeText(args.title)
 
@@ -417,8 +417,8 @@ export const createManualTask = mutation({
       context: sanitizeContext(args.context),
       markers,
       checkedMarkerIds,
-      createdBy: args.actorUserId,
-      updatedBy: args.actorUserId,
+      createdBy: args.actorPrincipalId,
+      updatedBy: args.actorPrincipalId,
       createdAt: now,
       updatedAt: now,
     })
@@ -430,7 +430,7 @@ export const createManualTask = mutation({
       taskKey,
       title,
       sanitizeContext(args.context),
-      args.actorUserId
+      args.actorPrincipalId
     )
 
     return await ctx.db.get(docId)
@@ -440,12 +440,12 @@ export const createManualTask = mutation({
 export const setManualTaskCheckedMarkers = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
+    actorPrincipalId: v.id("devicePrincipals"),
     taskKey: v.string(),
     checkedMarkerIds: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const project = await getAccessibleProject(ctx, args.projectId, args.actorUserId)
+    const project = await getAccessibleProject(ctx, args.projectId, args.actorPrincipalId)
     const task = await ctx.db
       .query("projectTasks")
       .withIndex("by_project_and_task_key", (q) =>
@@ -464,17 +464,17 @@ export const setManualTaskCheckedMarkers = mutation({
     await ctx.db.patch(task._id, {
       checkedMarkerIds,
       status: nextStatus,
-      updatedBy: args.actorUserId,
+      updatedBy: args.actorPrincipalId,
       updatedAt: now,
       completedAt: nextStatus === "done" ? now : undefined,
-      completedBy: nextStatus === "done" ? args.actorUserId : undefined,
+      completedBy: nextStatus === "done" ? args.actorPrincipalId : undefined,
     })
 
     if (task.status !== "done" && nextStatus === "done") {
       await insertCompletionNotifications(
         ctx,
         project,
-        args.actorUserId,
+        args.actorPrincipalId,
         "manual",
         task.taskKey,
         task.title,
@@ -492,7 +492,7 @@ export const setManualTaskCheckedMarkers = mutation({
 export const setSharedTaskCheckedMarkers = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
+    actorPrincipalId: v.id("devicePrincipals"),
     source: SYNTHETIC_TASK_SOURCE_VALIDATOR,
     storageId: v.string(),
     totalMarkerCount: v.number(),
@@ -501,7 +501,7 @@ export const setSharedTaskCheckedMarkers = mutation({
     taskContext: TASK_CONTEXT_VALIDATOR,
   },
   handler: async (ctx, args) => {
-    const project = await getAccessibleProject(ctx, args.projectId, args.actorUserId)
+    const project = await getAccessibleProject(ctx, args.projectId, args.actorPrincipalId)
     const totalMarkerCount = Math.max(0, args.totalMarkerCount)
     const checkedMarkerIds = Array.from(
       new Set(
@@ -523,10 +523,10 @@ export const setSharedTaskCheckedMarkers = mutation({
       await ctx.db.patch(existing._id, {
         checkedMarkerIds,
         status: nextStatus,
-        updatedBy: args.actorUserId,
+        updatedBy: args.actorPrincipalId,
         updatedAt: now,
         completedAt: nextStatus === "done" ? now : undefined,
-        completedBy: nextStatus === "done" ? args.actorUserId : undefined,
+        completedBy: nextStatus === "done" ? args.actorPrincipalId : undefined,
       })
     } else {
       await ctx.db.insert("projectTaskStates", {
@@ -535,10 +535,10 @@ export const setSharedTaskCheckedMarkers = mutation({
         storageId: args.storageId,
         status: nextStatus,
         checkedMarkerIds,
-        updatedBy: args.actorUserId,
+        updatedBy: args.actorPrincipalId,
         updatedAt: now,
         completedAt: nextStatus === "done" ? now : undefined,
-        completedBy: nextStatus === "done" ? args.actorUserId : undefined,
+        completedBy: nextStatus === "done" ? args.actorPrincipalId : undefined,
       })
     }
 
@@ -546,7 +546,7 @@ export const setSharedTaskCheckedMarkers = mutation({
       await insertCompletionNotifications(
         ctx,
         project,
-        args.actorUserId,
+        args.actorPrincipalId,
         args.source,
         args.storageId,
         normalizeText(args.taskTitle),
@@ -564,7 +564,7 @@ export const setSharedTaskCheckedMarkers = mutation({
 export const migrateLocalBoardState = mutation({
   args: {
     projectId: v.id("projects"),
-    actorUserId: v.id("devicePrincipals"),
+    actorPrincipalId: v.id("devicePrincipals"),
     manualTasks: v.array(
       v.object({
         taskKey: v.string(),
@@ -589,7 +589,7 @@ export const migrateLocalBoardState = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const project = await getAccessibleProject(ctx, args.projectId, args.actorUserId)
+    const project = await getAccessibleProject(ctx, args.projectId, args.actorPrincipalId)
     const existingTasks = await ctx.db
       .query("projectTasks")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -611,7 +611,7 @@ export const migrateLocalBoardState = mutation({
       const now = Date.now()
 
       let safeAssignee = assignee
-      if (assignee?.userId) {
+      if (assignee?.principalId) {
         try {
           await assertAssignableAssignee(ctx, project, assignee)
         } catch {
@@ -633,12 +633,12 @@ export const migrateLocalBoardState = mutation({
         context: sanitizeContext(input.context),
         markers,
         checkedMarkerIds,
-        createdBy: args.actorUserId,
-        updatedBy: args.actorUserId,
+        createdBy: args.actorPrincipalId,
+        updatedBy: args.actorPrincipalId,
         createdAt: input.createdAt ?? now,
         updatedAt: input.updatedAt ?? input.createdAt ?? now,
         completedAt: status === "done" ? (input.updatedAt ?? input.createdAt ?? now) : undefined,
-        completedBy: status === "done" ? args.actorUserId : undefined,
+        completedBy: status === "done" ? args.actorPrincipalId : undefined,
       })
 
       existingTaskKeys.add(taskKey)
@@ -673,10 +673,10 @@ export const migrateLocalBoardState = mutation({
         storageId: normalizeText(state.storageId),
         status,
         checkedMarkerIds,
-        updatedBy: args.actorUserId,
+        updatedBy: args.actorPrincipalId,
         updatedAt: now,
         completedAt: status === "done" ? now : undefined,
-        completedBy: status === "done" ? args.actorUserId : undefined,
+        completedBy: status === "done" ? args.actorPrincipalId : undefined,
       })
 
       importedSharedStateCount += 1
@@ -691,7 +691,7 @@ export const migrateLocalBoardState = mutation({
 
 export const dismissInboxItems = mutation({
   args: {
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     notificationIds: v.array(v.id("projectTaskNotifications")),
   },
   handler: async (ctx, args) => {
@@ -699,7 +699,7 @@ export const dismissInboxItems = mutation({
 
     for (const notificationId of args.notificationIds) {
       const notification = await ctx.db.get(notificationId)
-      if (!notification || notification.userId !== args.userId) {
+      if (!notification || notification.principalId !== args.principalId) {
         continue
       }
 

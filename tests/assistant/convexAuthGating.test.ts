@@ -37,7 +37,7 @@ describe("convex auth gating", () => {
     expect(presence).toContain("projectId && isConvexAuthReady ? { projectId } : \"skip\"");
     // The heartbeat mutation shares the gate so a 30s interval cannot turn the
     // auth gap into a steady drip of rejected writes.
-    expect(presence).toContain("if (!projectId || !userId || !isConvexAuthReady) return");
+    expect(presence).toContain("if (!projectId || !principalId || !isConvexAuthReady) return");
   });
 
   it("keeps presence failures out of the route error boundary", () => {
@@ -79,7 +79,7 @@ describe("convex auth gating", () => {
     // All share-surface reads require a live authenticated device principal;
     // cached shell presentation alone must never open cloud queries.
     expect(shareButton).toContain(
-      'projectId && principalId ? { projectId, userId: principalId } : "skip"',
+      'projectId && principalId ? { projectId, principalId: principalId } : "skip"',
     );
   });
 });

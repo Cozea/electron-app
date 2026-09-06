@@ -38,7 +38,7 @@ export const generateUploadUrl = mutation({
 export const create = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     storageId: v.optional(v.id("_storage")), // Optional for folders
     name: v.string(),
     mimeType: v.string(),
@@ -85,7 +85,7 @@ export const create = mutation({
       description: args.description,
       category,
       tags: args.tags,
-      uploadedBy: args.userId,
+      uploadedBy: args.principalId,
       uploadedAt: now,
     })
 
@@ -463,7 +463,7 @@ export const bulkDelete = mutation({
 export const duplicate = mutation({
   args: {
     assetId: v.id("projectAssets"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const asset = await ctx.db.get(args.assetId)
@@ -491,7 +491,7 @@ export const duplicate = mutation({
       description: asset.description,
       category: asset.category,
       tags: asset.tags,
-      uploadedBy: args.userId,
+      uploadedBy: args.principalId,
       uploadedAt: now,
     })
 

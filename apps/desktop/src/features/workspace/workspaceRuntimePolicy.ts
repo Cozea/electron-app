@@ -8,7 +8,7 @@ function canHostRuntime(record: WorkspaceRuntimeRecord): boolean {
   return (
     record.lifecycle !== "closed" &&
     record.lifecycle !== "background-frozen" &&
-    Boolean(record.config.projectId && record.config.userId && record.config.workspaceId)
+    Boolean(record.config.projectId && record.config.principalId && record.config.workspaceId)
   )
 }
 

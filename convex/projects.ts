@@ -67,7 +67,7 @@ const generatedPlanValidator = v.object({
 
 async function listCollaboratorProjectsForUser(
   ctx: Pick<QueryCtx | MutationCtx, "db">,
-  userId: Id<"devicePrincipals">,
+  principalId: Id<"devicePrincipals">,
 ): Promise<
   Array<
     Doc<"projects"> & {
@@ -78,7 +78,7 @@ async function listCollaboratorProjectsForUser(
 > {
   const memberships = await ctx.db
     .query("projectMembers")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .withIndex("by_principal", (q) => q.eq("principalId", principalId))
     .collect()
 
   const rows = await Promise.all(
@@ -220,7 +220,7 @@ async function upsertProjectArtifacts(
 
 export const create = mutation({
   args: {
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     name: v.string(),
     creationPath: v.union(v.literal("fresh"), v.literal("repo")),
     description: v.optional(v.string()),
@@ -281,7 +281,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
-    const user = await ctx.db.get(args.userId)
+    const user = await ctx.db.get(args.principalId)
     if (!user) {
       throw new ConvexError("User not found")
     }
@@ -303,7 +303,7 @@ export const create = mutation({
         .collect()
       const existing = tokenDocs.find(
         (doc) =>
-          doc.status !== "deleted" && String(doc.createdBy) === String(args.userId),
+          doc.status !== "deleted" && String(doc.createdBy) === String(args.principalId),
       )
       if (existing) {
         return { projectId: existing._id, slug: existing.slug, resumed: true }
@@ -311,7 +311,7 @@ export const create = mutation({
     }
 
     if (args.organizationId) {
-      if (!(await isOrgMember(ctx, args.organizationId, args.userId))) {
+      if (!(await isOrgMember(ctx, args.organizationId, args.principalId))) {
         throw new ConvexError("You are not a member of this organization")
       }
     }
@@ -348,7 +348,7 @@ export const create = mutation({
       status: args.status ?? "draft",
       creationToken: args.creationToken,
       sharedFilesVersion: 0,
-      createdBy: args.userId,
+      createdBy: args.principalId,
       createdAt: now,
       updatedAt: now,
       ...(args.organizationId ? { organizationId: args.organizationId } : {}),
@@ -364,10 +364,10 @@ export const create = mutation({
 
     await ctx.db.insert("projectMembers", {
       projectId,
-      userId: args.userId,
+      principalId: args.principalId,
       role: "project_manager",
       addedAt: now,
-      addedBy: args.userId,
+      addedBy: args.principalId,
     })
 
     return {
@@ -387,10 +387,10 @@ export const get = query({
 
 export const listForCurrentUser = query({
   args: {
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    return listCollaboratorProjectsForUser(ctx, args.userId)
+    return listCollaboratorProjectsForUser(ctx, args.principalId)
   },
 })
 
@@ -401,10 +401,10 @@ export const listForCurrentUser = query({
  */
 export const listSummariesForCurrentUser = query({
   args: {
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    const projects = await listCollaboratorProjectsForUser(ctx, args.userId)
+    const projects = await listCollaboratorProjectsForUser(ctx, args.principalId)
     return projects.map((project) => ({
       _id: project._id,
       name: project.name,
@@ -425,7 +425,7 @@ export const listSummariesForCurrentUser = query({
 
 export const listPageForCurrentUser = query({
   args: {
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     statusFilter: v.union(
       v.literal("all"),
       v.literal("active"),
@@ -438,7 +438,7 @@ export const listPageForCurrentUser = query({
     pageSize: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<ProjectsPageResult> => {
-    const projects = await listCollaboratorProjectsForUser(ctx, args.userId)
+    const projects = await listCollaboratorProjectsForUser(ctx, args.principalId)
     const memberPathMap = new Map(
       projects.map((project) => [String(project._id), project.localPath ?? null]),
     )
@@ -477,7 +477,7 @@ export const getAccessibleById = baseQuery({
 export const getAccessibleBySlug = query({
   args: {
     slug: v.string(),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
     const slug = args.slug.trim()
@@ -496,7 +496,7 @@ export const getAccessibleBySlug = query({
           if (project.status === "deleted") {
             return null
           }
-          const membership = await getProjectMembership(ctx, project._id, args.userId)
+          const membership = await getProjectMembership(ctx, project._id, args.principalId)
           if (!membership) {
             return null
           }
@@ -539,7 +539,7 @@ export const getAccessibleBySlug = query({
 export const update = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
     audience: v.optional(v.string()),
@@ -554,7 +554,7 @@ export const update = mutation({
       throw new ConvexError("Project not found")
     }
 
-    const canEdit = await canEditProject(ctx, args.projectId, args.userId)
+    const canEdit = await canEditProject(ctx, args.projectId, args.principalId)
     if (!canEdit) {
       throw new ConvexError("You do not have permission to edit this project")
     }
@@ -604,10 +604,10 @@ export const update = mutation({
 export const getArtifacts = query({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    const canAccess = await canAccessProject(ctx, args.projectId, args.userId)
+    const canAccess = await canAccessProject(ctx, args.projectId, args.principalId)
     if (!canAccess) {
       return null
     }
@@ -639,7 +639,7 @@ export const getArtifacts = query({
 export const setSourceControl = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     provider: v.string(),
     repoUrl: v.string(),
     defaultBranch: v.optional(v.string()),
@@ -653,7 +653,7 @@ export const setSourceControl = mutation({
       throw new ConvexError("Project not found")
     }
 
-    const canEdit = await canEditProject(ctx, args.projectId, args.userId)
+    const canEdit = await canEditProject(ctx, args.projectId, args.principalId)
     if (!canEdit) {
       throw new ConvexError("You do not have permission to edit this project")
     }
@@ -698,7 +698,7 @@ export const setSourceControl = mutation({
 export const updateStatus = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     // Lifecycle statuses only. "archived"/"deleted" are intentionally excluded:
     // they must go through archive/deleteProject, which enforce
     // canArchiveProject and (for delete) name confirmation. Allowing them here
@@ -712,7 +712,7 @@ export const updateStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const canEdit = await canEditProject(ctx, args.projectId, args.userId)
+    const canEdit = await canEditProject(ctx, args.projectId, args.principalId)
     if (!canEdit) {
       throw new ConvexError("You do not have permission to update this project")
     }
@@ -729,10 +729,10 @@ export const updateStatus = mutation({
 export const archive = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    const canArchive = await canArchiveProject(ctx, args.projectId, args.userId)
+    const canArchive = await canArchiveProject(ctx, args.projectId, args.principalId)
     if (!canArchive) {
       throw new ConvexError("Only project managers can archive this project")
     }
@@ -749,10 +749,10 @@ export const archive = mutation({
 export const restore = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    const canArchive = await canArchiveProject(ctx, args.projectId, args.userId)
+    const canArchive = await canArchiveProject(ctx, args.projectId, args.principalId)
     if (!canArchive) {
       throw new ConvexError("Only project managers can restore this project")
     }
@@ -769,7 +769,7 @@ export const restore = mutation({
 export const deleteProject = mutation({
   args: {
     projectId: v.id("projects"),
-    userId: v.id("devicePrincipals"),
+    principalId: v.id("devicePrincipals"),
     confirmName: v.string(),
   },
   handler: async (ctx, args) => {
@@ -778,7 +778,7 @@ export const deleteProject = mutation({
       throw new ConvexError("Project not found")
     }
 
-    const canManage = await canManageProject(ctx, args.projectId, args.userId)
+    const canManage = await canManageProject(ctx, args.projectId, args.principalId)
     if (!canManage) {
       throw new ConvexError("Only project managers can delete this project")
     }

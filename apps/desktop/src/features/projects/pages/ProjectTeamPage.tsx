@@ -58,11 +58,11 @@ export function ProjectTeamPage() {
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    project?._id && principalId ? { projectId: project._id, userId: principalId } : 'skip',
+    project?._id && principalId ? { projectId: project._id, principalId: principalId } : 'skip',
   )
   const members = useQuery(
     api.projectMembers.listMembers,
-    project?._id && principalId ? { projectId: project._id, viewerUserId: principalId } : 'skip',
+    project?._id && principalId ? { projectId: project._id, viewerPrincipalId: principalId } : 'skip',
   )
   const pending = useQuery(
     api.projectDeviceEnrollments.listForProject,
@@ -110,25 +110,25 @@ export function ProjectTeamPage() {
     })
   }
 
-  const changeRole = (memberUserId: Id<'devicePrincipals'>, role: ProjectRole) => {
+  const changeRole = (memberPrincipalId: Id<'devicePrincipals'>, role: ProjectRole) => {
     if (!project?._id || !principalId || !canManage) return
-    void run(`role:${memberUserId}`, async () => {
+    void run(`role:${memberPrincipalId}`, async () => {
       await updateRole({
         projectId: project._id,
-        actorUserId: principalId,
-        memberUserId,
+        actorPrincipalId: principalId,
+        memberPrincipalId,
         newRole: role,
       })
     })
   }
 
-  const remove = (memberUserId: Id<'devicePrincipals'>) => {
+  const remove = (memberPrincipalId: Id<'devicePrincipals'>) => {
     if (!project?._id || !principalId || !canManage) return
-    void run(`remove:${memberUserId}`, async () => {
+    void run(`remove:${memberPrincipalId}`, async () => {
       await removeMember({
         projectId: project._id,
-        actorUserId: principalId,
-        memberUserId,
+        actorPrincipalId: principalId,
+        memberPrincipalId,
       })
     })
   }
@@ -194,8 +194,8 @@ export function ProjectTeamPage() {
               ) : members.length === 0 ? (
                 <TableRow><TableCell colSpan={4} className="h-20 text-center text-muted-foreground">No devices have access.</TableCell></TableRow>
               ) : members.map((member) => {
-                const self = member.userId === principalId
-                const memberBusy = busy === `role:${member.userId}` || busy === `remove:${member.userId}`
+                const self = member.principalId === principalId
+                const memberBusy = busy === `role:${member.principalId}` || busy === `remove:${member.principalId}`
                 return (
                   <TableRow key={member._id}>
                     <TableCell>
@@ -218,7 +218,7 @@ export function ProjectTeamPage() {
                         <Select
                           value={member.role}
                           disabled={memberBusy}
-                          onValueChange={(value) => changeRole(member.userId, value as ProjectRole)}
+                          onValueChange={(value) => changeRole(member.principalId, value as ProjectRole)}
                         >
                           <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -237,7 +237,7 @@ export function ProjectTeamPage() {
                           size="icon"
                           className="h-8 w-8"
                           disabled={memberBusy}
-                          onClick={() => remove(member.userId)}
+                          onClick={() => remove(member.principalId)}
                           aria-label={`Remove ${member.displayName}`}
                         >
                           <HugeiconsIcon icon={__TrashHugeIcon} className="size-4" />

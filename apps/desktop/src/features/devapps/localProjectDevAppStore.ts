@@ -367,7 +367,7 @@ function publishLocalEntry(
     devPort: args.devPort,
     sourceRevision: args.sourceRevision,
     sourceFingerprint: args.sourceFingerprint,
-    createdBy: args.userId,
+    createdBy: args.principalId,
     createdAt: now,
   };
   const publication: ProjectDevAppPublication = {
@@ -378,8 +378,8 @@ function publishLocalEntry(
     name: existing?.publication.name ?? args.name,
     description: args.description,
     status: "active",
-    createdBy: existing?.publication.createdBy ?? args.userId,
-    updatedBy: args.userId,
+    createdBy: existing?.publication.createdBy ?? args.principalId,
+    updatedBy: args.principalId,
     createdAt: existing?.publication.createdAt ?? now,
     updatedAt: now,
   };

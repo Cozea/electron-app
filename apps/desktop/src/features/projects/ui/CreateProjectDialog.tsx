@@ -334,7 +334,7 @@ export function CreateProjectDialog({
     try {
       if (isFreshMode) {
         const result = await createProject({
-          userId: principalId,
+          principalId: principalId,
           name: trimmedName,
           template: "blank",
           creationPath: "fresh",
@@ -400,7 +400,7 @@ export function CreateProjectDialog({
 
         await updateProjectStatus({
           projectId: result.projectId,
-          userId: principalId,
+          principalId: principalId,
           status: "active",
         })
 

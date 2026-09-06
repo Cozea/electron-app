@@ -739,7 +739,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                           />
                         </div>
                         <SettingsRowControl className="gap-2">
-                          {isAdmin && principalId !== member.userId ? (
+                          {isAdmin && principalId !== member.principalId ? (
                             <>
                               <select
                                 className={cn(settingsNativeSelectClass, "h-7 text-xs font-normal py-0")}
@@ -750,7 +750,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                                   void run(async () => {
                                     await updateMemberRole({
                                       organizationId: activeOrg.organizationId,
-                                      memberUserId: member.userId,
+                                      memberPrincipalId: member.principalId,
                                       role: nextRole,
                                     })
                                   })
@@ -794,14 +794,14 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                                     void run(async () => {
                                       await transferAdministration({
                                         organizationId: activeOrg.organizationId,
-                                        memberUserId: member.userId,
+                                        memberPrincipalId: member.principalId,
                                       })
                                     })
                                   } else if (action === "remove") {
                                     void run(async () => {
                                       await removeMember({
                                         organizationId: activeOrg.organizationId,
-                                        memberUserId: member.userId,
+                                        memberPrincipalId: member.principalId,
                                       })
                                     })
                                   }

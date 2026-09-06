@@ -46,7 +46,7 @@ export function TaskFocusOverlay({
     task && principalId
       ? {
           projectId: task.projectId as Id<'projects'>,
-          viewerUserId: principalId,
+          viewerPrincipalId: principalId,
           source: task.source,
           storageId: task.storageId,
         }
@@ -93,7 +93,7 @@ export function TaskFocusOverlay({
         if (activeTask.source === 'manual') {
           await updateManualTask({
             projectId: activeTask.projectId as Id<'projects'>,
-            actorUserId: principalId,
+            actorPrincipalId: principalId,
             taskKey: activeTask.storageId,
             checkedMarkerIds,
           })
@@ -105,7 +105,7 @@ export function TaskFocusOverlay({
 
         await updateSharedTask({
           projectId: activeTask.projectId as Id<'projects'>,
-          actorUserId: principalId,
+          actorPrincipalId: principalId,
           source,
           storageId: activeTask.storageId,
           totalMarkerCount: activeTask.markers.length,

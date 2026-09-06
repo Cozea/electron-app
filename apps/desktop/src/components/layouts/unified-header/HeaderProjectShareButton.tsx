@@ -65,11 +65,11 @@ export function HeaderProjectShareButton({
   const syncContext = useOptionalProjectSyncContext();
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    projectId && principalId ? { projectId, userId: principalId } : "skip",
+    projectId && principalId ? { projectId, principalId: principalId } : "skip",
   );
   const members = useQuery(
     api.projectMembers.listMembers,
-    projectId && principalId ? { projectId, viewerUserId: principalId } : "skip",
+    projectId && principalId ? { projectId, viewerPrincipalId: principalId } : "skip",
   );
   const pendingEnrollments = useQuery(
     api.projectDeviceEnrollments.listForProject,
@@ -258,8 +258,8 @@ export function HeaderProjectShareButton({
           ) : (
             <div className="space-y-1.5">
               {members.map((member) => {
-                const self = principalId === member.userId;
-                const rowBusy = busy === `member:${String(member.userId)}`;
+                const self = principalId === member.principalId;
+                const rowBusy = busy === `member:${String(member.principalId)}`;
                 return (
                   <div key={member._id} className="flex items-center gap-2.5 rounded-lg border border-border/50 px-2.5 py-2">
                     <Avatar className="size-7 rounded-lg">
@@ -275,8 +275,8 @@ export function HeaderProjectShareButton({
                         <Select
                           value={member.role}
                           disabled={rowBusy}
-                          onValueChange={(value) => void run(`member:${String(member.userId)}`, async () => {
-                            await updateMemberRole({ projectId, actorUserId: principalId!, memberUserId: member.userId, newRole: value as ProjectRole });
+                          onValueChange={(value) => void run(`member:${String(member.principalId)}`, async () => {
+                            await updateMemberRole({ projectId, actorPrincipalId: principalId!, memberPrincipalId: member.principalId, newRole: value as ProjectRole });
                           })}
                         >
                           <SelectTrigger className="h-7 w-32 text-[10px]"><SelectValue /></SelectTrigger>
@@ -289,8 +289,8 @@ export function HeaderProjectShareButton({
                           variant="ghost"
                           className="h-7 w-7"
                           disabled={rowBusy}
-                          onClick={() => void run(`member:${String(member.userId)}`, async () => {
-                            await removeMember({ projectId, actorUserId: principalId!, memberUserId: member.userId });
+                          onClick={() => void run(`member:${String(member.principalId)}`, async () => {
+                            await removeMember({ projectId, actorPrincipalId: principalId!, memberPrincipalId: member.principalId });
                           })}
                           aria-label={`Remove ${member.displayName}`}
                         >

@@ -6,20 +6,20 @@ type ProjectSharingCtx = Pick<QueryCtx | MutationCtx, "db">
 export async function getProjectMembership(
   ctx: ProjectSharingCtx,
   projectId: Id<"projects">,
-  userId: Id<"devicePrincipals">,
+  principalId: Id<"devicePrincipals">,
 ) {
   return await ctx.db.query("projectMembers")
-    .withIndex("by_project_and_user", (q) => q.eq("projectId", projectId).eq("userId", userId))
+    .withIndex("by_project_and_principal", (q) => q.eq("projectId", projectId).eq("principalId", principalId))
     .first()
 }
 
 export async function requireProjectManagerMembership(
   ctx: MutationCtx,
   projectId: Id<"projects">,
-  userId: Id<"devicePrincipals">,
+  principalId: Id<"devicePrincipals">,
   errorMessage = "Only project managers can manage project sharing",
 ) {
-  const membership = await getProjectMembership(ctx, projectId, userId)
+  const membership = await getProjectMembership(ctx, projectId, principalId)
   if (!membership || membership.role !== "project_manager") throw new Error(errorMessage)
   return membership
 }

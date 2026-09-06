@@ -49,8 +49,8 @@ export function useOptionalProjectSyncContext() {
 export interface ProjectSyncProviderProps {
   children: ReactNode;
   projectId: Id<"projects"> | null;
-  userId: Id<"devicePrincipals"> | null;
-  userName: string | null;
+  principalId: Id<"devicePrincipals"> | null;
+  displayName: string | null;
   workspaceId: string | null;
   workspaceRevision: number;
   laneId?: string | null;

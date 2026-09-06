@@ -29,7 +29,7 @@ export function useAccessibleProject() {
     !projectRouteContext && !routeProjectIdParam && routeSlugParam && principalId
       ? {
           slug: routeSlugParam,
-          userId: principalId,
+          principalId: principalId,
         }
       : "skip"
   ) as ProjectRouteSlugResolutionResult | undefined

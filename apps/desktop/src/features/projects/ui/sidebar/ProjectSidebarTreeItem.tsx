@@ -178,7 +178,7 @@ export const ProjectSidebarTreeItem = React.memo(
         workspaceId,
         collabBranch,
         convex,
-        userId: principalId ?? null,
+        principalId: principalId ?? null,
       })
     }, [
       collabBranch,
