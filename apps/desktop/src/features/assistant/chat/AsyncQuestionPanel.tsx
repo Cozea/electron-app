@@ -28,15 +28,19 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
   const key = questionDraftKey(threadId, request);
   const draft = useQuestionDraftStore((state) => state.drafts[key]);
   const frozen = responding || Boolean(draft?.submission);
-  const complete = request.questions.every((question) =>
-    resolvePendingUserInputAnswer(question, pendingUserInputDraftFromAnswer(question, draft?.answers[question.id])) !== null,
+  const complete = request.questions.every(
+    (question) =>
+      resolvePendingUserInputAnswer(
+        question,
+        pendingUserInputDraftFromAnswer(question, draft?.answers[question.id]),
+      ) !== null,
   );
   const setAnswer = (questionId: string, answer: string | string[]) =>
     useQuestionDraftStore.getState().setAnswer(key, questionId, answer);
   return (
     <section
       aria-label="Questions from the agent"
-      className="basis-full mb-2 max-h-[40vh] overflow-y-auto rounded-xl border border-border/60 bg-background/70 p-3"
+      className="basis-full mb-2 max-h-[40vh] overflow-y-auto rounded-xl border border-border/60 bg-background/70 p-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 motion-reduce:animate-none"
     >
       <p className="mb-3 text-xs text-muted-foreground">
         The agent can keep working while you answer.
@@ -54,7 +58,19 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
                   type="button"
                   key={`${option.value ?? option.label}:${index}`}
                   aria-pressed={selectedValues.includes(option.value ?? option.label)}
-                  onClick={() => setAnswer(question.id, resolvePendingUserInputAnswer(question, togglePendingUserInputOptionSelection(question, answerDraft, option.value ?? option.label)) ?? (question.multiSelect ? [] : ""))}
+                  onClick={() =>
+                    setAnswer(
+                      question.id,
+                      resolvePendingUserInputAnswer(
+                        question,
+                        togglePendingUserInputOptionSelection(
+                          question,
+                          answerDraft,
+                          option.value ?? option.label,
+                        ),
+                      ) ?? (question.multiSelect ? [] : ""),
+                    )
+                  }
                   className={cn(
                     "block w-full rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-60",
                     selectedValues.includes(option.value ?? option.label)

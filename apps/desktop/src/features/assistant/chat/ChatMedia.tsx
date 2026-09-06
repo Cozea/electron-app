@@ -1,10 +1,30 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { ThreadId } from "@cozea/assistant-contracts";
 import { useAuthorizedChatMedia } from "./useAuthorizedChatMedia";
 import { classifyChatMediaSource } from "./chatMediaSource";
 import type { ChatAttachment } from "@/features/assistant/model/types";
+import { cn } from "@/lib/utils";
 
 const MediaContext = createContext<{ threadId: string; baseUrl: string | null } | null>(null);
+const MAX_REMEMBERED_MEDIA_REVEALS = 512;
+const revealedMarkdownMedia = new Set<string>();
+
+function rememberMarkdownMediaReveal(key: string) {
+  revealedMarkdownMedia.add(key);
+  if (revealedMarkdownMedia.size <= MAX_REMEMBERED_MEDIA_REVEALS) return;
+  const oldest = revealedMarkdownMedia.values().next().value;
+  if (typeof oldest === "string") revealedMarkdownMedia.delete(oldest);
+}
+
 export function ChatMediaProvider({
   threadId,
   baseUrl,
@@ -101,6 +121,47 @@ export function ChatMarkdownMedia({ src, alt, cwd }: { src: string; alt: string;
         }
       : null,
   );
+  const [revealedSrc, setRevealedSrc] = useState<string | null>(() =>
+    revealedMarkdownMedia.has(src) ? src : null,
+  );
+  const revealFrameRef = useRef<number | null>(null);
+  const mediaRevealed = revealedSrc === src || revealedMarkdownMedia.has(src);
+
+  useEffect(() => {
+    if (revealFrameRef.current !== null) {
+      window.cancelAnimationFrame(revealFrameRef.current);
+      revealFrameRef.current = null;
+    }
+  }, [src]);
+
+  useEffect(
+    () => () => {
+      if (revealFrameRef.current !== null) {
+        window.cancelAnimationFrame(revealFrameRef.current);
+      }
+    },
+    [],
+  );
+
+  const revealMedia = useCallback(() => {
+    if (revealedMarkdownMedia.has(src)) {
+      setRevealedSrc(src);
+      return;
+    }
+    if (revealFrameRef.current !== null) {
+      window.cancelAnimationFrame(revealFrameRef.current);
+    }
+    // The intrinsic size is known at this point. Start from a one-pixel layout
+    // footprint, then let Chromium interpolate to `auto` so LegendList observes
+    // one continuous size change instead of a single large late reflow. Keep the
+    // source in state so a stale frame from an older src cannot reveal a new one.
+    revealFrameRef.current = window.requestAnimationFrame(() => {
+      revealFrameRef.current = null;
+      rememberMarkdownMediaReveal(src);
+      setRevealedSrc(src);
+    });
+  }, [src]);
+
   if (source.kind === "external")
     return (
       <a href={source.value} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
@@ -126,7 +187,11 @@ export function ChatMarkdownMedia({ src, alt, cwd }: { src: string; alt: string;
         controls
         preload="metadata"
         aria-label={alt}
-        className="max-h-96 max-w-full"
+        onLoadedMetadata={revealMedia}
+        className={cn(
+          "max-h-96 max-w-full [interpolate-size:allow-keywords] transition-[height,opacity] duration-200 ease-out motion-reduce:transition-none",
+          mediaRevealed ? "h-auto opacity-100" : "h-px opacity-0",
+        )}
       />
     );
   if (/\.(mp3|wav|ogg|m4a|flac)$/i.test(path))
@@ -134,6 +199,15 @@ export function ChatMarkdownMedia({ src, alt, cwd }: { src: string; alt: string;
   if (/\.(pdf|html?)$/i.test(path))
     return <span>{alt || src} (inline document preview unsupported)</span>;
   return (
-    <img src={resolved} alt={alt} loading="lazy" className="max-h-96 max-w-full object-contain" />
+    <img
+      src={resolved}
+      alt={alt}
+      loading="lazy"
+      onLoad={revealMedia}
+      className={cn(
+        "max-h-96 max-w-full object-contain [interpolate-size:allow-keywords] transition-[height,opacity] duration-200 ease-out motion-reduce:transition-none",
+        mediaRevealed ? "h-auto opacity-100" : "h-px opacity-0",
+      )}
+    />
   );
 }

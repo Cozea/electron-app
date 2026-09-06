@@ -1,5 +1,10 @@
 import { MessageAttachments } from "./MessageAttachments";
-import { type MessageId, type ProviderKind, type TurnId, type OrchestrationThreadActivity } from "@cozea/assistant-contracts";
+import {
+  type MessageId,
+  type ProviderKind,
+  type TurnId,
+  type OrchestrationThreadActivity,
+} from "@cozea/assistant-contracts";
 import { useTranslation } from "@/lib/i18n";
 import {
   createContext,
@@ -48,12 +53,21 @@ import {
   Wrench01Icon as __WrenchIconHugeIcon,
 } from "@hugeicons/core-free-icons";
 import { deriveTimelineEntries, formatDuration } from "./session-logic";
-import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX, isScrollContainerNearBottom } from "./chat-scroll";
+import {
+  AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+  isScrollContainerNearBottom,
+  scrollDistanceFromBottom,
+  scrollTopForBottomDistance,
+} from "./chat-scroll";
 import { type TurnDiffSummary } from "@/features/assistant/model/types";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { AssistantResponseActions } from "./AssistantResponseActions";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
-import { conversationRowsEqual, workEntryKeys, type ConversationRow as TimelineRow } from "./conversationRows";
+import {
+  conversationRowsEqual,
+  workEntryKeys,
+  type ConversationRow as TimelineRow,
+} from "./conversationRows";
 import { createConversationRowProjector } from "./conversationRowProjector";
 import type { ConversationTurn } from "./conversationProjection";
 import { projectActivityEntries, mergeActivityEntries } from "./conversationActivityEntries";
@@ -190,15 +204,14 @@ const LEGEND_LIST_TAIL_PADDING_PX = 16;
 function resolveScrollViewElement(scrollView: unknown): HTMLElement | null {
   if (!scrollView) return null;
   if (scrollView instanceof HTMLElement) return scrollView;
-  const getScrollableNode = (scrollView as { getScrollableNode?: () => unknown })
-    .getScrollableNode;
+  const getScrollableNode = (scrollView as { getScrollableNode?: () => unknown }).getScrollableNode;
   if (typeof getScrollableNode !== "function") return null;
   const node = getScrollableNode.call(scrollView);
   return node instanceof HTMLElement ? node : null;
 }
 
-/** Covers the tail padding's own 200ms transition so the last row rides it up. */
-const DOCKED_COMPOSER_INSET_FOLLOW_MS = 260;
+/** Keep following through the composer's 200ms inset transition, plus one settle frame. */
+const DOCKED_COMPOSER_INSET_FOLLOW_MS = 240;
 
 function readLegendListBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -279,11 +292,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const isNearBottomRef = useRef(true);
   const attachScrollView = useCallback(
     (scrollView: unknown) => {
-      // `refScrollView` receives LegendList's scroll-view API object, not the DOM
-      // node. Keep handing the caller what it has always had, and resolve the real
-      // element for the scroll work below.
-      scrollContainerRef.current = scrollView as HTMLDivElement | null;
-      setScrollViewNode(resolveScrollViewElement(scrollView));
+      // `refScrollView` receives LegendList's API object. Resolve it once and
+      // expose the real DOM scroller to the caller; no parent should ever mutate
+      // the opaque LegendList handle as though it were an HTMLElement.
+      const resolvedNode = resolveScrollViewElement(scrollView);
+      scrollContainerRef.current = resolvedNode as HTMLDivElement | null;
+      setScrollViewNode(resolvedNode);
     },
     [scrollContainerRef],
   );
@@ -348,19 +362,38 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const [rowProjector] = useState(() => createConversationRowProjector());
   const activity = useMemo(() => projectActivityEntries(activities ?? []), [activities]);
-  const projectedEntries = useMemo(() => mergeActivityEntries(timelineEntries, activity), [timelineEntries, activity]);
-  const rows = useMemo(() => rowProjector.project({
-    entries: projectedEntries,
-    activity,
-    waitingFor,
-    latestTurn,
-    runningTurnId,
-    activeTurnId,
-    isWorking: isWorkActive,
-    activeWorkStartedAt,
-    generationStatusPhase,
-    expanded: expandedWorkGroups,
-  }), [rowProjector, projectedEntries, activity, waitingFor, latestTurn, runningTurnId, activeTurnId, isWorkActive, activeWorkStartedAt, generationStatusPhase, expandedWorkGroups]);
+  const projectedEntries = useMemo(
+    () => mergeActivityEntries(timelineEntries, activity),
+    [timelineEntries, activity],
+  );
+  const rows = useMemo(
+    () =>
+      rowProjector.project({
+        entries: projectedEntries,
+        activity,
+        waitingFor,
+        latestTurn,
+        runningTurnId,
+        activeTurnId,
+        isWorking: isWorkActive,
+        activeWorkStartedAt,
+        generationStatusPhase,
+        expanded: expandedWorkGroups,
+      }),
+    [
+      rowProjector,
+      projectedEntries,
+      activity,
+      waitingFor,
+      latestTurn,
+      runningTurnId,
+      activeTurnId,
+      isWorkActive,
+      activeWorkStartedAt,
+      generationStatusPhase,
+      expandedWorkGroups,
+    ],
+  );
   useEffect(() => () => rowProjector.clear(), [rowProjector]);
 
   const [seenToolSummaryRows] = useState(
@@ -475,38 +508,58 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [scrollViewNode]);
 
-  // The docked composer floats over the timeline, so the tail padding that keeps
-  // the last row clear of it grows on hover, on a pending approval, on a taller
-  // draft. LegendList only re-pins to the end on data and layout changes, not on
-  // a content-padding change, so without this the list sits still and the
-  // composer slides over the rows that were at the bottom.
+  // The composer inset is visual layout, not new conversation data. When the
+  // reader is following the tail, preserve their current distance from bottom
+  // while that padding animates. This keeps "near bottom" near bottom instead of
+  // snapping it to zero on every frame; any direct user scroll immediately takes
+  // ownership back. Readers farther up never enter this path.
   const previousBottomPaddingRef = useRef(bottomPaddingPx);
   useLayoutEffect(() => {
     const previousBottomPadding = previousBottomPaddingRef.current;
     previousBottomPaddingRef.current = bottomPaddingPx;
-    if (bottomPaddingPx <= previousBottomPadding) return;
+    if (bottomPaddingPx === previousBottomPadding) return;
     if (!scrollViewNode || !isNearBottomRef.current) return;
 
+    const preservedBottomDistance = scrollDistanceFromBottom(scrollViewNode);
+    const deadline = performance.now() + DOCKED_COMPOSER_INSET_FOLLOW_MS;
     let animationFrameId: number | null = null;
+    let stopped = false;
+
     const stopFollowing = () => {
+      if (stopped) return;
+      stopped = true;
       if (animationFrameId !== null) {
         window.cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
       }
       scrollViewNode.removeEventListener("wheel", stopFollowing);
       scrollViewNode.removeEventListener("touchmove", stopFollowing);
+      scrollViewNode.removeEventListener("pointerdown", stopFollowing);
+      scrollViewNode.removeEventListener("keydown", stopFollowing);
     };
-    const deadline = performance.now() + DOCKED_COMPOSER_INSET_FOLLOW_MS;
-    const followBottom = () => {
-      scrollViewNode.scrollTop = scrollViewNode.scrollHeight - scrollViewNode.clientHeight;
-      animationFrameId =
-        performance.now() < deadline ? window.requestAnimationFrame(followBottom) : null;
+
+    const followInset = () => {
+      if (stopped) return;
+      if (!isNearBottomRef.current) {
+        stopFollowing();
+        return;
+      }
+      const desiredScrollTop = scrollTopForBottomDistance(scrollViewNode, preservedBottomDistance);
+      if (Math.abs(scrollViewNode.scrollTop - desiredScrollTop) >= 0.5) {
+        scrollViewNode.scrollTop = desiredScrollTop;
+      }
+      if (performance.now() < deadline) {
+        animationFrameId = window.requestAnimationFrame(followInset);
+      } else {
+        stopFollowing();
+      }
     };
-    // Hovering in is what reveals the composer, so a scroll can land mid-follow.
-    // Hand the list straight back to the reader when it does.
+
     scrollViewNode.addEventListener("wheel", stopFollowing, { passive: true });
     scrollViewNode.addEventListener("touchmove", stopFollowing, { passive: true });
-    followBottom();
+    scrollViewNode.addEventListener("pointerdown", stopFollowing, { passive: true });
+    scrollViewNode.addEventListener("keydown", stopFollowing);
+    animationFrameId = window.requestAnimationFrame(followInset);
     return stopFollowing;
   }, [bottomPaddingPx, scrollViewNode]);
   const dataVersion = useMemo(() => {
@@ -545,15 +598,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     (row: TimelineRow) => estimateTimelineRowHeight(row, timelineWidthPx),
     [timelineWidthPx],
   );
-  const getItemType = useCallback((row: TimelineRow): TimelineRow["kind"] => row.kind, []);
+  const getItemType = useCallback(
+    (row: TimelineRow): string =>
+      row.kind === "turn-status" || row.kind === "thinking" || row.kind === "input-waiting"
+        ? "turn-lifecycle"
+        : row.kind,
+    [],
+  );
   const keyExtractor = useCallback((row: TimelineRow) => row.id, []);
   const shouldRestoreVisiblePosition = useCallback(
-    (row: TimelineRow) => row.kind !== "turn-status" && row.kind !== "thinking",
+    (row: TimelineRow) =>
+      row.kind !== "turn-status" && row.kind !== "thinking" && row.kind !== "input-waiting",
     [],
   );
   const itemsAreEqual = useCallback(
-    (previousRow: TimelineRow, nextRow: TimelineRow) =>
-      conversationRowsEqual(previousRow, nextRow),
+    (previousRow: TimelineRow, nextRow: TimelineRow) => conversationRowsEqual(previousRow, nextRow),
     [],
   );
 
@@ -620,343 +679,480 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }));
   }, []);
 
-  const renderRowContent = useCallback(function renderRowContent(row: TimelineRow): ReactNode { const content = (
-    <div
-      className={row.kind === "turn-fold-content" ? "" : "pb-4"}
-      data-timeline-row-kind={row.kind}
-      data-message-id={row.kind === "message" ? row.message.id : undefined}
-      data-message-role={row.kind === "message" ? row.message.role : undefined}
-      data-expanded-fold-id={row.expandedFoldId}
-      aria-labelledby={row.expandedFoldId ? `disclosure:${row.expandedFoldId}` : undefined}
-      role={row.expandedFoldId ? "group" : undefined}
-    >
-      {row.kind === "turn-fold" && row.virtualized ? (
-        <button type="button" id={`disclosure:${row.id}`} aria-expanded={row.expanded}
-          data-turn-fold-id={row.turnId} onClick={() => onToggleWorkGroup(row.id)}
-          className="group/fold flex h-7 w-full items-center gap-2 px-1 text-left text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <span>{row.label}</span>
-          <HugeiconsIcon icon={__WorkLogExpandHugeIcon} aria-hidden="true" className={cn("size-3.5 transition-transform duration-200 motion-reduce:transition-none", row.expanded && "rotate-180")} />
-        </button>
-      ) : null}
-      {(row.kind === "turn-fold-content" || (row.kind === "turn-fold" && !row.virtualized)) && (
-        <Collapsible open={row.expanded} onOpenChange={() => onToggleWorkGroup(`turn-fold:${row.turnId}`)}>
-          {row.kind === "turn-fold" ? (
-          <CollapsibleTrigger className="group/fold flex h-7 w-full items-center gap-2 px-1 text-left text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={row.label} data-turn-fold-id={row.turnId}>
-            <span>{row.label}</span>
-            <HugeiconsIcon icon={__WorkLogExpandHugeIcon} aria-hidden="true" className={cn("size-3.5 transition-transform duration-200 motion-reduce:transition-none", row.expanded && "rotate-180")} />
-          </CollapsibleTrigger>
-          ) : null}
-          <CollapsiblePanel className="motion-reduce:transition-none">
-            <div className="pt-2" data-turn-fold-content={row.turnId}>
-              {row.children.map((child) => <div key={child.id}>{renderRowContent(child)}</div>)}
-            </div>
-          </CollapsiblePanel>
-        </Collapsible>
-      )}
-      {row.kind === "assistant-meta" && <AssistantResponseActions message={row.message} controller={textReveal} relativeTime={formatMessageRelativeTime(row.message.completedAt ?? row.message.createdAt)} />}
-      {row.kind === "provider-task" && <ProviderTaskRow task={row.task} expanded={row.expanded} onToggle={(taskId) => onToggleWorkGroup(`provider-task:${taskId}`)} isActive={isChatVisible} />}
-      {row.kind === "provider-plan" && <ProviderPlanSteps plan={row.plan} isActive={isChatVisible && isWorkActive && row.plan.turnId === (runningTurnId ?? activeTurnId)} />}
-      {row.kind === "work" && (
-        <div className="flex min-w-0 flex-col">
-          {workEntryKeys(row.groupedEntries).map((key, index) => {
-            const entry = row.groupedEntries[index]!;
-            return (
-              <SimpleWorkEntryRow key={key} compact workEntry={entry}
-                workspaceRoot={workspaceRoot} resolvedTheme={resolvedTheme}
-                artifactUrl={entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined}
-                onOpenArtifact={onOpenArtifact} onOpenTurnDiff={onOpenTurnDiff} />
-            );
-          })}
-        </div>
-      )}
-
-      {row.kind === "work-toggle" && (
-        <ToolGroupSummary
-          rowId={row.id}
-          groupId={row.groupId}
-          summary={row.summary}
-          count={row.hiddenCount}
-          expanded={row.expanded}
-          active={row.active}
-          animateEntrance={isChatVisible && isWorkActive}
-          seenRows={seenToolSummaryRows}
-          onToggle={onToggleWorkGroup}
+  const renderRowContent = useCallback(
+    function renderRowContent(row: TimelineRow): ReactNode {
+      const content = (
+        <div
+          className={row.kind === "turn-fold-content" ? "" : "pb-4"}
+          data-timeline-row-kind={row.kind}
+          data-message-id={row.kind === "message" ? row.message.id : undefined}
+          data-message-role={row.kind === "message" ? row.message.role : undefined}
+          data-expanded-fold-id={row.expandedFoldId}
+          aria-labelledby={row.expandedFoldId ? `disclosure:${row.expandedFoldId}` : undefined}
+          role={row.expandedFoldId ? "group" : undefined}
         >
-          {workEntryKeys(row.groupedEntries).map((key, index) => {
-            const entry = row.groupedEntries[index]!;
-            return (
-              <SimpleWorkEntryRow
-                key={key}
-                compact
-                active={row.active && row.liveIds.has(toolRowId(entry))}
-                workEntry={entry}
-                workspaceRoot={workspaceRoot}
-                resolvedTheme={resolvedTheme}
-                artifactUrl={entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined}
-                onOpenArtifact={onOpenArtifact}
-                onOpenTurnDiff={onOpenTurnDiff}
+          {row.kind === "turn-fold" && row.virtualized ? (
+            <button
+              type="button"
+              id={`disclosure:${row.id}`}
+              aria-expanded={row.expanded}
+              data-turn-fold-id={row.turnId}
+              onClick={() => onToggleWorkGroup(row.id)}
+              className="group/fold flex h-7 w-full items-center gap-2 px-1 text-left text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span>{row.label}</span>
+              <HugeiconsIcon
+                icon={__WorkLogExpandHugeIcon}
+                aria-hidden="true"
+                className={cn(
+                  "size-3.5 transition-transform duration-200 motion-reduce:transition-none",
+                  row.expanded && "rotate-180",
+                )}
               />
-            );
-          })}
-        </ToolGroupSummary>
-      )}
-
-      {row.kind === "notices" &&
-        (() => {
-          const isExpanded = expandedWorkGroups[row.id] ?? false;
-          const count = row.groupedEntries.length;
-          return (
-            <div className="px-1 py-0.5">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground/65 transition-colors duration-150 hover:bg-muted/40 hover:text-muted-foreground"
-                aria-expanded={isExpanded}
-                onClick={() => onToggleWorkGroup(row.id)}
-              >
-                <CircleAlertIcon className="size-3" aria-hidden="true" />
-                <span>{count === 1 ? "1 agent notice" : `${count} agent notices`}</span>
-                <HugeiconsIcon
-                  icon={isExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
-                  className="size-3 stroke-[2.2]"
-                  aria-hidden="true"
-                />
-              </button>
-              {isExpanded && (
-                <div className="mt-0.5 space-y-0.5 rounded-lg border border-border/35 bg-card/15 px-2 py-1.5">
-                  {row.groupedEntries.map((workEntry) => (
-                    <SimpleWorkEntryRow
-                      key={`notice-row:${workEntry.id}`}
-                      workEntry={workEntry}
-                      workspaceRoot={workspaceRoot}
-                      resolvedTheme={resolvedTheme}
-                      artifactUrl={
-                        workEntry.toolCallId ? artifactUrlsById?.[workEntry.toolCallId] : undefined
-                      }
-                      onOpenArtifact={onOpenArtifact}
-                    />
+            </button>
+          ) : null}
+          {(row.kind === "turn-fold-content" || (row.kind === "turn-fold" && !row.virtualized)) && (
+            <Collapsible
+              open={row.expanded}
+              onOpenChange={() => onToggleWorkGroup(`turn-fold:${row.turnId}`)}
+            >
+              {row.kind === "turn-fold" ? (
+                <CollapsibleTrigger
+                  className="group/fold flex h-7 w-full items-center gap-2 px-1 text-left text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={row.label}
+                  data-turn-fold-id={row.turnId}
+                >
+                  <span>{row.label}</span>
+                  <HugeiconsIcon
+                    icon={__WorkLogExpandHugeIcon}
+                    aria-hidden="true"
+                    className={cn(
+                      "size-3.5 transition-transform duration-200 motion-reduce:transition-none",
+                      row.expanded && "rotate-180",
+                    )}
+                  />
+                </CollapsibleTrigger>
+              ) : null}
+              <CollapsiblePanel className="motion-reduce:transition-none">
+                <div className="pt-2" data-turn-fold-content={row.turnId}>
+                  {row.children.map((child) => (
+                    <div key={child.id}>{renderRowContent(child)}</div>
                   ))}
                 </div>
+              </CollapsiblePanel>
+            </Collapsible>
+          )}
+          {row.kind === "assistant-meta" && (
+            <AssistantResponseActions
+              message={row.message}
+              controller={textReveal}
+              relativeTime={formatMessageRelativeTime(
+                row.message.completedAt ?? row.message.createdAt,
               )}
+            />
+          )}
+          {row.kind === "provider-task" && (
+            <ProviderTaskRow
+              task={row.task}
+              expanded={row.expanded}
+              onToggle={(taskId) => onToggleWorkGroup(`provider-task:${taskId}`)}
+              isActive={isChatVisible}
+            />
+          )}
+          {row.kind === "provider-plan" && (
+            <ProviderPlanSteps
+              plan={row.plan}
+              isActive={
+                isChatVisible && isWorkActive && row.plan.turnId === (runningTurnId ?? activeTurnId)
+              }
+            />
+          )}
+          {row.kind === "work" && (
+            <div className="flex min-w-0 flex-col">
+              {workEntryKeys(row.groupedEntries).map((key, index) => {
+                const entry = row.groupedEntries[index]!;
+                return (
+                  <SimpleWorkEntryRow
+                    key={key}
+                    compact
+                    workEntry={entry}
+                    workspaceRoot={workspaceRoot}
+                    resolvedTheme={resolvedTheme}
+                    artifactUrl={
+                      entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined
+                    }
+                    onOpenArtifact={onOpenArtifact}
+                    onOpenTurnDiff={onOpenTurnDiff}
+                  />
+                );
+              })}
             </div>
-          );
-        })()}
+          )}
 
-      {row.kind === "message" &&
-        row.message.role === "user" &&
-        (() => {
-          const previewAnnotations = extractTrailingPreviewAnnotations(row.message.text);
-          const displayedUserMessage = deriveDisplayedUserMessageState(
-            previewAnnotations.promptText,
-          );
-          const terminalContexts = displayedUserMessage.contexts;
-          const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
-          const messageId = row.message.id;
-          const terminalCtxPrefix =
-            terminalContexts.length > 0 ? buildInlineTerminalContextText(terminalContexts) : "";
-          const measurePayload = [terminalCtxPrefix, displayedUserMessage.visibleText]
-            .filter((part) => part.length > 0)
-            .join("\n");
-          const newlineCount = (measurePayload.match(/\n/g) ?? []).length;
-          const needsUserBodyTruncate =
-            measurePayload.length > USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD ||
-            newlineCount >= USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD;
-          const userMessageExpanded = expandedUserMessageIds[messageId] ?? false;
-          return (
-            <div className="flex w-full min-w-0 justify-end">
-              <div className="group relative flex max-w-[85%] sm:max-w-[75%] min-w-0 flex-col items-end gap-1">
-                {row.message.attachments?.length ? <MessageAttachments attachments={row.message.attachments} onExpand={onImageExpand} /> : null}
-                {previewAnnotations.annotations.length > 0 ? (
-                  <div className="mb-1 flex w-full flex-wrap justify-end gap-1.5">
-                    {previewAnnotations.annotations.map((annotation) => (
-                      <div
-                        key={annotation.id}
-                        className="max-w-full rounded-lg border border-border/60 bg-card/70 px-3 py-2 text-left shadow-xs"
-                      >
-                        <p className="truncate text-xs font-medium text-foreground">
-                          {annotation.comment || annotation.title}
-                        </p>
-                        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                          {[
-                            annotation.targetSummary,
-                            annotation.styleChanges.length
-                              ? `${annotation.styleChanges.length} style change${annotation.styleChanges.length === 1 ? "" : "s"}`
-                              : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" · ") || "Preview annotation"}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {(displayedUserMessage.visibleText.trim().length > 0 ||
-                  terminalContexts.length > 0) && (
-                  <div className="relative w-fit max-w-full rounded-2xl bg-[var(--assistant-user-message-surface)] px-4 py-2.5 text-[var(--assistant-user-message-foreground)] shadow-xs transition-colors">
-                    <div className="flex w-full min-w-0 items-start gap-1.5">
-                      <div
-                        className={cn(
-                          "min-w-0 flex-1 text-left",
-                          needsUserBodyTruncate &&
-                            !userMessageExpanded &&
-                            "line-clamp-6 overflow-hidden",
-                        )}
-                      >
-                        <UserMessageBody
-                          text={displayedUserMessage.visibleText}
-                          terminalContexts={terminalContexts}
+          {row.kind === "work-toggle" && (
+            <ToolGroupSummary
+              rowId={row.id}
+              groupId={row.groupId}
+              summary={row.summary}
+              count={row.hiddenCount}
+              expanded={row.expanded}
+              active={row.active}
+              animateEntrance={isChatVisible && isWorkActive}
+              seenRows={seenToolSummaryRows}
+              onToggle={onToggleWorkGroup}
+            >
+              {workEntryKeys(row.groupedEntries).map((key, index) => {
+                const entry = row.groupedEntries[index]!;
+                return (
+                  <SimpleWorkEntryRow
+                    key={key}
+                    compact
+                    active={row.active && row.liveIds.has(toolRowId(entry))}
+                    workEntry={entry}
+                    workspaceRoot={workspaceRoot}
+                    resolvedTheme={resolvedTheme}
+                    artifactUrl={
+                      entry.toolCallId ? artifactUrlsById?.[entry.toolCallId] : undefined
+                    }
+                    onOpenArtifact={onOpenArtifact}
+                    onOpenTurnDiff={onOpenTurnDiff}
+                  />
+                );
+              })}
+            </ToolGroupSummary>
+          )}
+
+          {row.kind === "notices" &&
+            (() => {
+              const isExpanded = expandedWorkGroups[row.id] ?? false;
+              const count = row.groupedEntries.length;
+              return (
+                <div className="px-1 py-0.5">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground/65 transition-colors duration-150 hover:bg-muted/40 hover:text-muted-foreground"
+                    aria-expanded={isExpanded}
+                    onClick={() => onToggleWorkGroup(row.id)}
+                  >
+                    <CircleAlertIcon className="size-3" aria-hidden="true" />
+                    <span>{count === 1 ? "1 agent notice" : `${count} agent notices`}</span>
+                    <HugeiconsIcon
+                      icon={isExpanded ? __WorkLogCollapseHugeIcon : __WorkLogExpandHugeIcon}
+                      className="size-3 stroke-[2.2]"
+                      aria-hidden="true"
+                    />
+                  </button>
+                  {isExpanded && (
+                    <div className="mt-0.5 space-y-0.5 rounded-lg border border-border/35 bg-card/15 px-2 py-1.5">
+                      {row.groupedEntries.map((workEntry) => (
+                        <SimpleWorkEntryRow
+                          key={`notice-row:${workEntry.id}`}
+                          workEntry={workEntry}
+                          workspaceRoot={workspaceRoot}
+                          resolvedTheme={resolvedTheme}
+                          artifactUrl={
+                            workEntry.toolCallId
+                              ? artifactUrlsById?.[workEntry.toolCallId]
+                              : undefined
+                          }
+                          onOpenArtifact={onOpenArtifact}
                         />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+          {row.kind === "message" &&
+            row.message.role === "user" &&
+            (() => {
+              const previewAnnotations = extractTrailingPreviewAnnotations(row.message.text);
+              const displayedUserMessage = deriveDisplayedUserMessageState(
+                previewAnnotations.promptText,
+              );
+              const terminalContexts = displayedUserMessage.contexts;
+              const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
+              const messageId = row.message.id;
+              const terminalCtxPrefix =
+                terminalContexts.length > 0 ? buildInlineTerminalContextText(terminalContexts) : "";
+              const measurePayload = [terminalCtxPrefix, displayedUserMessage.visibleText]
+                .filter((part) => part.length > 0)
+                .join("\n");
+              const newlineCount = (measurePayload.match(/\n/g) ?? []).length;
+              const needsUserBodyTruncate =
+                measurePayload.length > USER_MESSAGE_TRUNCATE_CHAR_THRESHOLD ||
+                newlineCount >= USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD;
+              const userMessageExpanded = expandedUserMessageIds[messageId] ?? false;
+              return (
+                <div className="flex w-full min-w-0 justify-end">
+                  <div className="group relative flex max-w-[85%] sm:max-w-[75%] min-w-0 flex-col items-end gap-1">
+                    {row.message.attachments?.length ? (
+                      <MessageAttachments
+                        attachments={row.message.attachments}
+                        onExpand={onImageExpand}
+                      />
+                    ) : null}
+                    {previewAnnotations.annotations.length > 0 ? (
+                      <div className="mb-1 flex w-full flex-wrap justify-end gap-1.5">
+                        {previewAnnotations.annotations.map((annotation) => (
+                          <div
+                            key={annotation.id}
+                            className="max-w-full rounded-lg border border-border/60 bg-card/70 px-3 py-2 text-left shadow-xs"
+                          >
+                            <p className="truncate text-xs font-medium text-foreground">
+                              {annotation.comment || annotation.title}
+                            </p>
+                            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                              {[
+                                annotation.targetSummary,
+                                annotation.styleChanges.length
+                                  ? `${annotation.styleChanges.length} style change${annotation.styleChanges.length === 1 ? "" : "s"}`
+                                  : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "Preview annotation"}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                      {needsUserBodyTruncate ? (
+                    ) : null}
+                    {(displayedUserMessage.visibleText.trim().length > 0 ||
+                      terminalContexts.length > 0) && (
+                      <div className="relative w-fit max-w-full rounded-2xl bg-[var(--assistant-user-message-surface)] px-4 py-2.5 text-[var(--assistant-user-message-foreground)] shadow-xs transition-colors">
+                        <div className="flex w-full min-w-0 items-start gap-1.5">
+                          <div
+                            className={cn(
+                              "min-w-0 flex-1 text-left",
+                              needsUserBodyTruncate &&
+                                !userMessageExpanded &&
+                                "line-clamp-6 overflow-hidden",
+                            )}
+                          >
+                            <UserMessageBody
+                              text={displayedUserMessage.visibleText}
+                              terminalContexts={terminalContexts}
+                            />
+                          </div>
+                          {needsUserBodyTruncate ? (
+                            <button
+                              type="button"
+                              className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[var(--assistant-user-message-foreground)] opacity-70 transition-[background-color,opacity] hover:bg-[color-mix(in_oklch,var(--assistant-user-message-foreground)_15%,transparent)] hover:opacity-100"
+                              aria-expanded={userMessageExpanded}
+                              aria-label={
+                                userMessageExpanded
+                                  ? "Collapse user message"
+                                  : "Expand user message"
+                              }
+                              title={userMessageExpanded ? "Show less" : "Show full message"}
+                              onClick={() => toggleUserMessageExpanded(messageId)}
+                            >
+                              <HugeiconsIcon
+                                icon={
+                                  userMessageExpanded
+                                    ? __WorkLogCollapseHugeIcon
+                                    : __WorkLogExpandHugeIcon
+                                }
+                                className="size-3.5 stroke-[2.1]"
+                              />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2 px-1 pt-0.5 text-xs text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
+                      {row.message.createdAt ? (
+                        <span className="select-none text-[11px] tabular-nums">
+                          {formatMessageRelativeTime(row.message.createdAt)}
+                        </span>
+                      ) : null}
+                      <div className="flex items-center gap-1">
+                        {row.message.text ? (
+                          <MessageCopyButton text={row.message.text} />
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                            aria-label="Copy not available"
+                          >
+                            <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5" />
+                          </button>
+                        )}
+                        {canRevertAgentWork ? (
+                          <button
+                            type="button"
+                            className="cursor-pointer p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground/30"
+                            disabled={isRevertingCheckpoint || isWorking}
+                            onClick={() => onRevertUserMessage(row.message.id)}
+                            title="Revert to this message"
+                            aria-label="Revert to this message"
+                          >
+                            <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                            aria-label="Revert not available"
+                            title="No earlier checkpoint to revert to"
+                          >
+                            <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
-                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[var(--assistant-user-message-foreground)] opacity-70 transition-[background-color,opacity] hover:bg-[color-mix(in_oklch,var(--assistant-user-message-foreground)_15%,transparent)] hover:opacity-100"
-                          aria-expanded={userMessageExpanded}
-                          aria-label={
-                            userMessageExpanded ? "Collapse user message" : "Expand user message"
-                          }
-                          title={userMessageExpanded ? "Show less" : "Show full message"}
-                          onClick={() => toggleUserMessageExpanded(messageId)}
+                          disabled
+                          className="cursor-not-allowed p-0.5 text-muted-foreground/25"
+                          title="Branch (coming soon)"
+                          aria-label="Branch thread"
                         >
-                          <HugeiconsIcon
-                            icon={
-                              userMessageExpanded
-                                ? __WorkLogCollapseHugeIcon
-                                : __WorkLogExpandHugeIcon
-                            }
-                            className="size-3.5 stroke-[2.1]"
-                          />
+                          <HugeiconsIcon icon={__GitForkIconHugeIcon} className="size-3.5" />
                         </button>
-                      ) : null}
+                      </div>
                     </div>
                   </div>
-                )}
-
-                <div className="flex items-center justify-end gap-2 px-1 pt-0.5 text-xs text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
-                  {row.message.createdAt ? (
-                    <span className="select-none text-[11px] tabular-nums">
-                      {formatMessageRelativeTime(row.message.createdAt)}
-                    </span>
-                  ) : null}
-                  <div className="flex items-center gap-1">
-                    {row.message.text ? (
-                      <MessageCopyButton text={row.message.text} />
-                    ) : (
-                      <button
-                        type="button"
-                        disabled
-                        className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                        aria-label="Copy not available"
-                      >
-                        <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5" />
-                      </button>
-                    )}
-                    {canRevertAgentWork ? (
-                      <button
-                        type="button"
-                        className="cursor-pointer p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground/30"
-                        disabled={isRevertingCheckpoint || isWorking}
-                        onClick={() => onRevertUserMessage(row.message.id)}
-                        title="Revert to this message"
-                        aria-label="Revert to this message"
-                      >
-                        <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled
-                        className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                        aria-label="Revert not available"
-                        title="No earlier checkpoint to revert to"
-                      >
-                        <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled
-                      className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                      title="Branch (coming soon)"
-                      aria-label="Branch thread"
-                    >
-                      <HugeiconsIcon icon={__GitForkIconHugeIcon} className="size-3.5" />
-                    </button>
-                  </div>
                 </div>
-              </div>
-            </div>
-          );
-        })()}
-
-      {row.kind === "message" && row.message.role === "assistant" && (
-        <AssistantMessageBody
-          message={row.message}
-          controller={textReveal}
-          cwd={markdownCwd}
-          actions={row.showActions ? <AssistantResponseActions message={row.message} controller={textReveal} relativeTime={formatMessageRelativeTime(row.message.completedAt ?? row.message.createdAt)} /> : null}
-        >
-          {row.message.attachments?.length ? <MessageAttachments attachments={row.message.attachments} onExpand={onImageExpand} align="start" /> : null}
-          <ProviderAuthenticationHelp
-            provider={selectedProvider}
-            message={row.message.text}
-            messageId={String(row.message.id)}
-            isStreaming={Boolean(row.message.streaming)}
-            isSuperseded={row.message.id !== latestAssistantMessageId}
-          />
-          {(() => {
-            const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
-            if (!turnSummary) return null;
-            const checkpointFiles = turnSummary.files;
-            if (checkpointFiles.length === 0) return null;
-            const allDirectoriesExpanded =
-              allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
-            // Small, recent turns open themselves; anything larger stays
-            // collapsed behind the scope summary until asked for.
-            const expanded =
-              changedFilesExpandedByTurnId[turnSummary.turnId] ??
-              shouldAutoExpandChangedFiles(
-                checkpointFiles,
-                turnSummary.turnId === latestTurnDiffTurnId,
               );
-            return (
-              <ChangedFilesCard
-                turnId={turnSummary.turnId}
-                files={checkpointFiles}
-                expanded={expanded}
-                allDirectoriesExpanded={allDirectoriesExpanded}
-                resolvedTheme={resolvedTheme}
-                onExpandedChange={(next) => onToggleChangedFilesExpanded(turnSummary.turnId, next)}
-                onToggleAllDirectories={() => onToggleAllDirectories(turnSummary.turnId)}
-                onOpenTurnDiff={onOpenTurnDiff}
+            })()}
+
+          {row.kind === "message" && row.message.role === "assistant" && (
+            <AssistantMessageBody
+              message={row.message}
+              controller={textReveal}
+              cwd={markdownCwd}
+              actions={
+                row.showActions ? (
+                  <AssistantResponseActions
+                    message={row.message}
+                    controller={textReveal}
+                    relativeTime={formatMessageRelativeTime(
+                      row.message.completedAt ?? row.message.createdAt,
+                    )}
+                  />
+                ) : null
+              }
+            >
+              {row.message.attachments?.length ? (
+                <MessageAttachments
+                  attachments={row.message.attachments}
+                  onExpand={onImageExpand}
+                  align="start"
+                />
+              ) : null}
+              <ProviderAuthenticationHelp
+                provider={selectedProvider}
+                message={row.message.text}
+                messageId={String(row.message.id)}
+                isStreaming={Boolean(row.message.streaming)}
+                isSuperseded={row.message.id !== latestAssistantMessageId}
               />
-            );
-          })()}
-        </AssistantMessageBody>
-      )}
+              {(() => {
+                const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
+                if (!turnSummary) return null;
+                const checkpointFiles = turnSummary.files;
+                if (checkpointFiles.length === 0) return null;
+                const allDirectoriesExpanded =
+                  allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
+                // Small, recent turns open themselves; anything larger stays
+                // collapsed behind the scope summary until asked for.
+                const expanded =
+                  changedFilesExpandedByTurnId[turnSummary.turnId] ??
+                  shouldAutoExpandChangedFiles(
+                    checkpointFiles,
+                    turnSummary.turnId === latestTurnDiffTurnId,
+                  );
+                return (
+                  <ChangedFilesCard
+                    turnId={turnSummary.turnId}
+                    files={checkpointFiles}
+                    expanded={expanded}
+                    allDirectoriesExpanded={allDirectoriesExpanded}
+                    resolvedTheme={resolvedTheme}
+                    onExpandedChange={(next) =>
+                      onToggleChangedFilesExpanded(turnSummary.turnId, next)
+                    }
+                    onToggleAllDirectories={() => onToggleAllDirectories(turnSummary.turnId)}
+                    onOpenTurnDiff={onOpenTurnDiff}
+                  />
+                );
+              })()}
+            </AssistantMessageBody>
+          )}
 
-      {row.kind === "proposed-plan" && (
-        <div className="min-w-0 px-1 py-0.5">
-          <ProposedPlanCard
-            planMarkdown={row.proposedPlan.planMarkdown}
-            cwd={markdownCwd}
-            workspaceRoot={workspaceRoot}
-          />
+          {row.kind === "proposed-plan" && (
+            <div className="min-w-0 px-1 py-0.5">
+              <ProposedPlanCard
+                planMarkdown={row.proposedPlan.planMarkdown}
+                cwd={markdownCwd}
+                workspaceRoot={workspaceRoot}
+              />
+            </div>
+          )}
+
+          {row.kind === "turn-status" && (
+            <TurnStatusRow startedAtIso={row.startedAt} summary={row.summary} />
+          )}
+          {row.kind === "thinking" && <ThinkingIndicatorRow />}
+          {row.kind === "input-waiting" && (
+            <div
+              role="status"
+              className="px-1 py-1 text-sm text-muted-foreground animate-in fade-in-0 duration-100 motion-reduce:animate-none"
+            >
+              {row.requestKind === "approval"
+                ? "Waiting for approval"
+                : "Waiting for your response"}
+            </div>
+          )}
         </div>
-      )}
-
-      {row.kind === "turn-status" && (
-        <TurnStatusRow startedAtIso={row.startedAt} summary={row.summary} />
-      )}
-      {row.kind === "thinking" && <ThinkingIndicatorRow />}
-      {row.kind === "input-waiting" && <div role="status" className="px-1 py-1 text-sm text-muted-foreground">{row.requestKind === "approval" ? "Waiting for approval" : "Waiting for your response"}</div>}
-    </div>
-  ); return row.expandedFoldId ? <ExpandedFoldRowEntrance identity={`${row.expandedFoldId}:${row.id}`} seen={seenExpandedFoldRows} visible={isChatVisible}>{content}</ExpandedFoldRowEntrance> : content; }, [onToggleWorkGroup, textReveal, isChatVisible, isWorkActive, runningTurnId, activeTurnId,
-    expandedWorkGroups, workspaceRoot, resolvedTheme, artifactUrlsById, onOpenArtifact, onOpenTurnDiff,
-    seenToolSummaryRows, seenExpandedFoldRows, revertTurnCountByUserMessageId, expandedUserMessageIds, onImageExpand,
-    toggleUserMessageExpanded, isRevertingCheckpoint, isWorking, onRevertUserMessage, markdownCwd,
-    selectedProvider, latestAssistantMessageId, turnDiffSummaryByAssistantMessageId,
-    allDirectoriesExpandedByTurnId, changedFilesExpandedByTurnId, latestTurnDiffTurnId,
-    onToggleChangedFilesExpanded, onToggleAllDirectories]);
+      );
+      return row.expandedFoldId ? (
+        <ExpandedFoldRowEntrance
+          identity={`${row.expandedFoldId}:${row.id}`}
+          seen={seenExpandedFoldRows}
+          visible={isChatVisible}
+        >
+          {content}
+        </ExpandedFoldRowEntrance>
+      ) : (
+        content
+      );
+    },
+    [
+      onToggleWorkGroup,
+      textReveal,
+      isChatVisible,
+      isWorkActive,
+      runningTurnId,
+      activeTurnId,
+      expandedWorkGroups,
+      workspaceRoot,
+      resolvedTheme,
+      artifactUrlsById,
+      onOpenArtifact,
+      onOpenTurnDiff,
+      seenToolSummaryRows,
+      seenExpandedFoldRows,
+      revertTurnCountByUserMessageId,
+      expandedUserMessageIds,
+      onImageExpand,
+      toggleUserMessageExpanded,
+      isRevertingCheckpoint,
+      isWorking,
+      onRevertUserMessage,
+      markdownCwd,
+      selectedProvider,
+      latestAssistantMessageId,
+      turnDiffSummaryByAssistantMessageId,
+      allDirectoriesExpandedByTurnId,
+      changedFilesExpandedByTurnId,
+      latestTurnDiffTurnId,
+      onToggleChangedFilesExpanded,
+      onToggleAllDirectories,
+    ],
+  );
 
   if (!hasMessages && !isWorking) {
     return (
@@ -1076,27 +1272,40 @@ function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | n
       // Fixed 28px summary plus the shared 16px row spacing.
       return 44 + (row.expanded ? 2 + row.groupedEntries.length * 24 : 0);
     case "notices":
-      // Collapsed single line; expanded height is corrected by measurement.
-      return 28;
+      // One compact notice line plus the timeline row's shared 16px bottom gap.
+      return 44;
     case "message":
       return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
     case "assistant-meta":
-      return 40;
+      return 44;
     case "provider-task":
       return row.expanded ? 160 : 44;
     case "provider-plan":
       return 48 + row.plan.steps.length * 24;
     case "turn-fold":
-      return 44 + (row.expanded ? row.children.reduce((sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx), 0) : 0);
+      return (
+        44 +
+        (row.expanded
+          ? row.children.reduce(
+              (sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx),
+              0,
+            )
+          : 0)
+      );
     case "turn-fold-content":
-      return row.expanded ? row.children.reduce((sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx), 0) : 0;
+      return row.expanded
+        ? row.children.reduce(
+            (sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx),
+            0,
+          )
+        : 0;
     case "proposed-plan":
       return estimateTimelineProposedPlanHeight(row.proposedPlan);
     case "turn-status":
-      return 40;
+      return 52;
     case "thinking":
     case "input-waiting":
-      return 32;
+      return 44;
   }
 }
 
@@ -1108,18 +1317,37 @@ function formatLiveElapsed(startIso: string, nowMs: number): string | null {
   return formatDuration(Math.max(0, nowMs - startedAtMs));
 }
 
-function ExpandedFoldRowEntrance({ identity, seen, visible, children }: { identity: string; seen: Set<string>; visible: boolean; children: ReactNode }) {
+function ExpandedFoldRowEntrance({
+  identity,
+  seen,
+  visible,
+  children,
+}: {
+  identity: string;
+  seen: Set<string>;
+  visible: boolean;
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (seen.has(identity)) return;
     seen.add(identity);
     const node = ref.current;
-    if (!node || !visible || document.hidden || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (
+      !node ||
+      !visible ||
+      document.hidden ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
     const rect = node.getBoundingClientRect();
     if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
     node.classList.add("assistant-tool-enter");
     const timer = setTimeout(() => node.classList.remove("assistant-tool-enter"), 180);
-    return () => { clearTimeout(timer); node.classList.remove("assistant-tool-enter"); };
+    return () => {
+      clearTimeout(timer);
+      node.classList.remove("assistant-tool-enter");
+    };
   }, [identity, seen, visible]);
   return <div ref={ref}>{children}</div>;
 }
@@ -1154,6 +1382,7 @@ const TurnStatusRow = memo(function TurnStatusRow(props: {
       role="status"
       aria-live="polite"
       data-assistant-turn-status={isActive ? "working" : "worked"}
+      className="animate-in fade-in-0 duration-100 motion-reduce:animate-none"
     >
       <div
         className={cn(
@@ -1181,7 +1410,7 @@ const ThinkingIndicatorRow = memo(function ThinkingIndicatorRow() {
     <div
       role="status"
       aria-live="polite"
-      className="min-h-7 px-1 py-0.5 text-sm leading-relaxed"
+      className="min-h-7 px-1 py-0.5 text-sm leading-relaxed animate-in fade-in-0 duration-100 motion-reduce:animate-none"
       data-assistant-generation-phase="thinking"
     >
       <LiveShimmerText>Thinking</LiveShimmerText>

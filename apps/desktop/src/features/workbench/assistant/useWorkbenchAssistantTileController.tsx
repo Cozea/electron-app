@@ -1,7 +1,14 @@
-import { providerImageRejection } from "@/features/assistant/chat/providerInputCapabilities"
-import { compactionUnavailableReason } from "@/features/assistant/chat/contextCompaction"
-import { questionDraftKey, submitQuestionOnce, useQuestionDraftStore } from "@/features/assistant/questionDraftStore"
-import { buildPendingUserInputAnswers, pendingUserInputDraftFromAnswer } from "@/features/assistant/pendingUserInput"
+import { providerImageRejection } from "@/features/assistant/chat/providerInputCapabilities";
+import { compactionUnavailableReason } from "@/features/assistant/chat/contextCompaction";
+import {
+  questionDraftKey,
+  submitQuestionOnce,
+  useQuestionDraftStore,
+} from "@/features/assistant/questionDraftStore";
+import {
+  buildPendingUserInputAnswers,
+  pendingUserInputDraftFromAnswer,
+} from "@/features/assistant/pendingUserInput";
 import {
   useCallback,
   useEffect,
@@ -10,7 +17,7 @@ import {
   useState,
   type ClipboardEventHandler,
   type ComponentProps,
-} from "react"
+} from "react";
 
 import {
   ApprovalRequestId,
@@ -25,84 +32,98 @@ import {
   type ProviderKind,
   type RuntimeMode,
   type TurnId,
-} from "@cozea/assistant-contracts"
+} from "@cozea/assistant-contracts";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getModelSelectionOptionDescriptors,
   resolveModelSlugForProvider,
   resolveSelectableModel,
   setProviderOptionSelectionValue,
-} from "@cozea/assistant-shared/model"
-import type { PreviewAnnotationPayload, PreviewAnnotationSubmission } from "@cozea/contracts/t3/ipc"
+} from "@cozea/assistant-shared/model";
+import type {
+  PreviewAnnotationPayload,
+  PreviewAnnotationSubmission,
+} from "@cozea/contracts/t3/ipc";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
   inferCheckpointTurnCountByTurnId,
-} from "@/features/assistant/chat/session-logic"
+} from "@/features/assistant/chat/session-logic";
 import {
   CozeaChatSurface,
   type ComposerImageDraft,
   type ProviderModelOptionsByProvider,
   type UserInputAnswerDrafts,
-} from "@/features/assistant/chat/CozeaChatSurface"
+} from "@/features/assistant/chat/CozeaChatSurface";
 import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
-} from "@/features/assistant/chat/composerDraftStore"
-import { clampCollapsedComposerCursor } from "@/features/assistant/composer-logic"
+} from "@/features/assistant/chat/composerDraftStore";
+import { clampCollapsedComposerCursor } from "@/features/assistant/composer-logic";
 import {
   appendComposerMentions,
   partitionDroppedComposerFiles,
-} from "@/features/assistant/chat/composerDroppedFiles"
+} from "@/features/assistant/chat/composerDroppedFiles";
 import {
   reportMemoryUpdateOutcome,
   subscribeMemoryUpdateRequests,
-} from "@/features/project-memory/memoryUpdateBus"
-import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction"
-import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation"
-import { assistantDrafts, threadDraftKey, unboundDraftKey } from "@/features/assistant/history/assistantDraftRepository"
-import { historyHasPendingRequests } from "@/features/assistant/history/assistantHistory"
-import { useAssistantContentDraft } from "@/features/assistant/history/useAssistantContentDraft"
-import { useAssistantHistoryStore, conversationContextMatches } from "@/features/assistant/history/assistantHistoryStore"
+} from "@/features/project-memory/memoryUpdateBus";
+import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
+import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation";
+import {
+  assistantDrafts,
+  threadDraftKey,
+  unboundDraftKey,
+} from "@/features/assistant/history/assistantDraftRepository";
+import { historyHasPendingRequests } from "@/features/assistant/history/assistantHistory";
+import { useAssistantContentDraft } from "@/features/assistant/history/useAssistantContentDraft";
+import {
+  useAssistantHistoryStore,
+  conversationContextMatches,
+} from "@/features/assistant/history/assistantHistoryStore";
 import {
   deriveThreadImageArtifacts,
   type ThreadImageArtifact,
-} from "@/features/assistant/artifacts/threadArtifacts"
+} from "@/features/assistant/artifacts/threadArtifacts";
 import {
   useThreadArtifactMedia,
   type ThreadArtifactMediaState,
-} from "@/features/assistant/artifacts/useThreadArtifactMedia"
-import { deriveLatestContextWindowSnapshot } from "@/features/assistant/lib/contextWindow"
-import { deriveLatestAccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits"
+} from "@/features/assistant/artifacts/useThreadArtifactMedia";
+import { deriveLatestContextWindowSnapshot } from "@/features/assistant/lib/contextWindow";
+import { deriveLatestAccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits";
 import {
   newCommandId,
   newMessageId,
   newProjectId,
   newThreadId,
-} from "@/features/assistant/lib/utils"
+} from "@/features/assistant/lib/utils";
 import {
   refreshAssistantRuntimeSnapshot,
   useAssistantRuntimeSync,
-} from "@/features/workbench/useAssistantRuntimeSync"
-import { useAssistantRuntimeStatus } from "@/features/workbench/useAssistantRuntimeStatus"
-import { useSubstrateRpcChat } from "@/features/workbench/assistant/useSubstrateRpcChat"
-import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport"
-import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestrationSync"
-import { resolveOrchestrationApi } from "@/substrate/resolveOrchestrationApi"
-import { useT3CutoverActive } from "@/substrate/t3CutoverStore"
-import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn"
-import { deleteAssistantThread } from "@/features/assistant/services/deleteAssistantThread"
-import { useTileThreadStream } from "@/substrate/useTileThreadStream"
-import { useT3ConnectionStatus, t3ThreadConnectionKey, t3ShellConnectionKey } from "@/substrate/t3ConnectionStatus"
-import { ensureNativeApi } from "@/lib/nativeApi"
-import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient"
+} from "@/features/workbench/useAssistantRuntimeSync";
+import { useAssistantRuntimeStatus } from "@/features/workbench/useAssistantRuntimeStatus";
+import { useSubstrateRpcChat } from "@/features/workbench/assistant/useSubstrateRpcChat";
+import { useSubstrateChatTransport } from "@/substrate/useSubstrateChatTransport";
+import { useSubstrateOrchestrationSync } from "@/substrate/useSubstrateOrchestrationSync";
+import { resolveOrchestrationApi } from "@/substrate/resolveOrchestrationApi";
+import { useT3CutoverActive } from "@/substrate/t3CutoverStore";
+import { sendSubstrateRpcTurn } from "@/substrate/sendSubstrateRpcTurn";
+import { deleteAssistantThread } from "@/features/assistant/services/deleteAssistantThread";
+import { useTileThreadStream } from "@/substrate/useTileThreadStream";
+import {
+  useT3ConnectionStatus,
+  t3ThreadConnectionKey,
+  t3ShellConnectionKey,
+} from "@/substrate/t3ConnectionStatus";
+import { ensureNativeApi } from "@/lib/nativeApi";
+import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient";
 import {
   appendPreviewAnnotationPrompt,
   previewAnnotationScreenshotFile,
-} from "@/features/browser/previewAnnotation"
-import { getProviderModelCapabilities } from "@/features/assistant/model/providerModels"
+} from "@/features/browser/previewAnnotation";
+import { getProviderModelCapabilities } from "@/features/assistant/model/providerModels";
 import {
   createAssistantProjectSelectorForTile,
   createAssistantThreadSelectorById,
@@ -111,21 +132,21 @@ import {
   selectAssistantThreadById,
   selectAssistantThreads,
   useStore,
-} from "@/features/assistant/model/assistantStore"
-import type { ChatMessage, Project, Thread } from "@/features/assistant/model/types"
+} from "@/features/assistant/model/assistantStore";
+import type { ChatMessage, Project, Thread } from "@/features/assistant/model/types";
 import {
   type WorkbenchAssistantChatTile as WorkbenchAssistantChatTileRecord,
   useProjectWorkbenchStore,
   flushWorkbenchStorage,
-} from "@/lib/workbenchStore"
+} from "@/lib/workbenchStore";
 
-import { useAssistantServerConfig } from "./useAssistantServerConfig"
-import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle"
-import { resolvePlanFollowUpSubmission } from "@/features/assistant/proposedPlan"
+import { useAssistantServerConfig } from "./useAssistantServerConfig";
+import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle";
+import { resolvePlanFollowUpSubmission } from "@/features/assistant/proposedPlan";
 import {
   findLatestProposedPlan,
   hasActionableProposedPlan,
-} from "@/features/assistant/chat/session-logic"
+} from "@/features/assistant/chat/session-logic";
 import {
   type DiffDialogState,
   basenameFromPath,
@@ -144,143 +165,154 @@ import {
   toErrorMessage,
   withWorkspaceBindingLock,
   withModelSelectionModel,
-} from "./workbenchAssistantShared"
+} from "./workbenchAssistantShared";
 
-import { HugeiconsIcon } from "@hugeicons/react"
-import { AlertCircleIcon as __AlertCircleHugeIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AlertCircleIcon as __AlertCircleHugeIcon } from "@hugeicons/core-free-icons";
 
 interface UseWorkbenchAssistantTileControllerInput {
-  projectId: string
-  laneId: string
-  workspaceId: string | null
-  projectRootPath: string | null
-  tile: WorkbenchAssistantChatTileRecord
+  projectId: string;
+  laneId: string;
+  workspaceId: string | null;
+  projectRootPath: string | null;
+  tile: WorkbenchAssistantChatTileRecord;
 }
 
 interface WorkbenchAssistantTileControllerResult {
-  chatTitle: string
-  showTitleSpinner: boolean
-  diffDialog: DiffDialogState | null
-  closeDiffDialog: () => void
-  handleDeleteThread: () => Promise<boolean>
-  historyBusy: boolean
-  flushDraft: () => Promise<void>
-  onHistoryError: (message: string) => void
-  artifacts: ReadonlyArray<ThreadImageArtifact>
-  artifactMedia: ThreadArtifactMediaState
+  chatTitle: string;
+  showTitleSpinner: boolean;
+  diffDialog: DiffDialogState | null;
+  closeDiffDialog: () => void;
+  handleDeleteThread: () => Promise<boolean>;
+  historyBusy: boolean;
+  flushDraft: () => Promise<void>;
+  onHistoryError: (message: string) => void;
+  artifacts: ReadonlyArray<ThreadImageArtifact>;
+  artifactMedia: ThreadArtifactMediaState;
   attachPreviewAnnotation: (
     annotation: PreviewAnnotationPayload,
     submission: PreviewAnnotationSubmission,
-  ) => Promise<void>
-  surfaceProps: ComponentProps<typeof CozeaChatSurface>
+  ) => Promise<void>;
+  surfaceProps: ComponentProps<typeof CozeaChatSurface>;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
+    const reader = new FileReader();
     reader.addEventListener("load", () => {
       if (typeof reader.result === "string") {
-        resolve(reader.result)
-        return
+        resolve(reader.result);
+        return;
       }
-      reject(new Error("Could not read image data."))
-    })
+      reject(new Error("Could not read image data."));
+    });
     reader.addEventListener("error", () => {
-      reject(reader.error ?? new Error("Failed to read image."))
-    })
-    reader.readAsDataURL(file)
-  })
+      reject(reader.error ?? new Error("Failed to read image."));
+    });
+    reader.readAsDataURL(file);
+  });
 }
 
 function revokeBlobPreviewUrl(previewUrl: string | undefined): void {
   if (!previewUrl || typeof URL === "undefined" || !previewUrl.startsWith("blob:")) {
-    return
+    return;
   }
-  URL.revokeObjectURL(previewUrl)
+  URL.revokeObjectURL(previewUrl);
 }
 
 export function useWorkbenchAssistantTileController(
   input: UseWorkbenchAssistantTileControllerInput,
 ): WorkbenchAssistantTileControllerResult {
-  const assistantRuntime = useAssistantRuntimeStatus()
+  const assistantRuntime = useAssistantRuntimeStatus();
   // Phase 2 flagged path (default off): connect via substrate shadow RPC when enabled.
-  const substrateRpcChat = useSubstrateRpcChat()
-  const substrateTransport = useSubstrateChatTransport()
-  const t3CutoverActive = useT3CutoverActive()
-  const transportBaseUrl = substrateTransport.active ? substrateTransport.shadowBaseUrl ?? null : null
-  const mediaBaseUrl = t3CutoverActive ? transportBaseUrl : null
-  const detailConnection = useT3ConnectionStatus(mediaBaseUrl && input.tile.threadId ? t3ThreadConnectionKey(mediaBaseUrl, input.tile.threadId) : null)
-  const shellConnection = useT3ConnectionStatus(transportBaseUrl ? t3ShellConnectionKey(transportBaseUrl) : null)
-  const connectionStatus = detailConnection && detailConnection.phase !== "connected" ? detailConnection : shellConnection
+  const substrateRpcChat = useSubstrateRpcChat();
+  const substrateTransport = useSubstrateChatTransport();
+  const t3CutoverActive = useT3CutoverActive();
+  const transportBaseUrl = substrateTransport.active
+    ? (substrateTransport.shadowBaseUrl ?? null)
+    : null;
+  const mediaBaseUrl = t3CutoverActive ? transportBaseUrl : null;
+  const detailConnection = useT3ConnectionStatus(
+    mediaBaseUrl && input.tile.threadId
+      ? t3ThreadConnectionKey(mediaBaseUrl, input.tile.threadId)
+      : null,
+  );
+  const shellConnection = useT3ConnectionStatus(
+    transportBaseUrl ? t3ShellConnectionKey(transportBaseUrl) : null,
+  );
+  const connectionStatus =
+    detailConnection && detailConnection.phase !== "connected" ? detailConnection : shellConnection;
   const getOrchestration = useCallback(
     () => resolveOrchestrationApi(t3CutoverActive ? ensureNativeApi().orchestration : null),
     [t3CutoverActive],
-  )
+  );
   useSubstrateOrchestrationSync({
     active: substrateTransport.active,
     shadowBaseUrl: substrateTransport.shadowBaseUrl,
-  })
+  });
   useEffect(() => {
     if (substrateTransport.active) {
       console.info("[substrate] primary chat transport active", {
         shadowBaseUrl: substrateTransport.shadowBaseUrl,
         rpcChat: substrateTransport.shadowStatus?.features.rpcChat ?? false,
         providers: substrateTransport.shadowStatus?.features.providers ?? false,
-      })
+      });
     }
   }, [
     substrateTransport.active,
     substrateTransport.shadowBaseUrl,
     substrateTransport.shadowStatus?.features.providers,
     substrateTransport.shadowStatus?.features.rpcChat,
-  ])
+  ]);
   if (substrateRpcChat.enabled && substrateRpcChat.lastError) {
-    console.warn("[substrate.rpcChat]", substrateRpcChat.lastError)
+    console.warn("[substrate.rpcChat]", substrateRpcChat.lastError);
   }
   const isRuntimeReady =
-    assistantRuntime.phase === "ready" || (substrateTransport.active && t3CutoverActive)
-  const isChatReady = isRuntimeReady || substrateTransport.active
+    assistantRuntime.phase === "ready" || (substrateTransport.active && t3CutoverActive);
+  const isChatReady = isRuntimeReady || substrateTransport.active;
   const runtimeErrorMessage =
     assistantRuntime.phase === "error"
       ? assistantRuntime.lastError?.trim() || "Local chat runtime is unavailable."
-      : null
+      : null;
 
-  useAssistantRuntimeSync(isChatReady && !substrateTransport.active)
+  useAssistantRuntimeSync(isChatReady && !substrateTransport.active);
 
   const {
     config,
     error: configError,
     isLoading: isConfigLoading,
-  } = useAssistantServerConfig(isChatReady)
-  const [pendingMemoryUpdateAt, setPendingMemoryUpdateAt] = useState<number | null>(null)
+  } = useAssistantServerConfig(isChatReady);
+  const [pendingMemoryUpdateAt, setPendingMemoryUpdateAt] = useState<number | null>(null);
   /** Set while a memory rebuild we were asked to run is still outstanding. */
-  const [memoryUpdateInFlight, setMemoryUpdateInFlight] = useState(false)
-  const [sendError, setSendError] = useState<string | null>(null)
-  const [autoSendAnnotationId, setAutoSendAnnotationId] = useState<string | null>(null)
-  const [bindingError, setBindingError] = useState<string | null>(null)
-  const [isBinding, setIsBinding] = useState(false)
-  const [bindingRevision, setBindingRevision] = useState(0)
-  const [isSending, setIsSending] = useState(false)
-  const [isPreparingSend, setIsPreparingSend] = useState(false)
-  const [threadOperationCount, setThreadOperationCount] = useState(0)
-  const preparingSendRef = useRef(false)
-  const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false)
-  const [activeRequestKey, setActiveRequestKey] = useState<string | null>(null)
-  const [requestError, setRequestError] = useState<string | null>(null)
-  const [diffDialog, setDiffDialog] = useState<DiffDialogState | null>(null)
-  const [userInputDrafts, setUserInputDrafts] = useState<UserInputAnswerDrafts>({})
-  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([])
-  const updateAssistantTile = useProjectWorkbenchStore((state) => state.actions.updateAssistantTile)
-  const upsertComposerDraft = useAssistantComposerDraftStore((state) => state.upsertDraft)
-  const adoptComposerDraft = useAssistantComposerDraftStore((state) => state.adoptDraft)
+  const [memoryUpdateInFlight, setMemoryUpdateInFlight] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [autoSendAnnotationId, setAutoSendAnnotationId] = useState<string | null>(null);
+  const [bindingError, setBindingError] = useState<string | null>(null);
+  const [isBinding, setIsBinding] = useState(false);
+  const [bindingRevision, setBindingRevision] = useState(0);
+  const [isSending, setIsSending] = useState(false);
+  const [isPreparingSend, setIsPreparingSend] = useState(false);
+  const [threadOperationCount, setThreadOperationCount] = useState(0);
+  const preparingSendRef = useRef(false);
+  const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
+  const [activeRequestKey, setActiveRequestKey] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [diffDialog, setDiffDialog] = useState<DiffDialogState | null>(null);
+  const [userInputDrafts, setUserInputDrafts] = useState<UserInputAnswerDrafts>({});
+  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
+  const updateAssistantTile = useProjectWorkbenchStore(
+    (state) => state.actions.updateAssistantTile,
+  );
+  const upsertComposerDraft = useAssistantComposerDraftStore((state) => state.upsertDraft);
+  const adoptComposerDraft = useAssistantComposerDraftStore((state) => state.adoptDraft);
   const lastModelSelectionByInstanceId = useAssistantComposerDraftStore(
     (state) => state.lastModelSelectionByInstanceId,
-  )
-  const setThreadError = useStore((state) => state.setError)
-  const timelineRef = useRef<HTMLDivElement | null>(null)
-  const bindingInFlightRef = useRef(false)
-  const sendInFlightRef = useRef(false)
-  const handleSendRef = useRef<() => Promise<void>>(async () => undefined)
+  );
+  const setThreadError = useStore((state) => state.setError);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const bindingInFlightRef = useRef(false);
+  const sendInFlightRef = useRef(false);
+  const handleSendRef = useRef<() => Promise<void>>(async () => undefined);
 
   const assistantProjectSelector = useMemo(
     () =>
@@ -289,116 +321,124 @@ export function useWorkbenchAssistantTileController(
         projectPath: input.projectRootPath,
       }),
     [input.projectRootPath, input.tile.assistantProjectId],
-  )
+  );
   const threadSelector = useMemo(
     () => createAssistantThreadSelectorById(input.tile.threadId),
     [input.tile.threadId],
-  )
-  const assistantProject = useStore(assistantProjectSelector)
-  const thread = useStore(threadSelector)
-  const threadStream = useTileThreadStream(input.tile.threadId)
-  const shellNeedsAttention = useStore((state) => Boolean(input.tile.threadId && historyHasPendingRequests(state, input.tile.threadId)))
-  const draftTargetKey = input.tile.threadId ?? input.tile.draftId ?? input.tile.id
-  const contentDraftKey = input.tile.threadId ? threadDraftKey(input.tile.threadId) : unboundDraftKey(input.tile.draftId ?? input.tile.id)
-  const savedContentDraft = assistantDrafts.store((state) => state.drafts[contentDraftKey])
+  );
+  const assistantProject = useStore(assistantProjectSelector);
+  const thread = useStore(threadSelector);
+  const threadStream = useTileThreadStream(input.tile.threadId);
+  const shellNeedsAttention = useStore((state) =>
+    Boolean(input.tile.threadId && historyHasPendingRequests(state, input.tile.threadId)),
+  );
+  const draftTargetKey = input.tile.threadId ?? input.tile.draftId ?? input.tile.id;
+  const contentDraftKey = input.tile.threadId
+    ? threadDraftKey(input.tile.threadId)
+    : unboundDraftKey(input.tile.draftId ?? input.tile.id);
+  const savedContentDraft = assistantDrafts.store((state) => state.drafts[contentDraftKey]);
   const composerDraft = useAssistantComposerDraftStore(
     useCallback((state) => state.draftsByTargetKey[draftTargetKey] ?? null, [draftTargetKey]),
-  )
+  );
 
   // Absolute filesystem root of the bound workspace, used to trim absolute
   // tool/changedFiles/proposed-plan paths down to workspace-relative labels in
   // the timeline. The runtime context already exposes the real root via
   // `input.projectRootPath`; only fall back to resolving from the opaque
   // workspaceId when that is unavailable.
-  const [resolvedWorkspaceRoot, setResolvedWorkspaceRoot] = useState<string | null>(null)
+  const [resolvedWorkspaceRoot, setResolvedWorkspaceRoot] = useState<string | null>(null);
   useEffect(() => {
     if (input.projectRootPath) {
-      setResolvedWorkspaceRoot(input.projectRootPath)
-      return
+      setResolvedWorkspaceRoot(input.projectRootPath);
+      return;
     }
     if (!input.workspaceId) {
-      setResolvedWorkspaceRoot(null)
-      return
+      setResolvedWorkspaceRoot(null);
+      return;
     }
-    let cancelled = false
-    const workspaceId = input.workspaceId
+    let cancelled = false;
+    const workspaceId = input.workspaceId;
     void projectAnalysisDesktopClient
       .resolveRoot(workspaceId)
       .then((root) => {
         if (!cancelled) {
-          setResolvedWorkspaceRoot(root)
+          setResolvedWorkspaceRoot(root);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setResolvedWorkspaceRoot(null)
+          setResolvedWorkspaceRoot(null);
         }
-      })
+      });
     return () => {
-      cancelled = true
-    }
-  }, [input.projectRootPath, input.workspaceId])
+      cancelled = true;
+    };
+  }, [input.projectRootPath, input.workspaceId]);
 
   useEffect(() => {
     if (!thread?.id) {
-      return
+      return;
     }
-    adoptComposerDraft(input.tile.draftId ?? input.tile.id, thread.id)
-  }, [adoptComposerDraft, input.tile.id, input.tile.draftId, thread?.id])
+    adoptComposerDraft(input.tile.draftId ?? input.tile.id, thread.id);
+  }, [adoptComposerDraft, input.tile.id, input.tile.draftId, thread?.id]);
 
   useEffect(() => {
-    setOptimisticUserMessages([])
-  }, [thread?.id])
+    setOptimisticUserMessages([]);
+  }, [thread?.id]);
 
   useEffect(() => {
     if (!thread || optimisticUserMessages.length === 0) {
-      return
+      return;
     }
-    const serverMessageIds = new Set(thread.messages.map((message) => message.id))
+    const serverMessageIds = new Set(thread.messages.map((message) => message.id));
     if (!optimisticUserMessages.some((message) => serverMessageIds.has(message.id))) {
-      return
+      return;
     }
     setOptimisticUserMessages((current) => {
-      const removed = current.filter((message) => serverMessageIds.has(message.id))
+      const removed = current.filter((message) => serverMessageIds.has(message.id));
       for (const message of removed) {
-        if (!message.attachments) continue
+        if (!message.attachments) continue;
         for (const attachment of message.attachments) {
-          if (attachment.type !== "image") continue
-          revokeBlobPreviewUrl(attachment.previewUrl)
+          if (attachment.type !== "image") continue;
+          revokeBlobPreviewUrl(attachment.previewUrl);
         }
       }
-      return current.filter((message) => !serverMessageIds.has(message.id))
-    })
-  }, [optimisticUserMessages, thread])
+      return current.filter((message) => !serverMessageIds.has(message.id));
+    });
+  }, [optimisticUserMessages, thread]);
 
   const fallbackModelSelection = useMemo(() => {
     const fallbackSelection = resolvePreferredModelSelection({
       config,
       tile: input.tile,
       projectModelSelection: assistantProject?.defaultModelSelection,
-    })
+    });
     return resolveRememberedModelSelection({
       fallbackSelection,
       explicitTileModel: input.tile.model,
-      rememberedSelection:
-        lastModelSelectionByInstanceId[fallbackSelection.instanceId] ?? null,
+      rememberedSelection: lastModelSelectionByInstanceId[fallbackSelection.instanceId] ?? null,
       selectableModels: getProviderModelOptions(
         config,
         fallbackSelection.provider,
         fallbackSelection.instanceId,
       ),
-    })
-  }, [
-    assistantProject?.defaultModelSelection,
-    config,
-    input.tile,
-    lastModelSelectionByInstanceId,
-  ])
+    });
+  }, [assistantProject?.defaultModelSelection, config, input.tile, lastModelSelectionByInstanceId]);
   const unresolvedModelSelection =
-    composerDraft?.modelSelection ?? savedContentDraft?.modelSelection ?? thread?.modelSelection ?? fallbackModelSelection
-  const selectedProvider = resolveModelSelectionProvider({ config, selection: unresolvedModelSelection, fallbackProvider: input.tile.provider })
-  const selectedModelSelection = useMemo(() => ({ ...unresolvedModelSelection, provider: selectedProvider }), [unresolvedModelSelection, selectedProvider])
-  const selectedProviderInstanceId = selectedModelSelection.instanceId
+    composerDraft?.modelSelection ??
+    savedContentDraft?.modelSelection ??
+    thread?.modelSelection ??
+    fallbackModelSelection;
+  const selectedProvider = resolveModelSelectionProvider({
+    config,
+    selection: unresolvedModelSelection,
+    fallbackProvider: input.tile.provider,
+  });
+  const selectedModelSelection = useMemo(
+    () => ({ ...unresolvedModelSelection, provider: selectedProvider }),
+    [unresolvedModelSelection, selectedProvider],
+  );
+  const selectedProviderInstanceId = selectedModelSelection.instanceId;
   const selectedDispatchModelSelection = useMemo(
     () =>
       normalizeModelSelection({
@@ -408,59 +448,142 @@ export function useWorkbenchAssistantTileController(
         options: selectedModelSelection.options,
       }),
     [selectedModelSelection, selectedProvider, selectedProviderInstanceId],
-  )
+  );
 
   const selectedRuntimeMode =
-    composerDraft?.runtimeMode ?? savedContentDraft?.runtimeMode ?? thread?.runtimeMode ?? resolveRuntimeMode(input.tile)
-  const selectedInteractionMode = selectedProvider === "antigravity" ? "default" :
-    composerDraft?.interactionMode ?? savedContentDraft?.interactionMode ?? thread?.interactionMode ?? resolveInteractionMode(input.tile)
-  const [verifiedContextBranch, setVerifiedContextBranch] = useState<string | null>(null)
-  const [contextVerified, setContextVerified] = useState(false)
+    composerDraft?.runtimeMode ??
+    savedContentDraft?.runtimeMode ??
+    thread?.runtimeMode ??
+    resolveRuntimeMode(input.tile);
+  const selectedInteractionMode =
+    selectedProvider === "antigravity"
+      ? "default"
+      : (composerDraft?.interactionMode ??
+        savedContentDraft?.interactionMode ??
+        thread?.interactionMode ??
+        resolveInteractionMode(input.tile));
+  const [verifiedContextBranch, setVerifiedContextBranch] = useState<string | null>(null);
+  const [contextVerified, setContextVerified] = useState(false);
   const {
-    composer, setComposer, composerCursor, setComposerCursor,
-    composerImages, setComposerImages, composerPreviewAnnotations, setComposerPreviewAnnotations,
-    draftReady, draftError,
+    composer,
+    setComposer,
+    composerCursor,
+    setComposerCursor,
+    composerImages,
+    setComposerImages,
+    composerPreviewAnnotations,
+    setComposerPreviewAnnotations,
+    draftReady,
+    draftError,
   } = useAssistantContentDraft({
-    key: contentDraftKey, threadId: input.tile.threadId ?? null,
+    key: contentDraftKey,
+    threadId: input.tile.threadId ?? null,
     assistantProjectId: input.tile.assistantProjectId ?? null,
-    projectId: input.projectId, workspaceId: input.workspaceId ?? "", laneId: input.laneId,
-    rootPath: input.projectRootPath ?? "", branch: thread?.branch ?? verifiedContextBranch,
-    modelSelection: selectedModelSelection, runtimeMode: selectedRuntimeMode, interactionMode: selectedInteractionMode,
-  })
-  const [contextError, setContextError] = useState<string | null>(null)
-  const verifiedBranchRef = useRef<string | null>(null)
+    projectId: input.projectId,
+    workspaceId: input.workspaceId ?? "",
+    laneId: input.laneId,
+    rootPath: input.projectRootPath ?? "",
+    branch: thread?.branch ?? verifiedContextBranch,
+    modelSelection: selectedModelSelection,
+    runtimeMode: selectedRuntimeMode,
+    interactionMode: selectedInteractionMode,
+  });
+  const [contextError, setContextError] = useState<string | null>(null);
+  const verifiedBranchRef = useRef<string | null>(null);
   const validateConversationContext = useCallback(async () => {
-    const origin = (input.tile.threadId ? useAssistantHistoryStore.getState().conversations[input.tile.threadId] : null) ??
-      assistantDrafts.store.getState().drafts[contentDraftKey]
-    const rootPath = input.workspaceId ? await projectAnalysisDesktopClient.resolveRoot(input.workspaceId) : null
-    if (!rootPath) throw new Error("The original workspace folder is unavailable. Resolve its local folder using the workbench controls to continue.")
-    const git = input.workspaceId ? await window.electronAPI.workspaceSync.gitStatus({ workspaceId: input.workspaceId }).catch(() => null) : null
-    const current = { projectId: input.projectId, workspaceId: input.workspaceId ?? "", laneId: input.laneId, rootPath: rootPath ?? "", branch: git?.success ? git.currentBranch ?? null : null }
-    verifiedBranchRef.current = current.branch
+    const origin =
+      (input.tile.threadId
+        ? useAssistantHistoryStore.getState().conversations[input.tile.threadId]
+        : null) ?? assistantDrafts.store.getState().drafts[contentDraftKey];
+    const rootPath = input.workspaceId
+      ? await projectAnalysisDesktopClient.resolveRoot(input.workspaceId)
+      : null;
+    if (!rootPath)
+      throw new Error(
+        "The original workspace folder is unavailable. Resolve its local folder using the workbench controls to continue.",
+      );
+    const git = input.workspaceId
+      ? await window.electronAPI.workspaceSync
+          .gitStatus({ workspaceId: input.workspaceId })
+          .catch(() => null)
+      : null;
+    const current = {
+      projectId: input.projectId,
+      workspaceId: input.workspaceId ?? "",
+      laneId: input.laneId,
+      rootPath: rootPath ?? "",
+      branch: git?.success ? (git.currentBranch ?? null) : null,
+    };
+    verifiedBranchRef.current = current.branch;
     if (origin && !conversationContextMatches(origin, current)) {
-      throw new Error("This conversation belongs to another workspace or checkout. Open its original workspace/branch using the workbench controls to continue.")
+      throw new Error(
+        "This conversation belongs to another workspace or checkout. Open its original workspace/branch using the workbench controls to continue.",
+      );
     }
-    return current
-  }, [contentDraftKey, input.projectId, input.workspaceId, input.laneId, input.tile.threadId])
+    return current;
+  }, [contentDraftKey, input.projectId, input.workspaceId, input.laneId, input.tile.threadId]);
   useEffect(() => {
-    let cancelled = false
-    setContextVerified(false)
-    void validateConversationContext().then((current) => {
-      if (!cancelled) { setContextError(null); setVerifiedContextBranch(current.branch); setContextVerified(true) }
-    }).catch((error: unknown) => { if (!cancelled) { setContextError(toErrorMessage(error)); setContextVerified(true) } })
-    return () => { cancelled = true }
-  }, [validateConversationContext])
+    let cancelled = false;
+    setContextVerified(false);
+    void validateConversationContext()
+      .then((current) => {
+        if (!cancelled) {
+          setContextError(null);
+          setVerifiedContextBranch(current.branch);
+          setContextVerified(true);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setContextError(toErrorMessage(error));
+          setContextVerified(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [validateConversationContext]);
   useEffect(() => {
-    if (!assistantProject || !input.workspaceId || !input.projectRootPath) return
-    const association = { projectId: input.projectId, workspaceId: input.workspaceId, laneId: input.laneId, rootPath: input.projectRootPath, branch: thread?.branch ?? null, assistantProjectId: assistantProject.id }
-    const history = useAssistantHistoryStore.getState()
+    if (!assistantProject || !input.workspaceId || !input.projectRootPath) return;
+    const association = {
+      projectId: input.projectId,
+      workspaceId: input.workspaceId,
+      laneId: input.laneId,
+      rootPath: input.projectRootPath,
+      branch: thread?.branch ?? null,
+      assistantProjectId: assistantProject.id,
+    };
+    const history = useAssistantHistoryStore.getState();
     // Viewing an already-associated chat must not reassign its origin.
-    if (assistantProject.cwd !== input.projectRootPath) return
-    history.rememberProject(association)
-    if (thread) history.rememberConversation(thread.id, { ...association, provider: selectedProvider, branch: thread.branch ?? verifiedBranchRef.current })
-  }, [assistantProject, input.projectId, input.workspaceId, input.laneId, input.projectRootPath, thread?.id, thread?.branch, selectedProvider])
-  const providerSnapshot = config?.providers.find((entry) => entry.instanceId === selectedProviderInstanceId && (entry.provider ?? entry.driver) === selectedProvider) ?? null
-  const canUseProvider = Boolean(providerSnapshot?.enabled && providerSnapshot.availability !== "unavailable" && !hasBlockingProviderBanner(providerSnapshot))
+    if (assistantProject.cwd !== input.projectRootPath) return;
+    history.rememberProject(association);
+    if (thread)
+      history.rememberConversation(thread.id, {
+        ...association,
+        provider: selectedProvider,
+        branch: thread.branch ?? verifiedBranchRef.current,
+      });
+  }, [
+    assistantProject,
+    input.projectId,
+    input.workspaceId,
+    input.laneId,
+    input.projectRootPath,
+    thread?.id,
+    thread?.branch,
+    selectedProvider,
+  ]);
+  const providerSnapshot =
+    config?.providers.find(
+      (entry) =>
+        entry.instanceId === selectedProviderInstanceId &&
+        (entry.provider ?? entry.driver) === selectedProvider,
+    ) ?? null;
+  const canUseProvider = Boolean(
+    providerSnapshot?.enabled &&
+    providerSnapshot.availability !== "unavailable" &&
+    !hasBlockingProviderBanner(providerSnapshot),
+  );
   const modelOptionsByProvider = useMemo<ProviderModelOptionsByProvider>(
     () => ({
       codex: getProviderModelOptions(config, "codex"),
@@ -470,11 +593,11 @@ export function useWorkbenchAssistantTileController(
       antigravity: getProviderModelOptions(config, "antigravity"),
     }),
     [config],
-  )
+  );
 
   const mergedThread = useMemo(() => {
     if (!thread && !input.tile.threadId) {
-      return null
+      return null;
     }
 
     const base = thread ?? {
@@ -494,17 +617,14 @@ export function useWorkbenchAssistantTileController(
       worktreePath: null,
       turnDiffSummaries: [],
       activities: [],
-    }
+    };
 
-    const streamMessages = threadStream.loaded ? threadStream.messages : base.messages
-    const streamActivities =
-      threadStream.loaded ? threadStream.activities : base.activities
-    const streamPlans =
-      threadStream.loaded ? threadStream.proposedPlans : base.proposedPlans
-    const streamDiffs =
-      threadStream.loaded
-        ? threadStream.turnDiffSummaries
-        : base.turnDiffSummaries
+    const streamMessages = threadStream.loaded ? threadStream.messages : base.messages;
+    const streamActivities = threadStream.loaded ? threadStream.activities : base.activities;
+    const streamPlans = threadStream.loaded ? threadStream.proposedPlans : base.proposedPlans;
+    const streamDiffs = threadStream.loaded
+      ? threadStream.turnDiffSummaries
+      : base.turnDiffSummaries;
 
     return {
       ...base,
@@ -512,7 +632,7 @@ export function useWorkbenchAssistantTileController(
       activities: streamActivities,
       proposedPlans: streamPlans,
       turnDiffSummaries: streamDiffs,
-    } as unknown as Thread
+    } as unknown as Thread;
   }, [
     input.tile.assistantProjectId,
     input.tile.threadId,
@@ -523,36 +643,36 @@ export function useWorkbenchAssistantTileController(
     selectedRuntimeMode,
     thread,
     threadStream,
-  ])
+  ]);
 
   const visibleThread = useMemo(() => {
     if (!mergedThread || optimisticUserMessages.length === 0) {
-      return mergedThread
+      return mergedThread;
     }
-    const serverMessageIds = new Set(mergedThread.messages.map((message) => message.id))
+    const serverMessageIds = new Set(mergedThread.messages.map((message) => message.id));
     const pendingMessages = optimisticUserMessages.filter(
       (message) => !serverMessageIds.has(message.id),
-    )
+    );
     if (pendingMessages.length === 0) {
-      return mergedThread
+      return mergedThread;
     }
     return {
       ...mergedThread,
       messages: [...mergedThread.messages, ...pendingMessages],
-    }
-  }, [mergedThread, optimisticUserMessages])
+    };
+  }, [mergedThread, optimisticUserMessages]);
   const artifacts = useMemo(
     () => deriveThreadImageArtifacts(visibleThread?.id, visibleThread?.activities ?? []),
     [visibleThread?.activities, visibleThread?.id],
-  )
+  );
   const artifactMedia = useThreadArtifactMedia(visibleThread?.id, artifacts, {
     active: substrateTransport.active,
     shadowBaseUrl: substrateTransport.shadowBaseUrl,
-  })
+  });
   const providerModelOptions = useMemo(() => {
-    const options = getProviderModelOptions(config, selectedProvider, selectedProviderInstanceId)
+    const options = getProviderModelOptions(config, selectedProvider, selectedProviderInstanceId);
     if (options.some((option) => option.slug === selectedModelSelection.model)) {
-      return options
+      return options;
     }
     return [
       {
@@ -560,8 +680,8 @@ export function useWorkbenchAssistantTileController(
         name: selectedModelSelection.model,
       },
       ...options,
-    ]
-  }, [config, selectedModelSelection.model, selectedProvider, selectedProviderInstanceId])
+    ];
+  }, [config, selectedModelSelection.model, selectedProvider, selectedProviderInstanceId]);
   const selectedModelCapabilities = useMemo(
     () =>
       getProviderModelCapabilities(
@@ -570,37 +690,57 @@ export function useWorkbenchAssistantTileController(
         selectedProvider,
       ),
     [providerSnapshot?.models, selectedModelSelection.model, selectedProvider],
-  )
+  );
   const selectedModelOptionDescriptors = useMemo(
     () => getModelSelectionOptionDescriptors(selectedModelSelection, selectedModelCapabilities),
     [selectedModelCapabilities, selectedModelSelection],
-  )
-  const latestTurnId = visibleThread?.latestTurn?.turnId
+  );
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(visibleThread?.activities ?? []),
     [visibleThread?.activities],
-  )
+  );
   const pendingUserInputs = useMemo(
     () => derivePendingUserInputs(visibleThread?.activities ?? []),
     [visibleThread?.activities],
-  )
+  );
   useEffect(() => {
-    if (!visibleThread) return
-    const resolved = new Set(visibleThread.activities.filter((activity) => activity.kind === "user-input.resolved").flatMap((activity) => {
-      const payload = activity.payload
-      return payload && typeof payload === "object" && "requestId" in payload && typeof payload.requestId === "string" ? [payload.requestId] : []
-    }))
+    if (!visibleThread) return;
+    const resolved = new Set(
+      visibleThread.activities
+        .filter((activity) => activity.kind === "user-input.resolved")
+        .flatMap((activity) => {
+          const payload = activity.payload;
+          return payload &&
+            typeof payload === "object" &&
+            "requestId" in payload &&
+            typeof payload.requestId === "string"
+            ? [payload.requestId]
+            : [];
+        }),
+    );
     for (const activity of visibleThread.activities) {
-      if (activity.kind !== "user-input.requested") continue
-      const payload = activity.payload
-      if (!payload || typeof payload !== "object" || !("requestId" in payload) || typeof payload.requestId !== "string" || !resolved.has(payload.requestId)) continue
-      useQuestionDraftStore.getState().remove(questionDraftKey(visibleThread.id, { requestId: ApprovalRequestId.makeUnsafe(payload.requestId), createdAt: activity.createdAt }))
+      if (activity.kind !== "user-input.requested") continue;
+      const payload = activity.payload;
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        !("requestId" in payload) ||
+        typeof payload.requestId !== "string" ||
+        !resolved.has(payload.requestId)
+      )
+        continue;
+      useQuestionDraftStore.getState().remove(
+        questionDraftKey(visibleThread.id, {
+          requestId: ApprovalRequestId.makeUnsafe(payload.requestId),
+          createdAt: activity.createdAt,
+        }),
+      );
     }
-  }, [visibleThread?.id, visibleThread?.activities])
+  }, [visibleThread?.id, visibleThread?.activities]);
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(visibleThread?.activities ?? []),
     [visibleThread?.activities],
-  )
+  );
   const activeAccountUsage = useMemo(
     () =>
       deriveLatestAccountUsageLimitSnapshot(
@@ -619,15 +759,15 @@ export function useWorkbenchAssistantTileController(
       selectedProvider,
       visibleThread?.activities,
     ],
-  )
+  );
   const turnCountByTurnId = useMemo(
     () => inferCheckpointTurnCountByTurnId(visibleThread?.turnDiffSummaries ?? []),
     [visibleThread?.turnDiffSummaries],
-  )
+  );
   const isRunning = deriveAssistantTurnRunning({
     orchestrationStatus: thread?.session?.orchestrationStatus,
     streamIsStreaming: threadStream.isStreaming,
-  })
+  });
   const {
     isInterrupting,
     isForceStopAvailable,
@@ -642,7 +782,7 @@ export function useWorkbenchAssistantTileController(
     runtimeErrorMessage,
     isRunning,
     onError: setSendError,
-  })
+  });
 
   // Plan follow-up state — detect when the agent has proposed a plan and we're
   // in plan mode, so that handleSend can intercept and route to the plan
@@ -654,122 +794,121 @@ export function useWorkbenchAssistantTileController(
         visibleThread?.latestTurn?.turnId ?? null,
       ),
     [visibleThread?.latestTurn?.turnId, visibleThread?.proposedPlans],
-  )
-  const latestTurnSettled = !isRunning && !isTurnStartPending && !isInterrupting
+  );
+  const latestTurnSettled = !isRunning && !isTurnStartPending && !isInterrupting;
   const showPlanFollowUpPrompt =
     !pendingUserInputs.some((request) => request.responseMode !== "message") &&
     selectedInteractionMode === "plan" &&
     latestTurnSettled &&
-    hasActionableProposedPlan(activeProposedPlan)
-  const hasBoundThread = Boolean(input.tile.threadId && thread)
-  const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding
+    hasActionableProposedPlan(activeProposedPlan);
+  const hasBoundThread = Boolean(input.tile.threadId && thread);
+  const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding;
   const chatTitle =
     visibleThread?.title?.trim() ||
     input.tile.agentLabel?.trim() ||
     input.tile.title.trim() ||
-    "AI Agent"
+    "AI Agent";
   const showTitleSpinner =
     isRunning ||
     isTurnStartPending ||
     isInterrupting ||
     assistantRuntime.phase === "starting" ||
-    (visibleBindingState && !bindingError)
+    (visibleBindingState && !bindingError);
 
   useEffect(() => {
     if (isRuntimeReady) {
-      return
+      return;
     }
 
-    bindingInFlightRef.current = false
-    setIsBinding(false)
-  }, [isRuntimeReady])
+    bindingInFlightRef.current = false;
+    setIsBinding(false);
+  }, [isRuntimeReady]);
 
   useEffect(() => {
     if (!thread) {
-      return
+      return;
     }
 
-    const patch: Partial<WorkbenchAssistantChatTileRecord> = {}
+    const patch: Partial<WorkbenchAssistantChatTileRecord> = {};
 
     if (input.tile.assistantProjectId !== thread.projectId) {
-      patch.assistantProjectId = thread.projectId
+      patch.assistantProjectId = thread.projectId;
     }
     if (input.tile.threadId !== thread.id) {
-      patch.threadId = thread.id
+      patch.threadId = thread.id;
     }
     if (input.tile.title !== thread.title) {
-      patch.title = thread.title
+      patch.title = thread.title;
     }
-    const threadProvider = resolveModelSelectionProvider({ config, selection: thread.modelSelection, fallbackProvider: input.tile.provider })
+    const threadProvider = resolveModelSelectionProvider({
+      config,
+      selection: thread.modelSelection,
+      fallbackProvider: input.tile.provider,
+    });
     if (input.tile.provider !== threadProvider) {
-      patch.provider = threadProvider
+      patch.provider = threadProvider;
     }
     if (input.tile.model !== thread.modelSelection.model) {
-      patch.model = thread.modelSelection.model
+      patch.model = thread.modelSelection.model;
     }
     if (input.tile.runtimeMode !== thread.runtimeMode) {
-      patch.runtimeMode = thread.runtimeMode
+      patch.runtimeMode = thread.runtimeMode;
     }
     if (input.tile.interactionMode !== thread.interactionMode) {
-      patch.interactionMode = thread.interactionMode
+      patch.interactionMode = thread.interactionMode;
     }
 
     if (Object.keys(patch).length === 0) {
-      return
+      return;
     }
 
-    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId)
-  }, [input.laneId, input.projectId, input.workspaceId, input.tile, thread, updateAssistantTile, config])
-
-  useEffect(() => {
-    const timeline = timelineRef.current
-    if (!timeline) {
-      return
-    }
-    timeline.scrollTop = timeline.scrollHeight
+    updateAssistantTile(input.projectId, input.laneId, input.tile.id, patch, input.workspaceId);
   }, [
-    latestTurnId,
-    visibleThread?.messages.length,
-    pendingApprovals.length,
-    pendingUserInputs.length,
-  ])
+    input.laneId,
+    input.projectId,
+    input.workspaceId,
+    input.tile,
+    thread,
+    updateAssistantTile,
+    config,
+  ]);
 
   useEffect(() => {
     if (!isRuntimeReady || !input.workspaceId || !input.projectRootPath) {
-      return
+      return;
     }
-    setBindingError(null)
-    const workspaceRoot = input.projectRootPath
+    setBindingError(null);
+    const workspaceRoot = input.projectRootPath;
     if (bindingInFlightRef.current) {
-      return
+      return;
     }
     if (hasBoundThread) {
-      setBindingError(null)
-      setIsBinding(false)
-      return
+      setBindingError(null);
+      setIsBinding(false);
+      return;
     }
 
-    let cancelled = false
-    bindingInFlightRef.current = true
-    setIsBinding(true)
+    let cancelled = false;
+    bindingInFlightRef.current = true;
+    setIsBinding(true);
 
     const ensureBinding = async () => {
       try {
-        if (cancelled) return
+        if (cancelled) return;
 
         // For fresh tiles (no threadId), only resolve/create the project.
         // Thread creation is deferred to the first send to avoid empty thread
         // accumulation when users open tiles and close them without typing.
-        const isResumingExistingThread = Boolean(input.tile.threadId)
+        const isResumingExistingThread = Boolean(input.tile.threadId);
 
         if (!isResumingExistingThread) {
-          const currentAssistantState = useStore.getState()
+          const currentAssistantState = useStore.getState();
           const existingProject =
             (input.tile.assistantProjectId
               ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
               : null) ??
             selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
-            null
+            null;
 
           if (existingProject) {
             if (input.tile.assistantProjectId !== existingProject.id) {
@@ -781,44 +920,49 @@ export function useWorkbenchAssistantTileController(
                   assistantProjectId: existingProject.id,
                 },
                 input.workspaceId,
-              )
+              );
             }
-            setBindingError(null)
-            setIsBinding(false)
-            return
+            setBindingError(null);
+            setIsBinding(false);
+            return;
           }
         }
 
         await withWorkspaceBindingLock(workspaceRoot, async () => {
-          const api = ensureNativeApi()
+          const api = ensureNativeApi();
           const liveTile = () =>
             getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.workspaceId) ??
-            input.tile
-          const liveConfig = config ?? (await api.server.getConfig().catch(() => null))
+            input.tile;
+          const liveConfig = config ?? (await api.server.getConfig().catch(() => null));
 
           // The runtime can report ready before the renderer has applied its
           // first orchestration snapshot. Resolve the authoritative project
           // collection before deciding that this workspace needs a new T3
           // project; otherwise project.create is rejected as a duplicate and
           // the tile can remain stuck in its binding state.
-          const currentSnapshot = await getOrchestration().getSnapshot()
-          if (cancelled) return
-          useStore.getState().syncServerReadModel(currentSnapshot)
+          const currentSnapshot = await getOrchestration().getSnapshot();
+          if (cancelled) return;
+          useStore.getState().syncServerReadModel(currentSnapshot);
 
-          const currentTile = liveTile()
-          const currentAssistantState = useStore.getState()
-          if (currentTile.threadId && !selectAssistantThreadById(currentAssistantState, currentTile.threadId)) {
-            throw new Error("This saved conversation is unavailable. Retry to refresh history; no replacement conversation has been created.")
+          const currentTile = liveTile();
+          const currentAssistantState = useStore.getState();
+          if (
+            currentTile.threadId &&
+            !selectAssistantThreadById(currentAssistantState, currentTile.threadId)
+          ) {
+            throw new Error(
+              "This saved conversation is unavailable. Retry to refresh history; no replacement conversation has been created.",
+            );
           }
           let nextProject =
             (currentTile.assistantProjectId
               ? selectAssistantProjectById(currentAssistantState, currentTile.assistantProjectId)
               : null) ??
             selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
-            null
+            null;
 
           if (!nextProject) {
-            const projectId = newProjectId()
+            const projectId = newProjectId();
             const defaultModelSelection = normalizeDraftModelSelection(
               getAssistantComposerDraft(currentTile.id)?.modelSelection ??
                 resolvePreferredModelSelection({
@@ -826,7 +970,7 @@ export function useWorkbenchAssistantTileController(
                   tile: currentTile,
                   projectModelSelection: null,
                 }),
-            )
+            );
             try {
               await getOrchestration().dispatchCommand({
                 type: "project.create",
@@ -836,18 +980,18 @@ export function useWorkbenchAssistantTileController(
                 workspaceRoot,
                 defaultModelSelection,
                 createdAt: new Date().toISOString(),
-              })
+              });
             } catch (createError: unknown) {
               const errMsg =
                 createError instanceof Error
                   ? `${createError.message} ${createError.stack ?? ""}`
-                  : JSON.stringify(createError)
+                  : JSON.stringify(createError);
               const match = errMsg.match(
                 /Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/,
-              )
+              );
               if (match && match[1]) {
-                const existingId = match[1]
-                const currentReadModel = useStore.getState().orchestrationReadModel
+                const existingId = match[1];
+                const currentReadModel = useStore.getState().orchestrationReadModel;
                 useStore.getState().syncServerReadModel({
                   snapshotSequence: currentReadModel?.snapshotSequence ?? 0,
                   projects: [
@@ -864,56 +1008,58 @@ export function useWorkbenchAssistantTileController(
                   ],
                   threads: currentReadModel?.threads ?? [],
                   updatedAt: new Date().toISOString(),
-                })
-                nextProject = useStore.getState().projectById[existingId as any] ?? null
+                });
+                nextProject = useStore.getState().projectById[existingId as any] ?? null;
               } else {
-                throw createError
+                throw createError;
               }
             }
-            const nextAssistantState = useStore.getState()
+            const nextAssistantState = useStore.getState();
             nextProject =
               nextProject ??
               selectAssistantProjectById(nextAssistantState, projectId) ??
               selectAssistantProjectByCwd(nextAssistantState, workspaceRoot) ??
-              null
+              null;
           }
 
           if (!nextProject) {
-            throw new Error("Unable to create an assistant project for this workspace.")
+            throw new Error("Unable to create an assistant project for this workspace.");
           }
 
           if (isResumingExistingThread) {
             // Explicit resume never creates a replacement for a missing conversation.
-            const resolvedTile = liveTile()
+            const resolvedTile = liveTile();
             const nextThread =
               (resolvedTile.threadId
                 ? selectAssistantThreadById(useStore.getState(), resolvedTile.threadId)
-                : null) ?? null
+                : null) ?? null;
 
             if (!nextThread || nextThread.projectId !== nextProject.id) {
-              throw new Error("This saved conversation does not belong to the selected assistant project.")
+              throw new Error(
+                "This saved conversation does not belong to the selected assistant project.",
+              );
             }
 
-            const latestTile = liveTile()
-            const patch: Partial<WorkbenchAssistantChatTileRecord> = {}
+            const latestTile = liveTile();
+            const patch: Partial<WorkbenchAssistantChatTileRecord> = {};
 
             if (latestTile.assistantProjectId !== nextProject.id) {
-              patch.assistantProjectId = nextProject.id
+              patch.assistantProjectId = nextProject.id;
             }
             if (nextThread && latestTile.threadId !== nextThread.id) {
-              patch.threadId = nextThread.id
+              patch.threadId = nextThread.id;
             }
             if (nextThread && latestTile.provider !== nextThread.modelSelection.provider) {
-              patch.provider = nextThread.modelSelection.provider
+              patch.provider = nextThread.modelSelection.provider;
             }
             if (nextThread && latestTile.model !== nextThread.modelSelection.model) {
-              patch.model = nextThread.modelSelection.model
+              patch.model = nextThread.modelSelection.model;
             }
             if (latestTile.runtimeMode !== resolveRuntimeMode(latestTile)) {
-              patch.runtimeMode = resolveRuntimeMode(latestTile)
+              patch.runtimeMode = resolveRuntimeMode(latestTile);
             }
             if (latestTile.interactionMode !== resolveInteractionMode(latestTile)) {
-              patch.interactionMode = resolveInteractionMode(latestTile)
+              patch.interactionMode = resolveInteractionMode(latestTile);
             }
 
             if (!cancelled && Object.keys(patch).length > 0) {
@@ -923,11 +1069,11 @@ export function useWorkbenchAssistantTileController(
                 input.tile.id,
                 patch,
                 input.workspaceId,
-              )
+              );
             }
           } else {
             // --- Fix 6: Fresh tile --- just bind the project, no thread yet
-            const latestTile = liveTile()
+            const latestTile = liveTile();
             if (!cancelled && latestTile.assistantProjectId !== nextProject.id) {
               updateAssistantTile(
                 input.projectId,
@@ -937,31 +1083,31 @@ export function useWorkbenchAssistantTileController(
                   assistantProjectId: nextProject.id,
                 },
                 input.workspaceId,
-              )
+              );
             }
           }
 
           if (!cancelled) {
-            setBindingError(null)
+            setBindingError(null);
           }
-        })
+        });
       } catch (error) {
         if (!cancelled) {
-          setBindingError(toErrorMessage(error))
+          setBindingError(toErrorMessage(error));
         }
       } finally {
-        bindingInFlightRef.current = false
+        bindingInFlightRef.current = false;
         if (!cancelled) {
-          setIsBinding(false)
+          setIsBinding(false);
         }
       }
-    }
+    };
 
-    void ensureBinding()
+    void ensureBinding();
 
     return () => {
-      cancelled = true
-    }
+      cancelled = true;
+    };
   }, [
     bindingRevision,
     config,
@@ -973,26 +1119,26 @@ export function useWorkbenchAssistantTileController(
     input.tile,
     isRuntimeReady,
     updateAssistantTile,
-  ])
+  ]);
 
   const runMetaSync = async (mutate: () => Promise<void>, options?: { requestKey?: string }) => {
-    setThreadOperationCount((count) => count + 1)
+    setThreadOperationCount((count) => count + 1);
     if (options?.requestKey) {
-      setActiveRequestKey(options.requestKey)
+      setActiveRequestKey(options.requestKey);
     }
-    setRequestError(null)
+    setRequestError(null);
     try {
-      await validateConversationContext()
-      await mutate()
+      await validateConversationContext();
+      await mutate();
     } catch (error) {
-      setRequestError(toErrorMessage(error))
+      setRequestError(toErrorMessage(error));
     } finally {
-      setThreadOperationCount((count) => count - 1)
+      setThreadOperationCount((count) => count - 1);
       if (options?.requestKey) {
-        setActiveRequestKey(null)
+        setActiveRequestKey(null);
       }
     }
-  }
+  };
 
   const normalizeDraftModelSelection = useCallback(
     (selection: ModelSelection) =>
@@ -1012,14 +1158,14 @@ export function useWorkbenchAssistantTileController(
         ),
       }),
     [config],
-  )
+  );
 
   const handleProviderChange = async (
     nextProviderValue: string,
     nextModelValue?: string,
     nextInstanceId?: ProviderInstanceId,
   ) => {
-    const nextProvider = nextProviderValue as ProviderKind
+    const nextProvider = nextProviderValue as ProviderKind;
     const preferredModelSelection = resolvePreferredModelSelection({
       config,
       tile: {
@@ -1031,7 +1177,7 @@ export function useWorkbenchAssistantTileController(
       projectModelSelection: assistantProject?.defaultModelSelection,
       provider: nextProvider,
       providerInstanceId: nextInstanceId,
-    })
+    });
     const nextModelSelection = normalizeDraftModelSelection(
       withModelSelectionModel(
         preferredModelSelection,
@@ -1043,19 +1189,36 @@ export function useWorkbenchAssistantTileController(
             ) ?? resolveModelSlugForProvider(nextProvider, nextModelValue))
           : null) ?? preferredModelSelection.model,
       ),
-    )
-    const isDifferentProvider = Boolean(thread && (selectedProvider !== nextProvider || thread.modelSelection.instanceId !== nextModelSelection.instanceId))
-    if (isDifferentProvider && (isRunning || isSending || preparingSendRef.current || activeRequestKey || pendingApprovals.length || pendingUserInputs.length)) {
-      setSendError("Open a new chat to change provider while this conversation is busy.")
-      return
+    );
+    const isDifferentProvider = Boolean(
+      thread &&
+      (selectedProvider !== nextProvider ||
+        thread.modelSelection.instanceId !== nextModelSelection.instanceId),
+    );
+    if (
+      isDifferentProvider &&
+      (isRunning ||
+        isSending ||
+        preparingSendRef.current ||
+        activeRequestKey ||
+        pendingApprovals.length ||
+        pendingUserInputs.length)
+    ) {
+      setSendError("Open a new chat to change provider while this conversation is busy.");
+      return;
     }
     if (isDifferentProvider) {
-      try { await assistantDrafts.flush() } catch (error) { setSendError(toErrorMessage(error)); return }
+      try {
+        await assistantDrafts.flush();
+      } catch (error) {
+        setSendError(toErrorMessage(error));
+        return;
+      }
     }
-    const nextDraftId = isDifferentProvider ? crypto.randomUUID() : null
+    const nextDraftId = isDifferentProvider ? crypto.randomUUID() : null;
     upsertComposerDraft(nextDraftId ?? draftTargetKey, {
       modelSelection: nextModelSelection,
-    })
+    });
 
     updateAssistantTile(
       input.projectId,
@@ -1065,26 +1228,28 @@ export function useWorkbenchAssistantTileController(
         provider: nextModelSelection.provider,
         providerInstanceId: nextModelSelection.instanceId,
         model: nextModelSelection.model,
-        ...(isDifferentProvider ? { threadId: null, draftId: nextDraftId, title: "AI Agent", agentLabel: null } : {}),
+        ...(isDifferentProvider
+          ? { threadId: null, draftId: nextDraftId, title: "AI Agent", agentLabel: null }
+          : {}),
       },
       input.workspaceId,
-    )
-    flushWorkbenchStorage()
+    );
+    flushWorkbenchStorage();
 
     if (!thread || isDifferentProvider) {
-      return
+      return;
     }
 
     await runMetaSync(async () => {
-      ensureNativeApi()
+      ensureNativeApi();
       await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
         threadId: thread.id,
         modelSelection: nextModelSelection,
-      })
-    })
-  }
+      });
+    });
+  };
 
   const handleModelChange = async (nextModel: string) => {
     const nextModelSelection = normalizeDraftModelSelection(
@@ -1093,10 +1258,10 @@ export function useWorkbenchAssistantTileController(
         resolveSelectableModel(selectedProvider, nextModel, providerModelOptions) ??
           resolveModelSlugForProvider(selectedProvider, nextModel),
       ),
-    )
+    );
     upsertComposerDraft(draftTargetKey, {
       modelSelection: nextModelSelection,
-    })
+    });
 
     updateAssistantTile(
       input.projectId,
@@ -1108,22 +1273,22 @@ export function useWorkbenchAssistantTileController(
         model: nextModelSelection.model,
       },
       input.workspaceId,
-    )
+    );
 
     if (!thread) {
-      return
+      return;
     }
 
     await runMetaSync(async () => {
-      ensureNativeApi()
+      ensureNativeApi();
       await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
         threadId: thread.id,
         modelSelection: nextModelSelection,
-      })
-    })
-  }
+      });
+    });
+  };
 
   const handleModelOptionChange = async (optionId: string, value: string | boolean) => {
     const nextModelSelection = normalizeDraftModelSelection(
@@ -1133,31 +1298,31 @@ export function useWorkbenchAssistantTileController(
         model: selectedModelSelection.model,
         options: setProviderOptionSelectionValue(selectedModelSelection.options, optionId, value),
       }),
-    )
+    );
     upsertComposerDraft(draftTargetKey, {
       modelSelection: nextModelSelection,
-    })
+    });
 
     if (!thread) {
-      return
+      return;
     }
 
     await runMetaSync(async () => {
-      ensureNativeApi()
+      ensureNativeApi();
       await getOrchestration().dispatchCommand({
         type: "thread.meta.update",
         commandId: newCommandId(),
         threadId: thread.id,
         modelSelection: nextModelSelection,
-      })
-    })
-  }
+      });
+    });
+  };
 
   const handleRuntimeModeChange = async (nextValue: string) => {
-    const nextRuntimeMode = nextValue as RuntimeMode
+    const nextRuntimeMode = nextValue as RuntimeMode;
     upsertComposerDraft(draftTargetKey, {
       runtimeMode: nextRuntimeMode,
-    })
+    });
     updateAssistantTile(
       input.projectId,
       input.laneId,
@@ -1166,30 +1331,31 @@ export function useWorkbenchAssistantTileController(
         runtimeMode: nextRuntimeMode,
       },
       input.workspaceId,
-    )
+    );
 
     if (!thread) {
-      return
+      return;
     }
 
     await runMetaSync(async () => {
-      ensureNativeApi()
+      ensureNativeApi();
       await getOrchestration().dispatchCommand({
         type: "thread.runtime-mode.set",
         commandId: newCommandId(),
         threadId: thread.id,
         runtimeMode: nextRuntimeMode,
         createdAt: new Date().toISOString(),
-      })
-    })
-  }
+      });
+    });
+  };
 
   const handleInteractionModeChange = async (nextValue: string) => {
-    if (selectedProvider === "antigravity" || providerSnapshot?.showInteractionModeToggle === false) return
-    const nextInteractionMode = nextValue as ProviderInteractionMode
+    if (selectedProvider === "antigravity" || providerSnapshot?.showInteractionModeToggle === false)
+      return;
+    const nextInteractionMode = nextValue as ProviderInteractionMode;
     upsertComposerDraft(draftTargetKey, {
       interactionMode: nextInteractionMode,
-    })
+    });
     updateAssistantTile(
       input.projectId,
       input.laneId,
@@ -1198,30 +1364,30 @@ export function useWorkbenchAssistantTileController(
         interactionMode: nextInteractionMode,
       },
       input.workspaceId,
-    )
+    );
 
     if (!thread) {
-      return
+      return;
     }
 
     await runMetaSync(async () => {
-      ensureNativeApi()
+      ensureNativeApi();
       await getOrchestration().dispatchCommand({
         type: "thread.interaction-mode.set",
         commandId: newCommandId(),
         threadId: thread.id,
         interactionMode: nextInteractionMode,
         createdAt: new Date().toISOString(),
-      })
-    })
-  }
+      });
+    });
+  };
 
   // --- Fix 5: Pre-turn metadata synchronization ---
   // Flush any pending model/runtime/interaction mode changes to the server
   // immediately before dispatching thread.turn.start, eliminating race
   // conditions if the user changes model and instantly sends.
   const persistThreadSettingsForNextTurn = async (threadForSync: NonNullable<typeof thread>) => {
-    ensureNativeApi()
+    ensureNativeApi();
 
     // Model selection drift
     if (
@@ -1235,7 +1401,7 @@ export function useWorkbenchAssistantTileController(
         commandId: newCommandId(),
         threadId: threadForSync.id,
         modelSelection: selectedDispatchModelSelection,
-      })
+      });
     }
 
     // Runtime mode drift
@@ -1246,7 +1412,7 @@ export function useWorkbenchAssistantTileController(
         threadId: threadForSync.id,
         runtimeMode: selectedRuntimeMode,
         createdAt: new Date().toISOString(),
-      })
+      });
     }
 
     // Interaction mode drift
@@ -1257,49 +1423,49 @@ export function useWorkbenchAssistantTileController(
         threadId: threadForSync.id,
         interactionMode: selectedInteractionMode,
         createdAt: new Date().toISOString(),
-      })
+      });
     }
-  }
+  };
 
   // --- Fix 1: Plan follow-up submission flow ---
   const handlePlanFollowUpSend = async (submittedRevision: number | undefined) => {
     if (!thread || !activeProposedPlan) {
-      return
+      return;
     }
-    const draftText = composer.trim()
+    const draftText = composer.trim();
     const followUp = resolvePlanFollowUpSubmission({
       draftText,
       planMarkdown: activeProposedPlan.planMarkdown,
-    })
+    });
 
-    const messageId = newMessageId()
-    const messageCreatedAt = new Date().toISOString()
+    const messageId = newMessageId();
+    const messageCreatedAt = new Date().toISOString();
     const optimisticMessage: ChatMessage = {
       id: messageId,
       role: "user",
       text: followUp.text,
       createdAt: messageCreatedAt,
       streaming: false,
-    }
+    };
 
-    sendInFlightRef.current = true
-    setIsSending(true)
-    setSendError(null)
-    setOptimisticUserMessages((current) => [...current, optimisticMessage])
-    notePendingTurnStart(messageId, thread.id, messageCreatedAt)
+    sendInFlightRef.current = true;
+    setIsSending(true);
+    setSendError(null);
+    setOptimisticUserMessages((current) => [...current, optimisticMessage]);
+    notePendingTurnStart(messageId, thread.id, messageCreatedAt);
 
-    let acknowledged = false
+    let acknowledged = false;
     try {
-      ensureNativeApi()
+      ensureNativeApi();
 
       // Sync settings before turn
-      await persistThreadSettingsForNextTurn(thread)
+      await persistThreadSettingsForNextTurn(thread);
 
       // Update interaction mode on the tile to match follow-up
       if (followUp.interactionMode !== selectedInteractionMode) {
         upsertComposerDraft(draftTargetKey, {
           interactionMode: followUp.interactionMode,
-        })
+        });
         updateAssistantTile(
           input.projectId,
           input.laneId,
@@ -1308,7 +1474,7 @@ export function useWorkbenchAssistantTileController(
             interactionMode: followUp.interactionMode,
           },
           input.workspaceId,
-        )
+        );
 
         await getOrchestration().dispatchCommand({
           type: "thread.interaction-mode.set",
@@ -1316,7 +1482,7 @@ export function useWorkbenchAssistantTileController(
           threadId: thread.id,
           interactionMode: followUp.interactionMode,
           createdAt: messageCreatedAt,
-        })
+        });
       }
 
       await getOrchestration().dispatchCommand({
@@ -1342,46 +1508,64 @@ export function useWorkbenchAssistantTileController(
             }
           : {}),
         createdAt: messageCreatedAt,
-      })
-      acknowledged = true
-      if (submittedRevision !== undefined) await assistantDrafts.clearSubmitted(contentDraftKey, submittedRevision)
+      });
+      acknowledged = true;
+      if (submittedRevision !== undefined)
+        await assistantDrafts.clearSubmitted(contentDraftKey, submittedRevision);
     } catch (error) {
       if (acknowledged) {
-        setSendError(`Message sent, but the saved draft could not be cleared: ${toErrorMessage(error)}. Do not resend it.`)
-        return
+        setSendError(
+          `Message sent, but the saved draft could not be cleared: ${toErrorMessage(error)}. Do not resend it.`,
+        );
+        return;
       }
-      clearPendingTurnStart()
-      setOptimisticUserMessages((current) => current.filter((message) => message.id !== messageId))
-      setSendError(toErrorMessage(error))
+      clearPendingTurnStart();
+      setOptimisticUserMessages((current) => current.filter((message) => message.id !== messageId));
+      setSendError(toErrorMessage(error));
     } finally {
-      sendInFlightRef.current = false
-      setIsSending(false)
+      sendInFlightRef.current = false;
+      setIsSending(false);
     }
-  }
+  };
 
   const sendTurn = async (overridePrompt?: string) => {
-    const imageRejection = providerImageRejection(selectedProvider, composerImages)
-    if (imageRejection) { setSendError(imageRejection); return }
+    const imageRejection = providerImageRejection(selectedProvider, composerImages);
+    if (imageRejection) {
+      setSendError(imageRejection);
+      return;
+    }
     // Capture the revision belonging to this click, before any asynchronous preflight.
-    const submittedRevision = assistantDrafts.store.getState().drafts[assistantDrafts.resolveKey(contentDraftKey)]?.revision
+    const submittedRevision =
+      assistantDrafts.store.getState().drafts[assistantDrafts.resolveKey(contentDraftKey)]
+        ?.revision;
     if (sendInFlightRef.current) {
-      return
+      return;
     }
     if (!draftReady || (input.tile.threadId && !thread)) {
-      setSendError("This conversation is still loading or is unavailable. Retry opening it from Chat history.")
-      return
+      setSendError(
+        "This conversation is still loading or is unavailable. Retry opening it from Chat history.",
+      );
+      return;
     }
     if (!canUseProvider) {
-      setSendError("The original provider instance is unavailable. Reconnect it to continue this conversation.")
-      return
+      setSendError(
+        "The original provider instance is unavailable. Reconnect it to continue this conversation.",
+      );
+      return;
     }
-    if (!(overridePrompt ?? composer).trim() && !composerImages.length && !composerPreviewAnnotations.length && !showPlanFollowUpPrompt) return
+    if (
+      !(overridePrompt ?? composer).trim() &&
+      !composerImages.length &&
+      !composerPreviewAnnotations.length &&
+      !showPlanFollowUpPrompt
+    )
+      return;
     try {
-      await validateConversationContext()
-      await assistantDrafts.flush()
+      await validateConversationContext();
+      await assistantDrafts.flush();
     } catch (error) {
-      setSendError(toErrorMessage(error))
-      return
+      setSendError(toErrorMessage(error));
+      return;
     }
 
     if (!isChatReady) {
@@ -1389,48 +1573,48 @@ export function useWorkbenchAssistantTileController(
         substrateTransport.loading
           ? "Substrate chat is still starting."
           : (runtimeErrorMessage ?? "Local chat runtime is still starting."),
-      )
-      return
+      );
+      return;
     }
 
     // --- Fix 6: Bootstrap pattern --- create thread on first send if needed
     // A T3 detail snapshot can hydrate the bound tile before the shell store
     // has materialized its Thread object. Reuse the merged bound thread so a
     // follow-up stays on the same subscription instead of creating a new one.
-    let resolvedThread = thread ?? mergedThread
+    let resolvedThread = thread ?? mergedThread;
     if (!resolvedThread) {
       if (!input.workspaceId || !input.projectRootPath) {
-        return
+        return;
       }
       try {
-        const threadTitle = input.tile.agentLabel?.trim() || input.tile.title.trim() || "AI Agent"
-        const threadId = newThreadId()
-        const threadDraft = getAssistantComposerDraft(draftTargetKey)
-        ensureNativeApi()
+        const threadTitle = input.tile.agentLabel?.trim() || input.tile.title.trim() || "AI Agent";
+        const threadId = newThreadId();
+        const threadDraft = getAssistantComposerDraft(draftTargetKey);
+        ensureNativeApi();
 
         // Resolve the project
-        const currentAssistantState = useStore.getState()
-        const workspaceRoot = input.projectRootPath
+        const currentAssistantState = useStore.getState();
+        const workspaceRoot = input.projectRootPath;
         let currentProject =
           (input.tile.assistantProjectId
             ? selectAssistantProjectById(currentAssistantState, input.tile.assistantProjectId)
             : null) ??
           selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
-          null
+          null;
 
         if (!currentProject) {
-          await refreshAssistantRuntimeSnapshot().catch(() => {})
-          const refreshedState = useStore.getState()
+          await refreshAssistantRuntimeSnapshot().catch(() => {});
+          const refreshedState = useStore.getState();
           currentProject =
             (input.tile.assistantProjectId
               ? selectAssistantProjectById(refreshedState, input.tile.assistantProjectId)
               : null) ??
             selectAssistantProjectByCwd(refreshedState, workspaceRoot) ??
-            null
+            null;
         }
 
         if (!currentProject) {
-          const newId = newProjectId()
+          const newId = newProjectId();
           try {
             await getOrchestration().dispatchCommand({
               type: "project.create",
@@ -1440,7 +1624,7 @@ export function useWorkbenchAssistantTileController(
               workspaceRoot,
               defaultModelSelection: null,
               createdAt: new Date().toISOString(),
-            })
+            });
             currentProject = {
               id: newId,
               name: basenameFromPath(workspaceRoot),
@@ -1450,17 +1634,17 @@ export function useWorkbenchAssistantTileController(
               scripts: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-            } satisfies Project as any
+            } satisfies Project as any;
           } catch (createErr: unknown) {
             const errMsg =
               createErr instanceof Error
                 ? `${createErr.message} ${createErr.stack ?? ""}`
-                : JSON.stringify(createErr)
+                : JSON.stringify(createErr);
             const match = errMsg.match(
               /Active project (?:\\'|'|")([^'\\" ]+)(?:\\'|'|") already exists/,
-            )
+            );
             if (match && match[1]) {
-              const existingId = match[1]
+              const existingId = match[1];
               currentProject = {
                 id: existingId as any,
                 name: basenameFromPath(workspaceRoot),
@@ -1470,20 +1654,20 @@ export function useWorkbenchAssistantTileController(
                 scripts: [],
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
-              } satisfies Project as any
+              } satisfies Project as any;
             }
           }
         }
 
         if (!currentProject) {
-          setSendError("Unable to initialize project. Please retry.")
-          return
+          setSendError("Unable to initialize project. Please retry.");
+          return;
         }
 
-        const resolvedModelSelection = selectedDispatchModelSelection
-        const resolvedRuntimeMode = threadDraft?.runtimeMode ?? selectedRuntimeMode
-        const resolvedInteractionMode = threadDraft?.interactionMode ?? selectedInteractionMode
-        const createdAt = new Date().toISOString()
+        const resolvedModelSelection = selectedDispatchModelSelection;
+        const resolvedRuntimeMode = threadDraft?.runtimeMode ?? selectedRuntimeMode;
+        const resolvedInteractionMode = threadDraft?.interactionMode ?? selectedInteractionMode;
+        const createdAt = new Date().toISOString();
 
         await getOrchestration().dispatchCommand({
           type: "thread.create",
@@ -1497,9 +1681,14 @@ export function useWorkbenchAssistantTileController(
           branch: verifiedBranchRef.current,
           worktreePath: null,
           createdAt,
-        })
+        });
 
-        const adoption = assistantDrafts.adopt(contentDraftKey, threadDraftKey(threadId), threadId, currentProject.id)
+        const adoption = assistantDrafts.adopt(
+          contentDraftKey,
+          threadDraftKey(threadId),
+          threadId,
+          currentProject.id,
+        );
         updateAssistantTile(
           input.projectId,
           input.laneId,
@@ -1509,16 +1698,20 @@ export function useWorkbenchAssistantTileController(
             assistantProjectId: currentProject.id,
           },
           input.workspaceId,
-        )
+        );
         // Bind the acknowledged runtime identity even if local persistence fails.
         // Retrying must never manufacture a second conversation.
-        flushWorkbenchStorage()
-        await adoption
+        flushWorkbenchStorage();
+        await adoption;
         useAssistantHistoryStore.getState().rememberConversation(threadId, {
-          projectId: input.projectId, workspaceId: input.workspaceId, laneId: input.laneId,
-          rootPath: workspaceRoot, branch: verifiedBranchRef.current, assistantProjectId: currentProject.id,
+          projectId: input.projectId,
+          workspaceId: input.workspaceId,
+          laneId: input.laneId,
+          rootPath: workspaceRoot,
+          branch: verifiedBranchRef.current,
+          assistantProjectId: currentProject.id,
           provider: selectedProvider,
-        })
+        });
 
         // Build a minimal thread-like object from the data we just sent.
         // We can't read from the store yet because the domain event hasn't
@@ -1542,44 +1735,44 @@ export function useWorkbenchAssistantTileController(
           createdAt,
           updatedAt: createdAt,
           deletedAt: null,
-        } as any
+        } as any;
       } catch (error) {
-        setSendError(toErrorMessage(error))
-        return
+        setSendError(toErrorMessage(error));
+        return;
       }
     }
 
     // At this point, resolvedThread is guaranteed to be non-null.
     // Either it was the existing thread, or we just constructed it above.
     if (!resolvedThread) {
-      return
+      return;
     }
 
     // --- Fix 1: Intercept plan follow-up ---
     if (showPlanFollowUpPrompt && activeProposedPlan) {
-      await handlePlanFollowUpSend(submittedRevision)
-      return
+      await handlePlanFollowUpSend(submittedRevision);
+      return;
     }
 
-    const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations]
-    let nextPrompt = (overridePrompt !== undefined ? overridePrompt : composer).trim()
+    const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
+    let nextPrompt = (overridePrompt !== undefined ? overridePrompt : composer).trim();
     for (const annotation of composerPreviewAnnotationsSnapshot) {
-      nextPrompt = appendPreviewAnnotationPrompt(nextPrompt, annotation)
+      nextPrompt = appendPreviewAnnotationPrompt(nextPrompt, annotation);
     }
-    const hasImages = composerImages.length > 0
+    const hasImages = composerImages.length > 0;
     if (!nextPrompt && !hasImages && composerPreviewAnnotationsSnapshot.length === 0) {
-      return
+      return;
     }
 
-    const isFirstUserMessage = !resolvedThread.messages.some((message) => message.role === "user")
+    const isFirstUserMessage = !resolvedThread.messages.some((message) => message.role === "user");
     // --- Fix 4: Smart auto-titling ---
     const nextThreadTitle = deriveTitleSeed({
       prompt: nextPrompt,
       images: composerImages,
       terminalContexts: [],
-    })
-    const messageId = newMessageId()
-    const messageCreatedAt = new Date().toISOString()
+    });
+    const messageId = newMessageId();
+    const messageCreatedAt = new Date().toISOString();
     const optimisticMessage: ChatMessage = {
       id: messageId,
       role: "user",
@@ -1598,23 +1791,23 @@ export function useWorkbenchAssistantTileController(
         : {}),
       createdAt: messageCreatedAt,
       streaming: false,
-    }
-    const composerImagesSnapshot = [...composerImages]
+    };
+    const composerImagesSnapshot = [...composerImages];
 
-    sendInFlightRef.current = true
-    setIsSending(true)
-    setSendError(null)
-    setOptimisticUserMessages((current) => [...current, optimisticMessage])
-    notePendingTurnStart(messageId, resolvedThread.id, messageCreatedAt)
+    sendInFlightRef.current = true;
+    setIsSending(true);
+    setSendError(null);
+    setOptimisticUserMessages((current) => [...current, optimisticMessage]);
+    notePendingTurnStart(messageId, resolvedThread.id, messageCreatedAt);
 
-    let acknowledged = false
+    let acknowledged = false;
     try {
-      const submittedKey = threadDraftKey(resolvedThread.id)
+      const submittedKey = threadDraftKey(resolvedThread.id);
       const useSubstrateRpcFallback =
-        substrateTransport.active && !isRuntimeReady && !t3CutoverActive
+        substrateTransport.active && !isRuntimeReady && !t3CutoverActive;
       if (useSubstrateRpcFallback) {
         if (hasImages) {
-          throw new Error("Substrate RPC chat fallback does not support image attachments yet.")
+          throw new Error("Substrate RPC chat fallback does not support image attachments yet.");
         }
         const turn = await sendSubstrateRpcTurn({
           threadId: resolvedThread.id,
@@ -1622,8 +1815,8 @@ export function useWorkbenchAssistantTileController(
           shadowBaseUrl: substrateTransport.shadowBaseUrl ?? undefined,
           providerId: selectedDispatchModelSelection?.provider,
           modelSelection: selectedDispatchModelSelection,
-        })
-        acknowledged = true
+        });
+        acknowledged = true;
         if (turn.assistantText.trim().length > 0) {
           setOptimisticUserMessages((current) => [
             ...current,
@@ -1634,14 +1827,15 @@ export function useWorkbenchAssistantTileController(
               createdAt: new Date().toISOString(),
               streaming: false,
             },
-          ])
+          ]);
         }
-        clearPendingTurnStart()
-        if (submittedRevision !== undefined) await assistantDrafts.clearSubmitted(submittedKey, submittedRevision)
-        return
+        clearPendingTurnStart();
+        if (submittedRevision !== undefined)
+          await assistantDrafts.clearSubmitted(submittedKey, submittedRevision);
+        return;
       }
 
-      ensureNativeApi()
+      ensureNativeApi();
       if (isFirstUserMessage && nextThreadTitle) {
         updateAssistantTile(
           input.projectId,
@@ -1651,29 +1845,29 @@ export function useWorkbenchAssistantTileController(
             title: nextThreadTitle,
           },
           input.workspaceId,
-        )
+        );
 
         await getOrchestration().dispatchCommand({
           type: "thread.meta.update",
           commandId: newCommandId(),
           threadId: resolvedThread.id,
           title: nextThreadTitle,
-        })
+        });
       }
 
       // --- Fix 5: Flush settings before turn start ---
-      await persistThreadSettingsForNextTurn(resolvedThread)
+      await persistThreadSettingsForNextTurn(resolvedThread);
 
-      const SKILL_TOKEN_REGEX = /(^|\\s)\\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\\s|$)/g
+      const SKILL_TOKEN_REGEX = /(^|\\s)\\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\\s|$)/g;
       const extractedSkillNames = Array.from(nextPrompt.matchAll(SKILL_TOKEN_REGEX)).map(
         (m) => m[2],
-      )
+      );
       const skills =
-        providerSnapshot?.skills?.filter((s) => extractedSkillNames.includes(s.name)) ?? []
+        providerSnapshot?.skills?.filter((s) => extractedSkillNames.includes(s.name)) ?? [];
       const uploadAttachments = await Promise.all(
         composerImagesSnapshot.map(async (image) => {
           if (!image.file) {
-            throw new Error(`Attachment '${image.name}' is no longer available.`)
+            throw new Error(`Attachment '${image.name}' is no longer available.`);
           }
           return {
             type: "image" as const,
@@ -1681,9 +1875,9 @@ export function useWorkbenchAssistantTileController(
             mimeType: image.mimeType,
             sizeBytes: image.sizeBytes,
             dataUrl: await readFileAsDataUrl(image.file),
-          }
+          };
         }),
-      )
+      );
 
       await getOrchestration().dispatchCommand({
         type: "thread.turn.start",
@@ -1701,61 +1895,89 @@ export function useWorkbenchAssistantTileController(
         ...(isFirstUserMessage && nextThreadTitle ? { titleSeed: nextThreadTitle } : {}),
         skills,
         createdAt: messageCreatedAt,
-      })
-      acknowledged = true
-      if (submittedRevision !== undefined) await assistantDrafts.clearSubmitted(submittedKey, submittedRevision)
+      });
+      acknowledged = true;
+      if (submittedRevision !== undefined)
+        await assistantDrafts.clearSubmitted(submittedKey, submittedRevision);
     } catch (error) {
       if (acknowledged) {
-        setSendError(`Message sent, but the saved draft could not be cleared: ${toErrorMessage(error)}. Do not resend it.`)
-        return
+        setSendError(
+          `Message sent, but the saved draft could not be cleared: ${toErrorMessage(error)}. Do not resend it.`,
+        );
+        return;
       }
       // --- Fix 3: Properly handle blob URLs on failed sends ---
-      clearPendingTurnStart()
+      clearPendingTurnStart();
       setOptimisticUserMessages((current) => {
-        const removed = current.filter((message) => message.id === messageId)
+        const removed = current.filter((message) => message.id === messageId);
         for (const message of removed) {
-          revokeUserMessagePreviewUrls(message)
+          revokeUserMessagePreviewUrls(message);
         }
-        return current.filter((message) => message.id !== messageId)
-      })
-      setSendError(toErrorMessage(error))
+        return current.filter((message) => message.id !== messageId);
+      });
+      setSendError(toErrorMessage(error));
     } finally {
-      sendInFlightRef.current = false
-      setIsSending(false)
+      sendInFlightRef.current = false;
+      setIsSending(false);
     }
-  }
+  };
 
   const compactUnavailable = compactionUnavailableReason({
-    provider: providerSnapshot, thread, ready: isChatReady && canUseProvider,
-    busy: isRunning || isSending || isPreparingSend || isTurnStartPending || isInterrupting || isRevertingCheckpoint || threadOperationCount > 0,
+    provider: providerSnapshot,
+    thread,
+    ready: isChatReady && canUseProvider,
+    busy:
+      isRunning ||
+      isSending ||
+      isPreparingSend ||
+      isTurnStartPending ||
+      isInterrupting ||
+      isRevertingCheckpoint ||
+      threadOperationCount > 0,
     hasPendingRequests: pendingApprovals.length > 0 || pendingUserInputs.length > 0,
-  })
-  const compactInFlightRef = useRef(false)
+  });
+  const compactInFlightRef = useRef(false);
   const handleCompact = async () => {
-    if (compactInFlightRef.current) return
-    if (compactUnavailable || !thread) { setSendError(compactUnavailable); return }
-    compactInFlightRef.current = true
+    if (compactInFlightRef.current) return;
+    if (compactUnavailable || !thread) {
+      setSendError(compactUnavailable);
+      return;
+    }
+    compactInFlightRef.current = true;
     try {
       await runMetaSync(async () => {
         await getOrchestration().dispatchCommand({
-          type: "thread.turn.start", commandId: newCommandId(), threadId: thread.id,
+          type: "thread.turn.start",
+          commandId: newCommandId(),
+          threadId: thread.id,
           message: { messageId: newMessageId(), role: "user", text: "/compact", attachments: [] },
-          modelSelection: selectedDispatchModelSelection, runtimeMode: selectedRuntimeMode,
-          interactionMode: selectedInteractionMode, createdAt: new Date().toISOString(),
-        })
-      })
-    } finally { compactInFlightRef.current = false }
-  }
+          modelSelection: selectedDispatchModelSelection,
+          runtimeMode: selectedRuntimeMode,
+          interactionMode: selectedInteractionMode,
+          createdAt: new Date().toISOString(),
+        });
+      });
+    } finally {
+      compactInFlightRef.current = false;
+    }
+  };
 
   const handleSend = async (overridePrompt?: string) => {
-    if ((overridePrompt ?? composer).trim().toLowerCase() === "/compact") { await handleCompact(); return }
-    if (preparingSendRef.current) return
-    preparingSendRef.current = true
-    setIsPreparingSend(true)
-    try { await sendTurn(overridePrompt) }
-    finally { preparingSendRef.current = false; setIsPreparingSend(false) }
-  }
-  handleSendRef.current = handleSend
+    if ((overridePrompt ?? composer).trim().toLowerCase() === "/compact") {
+      await handleCompact();
+      return;
+    }
+    if (preparingSendRef.current) return;
+    preparingSendRef.current = true;
+    setIsPreparingSend(true);
+    try {
+      await sendTurn(overridePrompt);
+    } finally {
+      preparingSendRef.current = false;
+      setIsPreparingSend(false);
+    }
+  };
+  handleSendRef.current = handleSend;
 
   /*
    * The Memory tile asks a chosen agent to rebuild the project map. There is no
@@ -1766,22 +1988,22 @@ export function useWorkbenchAssistantTileController(
   useEffect(
     () =>
       subscribeMemoryUpdateRequests((request) => {
-        if (request.targetTileId !== input.tile.id) return
-        if (sendInFlightRef.current) return
-        setComposer(request.prompt)
-        setComposerCursor(request.prompt.length)
-        setPendingMemoryUpdateAt(request.requestedAt)
-        setMemoryUpdateInFlight(true)
+        if (request.targetTileId !== input.tile.id) return;
+        if (sendInFlightRef.current) return;
+        setComposer(request.prompt);
+        setComposerCursor(request.prompt.length);
+        setPendingMemoryUpdateAt(request.requestedAt);
+        setMemoryUpdateInFlight(true);
       }),
     [input.tile.id],
-  )
+  );
 
   useEffect(() => {
-    if (!pendingMemoryUpdateAt || isSending || sendInFlightRef.current) return
-    if (composer.trim().length === 0) return
-    setPendingMemoryUpdateAt(null)
-    void handleSendRef.current()
-  }, [pendingMemoryUpdateAt, composer, isSending])
+    if (!pendingMemoryUpdateAt || isSending || sendInFlightRef.current) return;
+    if (composer.trim().length === 0) return;
+    setPendingMemoryUpdateAt(null);
+    void handleSendRef.current();
+  }, [pendingMemoryUpdateAt, composer, isSending]);
 
   /*
    * A rebuild can die on a usage limit or a runtime outage. The Memory tile
@@ -1789,27 +2011,27 @@ export function useWorkbenchAssistantTileController(
    * timeout for a build that is never coming.
    */
   const memoryTurnError =
-    thread?.session?.lastError ?? thread?.error ?? runtimeErrorMessage ?? null
+    thread?.session?.lastError ?? thread?.error ?? runtimeErrorMessage ?? null;
 
   useEffect(() => {
-    if (!memoryUpdateInFlight || !memoryTurnError) return
-    setMemoryUpdateInFlight(false)
+    if (!memoryUpdateInFlight || !memoryTurnError) return;
+    setMemoryUpdateInFlight(false);
     reportMemoryUpdateOutcome({
       targetTileId: input.tile.id,
       status: "failed",
       message: memoryTurnError,
-    })
-  }, [memoryUpdateInFlight, memoryTurnError, input.tile.id])
+    });
+  }, [memoryUpdateInFlight, memoryTurnError, input.tile.id]);
 
   useEffect(() => {
-    if (!autoSendAnnotationId || isSending || sendInFlightRef.current) return
+    if (!autoSendAnnotationId || isSending || sendInFlightRef.current) return;
     const annotation = composerPreviewAnnotations.find(
       (candidate) => candidate.id === autoSendAnnotationId,
-    )
-    if (!annotation) return
-    setAutoSendAnnotationId(null)
-    void handleSendRef.current()
-  }, [autoSendAnnotationId, composerImages, composerPreviewAnnotations, isSending])
+    );
+    if (!annotation) return;
+    setAutoSendAnnotationId(null);
+    void handleSendRef.current();
+  }, [autoSendAnnotationId, composerImages, composerPreviewAnnotations, isSending]);
 
   const attachPreviewAnnotation = useCallback(
     async (
@@ -1819,10 +2041,10 @@ export function useWorkbenchAssistantTileController(
       setComposerPreviewAnnotations((current) => [
         ...current.filter((candidate) => candidate.id !== annotation.id),
         annotation,
-      ])
+      ]);
       try {
-        const file = await previewAnnotationScreenshotFile(annotation)
-        const screenshot = annotation.screenshot
+        const file = await previewAnnotationScreenshotFile(annotation);
+        const screenshot = annotation.screenshot;
         if (file && screenshot) {
           setComposerImages((current) => [
             ...current.filter((image) => image.id !== annotation.id),
@@ -1834,38 +2056,38 @@ export function useWorkbenchAssistantTileController(
               previewUrl: screenshot.dataUrl,
               file,
             },
-          ])
+          ]);
         }
       } catch {
         // The exact structured T3 payload remains sendable if screenshot conversion fails.
       }
-      if (submission === "send") setAutoSendAnnotationId(annotation.id)
+      if (submission === "send") setAutoSendAnnotationId(annotation.id);
     },
     [],
-  )
+  );
 
   const removePreviewAnnotation = useCallback((annotationId: string) => {
     setComposerPreviewAnnotations((current) =>
       current.filter((annotation) => annotation.id !== annotationId),
-    )
+    );
     setComposerImages((current) =>
       current.filter((image) => {
-        if (image.id !== annotationId) return true
-        revokeBlobPreviewUrl(image.previewUrl)
-        return false
+        if (image.id !== annotationId) return true;
+        revokeBlobPreviewUrl(image.previewUrl);
+        return false;
       }),
-    )
-    setAutoSendAnnotationId((current) => (current === annotationId ? null : current))
-  }, [])
+    );
+    setAutoSendAnnotationId((current) => (current === annotationId ? null : current));
+  }, []);
 
   const handleApprovalDecision = async (requestId: string, decision: ProviderApprovalDecision) => {
     if (!thread) {
-      return
+      return;
     }
 
     await runMetaSync(
       async () => {
-        ensureNativeApi()
+        ensureNativeApi();
         await getOrchestration().dispatchCommand({
           type: "thread.approval.respond",
           commandId: newCommandId(),
@@ -1873,11 +2095,11 @@ export function useWorkbenchAssistantTileController(
           requestId: ApprovalRequestId.makeUnsafe(requestId),
           decision,
           createdAt: new Date().toISOString(),
-        })
+        });
       },
       { requestKey: requestId },
-    )
-  }
+    );
+  };
 
   const handleUserInputDraftChange = (
     requestId: string,
@@ -1890,46 +2112,56 @@ export function useWorkbenchAssistantTileController(
         ...current[requestId],
         [questionId]: value,
       },
-    }))
-  }
+    }));
+  };
 
   const handleSubmitUserInput = async (requestId: string) => {
     if (!thread) {
-      return
+      return;
     }
 
-    const request = pendingUserInputs.find((entry) => String(entry.requestId) === requestId)
-    if (!request) return
+    const request = pendingUserInputs.find((entry) => String(entry.requestId) === requestId);
+    if (!request) return;
     if (request?.responseMode === "message") {
-      await runMetaSync(() => submitQuestionOnce(thread.id, request, async (submission) => {
-        await getOrchestration().dispatchCommand({
-          type: "thread.user-input.respond", commandId: CommandId.makeUnsafe(submission.commandId),
-          threadId: thread.id, requestId: ApprovalRequestId.makeUnsafe(requestId),
-          answers: submission.answers, createdAt: submission.createdAt,
-        })
-      }), { requestKey: requestId })
-      return
+      await runMetaSync(
+        () =>
+          submitQuestionOnce(thread.id, request, async (submission) => {
+            await getOrchestration().dispatchCommand({
+              type: "thread.user-input.respond",
+              commandId: CommandId.makeUnsafe(submission.commandId),
+              threadId: thread.id,
+              requestId: ApprovalRequestId.makeUnsafe(requestId),
+              answers: submission.answers,
+              createdAt: submission.createdAt,
+            });
+          }),
+        { requestKey: requestId },
+      );
+      return;
     }
 
-    const answers = userInputDrafts[requestId]
+    const answers = userInputDrafts[requestId];
     if (!answers) {
-      return
+      return;
     }
 
     const normalizedAnswers = buildPendingUserInputAnswers(
       request.questions,
-      Object.fromEntries(request.questions.map((question) => [
-        question.id, pendingUserInputDraftFromAnswer(question, answers[question.id]),
-      ])),
-    )
+      Object.fromEntries(
+        request.questions.map((question) => [
+          question.id,
+          pendingUserInputDraftFromAnswer(question, answers[question.id]),
+        ]),
+      ),
+    );
 
     if (normalizedAnswers === null) {
-      return
+      return;
     }
 
     await runMetaSync(
       async () => {
-        ensureNativeApi()
+        ensureNativeApi();
         await getOrchestration().dispatchCommand({
           type: "thread.user-input.respond",
           commandId: newCommandId(),
@@ -1937,90 +2169,97 @@ export function useWorkbenchAssistantTileController(
           requestId: ApprovalRequestId.makeUnsafe(requestId),
           answers: normalizedAnswers,
           createdAt: new Date().toISOString(),
-        })
+        });
         setUserInputDrafts((current) => {
-          const next = { ...current }
-          delete next[requestId]
-          return next
-        })
+          const next = { ...current };
+          delete next[requestId];
+          return next;
+        });
       },
       { requestKey: requestId },
-    )
-  }
+    );
+  };
 
   const openDiffDialog = async (dialogInput: {
-    title: string
-    request: () => Promise<OrchestrationGetTurnDiffResult>
+    title: string;
+    request: () => Promise<OrchestrationGetTurnDiffResult>;
   }) => {
     setDiffDialog({
       title: dialogInput.title,
       diff: "",
       error: null,
       isLoading: true,
-    })
+    });
 
     try {
-      const result = await dialogInput.request()
+      const result = await dialogInput.request();
       setDiffDialog({
         title: dialogInput.title,
         diff: result.diff,
         error: null,
         isLoading: false,
-      })
+      });
     } catch (error) {
       setDiffDialog({
         title: dialogInput.title,
         diff: "",
         error: toErrorMessage(error),
         isLoading: false,
-      })
+      });
     }
-  }
+  };
 
   const handleComposerChange = (nextValue: string, nextCursor: number) => {
-    setComposer(nextValue)
-    setComposerCursor(nextCursor)
-  }
+    setComposer(nextValue);
+    setComposerCursor(nextCursor);
+  };
 
   const handleComposerCommandKey = (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
   ) => {
     if (key === "Enter" && !event.shiftKey) {
-      void handleSend()
-      return true
+      void handleSend();
+      return true;
     }
 
-    return false
-  }
+    return false;
+  };
 
   const addComposerImages = useCallback(
     (files: File[]) => {
-      if (files.length === 0) return
+      if (files.length === 0) return;
       if (pendingUserInputs.some((request) => request.responseMode !== "message")) {
-        setSendError("Attach images after answering pending questions.")
-        return
+        setSendError("Attach images after answering pending questions.");
+        return;
       }
-      const currentImageCount = composerImages.length
-      const nextImages: ComposerImageDraft[] = []
-      let nextImageCount = currentImageCount
-      let error: string | null = null
+      const currentImageCount = composerImages.length;
+      const nextImages: ComposerImageDraft[] = [];
+      let nextImageCount = currentImageCount;
+      let error: string | null = null;
 
       for (const file of files) {
         if (!file.type.startsWith("image/")) {
-          error = `Unsupported file type for '${file.name}'. Attach image files only.`
-          continue
+          error = `Unsupported file type for '${file.name}'. Attach image files only.`;
+          continue;
         }
-        const rejection = providerImageRejection(selectedProvider, [...composerImages, ...nextImages, { mimeType: file.type, sizeBytes: file.size }])
-        if (rejection) { error = rejection; continue }
+        const rejection = providerImageRejection(selectedProvider, [
+          ...composerImages,
+          ...nextImages,
+          { mimeType: file.type, sizeBytes: file.size },
+        ]);
+        if (rejection) {
+          error = rejection;
+          continue;
+        }
         if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-          const maxMb = Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))
-          error = `'${file.name}' exceeds the ${maxMb}MB attachment limit.`
-          continue
+          const maxMb = Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024));
+          error = `'${file.name}' exceeds the ${maxMb}MB attachment limit.`;
+          continue;
         }
         if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-          error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`
-          break
+          error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`;
+          break;
         }
         nextImages.push({
           id: newMessageId(),
@@ -2029,33 +2268,33 @@ export function useWorkbenchAssistantTileController(
           sizeBytes: file.size,
           previewUrl: "", // The durable-draft hook owns the preview URL lifecycle.
           file,
-        })
-        nextImageCount += 1
+        });
+        nextImageCount += 1;
       }
 
       if (nextImages.length > 0) {
-        setComposerImages((current) => [...current, ...nextImages])
+        setComposerImages((current) => [...current, ...nextImages]);
       }
       if (error) {
-        setSendError(error)
+        setSendError(error);
       }
     },
     [composerImages, pendingUserInputs, selectedProvider],
-  )
+  );
 
   const removeComposerImage = useCallback((imageId: string) => {
     setComposerImages((current) => {
-      const next: ComposerImageDraft[] = []
+      const next: ComposerImageDraft[] = [];
       for (const image of current) {
         if (image.id === imageId) {
-          revokeBlobPreviewUrl(image.previewUrl)
-          continue
+          revokeBlobPreviewUrl(image.previewUrl);
+          continue;
         }
-        next.push(image)
+        next.push(image);
       }
-      return next
-    })
-  }, [])
+      return next;
+    });
+  }, []);
 
   /**
    * Files dropped on the tile or picked from the composer. Images become
@@ -2065,117 +2304,117 @@ export function useWorkbenchAssistantTileController(
    */
   const addComposerFiles = useCallback(
     (files: File[]) => {
-      if (files.length === 0) return
+      if (files.length === 0) return;
       // The composer is bound to the pending answer draft while a question is
       // open, so anything written to the thread draft here would land offscreen.
       if (pendingUserInputs.length > 0) {
-        setSendError("Attach files after answering pending questions.")
-        return
+        setSendError("Attach files after answering pending questions.");
+        return;
       }
 
       const { images, mentionPaths, unresolvedNames } = partitionDroppedComposerFiles(files, {
         resolvePath: window.electronAPI?.getPathForFile,
         workspaceRoot: resolvedWorkspaceRoot,
-      })
+      });
 
       if (mentionPaths.length > 0) {
-        const nextComposer = appendComposerMentions(composer, mentionPaths)
-        setComposer(nextComposer)
-        setComposerCursor(clampCollapsedComposerCursor(nextComposer, Number.POSITIVE_INFINITY))
+        const nextComposer = appendComposerMentions(composer, mentionPaths);
+        setComposer(nextComposer);
+        setComposerCursor(clampCollapsedComposerCursor(nextComposer, Number.POSITIVE_INFINITY));
       }
 
-      addComposerImages(images)
+      addComposerImages(images);
 
       if (unresolvedNames.length > 0) {
-        const names = unresolvedNames.map((name) => `'${name}'`).join(", ")
+        const names = unresolvedNames.map((name) => `'${name}'`).join(", ");
         setSendError(
           `Cozea could not read a local path for ${names}. Save the file to disk, then drop it in.`,
-        )
+        );
       }
     },
     [addComposerImages, composer, pendingUserInputs.length, resolvedWorkspaceRoot],
-  )
+  );
 
   const handleComposerPaste: ClipboardEventHandler<HTMLElement> = (event) => {
-    const files = Array.from(event.clipboardData.files)
-    if (files.length === 0) return
-    const imageFiles = files.filter((file) => file.type.startsWith("image/"))
-    if (imageFiles.length === 0) return
-    event.preventDefault()
-    addComposerImages(imageFiles)
-  }
+    const files = Array.from(event.clipboardData.files);
+    if (files.length === 0) return;
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+    event.preventDefault();
+    addComposerImages(imageFiles);
+  };
 
   const toggleInteractionMode = async () => {
-    const nextInteractionMode = selectedInteractionMode === "plan" ? "default" : "plan"
-    await handleInteractionModeChange(nextInteractionMode)
-  }
+    const nextInteractionMode = selectedInteractionMode === "plan" ? "default" : "plan";
+    await handleInteractionModeChange(nextInteractionMode);
+  };
 
   const toggleRuntimeMode = async () => {
     const nextRuntimeMode =
-      selectedRuntimeMode === "full-access" ? "approval-required" : "full-access"
-    await handleRuntimeModeChange(nextRuntimeMode)
-  }
+      selectedRuntimeMode === "full-access" ? "approval-required" : "full-access";
+    await handleRuntimeModeChange(nextRuntimeMode);
+  };
 
   const handleOpenTurnDiff = async (turnId: TurnId, filePath?: string) => {
     if (!thread) {
-      return
+      return;
     }
 
-    const summary = thread.turnDiffSummaries.find((entry) => entry.turnId === turnId)
-    const checkpointTurnCount = summary?.checkpointTurnCount ?? turnCountByTurnId[turnId]
+    const summary = thread.turnDiffSummaries.find((entry) => entry.turnId === turnId);
+    const checkpointTurnCount = summary?.checkpointTurnCount ?? turnCountByTurnId[turnId];
 
     if (checkpointTurnCount === undefined) {
-      return
+      return;
     }
-    const threadId = thread.id
-    const turnNumber = checkpointTurnCount + 1
+    const threadId = thread.id;
+    const turnNumber = checkpointTurnCount + 1;
 
     await openDiffDialog({
       title: filePath
         ? `${chatTitle} turn ${turnNumber} · ${filePath}`
         : `${chatTitle} turn ${turnNumber}`,
       request: async () => {
-        ensureNativeApi()
+        ensureNativeApi();
         return getOrchestration().getTurnDiff({
           threadId,
           fromTurnCount: checkpointTurnCount,
           toTurnCount: checkpointTurnCount,
-        })
+        });
       },
-    })
-  }
+    });
+  };
 
   const handleDismissThreadError = () => {
     if (!thread) {
-      return
+      return;
     }
-    setThreadError(thread.id, null)
-  }
+    setThreadError(thread.id, null);
+  };
 
   const handleDeleteThread = async (): Promise<boolean> => {
     if (!thread) {
-      return false
+      return false;
     }
 
-    const api = ensureNativeApi()
+    const api = ensureNativeApi();
     const confirmed = await api.dialogs.confirm(
       `Delete thread "${thread.title}"? Provider sessions and terminals for this thread will be cleaned up.`,
-    )
+    );
     if (!confirmed) {
-      return false
+      return false;
     }
 
-    const assistantState = useStore.getState()
+    const assistantState = useStore.getState();
     const threads = selectAssistantThreads(assistantState).map((entry) => ({
       id: entry.id,
       worktreePath: entry.worktreePath,
-    }))
+    }));
     const project =
       selectAssistantProjectById(assistantState, thread.projectId) ??
-      selectAssistantProjectByCwd(assistantState, input.projectRootPath)
+      selectAssistantProjectByCwd(assistantState, input.projectRootPath);
 
-    setSendError(null)
-    setThreadOperationCount((count) => count + 1)
+    setSendError(null);
+    setThreadOperationCount((count) => count + 1);
     try {
       const result = await deleteAssistantThread({
         threadId: thread.id,
@@ -2193,67 +2432,81 @@ export function useWorkbenchAssistantTileController(
           newCommandId,
           closeTerminals: (threadId) => api.terminal.close({ threadId, deleteHistory: true }),
         },
-      })
+      });
       if (result.status !== "cancelled") {
-        await assistantDrafts.remove([threadDraftKey(thread.id)])
-        useAssistantComposerDraftStore.getState().clearDraft(thread.id)
-        useAssistantHistoryStore.getState().forgetConversation(thread.id)
+        await assistantDrafts.remove([threadDraftKey(thread.id)]);
+        useAssistantComposerDraftStore.getState().clearDraft(thread.id);
+        useAssistantHistoryStore.getState().forgetConversation(thread.id);
       }
 
       if (result.status === "deleted_worktree_failed") {
         const detail =
-          result.error instanceof Error ? result.error.message : "Unknown worktree removal error."
+          result.error instanceof Error ? result.error.message : "Unknown worktree removal error.";
         setSendError(
           `Thread deleted, but worktree removal failed (${result.worktreePath}): ${detail}`,
-        )
-        return true
+        );
+        return true;
       }
 
-      return result.status === "deleted"
+      return result.status === "deleted";
     } catch (error) {
-      setSendError(toErrorMessage(error))
-      return false
+      setSendError(toErrorMessage(error));
+      return false;
     } finally {
-      setThreadOperationCount((count) => count - 1)
+      setThreadOperationCount((count) => count - 1);
     }
-  }
+  };
 
   const handleRevertToTurnCount = async (turnCount: number) => {
-    if (selectedProvider === "antigravity" || providerSnapshot?.supportsConversationRollback === false) return
+    if (
+      selectedProvider === "antigravity" ||
+      providerSnapshot?.supportsConversationRollback === false
+    )
+      return;
     if (!thread) {
-      return
+      return;
     }
 
-    const api = ensureNativeApi()
+    const api = ensureNativeApi();
     const confirmed = await api.dialogs.confirm(
       `Revert this chat thread to the state before turn ${turnCount + 1}?`,
-    )
+    );
     if (!confirmed) {
-      return
+      return;
     }
 
-    setIsRevertingCheckpoint(true)
-    setSendError(null)
+    setIsRevertingCheckpoint(true);
+    setSendError(null);
 
     try {
-      await validateConversationContext()
+      await validateConversationContext();
       await getOrchestration().dispatchCommand({
         type: "thread.checkpoint.revert",
         commandId: newCommandId(),
         threadId: thread.id,
         turnCount,
         createdAt: new Date().toISOString(),
-      })
+      });
     } catch (error) {
-      setSendError(toErrorMessage(error))
+      setSendError(toErrorMessage(error));
     } finally {
-      setIsRevertingCheckpoint(false)
+      setIsRevertingCheckpoint(false);
     }
-  }
+  };
 
   const composerStatus = (() => {
-    const historyError = draftError ?? contextError ?? (config && !canUseProvider ? "The original provider instance is unavailable. Reconnect or update it to continue." : null)
-    if (historyError) return <div role="status" className="px-4 py-2 text-xs text-destructive">{historyError}</div>
+    const historyError =
+      draftError ??
+      contextError ??
+      (config && !canUseProvider
+        ? "The original provider instance is unavailable. Reconnect or update it to continue."
+        : null);
+    if (historyError)
+      return (
+        <div role="status" className="px-4 py-2 text-xs text-destructive">
+          {historyError}
+        </div>
+      );
     if (bindingError) {
       return (
         <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
@@ -2269,7 +2522,7 @@ export function useWorkbenchAssistantTileController(
             Retry
           </Button>
         </div>
-      )
+      );
     }
 
     if (sendError || requestError) {
@@ -2283,7 +2536,7 @@ export function useWorkbenchAssistantTileController(
             onResolved={() => setSendError(null)}
           />
         </div>
-      )
+      );
     }
 
     if (configError && !config) {
@@ -2292,21 +2545,34 @@ export function useWorkbenchAssistantTileController(
           <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1">{configError}</span>
         </div>
-      )
+      );
     }
 
-    return null
-  })()
+    return null;
+  })();
 
   return {
     chatTitle,
     showTitleSpinner,
     diffDialog,
     closeDiffDialog: () => {
-      setDiffDialog(null)
+      setDiffDialog(null);
     },
     handleDeleteThread,
-    historyBusy: shellNeedsAttention || threadOperationCount > 0 || isBinding || memoryUpdateInFlight || isRunning || isSending || isPreparingSend || isTurnStartPending || isInterrupting || isRevertingCheckpoint || Boolean(activeRequestKey) || pendingApprovals.length > 0 || pendingUserInputs.some((request) => request.responseMode !== "message"),
+    historyBusy:
+      shellNeedsAttention ||
+      threadOperationCount > 0 ||
+      isBinding ||
+      memoryUpdateInFlight ||
+      isRunning ||
+      isSending ||
+      isPreparingSend ||
+      isTurnStartPending ||
+      isInterrupting ||
+      isRevertingCheckpoint ||
+      Boolean(activeRequestKey) ||
+      pendingApprovals.length > 0 ||
+      pendingUserInputs.some((request) => request.responseMode !== "message"),
     flushDraft: assistantDrafts.flush,
     onHistoryError: setSendError,
     artifacts,
@@ -2317,7 +2583,13 @@ export function useWorkbenchAssistantTileController(
       connectionStatus,
       dockComposerOnHover: true,
       isRuntimeReady,
-      isChatReady: isChatReady && draftReady && contextVerified && !contextError && canUseProvider && (!input.tile.threadId || Boolean(thread)),
+      isChatReady:
+        isChatReady &&
+        draftReady &&
+        contextVerified &&
+        !contextError &&
+        canUseProvider &&
+        (!input.tile.threadId || Boolean(thread)),
       runtimeErrorMessage,
       workspaceId: input.workspaceId,
       workspaceRoot: resolvedWorkspaceRoot,
@@ -2335,10 +2607,14 @@ export function useWorkbenchAssistantTileController(
       activeContextWindow,
       activeAccountUsage,
       composerStatus,
-      composer,
-      composerCursor,
-      composerImages,
-      previewAnnotations: composerPreviewAnnotations,
+      // The durable draft remains untouched until acknowledgement. Hide only
+      // its presentation once the optimistic turn is committed so the composer
+      // collapse and user bubble arrive as one visual transaction; a failed send
+      // reveals the exact retryable draft again automatically.
+      composer: isSending || isTurnStartPending ? "" : composer,
+      composerCursor: isSending || isTurnStartPending ? 0 : composerCursor,
+      composerImages: isSending || isTurnStartPending ? [] : composerImages,
+      previewAnnotations: isSending || isTurnStartPending ? [] : composerPreviewAnnotations,
       terminalContexts: [],
       onRemoveTerminalContext: () => {},
       isSending: isSending || isPreparingSend || isTurnStartPending,
@@ -2358,19 +2634,19 @@ export function useWorkbenchAssistantTileController(
           provider !== selectedProvider ||
           (instanceId && instanceId !== selectedProviderInstanceId)
         ) {
-          void handleProviderChange(provider, model, instanceId)
-          return
+          void handleProviderChange(provider, model, instanceId);
+          return;
         }
-        void handleModelChange(model)
+        void handleModelChange(model);
       },
       onModelOptionChange: (id, value) => {
-        void handleModelOptionChange(id, value)
+        void handleModelOptionChange(id, value);
       },
       onToggleInteractionMode: () => {
-        void toggleInteractionMode()
+        void toggleInteractionMode();
       },
       onToggleRuntimeMode: () => {
-        void toggleRuntimeMode()
+        void toggleRuntimeMode();
       },
       onComposerChange: handleComposerChange,
       onComposerCommandKey: handleComposerCommandKey,
@@ -2381,17 +2657,21 @@ export function useWorkbenchAssistantTileController(
       compactUnavailableReason: compactUnavailable,
       onCompact: handleCompact,
       onSend: (overridePrompt?: string) => {
-        void handleSend(overridePrompt)
+        void handleSend(overridePrompt);
       },
       onInterrupt: () => {
-        void handleInterrupt()
+        void handleInterrupt();
       },
       onApprovalDecision: handleApprovalDecision,
       onUserInputDraftChange: handleUserInputDraftChange,
       onSubmitUserInput: handleSubmitUserInput,
       onOpenTurnDiff: handleOpenTurnDiff,
       onDismissThreadError: handleDismissThreadError,
-      onRevertToTurnCount: selectedProvider === "antigravity" || providerSnapshot?.supportsConversationRollback === false ? undefined : handleRevertToTurnCount,
+      onRevertToTurnCount:
+        selectedProvider === "antigravity" ||
+        providerSnapshot?.supportsConversationRollback === false
+          ? undefined
+          : handleRevertToTurnCount,
     },
-  }
+  };
 }
