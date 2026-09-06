@@ -1,6 +1,6 @@
 import { useEffect } from "react"
 
-import type { OrchestrationEvent } from "@cozea/assistant-contracts"
+import type { NativeApi, OrchestrationEvent } from "@cozea/assistant-contracts"
 import { flushPendingAssistantProjectDeletions } from "@/features/assistant/services/assistantProjectDeletion"
 import { ensureNativeApi } from "@/lib/nativeApi"
 import { coalesceOrchestrationUiEvents, useStore } from "@/features/assistant/model/assistantStore"
@@ -21,6 +21,8 @@ const coordinator = createOrchestrationRecoveryCoordinator()
 // domain events until completeSnapshotRecovery, so batching stays consistent.
 const FIRST_HYDRATION_THREAD_BATCH = 8
 
+type AssistantRuntimeSnapshot = Awaited<ReturnType<NativeApi["orchestration"]["getSnapshot"]>>
+
 function yieldToMain(): Promise<void> {
   const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
   if (typeof scheduler?.yield === "function") {
@@ -29,7 +31,7 @@ function yieldToMain(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-async function applySnapshotToStore(snapshot: Awaited<ReturnType<ReturnType<typeof ensureNativeApi>["orchestration"]["getSnapshot"]>>) {
+async function applySnapshotToStore(snapshot: AssistantRuntimeSnapshot) {
   const alreadyHydrated = useStore.getState().threadsHydrated
   if (alreadyHydrated || snapshot.threads.length <= FIRST_HYDRATION_THREAD_BATCH) {
     useStore.getState().syncServerReadModel(snapshot)
@@ -46,8 +48,7 @@ async function applySnapshotToStore(snapshot: Awaited<ReturnType<ReturnType<type
   }
 }
 
-async function performSnapshotSync() {
-  const api = ensureNativeApi()
+async function performSnapshotSync(api: NativeApi = ensureNativeApi()) {
   const snapshot = await api.orchestration.getSnapshot()
   await applySnapshotToStore(snapshot)
   await flushPendingAssistantProjectDeletions({ snapshotIsAuthoritative: true })
@@ -63,8 +64,10 @@ async function performSnapshotSync() {
 
 /**
  * Coalesced full read-model refresh (initial hydrate + explicit invalidation).
+ * Callers that already own a ready NativeApi can pass it to avoid deferred
+ * transport discovery during a background operation.
  */
-export async function refreshAssistantRuntimeSnapshot(): Promise<void> {
+export async function refreshAssistantRuntimeSnapshot(api?: NativeApi): Promise<void> {
   queuedRefresh = true
 
   if (activeRefresh) {
@@ -74,7 +77,7 @@ export async function refreshAssistantRuntimeSnapshot(): Promise<void> {
   activeRefresh = (async () => {
     while (queuedRefresh) {
       queuedRefresh = false
-      await performSnapshotSync()
+      await performSnapshotSync(api)
     }
   })().finally(() => {
     activeRefresh = null
@@ -94,7 +97,7 @@ function flushPendingDomainEvents() {
 
   const batch = pendingDomainEvents
   pendingDomainEvents = []
-  
+
   const nextEvents = coordinator.markEventBatchApplied(batch)
   if (nextEvents.length === 0) return
 
@@ -119,7 +122,7 @@ function ensureDomainEventSubscription() {
 
   const api = ensureNativeApi()
   if (coordinator.beginSnapshotRecovery("bootstrap")) {
-    void refreshAssistantRuntimeSnapshot().catch(() => {
+    void refreshAssistantRuntimeSnapshot(api).catch(() => {
       coordinator.failSnapshotRecovery()
     })
   }
@@ -127,22 +130,22 @@ function ensureDomainEventSubscription() {
   unsubscribeDomainEvents = api.orchestration.onDomainEvent((event: OrchestrationEvent) => {
     const action = coordinator.classifyDomainEvent(event.sequence)
     if (action === "ignore") return;
-    
+
     pendingDomainEvents.push(event)
-    
+
     if (action === "defer") {
       return
     }
-    
+
     if (action === "recover") {
       if (coordinator.beginSnapshotRecovery("sequence-gap")) {
-        void refreshAssistantRuntimeSnapshot().catch(() => {
+        void refreshAssistantRuntimeSnapshot(api).catch(() => {
           coordinator.failSnapshotRecovery()
         })
       }
       return
     }
-    
+
     scheduleDomainEventFlush()
   })
 }
