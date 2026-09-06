@@ -101,6 +101,7 @@
         "motion": "^13.2.0",
         "nanoid": "^5.1.6",
         "node-pty": "^1.1.0",
+        "open-computer-use": "^0.3.3",
         "radix-ui": "^1.4.3",
         "react": "^19.2.0",
         "react-colorful": "^5.6.1",
@@ -1788,6 +1789,8 @@
     "oniguruma-parser": ["oniguruma-parser@0.12.2", "", {}, "sha512-6HVa5oIrgMC6aA6WF6XyyqbhRPJrKR02L20+2+zpDtO5QAzGHAUGw5TKQvwi5vctNnRHkJYmjAhRVQF2EKdTQw=="],
 
     "oniguruma-to-es": ["oniguruma-to-es@4.3.6", "", { "dependencies": { "oniguruma-parser": "^0.12.2", "regex": "^6.1.0", "regex-recursion": "^6.0.2" } }, "sha512-csuQ9x3Yr0cEIs/Zgx/OEt9iBw9vqIunAPQkx19R/fiMq2oGVTgcMqO/V3Ybqefr1TBvosI6jU539ksaBULJyA=="],
+
+    "open-computer-use": ["open-computer-use@0.3.3", "", { "bin": { "ocu": "bin/ocu", "open-computer-use": "bin/open-computer-use", "open-computer-use-mcp": "bin/open-computer-use-mcp", "open-codex-computer-use-mcp": "bin/open-codex-computer-use-mcp" } }, "sha512-A4xCoXgu+Mwi2OdhL15FHY/VcnhhxIJwRgSmC2LwX9mTya85VO2NZN8PNholvgQeTeOlPpej+eEucHXtPhhVrA=="],
 
     "oxfmt": ["oxfmt@0.42.0", "", { "dependencies": { "tinypool": "2.1.0" }, "optionalDependencies": { "@oxfmt/binding-android-arm-eabi": "0.42.0", "@oxfmt/binding-android-arm64": "0.42.0", "@oxfmt/binding-darwin-arm64": "0.42.0", "@oxfmt/binding-darwin-x64": "0.42.0", "@oxfmt/binding-freebsd-x64": "0.42.0", "@oxfmt/binding-linux-arm-gnueabihf": "0.42.0", "@oxfmt/binding-linux-arm-musleabihf": "0.42.0", "@oxfmt/binding-linux-arm64-gnu": "0.42.0", "@oxfmt/binding-linux-arm64-musl": "0.42.0", "@oxfmt/binding-linux-ppc64-gnu": "0.42.0", "@oxfmt/binding-linux-riscv64-gnu": "0.42.0", "@oxfmt/binding-linux-riscv64-musl": "0.42.0", "@oxfmt/binding-linux-s390x-gnu": "0.42.0", "@oxfmt/binding-linux-x64-gnu": "0.42.0", "@oxfmt/binding-linux-x64-musl": "0.42.0", "@oxfmt/binding-openharmony-arm64": "0.42.0", "@oxfmt/binding-win32-arm64-msvc": "0.42.0", "@oxfmt/binding-win32-ia32-msvc": "0.42.0", "@oxfmt/binding-win32-x64-msvc": "0.42.0" }, "bin": { "oxfmt": "bin/oxfmt" } }, "sha512-QhejGErLSMReNuZ6vxgFHDyGoPbjTRNi6uGHjy0cvIjOQFqD6xmr/T+3L41ixR3NIgzcNiJ6ylQKpvShTgDfqg=="],
 

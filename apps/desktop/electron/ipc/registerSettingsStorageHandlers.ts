@@ -14,6 +14,7 @@ import type {
   StorageUsage,
 } from '../../../../shared/electronApiTypes'
 import { rememberApprovedExternalReadRoot } from '../fsAccess'
+import { ComputerUseService } from '../services/ComputerUseService'
 import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
 import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
 import { notifyWorkspaceCatalogChanged } from '../workspaces/CatalogSnapshot'
@@ -517,6 +518,14 @@ export function registerSettingsStorageHandlers(
       } catch (error) {
         console.warn('[Settings] Failed to sync projects directory to workspace catalog.', error)
       }
+    }
+    if (settings.computerUseEnabled !== undefined || settings.disabledComputerUseTools !== undefined) {
+      const current = deps.loadSettings()
+      const isEnabled = settings.computerUseEnabled ?? current.computerUseEnabled ?? false
+      const disabledList = settings.disabledComputerUseTools ?? current.disabledComputerUseTools
+      void ComputerUseService.getInstance().syncProviderConfigs(isEnabled, disabledList).catch((err) => {
+        console.warn('[Settings] Failed to sync Computer Use provider configs:', err)
+      })
     }
     invalidateStorageSnapshotCache()
     return { success: true }

@@ -4,4 +4,5 @@ export const settingsModules = {
   devapps: () => import('@/features/settings/DevAppSettings'),
   organizations: () => import('@/features/settings/Organizations'),
   tooling: () => import('@/features/settings/Tooling'),
+  computerUse: () => import('@/features/settings/ComputerUse'),
 }

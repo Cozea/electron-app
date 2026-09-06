@@ -71,4 +71,5 @@ export const PHASE5_IPC_ALLOWLIST_PREFIXES = [
   "substrate:vcs:",
   "settings:",
   "storage:",
+  "computerUse:",
 ] as const;

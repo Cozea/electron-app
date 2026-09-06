@@ -343,6 +343,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:set', settings),
   },
+  computerUse: {
+    getDiagnostics: () => ipcRenderer.invoke('computerUse:getDiagnostics'),
+    openPermissionSettings: (target: 'accessibility' | 'screenRecording') =>
+      ipcRenderer.invoke('computerUse:openPermissionSettings', target),
+  },
   dialog: {
     selectDirectory: (options?: { title?: string }) => ipcRenderer.invoke('dialog:selectDirectory', options ?? {}),
     selectFile: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) =>

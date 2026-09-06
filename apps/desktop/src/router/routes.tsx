@@ -145,6 +145,13 @@ const Tooling = createLazyRouteComponent(
     })),
   "routeLoading.tooling",
 );
+const ComputerUse = createLazyRouteComponent(
+  () =>
+    import("@/features/settings/ComputerUse").then((module) => ({
+      default: module.ComputerUse,
+    })),
+  "routeLoading.computerUse",
+);
 const WORKSPACE_MEMBERS_ROUTE = "/teams";
 const WORKSPACE_ROLES_ROUTE = "/teams/roles";
 const WORKSPACE_GENERAL_ROUTE = "/workspace/general";
@@ -161,6 +168,7 @@ const PERSONAL_APPEARANCE_ROUTE = "/settings/appearance";
 const PERSONAL_DEVAPPS_ROUTE = "/settings/devapps";
 const PERSONAL_ORGANIZATIONS_ROUTE = "/settings/organizations";
 const PERSONAL_TOOLING_ROUTE = "/settings/tooling";
+const PERSONAL_COMPUTER_USE_ROUTE = "/settings/computer-use";
 function toRoutePath(route: string): string {
   return route.replace(/^\//, "");
 }
@@ -521,6 +529,12 @@ const projectsPersonalToolingRoute = createRoute({
   component: Tooling,
 });
 
+const projectsPersonalComputerUseRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_COMPUTER_USE_ROUTE),
+  component: ComputerUse,
+});
+
 const teamsMembersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(WORKSPACE_MEMBERS_ROUTE),
@@ -647,6 +661,12 @@ const personalToolingRoute = createRoute({
   component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
 });
 
+const personalComputerUseRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: toRoutePath(PERSONAL_COMPUTER_USE_ROUTE),
+  component: () => <Navigate to={"/projects/settings/computer-use" as never} replace />,
+});
+
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/invite/$token",
@@ -699,6 +719,7 @@ export const routeTree = rootRoute.addChildren([
     projectsPersonalDevAppsRoute,
     projectsPersonalOrganizationsRoute,
     projectsPersonalToolingRoute,
+    projectsPersonalComputerUseRoute,
   ]),
   legacyProjectRoute,
   teamsMembersRoute,
@@ -722,6 +743,7 @@ export const routeTree = rootRoute.addChildren([
   personalDevAppsRoute,
   personalOrganizationsRoute,
   personalToolingRoute,
+  personalComputerUseRoute,
   inviteRoute,
 ]);
 

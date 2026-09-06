@@ -11,6 +11,7 @@ import { getTranslation, getStoredLanguage, type TranslationKey } from "@/lib/i1
 import { asHugeIcon } from "@/lib/icons/asHugeIcon"
 import {
   CommandLineIcon as __CommandLineIconHugeIcon,
+  ComputerIcon as __ComputerIconHugeIcon,
   PackageIcon as __PackageIconHugeIcon,
   PaintBoardIcon as __PaintBoardIconHugeIcon,
   UserCircleIcon as __UserCircleIconHugeIcon,
@@ -18,6 +19,7 @@ import {
 } from "@hugeicons/core-free-icons"
 
 const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
+const ComputerIcon = asHugeIcon(__ComputerIconHugeIcon)
 const PackageIcon = asHugeIcon(__PackageIconHugeIcon)
 const PaintBoardIcon = asHugeIcon(__PaintBoardIconHugeIcon)
 const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
@@ -29,12 +31,14 @@ const PERSONAL_DEVICE_SIDEBAR_ORDER: Record<SettingsSurfaceId, number> = {
   devapps: 2,
   organizations: 3,
   tooling: 4,
+  computerUse: 5,
 }
 
 const preloadAccountPage = () => import("@/features/settings/Account")
 const preloadAppearancePage = () => import("@/features/settings/Appearance")
 const preloadDevAppsPage = () => import("@/features/settings/DevAppSettings")
 const preloadOrganizationsPage = () => import("@/features/settings/Organizations")
+const preloadComputerUsePage = () => import("@/features/settings/ComputerUse")
 
 const preloadToolingPage = async () => {
   const module = await import("@/features/settings/Tooling")
@@ -48,6 +52,7 @@ const SURFACE_LABEL_KEYS: Record<SettingsSurfaceId, TranslationKey> = {
   devapps: "settings.nav.devapps",
   organizations: "settings.nav.organizations",
   tooling: "settings.nav.localEnvironment",
+  computerUse: "settings.nav.computerUse",
 }
 
 /** Resolve a surface label for the current language. */
@@ -111,6 +116,17 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadToolingPage,
     commandKeywords: ["tooling", "runtime", "framework", "local machine"],
+  },
+  {
+    id: "computerUse",
+    label: "Computer Use",
+    icon: ComputerIcon,
+    routes: { personal: "/settings/computer-use" },
+    storageMode: { personal: "local" },
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
+    preload: preloadComputerUsePage,
+    commandKeywords: ["computer", "computer use", "automation", "screen", "accessibility", "permissions"],
   },
 ] as const
 

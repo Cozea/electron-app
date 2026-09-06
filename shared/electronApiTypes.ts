@@ -56,6 +56,18 @@ export interface AppSettings {
    * of a cold start instead of following the OS until React mounts.
    */
   nativeThemeSource?: 'system' | 'light' | 'dark'
+  computerUseEnabled?: boolean
+  computerUseCliPath?: string
+  disabledComputerUseTools?: string[]
+}
+
+export interface ComputerUseDiagnostics {
+  installed: boolean
+  version?: string
+  path?: string
+  accessibility: boolean
+  screenRecording: boolean
+  error?: string
 }
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
@@ -1539,6 +1551,10 @@ export interface ElectronAPI {
   /** Declared ahead of the managed local chat runtime; preload does not expose it yet. */
   localAiRuntime?: {
     getStatus: () => Promise<LocalAiRuntimeStatus>
+  }
+  computerUse?: {
+    getDiagnostics: () => Promise<ComputerUseDiagnostics>
+    openPermissionSettings: (target: 'accessibility' | 'screenRecording') => Promise<void>
   }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>

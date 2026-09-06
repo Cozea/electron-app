@@ -30,6 +30,8 @@ import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
 import { registerSettingsStorageHandlers } from './ipc/registerSettingsStorageHandlers'
+import { registerComputerUseHandlers } from './ipc/registerComputerUseHandlers'
+import { ComputerUseService } from './services/ComputerUseService'
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
@@ -1790,6 +1792,19 @@ registerSettingsStorageHandlers(ipcMain, {
   loadSettings,
   saveSettings,
 })
+
+registerComputerUseHandlers(ipcMain, {
+  loadSettings,
+})
+
+const initialSettings = loadSettings()
+if (initialSettings.computerUseEnabled) {
+  void ComputerUseService.getInstance()
+    .syncProviderConfigs(true, initialSettings.disabledComputerUseTools)
+    .catch((err) => {
+      console.warn('[ComputerUse] Failed to sync provider configs on startup:', err)
+    })
+}
 
 registerProjectHandlers(ipcMain, {
   loadSettings,
