@@ -47,7 +47,6 @@ describe("device proof-of-possession tokens", () => {
       iat: now,
       exp: now + 120,
       identityKey: "czd_00000000000000000000000000",
-      deviceLabel: "Test Mac",
       platform: "darwin",
       encryptionPublicKeyJwk: "{}",
       encryptionPublicKeyAlgorithm: "ECDH-P256",
@@ -65,6 +64,7 @@ describe("device proof-of-possession tokens", () => {
     )
 
     expect(decoded.identityKey).toBe(claims.identityKey)
+    expect(decoded).not.toHaveProperty("deviceLabel")
     await expect(verifyDeviceChallengeSignature({
       challenge,
       signature: toBase64Url(signature),
@@ -84,14 +84,14 @@ describe("device proof-of-possession tokens", () => {
     })).resolves.toBe(false)
   })
 
-  it("issues an audience-bound ES256 access token with device=user subject", async () => {
+  it("issues an audience-bound ES256 access token for the device identity", async () => {
     const env = await createTestEnv()
     const identityKey = "czd_00000000000000000000000000"
     const issued = await signDeviceAccessToken(env, identityKey, 7)
     const verified = await verifyDeviceAccessToken(env, issued.token)
 
     expect(verified.sub).toBe(identityKey)
-    expect(verified.device_id).toBe(identityKey)
+    expect(verified).not.toHaveProperty("device_id")
     expect(verified.aud).toBe("cozea-convex")
     expect(verified.key_version).toBe(7)
     expect(verified.jti.length).toBeGreaterThan(15)
