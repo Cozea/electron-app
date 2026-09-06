@@ -1,17 +1,22 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useTranslation } from '@/lib/i18n'
-import type { TranslationKey } from '@/lib/i18n/en'
 import { useProjectHeader } from '@/lib/useProjectHeader'
 import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
-
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -19,609 +24,259 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { ContextMenuItem } from '@shared/assistant-contracts/ipc'
-import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
-import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { MoreVerticalIcon as __MoreVerticalHugeIcon, ArrowUpDownIcon as __ArrowUpDownHugeIcon, Delete02Icon as __Trash2HugeIcon, FilterIcon as __FilterHugeIcon, Refresh01Icon as __RotateCcwHugeIcon, Shield01Icon as __ShieldHugeIcon, UserMinus01Icon as __UserMinusHugeIcon } from '@hugeicons/core-free-icons'
+import { Delete02Icon as __TrashHugeIcon } from '@hugeicons/core-free-icons'
 
 type ProjectRole = 'project_manager' | 'developer' | 'designer' | 'viewer'
-type SortField = 'name' | 'role' | 'date'
-type SortDirection = 'asc' | 'desc'
 
-interface TeamTableRow {
-  key: string
-  type: 'member' | 'invite'
-  secondaryLabel: string
-  name: string
-  role: ProjectRole
-  status: 'active' | 'pending'
-  date: number
-  avatarUrl?: string | null
-  isSelf: boolean
-  userId?: Id<'devicePrincipals'>
-  inviteId?: Id<'projectInvites'>
-}
-
-const ROLE_OPTIONS: Array<{ value: ProjectRole; labelKey: TranslationKey }> = [
-  { value: 'project_manager', labelKey: 'team.role.project_manager' },
-  { value: 'developer', labelKey: 'team.role.developer' },
-  { value: 'designer', labelKey: 'team.role.designer' },
-  { value: 'viewer', labelKey: 'team.role.viewer' },
+const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
+  { value: 'project_manager', label: 'Project manager' },
+  { value: 'developer', label: 'Developer' },
+  { value: 'designer', label: 'Designer' },
+  { value: 'viewer', label: 'Viewer' },
 ]
 
-function cleanConvexError(error: unknown, fallback: string): string {
+function cleanError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback
   return raw.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '') || fallback
 }
 
-function getRoleLabel(role: ProjectRole | null | undefined, t: any): string {
-  if (!role) return t('team.role.unknown')
-  const match = ROLE_OPTIONS.find((option) => option.value === role)
-  return match?.labelKey ? t(match.labelKey) : role.replace(/_/g, ' ')
-}
-
-function formatMemberName(member: {
-  displayName?: string | null
-  secondaryLabel?: string | null
-  contactEmail?: string | null
-  user?: {
-    firstName?: string | null
-    lastName?: string | null
-    email?: string | null
-  } | null
-  userId: Id<'devicePrincipals'>
-}): string {
-  if (member.displayName?.trim()) return member.displayName.trim()
-  const first = member.user?.firstName?.trim() ?? ''
-  const last = member.user?.lastName?.trim() ?? ''
-  const fullName = `${first} ${last}`.trim()
-  if (fullName) return fullName
-  if (member.contactEmail) return member.contactEmail
-  if (member.secondaryLabel) return member.secondaryLabel
-  if (member.user?.email) return member.user.email
-  return String(member.userId)
-}
-
-function formatMemberSecondaryLabel(member: {
-  secondaryLabel?: string | null
-  contactEmail?: string | null
-  user?: {
-    email?: string | null
-  } | null
-}): string {
-  return (
-    member.secondaryLabel?.trim() ??
-    member.contactEmail?.trim() ??
-    member.user?.email?.trim() ??
-    ''
-  )
-}
-
-function formatInviteeName(invite: {
-  email: string
-  user?: {
-    firstName?: string | null
-    lastName?: string | null
-    email?: string | null
-  } | null
-}): string {
-  const first = invite.user?.firstName?.trim() ?? ''
-  const last = invite.user?.lastName?.trim() ?? ''
-  const fullName = `${first} ${last}`.trim()
-  if (fullName) return fullName
-  if (invite.user?.email) return invite.user.email
-  return invite.email.split('@')[0] ?? invite.email
+function initials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('') || 'D'
 }
 
 function formatDate(timestamp: number): string {
-  return new Date(timestamp)
-    .toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-    .replace(/\//g, '-')
+  return new Date(timestamp).toLocaleDateString()
 }
 
 export function ProjectTeamPage() {
   const { principalId } = useAuth()
   const { project } = useAccessibleProject()
-  const { t } = useTranslation()
-
-  const cancelInvite = useMutation(api.projectInvites.cancelInvite)
-  const resendInvite = useMutation(api.projectInvites.resendInvite)
-  const updateMemberRole = useMutation(api.projectMembers.updateRole)
-  const removeMember = useMutation(api.projectMembers.removeMember)
+  useProjectHeader(null)
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    project?._id && principalId
-      ? { projectId: project._id, userId: principalId }
-      : 'skip'
+    project?._id && principalId ? { projectId: project._id, userId: principalId } : 'skip',
   )
   const members = useQuery(
     api.projectMembers.listMembers,
-    project?._id && principalId ? { projectId: project._id, viewerUserId: principalId } : 'skip'
+    project?._id && principalId ? { projectId: project._id, viewerUserId: principalId } : 'skip',
   )
-  const pendingInvites = useQuery(
-    api.projectInvites.listForProject,
-    project?._id && principalId
-      ? { projectId: project._id, viewerUserId: principalId }
-      : 'skip'
-  )
-
-  const [teamError, setTeamError] = useState<string | null>(null)
-  const [teamActionKey, setTeamActionKey] = useState<string | null>(null)
-
-  const [roleFilter, setRoleFilter] = useState<'all' | ProjectRole>('all')
-  const [sortField, setSortField] = useState<SortField>('date')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const hasResolvedTeamRows = members !== undefined && pendingInvites !== undefined
-
-  const isManager = memberRole === 'project_manager'
-  const canManageTeam = Boolean(principalId) && isManager
-
-  const filteredRows = useMemo(() => {
-    const memberRows: TeamTableRow[] = (members ?? []).map((member) => {
-      return {
-        key: `member:${String(member.userId)}`,
-        type: 'member',
-        secondaryLabel: formatMemberSecondaryLabel(member),
-        name: formatMemberName(member),
-        role: member.role,
-        status: 'active',
-        date: member.addedAt,
-        avatarUrl: member.user?.profileImageUrl ?? null,
-        isSelf: principalId === member.userId,
-        userId: member.userId,
-      }
-    })
-
-    const inviteRows: TeamTableRow[] = (pendingInvites ?? []).map((invite) => {
-      return {
-        key: `invite:${String(invite._id)}`,
-        type: 'invite',
-        secondaryLabel: invite.email,
-        name: formatInviteeName(invite),
-        role: invite.role,
-        status: 'pending',
-        date: invite.invitedAt,
-        avatarUrl: invite.user?.profileImageUrl ?? null,
-        isSelf: false,
-        inviteId: invite._id,
-      }
-    })
-
-    const rows = [...memberRows, ...inviteRows].filter((row) => {
-      if (roleFilter === 'all') return true
-      return row.role === roleFilter
-    })
-
-    return rows.sort((left, right) => {
-      let comparison = 0
-      switch (sortField) {
-        case 'name':
-          comparison = left.name.localeCompare(right.name)
-          break
-        case 'role':
-          comparison = left.role.localeCompare(right.role)
-          break
-        case 'date':
-          comparison = left.date - right.date
-          break
-      }
-      return sortDirection === 'asc' ? comparison : -comparison
-    })
-  }, [
-    principalId,
-    members,
-    pendingInvites,
-    roleFilter,
-    sortDirection,
-    sortField,
-  ])
-
-  const handleRoleChange = useCallback(
-    async (memberUserId: Id<'devicePrincipals'>, nextRole: ProjectRole) => {
-      if (!project?._id || !project || !principalId || !canManageTeam) return
-      const actionKey = `role:${String(memberUserId)}`
-      setTeamActionKey(actionKey)
-      setTeamError(null)
-      try {
-        await updateMemberRole({
-          projectId: project._id,
-          actorUserId: principalId,
-          memberUserId,
-          newRole: nextRole,
-        })
-      } catch (error) {
-        setTeamError(cleanConvexError(error, t('team.error.updateRole')))
-      } finally {
-        setTeamActionKey(null)
-      }
-    },
-    [
-      canManageTeam,
-      principalId,
-      project,
-      updateMemberRole,
-    ]
+  const pending = useQuery(
+    api.projectDeviceEnrollments.listForProject,
+    project?._id && principalId && memberRole === 'project_manager'
+      ? { projectId: project._id }
+      : 'skip',
   )
 
-  const handleRemoveMember = useCallback(
-    async (memberUserId: Id<'devicePrincipals'>) => {
-      if (!project?._id || !project || !principalId || !canManageTeam) return
-      const actionKey = `remove:${String(memberUserId)}`
-      setTeamActionKey(actionKey)
-      setTeamError(null)
-      try {
-        await removeMember({
-          projectId: project._id,
-          actorUserId: principalId,
-          memberUserId,
-        })
-      } catch (error) {
-        setTeamError(cleanConvexError(error, t('team.error.removeMember')))
-      } finally {
-        setTeamActionKey(null)
-      }
-    },
-    [
-      canManageTeam,
-      principalId,
-      project,
-      removeMember,
-    ]
-  )
+  const createEnrollment = useMutation(api.projectDeviceEnrollments.create)
+  const cancelEnrollment = useMutation(api.projectDeviceEnrollments.cancel)
+  const updateRole = useMutation(api.projectMembers.updateRole)
+  const removeMember = useMutation(api.projectMembers.removeMember)
 
-  const handleCancelInvite = useCallback(
-    async (inviteId: Id<'projectInvites'>) => {
-      if (!project || !principalId || !canManageTeam) return
-      const actionKey = `cancel:${String(inviteId)}`
-      setTeamActionKey(actionKey)
-      setTeamError(null)
-      try {
-        await cancelInvite({
-          inviteId,
-          actorUserId: principalId,
-        })
-      } catch (error) {
-        setTeamError(cleanConvexError(error, t('team.error.cancelInvite')))
-      } finally {
-        setTeamActionKey(null)
-      }
-    },
-    [cancelInvite, canManageTeam, principalId, project]
-  )
+  const [identityKey, setIdentityKey] = useState('')
+  const [inviteRole, setInviteRole] = useState<ProjectRole>('developer')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
-  const handleResendInvite = useCallback(
-    async (inviteId: Id<'projectInvites'>) => {
-      if (!project || !principalId || !canManageTeam) return
-      const actionKey = `resend:${String(inviteId)}`
-      setTeamActionKey(actionKey)
-      setTeamError(null)
-      try {
-        await resendInvite({
-          inviteId,
-          actorUserId: principalId,
-        })
-      } catch (error) {
-        setTeamError(cleanConvexError(error, t('team.error.resendInvite')))
-      } finally {
-        setTeamActionKey(null)
-      }
-    },
-    [canManageTeam, principalId, resendInvite, project]
-  )
+  const canManage = memberRole === 'project_manager'
 
-  const handleOpenRoleFilterMenu = useCallback(
-    async (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault()
-      const rect = event.currentTarget.getBoundingClientRect()
-      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
-      const items: ContextMenuItem<string>[] = [
-        {
-          id: 'all',
-          label: t('team.filter.allRoles'),
-          type: 'radio',
-          checked: roleFilter === 'all',
-          icon: getNativeMenuIcon('filter'),
-        },
-        ...ROLE_OPTIONS.map((option) => ({
-          id: option.value,
-          label: t(option.labelKey),
-          type: 'radio' as const,
-          checked: roleFilter === option.value,
-          icon: getNativeMenuIcon('shield'),
-        })),
-      ]
-      const action = await showDesktopContextMenu(items, position)
-      if (action) setRoleFilter(action as 'all' | ProjectRole)
-    },
-    [roleFilter, t]
-  )
-
-  const handleOpenSortFieldMenu = useCallback(
-    async (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault()
-      const rect = event.currentTarget.getBoundingClientRect()
-      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
-      const items: ContextMenuItem<string>[] = [
-        { id: 'date', label: t('team.sort.date'), type: 'radio', checked: sortField === 'date', icon: getNativeMenuIcon('sort') },
-        { id: 'name', label: t('team.sort.name'), type: 'radio', checked: sortField === 'name', icon: getNativeMenuIcon('sort') },
-        { id: 'role', label: t('team.sort.role'), type: 'radio', checked: sortField === 'role', icon: getNativeMenuIcon('sort') },
-      ]
-      const action = await showDesktopContextMenu(items, position)
-      if (action) setSortField(action as SortField)
-    },
-    [sortField, t]
-  )
-
-  const handleOpenSortDirectionMenu = useCallback(
-    async (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault()
-      const rect = event.currentTarget.getBoundingClientRect()
-      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
-      const items: ContextMenuItem<string>[] = [
-        { id: 'asc', label: t('team.sort.ascending'), type: 'radio', checked: sortDirection === 'asc', icon: getNativeMenuIcon('move-up') },
-        { id: 'desc', label: t('team.sort.descending'), type: 'radio', checked: sortDirection === 'desc', icon: getNativeMenuIcon('move-down') },
-      ]
-      const action = await showDesktopContextMenu(items, position)
-      if (action) setSortDirection(action as SortDirection)
-    },
-    [sortDirection, t]
-  )
-
-  const headerActions = useMemo(() => {
-    return (
-      <div className="flex items-center gap-2">
-        <Button
-          variant="secondary"
-          className="h-7 gap-2 rounded-full px-2 text-[11px]"
-          onClick={handleOpenRoleFilterMenu}
-        >
-          <HugeiconsIcon icon={__FilterHugeIcon} className="h-3.5 w-3.5" />
-          {roleFilter === 'all' ? t('team.filter.allRoles') : getRoleLabel(roleFilter, t)}
-        </Button>
-
-        <Button
-          variant="secondary"
-          className="h-7 gap-2 rounded-full px-2 text-[11px]"
-          onClick={handleOpenSortFieldMenu}
-        >
-          <HugeiconsIcon icon={__ArrowUpDownHugeIcon} className="h-3.5 w-3.5" />
-          {sortField === 'date' ? t('team.sort.date') : sortField === 'name' ? t('team.sort.name') : t('team.sort.role')}
-        </Button>
-
-        <Button
-          variant="secondary"
-          className="h-7 gap-2 rounded-full px-2 text-[11px]"
-          onClick={handleOpenSortDirectionMenu}
-        >
-          {sortDirection === 'asc' ? t('team.sort.asc') : t('team.sort.desc')}
-        </Button>
-      </div>
-    )
-  }, [
-    handleOpenRoleFilterMenu,
-    handleOpenSortDirectionMenu,
-    handleOpenSortFieldMenu,
-    roleFilter,
-    sortDirection,
-    sortField,
-    t,
-  ])
-
-  const handleOpenRowMenu = useCallback(
-    async (event: React.MouseEvent<HTMLButtonElement>, row: TeamTableRow) => {
-      event.preventDefault()
-      event.stopPropagation()
-      const rect = event.currentTarget.getBoundingClientRect()
-      const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
-
-      const items: ContextMenuItem<string>[] = []
-      const roleActionKey = row.userId ? `role:${row.userId}` : null
-      const removeActionKey = row.userId ? `remove:${row.userId}` : null
-      const resendActionKey = row.inviteId ? `resend:${row.inviteId}` : null
-      const cancelActionKey = row.inviteId ? `cancel:${row.inviteId}` : null
-
-      if (row.type === 'member') {
-        const roleSubmenu: ContextMenuItem<string>[] = ROLE_OPTIONS.map((option) => ({
-          id: `role:${option.value}`,
-          label: `${t(option.labelKey)}${row.role === option.value ? ` (${t('team.action.current')})` : ''}`,
-          type: 'radio' as const,
-          checked: row.role === option.value,
-          enabled: Boolean(
-            canManageTeam &&
-              !row.isSelf &&
-              row.userId &&
-              row.role !== option.value &&
-              teamActionKey !== roleActionKey
-          ),
-        }))
-
-        items.push({
-          id: 'change-role',
-          label: t('team.action.changeRole'),
-          enabled: Boolean(canManageTeam && !row.isSelf && row.userId),
-          icon: getNativeMenuIcon('shield'),
-          submenu: roleSubmenu,
-        })
-        items.push({ id: 'sep', type: 'separator' })
-        items.push({
-          id: 'remove',
-          label: row.isSelf ? t('team.action.cantRemove') : t('team.action.remove'),
-          destructive: true,
-          icon: getNativeMenuIcon('user-minus'),
-          enabled: Boolean(
-            canManageTeam &&
-              !row.isSelf &&
-              row.userId &&
-              teamActionKey !== removeActionKey
-          ),
-        })
-      } else {
-        items.push({
-          id: 'resend',
-          label: t('team.action.resend'),
-          enabled: Boolean(canManageTeam && row.inviteId && teamActionKey !== resendActionKey),
-          icon: getNativeMenuIcon('restore'),
-        })
-        items.push({
-          id: 'cancel',
-          label: t('team.action.cancel'),
-          destructive: true,
-          enabled: Boolean(canManageTeam && row.inviteId && teamActionKey !== cancelActionKey),
-          icon: getNativeMenuIcon('close'),
-        })
-      }
-
-      const action = await showDesktopContextMenu(items, position)
-      if (!action) return
-
-      if (action.startsWith('role:')) {
-        const newRole = action.replace('role:', '') as ProjectRole
-        if (row.userId) void handleRoleChange(row.userId, newRole)
-      } else if (action === 'remove') {
-        if (row.userId) void handleRemoveMember(row.userId)
-      } else if (action === 'resend') {
-        if (row.inviteId) void handleResendInvite(row.inviteId)
-      } else if (action === 'cancel') {
-        if (row.inviteId) void handleCancelInvite(row.inviteId)
-      }
-    },
-    [canManageTeam, handleCancelInvite, handleRemoveMember, handleResendInvite, handleRoleChange, t, teamActionKey]
-  )
-
-  useProjectHeader(headerActions)
-
-  if (project === undefined) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <div className="loader mr-2" />
-        {t('team.loading')}
-      </div>
-    )
+  const run = async (key: string, work: () => Promise<void>) => {
+    setBusy(key)
+    setError(null)
+    setNotice(null)
+    try {
+      await work()
+    } catch (caught) {
+      setError(cleanError(caught, 'Could not update project access.'))
+    } finally {
+      setBusy(null)
+    }
   }
 
+  const invite = () => {
+    if (!project?._id || !canManage || !identityKey.trim()) return
+    void run('invite', async () => {
+      await createEnrollment({
+        projectId: project._id,
+        identityKey: identityKey.trim(),
+        role: inviteRole,
+      })
+      setIdentityKey('')
+      setNotice('Device invitation created.')
+    })
+  }
+
+  const changeRole = (memberUserId: Id<'devicePrincipals'>, role: ProjectRole) => {
+    if (!project?._id || !principalId || !canManage) return
+    void run(`role:${memberUserId}`, async () => {
+      await updateRole({
+        projectId: project._id,
+        actorUserId: principalId,
+        memberUserId,
+        newRole: role,
+      })
+    })
+  }
+
+  const remove = (memberUserId: Id<'devicePrincipals'>) => {
+    if (!project?._id || !principalId || !canManage) return
+    void run(`remove:${memberUserId}`, async () => {
+      await removeMember({
+        projectId: project._id,
+        actorUserId: principalId,
+        memberUserId,
+      })
+    })
+  }
+
+  if (project === undefined) {
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><div className="loader mr-2" />Loading team…</div>
+  }
   if (project === null) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        {t('team.error.projectNotFound')}
-      </div>
-    )
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Project not found.</div>
   }
 
   return (
-    <div className="h-full p-6">
-      {teamError ? (
-        <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {teamError}
+    <div className="h-full overflow-y-auto p-6">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div>
+          <h1 className="text-lg font-semibold">Project devices</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every member is one physical Cozea device with its own cryptographic identity.
+          </p>
         </div>
-      ) : null}
 
-        <div className="overflow-hidden">
-          <Table className="[&_th]:px-4 [&_td]:px-4">
-          <TableHeader className="[&_tr]:border-b [&_tr]:border-border/60">
-            <TableRow>
-              <TableHead className="w-[40%]">{t('team.header.collaborator')}</TableHead>
-              <TableHead className="w-[22%]">{t('team.sort.role')}</TableHead>
-              <TableHead className="w-[16%]">{t('team.header.project')}</TableHead>
-              <TableHead className="w-[16%]">{t('team.sort.date')}</TableHead>
-              <TableHead className="w-12" />
-            </TableRow>
-          </TableHeader>
-          <TableBody className="[&_tr]:border-b [&_tr]:border-border/60 [&_tr:last-child]:border-0">
-            {filteredRows.length > 0 ? (
-              filteredRows.map((row) => {
+        {error ? <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div> : null}
+        {notice ? <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{notice}</div> : null}
+
+        {canManage ? (
+          <section className="space-y-2 rounded-xl border border-border/60 p-4">
+            <div>
+              <p className="text-sm font-medium">Invite a device</p>
+              <p className="text-xs text-muted-foreground">Use the public czd_… identity shown in Device Identity settings on the other machine.</p>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={identityKey}
+                onChange={(event) => setIdentityKey(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') invite() }}
+                placeholder="czd_…"
+                className="h-8 flex-1 font-mono text-xs"
+              />
+              <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as ProjectRole)}>
+                <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROLE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button size="sm" className="h-8" disabled={!identityKey.trim() || busy !== null} onClick={invite}>Invite</Button>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="overflow-hidden rounded-xl border border-border/60">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Device</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Added</TableHead>
+                <TableHead className="w-12" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members === undefined ? (
+                <TableRow><TableCell colSpan={4} className="h-20 text-center text-muted-foreground">Loading…</TableCell></TableRow>
+              ) : members.length === 0 ? (
+                <TableRow><TableCell colSpan={4} className="h-20 text-center text-muted-foreground">No devices have access.</TableCell></TableRow>
+              ) : members.map((member) => {
+                const self = member.userId === principalId
+                const memberBusy = busy === `role:${member.userId}` || busy === `remove:${member.userId}`
                 return (
-                  <TableRow key={row.key}>
-                    <TableCell className="overflow-hidden">
+                  <TableRow key={member._id}>
+                    <TableCell>
                       <div className="flex min-w-0 items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarImage src={row.avatarUrl ?? undefined} />
-                          <AvatarFallback className="text-xs">
-                            {row.name
-                              .split(' ')
-                              .map((namePart) => namePart[0])
-                              .join('')
-                              .toUpperCase()
-                              .slice(0, 2)}
-                          </AvatarFallback>
+                        <Avatar className="size-9 rounded-lg">
+                          {member.avatarUrl ? <AvatarImage src={member.avatarUrl} alt={member.displayName} /> : null}
+                          <AvatarFallback className="rounded-lg text-xs">{initials(member.displayName)}</AvatarFallback>
                         </Avatar>
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="truncate font-medium">{row.name}</span>
+                            <span className="truncate font-medium">{member.displayName}</span>
+                            {self ? <Badge variant="secondary">This device</Badge> : null}
                           </div>
-                          <div className="truncate text-sm text-muted-foreground">{row.secondaryLabel}</div>
+                          <div className="truncate font-mono text-[11px] text-muted-foreground">{member.identityKey}</div>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="overflow-hidden">
-                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                        <Badge className="max-w-full shrink justify-start border-0 bg-primary/10 text-primary">
-                          <span className="truncate">{getRoleLabel(row.role, t)}</span>
-                        </Badge>
-                        {row.isSelf ? (
-                          <>
-                            <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden="true" />
-                            <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                              {t('team.badge.you')}
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="overflow-hidden">
-                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                        <span
-                          className={`h-2 w-2 rounded-full ${
-                            row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'
-                          }`}
-                        />
-                        <span
-                          className={`truncate ${
-                            row.status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'
-                          }`}
-                        >
-                          {row.status === 'active' ? t('team.status.active') : t('team.status.pending')}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(row.date)}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Member options"
-                        onClick={(e) => void handleOpenRowMenu(e, row)}
-                      >
-                        {teamActionKey &&
-                        (teamActionKey === `role:${row.userId}` ||
-                          teamActionKey === `remove:${row.userId}` ||
-                          teamActionKey === `resend:${row.inviteId}` ||
-                          teamActionKey === `cancel:${row.inviteId}`) ? (
-                          <div className="loader" />
-                        ) : (
-                          <HugeiconsIcon icon={__MoreVerticalHugeIcon} className="h-4 w-4" />
-                        )}
-                      </Button>
+                      {canManage && !self ? (
+                        <Select
+                          value={member.role}
+                          disabled={memberBusy}
+                          onValueChange={(value) => changeRole(member.userId, value as ProjectRole)}
+                        >
+                          <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {ROLE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge variant="outline">{member.role.replace(/_/g, ' ')}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(member.addedAt)}</TableCell>
+                    <TableCell>
+                      {canManage && !self ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          disabled={memberBusy}
+                          onClick={() => remove(member.userId)}
+                          aria-label={`Remove ${member.displayName}`}
+                        >
+                          <HugeiconsIcon icon={__TrashHugeIcon} className="size-4" />
+                        </Button>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 )
-              })
-            ) : hasResolvedTeamRows ? (
-              <TableRow>
-                <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
-                  {t('team.empty.noMembers')}
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
+              })}
+            </TableBody>
+          </Table>
+        </section>
+
+        {canManage && (pending ?? []).length > 0 ? (
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium">Pending invitations</h2>
+            <div className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60">
+              {(pending ?? []).map((enrollment) => (
+                <div key={enrollment._id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-mono text-xs">{enrollment.targetIdentityKey}</div>
+                    <div className="text-[11px] text-muted-foreground">{enrollment.role.replace(/_/g, ' ')} · expires {formatDate(enrollment.expiresAt)}</div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    disabled={busy !== null}
+                    onClick={() => void run(`cancel:${enrollment._id}`, async () => {
+                      await cancelEnrollment({ enrollmentId: enrollment._id })
+                    })}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   )
