@@ -1,10 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import type { Id } from '../../../../convex/_generated/dataModel'
-import type {
-  PersonalWorkspaceMembership,
-  User,
-} from '../types/electron'
+import type { PersonalWorkspaceMembership, User } from '../types/electron'
 import { convex } from '@/lib/convex'
 import { clearDeviceSession, getDeviceSession, type DeviceSession } from '@/lib/deviceSession'
 import { getInitialDesktopBootstrap } from '@/app/bootstrap/desktopBootstrap'
@@ -16,16 +13,6 @@ interface AuthContextType {
   accessToken: string | null
   personalWorkspace: PersonalWorkspaceMembership | null
   isAuthenticated: boolean
-  /**
-   * True only while Convex actually holds a device token.
-   *
-   * `isAuthenticated` is about the cached local identity, which is painted from
-   * the shell-first bootstrap long before any cloud call can succeed. Convex
-   * queries must gate on *this* instead: the bootstrap path deliberately calls
-   * `convex.clearAuth()` and re-establishes auth asynchronously, and every
-   * failure path clears it again. A query issued in that window is rejected by
-   * `requireAuthenticatedDevice` on the server.
-   */
   isConvexAuthReady: boolean
   isLoading: boolean
   isRevalidating: boolean
@@ -46,11 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ? getInitialDesktopBootstrap()?.session ?? null
     : null
 
-  // Cached identity is sufficient to paint the local desktop shell, but never
-  // becomes live cloud authority. Convex user id + bearer token stay null until
-  // a fresh device challenge succeeds in this process.
+  // Cached device presentation can paint the desktop shell immediately, but
+  // cloud authority is re-established from a fresh proof-of-possession token.
   const [user, setUser] = useState<User | null>(() => bootstrapSession?.user ?? null)
-  const [principalId, setConvexUserId] = useState<Id<"devicePrincipals"> | null>(null)
+  const [principalId, setPrincipalId] = useState<Id<"devicePrincipals"> | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [personalWorkspace, setPersonalWorkspace] = useState<PersonalWorkspaceMembership | null>(
     () => bootstrapSession?.personalWorkspace ?? null,
@@ -59,12 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isRevalidating, setIsRevalidating] = useState(() => Boolean(bootstrapSession))
   const [authError, setAuthError] = useState<string | null>(null)
 
-  const applyDeviceSession = useCallback((localProfile: DeviceSession) => {
+  const applyDeviceSession = useCallback((session: DeviceSession) => {
     setAuthError(null)
-    setAccessToken(localProfile.accessToken)
-    setUser(localProfile.user)
-    setConvexUserId(localProfile.principalId)
-    setPersonalWorkspace(localProfile.personalWorkspace)
+    setAccessToken(session.accessToken)
+    setUser(session.user)
+    setPrincipalId(session.principalId)
+    setPersonalWorkspace(session.personalWorkspace)
   }, [])
 
   const configureConvexAuth = useCallback(() => {
@@ -72,19 +58,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const bootstrapLocalDeviceSession = useCallback(async (options: { force?: boolean } = {}) => {
-    const localProfile = await getDeviceSession(options)
+    const session = await getDeviceSession(options)
     configureConvexAuth()
-    applyDeviceSession(localProfile)
+    applyDeviceSession(session)
   }, [applyDeviceSession, configureConvexAuth])
 
   useEffect(() => {
     let cancelled = false
 
     if (bootstrapSession) {
-      // Shell-first path: local identity is already visible. Revalidate in the
-      // background and only then expose cloud identity/token to consumers.
       convex?.clearAuth()
-      setConvexUserId(null)
+      setPrincipalId(null)
       setAccessToken(null)
       setIsLoading(false)
       setIsRevalidating(true)
@@ -92,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .catch((error) => {
           if (cancelled) return
           convex?.clearAuth()
-          setConvexUserId(null)
+          setPrincipalId(null)
           setAccessToken(null)
           console.warn('[Auth] Background device-session revalidation failed:', error)
           setAuthError('Cloud authentication is temporarily unavailable. Local workspace state remains available.')
@@ -111,10 +95,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (cancelled) return
         convex?.clearAuth()
-        setConvexUserId(null)
+        setPrincipalId(null)
         setAccessToken(null)
-        console.error('[Auth] Failed to initialize local device profile:', error)
-        setAuthError('Unable to initialize the local device profile.')
+        console.error('[Auth] Failed to initialize local device principal:', error)
+        setAuthError('Unable to initialize the local device identity.')
       } finally {
         if (!cancelled) {
           setIsLoading(false)
@@ -136,10 +120,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthError(null)
     } catch (error) {
       convex?.clearAuth()
-      setConvexUserId(null)
+      setPrincipalId(null)
       setAccessToken(null)
-      console.error('[Auth] Failed to initialize local device profile:', error)
-      setAuthError('Unable to initialize the local device profile.')
+      console.error('[Auth] Failed to initialize local device principal:', error)
+      setAuthError('Unable to initialize the local device identity.')
       throw error
     } finally {
       setIsLoading(false)
@@ -151,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     convex?.clearAuth()
     await clearDeviceSession()
     setUser(null)
-    setConvexUserId(null)
+    setPrincipalId(null)
     setPersonalWorkspace(null)
     setAccessToken(null)
     setAuthError(null)
@@ -166,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return 'refreshed'
     } catch {
       convex?.clearAuth()
-      setConvexUserId(null)
+      setPrincipalId(null)
       setAccessToken(null)
       return 'retryable'
     } finally {
@@ -175,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [bootstrapLocalDeviceSession])
 
   const needsOnboarding = Boolean(
-    user && (user.firstName?.trim() || UNCONFIGURED_DEVICE_NAME) === UNCONFIGURED_DEVICE_NAME,
+    user && (user.displayName.trim() || UNCONFIGURED_DEVICE_NAME) === UNCONFIGURED_DEVICE_NAME,
   )
 
   const value = useMemo<AuthContextType>(
@@ -214,8 +198,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider')
   return context
 }
