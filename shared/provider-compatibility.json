@@ -7,21 +7,72 @@
     {
       "driver": "codex",
       "testedRuntimeVersions": [],
-      "observedRuntimeVersions": ["0.153.2", "0.153.3"],
+      "observedRuntimeVersions": [
+        "0.153.2",
+        "0.153.3"
+      ],
       "adapterRevision": "be4668f7b439499f39a659055d0f6ec34ac666b2",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
-      "fixtureFeatures": ["saved-history", "async-questions", "compaction", "stop", "approvals"],
-      "nativeSmoke": {"version":"0.153.3","model":"gpt-5.6-luna","features":["new-chat","streamed-result","cli-upgrade-resume","renderer-reload-resume","stop-interrupted-state","idle-composer-after-stop"],"result":"passed","fullMatrixQualified":false},
-      "priorNativeSmoke": {"version":"0.153.2","model":"gpt-5.6-luna","features":["server-restart-resume","same-native-rollout","stop-interrupted-state","post-stop-chat","compaction","post-compaction-chat"],"result":"passed","fullMatrixQualified":false}
+      "fixtureFeatures": [
+        "saved-history",
+        "async-questions",
+        "compaction",
+        "stop",
+        "approvals"
+      ],
+      "nativeSmoke": {
+        "version": "0.153.3",
+        "model": "gpt-5.6-luna",
+        "features": [
+          "new-chat",
+          "streamed-result",
+          "cli-upgrade-resume",
+          "renderer-reload-resume",
+          "stop-interrupted-state",
+          "idle-composer-after-stop"
+        ],
+        "result": "passed",
+        "fullMatrixQualified": false
+      },
+      "priorNativeSmoke": {
+        "version": "0.153.2",
+        "model": "gpt-5.6-luna",
+        "features": [
+          "server-restart-resume",
+          "same-native-rollout",
+          "stop-interrupted-state",
+          "post-stop-chat",
+          "compaction",
+          "post-compaction-chat"
+        ],
+        "result": "passed",
+        "fullMatrixQualified": false
+      }
     },
     {
       "driver": "claudeAgent",
       "testedRuntimeVersions": [],
-      "observedRuntimeVersions": ["2.1.260"],
+      "observedRuntimeVersions": [
+        "2.1.260"
+      ],
       "adapterRevision": "be4668f7b439499f39a659055d0f6ec34ac666b2",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
-      "fixtureFeatures": ["resume", "streaming", "stop", "approvals", "skills"],
-      "nativeSmoke": {"version":"2.1.260","features":["catalog","authentication-error-display"],"result":"chat blocked by provider account rejection","fullMatrixQualified":false}
+      "fixtureFeatures": [
+        "resume",
+        "streaming",
+        "stop",
+        "approvals",
+        "skills"
+      ],
+      "nativeSmoke": {
+        "version": "2.1.260",
+        "features": [
+          "catalog",
+          "authentication-error-display"
+        ],
+        "result": "chat blocked by provider account rejection",
+        "fullMatrixQualified": false
+      }
     },
     {
       "driver": "cursor",
@@ -29,16 +80,42 @@
       "observedRuntimeVersions": [],
       "adapterRevision": "be4668f7b439499f39a659055d0f6ec34ac666b2",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
-      "fixtureFeatures": ["resume", "stop", "native-option-ids"]
+      "fixtureFeatures": [
+        "resume",
+        "stop",
+        "native-option-ids"
+      ]
     },
     {
       "driver": "opencode",
       "testedRuntimeVersions": [],
-      "observedRuntimeVersions": ["1.18.28", "1.18.29"],
+      "observedRuntimeVersions": [
+        "1.18.28",
+        "1.18.29"
+      ],
       "adapterRevision": "be4668f7b439499f39a659055d0f6ec34ac666b2",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
-      "fixtureFeatures": ["permission-retry", "workspace-scope-label", "process-isolation", "stop", "progress"],
-      "nativeSmoke": {"version":"1.18.29","model":"Gemini 3.7 Flash","features":["new-chat","streamed-result","idle-composer","draft-reload-restoration","renderer-reload-resume","model-catalog"],"result":"passed; earlier 1.18.28 OpenRouter GPT-5 Mini request was rejected for insufficient credits","fullMatrixQualified":false}
+      "fixtureFeatures": [
+        "permission-retry",
+        "workspace-scope-label",
+        "process-isolation",
+        "stop",
+        "progress"
+      ],
+      "nativeSmoke": {
+        "version": "1.18.29",
+        "model": "Gemini 3.7 Flash",
+        "features": [
+          "new-chat",
+          "streamed-result",
+          "idle-composer",
+          "draft-reload-restoration",
+          "renderer-reload-resume",
+          "model-catalog"
+        ],
+        "result": "passed; earlier 1.18.28 OpenRouter GPT-5 Mini request was rejected for insufficient credits",
+        "fullMatrixQualified": false
+      }
     },
     {
       "driver": "antigravity",
@@ -46,7 +123,14 @@
       "observedRuntimeVersions": [],
       "adapterRevision": "be4668f7b439499f39a659055d0f6ec34ac666b2",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
-      "fixtureFeatures": ["account-isolation", "auth-callbacks", "installation-leases", "native-option-ids", "attachment-limits", "skills"]
+      "fixtureFeatures": [
+        "account-isolation",
+        "auth-callbacks",
+        "installation-leases",
+        "native-option-ids",
+        "attachment-limits",
+        "skills"
+      ]
     }
   ]
 }
