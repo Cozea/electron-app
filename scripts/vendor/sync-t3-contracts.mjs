@@ -15,7 +15,7 @@ const check = process.argv.includes("--check");
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const pin = git(vendorRoot, "rev-parse", "HEAD");
 const documented = fs.readFileSync(path.join(root, "docs/substrate-t3-pin.md"), "utf8").match(/`([0-9a-f]{40})`/)?.[1];
-const constant = fs.readFileSync(path.join(root, "apps/desktop/electron/substrate/constants.ts"), "utf8").match(/SUBSTRATE_T3_PIN_SHA\s*(?::\s*string)?\s*=\s*"([0-9a-f]{40})"/)?.[1];
+const constant = fs.readFileSync(path.join(root, "apps/desktop/electron/substrate/constants.ts"), "utf8").match(/SUBSTRATE_T3_PIN_SHA = "([0-9a-f]{40})"/)?.[1];
 const gitlink = git(root, "ls-files", "--stage", "vendor/t3code").split(/\s+/)[1];
 if (pin !== documented || pin !== constant || pin !== gitlink) {
   throw new Error("T3 HEAD, staged gitlink, documented pin, and runtime constant must agree before contract sync.");
@@ -47,11 +47,25 @@ function extractConstBlock(source, exportName) {
   return `${source.slice(start, end)}${asConst}`;
 }
 
+/**
+ * Compares two arrays for shallow equality.
+ *
+ * @param {unknown} left - First array
+ * @param {unknown} right - Second array
+ * @returns {boolean} True if arrays are equal, false otherwise
+ */
 function arraysEqual(left, right) {
   return Array.isArray(left) && Array.isArray(right) &&
     left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+/**
+ * Compares two records (objects) for shallow equality of their keys and values.
+ *
+ * @param {unknown} left - First record
+ * @param {unknown} right - Second record
+ * @returns {boolean} True if records have the same keys and values, false otherwise
+ */
 function recordsEqual(left, right) {
   if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
   const leftKeys = Object.keys(left).sort();

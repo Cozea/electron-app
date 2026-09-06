@@ -18,10 +18,26 @@ const UPSTREAM_REVISION = '41c5294cfe4735baca03f9c82b4de99d191a0b49'
 const checkOnly = process.argv.includes('--check')
 const debug = process.argv.includes('--debug')
 
+/**
+ * Throws an error with a prefixed message for this script.
+ *
+ * @param {string} message - Error message
+ * @throws {Error} Always throws
+ */
 function fail(message) {
   throw new Error(`[prepare-computer-use-runtime] ${message}`)
 }
 
+/**
+ * Runs a command synchronously and returns its stdout, failing with a descriptive error on non-zero exit.
+ *
+ * @param {string} command - Command to execute
+ * @param {string[]} args - Command arguments
+ * @param {Object} options - Options object
+ * @param {string} [options.cwd] - Working directory
+ * @param {boolean} [options.capture] - Whether to capture and return stdout
+ * @returns {string} Command stdout if capture is true, empty string otherwise
+ */
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repositoryRoot,
@@ -37,6 +53,13 @@ function run(command, args, options = {}) {
   return options.capture ? result.stdout.trim() : ''
 }
 
+/**
+ * Recursively walks a directory tree, returning all files matching a predicate.
+ *
+ * @param {string} root - Root directory to walk
+ * @param {(path: string, name: string) => boolean} predicate - Predicate to test each file
+ * @returns {string[]} Array of matching file paths
+ */
 function walkFor(root, predicate) {
   if (!fs.existsSync(root)) return []
   const matches = []
@@ -51,12 +74,22 @@ function walkFor(root, predicate) {
   return matches
 }
 
+/**
+ * Maps Node.js process.arch to the architecture string expected by the upstream runtime.
+ *
+ * @returns {string} Runtime architecture ('arm64' or 'amd64')
+ */
 function runtimeArch() {
   if (process.arch === 'arm64') return 'arm64'
   if (process.arch === 'x64') return 'amd64'
   fail(`Unsupported Computer Use architecture: ${process.arch}`)
 }
 
+/**
+ * Returns the expected artifact filenames for the current platform and architecture.
+ *
+ * @returns {string[]} Array of expected artifact filenames
+ */
 function expectedArtifactNames() {
   const common = [LICENSE_ARTIFACT]
   if (process.platform === 'darwin') {
@@ -72,6 +105,11 @@ function expectedArtifactNames() {
   return common
 }
 
+/**
+ * Reads the build manifest if it exists, returning null if missing or invalid.
+ *
+ * @returns {Object|null} Parsed manifest object or null
+ */
 function readManifest() {
   try {
     return JSON.parse(fs.readFileSync(path.join(outputRoot, 'manifest.json'), 'utf8'))
@@ -80,6 +118,11 @@ function readManifest() {
   }
 }
 
+/**
+ * Checks if the current output directory is up-to-date for the current platform and upstream version.
+ *
+ * @returns {boolean} True if output is current, false otherwise
+ */
 function outputIsCurrent() {
   const manifest = readManifest()
   if (!manifest) return false
@@ -93,6 +136,11 @@ function outputIsCurrent() {
   return expectedArtifactNames().every((name) => fs.existsSync(path.join(outputRoot, name)))
 }
 
+/**
+ * Verifies that the expected open-computer-use npm package is installed with the correct version.
+ *
+ * @throws {Error} If the package is missing or version doesn't match
+ */
 function verifyUpstreamNpmPackage() {
   const packageJsonPath = path.join(upstreamPackageRoot, 'package.json')
   if (!fs.existsSync(packageJsonPath)) {
@@ -104,6 +152,12 @@ function verifyUpstreamNpmPackage() {
   }
 }
 
+/**
+ * Checks if a dylib file matches the current process architecture using lipo.
+ *
+ * @param {string} candidate - Path to the dylib to check
+ * @returns {boolean} True if the dylib contains the current architecture
+ */
 function dylibMatchesCurrentArchitecture(candidate) {
   const expected = process.arch === 'arm64' ? 'arm64' : 'x86_64'
   const archs = run('/usr/bin/xcrun', ['lipo', '-archs', candidate], { capture: true })
@@ -112,6 +166,10 @@ function dylibMatchesCurrentArchitecture(candidate) {
   return archs.includes(expected)
 }
 
+/**
+ * Prepares macOS Computer Use runtime by building the native addon and Swift bridge dylib,
+ * then copying them to the output directory.
+ */
 function prepareMac() {
   const napiArch = process.arch === 'arm64' ? 'arm64' : 'x64'
   const script = debug ? `build:debug:${napiArch}` : `build:${napiArch}`
@@ -138,6 +196,11 @@ function prepareMac() {
   fs.copyFileSync(dylib, path.join(outputRoot, 'libCozeaComputerUseBridge.dylib'))
 }
 
+/**
+ * Prepares Windows/Linux Computer Use runtime by copying the upstream worker binary from node_modules.
+ *
+ * @param {string} platform - Platform name ('windows' or 'linux')
+ */
 function prepareWorker(platform) {
   verifyUpstreamNpmPackage()
   const arch = runtimeArch()

@@ -2,6 +2,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Runs a command and returns its stdout output, panicking with a descriptive message on failure.
 fn run(mut command: Command, label: &str) -> String {
     let output = command.output().unwrap_or_else(|error| panic!("{label} could not start: {error}"));
     if !output.status.success() {
@@ -15,6 +16,7 @@ fn run(mut command: Command, label: &str) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
+/// Maps Rust target architecture to Swift target triple for macOS.
 fn swift_triple(target_arch: &str) -> &'static str {
     match target_arch {
         "aarch64" => "arm64-apple-macosx14.0",

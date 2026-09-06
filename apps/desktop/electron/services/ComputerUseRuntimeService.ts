@@ -35,9 +35,9 @@ interface NativeComputerUseAddon {
   listTools(): string
   diagnostics(): string
   requestPermission(target: 'accessibility' | 'screenRecording'): boolean
-  turnEnded(sessionId: string): Promise<void>
-  resetSession(sessionId: string): Promise<void>
-  resetAll(): Promise<void>
+  turnEnded(sessionId: string): void
+  resetSession(sessionId: string): void
+  resetAll(): void
 }
 
 interface ComputerUseContentItem {
@@ -64,10 +64,23 @@ interface WorkerRpcMessage {
   result?: unknown
 }
 
+/**
+ * Creates a failed Computer Use tool result with the given error message.
+ *
+ * @param message - Error message to include in the result
+ * @returns A ComputerUseToolResult marked as an error
+ */
 function failure(message: string): ComputerUseToolResult {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
+/**
+ * Parses a JSON string into a validated ComputerUseToolResult, filtering out
+ * invalid content items and handling parse errors gracefully.
+ *
+ * @param raw - JSON string representation of a tool result
+ * @returns Parsed and validated ComputerUseToolResult
+ */
 function parseToolResult(raw: string): ComputerUseToolResult {
   try {
     const parsed = JSON.parse(raw) as Partial<ComputerUseToolResult>
@@ -87,33 +100,72 @@ function parseToolResult(raw: string): ComputerUseToolResult {
   }
 }
 
+/**
+ * Resolves the root directory containing the bundled Computer Use runtime.
+ * Checks the packaged resources path first, then falls back to the build directory.
+ *
+ * @returns Absolute path to the Computer Use runtime directory
+ */
 function resolveRuntimeRoot(): string {
   const packaged = path.join(process.resourcesPath, 'computer-use-runtime')
   if (fs.existsSync(packaged)) return packaged
   return resolveUnpackagedBuildDir('computer-use-runtime')
 }
 
+/**
+ * Returns the architecture-specific native addon filename for macOS.
+ *
+ * @returns Native addon filename (e.g., 'cozea_computer_use.darwin-arm64.node')
+ */
 function nativeAddonName(): string {
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
   return `cozea_computer_use.darwin-${arch}.node`
 }
 
+/**
+ * Returns the platform-specific worker binary filename.
+ *
+ * @returns Worker binary name ('open-computer-use.exe' on Windows, 'open-computer-use' elsewhere)
+ */
 function workerBinaryName(): string {
   return process.platform === 'win32' ? 'open-computer-use.exe' : 'open-computer-use'
 }
 
+/**
+ * Performs timing-safe string comparison to prevent timing attacks on tokens.
+ *
+ * @param received - Received token string
+ * @param expected - Expected token string
+ * @returns True if tokens match, false otherwise
+ */
 function safeTokenEquals(received: string, expected: string): boolean {
   const left = Buffer.from(received)
   const right = Buffer.from(expected)
   return left.length === right.length && timingSafeEqual(left, right)
 }
 
+/**
+ * Extracts the set of disabled Computer Use tools from app settings.
+ *
+ * @param settings - Computer Use app settings
+ * @returns Set of disabled tool names
+ */
 function disabledTools(settings: ComputerUseAppSettings): Set<string> {
   return new Set(
     (settings.disabledComputerUseTools ?? []).filter((tool) => COMPUTER_USE_TOOLS.has(tool)),
   )
 }
 
+/**
+ * Validates whether a Computer Use tool call is permitted under current policy settings.
+ * Checks if Computer Use is enabled, the tool is valid and enabled, and specific
+ * restrictions like global pointer fallback policy.
+ *
+ * @param settings - Computer Use app settings
+ * @param tool - Tool name being invoked
+ * @param args - Tool arguments
+ * @returns Error message if validation fails, null if permitted
+ */
 function validateActionPolicy(
   settings: ComputerUseAppSettings,
   tool: string,
@@ -136,6 +188,11 @@ function validateActionPolicy(
   return null
 }
 
+/**
+ * Manages a single Computer Use worker process session that communicates via
+ * JSON-RPC over stdio. Handles request/response correlation, timeouts, and
+ * lifecycle notifications for Windows and Linux platforms.
+ */
 class WorkerMcpSession {
   private readonly child: ChildProcessWithoutNullStreams
   private readonly output: readline.Interface
@@ -143,6 +200,11 @@ class WorkerMcpSession {
   private nextId = 1
   private stopped = false
 
+  /**
+   * Spawns a new Computer Use worker process in MCP mode.
+   *
+   * @param binaryPath - Absolute path to the worker binary
+   */
   constructor(binaryPath: string) {
     this.child = spawn(binaryPath, ['mcp'], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -164,6 +226,11 @@ class WorkerMcpSession {
     })
   }
 
+  /**
+   * Fails all pending requests with the given error and stops the session.
+   *
+   * @param error - Error to reject all pending requests with
+   */
   private failAll(error: Error): void {
     this.stopped = true
     for (const pending of this.pending.values()) {
@@ -174,6 +241,12 @@ class WorkerMcpSession {
     this.output.close()
   }
 
+  /**
+   * Handles a single line of JSON-RPC response from the worker process.
+   * Correlates the response with a pending request and resolves or rejects it.
+   *
+   * @param line - JSON-RPC response line
+   */
   private handleLine(line: string): void {
     let payload: unknown
     try {
@@ -207,6 +280,13 @@ class WorkerMcpSession {
     )
   }
 
+  /**
+   * Invokes a Computer Use tool in the worker process via JSON-RPC.
+   *
+   * @param tool - Tool name to invoke
+   * @param args - Tool arguments
+   * @returns Promise resolving to the tool result
+   */
   call(tool: string, args: unknown): Promise<ComputerUseToolResult> {
     if (this.stopped) return Promise.reject(new Error('Computer Use worker is stopped.'))
     const id = this.nextId++
@@ -227,6 +307,10 @@ class WorkerMcpSession {
     })
   }
 
+  /**
+   * Sends a turn-ended notification to the worker process, signaling that the
+   * current agent turn has completed and any visual state should be cleaned up.
+   */
   turnEnded(): void {
     if (this.stopped) return
     this.child.stdin.write(
@@ -238,6 +322,10 @@ class WorkerMcpSession {
     )
   }
 
+  /**
+   * Stops the worker process gracefully by sending a turn-ended notification
+   * and terminating with SIGTERM.
+   */
   stop(): void {
     if (this.stopped) return
     this.turnEnded()
@@ -251,9 +339,21 @@ export interface ComputerUseRuntimeEnvironment {
   token: string
 }
 
+/**
+ * Manages the Computer Use runtime service, providing a unified interface for both
+ * macOS native addon (OpenComputerUseKit bridge) and cross-platform worker processes.
+ * Handles tool execution, permission requests, session lifecycle, and HTTP broker
+ * for T3 integration. Serializes all tool calls to prevent race conditions on shared
+ * desktop state (element indexes, cursor position).
+ */
 export class ComputerUseRuntimeService {
   private static instance: ComputerUseRuntimeService | null = null
 
+  /**
+   * Returns the singleton instance of the Computer Use runtime service.
+   *
+   * @returns The ComputerUseRuntimeService instance
+   */
   static getInstance(): ComputerUseRuntimeService {
     if (!this.instance) this.instance = new ComputerUseRuntimeService()
     return this.instance
@@ -266,6 +366,12 @@ export class ComputerUseRuntimeService {
   private readonly token = randomBytes(32).toString('base64url')
   private actionTail: Promise<unknown> = Promise.resolve()
 
+  /**
+   * Loads the macOS native Computer Use addon lazily. Returns null if already
+   * attempted, not on macOS, or if the addon file doesn't exist.
+   *
+   * @returns The loaded native addon or null if unavailable
+   */
   private loadNativeAddon(): NativeComputerUseAddon | null {
     if (this.nativeAddon !== undefined) return this.nativeAddon
     if (process.platform !== 'darwin') {
@@ -286,6 +392,13 @@ export class ComputerUseRuntimeService {
     return this.nativeAddon
   }
 
+  /**
+   * Returns an existing worker session for the given session ID or creates a new one.
+   *
+   * @param sessionId - Unique session identifier
+   * @returns WorkerMcpSession for the session
+   * @throws Error if the worker binary is missing
+   */
   private workerSession(sessionId: string): WorkerMcpSession {
     const existing = this.workerSessions.get(sessionId)
     if (existing) return existing
@@ -298,12 +411,29 @@ export class ComputerUseRuntimeService {
     return session
   }
 
+  /**
+   * Executes an async operation serialized with all other Computer Use operations
+   * to prevent concurrent access to shared desktop state.
+   *
+   * @param operation - Async operation to execute
+   * @returns Promise resolving to the operation result
+   */
   private runSerialized<T>(operation: () => Promise<T>): Promise<T> {
     const next = this.actionTail.then(operation, operation)
     this.actionTail = next.catch(() => undefined)
     return next
   }
 
+  /**
+   * Invokes a Computer Use tool with policy validation. On macOS, delegates to
+   * the native addon; on Windows/Linux, delegates to a worker process. All calls
+   * are serialized to prevent race conditions on desktop state.
+   *
+   * @param sessionId - Session identifier for state isolation
+   * @param tool - Tool name to invoke
+   * @param args - Tool arguments
+   * @returns Promise resolving to the tool execution result
+   */
   async callTool(sessionId: string, tool: string, args: unknown): Promise<ComputerUseToolResult> {
     const settings = readComputerUseAppSettings()
     const policyError = validateActionPolicy(settings, tool, args)
@@ -340,6 +470,13 @@ export class ComputerUseRuntimeService {
     return this.runSerialized(execute)
   }
 
+  /**
+   * Retrieves Computer Use runtime diagnostics including installation status,
+   * version, permissions, and any errors. Checks native addon on macOS or
+   * worker binary on other platforms.
+   *
+   * @returns Promise resolving to diagnostic information
+   */
   async getDiagnostics(): Promise<ComputerUseDiagnostics> {
     if (process.platform === 'darwin') {
       const addon = this.loadNativeAddon()
@@ -376,34 +513,61 @@ export class ComputerUseRuntimeService {
     }
   }
 
+  /**
+   * Requests macOS system permission for accessibility or screen recording.
+   * On non-macOS platforms, always returns true (no special permissions needed).
+   *
+   * @param target - Permission type to request ('accessibility' or 'screenRecording')
+   * @returns True if permission is granted or already held, false otherwise
+   */
   requestPermission(target: 'accessibility' | 'screenRecording'): boolean {
     if (process.platform !== 'darwin') return true
     return this.loadNativeAddon()?.requestPermission(target) ?? false
   }
 
-  async turnEnded(sessionId: string): Promise<void> {
-    if (process.platform === 'darwin') {
-      await this.loadNativeAddon()?.turnEnded(sessionId)
-      return
-    }
-    this.workerSessions.get(sessionId)?.turnEnded()
+  /**
+   * Signals that an agent turn has ended for a given session. This allows the
+   * runtime to clean up visual state like on-screen cursors or highlights.
+   *
+   * @param sessionId - Session identifier
+   */
+  turnEnded(sessionId: string): void {
+    if (process.platform === 'darwin') this.loadNativeAddon()?.turnEnded(sessionId)
+    else this.workerSessions.get(sessionId)?.turnEnded()
   }
 
-  async resetSession(sessionId: string): Promise<void> {
+  /**
+   * Resets a specific Computer Use session, clearing its state and stopping
+   * any associated worker process.
+   *
+   * @param sessionId - Session identifier to reset
+   */
+  resetSession(sessionId: string): void {
     if (process.platform === 'darwin') {
-      await this.loadNativeAddon()?.resetSession(sessionId)
+      this.loadNativeAddon()?.resetSession(sessionId)
       return
     }
     this.workerSessions.get(sessionId)?.stop()
     this.workerSessions.delete(sessionId)
   }
 
-  async resetAll(): Promise<void> {
-    await this.loadNativeAddon()?.resetAll()
+  /**
+   * Resets all Computer Use sessions, clearing all state and stopping all worker
+   * processes. Called when settings change to ensure stale state doesn't persist.
+   */
+  resetAll(): void {
+    this.loadNativeAddon()?.resetAll()
     for (const session of this.workerSessions.values()) session.stop()
     this.workerSessions.clear()
   }
 
+  /**
+   * Starts the HTTP broker server that exposes Computer Use operations to T3.
+   * The broker listens on localhost with token authentication and provides
+   * endpoints for tool calls and turn-ended notifications.
+   *
+   * @returns Promise resolving to the broker endpoint URL and authentication token
+   */
   async startBroker(): Promise<ComputerUseRuntimeEnvironment> {
     if (this.server && this.endpoint) return { endpoint: this.endpoint, token: this.token }
     this.server = createServer((request, response) => void this.handleHttpRequest(request, response))
@@ -422,8 +586,13 @@ export class ComputerUseRuntimeService {
     return { endpoint: this.endpoint, token: this.token }
   }
 
+  /**
+   * Stops the HTTP broker server and resets all Computer Use sessions.
+   *
+   * @returns Promise that resolves when the server is fully stopped
+   */
   async stopBroker(): Promise<void> {
-    await this.resetAll()
+    this.resetAll()
     const server = this.server
     this.server = null
     this.endpoint = null
@@ -434,6 +603,13 @@ export class ComputerUseRuntimeService {
     })
   }
 
+  /**
+   * Reads the complete HTTP request body with size limits for security.
+   *
+   * @param request - HTTP request object
+   * @returns Promise resolving to the request body as a UTF-8 string
+   * @throws Error if the request body exceeds MAX_REQUEST_BYTES
+   */
   private async readBody(request: IncomingMessage): Promise<string> {
     const chunks: Buffer[] = []
     let size = 0
@@ -446,6 +622,13 @@ export class ComputerUseRuntimeService {
     return Buffer.concat(chunks).toString('utf8')
   }
 
+  /**
+   * Writes a JSON response with appropriate headers.
+   *
+   * @param response - HTTP response object
+   * @param status - HTTP status code
+   * @param payload - Response payload to serialize as JSON
+   */
   private writeJson(response: ServerResponse, status: number, payload: unknown): void {
     const body = JSON.stringify(payload)
     response.writeHead(status, {
@@ -456,12 +639,25 @@ export class ComputerUseRuntimeService {
     response.end(body)
   }
 
+  /**
+   * Checks if an HTTP request is authorized using Bearer token authentication.
+   *
+   * @param request - HTTP request object
+   * @returns True if the request has a valid bearer token, false otherwise
+   */
   private authorized(request: IncomingMessage): boolean {
     const header = request.headers.authorization ?? ''
     if (!header.startsWith('Bearer ')) return false
     return safeTokenEquals(header.slice('Bearer '.length).trim(), this.token)
   }
 
+  /**
+   * Handles HTTP requests to the Computer Use broker, routing to appropriate
+   * endpoints for tool calls and turn-ended notifications.
+   *
+   * @param request - HTTP request object
+   * @param response - HTTP response object
+   */
   private async handleHttpRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (!this.authorized(request)) {
       this.writeJson(response, 401, failure('Invalid Computer Use broker credential.'))
@@ -476,7 +672,7 @@ export class ComputerUseRuntimeService {
           this.writeJson(response, 400, failure('Computer Use turn end requires threadId.'))
           return
         }
-        await this.turnEnded(threadId)
+        this.turnEnded(threadId)
         this.writeJson(response, 200, { ok: true })
       } catch (error) {
         this.writeJson(response, 500, failure(error instanceof Error ? error.message : String(error)))

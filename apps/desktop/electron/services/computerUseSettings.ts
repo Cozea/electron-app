@@ -8,6 +8,13 @@ export interface ComputerUseAppSettings extends AppSettings {
   computerUseAllowGlobalPointerFallbacks?: boolean
 }
 
+/**
+ * Reads Computer Use app settings from the Electron user data directory.
+ * Merges saved settings with defaults, ensuring type safety for all Computer Use
+ * configuration fields.
+ *
+ * @returns Computer Use app settings with defaults applied
+ */
 export function readComputerUseAppSettings(): ComputerUseAppSettings {
   const defaults = {
     projectsDirectory: path.join(app.getPath('home'), 'Developer', 'Cozea'),
