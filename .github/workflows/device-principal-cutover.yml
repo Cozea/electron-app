@@ -30,6 +30,7 @@ jobs:
         run: |
           node scripts/prepare-review-fix-driver.mjs
           node scripts/review-fix-device-principal.mjs
+          node scripts/post-review-fix-compile.mjs
 
       - name: Initialize pinned T3 source
         run: |
