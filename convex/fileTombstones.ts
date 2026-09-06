@@ -5,8 +5,8 @@ import { v } from "convex/values"
 
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
-function deviceDisplayName(device: { deviceLabel?: string; identityKey?: string }): string {
-  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"
+function deviceDisplayName(device: { displayName?: string; identityKey?: string }): string {
+  return device.displayName?.trim() || device.identityKey?.trim() || "Unknown device"
 }
 
 /** Create a tombstone when a file is deleted. */
@@ -14,8 +14,6 @@ export const createTombstone = mutation({
   args: {
     projectId: v.id("projects"),
     filePath: v.string(),
-    // Transitional caller field. Human/device attribution is derived from auth.
-    deletedBy: v.optional(v.id("devicePrincipals")),
     deletedByAgent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

@@ -21,18 +21,16 @@ function isExpired(lockedAt: number | undefined, ttlMs: number, now: number): bo
 }
 
 function displayName(device: {
-  deviceLabel?: string | undefined
+  displayName?: string | undefined
   identityKey?: string | undefined
 }): string {
-  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"
+  return device.displayName?.trim() || device.identityKey?.trim() || "Unknown device"
 }
 
 export const acquireLock = mutation({
   args: {
     projectId: v.id("projects"),
     filePath: v.string(),
-    // Transitional caller field. Lock ownership is derived from device auth.
-    userId: v.optional(v.id("devicePrincipals")),
     ttlMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -149,7 +147,6 @@ export const releaseLock = mutation({
   args: {
     projectId: v.id("projects"),
     filePath: v.string(),
-    userId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
     const principal = await requireAuthenticatedDevice(ctx)
@@ -205,11 +202,11 @@ export const getLock = query({
     return {
       ...lock,
       trafficLight,
-      lockedByUser: lockedByDevice
+      lockedByPrincipal: lockedByDevice
         ? {
             id: lockedByDevice._id as Id<"devicePrincipals">,
-            name: displayName(lockedByDevice),
-            profileImageUrl: lockedByDevice.avatarStorageId ? await ctx.storage.getUrl(lockedByDevice.avatarStorageId) : null,
+            displayName: displayName(lockedByDevice),
+            avatarUrl: lockedByDevice.avatarStorageId ? await ctx.storage.getUrl(lockedByDevice.avatarStorageId) : null,
           }
         : null,
     }
