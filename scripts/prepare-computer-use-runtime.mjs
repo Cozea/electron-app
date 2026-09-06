@@ -11,6 +11,8 @@ const outputRoot = path.join(repositoryRoot, 'build', 'computer-use-runtime')
 const nativePackageRoot = path.join(repositoryRoot, 'packages', 'computer-use-native')
 const swiftPackageRoot = path.join(repositoryRoot, 'native', 'computer-use-bridge')
 const upstreamPackageRoot = path.join(repositoryRoot, 'node_modules', 'open-computer-use')
+const licenseSource = path.join(swiftPackageRoot, 'OPEN_COMPUTER_USE_LICENSE.txt')
+const LICENSE_ARTIFACT = 'OPEN_COMPUTER_USE_LICENSE.txt'
 const UPSTREAM_VERSION = '0.3.3'
 const UPSTREAM_REVISION = '41c5294cfe4735baca03f9c82b4de99d191a0b49'
 const checkOnly = process.argv.includes('--check')
@@ -56,16 +58,18 @@ function runtimeArch() {
 }
 
 function expectedArtifactNames() {
+  const common = [LICENSE_ARTIFACT]
   if (process.platform === 'darwin') {
     const napiArch = process.arch === 'arm64' ? 'arm64' : 'x64'
     return [
+      ...common,
       `cozea_computer_use.darwin-${napiArch}.node`,
       'libCozeaComputerUseBridge.dylib',
     ]
   }
-  if (process.platform === 'win32') return ['open-computer-use.exe']
-  if (process.platform === 'linux') return ['open-computer-use']
-  return []
+  if (process.platform === 'win32') return [...common, 'open-computer-use.exe']
+  if (process.platform === 'linux') return [...common, 'open-computer-use']
+  return common
 }
 
 function readManifest() {
@@ -155,6 +159,9 @@ if (process.platform === 'darwin') {
   fail(`Unsupported platform: ${process.platform}`)
 }
 
+if (!fs.existsSync(licenseSource)) fail(`Missing required upstream license: ${licenseSource}`)
+fs.copyFileSync(licenseSource, path.join(outputRoot, LICENSE_ARTIFACT))
+
 fs.writeFileSync(
   path.join(outputRoot, 'manifest.json'),
   `${JSON.stringify({
@@ -165,6 +172,7 @@ fs.writeFileSync(
     platform: process.platform,
     arch: process.arch,
     backend: process.platform === 'darwin' ? 'OpenComputerUseKit-in-process' : 'upstream-mcp-worker',
+    license: LICENSE_ARTIFACT,
     generatedAt: new Date().toISOString(),
   }, null, 2)}\n`,
   'utf8',
