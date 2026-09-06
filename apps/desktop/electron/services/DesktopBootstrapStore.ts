@@ -9,7 +9,7 @@ import {
   type DesktopWorkbenchLocator,
 } from '../../../../shared/desktopBootstrapTypes'
 
-const SESSION_FILE_NAME = 'desktop-bootstrap-session.v1.enc'
+const SESSION_FILE_NAME = 'desktop-bootstrap-session.v2.enc'
 const NAVIGATION_FILE_NAME = 'desktop-bootstrap-navigation.v1.json'
 
 interface StoredNavigationState {
@@ -30,11 +30,9 @@ function isOptionalNullableString(value: unknown): value is string | null | unde
 }
 
 function isDesktopBootstrapSession(value: unknown): value is DesktopBootstrapSession {
-  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.personalWorkspace)) {
-    return false
-  }
+  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.personalWorkspace)) return false
 
-  const user = value.user
+  const principal = value.user
   const workspace = value.personalWorkspace
   return (
     typeof value.accessToken === 'string' &&
@@ -43,13 +41,14 @@ function isDesktopBootstrapSession(value: unknown): value is DesktopBootstrapSes
     Number.isFinite(value.expiresAt) &&
     typeof value.principalId === 'string' &&
     value.principalId.length > 0 &&
-    typeof user.id === 'string' &&
-    user.id.length > 0 &&
-    typeof user.deviceId === 'string' &&
-    typeof user.email === 'string' &&
-    isNullableString(user.firstName) &&
-    isNullableString(user.lastName) &&
-    isNullableString(user.profileImageUrl) &&
+    typeof principal.principalId === 'string' &&
+    principal.principalId.length > 0 &&
+    principal.principalId === value.principalId &&
+    typeof principal.identityKey === 'string' &&
+    principal.identityKey.length > 0 &&
+    typeof principal.displayName === 'string' &&
+    typeof principal.platform === 'string' &&
+    isNullableString(principal.avatarUrl) &&
     typeof workspace.id === 'string' &&
     typeof workspace.workspaceId === 'string' &&
     workspace.workspaceId.length > 0 &&
@@ -118,9 +117,7 @@ export class DesktopBootstrapStore {
   }
 
   async storeSession(session: DesktopBootstrapSession): Promise<void> {
-    if (!isDesktopBootstrapSession(session)) {
-      throw new Error('Invalid desktop bootstrap session.')
-    }
+    if (!isDesktopBootstrapSession(session)) throw new Error('Invalid desktop bootstrap session.')
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('Secure storage is unavailable for the desktop bootstrap session.')
     }
@@ -133,9 +130,7 @@ export class DesktopBootstrapStore {
   }
 
   async setLastWorkbenchRoute(entry: DesktopWorkbenchLocator): Promise<void> {
-    if (!isDesktopWorkbenchLocator(entry)) {
-      throw new Error('Invalid desktop workbench locator.')
-    }
+    if (!isDesktopWorkbenchLocator(entry)) throw new Error('Invalid desktop workbench locator.')
     await this.writeNavigation({ version: 1, lastWorkbenchRoute: entry })
   }
 
@@ -166,9 +161,7 @@ export class DesktopBootstrapStore {
     try {
       const parsed: unknown = JSON.parse(await fs.promises.readFile(this.navigationPath, 'utf8'))
       if (!isRecord(parsed) || parsed.version !== 1) return null
-      return isDesktopWorkbenchLocator(parsed.lastWorkbenchRoute)
-        ? parsed.lastWorkbenchRoute
-        : null
+      return isDesktopWorkbenchLocator(parsed.lastWorkbenchRoute) ? parsed.lastWorkbenchRoute : null
     } catch {
       return null
     }
