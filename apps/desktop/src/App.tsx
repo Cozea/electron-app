@@ -260,6 +260,29 @@ function AppContent() {
     }, { delayMs: featureFlags.commonRoutePrewarm ? 750 : 6_000, timeoutMs: 15_000 })
   }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
+  /**
+   * Scheduled tasks fire from the app, not from a page, so the loop lives here
+   * and outlives whatever route is open. It starts after sign-in because a run
+   * opens a conversation, which needs the local agent runtime.
+   */
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || needsOnboarding) {
+      return
+    }
+
+    let stop: (() => void) | null = null
+    const cancelWarmup = scheduleIdleWarmup(() => {
+      void import('@/features/projects/model/scheduledTaskRunner').then((module) => {
+        stop = module.startScheduledTaskRunner()
+      })
+    }, { delayMs: 5_000, timeoutMs: 20_000 })
+
+    return () => {
+      cancelWarmup?.()
+      stop?.()
+    }
+  }, [isAuthenticated, isLoading, needsOnboarding])
+
   if (isLoading) {
     return <FullscreenLoading />
   }

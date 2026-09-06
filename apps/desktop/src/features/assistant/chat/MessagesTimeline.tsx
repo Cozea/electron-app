@@ -106,6 +106,7 @@ import { normalizeToolRowPresentation } from "./toolDetailPresentation";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { ProviderAuthenticationHelp } from "./ProviderRemediationAction";
+import { ScheduledTaskProposalCard } from "./ScheduledTaskProposalCard";
 import {
   normalizeCompactToolLabel,
   toolGroupAction,
@@ -1080,6 +1081,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 messageId={String(row.message.id)}
                 isStreaming={Boolean(row.message.streaming)}
                 isSuperseded={row.message.id !== latestAssistantMessageId}
+              />
+              <ScheduledTaskProposalCard
+                message={row.message.text}
+                workspaceRoot={markdownCwd}
+                isStreaming={Boolean(row.message.streaming)}
               />
               {(() => {
                 const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);

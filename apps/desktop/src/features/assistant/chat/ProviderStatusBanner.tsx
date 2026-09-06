@@ -3,31 +3,23 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircleIcon as __CircleAlertIconHugeIcon } from '@hugeicons/core-free-icons'
 
-import {
-  PROVIDER_DISPLAY_NAMES,
-  type ProviderDriverKind,
-  type ServerProvider,
-} from "@cozea/assistant-contracts";
-import { memo, useState } from "react";
+import { PROVIDER_DISPLAY_NAMES, type ServerProvider } from "@cozea/assistant-contracts";
+import { memo } from "react";
 
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon";
 import { getDevAppForAssistantProvider } from "@/features/devapps/registry";
 import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
 import { Button } from "@/components/ui/button";
-import { updateAssistantProvider } from "@/features/assistant/model/assistantRuntimeMetadataStore";
 import { presentProviderStatusMessage } from "@/features/assistant/chat/providerStatusPresentation";
+import { useProviderUpdate } from "@/features/assistant/chat/useProviderUpdate";
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
 }: {
   status: ServerProvider | null;
 }) {
-  const [updateError, setUpdateError] = useState<string | null>(null);
-  const [updateResult, setUpdateResult] = useState<
-    NonNullable<ServerProvider["updateState"]> | null
-  >(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const updateAvailable = status?.versionAdvisory?.status === "behind_latest";
+  const update = useProviderUpdate(status);
+  const updateAvailable = update.updateAvailable;
 
   if (!status || ((!updateAvailable && status.status === "ready") || status.status === "disabled")) {
     return null;
@@ -48,9 +40,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const isError = status.status === "error";
   const devApp = getDevAppForAssistantProvider(provider);
   const badgeClass = isError ? "bg-destructive text-white" : "bg-amber-500 text-white";
-  const updateState = updateResult ?? status.updateState ?? null;
-  const updateFeedback =
-    updateState?.status === "failed" || updateState?.status === "unchanged" ? updateState : null;
+  const updateFeedback = update.feedback;
 
   return (
     <div className="flex max-w-sm flex-col items-center justify-center gap-4 text-center">
@@ -84,30 +74,19 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
         message={statusMessage}
         authenticationRequired={status.auth.status === "unauthenticated"}
       />
-      {updateAvailable && status.versionAdvisory?.canUpdate ? (
+      {update.canUpdate ? (
         <Button
           size="sm"
-          disabled={isUpdating}
+          disabled={update.isUpdating}
           onClick={() => {
-            setIsUpdating(true);
-            setUpdateError(null);
-            setUpdateResult(null);
-            void updateAssistantProvider(
-              status.driver ?? (provider as ProviderDriverKind),
-              status.instanceId,
-            )
-              .then((result) => setUpdateResult(result))
-              .catch((error: unknown) => {
-                setUpdateError(error instanceof Error ? error.message : "Provider update failed.");
-              })
-              .finally(() => setIsUpdating(false));
+            void update.run();
           }}
         >
-          {isUpdating ? <div className="loader mr-1.5" /> : null}
-          {isUpdating ? `Updating ${providerLabel}…` : `Update ${providerLabel}`}
+          {update.isUpdating ? <div className="loader mr-1.5" /> : null}
+          {update.isUpdating ? `Updating ${providerLabel}…` : `Update ${providerLabel}`}
         </Button>
       ) : null}
-      {updateError ? <p className="text-xs text-destructive">{updateError}</p> : null}
+      {update.error ? <p className="text-xs text-destructive">{update.error}</p> : null}
       {updateFeedback ? (
         <div className="w-full space-y-2 text-left" role="status" aria-live="polite">
           <p

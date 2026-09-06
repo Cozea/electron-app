@@ -1184,6 +1184,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     exportSetupPack: (options: { setupName: string; authorName: string }) =>
       ipcRenderer.invoke('agentSkills:exportSetupPack', options),
   },
+  scheduledTasks: {
+    list: () => ipcRenderer.invoke('scheduledTasks:list'),
+    save: (draft: import('../../../shared/scheduledTasks').ScheduledTaskDraft) =>
+      ipcRenderer.invoke('scheduledTasks:save', draft),
+    setEnabled: (options: { taskId: string; enabled: boolean }) =>
+      ipcRenderer.invoke('scheduledTasks:setEnabled', options),
+    markRun: (report: import('../../../shared/scheduledTasks').ScheduledTaskRunReport) =>
+      ipcRenderer.invoke('scheduledTasks:markRun', report),
+    markRunSeen: (options: { taskId: string; runId: string }) =>
+      ipcRenderer.invoke('scheduledTasks:markRunSeen', options),
+    remove: (options: { taskId: string }) => ipcRenderer.invoke('scheduledTasks:remove', options),
+  },
   contextMenu: {
     showTerminalSelection: (options: { selectedText: string; x: number; y: number }) =>
       ipcRenderer.invoke('contextMenu:showTerminalSelection', options),

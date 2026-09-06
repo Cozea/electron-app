@@ -5,6 +5,7 @@ import {
   Add01Icon as __Add01HugeIcon,
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   Search01Icon as __SearchHugeIcon,
+  Clock01Icon as __ClockHugeIcon,
   FolderLibraryIcon as __FolderLibraryHugeIcon,
   ShoppingBag01Icon as __ShoppingBagHugeIcon,
 } from '@hugeicons/core-free-icons'
@@ -145,6 +146,11 @@ export function ProjectSidebar({
   const { isMac } = useWindowChrome();
   const navigate = useViewTransitionNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
+  // Agent Builds and Scheduled Tasks share one route and differ by ?view, so
+  // the active row has to be read from the search string, not the path.
+  const skillsView = useLocation({
+    select: (location) => new URLSearchParams(location.search).get("view"),
+  });
   const { openProjectCreationMenu } = useProjectCreationMenu();
   const { convexUserId } = useAuth();
   const convex = useConvex();
@@ -581,7 +587,11 @@ export function ProjectSidebar({
   const handleOpenAgentSkills = React.useCallback(() => {
     navigate("/projects/skills?view=builds");
   }, [navigate]);
-  const isOnAgentSkills = pathname === "/projects/skills";
+  const handleOpenScheduledTasks = React.useCallback(() => {
+    navigate("/projects/skills?view=schedules");
+  }, [navigate]);
+  const isOnScheduledTasks = pathname === "/projects/skills" && skillsView === "schedules";
+  const isOnAgentSkills = pathname === "/projects/skills" && !isOnScheduledTasks;
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, workspaceId: string | null) => {
@@ -998,6 +1008,19 @@ export function ProjectSidebar({
               >
                 <HugeiconsIcon icon={__FolderLibraryHugeIcon} />
                 <span className="truncate">{t('nav.agentSkills')}</span>
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                  "px-1.5",
+                  isOnScheduledTasks && SIDEBAR_PILL_ACTIVE_CLASS,
+                  "[&>svg]:text-current",
+                )}
+                onClick={handleOpenScheduledTasks}
+              >
+                <HugeiconsIcon icon={__ClockHugeIcon} />
+                <span className="truncate">{t('nav.scheduledTasks')}</span>
               </button>
             </div>
           )}

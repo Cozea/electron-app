@@ -1,0 +1,48 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="104" y1="48" x2="408" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6E587C"/>
+      <stop offset="0.48" stop-color="#3D3846"/>
+      <stop offset="1" stop-color="#202429"/>
+    </linearGradient>
+    <radialGradient id="green-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(128 112) rotate(45) scale(314)">
+      <stop stop-color="#3C9B7C" stop-opacity="0.8"/>
+      <stop offset="0.46" stop-color="#317B69" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#202429" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="98" y1="48" x2="420" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B9D8CE" stop-opacity="0.74"/>
+      <stop offset="0.38" stop-color="#947CA0" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#111418" stop-opacity="0.86"/>
+    </linearGradient>
+    <linearGradient id="glyph" x1="148" y1="112" x2="368" y2="402" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.58" stop-color="#F2F2F1"/>
+      <stop offset="1" stop-color="#CED2D6"/>
+    </linearGradient>
+    <filter id="tile-shadow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="15" stdDeviation="14" flood-color="#0A0C0E" flood-opacity="0.34"/>
+    </filter>
+    <filter id="glyph-shadow" x="84" y="66" width="352" height="372" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#080A0C" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="30" y="26" width="452" height="452" rx="122" fill="url(#tile)"/>
+    <rect x="30" y="26" width="452" height="452" rx="122" fill="url(#green-glow)"/>
+    <rect x="35" y="31" width="442" height="442" rx="117" stroke="url(#rim)" stroke-width="10"/>
+    <path d="M92 80C142 48 207 43 278 46" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.2"/>
+  </g>
+
+  <g filter="url(#glyph-shadow)" transform="translate(88 88) scale(14)">
+    <path d="M10.2222 22C10.5126 22 10.7972 21.9626 11.074 21.897C11.7831 21.729 12.1377 21.6449 12.5688 21.0996C13 20.5543 13 19.9909 13 18.864V4.80464C13 3.71729 13 3.17361 12.4167 2.58825L12.4117 2.58333C11.8264 2 11.4768 2 10.7778 2C8.69873 2 6.9531 3.42754 6.46761 5.35589C4.51798 5.5659 3 7.21679 3 9.22223C3 10.3104 3.44693 11.2942 4.16723 12C3.44693 12.7058 3 13.6896 3 14.7777C3 16.4037 3.99774 17.7964 5.41435 18.3774C6.01243 20.469 7.93854 22 10.2222 22Z" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M13 9C13 11.2091 11.2091 13 9 13" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M13 12H20.5" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18.5 3.25V3.5M19 3.5C19 3.77614 18.7761 4 18.5 4C18.2239 4 18 3.77614 18 3.5C18 3.22386 18.2239 3 18.5 3C18.7761 3 19 3.22386 19 3.5Z" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18.5 3.5V4C18.5 5.88562 18.5 6.82843 17.9142 7.41421C17.3284 8 16.3856 8 14.5 8H13" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18.5 20.5V20C18.5 18.1144 18.5 17.1716 17.9142 16.5858C17.3284 16 16.3856 16 14.5 16H13" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18.5 20.75V20.5M19 20.5C19 20.2239 18.7761 20 18.5 20C18.2239 20 18 20.2239 18 20.5C18 20.7761 18.2239 21 18.5 21C18.7761 21 19 20.7761 19 20.5Z" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M20.5 11.75V12M21 12C21 12.2761 20.7761 12.5 20.5 12.5C20.2239 12.5 20 12.2761 20 12C20 11.7239 20.2239 11.5 20.5 11.5C20.7761 11.5 21 11.7239 21 12Z" stroke="url(#glyph)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

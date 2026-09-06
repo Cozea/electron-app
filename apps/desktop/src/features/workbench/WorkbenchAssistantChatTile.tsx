@@ -57,6 +57,7 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
     historyBusy,
     flushDraft,
     onHistoryError,
+    stopAgentSession,
   } = useWorkbenchAssistantTileController({
     projectId: props.projectId,
     laneId: props.laneId,
@@ -253,6 +254,7 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
           >
             <CozeaChatSurface
               {...surfaceProps}
+              onRestartAgent={stopAgentSession}
               isChatVisible={panelVisible && viewMode === "chat"}
               artifactUrlsById={artifactMedia.urlsById}
               onOpenArtifact={openArtifact}

@@ -29,7 +29,6 @@ describe("Agent Skills surface", () => {
 
   it("keeps focused provider controls explicit and provider-complete", () => {
     expect(pageSource).toContain("Use with");
-    expect(pageSource).toContain("All skills");
     expect(pageSource).toContain("View instructions");
     expect(pageSource).toContain("Codex");
     expect(pageSource).toContain("Claude");
@@ -44,6 +43,34 @@ describe("Agent Skills surface", () => {
     expect(pageSource).not.toContain("setProviderEnabled");
     expect(pageSource).not.toContain("agentSkills.setEnabled");
     expect(pageSource).toContain("Turn skills on and off");
+  });
+
+  it("leaves a skill through the header, back to the exact page it was opened from", () => {
+    // The control belongs in the project header with every other back button,
+    // not inline above the title, and it is a Back rather than a jump to the
+    // library.
+    expect(pageSource).toContain("headerBack");
+    expect(pageSource).toContain("onDetail ? headerBack");
+    expect(pageSource).toMatch(/>\s*Back\s*</);
+    expect(pageSource).not.toContain("All skills");
+
+    // Back replays the caller's own query string rather than deciding on a
+    // destination itself, which is what lets it be page-exact.
+    expect(pageSource).toContain('setReturnTo(searchParams.get("back"))');
+    expect(pageSource).toContain("setSearchParams(new URLSearchParams(returnTo))");
+
+    const buildsSource = readWorkspaceSource(
+      "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx",
+    );
+    // Builds names the build and the provider page being left, not just the
+    // section: both are component state that only survive the trip in the URL.
+    expect(buildsSource).toContain('home.set("view", "builds")');
+    expect(buildsSource).toContain('home.set("detail", openDetail)');
+    expect(buildsSource).toContain('home.set("build", selectedBuild.id)');
+    expect(buildsSource).toContain('next.set("back", home.toString())');
+    // And picks them back up, once, on the way home.
+    expect(buildsSource).toContain("setOpenDetail(detailParam as AgentSkillProvider");
+    expect(buildsSource).toContain('next.delete("detail")');
   });
 
   it("exposes portable read-only setup discovery and personal copying", () => {
