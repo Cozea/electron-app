@@ -48,4 +48,10 @@ patch(
   "        keyRequestId: ownKeyRequest._id,",
 )
 
+patch(
+  'tests/electron/desktopBootstrapStore.test.ts',
+  "      displayName: 'Test device',\n      avatarUrl: null,",
+  "      displayName: 'Test device',\n      presentationConfigured: true,\n      avatarUrl: null,",
+)
+
 console.log('Resolved manual-review compile roots.')
