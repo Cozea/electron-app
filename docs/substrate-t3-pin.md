@@ -5,7 +5,7 @@ Date: 2026-09-06
 | Field | Value |
 | --- | --- |
 | Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Required pin SHA | `16e7fec17b68dd9d703bbcb211e309658e425893` (`16e7fec1`) |
+| Required pin SHA | `7500499980b6d5e6cad483d8fea6b0586fc406eb` (`75004999`) |
 | Recorded by | Parent repository `vendor/t3code` gitlink |
 | Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
@@ -13,17 +13,22 @@ Update this file whenever the shadow-server pin moves. Keep the Electron runtime
 constant and parent gitlink synchronized. Generated contract banners record the
 revision they were generated from and change only when contracts are regenerated.
 
-This reviewed fork revision retains the provider-QA baseline and adds Cozea's
-managed Computer Use MCP toolkit. The toolkit exposes the upstream
-open-computer-use v0.3.3 nine-tool contract through the existing provider-scoped
-T3 MCP endpoint, but forwards execution to the signed Electron main process over
-a private loopback broker. It never installs a global MCP entry in provider home
-configuration. Threads that actually invoke Computer Use are also tied to T3's
-accepted orchestration lifecycle: when the provider turn settles and the thread
-has no active turn, T3 forwards the upstream `notifications/turn-ended` lifecycle
-signal through that broker so cursor state is cleared immediately. Stale terminal
-provider events do not produce that notification because they never become an
-accepted `thread.session-set` event.
+This reviewed fork revision retains the provider-QA baseline and Cozea's managed
+Computer Use MCP toolkit. The toolkit exposes the upstream open-computer-use
+v0.3.3 nine-tool contract through the existing provider-scoped T3 MCP endpoint,
+but forwards execution to the signed Electron main process over a private
+loopback broker. It never installs a global MCP entry in provider home
+configuration.
+
+Accepted canonical terminal `thread.session-set` events are now forwarded to the
+Electron broker for every thread, rather than only threads that already invoked a
+Computer Use tool. Electron owns the authoritative per-thread policy/runtime
+state and ignores unrelated terminal notifications. This lets scheduled threads
+that were explicitly denied Computer Use release their deny policy only from T3's
+accepted provider lifecycle, while ordinary interactive Computer Use still gets
+upstream `notifications/turn-ended` cleanup. Stale terminal provider events do
+not produce this notification because they never become an accepted
+`thread.session-set` event.
 
 ## Cozea runtime policy patches
 
