@@ -28,13 +28,23 @@ This branch is intentionally breaking. Cozea has no compatibility requirement fo
 - the duplicate `projectTrustedDevices` authorization path/table is removed
 - collaboration gateway authority and encryption metadata resolve from the canonical device principal
 - the duplicate `collabDevices` registry is removed from the active Yjs path
-- task assignment is being normalized to device identity instead of email identity
+- task assignment uses device-principal identity instead of email identity
 - activity, organization membership, DevApp publisher attribution, and collaboration presentation use device-principal metadata
+- renderer/session/bootstrap types are device-principal shaped
 - regression tests cover presentation isolation, onboarding, project principal authority, and collaboration authority
 
-## Validation remaining
+## Validation status
 
-- finish compiler-driven cleanup of any stale account-shaped renderer/task contracts
-- run desktop, Cloudflare, and test typechecks
-- run identity tests, lint, full tests, and production build
-- update PR status to ready only after the branch is green
+The compiler-driven account-field cleanup is complete enough that the previous validation run was down to four Cozea TypeScript errors. Those four errors were repaired in `89dbee4`; this commit exists to trigger a fresh validation run on that repaired head because GitHub Actions does not recursively trigger workflows from its own bot push.
+
+Remaining validation gates:
+
+- desktop typecheck
+- Cloudflare typecheck
+- test typecheck
+- identity tests
+- lint
+- full tests
+- production build
+
+The PR remains draft until these gates are green.
