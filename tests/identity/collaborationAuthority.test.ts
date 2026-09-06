@@ -13,6 +13,7 @@ const workerConvex = fs.readFileSync(
   "utf8",
 )
 const yjs = fs.readFileSync(path.join(root, "convex/yjs.ts"), "utf8")
+const schema = fs.readFileSync(path.join(root, "convex/schema.ts"), "utf8")
 const yjsContext = fs.readFileSync(
   path.join(root, "apps/desktop/src/contexts/YjsProjectContext.tsx"),
   "utf8",
@@ -30,7 +31,6 @@ describe("collaboration authority boundary", () => {
   it("requires a device bearer and fails closed on project access", () => {
     expect(workerSession).toContain("Device authentication is required")
     expect(workerSession).toContain("verifyDeviceAccessToken")
-    expect(workerConvex).toContain("auth.sub !== body.deviceId")
     expect(workerConvex).toContain("!access.canAccess || !access.canEdit")
     expect(workerConvex).toContain("The authenticated device cannot access this project")
   })
@@ -45,22 +45,17 @@ describe("collaboration authority boundary", () => {
     const accessStart = section.indexOf("projectMembers:getProjectAccessForServer")
     const accessEnd = section.indexOf("})", accessStart)
     const accessCall = section.slice(accessStart, accessEnd + 2)
-    expect(accessCall).toContain("userId: principal.userId")
+    expect(accessCall).toContain("userId: principal.principalId")
     expect(accessCall).not.toContain("deviceId:")
+    expect(section).not.toContain("projectTrustedDevices")
   })
 
-  it("canonicalizes collaboration registration from the authenticated principal", () => {
-    const start = workerConvex.indexOf("yjs:registerCollabDevice")
-    expect(start).toBeGreaterThanOrEqual(0)
-    const call = workerConvex.slice(start, workerConvex.indexOf("})", start) + 2)
-
-    expect(call).toContain("deviceId: principal.identityKey")
-    expect(call).toContain("deviceLabel: principal.deviceLabel")
-    expect(call).toContain("platform: principal.platform")
-    expect(call).toContain("publicKeyJwk: principal.encryptionPublicKeyJwk")
-    expect(call).toContain("fingerprint: principal.encryptionFingerprint")
-    expect(call).not.toContain("body.deviceLabel")
-    expect(call).not.toContain("body.platform")
+  it("has no duplicate collaboration-device registry", () => {
+    expect(schema).not.toContain("collabDevices: defineTable")
+    expect(yjs).not.toContain('query("collabDevices")')
+    expect(workerConvex).not.toContain("yjs:registerCollabDevice")
+    expect(workerConvex).toContain("principal.encryptionPublicKeyJwk")
+    expect(workerConvex).toContain("principal.encryptionFingerprint")
   })
 
   it("requires an explicit matching request before sharing a wrapped room key", () => {
@@ -75,7 +70,6 @@ describe("collaboration authority boundary", () => {
     expect(section).toContain("canManageProject")
     expect(section).toContain('query("projectCollabWrappedKeys")')
     expect(section).not.toContain('query("collabDevices")')
-    expect(section).not.toContain("ctx.db.patch(device._id")
   })
 
   it("does not auto-approve pending key requests from the live collaboration context", () => {
