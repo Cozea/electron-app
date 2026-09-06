@@ -22,20 +22,10 @@ const enabledSettings = {
 describe('scheduled task Computer Use authorization', () => {
   it('enforces an explicit scheduled deny before otherwise-valid global policy', () => {
     expect(
-      __computerUseRuntimeTesting.validateActionPolicy(
-        enabledSettings,
-        'list_apps',
-        {},
-        'deny',
-      ),
+      __computerUseRuntimeTesting.validateActionPolicy(enabledSettings, 'list_apps', {}, 'deny'),
     ).toBe('Computer Use is not authorized for this scheduled task.')
     expect(
-      __computerUseRuntimeTesting.validateActionPolicy(
-        enabledSettings,
-        'list_apps',
-        {},
-        'allow',
-      ),
+      __computerUseRuntimeTesting.validateActionPolicy(enabledSettings, 'list_apps', {}, 'allow'),
     ).toBeNull()
   })
 
@@ -46,8 +36,6 @@ describe('scheduled task Computer Use authorization', () => {
     expect(__computerUseRuntimeTesting.threadPolicy(runtime, 'thread-1')).toBe('deny')
     expect(__computerUseRuntimeTesting.threadPolicy(runtime, '  thread-1  ')).toBe('deny')
 
-    // A later launch for the same scheduled task replaces an orphaned pre-start
-    // lease instead of allowing renderer code to clear arbitrary thread policy.
     runtime.setScheduledThreadPolicy('task-1', 'thread-2', 'allow')
     expect(__computerUseRuntimeTesting.threadPolicy(runtime, 'thread-1')).toBe('inherit')
     expect(__computerUseRuntimeTesting.threadPolicy(runtime, 'thread-2')).toBe('allow')
@@ -91,12 +79,15 @@ describe('scheduled task Computer Use authorization', () => {
     expect(runner).toContain('error: "Computer Use is disabled in Settings."')
   })
 
-  it('uses T3 accepted terminal lifecycle as the only active-run release path', () => {
+  it('uses accepted active-turn lifecycle as the only active-run release path', () => {
     const t3 = read('vendor/t3code/apps/server/src/mcp/toolkits/computerUse.ts')
     const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
 
-    expect(t3).toContain('isComputerUseTurnTerminalSession(session)')
-    expect(t3).toContain('return notifyComputerUseTurnEnded(String(threadId))')
+    expect(t3).toContain('const ACTIVE_PROVIDER_TURN_THREADS = new Set<string>()')
+    expect(t3).toContain('if (session.activeTurnId != null)')
+    expect(t3).toContain('ACTIVE_PROVIDER_TURN_THREADS.add(normalizedThreadId)')
+    expect(t3).toContain('!ACTIVE_PROVIDER_TURN_THREADS.delete(normalizedThreadId)')
+    expect(t3).toContain('return notifyComputerUseTurnEnded(normalizedThreadId)')
     expect(t3).not.toContain('ACTIVE_COMPUTER_USE_THREADS')
     expect(runtime).toContain('const hadActiveRuntime = this.activeRuntimeSessions.delete(normalizedSessionId)')
     expect(runtime).toContain('this.clearThreadPolicy(normalizedSessionId)')
