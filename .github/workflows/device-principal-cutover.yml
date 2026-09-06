@@ -16,7 +16,7 @@ env:
 
 jobs:
   validate:
-    name: Manual review hardening
+    name: Principal terminology cleanup
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -26,11 +26,8 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Apply deterministic review fixes
-        run: |
-          node scripts/prepare-review-fix-driver.mjs
-          node scripts/review-fix-device-principal.mjs
-          node scripts/post-review-fix-compile.mjs
+      - name: Apply final principal terminology cleanup
+        run: node scripts/finalize-device-principal-terminology.mjs
 
       - name: Initialize pinned T3 source
         run: |
@@ -88,14 +85,14 @@ jobs:
       - name: Production build
         run: bun run build
 
-      - name: Commit verified review fixes
+      - name: Commit verified terminology cleanup
         run: |
           if [ -z "$(git status --porcelain)" ]; then
-            echo "No review fixes to commit."
+            echo "No terminology cleanup to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix(identity): harden manual review findings"
+          git commit -m "refactor(identity): finish principal terminology cleanup"
           git push origin HEAD:codex/device-principal-identity-cutover
