@@ -3,6 +3,8 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   type ProjectId,
+  type ThreadId,
+  type TurnId,
 } from "@cozea/assistant-contracts"
 import {
   dueScheduledTasks,
@@ -31,11 +33,11 @@ type ScheduledTaskComputerUsePolicyAction = "prepare" | "clear"
 
 interface ScheduledTaskRunControl extends ScheduledTaskRunReport {
   computerUsePolicy: ScheduledTaskComputerUsePolicyAction
-  threadId: string
+  threadId: ThreadId
 }
 
-const activeComputerUsePolicies = new Map<string, string>()
-const computerUsePolicyWatchers = new Map<string, () => void>()
+const activeComputerUsePolicies = new Map<ThreadId, string>()
+const computerUsePolicyWatchers = new Map<ThreadId, () => void>()
 
 function basename(pathValue: string): string {
   const trimmed = pathValue.replace(/[\\/]+$/, "")
@@ -45,7 +47,7 @@ function basename(pathValue: string): string {
 
 async function controlScheduledTaskComputerUsePolicy(
   taskId: string,
-  threadId: string,
+  threadId: ThreadId,
   computerUsePolicy: ScheduledTaskComputerUsePolicyAction,
 ): Promise<void> {
   const report: ScheduledTaskRunControl = {
@@ -62,14 +64,14 @@ async function controlScheduledTaskComputerUsePolicy(
   else activeComputerUsePolicies.delete(threadId)
 }
 
-async function clearScheduledTaskComputerUsePolicy(taskId: string, threadId: string): Promise<void> {
+async function clearScheduledTaskComputerUsePolicy(taskId: string, threadId: ThreadId): Promise<void> {
   await controlScheduledTaskComputerUsePolicy(taskId, threadId, "clear")
 }
 
 function watchScheduledTaskComputerUsePolicy(
   taskId: string,
-  threadId: string,
-  previousTurnId: string | null,
+  threadId: ThreadId,
+  previousTurnId: TurnId | null,
 ): void {
   computerUsePolicyWatchers.get(threadId)?.()
 
