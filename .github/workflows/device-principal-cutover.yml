@@ -30,6 +30,7 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
+          import re
 
           def replace_once(path: str, old: str, new: str) -> None:
               target = Path(path)
@@ -37,9 +38,10 @@ jobs:
               if new in source:
                   return
               if old not in source:
-                  raise SystemExit(f"repair anchor missing in {path}: {old[:80]!r}")
+                  raise SystemExit(f"repair anchor missing in {path}: {old[:100]!r}")
               target.write_text(source.replace(old, new, 1))
 
+          # Final verification repairs from the first complete-suite run.
           projects = Path("convex/projects.ts")
           projects_source = projects.read_text()
           enrollment_stage = "\n".join([
@@ -57,7 +59,39 @@ jobs:
               anchor = "    case 11: {\n"
               if anchor not in projects_source:
                   raise SystemExit("project purge stage anchor missing")
-              projects.write_text(projects_source.replace(anchor, enrollment_stage + anchor, 1))
+              projects_source = projects_source.replace(anchor, enrollment_stage + anchor, 1)
+
+          # Delete the ancient email/profile-based project-team compatibility payload.
+          team_arg = "\n".join([
+              "    team: v.optional(",
+              "      v.array(",
+              "        v.object({",
+              "          email: v.string(),",
+              "          name: v.optional(v.string()),",
+              "          role: v.union(",
+              "            v.literal(\"project_manager\"),",
+              "            v.literal(\"developer\"),",
+              "            v.literal(\"designer\"),",
+              "            v.literal(\"viewer\"),",
+              "          ),",
+              "          isCurrentUser: v.optional(v.boolean()),",
+              "          profileImageUrl: v.optional(v.union(v.string(), v.null())),",
+              "        }),",
+              "      ),",
+              "    ),",
+              "",
+          ])
+          if team_arg in projects_source:
+              projects_source = projects_source.replace(team_arg, "", 1)
+
+          apply_start = projects_source.find("\nexport const applyInitialTeamSetup = mutation({")
+          if apply_start != -1:
+              apply_end_marker = "\nexport const listForCurrentUser = query({"
+              apply_end = projects_source.find(apply_end_marker, apply_start)
+              if apply_end == -1:
+                  raise SystemExit("applyInitialTeamSetup end anchor missing")
+              projects_source = projects_source[:apply_start] + projects_source[apply_end:]
+          projects.write_text(projects_source)
 
           replace_once(
               "tests/assistant/convexAuthGating.test.ts",
@@ -79,7 +113,6 @@ jobs:
               "// enrichment could crash the view during the auth gap.",
               "// cached shell presentation alone must never open cloud queries.",
           )
-
           replace_once(
               "tests/architecture/desktopFirstLoadingPolicy.test.ts",
               'const [principalId, setConvexUserId] = useState<Id<"devicePrincipals"> | null>(null)',
@@ -89,22 +122,158 @@ jobs:
           bootstrap_test = Path("tests/electron/desktopBootstrapStore.test.ts")
           bootstrap_source = bootstrap_test.read_text()
           if "desktop-bootstrap-session.v1.enc" in bootstrap_source:
-              bootstrap_test.write_text(
-                  bootstrap_source.replace(
-                      "desktop-bootstrap-session.v1.enc",
-                      "desktop-bootstrap-session.v2.enc",
-                  )
-              )
+              bootstrap_test.write_text(bootstrap_source.replace(
+                  "desktop-bootstrap-session.v1.enc",
+                  "desktop-bootstrap-session.v2.enc",
+              ))
+
+          # Delete the matching dead renderer path. No producer remains and the mutation was a no-op.
+          layout = Path("apps/desktop/src/features/projects/layouts/ProjectLayout.tsx")
+          layout_source = layout.read_text()
+          layout_source = layout_source.replace(
+              'import { lazy, Suspense, type ReactNode, useRef, useCallback, useEffect, useMemo,  } from "react";',
+              'import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo } from "react";',
+          )
+          layout_source = layout_source.replace(
+              'import { useMutation, useQuery } from "convex/react";',
+              'import { useQuery } from "convex/react";',
+          )
+          pending_field = "\n".join([
+              "  pendingTeamSetup?: Array<{",
+              "    email: string;",
+              "    name?: string;",
+              '    role: "project_manager" | "developer" | "designer" | "viewer";',
+              "    isCurrentUser?: boolean;",
+              "    profileImageUrl?: string | null;",
+              "  }>;",
+              "",
+          ])
+          if pending_field in layout_source:
+              layout_source = layout_source.replace(pending_field, "", 1)
+
+          effect_start = layout_source.find("/**\n * Null-rendering sibling that owns the deferred team-setup flow.")
+          if effect_start != -1:
+              effect_end = layout_source.find("/**\n * Presence subscription isolated from the layout", effect_start)
+              if effect_end == -1:
+                  raise SystemExit("PendingTeamSetupEffect end anchor missing")
+              layout_source = layout_source[:effect_start] + layout_source[effect_end:]
+
+          pending_jsx = "\n".join([
+              "      {project?._id && principalId ? (",
+              "        <PendingTeamSetupEffect",
+              "          projectId={project._id}",
+              "          principalId={principalId}",
+              "          projectSlug={projectSlug}",
+              "          projectName={effectiveProjectName}",
+              "          runtimeWorkspaceId={runtimeWorkspaceId}",
+              "          routeProjectId={routeProjectId ?? null}",
+              "        />",
+              "      ) : null}",
+              "",
+          ])
+          if pending_jsx in layout_source:
+              layout_source = layout_source.replace(pending_jsx, "", 1)
+          layout.write_text(layout_source)
+
+          # Rename the device-session recovery API away from human login/logout semantics.
+          auth = Path("apps/desktop/src/contexts/AuthContext.tsx")
+          auth_source = auth.read_text()
+          auth_source = auth_source.replace(
+              "import { clearDeviceSession, getDeviceSession, type DeviceSession } from '@/lib/deviceSession'",
+              "import { getDeviceSession, type DeviceSession } from '@/lib/deviceSession'",
+          )
+          auth_source = auth_source.replace(
+              "  login: () => Promise<void>\n  logout: () => Promise<void>\n",
+              "  retryDeviceSession: () => Promise<void>\n",
+          )
+          auth_source = auth_source.replace("  const login = useCallback(async () => {", "  const retryDeviceSession = useCallback(async () => {")
+          auth_source, removed_logout = re.subn(
+              r"\n  const logout = useCallback\(async \(\) => \{.*?\n  \}, \[\]\)\n",
+              "\n",
+              auth_source,
+              count=1,
+              flags=re.S,
+          )
+          auth_source = auth_source.replace("      login,\n      logout,\n", "      retryDeviceSession,\n")
+          auth_source = auth_source.replace("      login,\n      logout,\n", "      retryDeviceSession,\n")
+          auth_source = auth_source.replace("      login,\n", "      retryDeviceSession,\n")
+          auth_source = auth_source.replace("      logout,\n", "")
+          auth.write_text(auth_source)
+
+          page = Path("apps/desktop/src/pages/Login.tsx")
+          if page.exists():
+              page_source = page.read_text()
+              page_source = page_source.replace('import { LoginForm } from "@/components/login-form"', 'import { DeviceSessionRecoveryForm } from "@/components/device-session-recovery"')
+              page_source = page_source.replace("export function Login() {", "export function DeviceSessionRecovery() {")
+              page_source = page_source.replace("const { login, isLoading, authError } = useAuth()", "const { retryDeviceSession, isLoading, authError } = useAuth()")
+              page_source = page_source.replace("<LoginForm onLogin={login}", "<DeviceSessionRecoveryForm onRetry={retryDeviceSession}")
+              page.write_text(page_source)
+
+          form = Path("apps/desktop/src/components/login-form.tsx")
+          if form.exists():
+              form_source = form.read_text()
+              form_source = form_source.replace("interface LoginFormProps", "interface DeviceSessionRecoveryFormProps")
+              form_source = form_source.replace("  onLogin: () => void", "  onRetry: () => void")
+              form_source = form_source.replace("export function LoginForm({", "export function DeviceSessionRecoveryForm({")
+              form_source = form_source.replace("  onLogin,", "  onRetry,")
+              form_source = form_source.replace("}: LoginFormProps)", "}: DeviceSessionRecoveryFormProps)")
+              form_source = form_source.replace("onClick={onLogin}", "onClick={onRetry}")
+              form_source = form_source.replace('t("login.', 't("deviceSession.')
+              form.write_text(form_source)
+
+          app = Path("apps/desktop/src/App.tsx")
+          app_source = app.read_text()
+          app_source = app_source.replace("const LazyLogin = lazy(() =>", "const LazyDeviceSessionRecovery = lazy(() =>")
+          app_source = app_source.replace("import('./pages/Login').then((module) => ({", "import('./pages/DeviceSessionRecovery').then((module) => ({")
+          app_source = app_source.replace("default: module.Login,", "default: module.DeviceSessionRecovery,")
+          app_source = app_source.replace("<LazyLogin />", "<LazyDeviceSessionRecovery />")
+          app_source = app_source.replace("It starts after sign-in because a run", "It starts after the device session is ready because a run")
+          app.write_text(app_source)
+
+          for locale_path, old_comment, new_comment in [
+              ("apps/desktop/src/lib/i18n/en.ts", "// ── Login / Auth", "// ── Device session"),
+              ("apps/desktop/src/lib/i18n/es.ts", "// ── Inicio de sesión / Autenticación", "// ── Sesión del dispositivo"),
+          ]:
+              locale = Path(locale_path)
+              locale_source = locale.read_text().replace('"login.', '"deviceSession.')
+              locale_source = locale_source.replace(old_comment, new_comment)
+              locale.write_text(locale_source)
+
+          session_path = Path("apps/desktop/src/lib/deviceSession.ts")
+          session_source = session_path.read_text()
+          session_source = session_source.replace("login failure merely because local secure storage is unavailable.", "device-session failure merely because local secure storage is unavailable.")
+          session_source = session_source.replace("Persisted secure state is part of logout/reset semantics. If its deletion", "Persisted secure state is part of session-clear/reset semantics. If its deletion")
+          session_source = session_source.replace("completed logout that would silently restore on next launch.", "completed clear that would silently restore on next launch.")
+          session_path.write_text(session_source)
+
+          import_hook = Path("apps/desktop/src/features/projects/hooks/useLocalProjectImport.ts")
+          import_source = import_hook.read_text().replace(
+              'await showImportError("No project profile is ready right now.")',
+              'await showImportError("No device identity is ready right now.")',
+          )
+          import_hook.write_text(import_source)
+
+          perf_readme = Path("scripts/perf/README.md")
+          perf_source = perf_readme.read_text()
+          perf_source = perf_source.replace(
+              "- ProjectLayout must not subscribe to `location.href`, navigation state it\n  doesn't render, presence, or page-context objects — those live in\n  null-rendering/leaf siblings (`PendingTeamSetupEffect`,\n  `ProjectPresenceHeaderAddon`).",
+              "- High-frequency presence and page-context subscriptions stay out of\n  ProjectLayout and live in the leaf `ProjectPresenceHeaderAddon` component.",
+          )
+          perf_readme.write_text(perf_source)
           PY
+
+          if [ -f apps/desktop/src/pages/Login.tsx ]; then
+            git mv apps/desktop/src/pages/Login.tsx apps/desktop/src/pages/DeviceSessionRecovery.tsx
+          fi
+          if [ -f apps/desktop/src/components/login-form.tsx ]; then
+            git mv apps/desktop/src/components/login-form.tsx apps/desktop/src/components/device-session-recovery.tsx
+          fi
 
           if ! git diff --quiet; then
             git config user.name "cozea-verification"
             git config user.email "actions@users.noreply.github.com"
-            git add convex/projects.ts \
-              tests/assistant/convexAuthGating.test.ts \
-              tests/architecture/desktopFirstLoadingPolicy.test.ts \
-              tests/electron/desktopBootstrapStore.test.ts
-            git commit -m "test(identity): align final cutover verification"
+            git add -A
+            git commit -m "refactor(identity): remove final account-era compatibility paths"
             git push
           fi
 
