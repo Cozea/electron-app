@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 // @ts-expect-error - plain node script, no type declarations
-import { scoreMemoryMap } from "../../scripts/score-memory-map.mjs"
+import { scoreIncrementalUpdate, scoreMemoryMap } from "../../scripts/score-memory-map.mjs"
 
 type Check = { name: string; ok: boolean; detail: string }
 
@@ -78,5 +78,59 @@ describe("scoreMemoryMap", () => {
   it("reports every check as failed for an empty map rather than throwing", () => {
     const { passed } = scoreMemoryMap({ nodes: [], links: [] }) as { passed: boolean }
     expect(passed).toBe(false)
+  })
+})
+
+const incrementalCheck = (older: unknown, newer: unknown, changed: string[], name: string): Check => {
+  const { checks } = scoreIncrementalUpdate(older, newer, changed) as { checks: Check[] }
+  const found = checks.find((c) => c.name === name)
+  if (!found) throw new Error(`no check named ${name}`)
+  return found
+}
+
+describe("scoreIncrementalUpdate", () => {
+  /** One file changed. Everything the other file owns must survive untouched. */
+  const before = () => ({
+    nodes: [
+      { id: "a", source_file: "a.ts", community: 0, community_name: "one" },
+      { id: "b", source_file: "b.ts", community: 1, community_name: "two" },
+    ],
+    links: [{ source: "a", target: "b", relation: "calls", source_file: "a.ts" }],
+  })
+
+  it("passes an update that rewrote only the changed file", () => {
+    const after = before()
+    after.nodes[0] = { ...after.nodes[0], community_name: "one renamed" }
+    const { passed } = scoreIncrementalUpdate(before(), after, ["a.ts"]) as { passed: boolean }
+    expect(passed).toBe(true)
+  })
+
+  it("catches a re-clustering pass that rewrote nodes no file touched", () => {
+    const after = before()
+    after.nodes[1] = { ...after.nodes[1], community_name: "renamed for no reason" }
+    const drift = incrementalCheck(before(), after, ["a.ts"], "untouched nodes came through unchanged")
+    expect(drift.ok).toBe(false)
+    expect(drift.detail).toContain("b")
+  })
+
+  it("catches an update that dropped a node belonging to an unchanged file", () => {
+    const after = before()
+    after.nodes = after.nodes.filter((n) => n.id !== "b")
+    after.links = []
+    expect(incrementalCheck(before(), after, ["a.ts"], "untouched nodes were not dropped").ok).toBe(false)
+  })
+
+  it("catches links left stranded by a node the update removed", () => {
+    const after = before()
+    after.nodes = after.nodes.filter((n) => n.id !== "a")
+    const stranded = incrementalCheck(before(), after, ["a.ts"], "no links left pointing at removed nodes")
+    expect(stranded.ok).toBe(false)
+    expect(stranded.detail).toContain("->")
+  })
+
+  it("treats field order as equivalent, so a rewrite is not reported as drift", () => {
+    const after = before()
+    after.nodes[1] = { community_name: "two", community: 1, source_file: "b.ts", id: "b" } as never
+    expect(incrementalCheck(before(), after, ["a.ts"], "untouched nodes came through unchanged").ok).toBe(true)
   })
 })

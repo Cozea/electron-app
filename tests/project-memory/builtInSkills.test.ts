@@ -150,4 +150,19 @@ describe("built-in memory skill", () => {
     expect(text).toMatch(/community_name/)
     expect(text).toMatch(/turns "changed" while nothing actually moved/i)
   })
+
+  it("says what to do with an import that leaves the extracted set", () => {
+    const text = memorySkill?.instructions ?? ""
+    // Building a real map surfaced this: without a rule, an import pointing out
+    // of scope either dangles or invites invented symbols for unread files.
+    expect(text).toMatch(/leaves the set of files you extracted/i)
+    expect(text).toMatch(/emit a node for the target\s+\*\*file\*\*/i)
+    expect(text).toMatch(/never invent symbol nodes for a file you have not read/i)
+  })
+
+  it("tells the agent to check its own output", () => {
+    const text = memorySkill?.instructions ?? ""
+    expect(text).toMatch(/score-memory-map\.mjs/)
+    expect(text).toMatch(/No link points at an id that is not in/i)
+  })
 })

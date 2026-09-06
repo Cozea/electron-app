@@ -202,6 +202,10 @@ Use \`participate_in\`, \`implement\` or \`form\`. Leave the array empty if noth
    - Carry \`source_file\` and \`source_location\` on **every link**, naming the file the
      evidence was read from. Updates depend on this: it is how a later pass knows which links
      belong to a file it is about to re-read.
+   - When an import or call leaves the set of files you extracted, emit a node for the target
+     **file** and point the link at that. Never point a link at an id you have not created,
+     and never invent symbol nodes for a file you have not read: a link that resolves to
+     nothing is worse than a coarser link that resolves.
    - For a document or image node that came from somewhere citable, record \`source_url\`,
      \`author\`, \`contributor\` and \`captured_at\` when you know them.
 5. Deduplicate by \`id\`. The same thing described in code and in a doc is one node with both
@@ -229,6 +233,10 @@ and falling far short of them means extraction stopped early rather than the pro
 - **\`EXTRACTED\` dominates.** Structural edges read out of code should be the bulk of the
   graph; if most of your links are \`INFERRED\` you are guessing, not reading.
 - **Every node carries \`community\` and \`community_name\`.**
+- **No link points at an id that is not in \`nodes\`.**
+
+If the project has \`scripts/score-memory-map.mjs\`, run it on what you wrote and fix what it
+reports before you call the map done.
 
 ## Never destroy a good map
 
