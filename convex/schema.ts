@@ -83,7 +83,7 @@ const devAppRuntimeReleaseImageValidator = v.object({
 })
 
 export default defineSchema({
-  // Device principals. In the product model one physical device is one user.
+  // Device principals. One physical Cozea installation is one independent principal.
   devicePrincipals: defineTable({
     identityKey: v.string(),
     displayName: v.string(),

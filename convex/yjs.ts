@@ -1200,16 +1200,16 @@ export const listCollabRoomDevices = query({
         .collect(),
     ])
 
-    const deviceIds = new Set<string>()
+    const identityKeys = new Set<string>()
     for (const entry of wrappedKeys) {
-      deviceIds.add(entry.recipientIdentityKey)
+      identityKeys.add(entry.recipientIdentityKey)
     }
     for (const request of pendingRequests) {
-      deviceIds.add(request.recipientIdentityKey)
+      identityKeys.add(request.recipientIdentityKey)
     }
 
     const devices = await Promise.all(
-      [...deviceIds].map(async (identityKey) => {
+      [...identityKeys].map(async (identityKey) => {
         const principal = await ctx.db
           .query("devicePrincipals")
           .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey))

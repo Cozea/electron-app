@@ -258,15 +258,13 @@ The AI chat runs **after** project creation, inside the workbench.
 
 ## How Device Identity Works
 
-- One physical device is one Cozea user principal: the public `deviceId`, `userId`, and
-  `identityKey` are the same `czd_…` value.
-- Organizations are device groups with a public copyable `czg_…` ID. Admins add initialized
-  devices by their public `czd_…` ID.
-- Public IDs are identifiers, not credentials. Electron keeps separate ECDH encryption and ECDSA
-  signing private keys in OS-backed secure storage; private keys are never copied or exposed.
-- The Cloudflare worker verifies a device-signed challenge and issues short-lived,
-  audience-bound ES256 tokens. Convex authorization must derive the caller from `ctx.auth`.
-- This is a clean beta cutover; do not add legacy UUID/email identity migration paths.
+- One physical Cozea installation is one independent device principal. There is no human account or login layer.
+- `identityKey` is the sole public immutable `czd_…` device identity. `principalId` is only the internal Convex document ID used for relationships; never expose `deviceId`/`userId` aliases for the public identity.
+- `displayName` and avatar are mutable collaboration presentation only and never authorize access or identify a different principal.
+- Organizations are device groups with a public copyable `czg_…` ID; organization and project membership reference device principals.
+- Public IDs are identifiers, not credentials. Electron keeps separate ECDH encryption and ECDSA signing private keys in OS-backed secure storage; private keys are never copied or exposed.
+- The Cloudflare worker verifies a device-signed challenge and issues short-lived, audience-bound ES256 tokens. Convex authorization derives the caller from `ctx.auth`.
+- This is a destructive pre-user cutover. Do not add UUID/email/account compatibility paths, public identity aliases, or migrations that preserve obsolete identity rows. Reset obsolete development/test identity data before deploying the cutover.
 
 See `docs/device-identity.md` for the protocol and deployment requirements.
 

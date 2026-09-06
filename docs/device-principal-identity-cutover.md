@@ -29,7 +29,7 @@ The final schema should represent the device principal approximately as:
 devicePrincipals: defineTable({
   identityKey: v.string(),
 
-  displayName: v.optional(v.string()),
+  displayName: v.string(),
   avatarStorageId: v.optional(v.id("_storage")),
 
   platform: v.string(),
@@ -233,11 +233,17 @@ Authenticated public functions should derive the acting principal from `ctx.auth
 
 Explicit target IDs remain valid for operations on another member/principal.
 
-## Development-data reset
+## Destructive pre-user deployment cutover
 
-No compatibility migration is required. The cutover may invalidate/delete existing development rows and cached sessions whose shape depends on the old user/account model.
+No compatibility migration is required or desired. Before deploying the cutover to a shared/production Convex deployment:
 
-Do not delete or move local project working directories as part of the identity reset. Source code on disk is independent of the cloud identity-schema cleanup.
+1. Export any development/test cloud data worth retaining.
+2. Reset/remove obsolete account-era identity, membership, invitation, trusted-device and duplicate collaboration-device rows through the approved Convex dashboard/admin maintenance path. Do not invent a nonexistent `convex reset` command.
+3. Preserve local project working directories; source code on disk is independent of the cloud identity reset.
+4. Deploy the Cloudflare worker/JWKS configuration and Convex functions/schema as one coordinated cutover.
+5. Use `bunx convex deploy`; never use `convex dev`.
+6. Reinitialize clients carrying incompatible old bootstrap/session or pre-v3 local identity data. They become fresh principals and must not inherit old cloud membership or wrapped room keys.
+7. Complete packaged two-device collaboration QA before broadly enabling the feature.
 
 ## Implementation sequence
 
