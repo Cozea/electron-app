@@ -34,8 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
+      - name: Initialize pinned T3 source
+        run: |
+          git submodule sync -- vendor/t3code
+          git submodule update --init --depth=1 -- vendor/t3code
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
