@@ -1,20 +1,20 @@
 import * as React from "react"
+import { useQuery } from "convex/react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
+import { api } from "../../../../convex/_generated/api"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { useAuth } from "@/contexts/AuthContext"
 import { useTheme } from "@/contexts/ThemeContext"
-import { useResolvedScope } from "@/hooks/useResolvedScope"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useTranslation } from "@/lib/i18n"
-import { formatLocalDeviceLabel, isLocalDeviceEmail } from "@/lib/userDisplay"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Settings02Icon as __SettingsHugeIcon } from "@hugeicons/core-free-icons"
 
 import {
   NAV_USER_THEME_OPTIONS,
@@ -30,40 +30,45 @@ type NavUserMenuAction =
   | "separator-top"
   | "separator-bottom"
 
-// Raw user type from auth context
+// Transitional auth-session shape. The canonical display name/avatar are read
+// from the authenticated device principal below; these fields are fallback-only
+// until the session contract itself is renamed in the breaking cutover.
 interface RawUser {
   email: string
   firstName?: string | null
   lastName?: string | null
+  profileImageUrl?: string | null
 }
 
-// Formatted user type for display
 interface FormattedUser {
   name: string
   email: string
+  profileImageUrl?: string | null
 }
 
-// Helper to format user data
-function formatUserData(user: RawUser | FormattedUser | null | undefined, fallbackLabel: string): FormattedUser {
-  if (!user) {
-    return { name: fallbackLabel, email: "" }
-  }
+function formatFallbackUser(
+  user: RawUser | FormattedUser | null | undefined,
+  fallbackLabel: string,
+): FormattedUser {
+  if (!user) return { name: fallbackLabel, email: "", profileImageUrl: null }
+  if ("name" in user && typeof user.name === "string") return user
 
-  // Check if already formatted (has 'name' property)
-  if ('name' in user && typeof user.name === 'string') {
-    return user as FormattedUser
-  }
-
-  // Format from raw user
   const rawUser = user as RawUser
   const name = rawUser.firstName
     ? `${rawUser.firstName}${rawUser.lastName ? ` ${rawUser.lastName}` : ""}`
-    : rawUser.email?.split("@")[0] || ""
+    : rawUser.email?.split("@")[0] || fallbackLabel
 
   return {
     name,
     email: rawUser.email || "",
+    profileImageUrl: rawUser.profileImageUrl ?? null,
   }
+}
+
+function initials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "D"
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
 }
 
 export function NavUser({
@@ -72,19 +77,15 @@ export function NavUser({
   user: RawUser | FormattedUser | null | undefined
 }) {
   const { theme, setTheme } = useTheme()
+  const { convexUserId } = useAuth()
   const { t } = useTranslation()
-  const userData = formatUserData(user, t("nav.thisComputer"))
   const navigate = useViewTransitionNavigate()
-  const { activeWorkspace: currentWorkspace } = useResolvedScope({ ignoreLocation: true })
-  const isLocalDeviceProfile = isLocalDeviceEmail(userData.email)
-  const menuTitleFallback = userData.name || t("common.user")
-  const formattedDeviceName = formatLocalDeviceLabel(menuTitleFallback)
-  const menuTitle = isLocalDeviceProfile
-    ? formattedDeviceName ? t("nav.thisDevice").replace("{device}", formattedDeviceName) : t("nav.thisComputer")
-    : userData.name
-  const menuSummarySublabel = isLocalDeviceProfile
-    ? t("nav.localComputer")
-    : currentWorkspace?.workspaceName || currentWorkspace?.organizationName || userData.email
+  const fallback = formatFallbackUser(user, t("nav.thisComputer"))
+  const principal = useQuery(api.users.getCurrent, convexUserId ? {} : "skip")
+
+  const menuTitle = principal?.deviceLabel?.trim() || fallback.name || t("nav.thisComputer")
+  const avatarUrl = principal?.profileImageUrl ?? fallback.profileImageUrl ?? null
+  const menuSummarySublabel = t("nav.localComputer")
 
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -132,20 +133,11 @@ export function NavUser({
         return
       }
 
-      switch (action) {
-        case "account-settings":
-          navigate("/projects/settings/account")
-          break
+      if (action === "account-settings") {
+        navigate("/projects/settings/account")
       }
     },
-    [
-      menuSummarySublabel,
-      menuTitle,
-      navigate,
-      setTheme,
-      t,
-      theme,
-    ],
+    [menuSummarySublabel, menuTitle, navigate, setTheme, t, theme],
   )
 
   return (
@@ -160,11 +152,12 @@ export function NavUser({
           aria-label={t("nav.openUserMenu")}
           title={t("nav.openUserMenu")}
         >
-          <HugeiconsIcon
-            icon={__SettingsHugeIcon}
-            className="size-3.5 shrink-0 text-sidebar-foreground"
-            aria-hidden
-          />
+          <Avatar className="size-5 shrink-0 rounded-md">
+            {avatarUrl ? <AvatarImage src={avatarUrl} alt={menuTitle} /> : null}
+            <AvatarFallback className="rounded-md text-[9px] font-medium">
+              {initials(menuTitle)}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex min-w-0 flex-1 items-center text-left text-xs leading-none group-data-[collapsible=icon]:hidden">
             <span className="block w-full truncate font-normal leading-none text-sidebar-foreground">{menuTitle}</span>
           </div>
