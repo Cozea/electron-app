@@ -29,16 +29,10 @@ const COMPUTER_USE_TOOLS = new Set([
 const UPSTREAM_VERSION = '0.3.3'
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const CALL_TIMEOUT_MS = 45_000
-const THREAD_POLICY_TTL_MS = 24 * 60 * 60 * 1000
 
 export type ComputerUseThreadPolicy = 'inherit' | 'allow' | 'deny'
 
 type ExplicitComputerUseThreadPolicy = Exclude<ComputerUseThreadPolicy, 'inherit'>
-
-interface ComputerUseThreadPolicyLease {
-  policy: ExplicitComputerUseThreadPolicy
-  expiresAt: number
-}
 
 interface NativeComputerUseAddon {
   callTool(sessionId: string, tool: string, argumentsJson: string): Promise<string>
@@ -278,7 +272,11 @@ export class ComputerUseRuntimeService {
 
   private nativeAddon: NativeComputerUseAddon | null | undefined
   private readonly workerSessions = new Map<string, WorkerMcpSession>()
-  private readonly threadPolicies = new Map<string, ComputerUseThreadPolicyLease>()
+  // Explicit scheduled-task policy is lifecycle-bound, not time-bound. If a
+  // turn runs unusually long, silently expiring into `inherit` would widen its
+  // authority. Stale entries are safer than a fail-open transition and are
+  // removed by terminal/reset/teardown paths below.
+  private readonly threadPolicies = new Map<string, ExplicitComputerUseThreadPolicy>()
   private server: Server | null = null
   private endpoint: string | null = null
   private readonly token = randomBytes(32).toString('base64url')
@@ -329,10 +327,7 @@ export class ComputerUseRuntimeService {
       this.threadPolicies.delete(normalizedSessionId)
       return
     }
-    this.threadPolicies.set(normalizedSessionId, {
-      policy,
-      expiresAt: Date.now() + THREAD_POLICY_TTL_MS,
-    })
+    this.threadPolicies.set(normalizedSessionId, policy)
   }
 
   clearThreadPolicy(sessionId: string): void {
@@ -340,20 +335,7 @@ export class ComputerUseRuntimeService {
   }
 
   private threadPolicy(sessionId: string): ComputerUseThreadPolicy {
-    const entry = this.threadPolicies.get(sessionId)
-    if (!entry) return 'inherit'
-    if (entry.expiresAt <= Date.now()) {
-      this.threadPolicies.delete(sessionId)
-      return 'inherit'
-    }
-    return entry.policy
-  }
-
-  private pruneExpiredThreadPolicies(): void {
-    const now = Date.now()
-    for (const [sessionId, entry] of this.threadPolicies) {
-      if (entry.expiresAt <= now) this.threadPolicies.delete(sessionId)
-    }
+    return this.threadPolicies.get(sessionId) ?? 'inherit'
   }
 
   async callTool(sessionId: string, tool: string, args: unknown): Promise<ComputerUseToolResult> {
@@ -460,14 +442,13 @@ export class ComputerUseRuntimeService {
 
   async resetAll(): Promise<void> {
     // Resetting native/worker state is also used to apply live global settings.
-    // Keep active scheduled-task authorization leases intact across that reset;
+    // Keep active scheduled-task authorization intact across that reset;
     // otherwise a running scheduled deny could accidentally become inheritance.
     try {
       await this.loadNativeAddon()?.resetAll()
     } finally {
       for (const session of this.workerSessions.values()) session.stop()
       this.workerSessions.clear()
-      this.pruneExpiredThreadPolicies()
     }
   }
 
