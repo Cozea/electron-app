@@ -56,8 +56,6 @@ import { deriveTimelineEntries, formatDuration } from "./session-logic";
 import {
   AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
   isScrollContainerNearBottom,
-  scrollDistanceFromBottom,
-  scrollTopForBottomDistance,
 } from "./chat-scroll";
 import { type TurnDiffSummary } from "@/features/assistant/model/types";
 import { AssistantMessageBody } from "./AssistantMessageBody";
@@ -88,6 +86,12 @@ import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
+import {
+  COMPOSER_DOCK_EASING_CSS,
+  COMPOSER_DOCK_TRANSITION_MS,
+  composerDockEase,
+  prefersReducedMotion,
+} from "./composerDockMotion";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
@@ -210,8 +214,8 @@ function resolveScrollViewElement(scrollView: unknown): HTMLElement | null {
   return node instanceof HTMLElement ? node : null;
 }
 
-/** Keep following through the composer's 200ms inset transition, plus one settle frame. */
-const DOCKED_COMPOSER_INSET_FOLLOW_MS = 240;
+/** The inset follow shares the composer's duration exactly; see composerDockMotion. */
+const DOCKED_COMPOSER_INSET_FOLLOW_MS = COMPOSER_DOCK_TRANSITION_MS;
 
 function readLegendListBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -495,6 +499,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     return Math.max(LEGEND_LIST_TAIL_PADDING_PX, Math.ceil(dockedComposerScrollInsetPx));
   }, [dockedComposerScrollInsetPx]);
+  // Stable identity: LegendList forwards this straight onto the content
+  // container, and a fresh object each render restarts the padding transition.
+  const contentContainerStyle = useMemo(
+    () => ({
+      paddingBottom: bottomPaddingPx,
+      paddingTop: 16,
+      transition: prefersReducedMotion()
+        ? undefined
+        : `padding-bottom ${COMPOSER_DOCK_TRANSITION_MS}ms ${COMPOSER_DOCK_EASING_CSS}`,
+    }),
+    [bottomPaddingPx],
+  );
 
   useEffect(() => {
     if (!scrollViewNode) return;
@@ -509,10 +525,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [scrollViewNode]);
 
   // The composer inset is visual layout, not new conversation data. When the
-  // reader is following the tail, preserve their current distance from bottom
-  // while that padding animates. This keeps "near bottom" near bottom instead of
-  // snapping it to zero on every frame; any direct user scroll immediately takes
-  // ownership back. Readers farther up never enter this path.
+  // reader is following the tail, the padding transition has to be matched by an
+  // equal scroll shift or the messages simply gain dead space underneath instead
+  // of sliding up. Readers farther up never enter this path.
+  //
+  // The shift is computed analytically from the known padding delta and the
+  // shared timing function rather than by re-reading `scrollHeight` each frame.
+  // Two reasons. It removes a forced synchronous layout per frame while the
+  // virtualiser is remeasuring rows; and, more importantly, it lands on exactly
+  // the same value LegendList's own `maintainScrollAtEnd` is targeting, so the
+  // two writers agree instead of alternating between two slightly different
+  // answers — which is what made the slide stutter while the composer above it
+  // stayed smooth.
   const previousBottomPaddingRef = useRef(bottomPaddingPx);
   useLayoutEffect(() => {
     const previousBottomPadding = previousBottomPaddingRef.current;
@@ -520,8 +544,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     if (bottomPaddingPx === previousBottomPadding) return;
     if (!scrollViewNode || !isNearBottomRef.current) return;
 
-    const preservedBottomDistance = scrollDistanceFromBottom(scrollViewNode);
-    const deadline = performance.now() + DOCKED_COMPOSER_INSET_FOLLOW_MS;
+    const deltaPx = bottomPaddingPx - previousBottomPadding;
+    const startScrollTop = scrollViewNode.scrollTop;
+
+    if (prefersReducedMotion()) {
+      scrollViewNode.scrollTop = startScrollTop + deltaPx;
+      return;
+    }
+
+    const startedAt = performance.now();
     let animationFrameId: number | null = null;
     let stopped = false;
 
@@ -544,11 +575,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         stopFollowing();
         return;
       }
-      const desiredScrollTop = scrollTopForBottomDistance(scrollViewNode, preservedBottomDistance);
-      if (Math.abs(scrollViewNode.scrollTop - desiredScrollTop) >= 0.5) {
-        scrollViewNode.scrollTop = desiredScrollTop;
-      }
-      if (performance.now() < deadline) {
+      const elapsedMs = performance.now() - startedAt;
+      const progress = Math.min(1, elapsedMs / DOCKED_COMPOSER_INSET_FOLLOW_MS);
+      // Write only: reading `scrollTop` back here would flush layout mid-frame
+      // for no benefit, and a user scroll is caught by the listeners below.
+      scrollViewNode.scrollTop = startScrollTop + deltaPx * composerDockEase(progress);
+      if (progress < 1) {
         animationFrameId = window.requestAnimationFrame(followInset);
       } else {
         stopFollowing();
@@ -1234,11 +1266,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           onViewableItemsChanged={onLegendListViewableItemsChanged}
           className="app-scrollbar scroll-fade-y h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
           contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
-          contentContainerStyle={{
-            paddingBottom: bottomPaddingPx,
-            paddingTop: 16,
-            transition: "padding-bottom 200ms ease-out",
-          }}
+          contentContainerStyle={contentContainerStyle}
           showsVerticalScrollIndicator={false}
         />
       </TimelineRowRenderContext.Provider>

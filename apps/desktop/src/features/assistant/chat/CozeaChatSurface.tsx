@@ -104,6 +104,7 @@ import {
 } from "@/features/assistant/pendingUserInput";
 import { type Thread } from "@/features/assistant/model/types";
 import { useElementPointerHover } from "@/hooks/useElementPointerHover";
+import { COMPOSER_DOCK_EASING_CSS, COMPOSER_DOCK_TRANSITION_MS } from "./composerDockMotion";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 
@@ -903,9 +904,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     const updateInset = () => {
       const dockContent = findDockContent();
       if (!dockContent) return;
-      // Measure intrinsic content, not the animated max-height. That gives the
-      // timeline one semantic target height while the existing composer shell
-      // animates toward it, instead of emitting a React inset update every frame.
+      // Nothing constrains the dock's height any more, so this reads the real
+      // laid-out composer. Never derive a height cap from this value and apply it
+      // back to `dockContent`: that closes a loop through a `min-h-0` flex column
+      // and ratchets the composer's interior shut.
       const contentElement = dockContent.firstElementChild;
       const contentElementHeight =
         contentElement instanceof HTMLElement
@@ -925,6 +927,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     updateInset();
     if (typeof ResizeObserver === "undefined") return;
 
+    // Safe to observe the dock itself now that the reveal animates transform and
+    // opacity rather than height: it no longer resizes during the transition.
     const resizeObserver = new ResizeObserver(updateInset);
     resizeObserver.observe(frame);
     const dockContent = findDockContent();
@@ -2385,14 +2389,36 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 "relative mx-auto flex min-h-0 w-full min-w-0 max-w-3xl flex-col justify-end",
               )}
             >
+              {/*
+                The reveal is transform + opacity only, never height.
+
+                This dock is an absolutely positioned overlay inside a
+                `justify-end` frame, so its height never pushes the timeline —
+                the timeline's own bottom padding is what opens the gap. That
+                makes an animated height pure cost: it runs on the layout path
+                instead of the compositor, and any height driven by measuring
+                this element feeds back into the thing being measured. The form
+                below is `flex flex-col min-h-0`, so a measurement that comes in
+                even slightly low squeezes its interior, the next observer pass
+                measures the squeezed layout, and it ratchets down until the
+                controls are clipped out of the tile.
+
+                `max-h-full` stays as a *static* cap for a tall pending-approval
+                or question panel. It is not part of the transition, so it
+                cannot reintroduce either problem.
+              */}
               <div
                 data-chat-composer-dock-content="true"
                 className={cn(
-                  "relative z-[1] flex w-full min-h-0 flex-col transition-[max-height,transform,opacity] duration-200 ease-out motion-reduce:transition-none",
+                  "relative z-[1] flex w-full min-h-0 max-h-full flex-col transition-[transform,opacity] motion-reduce:transition-none",
                   showComposerDockChrome
-                    ? "max-h-full translate-y-0 opacity-100 pointer-events-auto"
-                    : "max-h-0 translate-y-1 opacity-0 pointer-events-none",
+                    ? "translate-y-0 opacity-100 pointer-events-auto"
+                    : "translate-y-2 opacity-0 pointer-events-none",
                 )}
+                style={{
+                  transitionDuration: `${COMPOSER_DOCK_TRANSITION_MS}ms`,
+                  transitionTimingFunction: COMPOSER_DOCK_EASING_CSS,
+                }}
                 onFocusCapture={() => {
                   setComposerDockFocused(true);
                 }}

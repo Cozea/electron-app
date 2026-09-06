@@ -20,17 +20,54 @@ const pendingUserInput = source(
 describe("agent chat motion stability invariants", () => {
   it("keeps scroll ownership in the timeline", () => {
     expect(controller).not.toContain("timeline.scrollTop = timeline.scrollHeight");
-    expect(timeline).toContain("scrollDistanceFromBottom(scrollViewNode)");
-    expect(timeline).toContain("scrollTopForBottomDistance(");
     expect(timeline).toContain('scrollViewNode.addEventListener("pointerdown", stopFollowing');
   });
 
-  it("measures the composer intrinsic target rather than its animated max-height", () => {
-    expect(surface).toContain("const intrinsicContentHeight = Math.max(dockContent.scrollHeight");
-    expect(surface).not.toContain("frameRect.bottom - dockContent.getBoundingClientRect().top");
-    expect(surface).toContain(
-      "transition-[max-height,transform,opacity] duration-200 ease-out motion-reduce:transition-none",
+  it("follows the composer inset analytically instead of re-reading layout each frame", () => {
+    // The follow loop must not read scroll geometry back per frame: that forced a
+    // synchronous layout while the virtualiser was remeasuring, and it landed on
+    // a slightly different answer than LegendList's own maintainScrollAtEnd, so
+    // the two alternated and the slide stuttered.
+    expect(timeline).toContain("startScrollTop + deltaPx * composerDockEase(progress)");
+    expect(timeline).not.toContain("scrollTopForBottomDistance(");
+    expect(timeline).not.toContain("scrollDistanceFromBottom(scrollViewNode)");
+  });
+
+  it("runs the composer reveal and the timeline inset on one shared curve", () => {
+    // A mismatch here is invisible in review and very visible on screen: the CSS
+    // keyword `ease-out` is cubic-bezier(0,0,.58,1) while Tailwind's `ease-out`
+    // utility is cubic-bezier(0,0,.2,1).
+    expect(timeline).toContain(
+      "`padding-bottom ${COMPOSER_DOCK_TRANSITION_MS}ms ${COMPOSER_DOCK_EASING_CSS}`",
     );
+    expect(timeline).toContain(
+      "const DOCKED_COMPOSER_INSET_FOLLOW_MS = COMPOSER_DOCK_TRANSITION_MS",
+    );
+    expect(surface).toContain("transitionTimingFunction: COMPOSER_DOCK_EASING_CSS");
+    expect(timeline).not.toContain('transition: "padding-bottom 200ms ease-out"');
+  });
+
+  it("measures the composer's real laid-out height", () => {
+    expect(surface).toContain(
+      "const intrinsicContentHeight = Math.max(dockContent.scrollHeight, contentElementHeight)",
+    );
+    expect(surface).not.toContain("frameRect.bottom - dockContent.getBoundingClientRect().top");
+  });
+
+  it("reveals the composer with transform and opacity, never height", () => {
+    // Height is both unnecessary (the dock is an absolute overlay, so the
+    // timeline's own padding opens the gap) and actively harmful: a height
+    // derived from measuring this element closes a loop through a `min-h-0`
+    // flex column and ratchets the composer's interior shut until its controls
+    // are clipped out of the tile.
+    expect(surface).toContain(
+      "transition-[transform,opacity] motion-reduce:transition-none",
+    );
+    expect(surface).not.toContain("transition-[max-height,transform,opacity]");
+    expect(surface).not.toContain("maxHeight: showComposerDockChrome");
+    expect(surface).not.toContain("dockedComposerContentHeightPx");
+    // The static cap stays: a tall pending-approval panel must not outgrow the tile.
+    expect(surface).toContain("flex w-full min-h-0 max-h-full flex-col");
   });
 
   it("keeps the model picker mounted for its exit transition", () => {
