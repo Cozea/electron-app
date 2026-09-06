@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { waitForHttpReady } from "../backendReadiness";
+import { ComputerUseRuntimeService } from "../services/ComputerUseRuntimeService";
 import {
   SUBSTRATE_SHADOW_READY_PATH,
   SUBSTRATE_T3_PIN_SHA,
@@ -147,6 +148,12 @@ export class ShadowServerManager {
       throw new Error(this.lastError);
     }
 
+    // The provider-facing MCP server lives in T3, but the privileged desktop
+    // implementation lives in the signed Cozea process. T3 receives only a
+    // loopback endpoint and an ephemeral per-app token; it never gains direct
+    // Accessibility/ScreenCapture authority or writes provider home configs.
+    const computerUse = await ComputerUseRuntimeService.getInstance().startBroker();
+
     fs.mkdirSync(this.logDirectory, { recursive: true });
     this.logStream?.end();
     this.logStream = fs.createWriteStream(
@@ -164,6 +171,13 @@ export class ShadowServerManager {
         COZEA_SUBSTRATE_SHADOW_PORT: String(this.flags.port),
         COZEA_SUBSTRATE_SHADOW_LOG_DIR: this.logDirectory,
         COZEA_SUBSTRATE_T3_PIN: SUBSTRATE_T3_PIN_SHA,
+        COZEA_COMPUTER_USE_ENDPOINT: computerUse.endpoint,
+        COZEA_COMPUTER_USE_TOKEN: computerUse.token,
+        // Keep the definitions registered for the lifetime of T3 so changing a
+        // setting does not require restarting active agents. Electron performs
+        // the authoritative live policy check on every tool call.
+        COZEA_COMPUTER_USE_ENABLED: "1",
+        COZEA_COMPUTER_USE_DISABLED_TOOLS: "",
         ...(this.t3BaseDir ? { COZEA_T3_SERVER_BASE_DIR: this.t3BaseDir } : {}),
         ...(process.env.COZEA_OBS_NDJSON_PATH
           ? { COZEA_OBS_NDJSON_PATH: process.env.COZEA_OBS_NDJSON_PATH }

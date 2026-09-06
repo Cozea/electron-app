@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-09-05T01:13:00Z",
-  "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
+  "recordedAt": "2026-09-06T05:12:00Z",
+  "adapterRevision": "16e7fec17b68dd9d703bbcb211e309658e425893",
   "upstreamRevision": "0a590fa01af66ec135d2ebf2d5542b08a37dc275",
   "providers": [
     {
@@ -11,7 +11,7 @@
         "0.153.2",
         "0.153.3"
       ],
-      "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
+      "adapterRevision": "16e7fec17b68dd9d703bbcb211e309658e425893",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
       "fixtureFeatures": [
         "saved-history",
@@ -55,7 +55,7 @@
       "observedRuntimeVersions": [
         "2.1.260"
       ],
-      "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
+      "adapterRevision": "16e7fec17b68dd9d703bbcb211e309658e425893",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
       "fixtureFeatures": [
         "resume",
@@ -78,7 +78,7 @@
       "driver": "cursor",
       "testedRuntimeVersions": [],
       "observedRuntimeVersions": [],
-      "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
+      "adapterRevision": "16e7fec17b68dd9d703bbcb211e309658e425893",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
       "fixtureFeatures": [
         "resume",
@@ -93,7 +93,7 @@
         "1.18.28",
         "1.18.29"
       ],
-      "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
+      "adapterRevision": "16e7fec17b68dd9d703bbcb211e309658e425893",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
       "fixtureFeatures": [
         "permission-retry",
@@ -121,7 +121,7 @@
       "driver": "antigravity",
       "testedRuntimeVersions": [],
       "observedRuntimeVersions": [],
-      "adapterRevision": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
+      "adapterRevision": "16e7fec17b68dd9d703bbcb211e309658e425893",
       "verification": "automated protocol fixtures; native runtime qualification recorded separately",
       "fixtureFeatures": [
         "account-isolation",
