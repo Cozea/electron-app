@@ -123,7 +123,7 @@ function validateInstallation(
       arch: optionalString(raw.activeRelease.arch, "The release architecture", 64),
       permissionSetHash: optionalString(raw.activeRelease.permissionSetHash, "The permission set hash", 128),
       publisherIdentityKey: optionalString(raw.activeRelease.publisherIdentityKey, "The publisher identity", 256),
-      publisherDeviceLabel: optionalString(raw.activeRelease.publisherDeviceLabel, "The publisher device", 200),
+      publisherDisplayName: optionalString(raw.activeRelease.publisherDisplayName, "The publisher device", 200),
       parts,
       runtimeSourceDigest,
       packageManifestDigest,

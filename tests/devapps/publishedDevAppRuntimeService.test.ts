@@ -44,7 +44,7 @@ function installation(): OrgDevAppInstallation {
       arch: null,
       permissionSetHash: null,
       publisherIdentityKey: null,
-      publisherDeviceLabel: null,
+      publisherDisplayName: null,
       runtimeSourceDigest: "b".repeat(64),
       packageManifestDigest: `sha256:${"c".repeat(64)}`,
       parts: {

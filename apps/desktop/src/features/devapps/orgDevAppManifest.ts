@@ -26,7 +26,7 @@ export interface OrgDevAppConsumerRecord {
     arch: string | null
     permissionSetHash: string | null
     publisherIdentityKey: string | null
-    publisherDeviceLabel: string | null
+    publisherDisplayName: string | null
     parts: DevAppParts
   }
 }

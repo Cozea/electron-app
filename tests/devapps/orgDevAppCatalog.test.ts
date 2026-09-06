@@ -195,7 +195,7 @@ describe("published DevApp manifests", () => {
         arch: null,
         permissionSetHash: null,
         publisherIdentityKey: null,
-        publisherDeviceLabel: null,
+        publisherDisplayName: null,
         parts: { view: { source: "package" as const } },
       },
     }
@@ -236,7 +236,7 @@ describe("published DevApp manifests", () => {
         arch: null,
         permissionSetHash: null,
         publisherIdentityKey: null,
-        publisherDeviceLabel: null,
+        publisherDisplayName: null,
         parts: { view: { source: "package" as const } },
       },
     }

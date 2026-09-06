@@ -112,7 +112,7 @@ export function toConsumerDevApp(input: {
     arch: string | null
     permissionSetHash: string | null
     publisherIdentityKey: string | null
-    publisherDeviceLabel: string | null
+    publisherDisplayName: string | null
     parts: DevAppParts
     runtimeSourceDigest: string | null
     packageManifestDigest: string | null
@@ -147,7 +147,7 @@ export function toConsumerDevApp(input: {
       arch: input.release.arch ?? null,
       permissionSetHash: input.release.permissionSetHash ?? null,
       publisherIdentityKey: input.release.publisherIdentityKey ?? null,
-      publisherDeviceLabel: input.release.publisherDeviceLabel ?? null,
+      publisherDisplayName: input.release.publisherDisplayName ?? null,
       parts: input.release.parts,
       runtimeSourceDigest: input.release.runtimeSourceDigest ?? null,
       packageManifestDigest: input.release.packageManifestDigest ?? null,

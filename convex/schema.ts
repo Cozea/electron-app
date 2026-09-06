@@ -548,7 +548,7 @@ export default defineSchema({
     arch: v.optional(v.string()),
     permissionSetHash: v.optional(v.string()),
     publisherIdentityKey: v.optional(v.string()),
-    publisherDeviceLabel: v.optional(v.string()),
+    publisherDisplayName: v.optional(v.string()),
     parts: devAppPartsValidator,
     runtimeSourceDigest: v.optional(v.string()),
     packageManifestDigest: v.optional(v.string()),

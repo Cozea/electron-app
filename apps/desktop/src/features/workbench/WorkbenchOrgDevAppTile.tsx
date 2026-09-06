@@ -46,7 +46,7 @@ interface ResolvedOrgDevAppArtifact {
   arch: string | null
   permissionSetHash: string | null
   publisherIdentityKey: string | null
-  publisherDeviceLabel: string | null
+  publisherDisplayName: string | null
   parts: DevAppParts
 }
 
@@ -65,7 +65,7 @@ function artifactFromInstallation(installation: OrgDevAppInstallation): Resolved
     arch: installation.activeRelease.arch,
     permissionSetHash: installation.activeRelease.permissionSetHash,
     publisherIdentityKey: installation.activeRelease.publisherIdentityKey,
-    publisherDeviceLabel: installation.activeRelease.publisherDeviceLabel,
+    publisherDisplayName: installation.activeRelease.publisherDisplayName,
     parts: installation.activeRelease.parts,
   }
 }

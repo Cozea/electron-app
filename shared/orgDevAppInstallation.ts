@@ -31,7 +31,7 @@ export interface OrgDevAppInstallation {
     arch: string | null
     permissionSetHash: string | null
     publisherIdentityKey: string | null
-    publisherDeviceLabel: string | null
+    publisherDisplayName: string | null
     parts: DevAppParts
     runtimeSourceDigest: string | null
     packageManifestDigest: string | null

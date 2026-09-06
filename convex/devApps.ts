@@ -560,7 +560,7 @@ export const publish = mutation({
       ...(args.arch ? { arch: args.arch } : {}),
       ...(args.permissionSetHash ? { permissionSetHash: args.permissionSetHash } : {}),
       ...(user.identityKey ? { publisherIdentityKey: user.identityKey } : {}),
-      ...(user.displayName ? { publisherDeviceLabel: user.displayName } : {}),
+      ...(user.displayName ? { publisherDisplayName: user.displayName } : {}),
       createdBy: user._id,
       createdAt: now,
     })
@@ -814,7 +814,7 @@ export const getArtifactUrl = query({
       arch: resolved.release.arch ?? null,
       permissionSetHash: resolved.release.permissionSetHash ?? null,
       publisherIdentityKey: resolved.release.publisherIdentityKey ?? null,
-      publisherDeviceLabel: resolved.release.publisherDeviceLabel ?? null,
+      publisherDisplayName: resolved.release.publisherDisplayName ?? null,
     }
   },
 })
