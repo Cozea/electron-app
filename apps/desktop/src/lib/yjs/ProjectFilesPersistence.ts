@@ -295,7 +295,6 @@ export class ProjectFilesPersistence {
             await this.convex.mutation(api.fileTombstones.createTombstone, {
               projectId: this.projectId,
               filePath: path,
-              deletedBy: this.userId,
               deletedByAgent: attribution.origin === 'agent' ? this.userName : undefined,
             })
           } catch (error) {
