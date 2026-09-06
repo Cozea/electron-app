@@ -1,6 +1,7 @@
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
+import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 
 const DEFAULT_LOCK_TTL_MS = 30_000
 const MIN_LOCK_TTL_MS = 3_000
@@ -19,23 +20,23 @@ function isExpired(lockedAt: number | undefined, ttlMs: number, now: number): bo
   return now - lockedAt > ttlMs
 }
 
-function displayName(user: {
-  firstName?: string | undefined
-  lastName?: string | undefined
-  email: string
+function displayName(device: {
+  deviceLabel?: string | undefined
+  identityKey?: string | undefined
 }): string {
-  const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
-  return name || user.email
+  return device.deviceLabel?.trim() || device.identityKey?.trim() || "Unknown device"
 }
 
 export const acquireLock = mutation({
   args: {
     projectId: v.id("projects"),
     filePath: v.string(),
-    userId: v.id("users"),
+    // Transitional caller field. Lock ownership is derived from device auth.
+    userId: v.optional(v.id("users")),
     ttlMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     const now = Date.now()
     const ttlMs = clampTtlMs(args.ttlMs ?? DEFAULT_LOCK_TTL_MS)
     const filePath = normalizeFilePath(args.filePath)
@@ -47,13 +48,12 @@ export const acquireLock = mutation({
       )
       .first()
 
-    // No lock record yet: create and lock.
     if (!existing) {
       const lockId = await ctx.db.insert("projectFileLocks", {
         projectId: args.projectId,
         filePath,
         status: "locked",
-        lockedBy: args.userId,
+        lockedBy: principal._id,
         lockedAt: now,
       })
 
@@ -61,17 +61,16 @@ export const acquireLock = mutation({
         acquired: true as const,
         lockId,
         filePath,
-        lockedBy: args.userId,
+        lockedBy: principal._id,
         lockedAt: now,
         expiresAt: now + ttlMs,
       }
     }
 
-    // Free: take it.
     if (existing.status === "free") {
       await ctx.db.patch(existing._id, {
         status: "locked",
-        lockedBy: args.userId,
+        lockedBy: principal._id,
         lockedAt: now,
       })
 
@@ -79,29 +78,25 @@ export const acquireLock = mutation({
         acquired: true as const,
         lockId: existing._id,
         filePath,
-        lockedBy: args.userId,
+        lockedBy: principal._id,
         lockedAt: now,
         expiresAt: now + ttlMs,
       }
     }
 
-    // Locked by us: renew the lease.
-    if (existing.status === "locked" && existing.lockedBy === args.userId) {
-      await ctx.db.patch(existing._id, {
-        lockedAt: now,
-      })
+    if (existing.status === "locked" && existing.lockedBy === principal._id) {
+      await ctx.db.patch(existing._id, { lockedAt: now })
 
       return {
         acquired: true as const,
         lockId: existing._id,
         filePath,
-        lockedBy: args.userId,
+        lockedBy: principal._id,
         lockedAt: now,
         expiresAt: now + ttlMs,
       }
     }
 
-    // Locked by someone else, but expired: steal it.
     if (
       existing.status === "locked" &&
       existing.lockedBy &&
@@ -109,7 +104,7 @@ export const acquireLock = mutation({
     ) {
       await ctx.db.patch(existing._id, {
         status: "locked",
-        lockedBy: args.userId,
+        lockedBy: principal._id,
         lockedAt: now,
         pendingMerges: undefined,
       })
@@ -118,14 +113,13 @@ export const acquireLock = mutation({
         acquired: true as const,
         lockId: existing._id,
         filePath,
-        lockedBy: args.userId,
+        lockedBy: principal._id,
         lockedAt: now,
         expiresAt: now + ttlMs,
         stolen: true as const,
       }
     }
 
-    // Otherwise: busy (locked or merging).
     const lockedBy = existing.lockedBy ?? null
     const lockedAt = existing.lockedAt ?? null
     const expiresAt =
@@ -135,8 +129,8 @@ export const acquireLock = mutation({
 
     let lockedByName: string | null = null
     if (lockedBy) {
-      const user = await ctx.db.get(lockedBy)
-      if (user) lockedByName = displayName(user)
+      const device = await ctx.db.get(lockedBy)
+      if (device) lockedByName = displayName(device)
     }
 
     return {
@@ -155,9 +149,10 @@ export const releaseLock = mutation({
   args: {
     projectId: v.id("projects"),
     filePath: v.string(),
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
     const filePath = normalizeFilePath(args.filePath)
 
     const existing = await ctx.db
@@ -167,12 +162,8 @@ export const releaseLock = mutation({
       )
       .first()
 
-    if (!existing) {
-      return { released: true as const }
-    }
-
-    // Only the lock owner can release.
-    if (existing.status !== "locked" || existing.lockedBy !== args.userId) {
+    if (!existing) return { released: true as const }
+    if (existing.status !== "locked" || existing.lockedBy !== principal._id) {
       return { released: false as const }
     }
 
@@ -204,39 +195,28 @@ export const getLock = query({
 
     if (!lock) return null
 
-    const lockedByUser =
-      lock.lockedBy ? await ctx.db.get(lock.lockedBy) : null
+    const lockedByDevice = lock.lockedBy ? await ctx.db.get(lock.lockedBy) : null
 
-    // Calculate traffic light color
     let trafficLight: 'green' | 'yellow' | 'red' = 'green'
     if (lock.status === 'locked') {
-      // Check if it's an agent lock
-      if (lock.agentId) {
-        trafficLight = 'red' // Agent working
-      } else {
-        trafficLight = 'yellow' // Human editing
-      }
+      trafficLight = lock.agentId ? 'red' : 'yellow'
     }
 
     return {
       ...lock,
       trafficLight,
-      lockedByUser: lockedByUser
+      lockedByUser: lockedByDevice
         ? {
-            id: lockedByUser._id as Id<"users">,
-            name: displayName(lockedByUser),
-            profileImageUrl: lockedByUser.profileImageUrl ?? null,
+            id: lockedByDevice._id as Id<"users">,
+            name: displayName(lockedByDevice),
+            profileImageUrl: lockedByDevice.profileImageUrl ?? null,
           }
         : null,
     }
   },
 })
 
-/**
- * Acquire a lock for an AI agent.
- * Agents get exclusive locks (red light) that block other agents.
- * Humans can still view but see a warning.
- */
+/** Acquire a lock for an AI agent. */
 export const acquireAgentLock = mutation({
   args: {
     projectId: v.id("projects"),
@@ -248,7 +228,7 @@ export const acquireAgentLock = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
-    const ttlMs = clampTtlMs(args.ttlMs ?? 60_000) // 1 minute default for agents
+    const ttlMs = clampTtlMs(args.ttlMs ?? 60_000)
     const filePath = normalizeFilePath(args.filePath)
 
     const existing = await ctx.db
@@ -258,7 +238,6 @@ export const acquireAgentLock = mutation({
       )
       .first()
 
-    // No lock: create it
     if (!existing) {
       const lockId = await ctx.db.insert("projectFileLocks", {
         projectId: args.projectId,
@@ -271,15 +250,9 @@ export const acquireAgentLock = mutation({
         expiresAt: now + ttlMs,
       })
 
-      return {
-        acquired: true as const,
-        lockId,
-        filePath,
-        expiresAt: now + ttlMs,
-      }
+      return { acquired: true as const, lockId, filePath, expiresAt: now + ttlMs }
     }
 
-    // Free: take it
     if (existing.status === "free") {
       await ctx.db.patch(existing._id, {
         status: "locked",
@@ -291,15 +264,9 @@ export const acquireAgentLock = mutation({
         expiresAt: now + ttlMs,
       })
 
-      return {
-        acquired: true as const,
-        lockId: existing._id,
-        filePath,
-        expiresAt: now + ttlMs,
-      }
+      return { acquired: true as const, lockId: existing._id, filePath, expiresAt: now + ttlMs }
     }
 
-    // Locked by us (same agent): renew
     if (existing.status === "locked" && existing.agentId === args.agentId) {
       await ctx.db.patch(existing._id, {
         lockedAt: now,
@@ -307,15 +274,9 @@ export const acquireAgentLock = mutation({
         taskDescription: args.taskDescription,
       })
 
-      return {
-        acquired: true as const,
-        lockId: existing._id,
-        filePath,
-        expiresAt: now + ttlMs,
-      }
+      return { acquired: true as const, lockId: existing._id, filePath, expiresAt: now + ttlMs }
     }
 
-    // Locked by another agent but expired: steal it
     if (
       existing.status === "locked" &&
       existing.agentId &&
@@ -341,17 +302,15 @@ export const acquireAgentLock = mutation({
       }
     }
 
-    // Locked by a human: agent should wait
     if (existing.status === "locked" && existing.lockedBy) {
-      const lockedByUser = await ctx.db.get(existing.lockedBy)
+      const lockedByDevice = await ctx.db.get(existing.lockedBy)
       return {
         acquired: false as const,
         reason: "human-editing",
-        lockedBy: lockedByUser ? displayName(lockedByUser) : "a user",
+        lockedBy: lockedByDevice ? displayName(lockedByDevice) : "another device",
       }
     }
 
-    // Locked by another agent: wait
     return {
       acquired: false as const,
       reason: "agent-working",
@@ -362,10 +321,6 @@ export const acquireAgentLock = mutation({
   },
 })
 
-/**
- * Release an agent lock.
- * Sets the lock to 'free' with a short cooldown.
- */
 export const releaseAgentLock = mutation({
   args: {
     projectId: v.id("projects"),
@@ -382,14 +337,8 @@ export const releaseAgentLock = mutation({
       )
       .first()
 
-    if (!existing) {
-      return { released: true as const }
-    }
-
-    // Only the lock owner can release
-    if (existing.agentId !== args.agentId) {
-      return { released: false as const }
-    }
+    if (!existing) return { released: true as const }
+    if (existing.agentId !== args.agentId) return { released: false as const }
 
     await ctx.db.patch(existing._id, {
       status: "free",
@@ -405,9 +354,6 @@ export const releaseAgentLock = mutation({
   },
 })
 
-/**
- * Get all locks for a project (for UI display).
- */
 export const getProjectLocks = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
