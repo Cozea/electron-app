@@ -3,6 +3,7 @@ import { ContainerProxy, proxyToSandbox } from '@cloudflare/sandbox'
 import { handleHealth } from './routes/health'
 import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
+import { handleCollabV2Session } from './routes/collabV2Session'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
 import { DevAppRuntimeBuild } from './durableObjects/DevAppRuntimeBuild'
@@ -150,6 +151,20 @@ export default {
             authenticationFailure ? 'UNAUTHORIZED' : 'PUSH_VERIFICATION_REJECTED',
             error instanceof Error ? error.message : 'Push verification failed',
             { status: authenticationFailure ? 401 : 409 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/collab/v2/session') {
+        try {
+          return await handleCollabV2Session(request, env)
+        } catch (error) {
+          return protocolError(
+            'COLLAB_SESSION_REJECTED',
+            error instanceof Error ? error.message : 'Invalid explicit collaboration session request',
+            { status: 403 },
             false,
             origin,
           )

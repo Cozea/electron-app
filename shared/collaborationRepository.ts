@@ -80,10 +80,3 @@ export function parseGitHubRepositoryUrl(value: string): {
     cloneUrl: `https://github.com/${owner}/${name}.git`,
   }
 }
-
-
-export function createGitHubExtraHeader(token: string): string {
-  const normalized = token.trim()
-  if (!normalized) throw new Error("GitHub access token is required")
-  return `AUTHORIZATION: basic ${btoa(`x-access-token:${normalized}`)}`
-}

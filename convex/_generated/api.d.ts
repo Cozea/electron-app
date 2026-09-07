@@ -11,6 +11,7 @@
 import type * as activity from "../activity.js";
 import type * as clean from "../clean.js";
 import type * as collaborationSessions from "../collaborationSessions.js";
+import type * as collaborationRoomAuthorization from "../collaborationRoomAuthorization.js";
 import type * as crons from "../crons.js";
 import type * as deployments from "../deployments.js";
 import type * as devApps from "../devApps.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   activity: typeof activity;
   clean: typeof clean;
   collaborationSessions: typeof collaborationSessions;
+  collaborationRoomAuthorization: typeof collaborationRoomAuthorization;
   crons: typeof crons;
   deployments: typeof deployments;
   devApps: typeof devApps;

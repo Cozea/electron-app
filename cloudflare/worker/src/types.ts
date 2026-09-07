@@ -45,6 +45,7 @@ export interface DeviceAccessClaims {
 
 export interface SessionDescriptor {
   projectId: string
+  sessionId?: string
   roomId: string
   collabWsUrl: string
   token: string
@@ -68,6 +69,7 @@ export interface SessionDescriptor {
 export interface SessionClaims {
   sub: string
   projectId: string
+  sessionId?: string
   roomId: string
   principalId: string
   clientType: 'web' | 'electron'

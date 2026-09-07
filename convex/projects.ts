@@ -982,7 +982,7 @@ async function deleteProjectPurgeStage(
         .withIndex("by_project_and_created_at", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
-      return { deleted: rows.length, nextStage: rows.length === 0 ? 20 : 19 }
+      return rows.length
     }
     case 20: {
       const rows = await ctx.db
@@ -990,7 +990,7 @@ async function deleteProjectPurgeStage(
         .withIndex("by_project_and_principal", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
-      return { deleted: rows.length, nextStage: rows.length === 0 ? 21 : 20 }
+      return rows.length
     }
     case 21: {
       const rows = await ctx.db
@@ -998,7 +998,7 @@ async function deleteProjectPurgeStage(
         .withIndex("by_project_and_updated", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
-      return { deleted: rows.length, nextStage: rows.length === 0 ? 22 : 21 }
+      return rows.length
     }
     case 22: {
       const rows = await ctx.db
