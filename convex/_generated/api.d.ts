@@ -39,6 +39,7 @@ import type * as projectFiles from "../projectFiles.js";
 import type * as projectJoinLinks from "../projectJoinLinks.js";
 import type * as projectMembers from "../projectMembers.js";
 import type * as projectPresence from "../projectPresence.js";
+import type * as projectRepositoryAuthorizations from "../projectRepositoryAuthorizations.js";
 import type * as projectTasks from "../projectTasks.js";
 import type * as projects from "../projects.js";
 import type * as yjs from "../yjs.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   projectJoinLinks: typeof projectJoinLinks;
   projectMembers: typeof projectMembers;
   projectPresence: typeof projectPresence;
+  projectRepositoryAuthorizations: typeof projectRepositoryAuthorizations;
   projectTasks: typeof projectTasks;
   projects: typeof projects;
   yjs: typeof yjs;
