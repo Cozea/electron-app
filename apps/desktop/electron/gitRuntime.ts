@@ -25,6 +25,7 @@ export interface GitCommandResult {
   success: boolean
   exitCode: number | null
   stdout: string
+  stdoutBytes?: Uint8Array
   stderr: string
   executablePath: string
   source: GitRuntimeSource
@@ -142,6 +143,8 @@ export async function runGitCommand(
     env?: Record<string, string>
     stdin?: string
     timeoutMs?: number
+    captureStdoutBytes?: boolean
+    maxOutputBytes?: number
   }
 ): Promise<GitCommandResult> {
   const resolved = resolveGitExecutablePath()
@@ -164,10 +167,36 @@ export async function runGitCommand(
       stdio: ["pipe", "pipe", "pipe"],
     })
 
+    const captureStdoutBytes = options?.captureStdoutBytes === true
+    const maximum = options?.maxOutputBytes
+    if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum <= 0)) {
+      child.kill("SIGKILL")
+      resolve({
+        success: false,
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        executablePath: resolved.path!,
+        source: resolved.source,
+        error: "Invalid Git stdout limit",
+      })
+      return
+    }
+
     let stdout = ""
+    const stdoutChunks: Buffer[] = []
+    let stdoutLength = 0
     let stderr = ""
     let timedOut = false
+    let outputLimitExceeded = false
     let timeout: NodeJS.Timeout | null = null
+    let settled = false
+
+    const finish = (result: GitCommandResult) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
 
     if (options?.timeoutMs && options.timeoutMs > 0) {
       timeout = setTimeout(() => {
@@ -181,7 +210,18 @@ export async function runGitCommand(
     }
 
     child.stdout.on("data", (chunk: Buffer | string) => {
-      stdout += chunk.toString()
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      if (captureStdoutBytes) {
+        stdoutLength += bytes.length
+        if (maximum !== undefined && stdoutLength > maximum) {
+          outputLimitExceeded = true
+          try { child.kill("SIGKILL") } catch { /* close will report the bounded failure */ }
+          return
+        }
+        stdoutChunks.push(bytes)
+        return
+      }
+      stdout += bytes.toString()
     })
 
     child.stderr.on("data", (chunk: Buffer | string) => {
@@ -190,10 +230,13 @@ export async function runGitCommand(
 
     child.on("error", (error) => {
       if (timeout) clearTimeout(timeout)
-      resolve({
+      finish({
         success: false,
         exitCode: null,
         stdout,
+        ...(captureStdoutBytes && !outputLimitExceeded
+          ? { stdoutBytes: new Uint8Array(Buffer.concat(stdoutChunks)) }
+          : {}),
         stderr,
         executablePath: resolved.path!,
         source: resolved.source,
@@ -203,14 +246,21 @@ export async function runGitCommand(
 
     child.on("close", (code) => {
       if (timeout) clearTimeout(timeout)
-      resolve({
-        success: !timedOut && code === 0,
+      finish({
+        success: !timedOut && !outputLimitExceeded && code === 0,
         exitCode: code,
         stdout,
+        ...(captureStdoutBytes && !outputLimitExceeded
+          ? { stdoutBytes: new Uint8Array(Buffer.concat(stdoutChunks)) }
+          : {}),
         stderr,
         executablePath: resolved.path!,
         source: resolved.source,
-        error: timedOut ? "Git command timed out" : undefined,
+        error: outputLimitExceeded
+          ? "Git stdout exceeded the collaboration byte limit"
+          : timedOut
+            ? "Git command timed out"
+            : undefined,
       })
     })
 

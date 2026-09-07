@@ -53,12 +53,14 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     progress(progress) { for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("collaboration:downloadProgress", progress) },
   })
   const coordinator = new SessionWorkspaceCoordinator({
-    git: async (args, options) => {
-      if (options.signal?.aborted) throw new Error("Collaboration Git operation cancelled")
-      const result = await runGitCommand(args, { cwd: options.cwd, env: options.env, timeoutMs: 120_000 })
-      if (options.signal?.aborted) throw new Error("Collaboration Git operation cancelled")
-      return result
-    },
+    git: async (args, options) => runGitCommand(args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdin: options.stdin,
+      captureStdoutBytes: options.captureStdoutBytes,
+      maxOutputBytes: options.maxOutputBytes,
+      timeoutMs: 120_000,
+    }),
     getWorkspace: id => catalog(asyncEffectCatalog => asyncEffectCatalog.verify(id).pipe(Effect.map(result => result.workspace))),
     async allocate(projectId, sessionId, prepare) {
       const result = await catalog(service => service.createPreparedWorkspace(

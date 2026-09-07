@@ -15,6 +15,7 @@ import {
 } from "../../../../shared/collaborationDesktop"
 import { assertGitCommitSha, buildCollaborationSessionBranch } from "../../../../shared/collaborationSession"
 import { assertSharedFilePath } from "../../../../shared/collaborationPaths"
+import type { CollaborationRepositoryCredentialResponse } from "../../../../shared/collaborationRepository"
 
 export interface CollaborationGitResult {
   success: boolean
@@ -31,7 +32,7 @@ export interface CollaborationCoordinatorDependencies {
   read(key: string): Promise<string | null>
   write(key: string, value: string): Promise<void>
   authorize(sessionId: string, accessToken: string): Promise<CollaborationWorkspaceAuthority>
-  credential(projectId: string, sessionId: string, operation: "read" | "write", accessToken: string): Promise<{ cloneUrl: string; token: string; expiresAt: number; repositoryId: string }>
+  credential(projectId: string, sessionId: string, operation: "read" | "write", accessToken: string): Promise<CollaborationRepositoryCredentialResponse>
   verifyPush(sessionId: string, commitSha: string, accessToken: string): Promise<void>
   scratchRoot: string
   now?: () => number
@@ -105,8 +106,10 @@ export class SessionWorkspaceCoordinator {
 
   private async remoteEnv(authority: CollaborationWorkspaceAuthority, token: string, operation: "read" | "write") {
     const credential = await this.deps.credential(authority.session.projectId, authority.session.id, operation, token)
-    if (credential.expiresAt <= this.now() || credential.repositoryId !== authority.session.repositoryId ||
-      canonicalRepository(credential.cloneUrl) !== canonicalRepository(authority.cloneUrl)) {
+    const repository = credential.repository
+    if (credential.expiresAt <= this.now() || credential.operation !== operation ||
+      repository.repositoryId !== authority.session.repositoryId ||
+      canonicalRepository(repository.cloneUrl) !== canonicalRepository(authority.cloneUrl)) {
       throw new Error("Repository credentials expired or repository identity changed")
     }
     return {

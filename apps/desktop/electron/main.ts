@@ -35,6 +35,9 @@ import { registerScheduledTaskHandlers } from './ipc/registerScheduledTaskHandle
 import { ComputerUseService } from './services/ComputerUseService'
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
 import { registerYjsHandlers } from './ipc/registerYjsHandlers'
+import { registerCollaborationHandlers } from './collaboration/registerCollaborationHandlers'
+import { shutdownCollaboration } from './collaboration/CollaborationShutdown'
+import { createDurableQuitHandler } from '../../../shared/durableQuit'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
 import { broadcastDevAppPreviewStatus, registerDevAppPreviewHandlers } from './ipc/registerDevAppPreviewHandlers'
 import { registerDevAppAuthoringHandlers } from './ipc/registerDevAppAuthoringHandlers'
@@ -1885,23 +1888,37 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   appIsQuitting = true
   logAssistantBridge('app-before-quit')
-  orgDevAppArtifactService.dispose()
-  devAppPreviewService.dispose()
-  devAppWorkerHost.dispose()
-  publishedDevAppWorkerHost.dispose()
-  void disposeContainedDevAppRuntime()
-  PreviewSnapshotService.getInstance().dispose()
-  LocalAutomationResolverService.getInstance().dispose()
-  void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
-  void stopSubstrateShadowServer()
-  unregisterBrowserSurfaceHandlers?.()
-  unregisterBrowserSurfaceHandlers = null
-  if (t3BrowserSurfaceService) {
-    void t3BrowserSurfaceService.dispose()
-    t3BrowserSurfaceService = null
-  }
 })
+
+app.on('will-quit', createDurableQuitHandler({
+  prepare: async () => {
+    appIsQuitting = true
+    await shutdownCollaboration()
+  },
+  dispose: async () => {
+    logAssistantBridge('app-will-quit')
+    orgDevAppArtifactService.dispose()
+    devAppPreviewService.dispose()
+    devAppWorkerHost.dispose()
+    publishedDevAppWorkerHost.dispose()
+    await disposeContainedDevAppRuntime()
+    PreviewSnapshotService.getInstance().dispose()
+    LocalAutomationResolverService.getInstance().dispose()
+    await disposeWorkspaceCatalogRuntime()
+    await stopSubstrateShadowServer()
+    unregisterBrowserSurfaceHandlers?.()
+    unregisterBrowserSurfaceHandlers = null
+    if (t3BrowserSurfaceService) {
+      await t3BrowserSurfaceService.dispose()
+      t3BrowserSurfaceService = null
+    }
+  },
+  quit: () => app.quit(),
+  failed: (stage) => {
+    console.error(`[Collaboration] Durable quit blocked during ${stage}; retry quit after recovery is saved.`)
+  },
+}))
 
 app.on('activate', () => {
   if (canCreateMainWindow && BrowserWindow.getAllWindows().length === 0) {
@@ -1960,6 +1977,7 @@ app.whenReady().then(() => {
   // Register workspace IPC handlers synchronously so they're available as soon
   // as the renderer loads. Internally each handler awaits catalog readiness.
   registerWorkspaceHandlers(ipcMain, { loadSettings, saveSettings })
+  registerCollaborationHandlers(ipcMain, app.getPath('userData'))
 
   scheduleBootWork(
     'workspace-catalog-initialized',
