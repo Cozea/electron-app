@@ -60,6 +60,16 @@ new_branch = '''    branch.includes("//") ||
 session = session.replace(old_branch, new_branch)
 session_path.write_text(session)
 
+# The room authorization endpoint is gateway-only at runtime, but it still uses
+# the canonical builder so the generic authority invariant can verify it.
+room_auth_path = Path("convex/collaborationRoomAuthorization.ts")
+room_auth = room_auth_path.read_text()
+room_auth = room_auth.replace(
+    'import { query } from "./_generated/server"',
+    'import { authenticatedQuery as query } from "./lib/authenticatedFunctions"',
+)
+room_auth_path.write_text(room_auth)
+
 # Extend the generic caller-identity guard to principal-native field names so a
 # future endpoint cannot accidentally accept a forged actor principal.
 auth_path = Path("convex/lib/authenticatedFunctions.ts")
@@ -75,5 +85,32 @@ auth = auth.replace(
     '/^(?:actor|viewer|requester|inviter|invited|added|deleted|created)(?:User|Principal)Id$/.test(field)',
 )
 auth_path.write_text(auth)
+
+# Generation-3 runs on the canonical machine-backed principal contract. Remove
+# stale device aliases left at use sites after the descriptor itself was ported.
+transport_path = Path("shared/CollaborationTransport.ts")
+transport = transport_path.read_text()
+transport = transport.replace(
+    'session.deviceId !== this.session.deviceId',
+    'session.identityKey !== this.session.identityKey',
+)
+transport = transport.replace(
+    'userName: typeof metadata.userName === "string" ? metadata.userName : null,',
+    'displayName: typeof metadata.displayName === "string" ? metadata.displayName : null,',
+)
+transport_path.write_text(transport)
+
+host_path = Path("apps/desktop/electron/collaboration/SessionRuntimeHost.ts")
+host = host_path.read_text().replace('.supplyWaitingDevices(', '.supplyWaitingPrincipals(')
+host_path.write_text(host)
+
+# Main-process device authentication uses the same identity payload as the
+# renderer session path; presentation labels are not part of the crypto identity.
+gateway_path = Path("apps/desktop/electron/collaboration/DeviceCollaborationGateway.ts")
+gateway = gateway_path.read_text().replace(
+    'identityKey: identity.identityKey, deviceLabel: identity.deviceLabel, platform: identity.platform,',
+    'identityKey: identity.identityKey, platform: identity.platform,',
+)
+gateway_path.write_text(gateway)
 
 print("PR141 current-main compatibility and authority fixes applied")
