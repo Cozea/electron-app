@@ -31,7 +31,7 @@ export class DeviceCollaborationGateway {
   private async authenticate(): Promise<DeviceToken> {
     const identity = await ensureCollabDeviceIdentity()
     const { challenge } = await this.request<{ challenge: string }>("/auth/device/challenge", {
-      identityKey: identity.identityKey, deviceLabel: identity.deviceLabel, platform: identity.platform,
+      identityKey: identity.identityKey, platform: identity.platform,
       encryptionPublicKeyJwk: identity.publicKeyJwk, encryptionPublicKeyAlgorithm: identity.publicKeyAlgorithm, encryptionFingerprint: identity.fingerprint,
       signingPublicKeyJwk: identity.signingPublicKeyJwk, signingPublicKeyAlgorithm: identity.signingPublicKeyAlgorithm, signingFingerprint: identity.signingFingerprint,
     })
