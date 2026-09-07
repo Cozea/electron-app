@@ -29,6 +29,8 @@ jobs:
         run: bun run bootstrap
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
+      - name: Prepare deterministic test fixture
+        run: mkdir -p .agent
       - name: Run validation matrix
         shell: bash
         run: |
@@ -59,4 +61,5 @@ jobs:
           name: pr141-main-port-validation-${{ github.sha }}
           path: .validation
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 7
