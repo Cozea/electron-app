@@ -37,19 +37,28 @@ async function post<T>(route: string, body: unknown, token: string): Promise<T> 
 export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string): void {
   const gateway = new DeviceCollaborationGateway()
   const downloader = new AuthorizedRepositoryDownloader({
-    binding: projectId => gateway.post("/collab/v2/control", { operation: "repository.getBinding", args: { projectId } }),
     credential: projectId => gateway.post("/collab/repository/credential", { projectId, operation: "read" }),
     async allocate(projectId, slug, prepare) {
       const result = await catalog(service => service.createPreparedWorkspace({ projectId, slug, setActive: false }, prepare, `github-download:g3:${projectId}`))
       if (!result.success || !result.workspace) throw new Error(result.error ?? "Repository workspace preparation failed")
       return result.workspace
     },
-    git: (args, options) => runGitCommand(args, { ...options, timeoutMs: 300_000, maxOutputBytes: 4 * 1024 * 1024 }),
+    git: async (args, options) => {
+      if (options.signal.aborted) throw new Error("Repository download cancelled")
+      const result = await runGitCommand(args, { cwd: options.cwd, env: options.env, timeoutMs: 300_000 })
+      if (options.signal.aborted) throw new Error("Repository download cancelled")
+      return result
+    },
     async activate(workspace) { await catalog(service => service.setActive(workspace.workspaceId, workspace.projectId)); notifyWorkspaceCatalogChanged() },
     progress(progress) { for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("collaboration:downloadProgress", progress) },
   })
   const coordinator = new SessionWorkspaceCoordinator({
-    git: (args, options) => runGitCommand(args, { ...options, timeoutMs: 120_000 }),
+    git: async (args, options) => {
+      if (options.signal?.aborted) throw new Error("Collaboration Git operation cancelled")
+      const result = await runGitCommand(args, { cwd: options.cwd, env: options.env, timeoutMs: 120_000 })
+      if (options.signal?.aborted) throw new Error("Collaboration Git operation cancelled")
+      return result
+    },
     getWorkspace: id => catalog(asyncEffectCatalog => asyncEffectCatalog.verify(id).pipe(Effect.map(result => result.workspace))),
     async allocate(projectId, sessionId, prepare) {
       const result = await catalog(service => service.createPreparedWorkspace(
@@ -79,9 +88,16 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
   }, async workspaceId => {
     const workspace = await catalog(service => service.getById(workspaceId))
     if (!workspace) throw new Error("The retained session workspace could not be resolved for shutdown")
+    const manager = WorkbenchSessionManager.getInstance()
+    const workspaceSessions = manager.listSessions().filter(session => session.workspaceId === workspaceId)
     const results = await Promise.allSettled([
       stopNativeWorkspaceRoot(workspace.projectRootPath),
-      WorkbenchSessionManager.getInstance().closeWorkspace(workspaceId),
+      ...workspaceSessions.map(session => manager.closeSession({
+        sessionKey: session.sessionKey,
+        projectId: session.projectId,
+        laneId: session.laneId,
+        workspaceId: session.workspaceId,
+      })),
     ])
     if (results.some(result => result.status === "rejected")) throw new Error("Session workspace shutdown was not fully acknowledged; retry Leave")
   })
