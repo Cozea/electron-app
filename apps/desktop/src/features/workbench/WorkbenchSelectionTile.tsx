@@ -23,6 +23,7 @@ import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
 import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
 import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
@@ -251,20 +252,14 @@ function useLauncherGridLayout(
   )
 
   const recalculate = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    const container = containerRef?.current ?? el
+    const container = containerRef?.current ?? ref.current
+    if (!container) return
     const containerRect = container.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    const width = elRect.width || containerRect.width
-    // Measure available height:
-    // In singleton empty mode, max 2 rows fit in the fixed h-[238px] viewport.
-    // In normal mode, el is flex-1 min-h-0 so el.clientHeight is the exact available viewport height.
+    const width = containerRect.width
+    const overhead = isSingletonEmpty ? 220 : 132
     const availableHeight = isSingletonEmpty
       ? 2 * LAUNCHER_CONFIG.cellHeight + LAUNCHER_CONFIG.rowGap
-      : el.clientHeight > 0
-        ? el.clientHeight
-        : Math.max(0, containerRect.height - 150)
+      : Math.max(0, containerRect.height - overhead)
     const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
     setLayout(
       computeWorkbenchSelectionLauncherLayout({
@@ -286,16 +281,16 @@ function useLauncherGridLayout(
   }, [recalculate])
 
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
+    const target = containerRef?.current ?? ref.current
+    if (!target) return
 
     const ro = new ResizeObserver(() => {
       recalculate()
     })
 
-    ro.observe(el)
-    if (containerRef?.current && containerRef.current !== el) {
-      ro.observe(containerRef.current)
+    ro.observe(target)
+    if (ref.current && ref.current !== target) {
+      ro.observe(ref.current)
     }
     return () => ro.disconnect()
   }, [containerRef, recalculate])
@@ -632,117 +627,119 @@ export function WorkbenchSelectionTile({
 
   return (
     <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col",
-          centerSingletonSelectionLayout
-            ? "overflow-hidden justify-center items-center py-2"
-            : useListView
-              ? "overflow-y-auto pb-6"
-              : "overflow-hidden pb-1",
-        )}
-      >
-        {showHero ? (
-          <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-2 pt-0 md:px-10">
-            <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
-            {useListView ? null : sharedFilterBar}
+      {useListView ? (
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="shrink-0 px-3 pt-3 pb-1 md:px-6">
+            <div className="mx-auto w-full" style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}>
+              {sharedFilterBar}
+            </div>
           </div>
-        ) : null}
-
-        {!useListView && !showHero ? sharedFilterBar : null}
-
+          <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1 w-full" viewportClassName="px-3 md:px-6">
+            <div
+              className="mx-auto flex w-full flex-col divide-y divide-border/60 py-2"
+              style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
+            >
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => (
+                  <SelectionListButton
+                    key={option.id}
+                    option={option}
+                    onSelect={handleChooseOption}
+                  />
+                ))
+              ) : (
+                <div className="px-3 py-4 text-xs text-muted-foreground">
+                  {emptyResultsMessage}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      ) : (
         <div
           className={cn(
-            "mx-auto flex w-full flex-col px-3 md:px-6",
-            centerSingletonSelectionLayout ? "flex-none" : "flex-1 min-h-0",
-            "max-w-5xl",
+            "flex min-h-0 flex-1 flex-col overflow-hidden",
+            centerSingletonSelectionLayout
+              ? "justify-center items-center py-2"
+              : "pb-1",
           )}
         >
+          {showHero ? (
+            <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-2 pt-0 md:px-10">
+              <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
+              {sharedFilterBar}
+            </div>
+          ) : (
+            sharedFilterBar
+          )}
+
           <div
-            ref={launcherViewportRef}
             className={cn(
-              "flex w-full flex-col overflow-hidden",
-              centerSingletonSelectionLayout ? "h-[238px] flex-none" : "min-h-0 flex-1",
+              "mx-auto flex w-full flex-col px-3 md:px-6",
+              centerSingletonSelectionLayout ? "flex-none" : "flex-1 min-h-0",
+              "max-w-5xl",
             )}
           >
-            {useListView ? (
-              <div
-                className="mx-auto flex w-full flex-col divide-y divide-border/60 py-2"
-                style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
-              >
-                {sharedFilterBar}
-                {filteredOptions.length > 0 ? (
-                  filteredOptions.map((option) => (
-                    <SelectionListButton
-                      key={option.id}
-                      option={option}
-                      onSelect={handleChooseOption}
-                    />
-                  ))
-                ) : (
-                  <div className="px-3 py-4 text-xs text-muted-foreground">
-                    {emptyResultsMessage}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                {filteredOptions.length > 0 ? (
-                  <div
-                    ref={launcherPagerRef}
-                    className={cn(
-                      "overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                      centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
-                    )}
-                  >
-                    <div className="flex h-full">
-                      {pagedOptions.map((page, pageIndex) => {
-                        const pageColumns = Math.max(1, launcherLayout.columns)
-                        return (
+            <div
+              ref={launcherViewportRef}
+              className={cn(
+                "flex w-full flex-col overflow-hidden",
+                centerSingletonSelectionLayout ? "h-[238px] flex-none" : "min-h-0 flex-1",
+              )}
+            >
+              {filteredOptions.length > 0 ? (
+                <div
+                  ref={launcherPagerRef}
+                  className={cn(
+                    "overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
+                  )}
+                >
+                  <div className="flex h-full">
+                    {pagedOptions.map((page, pageIndex) => {
+                      const pageColumns = Math.max(1, launcherLayout.columns)
+                      return (
+                        <div
+                          key={`selection-page-${pageIndex}`}
+                          className="flex min-w-full snap-start px-1 py-2"
+                        >
                           <div
-                            key={`selection-page-${pageIndex}`}
-                            className="flex min-w-full snap-start px-1 py-2"
+                            className="grid w-full content-start justify-center"
+                            style={{
+                              gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
+                              gridAutoRows: `${densityConfig.cellHeight}px`,
+                              columnGap: `${densityConfig.columnGap}px`,
+                              rowGap: `${densityConfig.rowGap}px`,
+                              minHeight: centerSingletonSelectionLayout
+                                ? `${2 * densityConfig.cellHeight + densityConfig.rowGap}px`
+                                : `${launcherLayout.rows * densityConfig.cellHeight + Math.max(0, launcherLayout.rows - 1) * densityConfig.rowGap}px`,
+                            }}
                           >
-                            <div
-                              className="grid w-full content-start justify-center"
-                              style={{
-                                gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
-                                gridAutoRows: `${densityConfig.cellHeight}px`,
-                                columnGap: `${densityConfig.columnGap}px`,
-                                rowGap: `${densityConfig.rowGap}px`,
-                                minHeight: centerSingletonSelectionLayout
-                                  ? `${2 * densityConfig.cellHeight + densityConfig.rowGap}px`
-                                  : `${launcherLayout.rows * densityConfig.cellHeight + Math.max(0, launcherLayout.rows - 1) * densityConfig.rowGap}px`,
-                              }}
-                            >
-                              {page.map((option) => (
-                                <SelectionLauncherButton
-                                  key={option.id}
-                                  option={option}
-                                  onSelect={handleChooseOption}
-                                />
-                              ))}
-                            </div>
+                            {page.map((option) => (
+                              <SelectionLauncherButton
+                                key={option.id}
+                                option={option}
+                                onSelect={handleChooseOption}
+                              />
+                            ))}
                           </div>
-                        )
-                      })}
-                    </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                ) : (
-                  <div
-                    className={cn(
-                      "flex items-center justify-center px-2 py-8 text-xs text-muted-foreground",
-                      centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
-                    )}
-                  >
-                    {emptyResultsMessage}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    "flex items-center justify-center px-2 py-8 text-xs text-muted-foreground",
+                    centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
+                  )}
+                >
+                  {emptyResultsMessage}
+                </div>
+              )}
+            </div>
 
-          {!useListView ? (
             <div className="flex h-7 shrink-0 items-center justify-center">
               {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
                 <div className="flex items-center justify-center gap-1">
@@ -766,9 +763,9 @@ export function WorkbenchSelectionTile({
                 </div>
               ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
