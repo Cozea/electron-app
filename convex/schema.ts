@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
+import { collaborationTables } from "./schema/collaboration"
 
 const devAppCapabilityValidator = v.union(
   v.literal("project.read"),
@@ -83,6 +84,7 @@ const devAppRuntimeReleaseImageValidator = v.object({
 })
 
 export default defineSchema({
+  ...collaborationTables,
   // Device principals. One physical Cozea installation is one independent principal.
   devicePrincipals: defineTable({
     identityKey: v.string(),

@@ -978,31 +978,31 @@ async function deleteProjectPurgeStage(
     }
     case 19: {
       const rows = await ctx.db
-        .query("projectCollabRoomKeys")
-        .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
+        .query("collaborationSessionEvents")
+        .withIndex("by_project_and_created_at", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
-      return rows.length
+      return { deleted: rows.length, nextStage: rows.length === 0 ? 20 : 19 }
     }
     case 20: {
       const rows = await ctx.db
-        .query("projectCollabWrappedKeys")
-        .withIndex("by_project_room_and_recipient", (q) => q.eq("projectId", projectId))
+        .query("collaborationParticipants")
+        .withIndex("by_project_and_principal", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
-      return rows.length
+      return { deleted: rows.length, nextStage: rows.length === 0 ? 21 : 20 }
     }
     case 21: {
       const rows = await ctx.db
-        .query("projectCollabKeyRequests")
-        .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
+        .query("collaborationSessions")
+        .withIndex("by_project_and_updated", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
-      return rows.length
+      return { deleted: rows.length, nextStage: rows.length === 0 ? 22 : 21 }
     }
     case 22: {
       const rows = await ctx.db
-        .query("projectCollabRecoveryKits")
+        .query("projectCollabRoomKeys")
         .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
@@ -1010,13 +1010,37 @@ async function deleteProjectPurgeStage(
     }
     case 23: {
       const rows = await ctx.db
+        .query("projectCollabWrappedKeys")
+        .withIndex("by_project_room_and_recipient", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 24: {
+      const rows = await ctx.db
+        .query("projectCollabKeyRequests")
+        .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 25: {
+      const rows = await ctx.db
+        .query("projectCollabRecoveryKits")
+        .withIndex("by_project_and_room", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 26: {
+      const rows = await ctx.db
         .query("yjsUpdates")
         .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 24: {
+    case 27: {
       const rows = await ctx.db
         .query("yjsDocuments")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -1024,7 +1048,7 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 25: {
+    case 28: {
       const rows = await ctx.db
         .query("yjsAwareness")
         .withIndex("by_project_and_updated", (q) => q.eq("projectId", projectId))
@@ -1032,7 +1056,7 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 26: {
+    case 29: {
       const rows = await ctx.db
         .query("projectPresence")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -1040,7 +1064,7 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 27: {
+    case 30: {
       const rows = await ctx.db
         .query("deploymentJobs")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -1048,7 +1072,7 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 28: {
+    case 31: {
       const rows = await ctx.db
         .query("devAppArtifactUploads")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
