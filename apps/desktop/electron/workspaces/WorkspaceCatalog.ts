@@ -259,6 +259,13 @@ export interface WorkspaceCatalogInterface {
     req: CreateWorkspaceForProjectRequest,
   ) => Effect.Effect<CreateWorkspaceForProjectResult>
 
+  /** Allocate a Cozea-managed folder, prepare it, then publish its catalog binding. */
+  readonly createPreparedWorkspace: (
+    req: CreateWorkspaceForProjectRequest,
+    prepare: (directory: string) => Promise<void>,
+    eventSource?: string,
+  ) => Effect.Effect<CreateWorkspaceForProjectResult>
+
   readonly importExistingFolder: (
     req: ImportExistingFolderRequest,
   ) => Effect.Effect<ImportExistingFolderResult>
@@ -1312,6 +1319,74 @@ export const WorkspaceCatalogLive = Layer.effect(
         ),
       )
 
+    /**
+     * Allocate and prepare a managed workspace transactionally from the catalog's
+     * perspective. No workspace row or active-lane change becomes visible until
+     * the caller's preparation succeeds. Failed preparation removes only the
+     * newly allocated Cozea-owned directory.
+     */
+    const createPreparedWorkspace = (
+      req: CreateWorkspaceForProjectRequest,
+      prepare: (directory: string) => Promise<void>,
+      eventSource = "prepared",
+    ): Effect.Effect<CreateWorkspaceForProjectResult> =>
+      Effect.gen(function* () {
+        const { projectId, slug, rootId, rootPathOverride, setActive = false } = req
+        const resolvedRoot = yield* resolveLocalRoot(rootId, rootPathOverride)
+        const baseDir = resolvedRoot.realPath
+        yield* cleanupMissingWorkspaceBindingsUnderRoot(resolvedRoot.rootId, baseDir).pipe(
+          Effect.catch(() => Effect.void),
+        )
+        const targetPath = yield* Effect.tryPromise({
+          try: () => findAvailablePath(baseDir, slug),
+          catch: (error) => new Error(String(error)),
+        })
+        yield* Effect.tryPromise({
+          try: () => fs.mkdir(targetPath, { recursive: false }),
+          catch: (error) => new Error(`Failed to allocate managed workspace: ${String(error)}`),
+        })
+
+        const preparation = yield* Effect.result(
+          Effect.tryPromise({
+            try: () => prepare(targetPath),
+            catch: (error) => new Error(`Managed workspace preparation failed: ${String(error)}`),
+          }),
+        )
+        if (preparation._tag === "Failure") {
+          yield* Effect.tryPromise({
+            try: () => fs.rm(targetPath, { recursive: true, force: true }),
+            catch: () => undefined,
+          }).pipe(Effect.catch(() => Effect.void))
+          return { success: false, error: formatWorkspaceCatalogError(preparation.failure) }
+        }
+
+        const bindResult = yield* bindExistingFolder({
+          projectId,
+          folderPath: targetPath,
+          writeMarker: true,
+          setActive,
+          source: "clone",
+          storageOwnership: "managed",
+          managedRootId: resolvedRoot.rootId,
+          markerPolicy: "required",
+        })
+        if (!bindResult.success || !bindResult.workspace) {
+          yield* Effect.tryPromise({
+            try: () => fs.rm(targetPath, { recursive: true, force: true }),
+            catch: () => undefined,
+          }).pipe(Effect.catch(() => Effect.void))
+          return { success: false, error: bindResult.error ?? "Prepared workspace bind failed" }
+        }
+        yield* emitEvent(bindResult.workspace.workspaceId, projectId, "workspace.prepared", {
+          eventSource,
+        }).pipe(Effect.catch(() => Effect.void))
+        return { success: true, workspace: bindResult.workspace }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(error) }),
+        ),
+      )
+
     // ── attachExistingFolder ────────────────────────────────────────────────
 
     const attachExistingFolder = (
@@ -1668,6 +1743,7 @@ export const WorkspaceCatalogLive = Layer.effect(
       preflightExistingFolder: (req) => preflightExistingFolder(req).pipe(Effect.orDie),
       attachExistingFolder: (req) => attachExistingFolder(req).pipe(Effect.orDie),
       createForProject: (req) => createForProject(req).pipe(Effect.orDie),
+      createPreparedWorkspace: (req, prepare, eventSource) => createPreparedWorkspace(req, prepare, eventSource).pipe(Effect.orDie),
       importExistingFolder: (req) => importExistingFolder(req).pipe(Effect.orDie),
       cloneForProject: (req) => cloneForProject(req).pipe(Effect.orDie),
       verify: (workspaceId) => verify(workspaceId).pipe(Effect.orDie),
