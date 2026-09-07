@@ -232,7 +232,7 @@ export class CollabWsProvider {
   }
 
   async reconnectAuthorized(session: CollabSessionDescriptor): Promise<void> {
-    if (session.roomId !== this.session.roomId || session.projectId !== this.session.projectId || session.deviceId !== this.session.deviceId ||
+    if (session.roomId !== this.session.roomId || session.projectId !== this.session.projectId || session.identityKey !== this.session.identityKey ||
       session.encryption.activeKeyVersion !== this.encryption?.keyVersion) throw new Error("Session key changed; retain old-key edits and recover the new checkpoint before reconnecting")
     this.session = session
     await this.connect()
@@ -845,7 +845,7 @@ export class CollabWsProvider {
         : undefined,
       actorId: typeof metadata.actorId === "string" ? metadata.actorId : null,
       principalId: typeof metadata.principalId === "string" ? metadata.principalId : null,
-      userName: typeof metadata.userName === "string" ? metadata.userName : null,
+      displayName: typeof metadata.displayName === "string" ? metadata.displayName : null,
       checkpointGroupId: typeof metadata.checkpointGroupId === "string" ? metadata.checkpointGroupId : null,
       clientId: typeof metadata.clientId === "string" ? metadata.clientId : null,
       terminalId: typeof metadata.terminalId === "string" ? metadata.terminalId : null,

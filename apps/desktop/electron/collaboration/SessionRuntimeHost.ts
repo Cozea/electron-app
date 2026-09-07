@@ -184,7 +184,7 @@ export class SessionRuntimeHost {
               await rotationClient.checkpoint(frozen.sequence, frozen.update)
               const status = await this.keys.rotationStatus(sessionId)
               restart = !status.required && status.currentKeyVersion === next.keyVersion
-            } else await this.keys.supplyWaitingDevices(sessionId, material.roomKeyBase64, material.keyVersion)
+            } else await this.keys.supplyWaitingPrincipals(sessionId, material.roomKeyBase64, material.keyVersion)
           }
         })().finally(() => {
           hosted.maintenance = null
