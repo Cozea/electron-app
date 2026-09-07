@@ -1,5 +1,4 @@
 import type { Session } from './types'
-import type { CollaborationDesktopAPI } from './collaborationDesktop'
 import type {
   ScheduledTaskDraft,
   ScheduledTaskMutationResult,
@@ -1621,7 +1620,6 @@ export interface ElectronAPI {
     }) => Promise<{ roomKeyBase64: string }>
     deleteDeviceIdentity: () => Promise<{ success: boolean; error?: string }>
   }
-  collaboration: CollaborationDesktopAPI
 
   shell: {
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
