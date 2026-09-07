@@ -6,6 +6,7 @@ on:
       - integration/pr141-main-port
     paths:
       - scripts/pr141-main-port-phase1.py
+      - scripts/pr141-main-port-phase2.py
       - .github/workflows/pr141-main-port.yml
   workflow_dispatch:
 
@@ -29,7 +30,9 @@ jobs:
       - name: Fetch archived PR141 source
         run: git fetch origin archive/pr141-pre-main-port:refs/remotes/origin/archive/pr141-pre-main-port
       - name: Apply principal-native collaboration port
-        run: python3 scripts/pr141-main-port-phase1.py
+        run: |
+          python3 scripts/pr141-main-port-phase1.py
+          python3 scripts/pr141-main-port-phase2.py
       - name: Verify patch shape
         run: |
           git diff --check
@@ -43,5 +46,5 @@ jobs:
           git config user.name 'Cozea collaboration port'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add --all
-          git commit -m 'refactor(collaboration): port session control plane to current main'
+          git commit -m 'refactor(collaboration): add canonical repository authorization'
           git push origin HEAD:integration/pr141-main-port
