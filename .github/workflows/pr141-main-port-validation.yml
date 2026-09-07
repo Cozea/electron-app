@@ -29,17 +29,34 @@ jobs:
         run: bun run bootstrap
       - name: Install Electron runtime for tests
         run: node node_modules/electron/install.js
-      - name: Typecheck renderer
-        run: bun run typecheck
-      - name: Typecheck Electron
-        run: bun run typecheck:electron
-      - name: Typecheck tests
-        run: bun run typecheck:tests
-      - name: Typecheck Cloudflare
-        run: bun run typecheck:cloudflare
-      - name: Lint
-        run: bun run lint
-      - name: Test
-        run: bun run test
-      - name: Build
-        run: bun run build
+      - name: Run validation matrix
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .validation
+          failures=0
+          run_check() {
+            name="$1"; shift
+            echo "== $name =="
+            "$@" 2>&1 | tee ".validation/${name}.log"
+            code=${PIPESTATUS[0]}
+            echo "$code" > ".validation/${name}.status"
+            if [ "$code" -ne 0 ]; then failures=$((failures + 1)); fi
+          }
+          run_check renderer-typecheck bun run typecheck
+          run_check electron-typecheck bun run typecheck:electron
+          run_check test-typecheck bun run typecheck:tests
+          run_check cloudflare-typecheck bun run typecheck:cloudflare
+          run_check lint bun run lint
+          run_check tests bun run test
+          run_check build bun run build
+          echo "$failures" > .validation/failures
+          exit "$([ "$failures" -eq 0 ] && echo 0 || echo 1)"
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr141-main-port-validation-${{ github.sha }}
+          path: .validation
+          if-no-files-found: error
+          retention-days: 7
