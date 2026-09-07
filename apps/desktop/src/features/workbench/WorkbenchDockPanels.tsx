@@ -104,6 +104,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { WorkbenchMemoryTileHeaderActions } from "@/features/workbench/WorkbenchMemoryTileHeaderActions"
 import { WorkbenchMemoryTileInfo } from "@/features/workbench/WorkbenchMemoryTileInfo"
+import { WorkbenchAssistantTabStatus } from "@/features/workbench/assistant/WorkbenchAssistantTabStatus"
 
 const changesSuspenseFallback = <div className="h-full bg-content-surface" aria-hidden="true" />
 
@@ -303,7 +304,11 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
       title={title}
     >
       <WorkbenchDockTabIcon tile={tile} />
-      <span className="min-w-0 flex-1 truncate">{title}</span>
+      <span className="min-w-0 truncate">{title}</span>
+      {tile?.type === "assistantChat" ? (
+        <WorkbenchAssistantTabStatus tile={tile} />
+      ) : null}
+      <div className="min-w-0 flex-1" />
       {tile?.type === "assistantChat" && tile.model ? (
         <span className="hidden max-w-20 shrink-0 truncate rounded-sm bg-secondary px-1 text-[10px] text-muted-foreground group-hover:inline-flex">
           {tile.model}

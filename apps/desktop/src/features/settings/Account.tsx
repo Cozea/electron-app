@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar } from "@/components/ui/avatar";
+import { AvatarUploader } from "@/components/ui/avatar-uploader";
 import {
   SettingsDangerGroup,
+  SettingsFooterActions,
   SettingsGroup,
   SettingsPageBody,
   SettingsPageHeader,
@@ -13,6 +15,8 @@ import {
   SettingsRowLabel,
   SettingsSectionDescription,
   SettingsSectionTitle,
+  settingsInlineInputClass,
+  settingsInlineInputWidth,
 } from "@/features/settings/ui/SettingsChrome";
 import { PublicIdDisclosure } from "@/features/settings/ui/PublicIdDisclosure";
 import { optimizeProjectDevAppLogo } from "@/features/devapps/projectDevAppLogo";
@@ -31,9 +35,15 @@ import {
 } from "../../components/ui/dialog";
 import { useTranslation } from "@/lib/i18n";
 import { clearDeviceSession } from "@/lib/deviceSession";
+import { cn } from "@/lib/utils";
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Delete02Icon as __Trash2HugeIcon } from '@hugeicons/core-free-icons'
+import {
+  Alert01Icon as __AlertTriangleHugeIcon,
+  Camera01Icon,
+  Cancel01Icon,
+  Delete02Icon as __Trash2HugeIcon,
+} from '@hugeicons/core-free-icons'
 
 interface UserPrefs {
   pushNotifications: boolean;
@@ -61,7 +71,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const removeAvatarMutation = useMutation(api.devicePrincipals.removeAvatar);
   const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
-  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({ pushNotifications: true });
   const [deviceName, setDeviceName] = useState("")
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -117,7 +126,6 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       setPresentationError(error instanceof Error ? error.message : "Could not prepare this image")
     } finally {
       setProcessingAvatar(false)
-      if (avatarInputRef.current) avatarInputRef.current.value = ""
     }
   }
 
@@ -157,15 +165,64 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
           This name and avatar identify this physical Cozea device to collaborators. They do not affect its cryptographic identity or access.
         </SettingsSectionDescription>
         <SettingsGroup>
-          <div className="flex items-center gap-4 px-4 py-4">
-            <Avatar className="size-12 shrink-0 rounded-xl">
-              {avatarUrl ? <AvatarImage src={avatarUrl} alt={normalizedDeviceName || "This device"} /> : null}
-              <AvatarFallback className="rounded-xl text-sm font-medium">
-                {initials(normalizedDeviceName || "Device")}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1 space-y-2">
-              <Label htmlFor="device-display-name" className="text-xs">Device name</Label>
+          <SettingsRow isFirst>
+            <SettingsRowLabel
+              title="Photo"
+              description="Click to upload and crop an avatar"
+            />
+            <SettingsRowControl>
+              <div className="relative group shrink-0">
+                <AvatarUploader onUpload={chooseAvatar}>
+                  <button
+                    type="button"
+                    className="relative size-12 rounded-2xl overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all active:scale-95 cursor-pointer shadow-xs"
+                    disabled={isProfileLoading || savingPresentation || processingAvatar}
+                    aria-label={avatarUrl ? "Change avatar" : "Add avatar"}
+                    title={avatarUrl ? "Change photo" : "Add photo"}
+                  >
+                    <Avatar className="size-full rounded-2xl">
+                      {avatarUrl ? (
+                        <Avatar.Image src={avatarUrl} alt={normalizedDeviceName || "This device"} />
+                      ) : null}
+                      <Avatar.Fallback className="text-base font-bold">
+                        {initials(normalizedDeviceName || "Device")}
+                      </Avatar.Fallback>
+                    </Avatar>
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white rounded-2xl">
+                      <HugeiconsIcon icon={Camera01Icon} className="size-4" />
+                    </div>
+                  </button>
+                </AvatarUploader>
+                {avatarUrl ? (
+                  <button
+                    type="button"
+                    className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-background border border-border text-muted-foreground hover:text-foreground shadow-xs transition-colors cursor-pointer"
+                    onClick={() => {
+                      setAvatarUrl(null)
+                      setPendingAvatarDataUrl(null)
+                      setRemoveAvatar(true)
+                    }}
+                    title="Remove avatar"
+                    aria-label="Remove avatar"
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} className="size-3" />
+                  </button>
+                ) : (
+                  <div className="pointer-events-none absolute -bottom-1 -right-1 flex size-4.5 items-center justify-center rounded-full border border-background bg-secondary text-secondary-foreground shadow-xs group-hover:scale-105 transition-transform">
+                    <HugeiconsIcon icon={Camera01Icon} className="size-2.5" />
+                  </div>
+                )}
+              </div>
+            </SettingsRowControl>
+          </SettingsRow>
+
+          <SettingsRow>
+            <SettingsRowLabel
+              title="Device name"
+              description="How this device appears to collaborators"
+              htmlFor="device-display-name"
+            />
+            <SettingsRowControl>
               <Input
                 id="device-display-name"
                 value={deviceName}
@@ -173,58 +230,29 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 maxLength={80}
                 disabled={isProfileLoading || savingPresentation}
                 placeholder="My MacBook"
-                className="h-8"
+                className={cn(settingsInlineInputClass, settingsInlineInputWidth)}
               />
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp"
-                  className="hidden"
-                  onChange={(event) => void chooseAvatar(event.currentTarget.files?.[0] ?? null)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-[11px]"
-                  disabled={processingAvatar || savingPresentation}
-                  onClick={() => avatarInputRef.current?.click()}
-                >
-                  {processingAvatar ? "Preparing…" : avatarUrl ? "Change avatar" : "Add avatar"}
-                </Button>
-                {avatarUrl ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[11px]"
-                    disabled={processingAvatar || savingPresentation}
-                    onClick={() => {
-                      setAvatarUrl(null)
-                      setPendingAvatarDataUrl(null)
-                      setRemoveAvatar(true)
-                    }}
-                  >
-                    Remove
-                  </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  className="ml-auto h-7 text-[11px]"
-                  disabled={!presentationDirty || !normalizedDeviceName || processingAvatar || savingPresentation}
-                  onClick={() => void savePresentation()}
-                >
-                  {savingPresentation ? "Saving…" : "Save"}
-                </Button>
-              </div>
-              {presentationError ? (
-                <p className="text-[11px] text-destructive" role="alert">{presentationError}</p>
-              ) : null}
-            </div>
-          </div>
+            </SettingsRowControl>
+          </SettingsRow>
         </SettingsGroup>
+
+        {presentationError ? (
+          <p className="mt-2 text-[11px] text-destructive px-1" role="alert">{presentationError}</p>
+        ) : null}
+
+        {presentationDirty ? (
+          <SettingsFooterActions>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 px-4 text-xs font-medium cursor-pointer"
+              disabled={!normalizedDeviceName || processingAvatar || savingPresentation}
+              onClick={() => void savePresentation()}
+            >
+              {savingPresentation ? "Saving…" : "Save changes"}
+            </Button>
+          </SettingsFooterActions>
+        ) : null}
       </section>
 
       <section>

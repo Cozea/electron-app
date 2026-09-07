@@ -10,7 +10,6 @@ import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTit
 import { cn } from "@/lib/utils";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
-import { HeaderInboxButton } from "./unified-header/HeaderInboxButton";
 import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChangesButton";
 import { WorkbenchHeaderEditorControl } from "@/features/workbench/WorkbenchHeaderEditorControl";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
@@ -42,7 +41,6 @@ interface UnifiedHeaderProps {
   contentInsetLeft?: number;
   contentInsetRight?: number;
   compactHeaderActions?: boolean;
-  hideInbox?: boolean;
   hideShare?: boolean;
   projectInviteContext?: {
     projectId: Id<"projects"> | null;
@@ -63,7 +61,6 @@ export function UnifiedHeader({
   contentInsetLeft = 0,
   contentInsetRight = 0,
   compactHeaderActions = true,
-  hideInbox = false,
   hideShare = false,
   projectInviteContext = null,
   editorProjectPath = null,
@@ -106,8 +103,6 @@ export function UnifiedHeader({
     layoutMode === "embedded"
       ? cn(relaxMacTitlebarLeadingPadding ? "pl-2" : "pl-4", "pr-1.5")
       : "pl-4 pr-2";
-  const shouldShowInbox = !hideInbox;
-
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
 
   const collaborationControl = projectInviteContext ? (
@@ -134,18 +129,10 @@ export function UnifiedHeader({
             </Suspense>,
           );
         }
-        if (shouldShowInbox) {
-          parts.push(<HeaderInboxButton key="inbox" />);
-        }
-        return parts.flatMap((node, index) =>
-          index === 0
-            ? [node]
-            : [node],
-        );
+        if (parts.length === 0) return null;
+        return parts;
       })()}
     </div>
-  ) : shouldShowInbox ? (
-    <HeaderInboxButton />
   ) : null;
 
   if (isTabsPrimaryLayout) {

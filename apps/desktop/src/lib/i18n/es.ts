@@ -819,6 +819,19 @@ const es: Record<TranslationKey, string> = {
   "agentSkills.providers": "Activadas en",
   "nav.agentSkills": "Builds de agentes",
   "nav.scheduledTasks": "Tareas Programadas",
+  "nav.inbox": "Bandeja de entrada",
+  "routeLoading.inbox": "Cargando bandeja de entrada…",
+  "inbox.title": "Bandeja de entrada",
+  "inbox.subtitle": "Administra las invitaciones de proyectos y solicitudes de acceso de este dispositivo.",
+  "inbox.emptyTitle": "No hay invitaciones pendientes",
+  "inbox.emptyDescription": "Cuando otro colaborador o dispositivo invite este dispositivo a un proyecto, aparecerá aquí.",
+  "inbox.accept": "Aceptar",
+  "inbox.decline": "Rechazar",
+  "inbox.openProject": "Abrir proyecto",
+  "inbox.accepted": "Invitación aceptada",
+  "inbox.declined": "Invitación rechazada",
+  "inbox.invitedBy": "Invitado por",
+  "inbox.deviceInvitations": "Invitaciones de dispositivos",
 } as const
 
 export default es

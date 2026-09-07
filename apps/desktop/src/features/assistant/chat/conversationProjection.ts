@@ -198,7 +198,6 @@ export function projectConversation(input: {
 
   const footerAfterEntryId = new Map<string, string>();
   for (const terminal of terminalByResponse.values()) {
-    if (!actionMessageIds.has(terminal.message.id)) continue;
     let anchor = terminal.id;
     const index = messageIndex.get(terminal.message.id) ?? -1;
     for (let cursor = index + 1; cursor < entries.length; cursor++) {

@@ -1,27 +1,43 @@
 import { memo } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { GitForkIcon, PinIcon, Volume02Icon } from "@hugeicons/core-free-icons";
+import { GitForkIcon, Volume02Icon } from "@hugeicons/core-free-icons";
 import type { ChatMessage } from "../model/types";
 import type { TextRevealController } from "./textRevealController";
 import { useTextReveal } from "./useTextReveal";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { cn } from "@/lib/utils";
+
+interface AssistantResponseActionsProps {
+  message: ChatMessage;
+  controller: TextRevealController;
+  relativeTime: string;
+  isLatest?: boolean;
+  showActions?: boolean;
+}
 
 /** One footer per settled response; it may sit after trailing tool activity. */
 export const AssistantResponseActions = memo(function AssistantResponseActions({
   message,
   controller,
   relativeTime,
-}: {
-  message: ChatMessage;
-  controller: TextRevealController;
-  relativeTime: string;
-}) {
+  isLatest = false,
+  showActions = true,
+}: AssistantResponseActionsProps) {
   const { isRevealing } = useTextReveal(controller, message.id);
-  if (message.streaming || isRevealing || !message.text) return null;
+  const isReady = showActions && !message.streaming && !isRevealing && Boolean(message.text);
+
   return (
     <div
       data-response-actions={message.id}
-      className="mt-1 flex items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 motion-reduce:animate-none"
+      aria-hidden={!isReady}
+      className={cn(
+        "mt-1 flex h-7 items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60 transition-opacity duration-150 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none",
+        !isReady
+          ? "invisible pointer-events-none select-none"
+          : isLatest
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 group-hover:opacity-100 focus-within:opacity-100 hover:opacity-100 pointer-events-auto",
+      )}
     >
       <div className="flex items-center gap-1.5">
         <MessageCopyButton text={message.text} />
@@ -33,15 +49,6 @@ export const AssistantResponseActions = memo(function AssistantResponseActions({
           aria-label="Branch thread"
         >
           <HugeiconsIcon icon={GitForkIcon} className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          disabled
-          className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-          title="Pin (coming soon)"
-          aria-label="Pin message"
-        >
-          <HugeiconsIcon icon={PinIcon} className="size-3.5" />
         </button>
         <button
           type="button"

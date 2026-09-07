@@ -8,6 +8,7 @@ import {
   patchT3ServerBundleProviderDefaults,
   isCurrentT3Bundle,
   patchT3ServerBundleProviderUpdates,
+  patchT3ServerBundleComputerUse,
   sanitizePortableRuntimeSymlinks,
 } from "../../scripts/prepare-t3-runtime.mjs";
 
@@ -185,6 +186,23 @@ message: couldNotVerify ? "Update command completed, but T3 Code could not verif
     expect(() => patchT3ServerBundleProviderUpdates("const changedUpstreamBundle = true")).toThrow(
       "npm updater accepts the selected installation prefix patch anchor is missing",
     );
+  });
+
+  it("heals computer use tool handlers compiled with undefined catchAll", () => {
+    const unpatched = `
+      return callComputerUseBackend(spec.name, payload, invocation).pipe(map$5(toMcpResult), (void 0)((error) =>
+        succeed$1(backendFailure(error.message || "Computer Use failed."))
+      ));
+      const notify = tryPromise({}).pipe((void 0)((error) => logWarning$1("Computer Use turn-end notification failed", { threadId })));
+    `;
+    const patched = patchT3ServerBundleComputerUse(unpatched);
+    expect(patched.changed).toBe(true);
+    expect(patched.source).toContain("catchCause");
+    expect(patched.source).not.toContain("(void 0)");
+
+    const secondPass = patchT3ServerBundleComputerUse(patched.source);
+    expect(secondPass.changed).toBe(false);
+    expect(secondPass.source).toBe(patched.source);
   });
 });
 

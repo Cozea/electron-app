@@ -149,27 +149,23 @@ function SelectionFilterBar({
         style={contentWidth ? { maxWidth: `${contentWidth}px` } : undefined}
       >
         <div
-          className="flex min-w-0 items-end overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {categories.map((cat, index, array) => (
-            <div key={cat} className="flex shrink-0 items-stretch">
-              <button
-                type="button"
-                onClick={() => onCategoryChange(cat)}
-                className={cn(
-                  "relative inline-flex items-center gap-1.5 px-3 pb-2.5 pt-1.5 text-[12px] font-medium transition-colors sm:px-4 sm:pb-3 sm:pt-2 sm:text-[13px]",
-                  activeCategory === cat
-                    ? "text-foreground after:absolute after:-bottom-px after:left-0 after:right-0 after:h-0.5 after:bg-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3.5" aria-hidden /> : null}
-                {cat === "Explore DevApps Store" ? t('workbench.selection.exploreStore') : ((t as any)(`devApp.category.${cat}`) ?? cat)}
-              </button>
-              {index < array.length - 1 ? (
-                <span aria-hidden className="mx-0.5 my-2 w-px shrink-0 bg-border/70 sm:mx-1" />
-              ) : null}
-            </div>
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => onCategoryChange(cat)}
+              className={cn(
+                "cursor-pointer rounded-full px-3 py-1 text-[11px] font-medium transition-colors inline-flex items-center gap-1.5 shrink-0",
+                activeCategory === cat
+                  ? "bg-secondary text-foreground shadow-xs"
+                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              )}
+            >
+              {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3" aria-hidden /> : null}
+              {cat === "Explore DevApps Store" ? t('workbench.selection.exploreStore') : ((t as any)(`devApp.category.${cat}`) ?? cat)}
+            </button>
           ))}
         </div>
 

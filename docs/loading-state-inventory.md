@@ -72,7 +72,7 @@ These are the loaders we should treat as real remote-data waits.
 ### Project Lists / Headers / Sharing
 
 - `Loading projects…` in `src/features/projects/components/ProjectSidebar.tsx`
-- Inbox dropdown loading in `src/components/layouts/unified-header/HeaderInboxButton.tsx`
+- Inbox loading skeletons in `apps/desktop/src/features/inbox/pages/InboxPage.tsx`
 - Share dialog data loading in `src/components/layouts/unified-header/HeaderProjectShareButton.tsx`
 - Project-level sync/loading state in `src/features/projects/components/ProjectSyncIndicator.tsx`
 
