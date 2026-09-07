@@ -1,12 +1,14 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import type { LocalWorkspaceDTO } from "../../../../shared/workspaceTypes"
-import type { CollaborationRepositoryBindingDescriptor, CollaborationRepositoryCredentialResponse } from "../../../../shared/collaborationRepository"
+import {
+  createGitHubExtraHeader,
+  type CollaborationRepositoryCredentialResponse,
+} from "../../../../shared/collaborationRepository"
 import type { RepositoryDownloadProgress } from "../../../../shared/collaborationDesktop"
 import type { CollaborationGitResult } from "./SessionWorkspaceCoordinator"
 
 interface DownloadDependencies {
-  binding(projectId: string): Promise<CollaborationRepositoryBindingDescriptor | null>
   credential(projectId: string): Promise<CollaborationRepositoryCredentialResponse>
   allocate(projectId: string, slug: string, prepare: (directory: string) => Promise<void>): Promise<LocalWorkspaceDTO>
   git(args: string[], options: { cwd: string; env?: Record<string, string>; signal: AbortSignal }): Promise<CollaborationGitResult>
@@ -35,16 +37,28 @@ export class AuthorizedRepositoryDownloader {
     const check = () => { if (signal.aborted) throw new Error("Repository download cancelled; retry to resume") }
     try {
       stage("authorizing")
-      const binding = await this.deps.binding(projectId)
-      if (!binding?.enabled) throw new Error("This project does not have an enabled organization repository binding")
       const credential = await this.deps.credential(projectId)
       check()
-      if (credential.expiresAt <= Date.now() || credential.operation !== "read" || !credential.token ||
-        ["repositoryId", "repositoryNumericId", "defaultBranch", "fullName", "cloneUrl"].some(field => credential[field as keyof typeof credential] !== binding[field as keyof typeof binding])) throw new Error("Repository binding changed; retry the download")
-      if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/.test(credential.cloneUrl)) throw new Error("Expected an authorized GitHub repository URL")
+      const repository = credential.repository
+      if (
+        credential.expiresAt <= Date.now() ||
+        credential.operation !== "read" ||
+        credential.username !== "x-access-token" ||
+        !credential.token ||
+        repository.provider !== "github" ||
+        !repository.repositoryId ||
+        !repository.repositoryNumericId ||
+        !repository.installationId ||
+        !repository.fullName ||
+        !repository.defaultBranch ||
+        !repository.cloneUrl
+      ) throw new Error("Repository authorization is incomplete; retry the download")
+      if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/.test(repository.cloneUrl)) {
+        throw new Error("Expected an authorized GitHub repository URL")
+      }
       const env = {
         GIT_CONFIG_COUNT: "5", GIT_CONFIG_KEY_0: "http.https://github.com/.extraHeader",
-        GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(`x-access-token:${credential.token}`).toString("base64")}`,
+        GIT_CONFIG_VALUE_0: createGitHubExtraHeader(credential.token),
         GIT_CONFIG_KEY_1: "credential.helper", GIT_CONFIG_VALUE_1: "",
         GIT_CONFIG_KEY_2: "http.followRedirects", GIT_CONFIG_VALUE_2: "false",
         GIT_CONFIG_KEY_3: "protocol.allow", GIT_CONFIG_VALUE_3: "never",
@@ -70,15 +84,15 @@ export class AuthorizedRepositoryDownloader {
         if (entries.includes(".git")) {
           const stat = await fs.lstat(path.join(directory, ".git"))
           if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Retained download Git directory is not owned by this download")
-          if (await git(["remote", "get-url", "origin"]) !== credential.cloneUrl) throw new Error("Retained download belongs to a different repository")
-          receipt = await fs.readFile(receiptPath, "utf8").then(value => JSON.parse(value) as typeof receipt).catch(error => { if (error.code === "ENOENT") return null; throw error })
+          if (await git(["remote", "get-url", "origin"]) !== repository.cloneUrl) throw new Error("Retained download belongs to a different repository")
+          receipt = await fs.readFile(receiptPath, "utf8").then(value => JSON.parse(value) as typeof receipt).catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error })
         } else {
           if (entries.length) throw new Error("The retained download contains unrelated files; they have been retained")
           await git(["init"])
-          await git(["remote", "add", "origin", credential.cloneUrl])
+          await git(["remote", "add", "origin", repository.cloneUrl])
         }
         if (receipt) {
-          if (receipt.cloneUrl !== credential.cloneUrl || !/^[a-f0-9]{40}$/.test(receipt.sha) || receipt.branch !== credential.defaultBranch) throw new Error("Download recovery identity changed; local files were retained")
+          if (receipt.cloneUrl !== repository.cloneUrl || !/^[a-f0-9]{40}$/.test(receipt.sha) || receipt.branch !== repository.defaultBranch) throw new Error("Download recovery identity changed; local files were retained")
           if (await git(["symbolic-ref", "HEAD"]) !== `refs/heads/${receipt.branch}` ||
             await git(["rev-parse", "--verify", "HEAD"]) !== receipt.sha ||
             await git(["write-tree"]) !== await git(["rev-parse", `${receipt.sha}^{tree}`])) {
@@ -94,16 +108,16 @@ export class AuthorizedRepositoryDownloader {
           return
         }
         if (entries.some(name => name !== ".git")) throw new Error("The retained download contains local files; they have been retained")
-        await git(["check-ref-format", "--branch", credential.defaultBranch])
+        await git(["check-ref-format", "--branch", repository.defaultBranch])
         stage("fetching")
-        await git(["fetch", "--no-tags", "--no-recurse-submodules", "--", credential.cloneUrl, `refs/heads/${credential.defaultBranch}:refs/remotes/origin/${credential.defaultBranch}`], true)
-        const sha = await git(["rev-parse", "--verify", `refs/remotes/origin/${credential.defaultBranch}^{commit}`])
+        await git(["fetch", "--no-tags", "--no-recurse-submodules", "--", repository.cloneUrl, `refs/heads/${repository.defaultBranch}:refs/remotes/origin/${repository.defaultBranch}`], true)
+        const sha = await git(["rev-parse", "--verify", `refs/remotes/origin/${repository.defaultBranch}^{commit}`])
         if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error("GitHub returned an invalid commit")
-        await git(["symbolic-ref", "HEAD", `refs/heads/${credential.defaultBranch}`])
-        await git(["update-ref", `refs/heads/${credential.defaultBranch}`, sha])
+        await git(["symbolic-ref", "HEAD", `refs/heads/${repository.defaultBranch}`])
+        await git(["update-ref", `refs/heads/${repository.defaultBranch}`, sha])
         await git(["read-tree", sha])
         const receiptFile = await fs.open(receiptPath, "wx", 0o600)
-        try { await receiptFile.writeFile(JSON.stringify({ cloneUrl: credential.cloneUrl, sha, branch: credential.defaultBranch })); await receiptFile.sync() } finally { await receiptFile.close() }
+        try { await receiptFile.writeFile(JSON.stringify({ cloneUrl: repository.cloneUrl, sha, branch: repository.defaultBranch })); await receiptFile.sync() } finally { await receiptFile.close() }
         const gitDirectory = await fs.open(path.dirname(receiptPath), "r")
         try { await gitDirectory.sync() } finally { await gitDirectory.close() }
         stage("materializing")
