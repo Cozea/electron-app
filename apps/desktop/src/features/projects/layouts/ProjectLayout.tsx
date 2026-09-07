@@ -395,12 +395,8 @@ export function ProjectLayout({
         repo?: { provider?: string | null; url?: string | null; defaultBranch?: string | null } | null
         sourceControl?: { provider?: string | null; repoUrl?: string | null; defaultBranch?: string | null } | null
       } | null | undefined)?.repo ?? null;
-      const repoUrl = canonicalRepo?.url?.trim() ||
-        (project as { sourceControl?: { repoUrl?: string | null } | null } | null | undefined)?.sourceControl?.repoUrl ??
-        null;
-      const branch = canonicalRepo?.defaultBranch?.trim() ||
-        (project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ??
-        undefined;
+      const repoUrl = canonicalRepo?.url?.trim() || ((project as { sourceControl?: { repoUrl?: string | null } | null } | null | undefined)?.sourceControl?.repoUrl ?? null);
+      const branch = canonicalRepo?.defaultBranch?.trim() || ((project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ?? undefined);
       const githubAuthorized = canonicalRepo?.provider?.trim().toLowerCase() === "github";
 
       try {

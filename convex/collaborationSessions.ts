@@ -1,12 +1,11 @@
 import { ConvexError, v } from "convex/values"
 
 import type { Doc, Id } from "./_generated/dataModel"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import {
-  mutation,
-  query,
-  type MutationCtx,
-  type QueryCtx,
-} from "./_generated/server"
+  authenticatedMutation as mutation,
+  authenticatedQuery as query,
+} from "./lib/authenticatedFunctions"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import {
   canAccessProject,
@@ -74,7 +73,8 @@ function assertGitBranchName(value: string, label: string): string {
     branch.includes("..") ||
     branch.includes("@{") ||
     branch.includes("//") ||
-    /[\u0000-\u0020~^:?*\\[\]]/.test(branch)
+    [...branch].some((character) => character.charCodeAt(0) <= 0x20) ||
+    /[~^:?*\\[\]]/.test(branch)
   ) {
     throw new ConvexError(`${label} is not a valid Git branch name`)
   }

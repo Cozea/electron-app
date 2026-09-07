@@ -9,11 +9,12 @@ type Builder = typeof baseQuery | typeof baseMutation
 const CALLER_ID_FIELDS = [
   "userId", "createdBy", "requestedBy", "invitedBy", "addedBy", "ownerId",
   "deletedBy", "createdByUserId", "addedByUserId",
+  "createdByPrincipalId", "actorPrincipalId", "viewerPrincipalId",
 ] as const
 
 function isCallerIdentityField(field: string): boolean {
   return CALLER_ID_FIELDS.includes(field as (typeof CALLER_ID_FIELDS)[number]) ||
-    /^(?:actor|viewer|requester|inviter|invited|added|deleted|created)UserId$/.test(field)
+    /^(?:actor|viewer|requester|inviter|invited|added|deleted|created)(?:User|Principal)Id$/.test(field)
 }
 
 function authenticatedBuilder<T extends Builder>(builder: T, mode: "read" | "write"): T {
