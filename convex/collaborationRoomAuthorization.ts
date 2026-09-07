@@ -1,11 +1,17 @@
 import { v } from "convex/values"
 
-import { authenticatedQuery as query } from "./lib/authenticatedFunctions"
-import { canAccessProject, canEditProject } from "./lib/projectAccess"
+import { query } from "./_generated/server"
+import { canAccessProject } from "./lib/projectAccess"
+
+function assertGatewaySecret(secret: string): void {
+  const expected = process.env.AI_GATEWAY_SECRET
+  if (!expected || secret !== expected) throw new Error("Unauthorized")
+}
 
 export const authorizeSessionForServer = query({
   args: { serverSecret: v.string(), identityKey: v.string(), sessionId: v.string() },
   handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
     const principal = await ctx.db
       .query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", args.identityKey.trim()))
@@ -31,20 +37,15 @@ export const authorizeSessionForServer = query({
       .unique()
     if (!participant || participant.leftAt !== undefined) return { allowed: false as const }
 
-    const canEdit = await canEditProject(ctx, session.projectId, principal._id)
     return {
       allowed: true as const,
       principalId: principal._id,
-      identityKey: principal.identityKey,
-      displayName: principal.displayName,
       projectId: session.projectId,
       sessionDocumentId: session._id,
       sessionId: session.sessionId,
       roomId: `session:${session.sessionId}`,
-      role: participant.role === "editor" && canEdit ? "editor" as const : "observer" as const,
+      role: participant.role,
       capabilities: participant.capabilities,
-      encryptionFingerprint: principal.encryptionFingerprint,
-      encryptionPublicKeyJwk: principal.encryptionPublicKeyJwk,
     }
   },
 })

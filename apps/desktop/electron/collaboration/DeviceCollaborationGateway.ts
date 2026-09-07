@@ -30,18 +30,10 @@ export class DeviceCollaborationGateway {
 
   private async authenticate(): Promise<DeviceToken> {
     const identity = await ensureCollabDeviceIdentity()
-    // Presentation is canonical cloud state and deliberately absent from the
-    // cryptographic challenge. The challenge registers only immutable identity
-    // and key material.
     const { challenge } = await this.request<{ challenge: string }>("/auth/device/challenge", {
-      identityKey: identity.identityKey,
-      platform: identity.platform,
-      encryptionPublicKeyJwk: identity.publicKeyJwk,
-      encryptionPublicKeyAlgorithm: identity.publicKeyAlgorithm,
-      encryptionFingerprint: identity.fingerprint,
-      signingPublicKeyJwk: identity.signingPublicKeyJwk,
-      signingPublicKeyAlgorithm: identity.signingPublicKeyAlgorithm,
-      signingFingerprint: identity.signingFingerprint,
+      identityKey: identity.identityKey, deviceLabel: identity.deviceLabel, platform: identity.platform,
+      encryptionPublicKeyJwk: identity.publicKeyJwk, encryptionPublicKeyAlgorithm: identity.publicKeyAlgorithm, encryptionFingerprint: identity.fingerprint,
+      signingPublicKeyJwk: identity.signingPublicKeyJwk, signingPublicKeyAlgorithm: identity.signingPublicKeyAlgorithm, signingFingerprint: identity.signingFingerprint,
     })
     const signed = await signCollabDeviceChallenge(challenge)
     if (signed.identityKey !== identity.identityKey) throw new Error("Device identity changed during authentication")

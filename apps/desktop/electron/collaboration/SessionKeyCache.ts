@@ -18,7 +18,8 @@ interface CachedSessionKey {
   generation: 3
   projectId: string
   sessionId: string
-  deviceId: string
+  identityKey: string
+  principalId: string
   roomId: string
   encryption: CollabSessionDescriptor["encryption"]
   protocolVersion: string
@@ -60,7 +61,7 @@ export class SessionKeyCache {
       !session.encryption.encryptionRequired || session.encryption.status !== "ready" || !Number.isSafeInteger(version) || version! < 1) throw new Error("Only a verified ready session key can be cached")
     const versions = await this.versions(session.sessionId)
     if (!versions.includes(version!) && versions.length >= MAX_KEY_VERSIONS) throw new Error("Session key retention is full; existing recovery keys were retained")
-    const value: CachedSessionKey = { generation: 3, projectId: session.projectId, sessionId: session.sessionId, deviceId: session.deviceId,
+    const value: CachedSessionKey = { generation: 3, projectId: session.projectId, sessionId: session.sessionId, identityKey: session.identityKey, principalId: session.principalId,
       roomId: session.roomId, encryption: session.encryption, collabWsUrl: session.collabWsUrl, protocolVersion: session.protocolVersion }
     const sealed = this.sealer.encryptString(JSON.stringify(value))
     if (sealed.length > MAX_SEALED_KEY_BYTES) throw new Error("Sealed session key exceeds its storage limit")
@@ -68,7 +69,7 @@ export class SessionKeyCache {
     let previousVersion: number | undefined
     if (previous) {
       const old = JSON.parse(this.sealer.decryptString(previous)) as CachedSessionKey
-      if (old.projectId !== session.projectId || old.deviceId !== session.deviceId || old.sessionId !== session.sessionId || !Number.isSafeInteger(old.encryption.activeKeyVersion)) throw new Error("Cached key identity differs; existing recovery was retained")
+      if (old.projectId !== session.projectId || old.identityKey !== session.identityKey || old.principalId !== session.principalId || old.sessionId !== session.sessionId || !Number.isSafeInteger(old.encryption.activeKeyVersion)) throw new Error("Cached key identity differs; existing recovery was retained")
       previousVersion = old.encryption.activeKeyVersion ?? undefined
       if (current && previousVersion! > version!) throw new Error("Active session key moved forward; retry with current authority")
     }
@@ -121,13 +122,13 @@ export class SessionKeyCache {
     })
   }
 
-  async recover(projectId: string, sessionId: string, deviceId: string, version?: number): Promise<CachedSessionKey | null> {
+  async recover(projectId: string, sessionId: string, identityKey: string, version?: number): Promise<CachedSessionKey | null> {
     if (!this.available()) throw new Error("OS-backed secure storage is unavailable; encrypted recovery was retained")
     const sealed = await this.read(this.filename(sessionId, version))
     if (!sealed) return null
     try {
       const value = JSON.parse(this.sealer.decryptString(sealed)) as CachedSessionKey
-      if (value.generation !== 3 || value.projectId !== projectId || value.sessionId !== sessionId || value.deviceId !== deviceId ||
+      if (value.generation !== 3 || value.projectId !== projectId || value.sessionId !== sessionId || value.identityKey !== identityKey ||
         value.roomId !== `session:${sessionId}` || value.encryption.roomId !== value.roomId || value.encryption.status !== "ready" || !value.encryption.encryptionRequired ||
         (version !== undefined && value.encryption.activeKeyVersion !== version) || typeof value.protocolVersion !== "string" || typeof value.collabWsUrl !== "string") throw new Error("Cached key identity mismatch")
       return value

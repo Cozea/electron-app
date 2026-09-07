@@ -80,14 +80,3 @@ export function parseGitHubRepositoryUrl(value: string): {
     cloneUrl: `https://github.com/${owner}/${name}.git`,
   }
 }
-
-/**
- * Build an ephemeral Git HTTP header. Callers must pass this only as a process
- * argument/environment value for the current Git operation; never persist it in
- * repository config or remotes.
- */
-export function createGitHubExtraHeader(token: string): string {
-  const normalized = token.trim()
-  if (!normalized) throw new Error("GitHub access token is required")
-  return `AUTHORIZATION: basic ${btoa(`x-access-token:${normalized}`)}`
-}
