@@ -97,8 +97,8 @@ export function ProjectSyncProviderRuntime({
   }, [initialLastSyncAt])
 
   const canSync = Boolean(projectId && principalId && workspaceId)
-  const sharedCollaborationEnabled = canSync && collaborationEnabled
-  const collaborationMode: "shared" | "local" = sharedCollaborationEnabled ? "shared" : "local"
+  const sharedCollaborationEnabled = false
+  const collaborationMode: "shared" | "local" = "local"
 
   const {
     status: collabSessionStatus,

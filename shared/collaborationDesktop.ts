@@ -83,3 +83,13 @@ export interface CollaborationDesktopAPI {
   pushPrepared(input: { sessionId: string; accessToken: string }): Promise<PreparedCollaborationCommit>
   adoptPublished(input: { sessionId: string; accessToken: string; sharedPaths: string[] }): Promise<SessionWorkspaceBinding>
 }
+
+export interface CollaborationRendererAPI {
+  downloadRepository(input: { projectId: string; slug: string }): Promise<LocalWorkspaceDTO>
+  cancelDownload(projectId: string): Promise<void>
+  onDownloadProgress(listener: (progress: RepositoryDownloadProgress) => void): () => void
+  runtime: CollaborationRuntimeAPI
+  getBinding(sessionId: string): Promise<SessionWorkspaceBinding | null>
+  bindingForWorkspace(workspaceId: string): Promise<SessionWorkspaceBinding | null>
+  inspectImportableChanges(sourceWorkspaceId: string): Promise<CollaborationImportCandidate[]>
+}

@@ -1885,7 +1885,27 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+let collaborationShutdownReady = false
+let collaborationShutdownPromise: Promise<void> | null = null
+
+app.on('before-quit', (event) => {
+  if (!collaborationShutdownReady) {
+    event.preventDefault()
+    if (!collaborationShutdownPromise) {
+      collaborationShutdownPromise = shutdownCollaboration()
+        .catch((error) => {
+          console.error('[Collaboration] Failed to persist session recovery before quit', error)
+        })
+        .then(async () => {
+          await disposeWorkspaceCatalogRuntime()
+        })
+        .finally(() => {
+          collaborationShutdownReady = true
+          app.quit()
+        })
+    }
+    return
+  }
   appIsQuitting = true
   logAssistantBridge('app-before-quit')
   stopUpdateChecks()

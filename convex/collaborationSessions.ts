@@ -701,6 +701,29 @@ export const renewCommitLease = mutation({
   },
 })
 
+/** Explicit restart recovery retains the exact pending publication identity. */
+export const recoverPreparedLease = mutation({
+  args: { sessionId: v.string(), commitSha: v.string(), coveredThroughSequence: v.number() },
+  handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedDevice(ctx)
+    const session = await requireSessionByPublicId(ctx, args.sessionId)
+    await requireActiveEditorParticipant(ctx, session, principal._id)
+    const now = Date.now()
+    if (session.commitLeasePrincipalId !== principal._id || !["local_commit_ready", "pushing"].includes(session.status) ||
+      session.pendingCommitSha !== assertGitCommitSha(args.commitSha) ||
+      session.pendingCommitThroughSequence !== normalizeSequence(args.coveredThroughSequence, "Prepared sequence")) {
+      throw new ConvexError("This prepared publication was replaced or belongs to another editor")
+    }
+    const commitLeaseExpiresAt = now + DEFAULT_COMMIT_LEASE_MS
+    await ctx.db.patch(session._id, { commitLeaseExpiresAt, revision: session.revision + 1, updatedAt: now })
+    const updated = { ...session, commitLeaseExpiresAt, revision: session.revision + 1, updatedAt: now }
+    await recordEvent(ctx, updated, "lease_renewed", {
+      actorPrincipalId: principal._id, metadata: { recoveredPreparedCommit: true }, createdAt: now,
+    })
+    return toSessionDescriptor(updated)
+  },
+})
+
 export const markLocalCommitReady = mutation({
   args: {
     sessionId: v.string(),
@@ -1054,5 +1077,21 @@ export const listEvents = query({
       .withIndex("by_session_and_created_at", (index) => index.eq("sessionId", session._id))
       .order("desc")
       .take(limit)
+  },
+})
+
+export const publicationReceiptForServer = query({
+  args: { serverSecret: v.string(), identityKey: v.string(), sessionId: v.string(), commitSha: v.string() },
+  handler: async (ctx, args) => {
+    assertGatewaySecret(args.serverSecret)
+    const principal = await ctx.db.query("devicePrincipals")
+      .withIndex("by_identity_key", q => q.eq("identityKey", args.identityKey.trim())).unique()
+    const session = await getSessionByPublicId(ctx, args.sessionId)
+    if (!principal || principal.status === "revoked" || !session ||
+      !(await canAccessProject(ctx, session.projectId, principal._id)) ||
+      session.publishedCommitSha?.toLowerCase() !== args.commitSha.toLowerCase()) return null
+    return { verified: true as const, sessionId: session.sessionId, sessionBranch: session.sessionBranch,
+      commitSha: session.publishedCommitSha, coveredThroughSequence: session.publishedThroughSequence,
+      baseAdvanced: true as const }
   },
 })

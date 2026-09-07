@@ -4,6 +4,8 @@ import { handleHealth } from './routes/health'
 import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
 import { handleCollabV2Session } from './routes/collabV2Session'
+import { handleCollaborationControl } from './routes/collaborationControl'
+import { handleCollaborationKeys } from './routes/collaborationKeys'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
 import { DevAppRuntimeBuild } from './durableObjects/DevAppRuntimeBuild'
@@ -24,6 +26,9 @@ import { handleDeviceAuthChallenge, handleDeviceAuthComplete, handleDeviceAuthJw
 import { handleCreateRecoveryGrant, handleRedeemRecoveryGrant } from './routes/deviceRecovery'
 import {
   handleCollaborationRepositoryCredential,
+  handleCollaborationWorkspaceContext,
+  handleResolveCollaborationBranch,
+  handleCollaborationCheckpoint,
   handleVerifyCollaborationPush,
   RepositoryAuthenticationError,
 } from './routes/collaborationRepositories'
@@ -168,6 +173,32 @@ export default {
             false,
             origin,
           )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/collab/v2/control') {
+        try { return await handleCollaborationControl(request, env) } catch (error) {
+          return protocolError('COLLABORATION_CONTROL_REJECTED', error instanceof Error ? error.message : 'Session action failed', { status: 400 }, false, origin)
+        }
+      }
+      if (request.method === 'POST' && url.pathname === '/collab/v2/keys') {
+        try { return await handleCollaborationKeys(request, env) } catch (error) {
+          return protocolError('SESSION_KEY_ACCESS_REJECTED', error instanceof Error ? error.message : 'Session key access failed', { status: 403 }, false, origin)
+        }
+      }
+      if (request.method === 'POST' && url.pathname === '/collab/v2/checkpoint') {
+        try { return await handleCollaborationCheckpoint(request, env) } catch (error) {
+          return protocolError('CHECKPOINT_ACCESS_REJECTED', error instanceof Error ? error.message : 'Checkpoint access failed', { status: 403 }, false, origin)
+        }
+      }
+      if (request.method === 'POST' && url.pathname === '/collab/v2/workspace-context') {
+        try { return await handleCollaborationWorkspaceContext(request, env) } catch (error) {
+          return protocolError('SESSION_ACCESS_REJECTED', error instanceof Error ? error.message : 'Session access failed', { status: 403 }, false, origin)
+        }
+      }
+      if (request.method === 'POST' && url.pathname === '/collab/repository/resolve') {
+        try { return await handleResolveCollaborationBranch(request, env) } catch (error) {
+          return protocolError('REPOSITORY_ACCESS_REJECTED', error instanceof Error ? error.message : 'Branch resolution failed', { status: 403 }, false, origin)
         }
       }
 

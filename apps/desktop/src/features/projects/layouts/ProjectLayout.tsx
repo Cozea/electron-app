@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useQuery } from "convex/react";
@@ -39,6 +39,7 @@ import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitc
 import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import { downloadAuthorizedProjectRepository } from "@/features/collaboration/api/downloadAuthorizedProjectRepository";
+import { ProjectCollaborationControl } from "@/features/collaboration/ProjectCollaborationControl";
 import {
   ensureProjectSwitchStarted,
   markProjectSwitchPhase,
@@ -243,6 +244,16 @@ export function ProjectLayout({
     ? (workspaceResolution.lane.gitRootPath ?? workspaceResolution.workspace.gitRootPath)
     : null;
   const runtimeWorkspaceId = activeWorkspaceId;
+  const [activeCollaborationBinding, setActiveCollaborationBinding] = useState<import("@shared/collaborationDesktop").SessionWorkspaceBinding | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (!activeWorkspaceId) { setActiveCollaborationBinding(null); return; }
+    const refresh = () => void window.electronAPI.collaboration.bindingForWorkspace(activeWorkspaceId)
+      .then(binding => { if (alive) setActiveCollaborationBinding(binding && ["active", "joining"].includes(binding.state) ? binding : null); })
+      .catch(() => { if (alive) setActiveCollaborationBinding(null); });
+    refresh(); const unsubscribe = window.electronAPI.collaboration.runtime.onChanged(refresh);
+    return () => { alive = false; unsubscribe(); };
+  }, [activeWorkspaceId]);
 
   const isWorkbenchView = pathname.endsWith("/workbench");
   const isChangesView = pathname.endsWith("/changes");
@@ -274,20 +285,23 @@ export function ProjectLayout({
     workspaceId: activeWorkspaceId,
     collabBranch,
   });
-  const activeBranch = activeLane?.branch ?? collabBranch;
-  const collaborationEnabled =
-    shouldEnableProjectRuntime && Boolean(runtimeWorkspaceId) && Boolean(project?._id) && activeBranch === collabBranch;
+  const sessionLane = useMemo(() => activeCollaborationBinding ? ({
+    id: `session:${activeCollaborationBinding.sessionId}`, name: "Live", branch: activeCollaborationBinding.sessionBranch,
+    workspaceId: activeCollaborationBinding.workspaceId, isCollab: true, createdAt: activeCollaborationBinding.joinedAt,
+    updatedAt: activeCollaborationBinding.joinedAt,
+  }) : null, [activeCollaborationBinding]);
+  const effectiveActiveLane = sessionLane ?? activeLane;
+  const activeBranch = effectiveActiveLane?.branch ?? collabBranch;
+  const collaborationEnabled = Boolean(shouldEnableProjectRuntime && runtimeWorkspaceId && project?._id && activeCollaborationBinding);
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;
     }
 
-    if (!activeLane || activeLane.isCollab) {
-      return routeProjectIdentity;
-    }
-
+    if (activeCollaborationBinding) return `session:${activeCollaborationBinding.sessionId}`;
+    if (!activeLane || activeLane.isCollab) return routeProjectIdentity;
     return `${routeProjectIdentity}:${buildBranchSessionLaneId(activeLane.branch, collabBranch)}`;
-  }, [activeLane, collabBranch, routeProjectIdentity]);
+  }, [activeCollaborationBinding, activeLane, collabBranch, routeProjectIdentity]);
 
   useEffect(() => {
     ensureProjectSwitchStarted({
@@ -341,12 +355,12 @@ export function ProjectLayout({
   const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime && isConvexAuthReady;
   const presenceHeaderAddon = useMemo(
     () => (
-      <ProjectPresenceHeaderAddon
-        projectId={presenceGateOpen ? project?._id ?? null : null}
-        principalId={presenceGateOpen ? principalId ?? null : null}
-        isWorkbenchView={isWorkbenchView}
-        projectBasePath={projectBasePath}
-      />
+      <div className="flex items-center gap-1">
+        <ProjectPresenceHeaderAddon projectId={presenceGateOpen ? project?._id ?? null : null}
+          principalId={presenceGateOpen ? principalId ?? null : null} isWorkbenchView={isWorkbenchView} projectBasePath={projectBasePath} />
+        {project?._id && activeWorkspaceId ? <ProjectCollaborationControl projectId={String(project._id)}
+          sourceWorkspaceId={activeCollaborationBinding?.sourceWorkspaceId ?? activeWorkspaceId} defaultBranch={collabBranch} /> : null}
+      </div>
     ),
     [
       presenceGateOpen,
@@ -356,6 +370,9 @@ export function ProjectLayout({
       shouldEnableProjectRuntime,
       isWorkbenchView,
       projectBasePath,
+      activeWorkspaceId,
+      activeCollaborationBinding,
+      collabBranch,
     ],
   );
 
@@ -662,7 +679,7 @@ export function ProjectLayout({
           projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
           principalId={shouldEnableProjectRuntime ? principalId ?? null : null}
           displayName={user?.displayName ?? "This device"}
-          laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}
+          laneId={effectiveActiveLane?.id ?? laneState?.activeLaneId ?? null}
           projectSlug={projectSlug}
           gitCwd={activeWorkspaceValue ? activeGitRootPath : null}
           lastSyncAt={project?.lastSyncAt}

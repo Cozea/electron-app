@@ -111,6 +111,27 @@ export class CollabRoom implements DurableObject {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname === '/internal/checkpoint' && request.method === 'POST') {
+      if (!this.env.AI_GATEWAY_SECRET || request.headers.get('authorization') !== `Bearer ${this.env.AI_GATEWAY_SECRET}`) {
+        return new Response('Unauthorized', { status: 401 })
+      }
+      const body = await request.json() as { authority?: { role?: string; keyVersion?: number | null }; request?: { operation?: string; keyVersion?: number; sequence?: number; updateBinary?: string } }
+      const authority = body.authority; const checkpoint = body.request
+      if (!authority || authority.role !== 'editor' || !checkpoint) return new Response('Invalid checkpoint authority', { status: 403 })
+      if (checkpoint.operation === 'inspect') return Response.json({ headSequence: await this.getSessionHeadSequence() })
+      if (!Number.isSafeInteger(checkpoint.keyVersion) || (checkpoint.keyVersion ?? 0) < 1) return new Response('Invalid key version', { status: 400 })
+      if (checkpoint.operation === 'bootstrap') {
+        return Response.json({ checkpoint: await this.state.storage.get(`checkpoint:${checkpoint.keyVersion}`) ?? null })
+      }
+      if (checkpoint.operation !== 'save' || !Number.isSafeInteger(checkpoint.sequence) || (checkpoint.sequence ?? -1) < 0 ||
+        typeof checkpoint.updateBinary !== 'string' || checkpoint.updateBinary.length > 96 * 1024 * 1024) return new Response('Invalid checkpoint', { status: 400 })
+      await this.updateQueue
+      if ((checkpoint.sequence ?? 0) > await this.getSessionHeadSequence()) return new Response('Checkpoint exceeds room head', { status: 409 })
+      const value = { keyVersion: checkpoint.keyVersion!, sequence: checkpoint.sequence!, updateBinary: checkpoint.updateBinary }
+      await this.state.storage.put(`checkpoint:${checkpoint.keyVersion}`, value)
+      return Response.json({ checkpoint: value })
+    }
+
     if (url.pathname === '/internal/base-advanced' && request.method === 'POST') {
       const body = await request.json() as { commitSha?: string; coveredThroughSequence?: number }
       const sequence = Number(body.coveredThroughSequence)

@@ -14,6 +14,7 @@ import type {
   UpdateState,
 } from '../../../shared/electronApiTypes'
 import type { WorkspaceCatalogSnapshot } from '../../../shared/workspaceTypes'
+import type { CollaborationRendererAPI } from '../../../shared/collaborationDesktop'
 import type { CollaborationDesktopAPI } from '../../../shared/collaborationDesktop'
 import type { MessageBoxOptions } from 'electron'
 import type { ContextMenuItem } from '../../../shared/assistant-contracts/ipc'
@@ -131,6 +132,60 @@ function createTerminalOutputBridge() {
 }
 
 const terminalOutputBridge = createTerminalOutputBridge()
+
+
+const collaborationRuntimeBridge: CollaborationRendererAPI['runtime'] = {
+  recoveryEntries: (sessionId) => ipcRenderer.invoke('collaboration:runtimeRecoveryEntries', sessionId),
+  recoveredFiles: (sessionId) => ipcRenderer.invoke('collaboration:runtimeRecoveredFiles', sessionId),
+  resolveRecovered: (input) => ipcRenderer.invoke('collaboration:runtimeResolveRecovered', input),
+  recoveryInventory: () => ipcRenderer.invoke('collaboration:runtimeRecoveryInventory'),
+  cleanupRecovery: (sessionId) => ipcRenderer.invoke('collaboration:runtimeCleanupRecovery', sessionId),
+  setup: (organizationId) => ipcRenderer.invoke('collaboration:runtimeSetup', organizationId),
+  resolve: (input) => ipcRenderer.invoke('collaboration:runtimeResolve', input),
+  control: (input) => ipcRenderer.invoke('collaboration:control', input),
+  open: (input) => ipcRenderer.invoke('collaboration:runtimeOpen', input),
+  active: (projectId) => ipcRenderer.invoke('collaboration:runtimeActive', projectId),
+  snapshot: (sessionId) => ipcRenderer.invoke('collaboration:runtimeSnapshot', sessionId),
+  openFile: (input) => ipcRenderer.invoke('collaboration:runtimeOpenFile', input),
+  editorState: (sessionId) => ipcRenderer.invoke('collaboration:runtimeEditorState', sessionId),
+  edit: (input) => ipcRenderer.invoke('collaboration:runtimeEdit', input),
+  createFile: (input) => ipcRenderer.invoke('collaboration:runtimeCreateFile', input),
+  renameFile: (input) => ipcRenderer.invoke('collaboration:runtimeRenameFile', input),
+  deleteFile: (input) => ipcRenderer.invoke('collaboration:runtimeDeleteFile', input),
+  restoreFile: (input) => ipcRenderer.invoke('collaboration:runtimeRestoreFile', input),
+  binaryCandidates: (sessionId) => ipcRenderer.invoke('collaboration:runtimeBinaryCandidates', sessionId),
+  reviewPrepared: (input) => ipcRenderer.invoke('collaboration:runtimeReviewPrepared', input),
+  commit: (input) => ipcRenderer.invoke('collaboration:runtimeCommit', input),
+  push: (input) => ipcRenderer.invoke('collaboration:runtimePush', input),
+  prepared: (sessionId) => ipcRenderer.invoke('collaboration:runtimePrepared', sessionId),
+  discard: (sessionId) => ipcRenderer.invoke('collaboration:runtimeDiscard', sessionId),
+  importChanges: (input) => ipcRenderer.invoke('collaboration:runtimeImport', input),
+  leave: (input) => ipcRenderer.invoke('collaboration:runtimeLeave', input),
+  retry: (sessionId) => ipcRenderer.invoke('collaboration:runtimeRetry', sessionId),
+  onChanged: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: unknown) => {
+      if (typeof sessionId === 'string') listener(sessionId)
+    }
+    ipcRenderer.on('collaboration:runtimeChanged', handler)
+    return () => ipcRenderer.removeListener('collaboration:runtimeChanged', handler)
+  },
+}
+
+const collaborationBridge: CollaborationRendererAPI = {
+  downloadRepository: (input) => ipcRenderer.invoke('collaboration:downloadRepository', input),
+  cancelDownload: (projectId) => ipcRenderer.invoke('collaboration:cancelDownload', projectId),
+  onDownloadProgress: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: unknown) => {
+      listener(progress as Parameters<typeof listener>[0])
+    }
+    ipcRenderer.on('collaboration:downloadProgress', handler)
+    return () => ipcRenderer.removeListener('collaboration:downloadProgress', handler)
+  },
+  runtime: collaborationRuntimeBridge,
+  getBinding: (sessionId) => ipcRenderer.invoke('collaboration:getBinding', sessionId),
+  bindingForWorkspace: (workspaceId) => ipcRenderer.invoke('collaboration:bindingForWorkspace', workspaceId),
+  inspectImportableChanges: (sourceWorkspaceId) => ipcRenderer.invoke('collaboration:inspectImport', sourceWorkspaceId),
+}
 
 const previewBridge: CozeaDesktopPreviewBridge = {
   prepareSurface: (descriptor: BrowserSurfaceDescriptor) =>

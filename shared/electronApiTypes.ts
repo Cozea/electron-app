@@ -1596,6 +1596,7 @@ export interface ElectronAPI {
     getToolDefinition: (options: { toolName: string }) => Promise<IntegrationToolDefinition | null>
     listTools: () => Promise<IntegrationToolDefinition[]>
   }
+  collaboration: import('./collaborationDesktop').CollaborationRendererAPI
   collab: {
     isEncryptionAvailable: () => Promise<boolean>
     ensureDeviceIdentity: () => Promise<CollabDeviceIdentity>

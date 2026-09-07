@@ -134,3 +134,19 @@ export async function verifyGitHubBranchHead(
   const result = await parseGitHubResponse<{ object?: { sha?: string } }>(response)
   return result.object?.sha?.toLowerCase() === args.expectedCommitSha.toLowerCase()
 }
+export async function resolveGitHubBranch(env: Env, args: {
+  installationId: string; repositoryNumericId: string; owner: string; name: string; branch: string
+}): Promise<{ branch: string; commitSha: string; branches: string[] }> {
+  const credential = await mintGitHubInstallationCredential(env, { ...args, operation: 'read' })
+  const repositoryUrl = `${apiBaseUrl(env)}/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.name)}`
+  const branch = args.branch
+  const encoded = branch.split('/').map(encodeURIComponent).join('/')
+  const ref = await parseGitHubResponse<{ object?: { sha?: string; type?: string } }>(await fetch(`${repositoryUrl}/git/ref/heads/${encoded}`, {
+    headers: githubHeaders(credential.token), redirect: 'error', cache: 'no-store',
+  }))
+  if (ref.object?.type !== 'commit' || !/^[a-f0-9]{40}$/i.test(ref.object.sha ?? '')) throw new Error('GitHub branch does not resolve to a commit')
+  const branches = await parseGitHubResponse<Array<{ name: string }>>(await fetch(`${repositoryUrl}/branches?per_page=100`, {
+    headers: githubHeaders(credential.token), redirect: 'error', cache: 'no-store',
+  }))
+  return { branch, commitSha: ref.object!.sha!.toLowerCase(), branches: branches.map(value => value.name) }
+}
