@@ -64,4 +64,4 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-# Final validation trigger after generation-3 current-main adapter cutover.
+# Stabilized generation-3 ownership cutover validation trigger.
