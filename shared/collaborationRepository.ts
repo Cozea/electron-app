@@ -56,6 +56,12 @@ export function buildCollaborationRepositoryId(repositoryNumericId: string): str
   return `github:${numeric}`
 }
 
+export function createGitHubExtraHeader(token: string): string {
+  const normalized = token.trim()
+  if (!normalized || /[\r\n]/.test(normalized)) throw new Error("Invalid GitHub credential")
+  return `Authorization: Basic ${btoa(`x-access-token:${normalized}`)}`
+}
+
 export function parseGitHubRepositoryUrl(value: string): {
   owner: string
   name: string
