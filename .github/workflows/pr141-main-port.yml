@@ -9,6 +9,7 @@ on:
       - scripts/pr141-main-port-phase2.py
       - scripts/pr141-main-port-phase3.py
       - scripts/pr141-main-port-phase4.py
+      - scripts/pr141-main-port-phase5.py
       - .github/workflows/pr141-main-port.yml
   workflow_dispatch:
 
@@ -37,6 +38,7 @@ jobs:
           python3 scripts/pr141-main-port-phase2.py
           python3 scripts/pr141-main-port-phase3.py
           python3 scripts/pr141-main-port-phase4.py
+          python3 scripts/pr141-main-port-phase5.py
       - name: Verify patch shape
         run: |
           git diff --check
@@ -50,5 +52,5 @@ jobs:
           git config user.name 'Cozea collaboration port'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add --all
-          git commit -m 'refactor(collaboration): authorize project materialization from GitHub'
+          git commit -m 'refactor(collaboration): add explicit session transport'
           git push origin HEAD:integration/pr141-main-port
