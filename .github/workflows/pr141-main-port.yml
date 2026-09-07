@@ -1,18 +1,10 @@
-name: PR141 main-first collaboration port
+name: PR141 main-port final fixes
 
 on:
   push:
     branches:
       - integration/pr141-main-port
     paths:
-      - scripts/pr141-main-port-phase1.py
-      - scripts/pr141-main-port-phase2.py
-      - scripts/pr141-main-port-phase3.py
-      - scripts/pr141-main-port-phase4.py
-      - scripts/pr141-main-port-phase5.py
-      - scripts/pr141-main-port-phase6.py
-      - scripts/pr141-main-port-phase7.py
-      - scripts/pr141-main-port-phase8.py
       - scripts/pr141-main-port-fixes.py
       - .github/workflows/pr141-main-port.yml
   workflow_dispatch:
@@ -21,39 +13,26 @@ permissions:
   contents: write
 
 concurrency:
-  group: pr141-main-port-${{ github.ref }}
+  group: pr141-main-port-fixes-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  port:
+  fix:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: false
-      - name: Fetch collaboration source branches
-        run: |
-          git fetch origin archive/pr141-pre-main-port:refs/remotes/origin/archive/pr141-pre-main-port
-          git fetch origin codex/collaboration-v2-complete:refs/remotes/origin/codex/collaboration-v2-complete
-      - name: Apply principal-native collaboration port
-        run: |
-          python3 scripts/pr141-main-port-phase1.py
-          python3 scripts/pr141-main-port-phase2.py
-          python3 scripts/pr141-main-port-phase3.py
-          python3 scripts/pr141-main-port-phase4.py
-          python3 scripts/pr141-main-port-phase5.py
-          python3 scripts/pr141-main-port-phase6.py
-          python3 scripts/pr141-main-port-phase7.py
-          python3 scripts/pr141-main-port-phase8.py
-          python3 scripts/pr141-main-port-fixes.py
+      - name: Apply final current-main compatibility fixes
+        run: python3 scripts/pr141-main-port-fixes.py
       - name: Verify patch shape
         run: |
           git diff --check
           git status --short
-      - name: Commit port
+      - name: Commit fixes
         run: |
           if git diff --quiet; then
             echo 'No changes to commit.'
@@ -62,5 +41,5 @@ jobs:
           git config user.name 'Cozea collaboration port'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add --all
-          git commit -m 'refactor(collaboration): adapt generation-3 runtime to current Electron substrate'
+          git commit -m 'fix(collaboration): finish current-main runtime adaptation'
           git push origin HEAD:integration/pr141-main-port
