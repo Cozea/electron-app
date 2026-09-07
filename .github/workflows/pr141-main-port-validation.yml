@@ -1,0 +1,45 @@
+name: PR141 main-port validation
+
+on:
+  push:
+    branches:
+      - integration/pr141-main-port
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr141-main-port-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Bootstrap repository
+        run: bun run bootstrap
+      - name: Install Electron runtime for tests
+        run: node node_modules/electron/install.js
+      - name: Typecheck renderer
+        run: bun run typecheck
+      - name: Typecheck Electron
+        run: bun run typecheck:electron
+      - name: Typecheck tests
+        run: bun run typecheck:tests
+      - name: Typecheck Cloudflare
+        run: bun run typecheck:cloudflare
+      - name: Lint
+        run: bun run lint
+      - name: Test
+        run: bun run test
+      - name: Build
+        run: bun run build
