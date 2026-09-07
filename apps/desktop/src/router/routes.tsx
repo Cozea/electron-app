@@ -96,6 +96,13 @@ const AgentSkillsPage = createLazyRouteComponent(
     })),
   "routeLoading.agentSkills",
 );
+const InboxPage = createLazyRouteComponent(
+  () =>
+    import("@/features/inbox/pages/InboxPage").then((module) => ({
+      default: module.InboxPage,
+    })),
+  "routeLoading.inbox",
+);
 const NewProject = createLazyRouteComponent(
   () =>
     import("@/pages/NewProject").then((module) => ({
@@ -279,6 +286,12 @@ const projectsAgentSkillsRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "/skills",
   component: AgentSkillsPage,
+});
+
+const projectsInboxRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: "/inbox",
+  component: InboxPage,
 });
 
 const projectNewRoute = createRoute({
@@ -661,13 +674,21 @@ const inviteRoute = createRoute({
   component: () => <Navigate to="/projects" replace />,
 });
 
+const inboxRedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/inbox",
+  component: () => <Navigate to={"/projects/inbox" as never} replace />,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   joinProjectRoute,
+  inboxRedirectRoute,
   projectsShellRoute.addChildren([
     projectsIndexRoute,
     projectsStoreRoute,
     projectsAgentSkillsRoute,
+    projectsInboxRoute,
     projectNewRoute,
     projectJoinRoute,
     projectBuildRoute,

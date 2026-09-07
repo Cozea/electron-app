@@ -5,6 +5,7 @@ import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
+import { GenerationStatusLine } from "./GenerationStatusLine";
 
 interface ToolGroupSummaryProps {
   rowId: string;
@@ -74,13 +75,15 @@ export const ToolGroupSummary = memo(function ToolGroupSummary({
         title={summary}
         data-tool-group-active={active}
       >
-        <span className="min-w-0 truncate text-sm font-normal leading-6 tabular-nums text-muted-foreground">
-          {active && !expanded ? (
+        {active && !expanded ? (
+          <GenerationStatusLine textKey={summary} animateEntrance={animateEntrance} className="h-6 min-h-6">
             <LiveShimmerText className="align-middle">{summary}</LiveShimmerText>
-          ) : (
-            summary
-          )}
-        </span>
+          </GenerationStatusLine>
+        ) : (
+          <span className="min-w-0 truncate text-sm font-normal leading-6 tabular-nums text-muted-foreground">
+            {summary}
+          </span>
+        )}
         <HugeiconsIcon
           icon={ArrowDown01Icon}
           className={cn(

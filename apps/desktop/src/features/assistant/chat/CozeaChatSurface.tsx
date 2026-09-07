@@ -61,7 +61,6 @@ import {
   setQuestionCursor,
   type QuestionCursors,
 } from "@/features/assistant/chat/questionCursorState";
-import { ChatConnectionNotice } from "./ChatConnectionNotice";
 import type { SubscriptionStatus } from "@/substrate/subscriptionSupervisor";
 import { ProviderModelPicker } from "@/features/assistant/chat/ProviderModelPicker";
 import { shouldDismissModelPickerOnPointerDown } from "@/features/assistant/chat/modelPickerDismissal";
@@ -2318,7 +2317,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             provider to continue.
           </div>
         ) : null}
-        <ChatConnectionNotice status={props.connectionStatus} />
         {!props.workspaceId && timelineEntries.length === 0 ? (
           <div className="px-3 py-3 sm:px-5 sm:py-4">
             <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/20 p-6 text-sm text-muted-foreground">

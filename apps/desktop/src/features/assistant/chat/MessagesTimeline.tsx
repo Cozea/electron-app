@@ -47,7 +47,6 @@ import {
   Globe02Icon as __GlobeIconHugeIcon,
   HammerIcon as __HammerIconHugeIcon,
   Image01Icon as __ImageIconHugeIcon,
-  PinIcon as __PinIconHugeIcon,
   Undo02Icon as __UndoIconHugeIcon,
   Volume02Icon as __VolumeIconHugeIcon,
   Wrench01Icon as __WrenchIconHugeIcon,
@@ -85,7 +84,6 @@ import { asHugeIcon } from "@/lib/icons/asHugeIcon";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
 import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
-import { estimateTimelineMessageHeight } from "./timelineHeight";
 import {
   COMPOSER_DOCK_EASING_CSS,
   COMPOSER_DOCK_TRANSITION_MS,
@@ -120,6 +118,7 @@ import {
   type ParsedTerminalContextEntry,
 } from "@/features/assistant/model/terminalContext";
 import { cn } from "@/lib/utils";
+import { GenerationStatusLine } from "./GenerationStatusLine";
 import {
   buildInlineTerminalContextText,
   formatInlineTerminalContextLabel,
@@ -306,8 +305,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [scrollContainerRef],
   );
-  const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
-  const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(null);
+  const timelineWidthRef = useRef<number>(LEGEND_LIST_DEFAULT_WIDTH_PX);
   const [changedFilesExpandedByTurnId, setChangedFilesExpandedByTurnId] = useState<
     Record<string, boolean>
   >({});
@@ -334,36 +332,23 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   useLayoutEffect(() => {
     const timelineRoot = timelineRootRef.current;
-    if (!timelineRoot) return;
-
-    const updateSize = (nextWidth: number, nextHeight: number) => {
-      setTimelineWidthPx((previousValue) => {
-        if (previousValue !== null && Math.abs(previousValue - nextWidth) < 0.5) {
-          return previousValue;
-        }
-        return nextWidth;
-      });
-      setTimelineHeightPx((previousValue) => {
-        if (previousValue !== null && Math.abs(previousValue - nextHeight) < 0.5) {
-          return previousValue;
-        }
-        return nextHeight;
-      });
-    };
+    if (!timelineRoot || typeof ResizeObserver === "undefined") return;
 
     const initialRect = timelineRoot.getBoundingClientRect();
-    updateSize(initialRect.width, initialRect.height);
+    if (initialRect.width > 0) timelineWidthRef.current = initialRect.width;
 
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      const rect = timelineRoot.getBoundingClientRect();
-      updateSize(rect.width, rect.height);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0) {
+          timelineWidthRef.current = entry.contentRect.width;
+        }
+      }
     });
     observer.observe(timelineRoot);
     return () => {
       observer.disconnect();
     };
-  }, [hasMessages, isWorking]);
+  }, []);
 
   const [rowProjector] = useState(() => createConversationRowProjector());
   const activity = useMemo(() => projectActivityEntries(activities ?? []), [activities]);
@@ -419,6 +404,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     for (let index = rows.length - 1; index >= 0; index -= 1) {
       const row = rows[index];
       if (row?.kind === "message" && row.message.role === "assistant") {
+        return row.message.id;
+      }
+      if (row?.kind === "assistant-meta") {
         return row.message.id;
       }
     }
@@ -485,15 +473,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const recycleItems = useMemo(() => shouldRecycleLegendListItems(), []);
   const estimatedListSize = useMemo(
     () => ({
-      height: timelineHeightPx ?? LEGEND_LIST_DEFAULT_HEIGHT_PX,
-      width: timelineWidthPx ?? LEGEND_LIST_DEFAULT_WIDTH_PX,
+      height: LEGEND_LIST_DEFAULT_HEIGHT_PX,
+      width: LEGEND_LIST_DEFAULT_WIDTH_PX,
     }),
-    [timelineHeightPx, timelineWidthPx],
+    [],
   );
   const maintainScrollAtEndThreshold = useMemo(() => {
-    const height = Math.max(timelineHeightPx ?? LEGEND_LIST_DEFAULT_HEIGHT_PX, 1);
-    return Math.max(0.04, AUTO_SCROLL_BOTTOM_THRESHOLD_PX / height);
-  }, [timelineHeightPx]);
+    return Math.max(0.04, AUTO_SCROLL_BOTTOM_THRESHOLD_PX / LEGEND_LIST_DEFAULT_HEIGHT_PX);
+  }, []);
   const bottomPaddingPx = useMemo(() => {
     if (!Number.isFinite(dockedComposerScrollInsetPx) || dockedComposerScrollInsetPx <= 0) {
       return LEGEND_LIST_TAIL_PADDING_PX;
@@ -539,17 +526,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // answers — which is what made the slide stutter while the composer above it
   // stayed smooth.
   const previousBottomPaddingRef = useRef(bottomPaddingPx);
+  const previousTimelineWidthRef = useRef(timelineWidthRef.current);
+
   useLayoutEffect(() => {
     const previousBottomPadding = previousBottomPaddingRef.current;
+    const previousTimelineWidth = previousTimelineWidthRef.current;
+    const currentTimelineWidth = timelineWidthRef.current;
     previousBottomPaddingRef.current = bottomPaddingPx;
+    previousTimelineWidthRef.current = currentTimelineWidth;
+
     if (bottomPaddingPx === previousBottomPadding) return;
     if (!scrollViewNode || !isNearBottomRef.current) return;
+
+    // During an interactive panel resize, do not animate scroll following.
+    // Width changes continuously rewrap text; animating scrollTop per frame
+    // during drag fights the resize layout and causes erratic jumping.
+    const isWidthResizing = Math.abs(currentTimelineWidth - previousTimelineWidth) >= 0.5;
 
     const deltaPx = bottomPaddingPx - previousBottomPadding;
     const startScrollTop = scrollViewNode.scrollTop;
 
-    if (prefersReducedMotion()) {
-      scrollViewNode.scrollTop = startScrollTop + deltaPx;
+    if (prefersReducedMotion() || isWidthResizing) {
+      if (!isWidthResizing) {
+        scrollViewNode.scrollTop = startScrollTop + deltaPx;
+      }
       return;
     }
 
@@ -605,32 +605,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking ? "working" : "settled",
     ].join(":");
   }, [activeTurnInProgress, isWorking, rows]);
-  const legendListExtraData = useMemo(
-    () => ({
-      allDirectoriesExpandedByTurnId,
-      expandedUserMessageIds,
-      expandedWorkGroups,
-      isRevertingCheckpoint,
-      isWorking,
-      resolvedTheme,
-      turnDiffSummaryVersion: turnDiffSummaryByAssistantMessageId.size,
-      artifactMediaVersion: Object.keys(artifactUrlsById ?? {}).join("|"),
-    }),
-    [
-      allDirectoriesExpandedByTurnId,
-      expandedUserMessageIds,
-      expandedWorkGroups,
-      isRevertingCheckpoint,
-      isWorking,
-      resolvedTheme,
-      turnDiffSummaryByAssistantMessageId.size,
-      artifactUrlsById,
-    ],
-  );
-  const getEstimatedItemSize = useCallback(
-    (row: TimelineRow) => estimateTimelineRowHeight(row, timelineWidthPx),
-    [timelineWidthPx],
-  );
+  const getFixedItemSize = useCallback((row: TimelineRow): number | undefined => {
+    switch (row.kind) {
+      case "turn-status":
+      case "thinking":
+      case "input-waiting":
+      case "notices":
+      case "assistant-meta":
+        return 44;
+      case "turn-fold":
+        return row.expanded ? undefined : 44;
+      default:
+        return undefined;
+    }
+  }, []);
   const getItemType = useCallback(
     (row: TimelineRow): string =>
       row.kind === "turn-status" || row.kind === "thinking" || row.kind === "input-waiting"
@@ -716,7 +704,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     function renderRowContent(row: TimelineRow): ReactNode {
       const content = (
         <div
-          className={row.kind === "turn-fold-content" ? "" : "pb-4"}
+          className={cn(
+            row.kind === "turn-fold-content" ? "" : "pb-4",
+            row.kind === "assistant-meta" && "group",
+          )}
           data-timeline-row-kind={row.kind}
           data-message-id={row.kind === "message" ? row.message.id : undefined}
           data-message-role={row.kind === "message" ? row.message.role : undefined}
@@ -782,6 +773,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               relativeTime={formatMessageRelativeTime(
                 row.message.completedAt ?? row.message.createdAt,
               )}
+              isLatest={row.message.id === latestAssistantMessageId}
             />
           )}
           {row.kind === "provider-task" && (
@@ -1057,13 +1049,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               controller={textReveal}
               cwd={markdownCwd}
               actions={
-                row.showActions ? (
+                (row.hasFooter ?? row.showActions) ? (
                   <AssistantResponseActions
                     message={row.message}
                     controller={textReveal}
                     relativeTime={formatMessageRelativeTime(
                       row.message.completedAt ?? row.message.createdAt,
                     )}
+                    isLatest={row.message.id === latestAssistantMessageId}
+                    showActions={row.showActions}
                   />
                 ) : null
               }
@@ -1135,13 +1129,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           )}
           {row.kind === "thinking" && <ThinkingIndicatorRow />}
           {row.kind === "input-waiting" && (
-            <div
-              role="status"
-              className="px-1 py-1 text-sm text-muted-foreground animate-in fade-in-0 duration-100 motion-reduce:animate-none"
-            >
-              {row.requestKind === "approval"
-                ? "Waiting for approval"
-                : "Waiting for your response"}
+            <div role="status" className="px-1">
+              <GenerationStatusLine textKey={`waiting-${row.requestKind}`}>
+                <span>
+                  {row.requestKind === "approval"
+                    ? "Waiting for approval"
+                    : "Waiting for your response"}
+                </span>
+              </GenerationStatusLine>
             </div>
           )}
         </div>
@@ -1224,33 +1219,33 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           refScrollView={attachScrollView}
           data={rows}
           dataVersion={dataVersion}
-          extraData={legendListExtraData}
+          extraData={rows.length}
           renderItem={TimelineRowRenderer}
           keyExtractor={keyExtractor}
           itemsAreEqual={itemsAreEqual}
           getItemType={getItemType}
           estimatedItemSize={112}
           estimatedListSize={estimatedListSize}
-          getEstimatedItemSize={getEstimatedItemSize}
+          getFixedItemSize={getFixedItemSize}
           alwaysRender={{
             bottom: ALWAYS_UNVIRTUALIZED_TAIL_ROWS,
             keys: alwaysRenderKeys,
           }}
           drawDistance={LEGEND_LIST_DRAW_DISTANCE_PX}
-          initialContainerPoolRatio={1}
           initialScrollAtEnd
           maintainScrollAtEnd={{
             animated: false,
             on: {
               dataChange: true,
+              footerLayout: false,
               itemLayout: true,
-              layout: true,
+              layout: false,
             },
           }}
           maintainScrollAtEndThreshold={maintainScrollAtEndThreshold}
           maintainVisibleContentPosition={{
             data: true,
-            size: true,
+            size: false,
             shouldRestorePosition: shouldRestoreVisiblePosition,
           }}
           recycleItems={recycleItems}
@@ -1270,7 +1265,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           }}
           onStartReachedThreshold={0.2}
           onViewableItemsChanged={onLegendListViewableItemsChanged}
-          className="app-scrollbar scroll-fade-y h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain px-3 sm:px-5"
+          className="app-scrollbar scroll-fade-y h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain [overflow-anchor:none] px-3 sm:px-5"
           contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
           contentContainerStyle={contentContainerStyle}
           showsVerticalScrollIndicator={false}
@@ -1281,7 +1276,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 });
 
 type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
-type TimelineProposedPlan = Extract<TimelineEntry, { kind: "proposed-plan" }>["proposedPlan"];
 type TimelineWorkEntry = Extract<TimelineEntry, { kind: "work" }>["entry"];
 // LegendList renders renderItem as a React component, not an ordinary callback.
 // A fresh inline function remounts every row when a tool/count changes.
@@ -1290,57 +1284,6 @@ const TimelineRowRenderContext = createContext<((row: TimelineRow) => ReactNode)
 function TimelineRowRenderer({ item }: LegendListRenderItemProps<TimelineRow>) {
   const renderRow = useContext(TimelineRowRenderContext);
   return <div key={`legend-row:${item.id}`}>{renderRow?.(item)}</div>;
-}
-
-function estimateTimelineProposedPlanHeight(proposedPlan: TimelineProposedPlan): number {
-  const estimatedLines = Math.max(1, Math.ceil(proposedPlan.planMarkdown.length / 72));
-  return 120 + Math.min(estimatedLines * 22, 880);
-}
-
-function estimateTimelineRowHeight(row: TimelineRow, timelineWidthPx: number | null): number {
-  switch (row.kind) {
-    case "work":
-      // Compact one-line rows; open secondary details are measured by LegendList.
-      return 16 + row.groupedEntries.length * 24;
-    case "work-toggle":
-      // Fixed 28px summary plus the shared 16px row spacing.
-      return 44 + (row.expanded ? 2 + row.groupedEntries.length * 24 : 0);
-    case "notices":
-      // One compact notice line plus the timeline row's shared 16px bottom gap.
-      return 44;
-    case "message":
-      return estimateTimelineMessageHeight(row.message, { timelineWidthPx });
-    case "assistant-meta":
-      return 44;
-    case "provider-task":
-      return row.expanded ? 160 : 44;
-    case "provider-plan":
-      return 48 + row.plan.steps.length * 24;
-    case "turn-fold":
-      return (
-        44 +
-        (row.expanded
-          ? row.children.reduce(
-              (sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx),
-              0,
-            )
-          : 0)
-      );
-    case "turn-fold-content":
-      return row.expanded
-        ? row.children.reduce(
-            (sum, child) => sum + estimateTimelineRowHeight(child, timelineWidthPx),
-            0,
-          )
-        : 0;
-    case "proposed-plan":
-      return estimateTimelineProposedPlanHeight(row.proposedPlan);
-    case "turn-status":
-      return 52;
-    case "thinking":
-    case "input-waiting":
-      return 44;
-  }
 }
 
 function formatLiveElapsed(startIso: string, nowMs: number): string | null {
@@ -1411,28 +1354,42 @@ const TurnStatusRow = memo(function TurnStatusRow(props: {
   const { startedAtIso, summary } = props;
   const isActive = summary === null;
 
+  if (isActive) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        data-assistant-turn-status="working"
+        className="px-1"
+      >
+        <GenerationStatusLine textKey="working">
+          <LiveShimmerText>Working</LiveShimmerText>
+          {startedAtIso ? (
+            <>
+              <span className="text-muted-foreground/75">for</span>
+              <span className="text-muted-foreground/75">
+                <WorkingTimer startedAtIso={startedAtIso} />
+              </span>
+            </>
+          ) : null}
+        </GenerationStatusLine>
+      </div>
+    );
+  }
+
   return (
     <div
       role="status"
       aria-live="polite"
-      data-assistant-turn-status={isActive ? "working" : "worked"}
-      className="animate-in fade-in-0 duration-100 motion-reduce:animate-none"
+      data-assistant-turn-status="worked"
+      className="px-1"
     >
       <div
         className={cn(
-          "flex min-h-8 items-baseline gap-1 px-1 pb-2 pt-1 text-sm leading-relaxed tabular-nums",
+          "flex h-7 items-center text-sm tabular-nums",
           !isActive && "border-b border-border/60",
         )}
       >
-        {isActive ? <LiveShimmerText>Working</LiveShimmerText> : null}
-        {isActive && startedAtIso ? (
-          <>
-            <span className="text-muted-foreground/75">for</span>
-            <span className="text-muted-foreground/75">
-              <WorkingTimer startedAtIso={startedAtIso} />
-            </span>
-          </>
-        ) : null}
         {summary ? <span className="font-medium text-muted-foreground/88">{summary}</span> : null}
       </div>
     </div>
@@ -1444,10 +1401,12 @@ const ThinkingIndicatorRow = memo(function ThinkingIndicatorRow() {
     <div
       role="status"
       aria-live="polite"
-      className="min-h-7 px-1 py-0.5 text-sm leading-relaxed animate-in fade-in-0 duration-100 motion-reduce:animate-none"
+      className="px-1"
       data-assistant-generation-phase="thinking"
     >
-      <LiveShimmerText>Thinking</LiveShimmerText>
+      <GenerationStatusLine textKey="thinking">
+        <LiveShimmerText>Thinking</LiveShimmerText>
+      </GenerationStatusLine>
     </div>
   );
 });

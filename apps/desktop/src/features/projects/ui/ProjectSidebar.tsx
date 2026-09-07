@@ -8,6 +8,7 @@ import {
   Clock01Icon as __ClockHugeIcon,
   FolderLibraryIcon as __FolderLibraryHugeIcon,
   ShoppingBag01Icon as __ShoppingBagHugeIcon,
+  InboxIcon as __InboxHugeIcon,
 } from '@hugeicons/core-free-icons'
 
 import * as React from "react";
@@ -32,6 +33,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarMenuBadge,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { useTranslation } from "@/lib/i18n";
@@ -209,6 +211,11 @@ export function ProjectSidebar({
     api.devApps.listPublisherStatus,
     featureFlags.projectDevApps && principalId ? {} : "skip",
   );
+  const incomingEnrollments = useQuery(
+    api.projectDeviceEnrollments.listIncoming,
+    principalId ? {} : "skip",
+  );
+  const inboxCount = incomingEnrollments?.length ?? 0;
   const projectDevAppStateByProjectId = React.useMemo(
     () =>
       new Map(
@@ -581,6 +588,10 @@ export function ProjectSidebar({
   }, [navigate]);
   const isOnScheduledTasks = pathname === "/projects/skills" && skillsView === "schedules";
   const isOnAgentSkills = pathname === "/projects/skills" && !isOnScheduledTasks;
+  const handleOpenInbox = React.useCallback(() => {
+    navigate("/projects/inbox");
+  }, [navigate]);
+  const isOnInbox = pathname === "/projects/inbox";
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, workspaceId: string | null) => {
@@ -1012,6 +1023,27 @@ export function ProjectSidebar({
                 <HugeiconsIcon icon={__ClockHugeIcon} />
                 <span className="truncate">{t('nav.scheduledTasks')}</span>
               </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  className={cn(
+                    SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                    "px-1.5",
+                    inboxCount > 0 && "pr-8",
+                    isOnInbox && SIDEBAR_PILL_ACTIVE_CLASS,
+                    "[&>svg]:text-current",
+                  )}
+                  onClick={handleOpenInbox}
+                >
+                  <HugeiconsIcon icon={__InboxHugeIcon} />
+                  <span className="truncate">{t('nav.inbox')}</span>
+                </button>
+                {inboxCount > 0 ? (
+                  <SidebarMenuBadge className="right-1.5 top-1/2 -translate-y-1/2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground">
+                    {inboxCount > 9 ? "9+" : inboxCount}
+                  </SidebarMenuBadge>
+                ) : null}
+              </div>
             </div>
           )}
 

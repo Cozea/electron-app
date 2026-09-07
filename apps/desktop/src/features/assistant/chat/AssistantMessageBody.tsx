@@ -47,7 +47,7 @@ export const AssistantMessageBody = memo(function AssistantMessageBody({
         <ChatMarkdown text={messageText} cwd={cwd} isStreaming={streaming} variant="timeline" />
       </div>
       {children}
-      {!streaming && message.text ? actions : null}
+      {actions}
     </div>
   );
 });

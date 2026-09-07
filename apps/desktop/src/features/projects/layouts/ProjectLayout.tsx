@@ -329,9 +329,10 @@ export function ProjectLayout({
   });
   const isStoreView = pathname.endsWith("/store");
   const isSkillsRoute = pathname.includes("/skills");
+  const isInboxView = pathname.endsWith("/inbox");
   // Check if we are on views that need full-bleed content (no padding)
   const shouldRemovePadding =
-    isWorkbenchView || isChangesView || isBuildsView || isStoreView || isSkillsRoute;
+    isWorkbenchView || isChangesView || isBuildsView || isStoreView || isSkillsRoute || isInboxView;
 
   // Runtime readiness alone is not enough: it only means a workspace is mounted,
   // which happens well before the device token is re-established on the

@@ -808,6 +808,19 @@ const en = {
   "agentSkills.providers": "Enabled in",
   "nav.agentSkills": "Agent Builds",
   "nav.scheduledTasks": "Scheduled Tasks",
+  "nav.inbox": "Inbox",
+  "routeLoading.inbox": "Loading Inbox…",
+  "inbox.title": "Inbox",
+  "inbox.subtitle": "Manage project invitations and device access requests.",
+  "inbox.emptyTitle": "No pending invitations",
+  "inbox.emptyDescription": "When another collaborator or device invites this device to a project, it will show up here.",
+  "inbox.accept": "Accept",
+  "inbox.decline": "Decline",
+  "inbox.openProject": "Open project",
+  "inbox.accepted": "Invitation accepted",
+  "inbox.declined": "Invitation declined",
+  "inbox.invitedBy": "Invited by",
+  "inbox.deviceInvitations": "Device invitations",
 } as const
 
 export type TranslationKey = keyof typeof en

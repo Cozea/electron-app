@@ -32,7 +32,12 @@ export type ConversationRow = RowIdentity &
         liveIds: ReadonlySet<string>;
         groupedEntries: WorkLogEntry[];
       }
-    | { kind: "message"; message: TimelineMessage; showActions: boolean }
+    | {
+        kind: "message";
+        message: TimelineMessage;
+        showActions: boolean;
+        hasFooter?: boolean;
+      }
     | { kind: "assistant-meta"; message: TimelineMessage }
     | { kind: "proposed-plan"; proposedPlan: TimelineProposedPlan }
     | {
@@ -125,15 +130,17 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
       continue;
     }
     if (entry.kind === "message") {
+      const isFooterAnchor =
+        entry.message.role === "assistant" &&
+        projection.footerAfterEntryId.get(entry.message.id) === entry.id;
       add(
         {
           kind: "message",
           id: entry.id,
           createdAt: entry.createdAt,
           message: entry.message,
-          showActions:
-            projection.actionMessageIds.has(entry.message.id) &&
-            projection.footerAfterEntryId.get(entry.message.id) === entry.id,
+          showActions: projection.actionMessageIds.has(entry.message.id) && isFooterAnchor,
+          hasFooter: isFooterAnchor,
         },
         [entry.id],
       );
@@ -332,7 +339,11 @@ export function conversationRowsEqual(a: ConversationRow, b: ConversationRow): b
   )
     return false;
   if (a.kind === "message" && b.kind === "message")
-    return a.message === b.message && a.showActions === b.showActions;
+    return (
+      a.message === b.message &&
+      a.showActions === b.showActions &&
+      a.hasFooter === b.hasFooter
+    );
   if (a.kind === "assistant-meta" && b.kind === "assistant-meta") return a.message === b.message;
   if (a.kind === "provider-task" && b.kind === "provider-task")
     return a.task === b.task && a.expanded === b.expanded;
