@@ -257,10 +257,14 @@ function useLauncherGridLayout(
     const containerRect = container.getBoundingClientRect()
     const elRect = el.getBoundingClientRect()
     const width = elRect.width || containerRect.width
-    // When singleton empty, hero + filter bar take ~220px. In compact/multi-tile mode,
-    // there is no hero, so only the ~90px filter bar overhead applies.
-    const overhead = isSingletonEmpty ? 220 : 90
-    const availableHeight = Math.max(elRect.height, containerRect.height - overhead)
+    // Measure available height:
+    // In singleton empty mode, max 2 rows fit in the fixed h-[238px] viewport.
+    // In normal mode, el is flex-1 min-h-0 so el.clientHeight is the exact available viewport height.
+    const availableHeight = isSingletonEmpty
+      ? 2 * LAUNCHER_CONFIG.cellHeight + LAUNCHER_CONFIG.rowGap
+      : el.clientHeight > 0
+        ? el.clientHeight
+        : Math.max(0, containerRect.height - 150)
     const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
     setLayout(
       computeWorkbenchSelectionLauncherLayout({
@@ -631,7 +635,11 @@ export function WorkbenchSelectionTile({
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          centerSingletonSelectionLayout ? "overflow-hidden justify-center items-center py-2" : "overflow-y-auto pb-6",
+          centerSingletonSelectionLayout
+            ? "overflow-hidden justify-center items-center py-2"
+            : useListView
+              ? "overflow-y-auto pb-6"
+              : "overflow-hidden pb-1",
         )}
       >
         {showHero ? (
@@ -646,14 +654,14 @@ export function WorkbenchSelectionTile({
         <div
           className={cn(
             "mx-auto flex w-full flex-col px-3 md:px-6",
-            centerSingletonSelectionLayout ? "flex-none" : "flex-1 min-h-0 pb-4 pt-3",
+            centerSingletonSelectionLayout ? "flex-none" : "flex-1 min-h-0",
             "max-w-5xl",
           )}
         >
           <div
             ref={launcherViewportRef}
             className={cn(
-              "flex w-full flex-col",
+              "flex w-full flex-col overflow-hidden",
               centerSingletonSelectionLayout ? "h-[238px] flex-none" : "min-h-0 flex-1",
             )}
           >
@@ -734,8 +742,8 @@ export function WorkbenchSelectionTile({
             )}
           </div>
 
-          {!useListView && centerSingletonSelectionLayout ? (
-            <div className="flex h-7 items-center justify-center">
+          {!useListView ? (
+            <div className="flex h-7 shrink-0 items-center justify-center">
               {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
                 <div className="flex items-center justify-center gap-1">
                   {pagedOptions.map((_, pageIndex) => (
@@ -757,26 +765,6 @@ export function WorkbenchSelectionTile({
                   ))}
                 </div>
               ) : null}
-            </div>
-          ) : !useListView && filteredOptions.length > 0 && pagedOptions.length > 1 ? (
-            <div className="mt-3 flex items-center justify-center gap-1">
-              {pagedOptions.map((_, pageIndex) => (
-                <button
-                  key={`selection-page-dot-${pageIndex}`}
-                  type="button"
-                  aria-label={`Go to page ${pageIndex + 1}`}
-                  aria-pressed={pageIndex === currentPage}
-                  className="flex size-5 items-center justify-center cursor-pointer p-0"
-                  onClick={() => handlePageSelect(pageIndex)}
-                >
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full transition-all",
-                      pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
-                    )}
-                  />
-                </button>
-              ))}
             </div>
           ) : null}
         </div>

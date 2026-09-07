@@ -108,9 +108,9 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
           aria-label={t("nav.openUserMenu")}
           title={t("nav.openUserMenu")}
         >
-          <Avatar className="size-5 shrink-0 rounded-md">
+          <Avatar className="size-5 shrink-0 rounded-[5px]">
             {avatarUrl ? <AvatarImage src={avatarUrl} alt={menuTitle} /> : null}
-            <AvatarFallback className="rounded-md text-[9px] font-medium">
+            <AvatarFallback className="rounded-[5px] text-[9px] font-bold">
               {initials(menuTitle)}
             </AvatarFallback>
           </Avatar>
