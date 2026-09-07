@@ -21,6 +21,11 @@ import {
 } from './routes/devAppHostedRuntimes'
 import { handleDeviceAuthChallenge, handleDeviceAuthComplete, handleDeviceAuthJwks } from './routes/deviceAuth'
 import { handleCreateRecoveryGrant, handleRedeemRecoveryGrant } from './routes/deviceRecovery'
+import {
+  handleCollaborationRepositoryCredential,
+  handleVerifyCollaborationPush,
+  RepositoryAuthenticationError,
+} from './routes/collaborationRepositories'
 
 function getRoomStub(env: Env, roomId: string): DurableObjectStub {
   const id = env.COLLAB_ROOM.idFromName(roomId)
@@ -115,6 +120,36 @@ export default {
             'BAD_REQUEST',
             error instanceof Error ? error.message : 'Invalid collaboration session request',
             { status: 400 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/collab/repository/credential') {
+        try {
+          return await handleCollaborationRepositoryCredential(request, env)
+        } catch (error) {
+          const authenticationFailure = error instanceof RepositoryAuthenticationError
+          return protocolError(
+            authenticationFailure ? 'UNAUTHORIZED' : 'REPOSITORY_ACCESS_REJECTED',
+            error instanceof Error ? error.message : 'Repository access failed',
+            { status: authenticationFailure ? 401 : 403 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (request.method === 'POST' && url.pathname === '/collab/repository/verify-push') {
+        try {
+          return await handleVerifyCollaborationPush(request, env)
+        } catch (error) {
+          const authenticationFailure = error instanceof RepositoryAuthenticationError
+          return protocolError(
+            authenticationFailure ? 'UNAUTHORIZED' : 'PUSH_VERIFICATION_REJECTED',
+            error instanceof Error ? error.message : 'Push verification failed',
+            { status: authenticationFailure ? 401 : 409 },
             false,
             origin,
           )

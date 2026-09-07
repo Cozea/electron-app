@@ -103,6 +103,9 @@ export interface Env {
   DEVICE_AUTH_CHALLENGE_SECRET: string
   CONVEX_URL: string
   AI_GATEWAY_SECRET: string
+  GITHUB_APP_ID?: string
+  GITHUB_APP_PRIVATE_JWK?: string
+  GITHUB_API_BASE_URL?: string
   DEVICE_AUTH_ISSUER: string
   DEVICE_AUTH_AUDIENCE: string
   DEVICE_AUTH_PRIVATE_JWK: string
