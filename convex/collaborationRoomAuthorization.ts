@@ -1,6 +1,6 @@
 import { v } from "convex/values"
 
-import { query } from "./_generated/server"
+import { authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { canAccessProject } from "./lib/projectAccess"
 
 function assertGatewaySecret(secret: string): void {
