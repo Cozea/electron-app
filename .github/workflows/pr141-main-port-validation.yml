@@ -63,3 +63,5 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
+
+# Explicit source-stage validation trigger: generation-3 runtime staged.
