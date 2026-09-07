@@ -134,17 +134,78 @@ export function patchT3ServerBundleProviderUpdates(source) {
   return { source: patchedSource, changed };
 }
 
+export function patchT3ComputerUseSource() {
+  const sourcePath = path.join(serverRoot, "src", "mcp", "toolkits", "computerUse.ts");
+  if (!fs.existsSync(sourcePath)) return false;
+  let code = fs.readFileSync(sourcePath, "utf8");
+  if (!code.includes("Effect.catchAll")) return false;
+
+  if (!code.includes('import * as Cause')) {
+    code = 'import * as Cause from "effect/Cause";\n' + code;
+  }
+  code = code.replace(
+    /Effect\.catchAll\(\(error\)\s*=>\s*Effect\.logWarning\("Computer Use turn-end notification failed",\s*\{\s*threadId,\s*error:\s*error\.message,\s*\}\),\s*\)/g,
+    'Effect.catchCause((cause) =>\n      Effect.logWarning("Computer Use turn-end notification failed", {\n        threadId,\n        error: Cause.pretty(cause),\n      }),\n    )',
+  );
+  code = code.replace(
+    /Effect\.catchAll\(\(error\)\s*=>\s*Effect\.succeed\(backendFailure\(error\.message\s*\|\|\s*"Computer Use failed\."\)\),\s*\)/g,
+    'Effect.catchCause((cause) => {\n                const error = Cause.squash(cause);\n                const message = error instanceof Error ? error.message : String(error);\n                return Effect.succeed(backendFailure(message || "Computer Use failed."));\n              })',
+  );
+
+  fs.writeFileSync(sourcePath, code);
+  console.log("[prepare-t3-runtime] Patched Effect.catchCause into computerUse.ts source.");
+  return true;
+}
+
+export function patchT3ServerBundleComputerUse(source) {
+  let patchedSource = source;
+  let changed = false;
+
+  const patterns = [
+    {
+      target: ".pipe(map$5(toMcpResult), (void 0)((error) =>",
+      replacement: ".pipe(map$5(toMcpResult), catchCause((cause) => { const error = squash(cause); const message = error instanceof Error ? error.message : String(error); return succeed$1(backendFailure(message || 'Computer Use failed.')); })",
+    },
+    {
+      target: ".pipe(map$5(toMcpResult), (void 0)((error =>",
+      replacement: ".pipe(map$5(toMcpResult), catchCause((cause) => { const error = squash(cause); const message = error instanceof Error ? error.message : String(error); return succeed$1(backendFailure(message || 'Computer Use failed.')); })",
+    },
+    {
+      target: ".pipe((void 0)((error) => logWarning$1(",
+      replacement: ".pipe(catchCause((cause) => logWarning$1(",
+    },
+    {
+      target: ".pipe((void 0)((error => logWarning$1(",
+      replacement: ".pipe(catchCause((cause) => logWarning$1(",
+    },
+  ];
+
+  for (const { target, replacement } of patterns) {
+    if (patchedSource.includes(target)) {
+      patchedSource = patchedSource.replaceAll(target, replacement);
+      changed = true;
+    }
+  }
+
+  return { source: patchedSource, changed };
+}
+
 function applyCozeaT3RuntimePatches({ checkOnly }) {
   const source = fs.readFileSync(serverBundle, "utf8");
   const providerDefaults = patchT3ServerBundleProviderDefaults(source);
   const providerUpdates = patchT3ServerBundleProviderUpdates(providerDefaults.source);
   const mediaContainment = patchT3ServerBundleMediaContainment(providerUpdates.source);
-  const changed = providerDefaults.changed || providerUpdates.changed || mediaContainment.changed;
+  const computerUse = patchT3ServerBundleComputerUse(mediaContainment.source);
+  const changed =
+    providerDefaults.changed ||
+    providerUpdates.changed ||
+    mediaContainment.changed ||
+    computerUse.changed;
   if (checkOnly && changed) {
     fail("T3 server bundle is missing a Cozea runtime patch.");
   }
   if (!checkOnly && changed) {
-    fs.writeFileSync(serverBundle, mediaContainment.source);
+    fs.writeFileSync(serverBundle, computerUse.source);
     console.log("[prepare-t3-runtime] Applied Cozea policies to the T3 bundle.");
   }
 }
@@ -259,6 +320,13 @@ function currentVendorPin() {
 }
 
 function assertVendorCleanBeforeCheckout() {
+  const statusOutput = run("git", ["-C", vendorRoot, "status", "--porcelain", "--untracked-files=no"], {
+    capture: true,
+  });
+  if (statusOutput.trim() === "M apps/server/src/mcp/toolkits/computerUse.ts") {
+    run("git", ["-C", vendorRoot, "checkout", "--", "apps/server/src/mcp/toolkits/computerUse.ts"]);
+    return;
+  }
   const changes = run("git", ["-C", vendorRoot, "status", "--porcelain", "--untracked-files=no"], {
     capture: true,
   });
@@ -470,6 +538,7 @@ export function main(argv = process.argv.slice(2)) {
 
   const expectedPin = expectedVendorPin();
   ensureVendorCheckout(expectedPin, options.checkOnly);
+  patchT3ComputerUseSource();
   const sourceStamp = currentVendorSourceStamp(expectedPin);
   const pnpmVersion = readPnpmVersion();
   prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, options);
