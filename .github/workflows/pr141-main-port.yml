@@ -1,0 +1,47 @@
+name: PR141 main-first collaboration port
+
+on:
+  push:
+    branches:
+      - integration/pr141-main-port
+    paths:
+      - scripts/pr141-main-port-phase1.py
+      - .github/workflows/pr141-main-port.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr141-main-port-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  port:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Fetch archived PR141 source
+        run: git fetch origin archive/pr141-pre-main-port:refs/remotes/origin/archive/pr141-pre-main-port
+      - name: Apply principal-native collaboration port
+        run: python3 scripts/pr141-main-port-phase1.py
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          git status --short
+      - name: Commit port
+        run: |
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'Cozea collaboration port'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'refactor(collaboration): port session control plane to current main'
+          git push origin HEAD:integration/pr141-main-port
