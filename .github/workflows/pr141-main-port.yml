@@ -1,11 +1,13 @@
-name: PR141 main-port final fixes
+name: PR141 main-port finalization
 
 on:
   push:
     branches:
       - integration/pr141-main-port
     paths:
-      - scripts/pr141-main-port-fixes.py
+      - scripts/pr141-finalize-core.py
+      - scripts/pr141-finalize-backend.py
+      - scripts/pr141-finalize-renderer.py
       - .github/workflows/pr141-main-port.yml
   workflow_dispatch:
 
@@ -13,33 +15,46 @@ permissions:
   contents: write
 
 concurrency:
-  group: pr141-main-port-fixes-${{ github.ref }}
+  group: pr141-main-port-finalize-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  fix:
+  finalize:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: false
-      - name: Apply final current-main compatibility fixes
-        run: python3 scripts/pr141-main-port-fixes.py
+      - name: Synchronize current main and source implementation
+        run: |
+          git fetch origin main codex/collaboration-v2-complete
+          git config user.name 'Cozea collaboration port'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit origin/main
+      - name: Apply generation-3 finalization
+        run: |
+          python3 scripts/pr141-finalize-core.py
+          python3 scripts/pr141-finalize-backend.py
+          python3 scripts/pr141-finalize-renderer.py
       - name: Verify patch shape
         run: |
           git diff --check
-          git status --short
-      - name: Commit fixes
-        run: |
-          if git diff --quiet; then
-            echo 'No changes to commit.'
-            exit 0
+          grep -q "registerCollaborationHandlers(ipcMain, app.getPath('userData'))" apps/desktop/electron/main.ts
+          grep -q "collaboration: collaborationBridge" apps/desktop/electron/preload.ts
+          grep -q "/collab/v2/control" cloudflare/worker/src/index.ts
+          grep -q "const sharedCollaborationEnabled = false" apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx
+          if grep -q "activeBranch === collabBranch" apps/desktop/src/features/projects/layouts/ProjectLayout.tsx; then
+            echo 'Legacy branch-implies-live collaboration is still active.' >&2
+            exit 1
           fi
-          git config user.name 'Cozea collaboration port'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git status --short
+      - name: Commit finalization
+        run: |
           git add --all
-          git commit -m 'fix(collaboration): finish current-main runtime adaptation'
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(collaboration): activate generation-3 runtime on current main'
+          fi
           git push origin HEAD:integration/pr141-main-port
