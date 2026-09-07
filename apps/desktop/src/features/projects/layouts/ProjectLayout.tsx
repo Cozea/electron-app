@@ -38,6 +38,7 @@ import {
 import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
 import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
+import { downloadAuthorizedProjectRepository } from "@/features/collaboration/api/downloadAuthorizedProjectRepository";
 import {
   ensureProjectSwitchStarted,
   markProjectSwitchPhase,
@@ -390,14 +391,17 @@ export function ProjectLayout({
       if (!workspaceProjectId) return;
       const projectId = workspaceProjectId;
       const slug = project?.slug ?? routeSlug ?? projectId;
-      const repoUrl =
-        (project as { repoSource?: { repoUrl?: string | null } | null } | null | undefined)?.repoSource?.repoUrl ??
+      const canonicalRepo = (project as {
+        repo?: { provider?: string | null; url?: string | null; defaultBranch?: string | null } | null
+        sourceControl?: { provider?: string | null; repoUrl?: string | null; defaultBranch?: string | null } | null
+      } | null | undefined)?.repo ?? null;
+      const repoUrl = canonicalRepo?.url?.trim() ||
         (project as { sourceControl?: { repoUrl?: string | null } | null } | null | undefined)?.sourceControl?.repoUrl ??
         null;
-      const branch =
-        (project as { repoSource?: { branch?: string | null } | null } | null | undefined)?.repoSource?.branch ??
+      const branch = canonicalRepo?.defaultBranch?.trim() ||
         (project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ??
         undefined;
+      const githubAuthorized = canonicalRepo?.provider?.trim().toLowerCase() === "github";
 
       try {
         switch (action.kind) {
@@ -454,6 +458,11 @@ export function ProjectLayout({
             break;
           }
           case "clone": {
+            if (githubAuthorized) {
+              await downloadAuthorizedProjectRepository({ projectId, slug });
+              refreshWorkspace();
+              break;
+            }
             if (!repoUrl) {
               appToast.warning({ title: t("workspace.noRepoUrl") });
               break;

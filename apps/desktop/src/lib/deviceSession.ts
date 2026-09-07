@@ -1,6 +1,7 @@
 import type { Id } from "../../../../convex/_generated/dataModel"
 import type { DesktopBootstrapSession } from "@shared/desktopBootstrapTypes"
 import type { PersonalWorkspaceMembership, User } from "@shared/types"
+import { validateDeviceGatewayUrl } from "@shared/gatewayUrl"
 
 export interface DeviceSession {
   accessToken: string
@@ -15,10 +16,8 @@ let pendingSession: Promise<DeviceSession> | null = null
 
 function getAuthBaseUrl(): string {
   const configured = import.meta.env.VITE_AUTH_SERVER_URL || import.meta.env.VITE_COLLAB_BASE_URL
-  if (!configured) {
-    throw new Error("Device authentication server is not configured.")
-  }
-  return configured.replace(/\/+$/, "")
+  if (!configured) throw new Error("Device authentication server is not configured.")
+  return validateDeviceGatewayUrl(configured)
 }
 
 export function getDeviceGatewayBaseUrl(): string {
