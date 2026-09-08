@@ -21,6 +21,7 @@ actor CaptureRuntime {
     private struct Entry {
         let id: UUID
         let bounds: CGRect
+        let scWindow: SCWindow
         let task: Task<WindowStream, any Error>
         var users: Int
         var touched: ContinuousClock.Instant
@@ -38,7 +39,12 @@ actor CaptureRuntime {
         try control.check()
         guard CGPreflightScreenCaptureAccess() else { throw RuntimeFailure(.permissionDenied, "Screen Recording permission is required for screenshots.") }
         let requestGeneration = generation
-        let scWindow = try await shareable(window)
+        let scWindow: SCWindow
+        if let warm = entries[window.identity], warm.bounds == window.bounds {
+            scWindow = warm.scWindow
+        } else {
+            scWindow = try await shareable(window)
+        }
         try control.check()
         guard generation == requestGeneration else { throw RuntimeFailure(.cancelled, "Capture was reset.") }
         var sink: WindowStream?
@@ -115,7 +121,7 @@ actor CaptureRuntime {
         }
         let id = UUID()
         let task = Task { try await WindowStream.start(window: scWindow, handle: window) }
-        entries[window.identity] = Entry(id: id, bounds: window.bounds, task: task, users: 1, touched: .now)
+        entries[window.identity] = Entry(id: id, bounds: window.bounds, scWindow: scWindow, task: task, users: 1, touched: .now)
         return (id, task)
     }
     private func release(_ key: WindowIdentity, id: UUID) {

@@ -1,627 +1,342 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
-import readline from 'node:readline'
 
 import { resolveUnpackagedBuildDir } from '../runtime/runtimeManifest'
-import {
-  readComputerUseAppSettings,
-  type ComputerUseAppSettings,
-} from './computerUseSettings'
+import { readComputerUseAppSettings, type ComputerUseAppSettings } from './computerUseSettings'
 import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
 
 const require = createRequire(import.meta.url)
-
 const COMPUTER_USE_TOOLS = new Set([
-  'list_apps',
-  'get_app_state',
-  'click',
-  'perform_secondary_action',
-  'scroll',
-  'drag',
-  'type_text',
-  'press_key',
-  'set_value',
+  'list_apps', 'get_app_state', 'click', 'perform_secondary_action', 'scroll',
+  'drag', 'type_text', 'press_key', 'set_value',
 ])
-const UPSTREAM_VERSION = '0.3.3'
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
-const CALL_TIMEOUT_MS = 45_000
+const CALL_TIMEOUT_MS = 35_000
+const RUNTIME_VERSION = '2.0.0'
+const UNSUPPORTED = 'Computer Use is currently available on macOS only.'
 
 export type ComputerUseThreadPolicy = 'inherit' | 'allow' | 'deny'
 type ExplicitComputerUseThreadPolicy = Exclude<ComputerUseThreadPolicy, 'inherit'>
+interface ScheduledThreadPolicyEntry { policy: ExplicitComputerUseThreadPolicy; scheduledTaskId: string }
 
-interface ScheduledThreadPolicyEntry {
-  policy: ExplicitComputerUseThreadPolicy
-  scheduledTaskId: string
-}
-
-interface NativeComputerUseAddon {
-  callTool(sessionId: string, tool: string, argumentsJson: string): Promise<string>
+/** ABI 2 is checked before any FFI call; ABI 1 has a different call arity. */
+export interface NativeComputerUseAddon {
+  abiVersion(): number
+  configureSession(sessionId: string, policyJson: string): boolean
+  revokeSession(sessionId: string): void
+  revokeAll(): void
+  cancelRequest(sessionId: string, requestId: string): void
+  callTool(sessionId: string, tool: string, argumentsJson: string, contextJson: string): Promise<string>
   listTools(): string
-  diagnostics(): string
+  diagnostics(): Promise<string>
   requestPermission(target: 'accessibility' | 'screenRecording'): boolean
   turnEnded(sessionId: string): Promise<void>
   resetSession(sessionId: string): Promise<void>
   resetAll(): Promise<void>
 }
-
-interface ComputerUseContentItem {
-  type: 'text' | 'image'
-  text?: string
-  data?: string
-  mimeType?: string
-}
-
-export interface ComputerUseToolResult {
-  content: ComputerUseContentItem[]
-  isError: boolean
-}
-
-interface PendingWorkerRequest {
-  resolve: (result: ComputerUseToolResult) => void
-  reject: (error: Error) => void
-  timer: ReturnType<typeof setTimeout>
-}
-
-interface WorkerRpcMessage {
-  id?: unknown
-  error?: unknown
-  result?: unknown
+interface ComputerUseContentItem { type: 'text' | 'image'; text?: string; data?: string; mimeType?: string }
+export interface ComputerUseToolResult { content: ComputerUseContentItem[]; isError: boolean }
+export interface ComputerUseRuntimeEnvironment { endpoint: string; token: string }
+interface SessionPolicy { revision: string; signature: string }
+interface CallOptions { requestId?: string; signal?: AbortSignal }
+export interface ComputerUseRuntimeDependencies {
+  platform?: NodeJS.Platform
+  settings?: () => ComputerUseAppSettings
+  addon?: () => NativeComputerUseAddon | null
+  timeoutMs?: number
 }
 
 function failure(message: string): ComputerUseToolResult {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
-
 function parseToolResult(raw: string): ComputerUseToolResult {
   try {
-    const parsed = JSON.parse(raw) as Partial<ComputerUseToolResult>
-    const content = Array.isArray(parsed.content) ? parsed.content : []
-    return {
-      content: content.filter((item): item is ComputerUseContentItem => {
-        if (!item || typeof item !== 'object') return false
-        const type = (item as { type?: unknown }).type
-        return type === 'text' || type === 'image'
-      }),
-      isError: parsed.isError === true,
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return failure('Invalid native result envelope.')
+    const record = parsed as Record<string, unknown>
+    if (!Array.isArray(record.content) || typeof record.isError !== 'boolean') return failure('Invalid native result envelope.')
+    const content: ComputerUseContentItem[] = []
+    for (const item of record.content) {
+      if (!item || typeof item !== 'object') return failure('Invalid native result content.')
+      const entry = item as Record<string, unknown>
+      if (entry.type === 'text' && typeof entry.text === 'string') content.push({ type: 'text', text: entry.text })
+      else if (entry.type === 'image' && typeof entry.data === 'string' && entry.mimeType === 'image/png') {
+        content.push({ type: 'image', data: entry.data, mimeType: entry.mimeType })
+      } else return failure('Invalid native result content.')
     }
-  } catch (error) {
-    return failure(
-      `Computer Use returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
+    return content.length ? { content, isError: record.isError } : failure('Native runtime returned no content.')
+  } catch { return failure('Computer Use returned invalid JSON.') }
 }
-
-function resolveRuntimeRoot(): string {
-  const packaged = path.join(process.resourcesPath, 'computer-use-runtime')
-  if (fs.existsSync(packaged)) return packaged
-  return resolveUnpackagedBuildDir('computer-use-runtime')
-}
-
-function nativeAddonName(): string {
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
-  return `cozea_computer_use.darwin-${arch}.node`
-}
-
-function workerBinaryName(): string {
-  return process.platform === 'win32' ? 'open-computer-use.exe' : 'open-computer-use'
-}
-
 function safeTokenEquals(received: string, expected: string): boolean {
-  const left = Buffer.from(received)
-  const right = Buffer.from(expected)
+  const left = Buffer.from(received); const right = Buffer.from(expected)
   return left.length === right.length && timingSafeEqual(left, right)
 }
-
-function disabledTools(settings: ComputerUseAppSettings): Set<string> {
-  return new Set(
-    (settings.disabledComputerUseTools ?? []).filter((tool) => COMPUTER_USE_TOOLS.has(tool)),
-  )
-}
-
-/** Apply per-thread scheduled authorization before the live global Computer Use policy. */
-function validateActionPolicy(
-  settings: ComputerUseAppSettings,
-  tool: string,
-  args: unknown,
-  threadPolicy: ComputerUseThreadPolicy = 'inherit',
-): string | null {
-  if (threadPolicy === 'deny') {
-    return 'Computer Use is not authorized for this scheduled task.'
-  }
+function validateActionPolicy(settings: ComputerUseAppSettings, tool: string, args: unknown,
+  threadPolicy: ComputerUseThreadPolicy = 'inherit'): string | null {
+  if (threadPolicy === 'deny') return 'Computer Use is not authorized for this scheduled task.'
   if (!settings.computerUseEnabled) return 'Computer Use is disabled in Cozea Settings.'
   if (!COMPUTER_USE_TOOLS.has(tool)) return `Unknown Computer Use tool: ${tool}`
-  if (disabledTools(settings).has(tool)) {
-    return `Computer Use capability '${tool}' is disabled in Cozea Settings.`
-  }
-  if (
-    tool === 'click' &&
-    args &&
-    typeof args === 'object' &&
-    (args as { click_method?: unknown }).click_method === 'global' &&
-    settings.computerUseAllowGlobalPointerFallbacks !== true
-  ) {
+  if ((settings.disabledComputerUseTools ?? []).includes(tool)) return `Computer Use capability '${tool}' is disabled in Cozea Settings.`
+  if (tool === 'click' && args && typeof args === 'object' &&
+      (args as { click_method?: unknown }).click_method === 'global' && !settings.computerUseAllowGlobalPointerFallbacks) {
     return 'Global physical-pointer fallback is disabled in Cozea Settings.'
   }
   return null
 }
 
-class WorkerMcpSession {
-  private readonly child: ChildProcessWithoutNullStreams
-  private readonly output: readline.Interface
-  private readonly pending = new Map<number, PendingWorkerRequest>()
-  private nextId = 1
-  private stopped = false
-
-  constructor(binaryPath: string) {
-    this.child = spawn(binaryPath, ['mcp'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
-      windowsHide: true,
-    })
-    this.output = readline.createInterface({ input: this.child.stdout })
-    this.output.on('line', (line) => this.handleLine(line))
-    this.child.on('error', (error) => this.failAll(error))
-    this.child.stdin.on('error', (error) => this.failAll(error))
-    this.child.stderr.on('data', (chunk) => {
-      const text = chunk.toString().trim()
-      if (text) console.warn('[ComputerUse:worker]', text)
-    })
-    this.child.once('exit', (code, signal) => {
-      this.failAll(
-        new Error(`Computer Use worker exited (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`),
-      )
-    })
-  }
-
-  private failAll(error: Error): void {
-    this.stopped = true
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer)
-      pending.reject(error)
-    }
-    this.pending.clear()
-    this.output.close()
-  }
-
-  private handleLine(line: string): void {
-    let payload: unknown
-    try {
-      payload = JSON.parse(line)
-    } catch {
-      return
-    }
-    if (!payload || typeof payload !== 'object') return
-    const message = payload as WorkerRpcMessage
-    const id = typeof message.id === 'number' ? message.id : null
-    if (id === null) return
-    const pending = this.pending.get(id)
-    if (!pending) return
-    this.pending.delete(id)
-    clearTimeout(pending.timer)
-
-    if (message.error && typeof message.error === 'object') {
-      const errorMessage = (message.error as { message?: unknown }).message
-      pending.reject(
-        new Error(
-          typeof errorMessage === 'string' ? errorMessage : 'Computer Use worker request failed.',
-        ),
-      )
-      return
-    }
-
-    pending.resolve(
-      message.result && typeof message.result === 'object'
-        ? parseToolResult(JSON.stringify(message.result))
-        : failure('Computer Use worker returned no result.'),
-    )
-  }
-
-  call(tool: string, args: unknown): Promise<ComputerUseToolResult> {
-    if (this.stopped) return Promise.reject(new Error('Computer Use worker is stopped.'))
-    const id = this.nextId++
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id)
-        reject(new Error(`Computer Use '${tool}' timed out.`))
-      }, CALL_TIMEOUT_MS)
-      this.pending.set(id, { resolve, reject, timer })
-      this.child.stdin.write(
-        `${JSON.stringify({
-          jsonrpc: '2.0',
-          id,
-          method: 'tools/call',
-          params: { name: tool, arguments: args ?? {} },
-        })}\n`,
-      )
-    })
-  }
-
-  turnEnded(): void {
-    if (this.stopped) return
-    this.child.stdin.write(
-      `${JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'notifications/turn-ended',
-        params: {},
-      })}\n`,
-    )
-  }
-
-  stop(): void {
-    if (this.stopped) return
-    this.turnEnded()
-    this.stopped = true
-    this.child.kill('SIGTERM')
-  }
-}
-
-export interface ComputerUseRuntimeEnvironment {
-  endpoint: string
-  token: string
-}
-
 export class ComputerUseRuntimeService {
   private static instance: ComputerUseRuntimeService | null = null
-
   static getInstance(): ComputerUseRuntimeService {
     if (!this.instance) this.instance = new ComputerUseRuntimeService()
     return this.instance
   }
-
   private nativeAddon: NativeComputerUseAddon | null | undefined
-  private readonly workerSessions = new Map<string, WorkerMcpSession>()
   private readonly activeRuntimeSessions = new Set<string>()
-  // Scheduled-task policy is lifecycle-bound, never timeout-bound. The task
-  // association lets a later run replace an orphaned pre-start lease safely.
   private readonly threadPolicies = new Map<string, ScheduledThreadPolicyEntry>()
   private readonly scheduledThreadByTask = new Map<string, string>()
+  private readonly sessionPolicies = new Map<string, SessionPolicy>()
+  private readonly endingSessions = new Map<string, Promise<void>>()
+  private resetBarrier: Promise<void> = Promise.resolve()
+  private revision = 0n
   private server: Server | null = null
   private endpoint: string | null = null
+  private starting: Promise<ComputerUseRuntimeEnvironment> | null = null
   private readonly token = randomBytes(32).toString('base64url')
-  private actionTail: Promise<unknown> = Promise.resolve()
+  private readonly platform: NodeJS.Platform
+  private readonly settings: () => ComputerUseAppSettings
+  constructor(private readonly dependencies: ComputerUseRuntimeDependencies = {}) {
+    this.platform = dependencies.platform ?? process.platform
+    this.settings = dependencies.settings ?? readComputerUseAppSettings
+  }
 
   private loadNativeAddon(): NativeComputerUseAddon | null {
+    if (this.platform !== 'darwin') return null
     if (this.nativeAddon !== undefined) return this.nativeAddon
-    if (process.platform !== 'darwin') {
-      this.nativeAddon = null
-      return null
+    let candidate: NativeComputerUseAddon | null
+    if (this.dependencies.addon) candidate = this.dependencies.addon()
+    else {
+      if (!['arm64', 'x64'].includes(process.arch)) throw new Error('Unsupported macOS architecture.')
+      const packaged = path.join(process.resourcesPath, 'computer-use-runtime')
+      const root = fs.existsSync(packaged) ? packaged : resolveUnpackagedBuildDir('computer-use-runtime')
+      const addonPath = path.join(root, `cozea_computer_use.darwin-${process.arch}.node`)
+      if (!fs.existsSync(addonPath)) return null
+      candidate = require(addonPath) as NativeComputerUseAddon
     }
-    const addonPath = path.join(resolveRuntimeRoot(), nativeAddonName())
-    if (!fs.existsSync(addonPath)) {
-      this.nativeAddon = null
-      return null
+    if (candidate && (typeof candidate.abiVersion !== 'function' || candidate.abiVersion() !== 2)) {
+      throw new Error('Computer Use native ABI mismatch. Rebuild the bundled runtime.')
     }
-    try {
-      this.nativeAddon = require(addonPath) as NativeComputerUseAddon
-    } catch (error) {
-      console.error('[ComputerUse] Failed to load native OpenComputerUseKit bridge:', error)
-      this.nativeAddon = null
-    }
-    return this.nativeAddon
+    this.nativeAddon = candidate
+    return candidate
   }
-
-  private workerSession(sessionId: string): WorkerMcpSession {
-    const existing = this.workerSessions.get(sessionId)
-    if (existing) return existing
-    const binaryPath = path.join(resolveRuntimeRoot(), workerBinaryName())
-    if (!fs.existsSync(binaryPath)) {
-      throw new Error(`Bundled Computer Use runtime is missing: ${binaryPath}`)
-    }
-    const session = new WorkerMcpSession(binaryPath)
-    this.workerSessions.set(sessionId, session)
-    return session
+  private invalidateSession(sessionId: string): void {
+    this.sessionPolicies.delete(sessionId)
+    this.nativeAddon?.revokeSession(sessionId)
   }
-
-  private runSerialized<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.actionTail.then(operation, operation)
-    this.actionTail = next.catch(() => undefined)
-    return next
+  setScheduledThreadPolicy(taskId: string, sessionId: string, policy: ExplicitComputerUseThreadPolicy): void {
+    const task = taskId.trim(); const session = sessionId.trim()
+    if (!task || !session) throw new Error('Scheduled Computer Use policy requires task and thread IDs.')
+    const previous = this.scheduledThreadByTask.get(task)
+    if (previous && previous !== session) this.clearThreadPolicy(previous)
+    this.clearThreadPolicy(session)
+    this.threadPolicies.set(session, { policy, scheduledTaskId: task })
+    this.scheduledThreadByTask.set(task, session)
   }
-
-  /** Bind one scheduled task to one explicit thread policy, replacing its prior orphan if any. */
-  setScheduledThreadPolicy(
-    scheduledTaskId: string,
-    sessionId: string,
-    policy: ExplicitComputerUseThreadPolicy,
-  ): void {
-    const normalizedTaskId = scheduledTaskId.trim()
-    const normalizedSessionId = sessionId.trim()
-    if (!normalizedTaskId) throw new Error('Computer Use scheduled policy requires a task ID.')
-    if (!normalizedSessionId) throw new Error('Computer Use thread policy requires a thread ID.')
-
-    const previousSessionId = this.scheduledThreadByTask.get(normalizedTaskId)
-    if (previousSessionId && previousSessionId !== normalizedSessionId) {
-      this.clearThreadPolicy(previousSessionId)
-    }
-    this.clearThreadPolicy(normalizedSessionId)
-    this.threadPolicies.set(normalizedSessionId, {
-      policy,
-      scheduledTaskId: normalizedTaskId,
-    })
-    this.scheduledThreadByTask.set(normalizedTaskId, normalizedSessionId)
-  }
-
-  /** Clear an explicit policy and its reverse task association. */
   clearThreadPolicy(sessionId: string): void {
-    const normalizedSessionId = sessionId.trim()
-    const entry = this.threadPolicies.get(normalizedSessionId)
-    this.threadPolicies.delete(normalizedSessionId)
-    if (
-      entry &&
-      this.scheduledThreadByTask.get(entry.scheduledTaskId) === normalizedSessionId
-    ) {
-      this.scheduledThreadByTask.delete(entry.scheduledTaskId)
-    }
+    const session = sessionId.trim(); const entry = this.threadPolicies.get(session)
+    this.invalidateSession(session)
+    this.threadPolicies.delete(session)
+    if (entry && this.scheduledThreadByTask.get(entry.scheduledTaskId) === session) this.scheduledThreadByTask.delete(entry.scheduledTaskId)
   }
-
-  /** Clear any prepared policy owned by a scheduled task, for example on task deletion. */
-  clearScheduledTaskPolicy(scheduledTaskId: string): void {
-    const sessionId = this.scheduledThreadByTask.get(scheduledTaskId.trim())
-    if (sessionId) this.clearThreadPolicy(sessionId)
+  clearScheduledTaskPolicy(taskId: string): void {
+    const session = this.scheduledThreadByTask.get(taskId.trim())
+    if (session) this.clearThreadPolicy(session)
   }
-
-  /** Revoke an active scheduled allow without widening a deny or ending the provider turn. */
-  revokeScheduledTaskPolicy(scheduledTaskId: string): void {
-    const sessionId = this.scheduledThreadByTask.get(scheduledTaskId.trim())
-    if (!sessionId) return
-    const entry = this.threadPolicies.get(sessionId)
+  revokeScheduledTaskPolicy(taskId: string): void {
+    const session = this.scheduledThreadByTask.get(taskId.trim())
+    if (!session) return
+    const entry = this.threadPolicies.get(session)
     if (entry?.policy === 'allow') entry.policy = 'deny'
+    this.invalidateSession(session)
   }
+  private threadPolicy(session: string): ComputerUseThreadPolicy { return this.threadPolicies.get(session.trim())?.policy ?? 'inherit' }
 
-  private threadPolicy(sessionId: string): ComputerUseThreadPolicy {
-    return this.threadPolicies.get(sessionId.trim())?.policy ?? 'inherit'
-  }
-
-  async callTool(sessionId: string, tool: string, args: unknown): Promise<ComputerUseToolResult> {
-    const normalizedSessionId = sessionId.trim()
-    const settings = readComputerUseAppSettings()
-    const policyError = validateActionPolicy(
-      settings,
-      tool,
-      args,
-      this.threadPolicy(normalizedSessionId),
-    )
-    if (policyError) return failure(policyError)
-
-    if (settings.computerUseAllowGlobalPointerFallbacks) {
-      process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS = '1'
-    } else {
-      delete process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS
-    }
-
-    const execute = async (): Promise<ComputerUseToolResult> => {
-      if (process.platform === 'darwin') {
-        const addon = this.loadNativeAddon()
-        if (!addon) {
-          return failure('Cozea Computer Use native runtime is not available. Rebuild the app runtime.')
-        }
-        this.activeRuntimeSessions.add(normalizedSessionId)
-        try {
-          return parseToolResult(
-            await addon.callTool(normalizedSessionId, tool, JSON.stringify(args ?? {})),
-          )
-        } catch (error) {
-          return failure(error instanceof Error ? error.message : String(error))
-        }
-      }
-      try {
-        const worker = this.workerSession(normalizedSessionId)
-        this.activeRuntimeSessions.add(normalizedSessionId)
-        return await worker.call(tool, args)
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error))
-      }
-    }
-
-    // The upstream service carries mutable element-index and cursor state.
-    // Serialize every call so two agent threads cannot race the desktop or
-    // invalidate each other's snapshot/action sequence.
-    return this.runSerialized(execute)
-  }
-
-  async getDiagnostics(): Promise<ComputerUseDiagnostics> {
-    if (process.platform === 'darwin') {
+  async callTool(sessionId: string, tool: string, args: unknown, options: CallOptions = {}): Promise<ComputerUseToolResult> {
+    const session = sessionId.trim()
+    if (this.platform !== 'darwin') return failure(UNSUPPORTED)
+    if (!session || Buffer.byteLength(session) > 512 || session.includes('\0')) return failure('Invalid thread ID.')
+    if (!args || typeof args !== 'object' || Array.isArray(args)) return failure('Arguments must be a JSON object.')
+    // Teardown is a barrier, not an input queue. Re-read live policy after waiting.
+    await this.resetBarrier
+    await this.endingSessions.get(session)
+    if (options.signal?.aborted) return failure('CANCELLED: Request cancelled before dispatch.')
+    try {
+      const settings = this.settings()
+      const denied = validateActionPolicy(settings, tool, args, this.threadPolicy(session))
+      if (denied) { this.invalidateSession(session); return failure(denied) }
       const addon = this.loadNativeAddon()
-      if (!addon) {
-        return {
-          installed: false,
-          accessibility: false,
-          screenRecording: false,
-          error: 'Native Computer Use runtime is not prepared.',
-        }
+      if (!addon) return failure('Native Computer Use runtime is not prepared.')
+      const allowedTools = [...COMPUTER_USE_TOOLS].filter((name) => !(settings.disabledComputerUseTools ?? []).includes(name))
+      const signature = JSON.stringify([allowedTools, settings.computerUseAllowGlobalPointerFallbacks])
+      let policy = this.sessionPolicies.get(session)
+      if (!policy || policy.signature !== signature) {
+        policy = { revision: String(++this.revision), signature }
+        if (!addon.configureSession(session, JSON.stringify({ revision: policy.revision, allowedTools,
+          allowGlobalPointer: settings.computerUseAllowGlobalPointerFallbacks === true }))) return failure('Native authorization configuration failed.')
+        this.sessionPolicies.set(session, policy)
       }
+      const requestId = options.requestId ?? randomUUID()
+      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) return failure('Invalid Computer Use request ID.')
+      const argumentsJson = JSON.stringify(args)
+      if (Buffer.byteLength(argumentsJson) > MAX_REQUEST_BYTES) return failure('Computer Use request is too large.')
+      this.activeRuntimeSessions.add(session)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let onAbort: (() => void) | undefined
       try {
-        const parsed = JSON.parse(addon.diagnostics()) as ComputerUseDiagnostics
-        return { ...parsed, installed: true, version: parsed.version ?? UPSTREAM_VERSION }
-      } catch (error) {
-        return {
-          installed: true,
-          version: UPSTREAM_VERSION,
-          accessibility: false,
-          screenRecording: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
+        const result = addon.callTool(session, tool, argumentsJson, JSON.stringify({ requestID: requestId, policyRevision: policy.revision }))
+        const cancellation = new Promise<string>((resolve) => {
+          onAbort = () => {
+            addon.cancelRequest(session, requestId)
+            resolve(JSON.stringify(failure('DELIVERY_UNKNOWN: Request cancelled. Observe before retrying an action.')))
+          }
+          options.signal?.addEventListener('abort', onAbort, { once: true })
+          timer = setTimeout(onAbort, this.dependencies.timeoutMs ?? CALL_TIMEOUT_MS)
+          if (options.signal?.aborted) onAbort()
+        })
+        return parseToolResult(await Promise.race([result, cancellation]))
+      } finally {
+        if (timer) clearTimeout(timer)
+        if (onAbort) options.signal?.removeEventListener('abort', onAbort)
       }
-    }
-
-    const binaryPath = path.join(resolveRuntimeRoot(), workerBinaryName())
-    return {
-      installed: fs.existsSync(binaryPath),
-      version: UPSTREAM_VERSION,
-      path: binaryPath,
-      accessibility: true,
-      screenRecording: true,
-      ...(fs.existsSync(binaryPath) ? {} : { error: 'Bundled Computer Use worker is missing.' }),
+    } catch (error) { return failure(error instanceof Error ? error.message : 'Native Computer Use failed.') }
+  }
+  async getDiagnostics(): Promise<ComputerUseDiagnostics> {
+    if (this.platform !== 'darwin') return { supported: false, installed: false, accessibility: false, screenRecording: false, error: UNSUPPORTED }
+    try {
+      const addon = this.loadNativeAddon()
+      if (!addon) return { supported: true, installed: false, accessibility: false, screenRecording: false, error: 'Native Computer Use runtime is not prepared.' }
+      const parsed = JSON.parse(await addon.diagnostics()) as ComputerUseDiagnostics
+      return { ...parsed, supported: true, installed: true, version: parsed.version ?? RUNTIME_VERSION }
+    } catch (error) {
+      return { supported: true, installed: false, accessibility: false, screenRecording: false,
+        error: error instanceof Error ? error.message : 'Native diagnostics failed.' }
     }
   }
-
   requestPermission(target: 'accessibility' | 'screenRecording'): boolean {
-    if (process.platform !== 'darwin') return true
-    return this.loadNativeAddon()?.requestPermission(target) ?? false
+    return this.platform === 'darwin' && (this.loadNativeAddon()?.requestPermission(target) ?? false)
   }
-
-  /** Handle an authoritative accepted terminal turn from T3. */
   async turnEnded(sessionId: string): Promise<void> {
     const normalizedSessionId = sessionId.trim()
     const hadActiveRuntime = this.activeRuntimeSessions.delete(normalizedSessionId)
     this.clearThreadPolicy(normalizedSessionId)
-
-    // T3 forwards every accepted terminal session. Avoid touching the native
-    // runtime for unrelated threads that never used Computer Use.
     if (!hadActiveRuntime) return
-    if (process.platform === 'darwin') {
-      await this.loadNativeAddon()?.turnEnded(normalizedSessionId)
-      return
-    }
-    this.workerSessions.get(normalizedSessionId)?.turnEnded()
+    await this.finishSession(normalizedSessionId)
   }
-
   async resetSession(sessionId: string): Promise<void> {
-    const normalizedSessionId = sessionId.trim()
-    this.activeRuntimeSessions.delete(normalizedSessionId)
-    try {
-      if (process.platform === 'darwin') {
-        await this.loadNativeAddon()?.resetSession(normalizedSessionId)
-        return
-      }
-      this.workerSessions.get(normalizedSessionId)?.stop()
-      this.workerSessions.delete(normalizedSessionId)
-    } finally {
-      this.clearThreadPolicy(normalizedSessionId)
-    }
+    const session = sessionId.trim()
+    this.activeRuntimeSessions.delete(session)
+    this.clearThreadPolicy(session)
+    await this.finishSession(session)
   }
-
+  private finishSession(session: string): Promise<void> {
+    const existing = this.endingSessions.get(session)
+    if (existing) return existing
+    const ending = (this.nativeAddon?.resetSession(session) ?? Promise.resolve()).finally(() => {
+      if (this.endingSessions.get(session) === ending) this.endingSessions.delete(session)
+    })
+    this.endingSessions.set(session, ending)
+    return ending
+  }
   async resetAll(): Promise<void> {
-    // Live settings changes revoke current CU execution. Scheduled deny stays
-    // deny, while allow becomes deny for the rest of that accepted turn.
     for (const entry of this.threadPolicies.values()) {
       if (entry.policy === 'allow') entry.policy = 'deny'
     }
     this.activeRuntimeSessions.clear()
-    try {
-      await this.loadNativeAddon()?.resetAll()
-    } finally {
-      for (const session of this.workerSessions.values()) session.stop()
-      this.workerSessions.clear()
-    }
-  }
-
-  async startBroker(): Promise<ComputerUseRuntimeEnvironment> {
-    if (this.server && this.endpoint) return { endpoint: this.endpoint, token: this.token }
-    this.server = createServer((request, response) => void this.handleHttpRequest(request, response))
-    await new Promise<void>((resolve, reject) => {
-      this.server!.once('error', reject)
-      this.server!.listen(0, '127.0.0.1', () => {
-        this.server!.off('error', reject)
-        resolve()
-      })
+    this.sessionPolicies.clear()
+    this.nativeAddon?.revokeAll() // synchronous: no input can slip past async teardown
+    const previous = this.resetBarrier
+    const next = previous.then(async () => {
+      await Promise.all(this.endingSessions.values())
+      await this.nativeAddon?.resetAll()
     })
-    const address = this.server.address()
-    if (!address || typeof address === 'string') {
-      throw new Error('Computer Use broker failed to bind TCP.')
-    }
+    this.resetBarrier = next.catch(() => undefined)
+    await next
+  }
+  async startBroker(): Promise<ComputerUseRuntimeEnvironment> {
+    if (this.endpoint) return { endpoint: this.endpoint, token: this.token }
+    if (this.starting) return this.starting
+    this.starting = this.bindBroker()
+    try { return await this.starting } finally { this.starting = null }
+  }
+  private async bindBroker(): Promise<ComputerUseRuntimeEnvironment> {
+    const server = createServer((request, response) => void this.handleHttpRequest(request, response))
+    server.requestTimeout = CALL_TIMEOUT_MS; server.headersTimeout = 10_000
+    this.server = server
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', () => { server.off('error', reject); resolve() })
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Computer Use broker failed to bind.')
     this.endpoint = `http://127.0.0.1:${address.port}`
     return { endpoint: this.endpoint, token: this.token }
   }
-
   async stopBroker(): Promise<void> {
+    if (this.starting) await this.starting
     await this.resetAll()
-    this.threadPolicies.clear()
-    this.scheduledThreadByTask.clear()
-    const server = this.server
-    this.server = null
-    this.endpoint = null
-    if (!server) return
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve())
-      server.closeAllConnections()
-    })
+    this.threadPolicies.clear(); this.scheduledThreadByTask.clear()
+    const server = this.server; this.server = null; this.endpoint = null
+    if (server) await new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections() })
   }
-
-  private async readBody(request: IncomingMessage): Promise<string> {
-    const chunks: Buffer[] = []
-    let size = 0
+  private async readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+    const chunks: Buffer[] = []; let size = 0
     for await (const chunk of request) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       size += buffer.length
       if (size > MAX_REQUEST_BYTES) throw new Error('Computer Use request is too large.')
       chunks.push(buffer)
     }
-    return Buffer.concat(chunks).toString('utf8')
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Request must be an object.')
+    return parsed as Record<string, unknown>
   }
-
   private writeJson(response: ServerResponse, status: number, payload: unknown): void {
+    if (response.destroyed || response.writableEnded) return
     const body = JSON.stringify(payload)
-    response.writeHead(status, {
-      'content-type': 'application/json',
-      'content-length': Buffer.byteLength(body),
-      'cache-control': 'no-store',
-    })
+    response.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'cache-control': 'no-store' })
     response.end(body)
   }
-
-  private authorized(request: IncomingMessage): boolean {
-    const header = request.headers.authorization ?? ''
-    if (!header.startsWith('Bearer ')) return false
-    return safeTokenEquals(header.slice('Bearer '.length).trim(), this.token)
-  }
-
   private async handleHttpRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    if (!this.authorized(request)) {
-      this.writeJson(response, 401, failure('Invalid Computer Use broker credential.'))
-      return
+    const credential = request.headers.authorization ?? ''
+    if (!credential.startsWith('Bearer ') || !safeTokenEquals(credential.slice(7).trim(), this.token)) {
+      this.writeJson(response, 401, failure('Invalid Computer Use broker credential.')); return
     }
-
-    if (request.method === 'POST' && request.url === '/v1/turn-ended') {
-      try {
-        const input = JSON.parse(await this.readBody(request)) as { threadId?: unknown }
-        const threadId = typeof input.threadId === 'string' ? input.threadId.trim() : ''
-        if (!threadId) {
-          this.writeJson(response, 400, failure('Computer Use turn end requires threadId.'))
-          return
-        }
-        await this.turnEnded(threadId)
-        this.writeJson(response, 200, { ok: true })
-      } catch (error) {
-        this.writeJson(response, 500, failure(error instanceof Error ? error.message : String(error)))
-      }
-      return
+    if (request.method !== 'POST' || !['/v1/call', '/v1/turn-ended'].includes(request.url ?? '')) {
+      this.writeJson(response, 404, failure('Unknown Computer Use broker route.')); return
     }
-
-    if (request.method !== 'POST' || request.url !== '/v1/call') {
-      this.writeJson(response, 404, failure('Unknown Computer Use broker route.'))
-      return
-    }
+    const abort = new AbortController()
+    const onClose = () => { if (!response.writableEnded) abort.abort() }
+    response.on('close', onClose)
     try {
-      const input = JSON.parse(await this.readBody(request)) as {
-        threadId?: unknown
-        tool?: unknown
-        arguments?: unknown
-      }
+      const input = await this.readBody(request)
       const threadId = typeof input.threadId === 'string' ? input.threadId.trim() : ''
-      const tool = typeof input.tool === 'string' ? input.tool.trim() : ''
-      if (!threadId || !tool) {
-        this.writeJson(response, 400, failure('Computer Use call requires threadId and tool.'))
-        return
+      if (!threadId) { this.writeJson(response, 400, failure('A threadId is required.')); return }
+      if (request.url === '/v1/turn-ended') {
+        await this.turnEnded(threadId)
+        this.writeJson(response, 200, { ok: true }); return
       }
-      const result = await this.callTool(threadId, tool, input.arguments ?? {})
-      // A valid MCP tool call may itself produce isError=true. Keep that as a
-      // 200 result so the MCP adapter preserves the upstream result envelope.
+      if (typeof input.tool !== 'string' || !input.tool.trim()) { this.writeJson(response, 400, failure('A tool name is required.')); return }
+      const result = await this.callTool(threadId, input.tool.trim(), input.arguments ?? {}, {
+        requestId: typeof input.requestId === 'string' ? input.requestId : undefined, signal: abort.signal,
+      })
       this.writeJson(response, 200, result)
-    } catch (error) {
-      this.writeJson(response, 500, failure(error instanceof Error ? error.message : String(error)))
-    }
+    } catch { this.writeJson(response, 400, failure('Invalid Computer Use request.')) }
+    finally { response.off('close', onClose) }
   }
 }
-
 export const __computerUseRuntimeTesting = {
-  COMPUTER_USE_TOOLS,
-  validateActionPolicy,
-  parseToolResult,
-  threadPolicy: (runtime: ComputerUseRuntimeService, sessionId: string) =>
-    runtime['threadPolicy'](sessionId),
+  COMPUTER_USE_TOOLS, validateActionPolicy, parseToolResult,
+  threadPolicy: (runtime: ComputerUseRuntimeService, sessionId: string) => runtime['threadPolicy'](sessionId),
 }

@@ -62,6 +62,7 @@ public final class MacComputerRuntime: @unchecked Sendable {
         result["accessibility"] = .bool(AXIsProcessTrusted())
         result["screenRecording"] = .bool(CGPreflightScreenCaptureAccess())
         result["version"] = .string("2.0.0")
+        result["abiVersion"] = .number(2)
         result["backend"] = .string("CozeaMacComputerRuntimeV2")
         result["sky"] = .object(SkyClickBackend.diagnostics)
         return try JSONValue.object(result).jsonText()
@@ -83,6 +84,8 @@ private actor RuntimeCoordinator {
     private let actions: ActionRouter
     private var running: [Key: Pending] = [:]
     private var completed: [Completed] = []
+    private var closingSessions: Set<String> = []
+    private var resetting = false
     private var sessions: Set<String> = []
 
     init(authorization: AuthorizationRegistry) {
@@ -93,6 +96,9 @@ private actor RuntimeCoordinator {
 
     func call(session: String, request: ToolRequest, context: NativeCallContext, argumentsJSON: String) async -> ComputerResult {
         do {
+            guard !resetting, !closingSessions.contains(session) else {
+                throw RuntimeFailure(.busy, "Native session teardown is in progress.")
+            }
             try authorization.authorize(session: session, revision: context.policyRevision, tool: request.tool)
             let key = Key(session: session, request: context.requestID)
             let canonical = try JSONValue.object(JSONValue.decodeObject(argumentsJSON)).jsonText()
@@ -131,7 +137,7 @@ private actor RuntimeCoordinator {
             authorization.finish(session: session, request: context.requestID, control: control)
             // Keep small acknowledgements/tombstones, not images or document text.
             let cache = (try? result.jsonText().utf8.count).map { $0 <= 8192 } == true ? result : nil
-            completed.append(Completed(key: key, fingerprint: fingerprint, result: cache))
+            if !resetting && !closingSessions.contains(session) { completed.append(Completed(key: key, fingerprint: fingerprint, result: cache)) }
             if completed.count > 512 { completed.removeFirst(completed.count - 512) }
             return result
         } catch { return .failure(nativeFailure(error)) }
@@ -216,7 +222,11 @@ private actor RuntimeCoordinator {
     }
     func cancelAll() { running.values.forEach { $0.task.cancel() }; Task { await CursorController.shared.cancel() } }
     func end(session: String) async {
+        closingSessions.insert(session)
+        defer { closingSessions.remove(session) }
         cancel(session: session)
+        let draining = running.filter { $0.key.session == session }.map(\.value.task)
+        for task in draining { _ = await task.value }
         await leases.remove(session: session)
         await capture.releaseSession(session)
         await CursorController.shared.cancelSession(session)
@@ -226,7 +236,11 @@ private actor RuntimeCoordinator {
         if sessions.isEmpty { await accessibility.reset(); await windows.reset(); await clock.reset(); activity.reset() }
     }
     func resetAll() async {
+        resetting = true
+        defer { resetting = false }
         cancelAll()
+        let draining = running.values.map(\.task)
+        for task in draining { _ = await task.value }
         await leases.reset(); await capture.reset(); await accessibility.reset(); await windows.reset(); await clock.reset()
         activity.reset(); sessions.removeAll(); completed.removeAll()
         await CursorController.shared.cancel()

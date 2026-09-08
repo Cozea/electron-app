@@ -228,7 +228,7 @@ final class CursorController: NSObject {
             let cycle = 0.21
             let index = Int(elapsed / cycle)
             let progress = min(max((elapsed - Double(index) * cycle) / 0.16, 0), 1)
-            if index >= pulse.count {
+            if elapsed >= Double(pulse.count - 1) * cycle + 0.16 {
                 self.pulse = nil; idleStarted = now
                 let finished = continuation; continuation = nil; finished?.resume()
                 settle(owner: owner ?? "")

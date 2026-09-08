@@ -39,15 +39,23 @@ final class ActionRouter: @unchecked Sendable {
                 throw nativeFailure(error, control: control)
             }
             if control.hasDispatched { _ = await clock.recordDispatched(lease.window.identity) }
+            async let presentation: Void = completePresentation(request.operation, owner: owner)
             let change: StateWaitResult
             do { change = try await clock.waitForObservedChange(lease.window.identity, after: before.observed, timeout: .milliseconds(80)) }
             catch { change = .timedOut }
+            try await presentation
             try control.check()
             let revision = await clock.current(lease.window.identity)
             let changed: Bool
             if case .changed = change { changed = true } else { changed = false }
             return try ActionAcknowledgement(window: lease.window.identity, revision: revision, observedChange: changed,
                                          backend: backend, observationID: lease.id).result()
+        }
+    }
+
+    private func completePresentation(_ operation: ToolOperation, owner: String) async throws {
+        if case .click(_, _, let button, let count, _) = operation {
+            try await CursorController.shared.clickPulse(owner: owner, button: button, count: count)
         }
     }
 
@@ -59,7 +67,6 @@ final class ActionRouter: @unchecked Sendable {
                 arrive: { plan in try await CursorController.shared.move(to: plan.target, owner: owner, control: control) },
                 revalidate: { [self] plan in try await revalidate(plan, lease: lease, control: control) },
                 dispatch: { [self] plan in try await dispatchClick(plan, lease: lease, button: button, count: count, strategy: strategy, control: control) })
-            try await CursorController.shared.clickPulse(owner: owner, button: button, count: count)
             return backend
         case .setValue(_, let index, let value):
             return try await indexedAction(index, lease: lease, owner: owner, control: control) { [self] plan in

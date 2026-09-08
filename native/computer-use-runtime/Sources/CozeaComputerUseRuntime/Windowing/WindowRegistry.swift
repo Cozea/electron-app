@@ -69,7 +69,10 @@ final class WindowRegistry: @unchecked Sendable {
         }
     }
     static func validateNow(_ window: WindowHandle) throws {
-        guard let info = windowInfo(pid: window.app.pid).first(where: {
+        let targetInfo = CGWindowListCopyWindowInfo(.optionIncludingWindow, window.identity.windowID) as? [[String: Any]] ?? []
+        guard let info = targetInfo.first(where: {
+            ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == window.app.pid &&
+            ($0[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue == true &&
             ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == window.identity.windowID
         }), let raw = info[kCGWindowBounds as String] as? NSDictionary,
            let current = CGRect(dictionaryRepresentation: raw as CFDictionary),

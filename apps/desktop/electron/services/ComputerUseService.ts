@@ -20,7 +20,7 @@ export class ComputerUseService {
 
   async resolveCliPath(_configuredPath?: string): Promise<string | null> {
     // There is intentionally no external CLI path anymore. The macOS engine
-    // is linked into Cozea and Windows/Linux workers are packaged resources.
+    // is linked into Cozea and Computer Use is unavailable on other platforms.
     return null
   }
 
@@ -47,7 +47,7 @@ export class ComputerUseService {
     // write ~/.claude.json, ~/.codex/config.toml, ~/.cursor/mcp.json, or
     // ~/.config/opencode/opencode.json here. A settings-policy change does,
     // however, revoke every current Computer Use session immediately so stale
-    // element indexes/cursor state and worker-spawn environment cannot survive
+    // element indexes/cursor state and native authorization cannot survive
     // a capability change.
     await this.runtime.resetAll()
   }

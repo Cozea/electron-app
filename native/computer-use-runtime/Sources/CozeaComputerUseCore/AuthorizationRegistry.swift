@@ -16,6 +16,7 @@ public final class AuthorizationRegistry: @unchecked Sendable {
         var revision: UInt64
         var policy: RuntimePolicy?
         var requests: [String: ActionControl] = [:]
+        var cancelledRequestIDs: [String] = []
     }
     private let lock = NSLock()
     private var sessions: [String: Session] = [:]
@@ -61,6 +62,9 @@ public final class AuthorizationRegistry: @unchecked Sendable {
             guard !request.isEmpty, request.utf8.count <= 128, entry.requests[request] == nil else {
                 throw RuntimeFailure(.invalidRequestID, "Request ID is invalid or already in flight.")
             }
+            guard !entry.cancelledRequestIDs.contains(request) else {
+                throw RuntimeFailure(.cancelled, "Request was cancelled before native admission.")
+            }
             guard entry.requests.count < 32 else { throw RuntimeFailure(.busy, "Too many in-flight requests for this session.") }
             let control = ActionControl(allowGlobalPointer: policy.allowGlobalPointer, timeout: timeout)
             entry.requests[request] = control
@@ -73,9 +77,20 @@ public final class AuthorizationRegistry: @unchecked Sendable {
         locked {
             guard sessions[session]?.requests[request] === control else { return }
             sessions[session]?.requests.removeValue(forKey: request)
+            if sessions[session]?.policy == nil && sessions[session]?.requests.isEmpty == true {
+                sessions.removeValue(forKey: session)
+            }
         }
     }
-    public func cancelRequest(session: String, request: String) { locked { sessions[session]?.requests[request]?.cancel() } }
+    public func cancelRequest(session: String, request: String) {
+        locked {
+            guard var entry = sessions[session], !request.isEmpty, request.utf8.count <= 128 else { return }
+            entry.requests[request]?.cancel()
+            if !entry.cancelledRequestIDs.contains(request) { entry.cancelledRequestIDs.append(request) }
+            if entry.cancelledRequestIDs.count > 512 { entry.cancelledRequestIDs.removeFirst() }
+            sessions[session] = entry
+        }
+    }
     public func revoke(session: String) {
         locked {
             guard var entry = sessions[session] else { return }

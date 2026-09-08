@@ -36,6 +36,9 @@ private func failure(_ error: any Error) -> UnsafeMutablePointer<CChar>? {
     return strdup((try? ComputerResult.failure(error).jsonText()) ?? "{\"content\":[],\"isError\":true}")
 }
 
+@_cdecl("cozea_computer_use_abi_version")
+public func abiVersion() -> UInt32 { 2 }
+
 @_cdecl("cozea_computer_use_configure")
 public func configure(_ session: UnsafePointer<CChar>?, _ policy: UnsafePointer<CChar>?) -> Bool {
     guard let session = string(session), let policy = string(policy) else { return false }

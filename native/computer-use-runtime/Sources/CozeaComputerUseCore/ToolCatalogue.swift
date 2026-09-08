@@ -1,23 +1,31 @@
 import Foundation
+#if os(macOS)
+import Darwin
+#endif
 
+/// Shared with the managed T3 adapter; schemas and descriptions have one source.
 public enum ToolCatalogue {
     public static func jsonText() throws -> String {
-        let descriptions: [ComputerTool: String] = [
-            .listApps: "List running applications and their PIDs. Computer Use is macOS-only.",
-            .getAppState: "Observe the target window. Returns an immutable snapshot_id, an accessibility tree and/or screenshot. Does not activate or launch applications.",
-            .click: "Move the visible Cozea cursor to a known element or screenshot coordinate, then click. Returns an acknowledgement, NOT a new screenshot. Observe changed UI before choosing another target.",
-            .secondaryAction: "Perform an exposed accessibility secondary action after visible cursor arrival. Returns an acknowledgement only.",
-            .scroll: "Scroll the observed region after visible cursor arrival. Observe again before using coordinates from the old screenshot.",
-            .drag: "Drag between coordinates from the same screenshot. Events follow the visible cursor. Returns an acknowledgement only.",
-            .typeText: "Type text at the current caret/selection in the observed window's focused editable control. Click that control first. Returns an acknowledgement only.",
-            .pressKey: "Press a key or shortcut in the observed focused window. Returns an acknowledgement only; observe navigation or dialogs afterward.",
-            .setValue: "Set AXValue on a settable indexed element after visible cursor arrival. Does not fall back to typing. Returns an acknowledgement only.",
-        ]
-        let tools = ComputerTool.allCases.map { tool -> JSONValue in
-            .object(["name": .string(tool.rawValue), "description": .string(descriptions[tool] ?? ""),
-                     "annotations": .object(["readOnlyHint": .bool(!tool.mutatesDesktop), "idempotentHint": .bool(!tool.mutatesDesktop)]),
-                     "inputSchema": .object(["type": .string("object"), "additionalProperties": .bool(true)])])
+        #if os(macOS)
+        // Locate the resource beside the loaded dylib, or alongside an XCTest
+        // bundle. Never depend on SwiftPM's absolute build-machine fallback.
+        var info = Dl_info()
+        if dladdr(#dsohandle, &info) != 0, let image = info.dli_fname {
+            var directory = URL(fileURLWithPath: String(cString: image)).deletingLastPathComponent()
+            for _ in 0..<4 {
+                let bundleURL = directory.appendingPathComponent("CozeaComputerUseRuntime_CozeaComputerUseCore.bundle")
+                if let url = Bundle(url: bundleURL)?.url(forResource: "tools", withExtension: "json") {
+                    return try String(contentsOf: url, encoding: .utf8)
+                }
+                directory.deleteLastPathComponent()
+            }
         }
-        return try JSONValue.object(["tools": .array(tools), "runtime": .string("cozea-macos-v2"), "version": .string("2.0.0")]).jsonText()
+        throw RuntimeFailure(.internalError, "Computer Use tool catalogue resource is missing.")
+        #else
+        guard let url = Bundle.module.url(forResource: "tools", withExtension: "json") else {
+            throw RuntimeFailure(.internalError, "Computer Use tool catalogue resource is missing.")
+        }
+        return try String(contentsOf: url, encoding: .utf8)
+        #endif
     }
 }

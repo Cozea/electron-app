@@ -1,191 +1,88 @@
 #!/usr/bin/env node
-
 import { spawnSync } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const repositoryRoot = path.resolve(scriptDirectory, '..')
-const outputRoot = path.join(repositoryRoot, 'build', 'computer-use-runtime')
-const nativePackageRoot = path.join(repositoryRoot, 'packages', 'computer-use-native')
-const swiftPackageRoot = path.join(repositoryRoot, 'native', 'computer-use-bridge')
-const upstreamPackageRoot = path.join(repositoryRoot, 'node_modules', 'open-computer-use')
-const licenseSource = path.join(swiftPackageRoot, 'OPEN_COMPUTER_USE_LICENSE.txt')
-const LICENSE_ARTIFACT = 'OPEN_COMPUTER_USE_LICENSE.txt'
-const UPSTREAM_VERSION = '0.3.3'
-const UPSTREAM_REVISION = '41c5294cfe4735baca03f9c82b4de99d191a0b49'
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const output = path.join(root, 'build/computer-use-runtime')
+const bridge = path.join(root, 'native/computer-use-bridge')
+const native = path.join(root, 'packages/computer-use-native')
+const configuration = process.argv.includes('--debug') ? 'debug' : 'release'
 const checkOnly = process.argv.includes('--check')
-const debug = process.argv.includes('--debug')
-
-function fail(message) {
-  throw new Error(`[prepare-computer-use-runtime] ${message}`)
+const supported = process.platform === 'darwin'
+const licenseName = 'OPEN_COMPUTER_USE_LICENSE.txt'
+const fail = (message) => { throw new Error(`[prepare-computer-use-runtime] ${message}`) }
+function run(command, args, capture = false) {
+  const result = spawnSync(command, args, { cwd: root, env: process.env, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' })
+  if (result.error || result.status !== 0) fail(`${command} failed: ${result.error?.message ?? (capture ? result.stderr : result.status)}`)
+  return capture ? result.stdout.trim() : ''
 }
-
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd ?? repositoryRoot,
-    env: process.env,
-    encoding: 'utf8',
-    stdio: options.capture ? 'pipe' : 'inherit',
-  })
-  if (result.error) fail(`${command} could not start: ${result.error.message}`)
-  if (result.status !== 0) {
-    const detail = options.capture ? `\n${(result.stderr || result.stdout || '').trim()}` : ''
-    fail(`${command} ${args.join(' ')} exited with status ${result.status}.${detail}`)
-  }
-  return options.capture ? result.stdout.trim() : ''
-}
-
-function walkFor(root, predicate) {
-  if (!fs.existsSync(root)) return []
-  const matches = []
-  const visit = (directory) => {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const entryPath = path.join(directory, entry.name)
-      if (entry.isDirectory()) visit(entryPath)
-      else if (predicate(entryPath, entry.name)) matches.push(entryPath)
+function hash(file) { return createHash('sha256').update(fs.readFileSync(file)).digest('hex') }
+function sourcesDigest() {
+  const files = []
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['.build', 'target', 'node_modules'].includes(entry.name) || entry.name.endsWith('.node')) continue
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (/\.(swift|rs|toml|json|lock|txt|mjs)$/.test(entry.name)) files.push(full)
     }
   }
-  visit(root)
-  return matches
+  for (const dir of ['native/computer-use-runtime', 'native/computer-use-bridge', 'packages/computer-use-native']) walk(path.join(root, dir))
+  files.push(fileURLToPath(import.meta.url))
+  const digest = createHash('sha256')
+  for (const file of files.sort()) digest.update(path.relative(root, file)).update('\0').update(fs.readFileSync(file)).update('\0')
+  return digest.digest('hex')
 }
-
-function runtimeArch() {
-  if (process.arch === 'arm64') return 'arm64'
-  if (process.arch === 'x64') return 'amd64'
-  fail(`Unsupported Computer Use architecture: ${process.arch}`)
+const sourceDigest = sourcesDigest()
+if (supported && !['arm64', 'x64'].includes(process.arch)) fail(`Unsupported macOS architecture ${process.arch}`)
+const addonName = `cozea_computer_use.darwin-${process.arch}.node`
+const artifactNames = supported ? [addonName, 'libCozeaComputerUseBridge.dylib', licenseName, 'CozeaComputerUseRuntime_CozeaComputerUseCore.bundle'] : [licenseName]
+function treeDigest(directory) {
+  const entries = fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
+  const value = entries.map((entry) => `${entry.name}:${entry.isDirectory() ? treeDigest(path.join(directory, entry.name)) : hash(path.join(directory, entry.name))}`).join('\n')
+  return createHash('sha256').update(value).digest('hex')
 }
-
-function expectedArtifactNames() {
-  const common = [LICENSE_ARTIFACT]
-  if (process.platform === 'darwin') {
-    const napiArch = process.arch === 'arm64' ? 'arm64' : 'x64'
-    return [
-      ...common,
-      `cozea_computer_use.darwin-${napiArch}.node`,
-      'libCozeaComputerUseBridge.dylib',
-    ]
-  }
-  if (process.platform === 'win32') return [...common, 'open-computer-use.exe']
-  if (process.platform === 'linux') return [...common, 'open-computer-use']
-  return common
-}
-
-function readManifest() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(outputRoot, 'manifest.json'), 'utf8'))
-  } catch {
-    return null
-  }
-}
-
-function outputIsCurrent() {
-  const manifest = readManifest()
-  if (!manifest) return false
-  if (
-    manifest.schemaVersion !== 1 ||
-    manifest.upstreamVersion !== UPSTREAM_VERSION ||
-    manifest.upstreamRevision !== UPSTREAM_REVISION ||
-    manifest.platform !== process.platform ||
-    manifest.arch !== process.arch
-  ) return false
-  return expectedArtifactNames().every((name) => fs.existsSync(path.join(outputRoot, name)))
-}
-
-function verifyUpstreamNpmPackage() {
-  const packageJsonPath = path.join(upstreamPackageRoot, 'package.json')
-  if (!fs.existsSync(packageJsonPath)) {
-    fail('node_modules/open-computer-use is missing; run bun install first.')
-  }
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
-  if (packageJson.version !== UPSTREAM_VERSION) {
-    fail(`Expected open-computer-use ${UPSTREAM_VERSION}, found ${packageJson.version || 'unknown'}.`)
-  }
-}
-
-function dylibMatchesCurrentArchitecture(candidate) {
-  const expected = process.arch === 'arm64' ? 'arm64' : 'x86_64'
-  const archs = run('/usr/bin/xcrun', ['lipo', '-archs', candidate], { capture: true })
-    .split(/\s+/)
-    .filter(Boolean)
-  return archs.includes(expected)
-}
-
-function prepareMac() {
-  const napiArch = process.arch === 'arm64' ? 'arm64' : 'x64'
-  const script = debug ? `build:debug:${napiArch}` : `build:${napiArch}`
-  run('bun', ['run', '--cwd', nativePackageRoot, script])
-
-  const addonName = `cozea_computer_use.darwin-${napiArch}.node`
-  const addonCandidates = [
-    path.join(nativePackageRoot, addonName),
-    ...walkFor(nativePackageRoot, (_file, name) => name === addonName),
-  ].filter((candidate, index, values) => fs.existsSync(candidate) && values.indexOf(candidate) === index)
-  const addon = addonCandidates[0]
-  if (!addon) fail(`Native addon ${addonName} was not produced.`)
-
-  const dylibs = walkFor(
-    path.join(swiftPackageRoot, '.build'),
-    (_file, name) => name === 'libCozeaComputerUseBridge.dylib',
-  ).sort((a, b) => Number(b.includes('/release/')) - Number(a.includes('/release/')))
-  const dylib = dylibs.find(dylibMatchesCurrentArchitecture)
-  if (!dylib) {
-    fail(`Swift bridge dylib for ${process.arch} was not produced.`)
-  }
-
-  fs.copyFileSync(addon, path.join(outputRoot, addonName))
-  fs.copyFileSync(dylib, path.join(outputRoot, 'libCozeaComputerUseBridge.dylib'))
-}
-
-function prepareWorker(platform) {
-  verifyUpstreamNpmPackage()
-  const arch = runtimeArch()
-  const fileName = platform === 'windows' ? 'open-computer-use.exe' : 'open-computer-use'
-  const source = path.join(upstreamPackageRoot, 'dist', platform, arch, fileName)
-  if (!fs.existsSync(source)) {
-    fail(`Bundled upstream runtime is missing: ${source}`)
-  }
-  const destination = path.join(outputRoot, fileName)
-  fs.copyFileSync(source, destination)
-  if (platform !== 'windows') fs.chmodSync(destination, 0o755)
-}
-
+function artifactHash(file) { return fs.statSync(file).isDirectory() ? treeDigest(file) : hash(file) }
 if (checkOnly) {
-  if (!outputIsCurrent()) fail('Prepared Computer Use runtime is missing or stale.')
+  const manifest = JSON.parse(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'))
+  if (manifest.schemaVersion !== 2 || manifest.abiVersion !== 2 || manifest.sourceDigest !== sourceDigest ||
+      manifest.platform !== process.platform || manifest.arch !== process.arch || manifest.configuration !== configuration || manifest.supported !== supported) fail('Prepared runtime is stale. Rebuild it.')
+  for (const name of artifactNames) {
+    const file = path.join(output, name)
+    if (!fs.existsSync(file) || manifest.artifacts[name] !== artifactHash(file)) fail(`Missing or modified artifact: ${name}`)
+  }
   process.exit(0)
 }
-
-fs.rmSync(outputRoot, { recursive: true, force: true })
-fs.mkdirSync(outputRoot, { recursive: true })
-
-if (process.platform === 'darwin') {
-  prepareMac()
-} else if (process.platform === 'win32') {
-  prepareWorker('windows')
-} else if (process.platform === 'linux') {
-  prepareWorker('linux')
-} else {
-  fail(`Unsupported platform: ${process.platform}`)
-}
-
-if (!fs.existsSync(licenseSource)) fail(`Missing required upstream license: ${licenseSource}`)
-fs.copyFileSync(licenseSource, path.join(outputRoot, LICENSE_ARTIFACT))
-
-fs.writeFileSync(
-  path.join(outputRoot, 'manifest.json'),
-  `${JSON.stringify({
-    schemaVersion: 1,
-    upstream: 'iFurySt/open-codex-computer-use',
-    upstreamVersion: UPSTREAM_VERSION,
-    upstreamRevision: UPSTREAM_REVISION,
-    platform: process.platform,
-    arch: process.arch,
-    backend: process.platform === 'darwin' ? 'OpenComputerUseKit-in-process' : 'upstream-mcp-worker',
-    license: LICENSE_ARTIFACT,
-    generatedAt: new Date().toISOString(),
-  }, null, 2)}\n`,
-  'utf8',
-)
-
-console.log(`[prepare-computer-use-runtime] Prepared ${process.platform}/${process.arch} from open-computer-use ${UPSTREAM_VERSION}.`)
+const staging = `${output}.staging-${randomUUID()}`
+fs.mkdirSync(staging, { recursive: true })
+try {
+  if (supported) {
+    const script = configuration === 'debug' ? `build:debug:${process.arch}` : `build:${process.arch}`
+    run('bun', ['run', '--cwd', native, script])
+    const triple = `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macosx14.0`
+    const bin = run('/usr/bin/xcrun', ['swift', 'build', '--package-path', bridge, '--configuration', configuration, '--triple', triple, '--show-bin-path'], true)
+    const addon = path.join(native, addonName)
+    const dylib = path.join(bin, 'libCozeaComputerUseBridge.dylib')
+    for (const file of [addon, dylib]) {
+      if (!fs.existsSync(file)) fail(`Build did not produce ${file}`)
+      const archs = run('/usr/bin/xcrun', ['lipo', '-archs', file], true).split(/\s+/)
+      if (!archs.includes(process.arch === 'arm64' ? 'arm64' : 'x86_64')) fail(`Wrong binary architecture: ${file}`)
+      fs.copyFileSync(file, path.join(staging, path.basename(file)))
+    }
+    const resourceName = 'CozeaComputerUseRuntime_CozeaComputerUseCore.bundle'
+    const resource = path.join(bin, resourceName)
+    if (!fs.existsSync(resource)) fail('SwiftPM tool-catalogue resource bundle was not produced.')
+    fs.cpSync(resource, path.join(staging, resourceName), { recursive: true })
+  }
+  fs.copyFileSync(path.join(root, 'native/computer-use-runtime/LICENSE.upstream.txt'), path.join(staging, licenseName))
+  const artifacts = Object.fromEntries(artifactNames.map((name) => [name, artifactHash(path.join(staging, name))]))
+  fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify({ schemaVersion: 2, abiVersion: 2, version: '2.0.0',
+    backend: 'CozeaMacComputerRuntimeV2', supported, platform: process.platform, arch: process.arch, configuration,
+    sourceDigest, artifacts, generatedAt: new Date().toISOString() }, null, 2) + '\n')
+  fs.rmSync(output, { recursive: true, force: true })
+  fs.renameSync(staging, output)
+} finally { fs.rmSync(staging, { recursive: true, force: true }) }
+console.log(`[prepare-computer-use-runtime] ${supported ? 'Prepared native ABI 2' : 'Computer Use unsupported'} on ${process.platform}/${process.arch}.`)

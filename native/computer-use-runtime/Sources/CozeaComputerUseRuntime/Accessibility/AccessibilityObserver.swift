@@ -66,6 +66,8 @@ final class AccessibilityObservers: @unchecked Sendable {
         let context: ObserverContext
         let launchIdentity: String
         var subscriptions: [(AXUIElement, String)] = []
+        var activeWindow: WindowIdentity?
+        var activeFocused: AXUIElement?
         init(observer: AXObserver, context: ObserverContext, launchIdentity: String) {
             self.observer = observer; self.context = context; self.launchIdentity = launchIdentity
         }
@@ -89,6 +91,11 @@ final class AccessibilityObservers: @unchecked Sendable {
                 CFRunLoopAddSource(ObserverLoop.shared.runLoop, AXObserverGetRunLoopSource(record.observer), .defaultMode)
             }
         }
+        let sameFocus: Bool
+        if let old = record.activeFocused, let focused { sameFocus = CFEqual(old, focused) }
+        else { sameFocus = record.activeFocused == nil && focused == nil }
+        if record.activeWindow == window.identity && sameFocus { return }
+        record.activeWindow = window.identity; record.activeFocused = focused
         // A bounded per-app subscription set is cheaper and safer than retaining
         // every control that has ever received focus during the app's lifetime.
         for (element, notification) in record.subscriptions {
