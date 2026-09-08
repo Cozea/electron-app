@@ -2,7 +2,7 @@ name: Navigation Runtime Validation
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['apps/desktop/**', 'shared/**', 'tests/**', 'scripts/**', 'package.json', 'bun.lock', '.github/workflows/navigation-runtime-validation.yml']
+    paths: ['apps/desktop/**', 'shared/**', 'tests/**', 'scripts/**', 'docs/perf/**', 'package.json', 'bun.lock', '.github/workflows/navigation-runtime-validation.yml']
 permissions:
   contents: read
 concurrency:

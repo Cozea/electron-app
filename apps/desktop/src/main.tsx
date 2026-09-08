@@ -153,7 +153,6 @@ async function startRenderer(): Promise<void> {
 const rendererStart = __COZEA_NAVIGATION_TEST__
   ? Promise.resolve().then(async () => {
       applyThemeClass('dark')
-      window.history.replaceState(window.history.state, '', '/projects/store')
       const [{ initializeQueryCache }, { initializeWorkbenchStorage }] = await Promise.all([
         import('./app/model/queryCache'),
         import('./lib/workbenchStore'),

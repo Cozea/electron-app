@@ -52,20 +52,17 @@ function matchesSession(
   workspaceId: string | null,
   workspaceRevision: number | null,
 ): boolean {
-  if (sessionKey) {
-    return snapshot.sessionKey === sessionKey
-  }
   if (!projectId || !laneId) return false
   if (snapshot.projectId !== projectId || snapshot.laneId !== laneId) {
     return false
   }
   if (workspaceId) {
-    return (
+    if (!(
       snapshot.workspaceId === workspaceId &&
       (!workspaceRevision || snapshot.workspaceRevision === workspaceRevision)
-    )
+    )) return false
   }
-  return true
+  return !sessionKey || snapshot.sessionKey === sessionKey
 }
 
 export function useWorkbenchSessionLifecycle({

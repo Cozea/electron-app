@@ -19,6 +19,7 @@ import {
   createRoute,
   createRouter,
 } from '@/lib/router'
+import { createMemoryHistory } from '@tanstack/react-router'
 
 type Destination = 'store' | 'inbox' | 'a' | 'b' | 'c' | 'd'
 
@@ -100,7 +101,10 @@ function createNavigationTestRouter() {
       projectRoute.addChildren([workbenchRoute]),
     ]),
   ])
-  return createRouter({ routeTree })
+  return createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/projects/store'] }),
+  })
 }
 
 export function ProductionNavigationRuntimeApp() {

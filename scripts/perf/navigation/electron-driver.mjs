@@ -105,7 +105,14 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
   const executable = process.platform === 'darwin'
     ? path.resolve('node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
     : path.resolve('node_modules/electron/dist/electron')
-  const child = spawn(executable, [path.resolve('apps/desktop/out/main/index.js'), `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-sandbox'], {
+  const electronArgs = [
+    path.resolve('apps/desktop/out/main/index.js'),
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${profile}`,
+    '--no-sandbox',
+  ]
+  if (process.platform !== 'darwin' && !process.env.DISPLAY) electronArgs.push('--headless', '--disable-gpu')
+  const child = spawn(executable, electronArgs, {
     env: { ...process.env, COZEA_NAVIGATION_TEST: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
   })
   let logs = ''
