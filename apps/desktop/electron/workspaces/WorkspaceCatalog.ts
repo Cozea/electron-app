@@ -1144,6 +1144,25 @@ export const WorkspaceCatalogLive = Layer.effect(
 
               if (oldPathIsMissing) {
                 const ts = now()
+                let relocationStorageOwnership = markerWorkspace.storageOwnership
+                let relocationManagedRootId = markerWorkspace.managedRootId
+                if (relocationStorageOwnership === "managed") {
+                  const managedRootRows = relocationManagedRootId
+                    ? yield* sql`
+                        SELECT real_path FROM local_roots
+                        WHERE root_id = ${relocationManagedRootId}
+                        LIMIT 1
+                      `
+                    : []
+                  const managedRootRow = managedRootRows[0] as Record<string, unknown> | undefined
+                  const managedRootPath = normalizeOptionalString(
+                    managedRootRow?.real_path ?? managedRootRow?.realPath,
+                  )
+                  if (!managedRootPath || !isSameOrNestedDirectory(managedRootPath, projectRootPath)) {
+                    relocationStorageOwnership = "attached"
+                    relocationManagedRootId = null
+                  }
+                }
                 yield* sql.withTransaction(Effect.gen(function* () {
                   yield* sql`
                     UPDATE local_workspaces
@@ -1160,6 +1179,8 @@ export const WorkspaceCatalogLive = Layer.effect(
                       filesystem_inode = ${String(stat.ino)},
                       filesystem_birthtime_ms = ${Number.isFinite(stat.birthtimeMs) ? stat.birthtimeMs : null},
                       filesystem_mtime_ms = ${Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : null},
+                      storage_ownership = ${relocationStorageOwnership},
+                      managed_root_id = ${relocationManagedRootId},
                       verification_status = ${"untrusted"},
                       verification_reason = ${null},
                       workspace_revision = workspace_revision + 1,

@@ -372,6 +372,34 @@ describe('WorkspaceCatalog managed ownership', () => {
     )
     expect(deletionTarget).toBeNull()
   })
+
+  it('downgrades managed ownership when a marked folder is moved outside its managed root', async () => {
+    const created = await call((c) =>
+      c.createForProject({
+        projectId: 'proj_moved_managed',
+        slug: 'moved-managed',
+        rootPathOverride: tmpRoot,
+        initGit: false,
+      }),
+    )
+    const externalRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cozea-external-relink-'))
+    const movedPath = path.join(externalRoot, 'moved-managed')
+
+    try {
+      await fs.rename(created.workspace!.projectRootPath, movedPath)
+      const rebound = await call((c) =>
+        c.bindExistingFolder({ projectId: 'proj_moved_managed', folderPath: movedPath }),
+      )
+
+      expect(rebound.success).toBe(true)
+      expect(rebound.workspace?.workspaceId).toBe(created.workspace?.workspaceId)
+      expect(rebound.workspace?.storageOwnership).toBe('attached')
+      expect(rebound.workspace?.managedRootId).toBeNull()
+      expect(await call((c) => c.getManagedDeletionTarget(created.workspace!.workspaceId))).toBeNull()
+    } finally {
+      await fs.rm(externalRoot, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('WorkspaceCatalog.resolveProject', () => {

@@ -1133,6 +1133,10 @@ export class WorkbenchSessionManager extends EventEmitter<{
     workspaceId: string
     workspaceRevision: number
   }): Promise<string[]> {
+    // Persisted sessions may still be loading during the first presentation
+    // command. Select stale revisions only after that registry is present so a
+    // v1 record cannot arrive after cleanup and survive beside the new v2.
+    await this.registryHydration
     const projectId = input.projectId.trim()
     const laneId = input.laneId.trim() || 'collab'
     const workspaceId = normalizeWorkspaceId(input.workspaceId)

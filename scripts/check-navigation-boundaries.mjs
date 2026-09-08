@@ -12,14 +12,15 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 
 let violations = 0;
 
 function checkFile(filePath, forbiddenPatterns) {
   if (!fs.existsSync(filePath)) return;
   const content = fs.readFileSync(filePath, 'utf8');
-  for (const { pattern, message } of forbiddenPatterns) {
-    if (pattern.test(content)) {
+  for (const { pattern, test, message } of forbiddenPatterns) {
+    if (test ? test(content, filePath) : pattern.test(content)) {
       console.error(`[Boundary Violation] ${filePath}: ${message}`);
       violations++;
     }
@@ -32,9 +33,60 @@ const RETAINED_FILES = [
   'apps/desktop/src/features/workbench/WorkbenchDockviewSession.tsx',
 ];
 
+const ROUTER_MODULES = new Set(['@/lib/router', '@tanstack/react-router']);
+const PROHIBITED_ROUTER_HOOKS = new Set(['useParams', 'useLocation', 'useSearchParams']);
+
+function hasProhibitedRouterImport(content, fileName = 'retained.tsx') {
+  const source = ts.createSourceFile(fileName, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let prohibited = false;
+  const visit = node => {
+    if (prohibited) return;
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      ROUTER_MODULES.has(node.moduleSpecifier.text)
+    ) {
+      const bindings = node.importClause?.namedBindings;
+      if (
+        bindings &&
+        (ts.isNamespaceImport(bindings) ||
+          bindings.elements.some(element =>
+            PROHIBITED_ROUTER_HOOKS.has((element.propertyName ?? element.name).text),
+          ))
+      ) {
+        prohibited = true;
+        return;
+      }
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      ROUTER_MODULES.has(node.arguments[0].text)
+    ) {
+      prohibited = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return prohibited;
+}
+
+for (const regression of [
+  "import{useLocation}from '@/lib/router'",
+  "import * as Router from '@tanstack/react-router'",
+  "const router = import('@/lib/router')",
+]) {
+  if (!hasProhibitedRouterImport(regression)) {
+    throw new Error(`Router import parser regression: ${regression}`);
+  }
+}
+
 const FORBIDDEN_ROUTER_PATTERNS = [
   {
-    pattern: /import\s+{[^}]*\b(useParams|useLocation|useSearchParams)\b[^}]*}\s+from\s+['"](?:@\/lib\/router|@tanstack\/react-router)['"]/,
+    test: hasProhibitedRouterImport,
     message: 'Retained presentation components must not consume ambient router hooks (Invariant I04, Section 7.3).',
   },
   {

@@ -8,7 +8,10 @@ vi.mock("electron", () => ({
   BrowserWindow: class {},
 }));
 
-import { __workbenchSessionTestUtils } from "../../apps/desktop/electron/services/WorkbenchSessionManager";
+import {
+  __workbenchSessionTestUtils,
+  WorkbenchSessionManager,
+} from "../../apps/desktop/electron/services/WorkbenchSessionManager";
 
 describe("workbench session ownership", () => {
   it("builds session keys from opaque workspace ids without path hashing", () => {
@@ -141,5 +144,35 @@ describe("workbench session ownership", () => {
         laneId: "collab",
       }),
     ).toEqual(["target-a", "target-b"]);
+  });
+
+  it("waits for persisted registry hydration before closing superseded revisions", async () => {
+    let finishHydration: () => void = () => {};
+    const manager = Object.create(WorkbenchSessionManager.prototype) as any;
+    manager.registryHydration = new Promise<void>((resolve) => {
+      finishHydration = resolve;
+    });
+    manager.sessions = new Map();
+    manager.closeSessionByKey = vi.fn(async () => true);
+    manager.persist = vi.fn();
+
+    const closing = manager.closeSupersededBindingSessions({
+      projectId: "project-a",
+      laneId: "collab",
+      workspaceId: "workspace-123",
+      workspaceRevision: 2,
+    });
+    manager.sessions.set("project-a::collab::workspace-123::v1", {
+      projectId: "project-a",
+      laneId: "collab",
+      workspaceId: "workspace-123",
+      workspaceRevision: 1,
+    });
+    await Promise.resolve();
+    expect(manager.closeSessionByKey).not.toHaveBeenCalled();
+
+    finishHydration();
+    await expect(closing).resolves.toEqual(["project-a::collab::workspace-123::v1"]);
+    expect(manager.closeSessionByKey).toHaveBeenCalledWith("project-a::collab::workspace-123::v1");
   });
 });
