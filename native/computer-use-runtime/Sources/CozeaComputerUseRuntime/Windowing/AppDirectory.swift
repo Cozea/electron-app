@@ -8,11 +8,7 @@ final class AppDirectory {
     private var apps: [pid_t: AppDescriptor] = [:]
     private var observers: [NSObjectProtocol] = []
     private var updatedAt: ContinuousClock.Instant = .now
-    private let blocked: Set<String> = [
-        "com.1password.1password", "com.1password.safari", "com.bitwarden.desktop",
-        "com.dashlane.dashlanephonefinal", "com.lastpass.lastpass", "com.nordsec.nordpass",
-        "me.proton.pass.electron", "me.proton.pass.catalyst", "com.apple.passwords",
-    ]
+
 
     private init() {
         refresh()
@@ -27,19 +23,9 @@ final class AppDirectory {
     }
     func resolve(_ query: String) throws -> AppDescriptor {
         if updatedAt.duration(to: .now) > .seconds(2) { refresh() }
-        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !blocked.contains(normalized) else { throw RuntimeFailure(.permissionDenied, "Password managers are excluded from Computer Use.") }
-        let matches = apps.values.filter { app in app.aliases.contains { $0.lowercased() == normalized } }
-        guard matches.count == 1, let app = matches.first else {
-            throw RuntimeFailure(.stateRequired, matches.isEmpty
-                ? "The target application is not running. Open it, then call get_app_state."
-                : "Multiple applications match. Use a PID from list_apps.")
-        }
-        guard !blocked.contains(app.bundleID?.lowercased() ?? "") else {
-            throw RuntimeFailure(.permissionDenied, "Password managers are excluded from Computer Use.")
-        }
-        return app
+        return try ApplicationExclusions.resolve(query, candidates: Array(apps.values))
     }
+
     func isCurrent(_ app: AppDescriptor) -> Bool {
         guard let running = NSRunningApplication(processIdentifier: app.pid), !running.isTerminated else { return false }
         return Self.describe(running).launchIdentity == app.launchIdentity
@@ -47,7 +33,7 @@ final class AppDirectory {
     func list() -> String {
         refresh()
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        return apps.values.filter { !blocked.contains($0.bundleID?.lowercased() ?? "") }
+        return ApplicationExclusions.visible(Array(apps.values))
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             .map { "\($0.name) — \($0.bundleID ?? "no bundle ID") [pid=\($0.pid)\($0.pid == front ? ", frontmost" : ""), running]" }
             .joined(separator: "\n")

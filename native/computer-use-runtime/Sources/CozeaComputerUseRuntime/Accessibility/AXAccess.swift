@@ -12,15 +12,35 @@ struct AXElementFingerprint: Sendable, Equatable {
 }
 
 enum AXAccess {
+    /// Configure the exact queried object before every cross-process read. AX
+    /// timeouts are not inherited by descendants. Injection keeps ordering and
+    /// cancellation tests independent of desktop permissions or a responsive app.
+    static func read<T>(
+        _ element: AXUIElement,
+        configureTimeout: (AXUIElement, Float) -> AXError = AXUIElementSetMessagingTimeout,
+        _ operation: () -> T?
+    ) -> T? {
+        let timeout: Float
+        if let budget = AXReadBudget.current {
+            guard let remaining = budget.remainingTimeout() else { return nil }
+            timeout = remaining
+        } else { timeout = 0.1 }
+        guard configureTimeout(element, timeout) == .success else { return nil }
+        // Revocation/deadline may have occurred while configuring the object.
+        if let budget = AXReadBudget.current, budget.remainingTimeout() == nil { return nil }
+        return operation()
+    }
+
     static func fingerprint(_ element: AXUIElement) -> AXElementFingerprint {
         func bounded(_ attribute: String) -> String? { string(element, attribute).map { String($0.prefix(256)) } }
         return AXElementFingerprint(role: bounded(kAXRoleAttribute), identifier: bounded(kAXIdentifierAttribute),
                                     title: bounded(kAXTitleAttribute), description: bounded(kAXDescriptionAttribute))
     }
     static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
-        AXUIElementSetMessagingTimeout(element, 0.1)
-        var value: CFTypeRef?
-        return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success ? value : nil
+        read(element) {
+            var value: CFTypeRef?
+            return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success ? value : nil
+        }
     }
     static func string(_ element: AXUIElement, _ attribute: String) -> String? { value(element, attribute) as? String }
     static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
@@ -40,13 +60,18 @@ enum AXAccess {
         return result.coreRectangle.isValid ? result : nil
     }
     static func actions(_ element: AXUIElement) -> [String] {
-        var values: CFArray?
-        guard AXUIElementCopyActionNames(element, &values) == .success else { return [] }
-        return values as? [String] ?? []
+        read(element) {
+            var values: CFArray?
+            guard AXUIElementCopyActionNames(element, &values) == .success else { return nil }
+            return values as? [String]
+        } ?? []
     }
     static func settable(_ element: AXUIElement, _ attribute: String) -> Bool {
-        var settable = DarwinBoolean(false)
-        return AXUIElementIsAttributeSettable(element, attribute as CFString, &settable) == .success && settable.boolValue
+        read(element) {
+            var settable = DarwinBoolean(false)
+            guard AXUIElementIsAttributeSettable(element, attribute as CFString, &settable) == .success else { return nil }
+            return settable.boolValue
+        } ?? false
     }
     static func requireOrdinary(_ element: AXUIElement) throws {
         if string(element, kAXSubroleAttribute) == "AXSecureTextField" {

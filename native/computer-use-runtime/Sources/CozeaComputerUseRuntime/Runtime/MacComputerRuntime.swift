@@ -136,7 +136,7 @@ private actor RuntimeCoordinator {
             timer.cancel(); running.removeValue(forKey: key)
             authorization.finish(session: session, request: context.requestID, control: control)
             // Keep small acknowledgements/tombstones, not images or document text.
-            let cache = (try? result.jsonText().utf8.count).map { $0 <= 8192 } == true ? result : nil
+            let cache = result.replayCacheEntry()
             if !resetting && !closingSessions.contains(session) { completed.append(Completed(key: key, fingerprint: fingerprint, result: cache)) }
             if completed.count > 512 { completed.removeFirst(completed.count - 512) }
             return result

@@ -161,7 +161,39 @@
         "required": [
           "app"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "element_index"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "x"
+                  ]
+                },
+                {
+                  "required": [
+                    "y"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "x",
+              "y"
+            ],
+            "not": {
+              "required": [
+                "element_index"
+              ]
+            }
+          }
+        ]
       }
     },
     {

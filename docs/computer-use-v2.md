@@ -81,3 +81,23 @@ Only stage names, counters and durations are logged; no screen text, typed text,
 ## Upstream provenance
 
 The repo-owned renderer, motion model, glyph renderer, key parser and private-event recipe are derived from iFurySt/open-codex-computer-use revision 41c5294cfe4735baca03f9c82b4de99d191a0b49. `UPSTREAM.json` records provenance; `LICENSE.upstream.txt` and the packaged notice preserve the MIT license. No OpenAI bundled binary, font or research archive is redistributed.
+
+## Application-exclusion identifier provenance
+
+`ApplicationExclusions` is the shared exact, case-normalized native bundle-ID guard
+for discovery and name/PID/bundle-ID resolution. The review fixes add Dashlane's
+legacy `com.dashlane.Dashlane` and `com.dashlane.mac.Dashlane`, and LastPass's
+`com.lastpass.lastpassmacdesktop`, while retaining the existing known IDs.
+Sources checked on 2026-09-08:
+
+- Dashlane's own legacy-app detector: https://github.com/Dashlane/apple-apps/blob/039446070e55aee0c7c710095dd49f745808e710/AppKitBridgeBundle/InstalledApplication.swift
+- LastPass package metadata: https://github.com/Homebrew/homebrew-cask/blob/main/Casks/l/lastpass.rb
+- NordPass package metadata identifies `com.nordsec.nordpass`: https://github.com/Homebrew/homebrew-cask/blob/main/Casks/n/nordpass.rb
+- Proton's own packaging identifies `me.proton.pass.electron`: https://github.com/ProtonMail/WebClients/blob/a37f752deb623ae05a8e6859ae90d87afb74e0d0/applications/pass-desktop/electron-builder.config.js
+
+The suggested replacement IDs `com.nordpass.desktop` and
+`ch.protonmail.pass.desktop` were not supported by these sources and are not
+substituted for the verified IDs. Tests cover every retained ID across discovery
+and all target aliases, including case normalization and exact-match boundaries.
+This list is defense in depth, not comprehensive detection of credential UI in
+browsers or applications with unknown bundle identifiers.

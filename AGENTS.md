@@ -587,4 +587,4 @@ was unavailable on the implementation host; container execution is unverified.
 
 ## macOS Computer Use
 
-Computer Use v2 lives in `native/computer-use-runtime` and the in-process ABI 2 bridge. Read `docs/computer-use-v2.md` before editing input, observations, cursor, policy or packaging. Keep visible arrival before dispatch, synchronous revocation, no post-action snapshots, and no retries after ambiguous delivery. All input mutations share an explicit native permit; reads do not. The canonical provider schema is the Swift package's `Resources/tools.json`. Run native tests, `bun run test:computer-use`, native ABI/packaging checks and desktop typechecks; permissioned live validation is separately required before release. No workers are supported on Windows/Linux.
+Read `docs/computer-use-v2.md` before changing Computer Use input, observations, cursor, policy, packaging, or release validation.

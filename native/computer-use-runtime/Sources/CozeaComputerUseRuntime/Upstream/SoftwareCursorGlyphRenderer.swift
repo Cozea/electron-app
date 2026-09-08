@@ -1,5 +1,5 @@
 // Adapted from iFurySt/open-codex-computer-use, revision 41c5294cfe4735baca03f9c82b4de99d191a0b49.
-// AGPL-3.0-or-later; see native/computer-use-runtime/LICENSE.upstream.txt and docs/computer-use-v2.md.
+// MIT; see native/computer-use-runtime/LICENSE.upstream.txt and docs/computer-use-v2.md.
 
 import AppKit
 import CoreGraphics
