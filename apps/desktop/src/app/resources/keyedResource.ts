@@ -30,8 +30,6 @@ export class ResourceSupersededError extends Error {
   }
 }
 
-export type ResourceReason = 'prefetch' | 'navigation' | 'refresh' | 'resume';
-
 export type DemandKind = 'foreground' | 'expanded-sidebar' | 'background';
 
 export interface ResourceHandle<T> {
@@ -45,18 +43,17 @@ export interface ResourceHandle<T> {
 
 export interface KeyedResourceOptions<T> {
   key: string;
-  fetcher: (reason: ResourceReason) => Promise<T>;
+  fetcher: () => Promise<T>;
   ttlMs?: number;
   equalityFn?: (a: T, b: T) => boolean;
 }
 
 export class KeyedResource<T> implements ResourceHandle<T> {
   public readonly key: string;
-  private readonly fetcher: (reason: ResourceReason) => Promise<T>;
+  private readonly fetcher: () => Promise<T>;
   private readonly ttlMs: number;
   private readonly equalityFn?: (a: T, b: T) => boolean;
 
-  private lastAccessedAt = Date.now();
   private generation = 0;
   private snapshot: ResourceSnapshot<T>;
   private inflight: Promise<T> | null = null;
@@ -82,23 +79,19 @@ export class KeyedResource<T> implements ResourceHandle<T> {
   }
 
   subscribe(listener: () => void): () => void {
-    this.lastAccessedAt = Date.now();
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
-      this.lastAccessedAt = Date.now();
     };
   }
 
   acquireDemand(kind: DemandKind): () => void {
-    this.lastAccessedAt = Date.now();
     this.demandCounts[kind]++;
     let released = false;
     return () => {
       if (released) return;
       released = true;
       this.demandCounts[kind] = Math.max(0, this.demandCounts[kind] - 1);
-      this.lastAccessedAt = Date.now();
     };
   }
 
@@ -117,25 +110,8 @@ export class KeyedResource<T> implements ResourceHandle<T> {
     this.notify();
   }
 
-  get idle(): boolean {
-    return this.inflight === null && this.listeners.size === 0 && Object.values(this.demandCounts).every(count => count === 0);
-  }
-
-  get lastAccessTime(): number { return this.lastAccessedAt; }
-
-  touch(): void { this.lastAccessedAt = Date.now(); }
-
-  /** Seed an unused handle from an already validated in-memory catalog entry. */
-  prime(data: T): void {
-    if (this.snapshot.status !== 'empty' || this.inflight) return;
-    this.lastSuccessfulReadAt = Date.now();
-    this.snapshot = { status: 'ready', generation: this.generation, data, refreshing: false, error: null };
-    this.notify();
-  }
-
-  ensure(reason: ResourceReason): Promise<T> {
+  async ensure(reason: 'prefetch' | 'navigation' | 'refresh' | 'resume'): Promise<T> {
     const now = Date.now();
-    this.lastAccessedAt = now;
 
     // 1. If valid cached data exists and TTL has not expired, return cached data unless explicit refresh
     if (
@@ -143,7 +119,7 @@ export class KeyedResource<T> implements ResourceHandle<T> {
       reason !== 'refresh' &&
       now - this.lastSuccessfulReadAt < this.ttlMs
     ) {
-      return Promise.resolve(this.snapshot.data);
+      return this.snapshot.data;
     }
 
     // 2. If an in-flight operation exists for the current generation, share it (Invariants I06, N01, N02)
@@ -154,16 +130,6 @@ export class KeyedResource<T> implements ResourceHandle<T> {
     // 3. Start a new request for the current generation
     const requestGen = this.generation;
     this.inflightGeneration = requestGen;
-    // Publish the shared promise BEFORE notifying subscribers or invoking a
-    // fetcher. Reentrant subscribers and synchronous throws must not create a
-    // second request or leave a settled request installed as in-flight.
-    let resolveRequest!: (value: T) => void;
-    let rejectRequest!: (error: unknown) => void;
-    const promise = new Promise<T>((resolve, reject) => {
-      resolveRequest = resolve;
-      rejectRequest = reject;
-    });
-    this.inflight = promise;
 
     // Update snapshot to loading or refreshing
     if (this.snapshot.status === 'ready') {
@@ -177,9 +143,9 @@ export class KeyedResource<T> implements ResourceHandle<T> {
       this.notify();
     }
 
-    const perform = async () => {
+    const promise = (async () => {
       try {
-        const result = await this.fetcher(reason);
+        const result = await this.fetcher();
 
         // If generation changed while awaiting, reject with ResourceSupersededError (N03)
         if (this.generation !== requestGen) {
@@ -235,8 +201,9 @@ export class KeyedResource<T> implements ResourceHandle<T> {
           this.inflightGeneration = -1;
         }
       }
-    };
-    void perform().then(resolveRequest, rejectRequest);
+    })();
+
+    this.inflight = promise;
     return promise;
   }
 

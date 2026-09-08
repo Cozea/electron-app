@@ -26,7 +26,7 @@ export function HeaderBackButton({
       variant="ghost"
       size={iconOnly ? "icon-xs" : "sm"}
       className={cn(
-        "h-7 gap-1.5 rounded-full px-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/15 transition-colors cursor-pointer",
+        "h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/15 transition-colors cursor-pointer",
         iconOnly && "w-7 px-0",
         className,
       )}

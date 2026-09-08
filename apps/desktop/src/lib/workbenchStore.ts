@@ -92,6 +92,7 @@ export interface WorkbenchProjectState {
   projectId: string
   laneId: string
   workspaceId: string | null
+  workspaceRevision?: number
   tiles: Record<string, WorkbenchTile>
   order: string[]
   activeTileId: string | null
@@ -197,6 +198,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
   lastActiveScopeKey: string | null
   actions: {
     ensureWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
+    bindWorkspaceRevision: (projectId: string, laneId: string, workspaceId: string, workspaceRevision: number) => void
     resetWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
     removeProject: (projectId: string) => void
     cloneWorkspaceState: (
@@ -891,6 +893,10 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
     projectId: workbench.projectId,
     laneId: normalizeLaneId(workbench.laneId),
     workspaceId,
+    workspaceRevision:
+      Number.isSafeInteger(workbench.workspaceRevision) && Number(workbench.workspaceRevision) > 0
+        ? workbench.workspaceRevision
+        : undefined,
     activeTileId: sanitizedActiveTileId,
     layout:
       shouldResetLayout
@@ -1156,6 +1162,23 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             // make each one a state change for every subscriber.
             if (state.lastActiveScopeKey !== scopeKey) {
               state.lastActiveScopeKey = scopeKey
+            }
+          })
+        },
+        bindWorkspaceRevision: (projectId, laneId, workspaceId, workspaceRevision) => {
+          if (!projectId || !workspaceId || !Number.isSafeInteger(workspaceRevision) || workspaceRevision < 1) return
+          set((state) => {
+            const { scopeKey, workbench, normalizedLaneId, normalizedWorkspace } = resolveMutableWorkbenchState(
+              state.workbenches, projectId, laneId, workspaceId,
+            )
+            if (!workbench) return
+            if (workbench.workspaceRevision && workbench.workspaceRevision !== workspaceRevision) {
+              state.workbenches[scopeKey] = {
+                ...createDefaultWorkbenchState(projectId, normalizedLaneId, normalizedWorkspace),
+                workspaceRevision,
+              }
+            } else if (workbench.workspaceRevision !== workspaceRevision) {
+              workbench.workspaceRevision = workspaceRevision
             }
           })
         },
@@ -1487,7 +1510,9 @@ useProjectWorkbenchStore.subscribe((state, previous) => {
     } else {
       const sanitized = sanitizeWorkbenchState(model)
       // The independent layout namespace is the only layout persistence writer.
-      desktopPersistenceClient.queueDirtyRecord('workbenchModel', key, { ...sanitized, layout: null })
+      desktopPersistenceClient.queueDirtyRecord(
+        'workbenchModel', key, { ...sanitized, layout: null }, sanitized.workspaceRevision,
+      )
     }
   }
 })

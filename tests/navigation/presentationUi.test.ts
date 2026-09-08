@@ -1,110 +1,42 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { useWorkbenchPresentationStore } from '@/features/workbench/model/workbenchPresentationStore';
-import type { ResolvedWorkbenchIdentity } from '@shared/navigationRuntimeTypes';
+import { describe, expect, it } from 'vitest'
+import {
+  MAX_WORKBENCH_KEEP_ALIVE_SESSIONS,
+  selectWorkbenchKeepAliveSessions,
+  type WorkbenchKeepAliveSession,
+} from '@/features/workbench/workbenchKeepAlive'
+import { buildPresentationInstanceKey } from '@shared/navigationRuntimeTypes'
 
-describe('Presentation UI & Retention Invariants (U01-U05, U11, U14, P07)', () => {
-  beforeEach(() => {
-    useWorkbenchPresentationStore.setState({
-      residents: {},
-      residentOrder: [],
-      activeInstanceKey: null,
-      activeIdentity: null,
-      activationSequence: 0,
-    });
-  });
+function session(name: string, revision = 1, lastActiveAt = 1): WorkbenchKeepAliveSession {
+  const identity = { projectId: `project-${name}`, workspaceId: `workspace-${name}`, workspaceRevision: revision, laneId: 'collab' }
+  return {
+    instanceKey: buildPresentationInstanceKey(identity), scopeKey: `${name}::scope`,
+    projectId: identity.projectId, activeLaneId: identity.laneId, workspaceId: identity.workspaceId,
+    workspaceRevision: revision, projectRootPath: `/tmp/${name}`, gitRootPath: `/tmp/${name}`,
+    projectName: name, framework: null, storedDevCommand: null, storedDevPort: null,
+    workbenchSessionKey: `${name}::session`, themeScheme: 'dark', lastActiveAt,
+  }
+}
 
-  it('U01 & U02: A -> Store -> A retains resident session A without recreation', () => {
-    const store = useWorkbenchPresentationStore.getState();
+describe('live workbench retention policy', () => {
+  it('keeps A resident across ordinary-route departure and return', () => {
+    const a = session('a', 1, 1)
+    const residents = selectWorkbenchKeepAliveSessions(a, [])
+    expect(selectWorkbenchKeepAliveSessions({ ...a, lastActiveAt: 2 }, residents)).toHaveLength(1)
+  })
 
-    const identityA: ResolvedWorkbenchIdentity = {
-      projectId: 'proj-A',
-      workspaceId: 'ws-A',
-      workspaceRevision: 1,
-      laneId: 'collab',
-    };
+  it('retains a bounded LRU working set', () => {
+    let residents: WorkbenchKeepAliveSession[] = []
+    for (const [index, name] of ['a', 'b', 'c', 'd'].entries()) {
+      residents = selectWorkbenchKeepAliveSessions(session(name, 1, index + 1), residents)
+    }
+    expect(residents).toHaveLength(MAX_WORKBENCH_KEEP_ALIVE_SESSIONS)
+    expect(residents.map(value => value.projectName)).toEqual(['d', 'c', 'b'])
+  })
 
-    // 1. Visit A
-    store.actions.activate(identityA);
-    const state1 = useWorkbenchPresentationStore.getState();
-    expect(state1.residentOrder.length).toBe(1);
-    expect(state1.activeIdentity?.projectId).toBe('proj-A');
-
-    // 2. Navigate away to Store (deactivate active)
-    store.actions.deactivateActive();
-    const state2 = useWorkbenchPresentationStore.getState();
-    expect(state2.activeIdentity).toBeNull();
-    // Invariant I02: A remains resident!
-    expect(state2.residentOrder.length).toBe(1);
-
-    // 3. Return to A
-    store.actions.activate(identityA);
-    const state3 = useWorkbenchPresentationStore.getState();
-    expect(state3.residentOrder.length).toBe(1);
-    expect(state3.activeIdentity?.projectId).toBe('proj-A');
-  });
-
-  it('U03: A -> B -> A retains distinct scopes for both A and B up to resident limit', () => {
-    const store = useWorkbenchPresentationStore.getState();
-
-    const identityA: ResolvedWorkbenchIdentity = {
-      projectId: 'proj-A',
-      workspaceId: 'ws-A',
-      workspaceRevision: 1,
-      laneId: 'collab',
-    };
-
-    const identityB: ResolvedWorkbenchIdentity = {
-      projectId: 'proj-B',
-      workspaceId: 'ws-B',
-      workspaceRevision: 1,
-      laneId: 'collab',
-    };
-
-    store.actions.activate(identityA);
-    store.actions.activate(identityB);
-
-    const state = useWorkbenchPresentationStore.getState();
-    expect(state.residentOrder.length).toBe(2);
-    expect(state.activeIdentity?.projectId).toBe('proj-B');
-
-    // Return to A
-    store.actions.activate(identityA);
-    const stateAfterReturn = useWorkbenchPresentationStore.getState();
-    expect(stateAfterReturn.residentOrder.length).toBe(2);
-    expect(stateAfterReturn.activeIdentity?.projectId).toBe('proj-A');
-  });
-
-  it('U11: Bounded LRU eviction evicts oldest inactive unpinned view when exceeding 3 residents', () => {
-    const store = useWorkbenchPresentationStore.getState();
-
-    const ids: ResolvedWorkbenchIdentity[] = ['A', 'B', 'C', 'D'].map((name) => ({
-      projectId: `proj-${name}`,
-      workspaceId: `ws-${name}`,
-      workspaceRevision: 1,
-      laneId: 'collab',
-    }));
-
-    // Activate A, B, C (3 residents)
-    store.actions.activate(ids[0]);
-    store.actions.activate(ids[1]);
-    store.actions.activate(ids[2]);
-
-    expect(useWorkbenchPresentationStore.getState().residentOrder.length).toBe(3);
-
-    // Activating 4th resident (D) triggers eviction of oldest inactive (A)
-    store.actions.activate(ids[3]);
-
-    const stateAfterD = useWorkbenchPresentationStore.getState();
-    expect(stateAfterD.residentOrder.length).toBe(3);
-    expect(stateAfterD.activeIdentity?.projectId).toBe('proj-D');
-
-    // A was evicted; B, C, D remain
-    const remainingProjects = stateAfterD.residentOrder.map(
-      (k) => stateAfterD.residents[k].identity.projectId
-    );
-    expect(remainingProjects).not.toContain('proj-A');
-    expect(remainingProjects).toContain('proj-B');
-    expect(remainingProjects).toContain('proj-C');
-    expect(remainingProjects).toContain('proj-D');
-  });
-});
+  it('replaces a stale binding revision instead of retaining both instances', () => {
+    const oldBinding = session('a', 1, 1)
+    const newBinding = session('a', 2, 2)
+    expect(selectWorkbenchKeepAliveSessions(newBinding, [oldBinding])).toEqual([newBinding])
+    expect(newBinding.instanceKey).not.toBe(oldBinding.instanceKey)
+  })
+})

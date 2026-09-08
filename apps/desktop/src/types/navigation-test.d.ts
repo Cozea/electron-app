@@ -1,0 +1,1 @@
+declare const __COZEA_NAVIGATION_TEST__: boolean

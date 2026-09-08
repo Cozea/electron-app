@@ -36,7 +36,6 @@ env:
   # Set to "1" to build unsigned even when signing secrets exist, without having to
   # delete a certificate that may still be wanted later.
   COZEA_FORCE_UNSIGNED_MAC: ${{ vars.COZEA_FORCE_UNSIGNED_MAC }}
-  COZEA_MAC_SIGNING: "0"
   COZEA_RELEASE_REPO: ${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
   COZEA_RUNTIME_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
   COZEA_GIT_BUNDLE_RELEASE_REPO: ${{ github.repository_owner }}/${{ vars.COZEA_RELEASE_REPO || 'cozea-prod' }}
@@ -61,6 +60,7 @@ env:
   VITE_FF_PRIORITIZED_SCHEDULING: "1"
   VITE_FF_REACT_COMPILER: "1"
   VITE_FF_ROLLDOWN_BUILD: "1"
+  VITE_FF_JANK_DIAGNOSTICS: "1"
   VITE_FF_CONTENT_VISIBILITY: "1"
   VITE_FF_OFFSCREEN_SCREENSHOT: "1"
   VITE_FF_UTILITY_PROCESS_MANIFEST: "1"
@@ -344,7 +344,6 @@ jobs:
             git_bundle_targets: darwin-x64
             runtime_bundle_targets: darwin-x64
     env:
-      COZEA_MAC_SIGNING: "0"
       COZEA_RUNTIME_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
       COZEA_GIT_BUNDLE_RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
       COZEA_GIT_BUNDLE_TARGETS: ${{ matrix.git_bundle_targets }}
@@ -418,7 +417,6 @@ jobs:
           fi
 
       - name: Resolve macOS signing mode
-        id: mac_signing
         if: matrix.electron_target == 'mac'
         shell: bash
         run: |
@@ -430,18 +428,15 @@ jobs:
           # and notarization steps opt out on this flag.
           if [[ "${COZEA_FORCE_UNSIGNED_MAC:-}" == "1" ]]; then
             echo "COZEA_MAC_SIGNING=0" >> "$GITHUB_ENV"
-            echo "signing=0" >> "$GITHUB_OUTPUT"
             echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
             echo "COZEA_SKIP_NOTARIZE=1" >> "$GITHUB_ENV"
             echo "COZEA_ALLOW_UNSIGNED_GIT_BUNDLES=1" >> "$GITHUB_ENV"
             echo "::warning::COZEA_FORCE_UNSIGNED_MAC is set; ignoring any signing certificate and producing an unsigned build."
           elif [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" ]]; then
             echo "COZEA_MAC_SIGNING=1" >> "$GITHUB_ENV"
-            echo "signing=1" >> "$GITHUB_OUTPUT"
             echo "Signing certificate configured; producing a signed build."
           else
             echo "COZEA_MAC_SIGNING=0" >> "$GITHUB_ENV"
-            echo "signing=0" >> "$GITHUB_OUTPUT"
             echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
             echo "COZEA_SKIP_NOTARIZE=1" >> "$GITHUB_ENV"
             echo "COZEA_ALLOW_UNSIGNED_GIT_BUNDLES=1" >> "$GITHUB_ENV"
@@ -449,7 +444,7 @@ jobs:
           fi
 
       - name: Validate macOS publish secrets
-        if: matrix.electron_target == 'mac' && needs.plan.outputs.publish_mode == 'always' && steps.mac_signing.outputs.signing == '1'
+        if: matrix.electron_target == 'mac' && needs.plan.outputs.publish_mode == 'always' && env.COZEA_MAC_SIGNING == '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -494,7 +489,7 @@ jobs:
           brew install autoconf
 
       - name: Import macOS signing certificate
-        if: runner.os == 'macOS' && steps.mac_signing.outputs.signing == '1'
+        if: runner.os == 'macOS' && env.COZEA_MAC_SIGNING == '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -630,7 +625,7 @@ jobs:
           fi
 
       - name: Notarize and staple DMG
-        if: runner.os == 'macOS' && needs.plan.outputs.publish_mode == 'always' && steps.mac_signing.outputs.signing == '1'
+        if: runner.os == 'macOS' && needs.plan.outputs.publish_mode == 'always' && env.COZEA_MAC_SIGNING == '1'
         shell: bash
         run: |
           set -euo pipefail

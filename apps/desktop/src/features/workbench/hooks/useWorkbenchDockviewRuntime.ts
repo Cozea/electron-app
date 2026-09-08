@@ -124,6 +124,7 @@ interface UseWorkbenchDockviewRuntimeInput {
   projectId: string | null;
   activeLaneId: string;
   workspaceId: string | null;
+  workspaceRevision: number;
   workbenchSessionKey: string | null;
   projectWorkbench: WorkbenchProjectState | null;
   workbenchScopeKey: string | null;
@@ -239,6 +240,7 @@ export function useWorkbenchDockviewRuntime(
       scopeKey,
       layoutResetKeyRef.current,
       api.toJSON() as SerializedDockview,
+      input.workspaceRevision,
     );
   };
 
@@ -347,6 +349,7 @@ export function useWorkbenchDockviewRuntime(
       layoutSnapshotDebouncerRef.current?.maybeExecute({
         scopeKey: capturedScopeKey,
         layoutResetKey: capturedLayoutResetKey,
+        bindingRevision: input.workspaceRevision,
         layout: api.toJSON() as SerializedDockview,
       });
     });
@@ -402,6 +405,7 @@ export function useWorkbenchDockviewRuntime(
     const api = dockviewApiRef.current;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !input.projectWorkbench ||
       !input.isLayoutPersistenceReady ||
@@ -421,6 +425,7 @@ export function useWorkbenchDockviewRuntime(
   }, [
     dockviewReadyScopeKey,
     input.activeLaneId,
+    input.isActive,
     input.isLayoutPersistenceReady,
     input.persistedLayout,
     input.projectId,
@@ -434,6 +439,7 @@ export function useWorkbenchDockviewRuntime(
     const projectWorkbench = input.projectWorkbench;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !projectWorkbench ||
       dockviewReadyScopeKey !== input.workbenchScopeKey
@@ -503,6 +509,7 @@ export function useWorkbenchDockviewRuntime(
     changesWidth,
     dockviewReadyScopeKey,
     input.activeLaneId,
+    input.isActive,
     input.projectId,
     input.projectWorkbench?.layoutResetKey,
     input.workbenchScopeKey,
@@ -513,6 +520,7 @@ export function useWorkbenchDockviewRuntime(
     const api = dockviewApiRef.current;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !input.projectWorkbench ||
       dockviewReadyScopeKey !== input.workbenchScopeKey
@@ -551,6 +559,7 @@ export function useWorkbenchDockviewRuntime(
   }, [
     dockviewReadyScopeKey,
     input.activeLaneId,
+    input.isActive,
     input.projectId,
     input.projectWorkbench,
     input.workbenchScopeKey,
@@ -827,6 +836,7 @@ export function useWorkbenchDockviewRuntime(
     const api = dockviewApiRef.current;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !input.projectWorkbench ||
       dockviewReadyScopeKey !== input.workbenchScopeKey
@@ -848,6 +858,7 @@ export function useWorkbenchDockviewRuntime(
     dockviewReadyScopeKey,
     hydrateDockviewPanels,
     input.projectId,
+    input.isActive,
     input.projectWorkbench,
     input.workbenchScopeKey,
     previewTileIds,
@@ -1108,7 +1119,7 @@ export function useWorkbenchDockviewRuntime(
           // rather than whatever is current. This is flushed on scope change,
           // where the outgoing workbench's last layout is still worth saving —
           // to its own key, which is exactly what the snapshot carries.
-          writePersistedWorkbenchLayout(pending.scopeKey, pending.layoutResetKey, pending.layout);
+          writePersistedWorkbenchLayout(pending.scopeKey, pending.layoutResetKey, pending.layout, pending.bindingRevision);
         },
         { wait: 400 },
       );

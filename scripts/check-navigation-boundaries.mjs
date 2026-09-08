@@ -5,7 +5,7 @@
  *
  * Checks:
  * 1. Prohibits direct router hook imports (useParams, useLocation, useSearchParams)
- *    inside retained workbench presentation components (WorkbenchSessionBoundary, WorkbenchSessionSurface, WorkbenchPresentationHost).
+ *    inside retained workbench presentation components.
  * 2. Prohibits synchronous localStorage access on warm navigation / layout lookup paths.
  * 3. Prohibits direct activateSession/ensureSession IPC bypass from retained UI components.
  */
@@ -28,9 +28,8 @@ function checkFile(filePath, forbiddenPatterns) {
 
 // 1. Check retained presentation files for forbidden router hooks
 const RETAINED_FILES = [
-  'apps/desktop/src/features/workbench/WorkbenchPresentationHost.tsx',
-  'apps/desktop/src/features/workbench/WorkbenchSessionBoundary.tsx',
-  'apps/desktop/src/features/workbench/WorkbenchSessionSurface.tsx',
+  'apps/desktop/src/features/workbench/WorkbenchKeepAliveHost.tsx',
+  'apps/desktop/src/features/workbench/WorkbenchDockviewSession.tsx',
 ];
 
 const FORBIDDEN_ROUTER_PATTERNS = [
@@ -63,6 +62,22 @@ const FORBIDDEN_STORAGE_PATTERNS = [
 for (const file of LAYOUT_PERSISTENCE_FILES) {
   checkFile(path.resolve(file), FORBIDDEN_STORAGE_PATTERNS);
 }
+
+checkFile(path.resolve('apps/desktop/src/features/projects/pages/ProjectWorkbenchPage.tsx'), [{
+  pattern: /<ProjectWorkbenchSurface/,
+  message: 'The route page must not own the persistent workbench surface.',
+}]);
+
+checkFile(path.resolve('apps/desktop/electron/preload.ts'), [
+  {
+    pattern: /workbenchSession:activateSession/,
+    message: 'Renderer-visible direct activation bypasses sequenced presentation authority.',
+  },
+  {
+    pattern: /workbenchSession:backgroundSession/,
+    message: 'Renderer-visible direct backgrounding bypasses sequenced presentation authority.',
+  },
+]);
 
 if (violations > 0) {
   console.error(`\n[Boundary Check Failed] Total violations: ${violations}`);

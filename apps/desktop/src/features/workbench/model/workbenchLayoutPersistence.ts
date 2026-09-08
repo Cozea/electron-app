@@ -7,16 +7,16 @@ function isLayout(value: unknown): value is SerializedDockview { return value !=
 export function ensureWorkbenchLayoutPersistenceReady(scopeKey?: string): Promise<void> {
   return desktopPersistenceClient.hydrateNamespace('workbenchLayout', scopeKey ? [scopeKey] : undefined)
 }
-export interface PendingWorkbenchLayoutWrite { scopeKey: string; layoutResetKey: number; layout: SerializedDockview }
+export interface PendingWorkbenchLayoutWrite { scopeKey: string; layoutResetKey: number; bindingRevision: number; layout: SerializedDockview }
 export function isWorkbenchLayoutWriteStillValid(pending: Pick<PendingWorkbenchLayoutWrite, 'scopeKey' | 'layoutResetKey'>, current: { scopeKey: string | null | undefined; layoutResetKey: number }): boolean {
   return Boolean(pending.scopeKey) && pending.scopeKey === current.scopeKey && pending.layoutResetKey === current.layoutResetKey
 }
-export function peekPersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number): SerializedDockview | null {
-  const value = desktopPersistenceClient.peekLayout(scopeKey, layoutResetKey)
+export function peekPersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, bindingRevision?: number): SerializedDockview | null {
+  const value = desktopPersistenceClient.peekLayout(scopeKey, layoutResetKey, bindingRevision)
   return isLayout(value) ? value : null
 }
-export function writePersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, layout: SerializedDockview): void {
-  desktopPersistenceClient.queueDirtyRecord('workbenchLayout', scopeKey, { layout, layoutResetKey })
+export function writePersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, layout: SerializedDockview, bindingRevision?: number): void {
+  desktopPersistenceClient.queueDirtyRecord('workbenchLayout', scopeKey, { layout, layoutResetKey }, bindingRevision)
 }
 export function clearPersistedWorkbenchLayout(scopeKey: string): void { desktopPersistenceClient.deleteRecord('workbenchLayout', scopeKey) }
 export async function clearPersistedWorkbenchLayoutsForProject(projectId: string): Promise<void> {

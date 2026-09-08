@@ -162,7 +162,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
       <section>
         <SettingsSectionTitle>Device presentation</SettingsSectionTitle>
         <SettingsSectionDescription>
-          Visible device profile shown to collaborators.
+          This name and avatar identify this physical Cozea device to collaborators. They do not affect its cryptographic identity or access.
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst>
@@ -237,7 +237,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
         </SettingsGroup>
 
         {presentationError ? (
-          <p className="mt-2 text-xs text-destructive px-1" role="alert">{presentationError}</p>
+          <p className="mt-2 text-[11px] text-destructive px-1" role="alert">{presentationError}</p>
         ) : null}
 
         {presentationDirty ? (
@@ -245,7 +245,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
             <Button
               type="button"
               size="sm"
-              className="h-8 px-4 text-sm font-medium cursor-pointer"
+              className="h-8 px-4 text-xs font-medium cursor-pointer"
               disabled={!normalizedDeviceName || processingAvatar || savingPresentation}
               onClick={() => void savePresentation()}
             >
@@ -260,12 +260,12 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
           <SettingsSectionTitle className="mb-0">{t("settings.account.deviceIdentity")}</SettingsSectionTitle>
         </div>
         <SettingsSectionDescription>
-          Cryptographic identity for device pairing and access.
+          The public device ID is stable for this cryptographic identity. Changing the name or avatar above does not change this ID.
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst className="items-center">
             <div className="min-w-0 flex-1">
-              <span className="text-sm font-medium text-foreground">{t("settings.account.thisDevice")}</span>
+              <span className="text-xs font-medium text-foreground">{t("settings.account.thisDevice")}</span>
               <PublicIdDisclosure value={identityKey} label={t("settings.account.deviceIdentity")} className="max-w-[42rem]" />
             </div>
           </SettingsRow>

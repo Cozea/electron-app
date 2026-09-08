@@ -16,6 +16,7 @@ import {
   type WorkbenchTabGroupPreset,
 } from "@/features/workbench/model/workbenchTileRegistry"
 import type { WorkbenchDockPanelParams } from "@/features/workbench/WorkbenchDockRuntimeContext"
+import { markCozeaInteractionEnd, markCozeaInteractionStart } from "@/lib/performance/marks"
 
 const RESERVED_DOCKVIEW_PANEL_IDS = new Set(["cozea-changes-panel"])
 
@@ -191,6 +192,12 @@ export function buildDefaultDockview(
   projectId: string,
   laneId: string,
 ) {
+  const startMark = markCozeaInteractionStart("workbench-restore-tiles", {
+    laneId,
+    projectId,
+    tileCount: project.order.length,
+  })
+
   api.clear()
 
   for (const tileId of project.order) {
@@ -200,6 +207,13 @@ export function buildDefaultDockview(
   }
 
   applyWorkbenchDockviewPolicies(api)
+
+  markCozeaInteractionEnd("workbench-restore-tiles", startMark, {
+    laneId,
+    panelCount: api.totalPanels,
+    projectId,
+    tileCount: project.order.length,
+  })
 }
 
 export function syncPanelTitles(api: DockviewApi, project: WorkbenchProjectState) {
@@ -223,6 +237,12 @@ export function reconcilePanels(
   ) => api.addPanel(options),
   preservePanelIds: ReadonlySet<string> = new Set<string>(),
 ) {
+  const startMark = markCozeaInteractionStart("workbench-reconcile-panels", {
+    laneId,
+    panelCount: api.totalPanels,
+    projectId,
+    tileCount: project.order.length,
+  })
   const nextTileIds = new Set(project.order)
 
   for (const panel of api.panels) {
@@ -246,4 +266,10 @@ export function reconcilePanels(
 
   syncPanelTitles(api, project)
   applyWorkbenchDockviewPolicies(api)
+  markCozeaInteractionEnd("workbench-reconcile-panels", startMark, {
+    laneId,
+    panelCount: api.totalPanels,
+    projectId,
+    tileCount: project.order.length,
+  })
 }

@@ -527,25 +527,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId: string
       workspaceId?: string | null
     }) => ipcRenderer.invoke('workbenchSession:ensureSession', options),
-    activateSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      workspaceId?: string | null
-    }) => ipcRenderer.invoke('workbenchSession:activateSession', options),
-    backgroundSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      mode?: 'backgroundWarm' | 'backgroundFrozen'
-    }) => ipcRenderer.invoke('workbenchSession:backgroundSession', options),
     closeSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
     }) => ipcRenderer.invoke('workbenchSession:closeSession', options),
-    getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
+    getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
       ipcRenderer.invoke('workbenchSession:getSession', options),
     listSessions: () => ipcRenderer.invoke('workbenchSession:listSessions'),
     setPinned: (options: { sessionKey?: string | null; projectId: string; laneId: string; pinned: boolean }) =>

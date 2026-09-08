@@ -1,22 +1,21 @@
-export interface ComputerUseToolDefinition {
+export interface ComputerUseToolContract {
   name: string;
   description: string;
   annotations: {
     readOnlyHint: boolean;
     destructiveHint: boolean;
     idempotentHint?: boolean;
-    openWorldHint: boolean;
+    openWorldHint?: boolean;
   };
   inputSchema: {
-    type: string;
+    additionalProperties?: boolean;
     properties: Record<string, unknown>;
-    required?: string[];
-    additionalProperties: boolean;
-    [keyword: string]: unknown;
+    [key: string]: unknown;
   };
 }
-export const computerUseCatalogue: {
-  tools: ComputerUseToolDefinition[];
-  [key: string]: unknown;
+
+export const computerUseCatalogue: { tools: ComputerUseToolContract[] };
+export function patchComputerUseContract(source: string): {
+  source: string;
+  changed: boolean;
 };
-export function patchComputerUseContract(source: string): { source: string; changed: boolean };

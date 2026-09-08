@@ -13,7 +13,13 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
         sessionKey: `${projectId}::${laneId}::${workspaceId ?? 'default'}`,
       })),
       activateSession: vi.fn(async () => ({})),
+      activateSessionGuarded: vi.fn(async (args, guard) =>
+        (await guard()) ? { sessionKey: args.sessionKey } : null,
+      ),
       backgroundSession: vi.fn(() => ({})),
+      getSession: vi.fn(() => null),
+      setPresentationLeases: vi.fn(),
+      releasePresentationLeases: vi.fn(),
       closeSession: vi.fn(async () => ({ success: true })),
     };
 
@@ -73,6 +79,7 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
 
     // Send command 1 (slow)
     const p1 = coordinator.applyPresentationCommand(mockWebContents, cmd1);
+    await vi.waitFor(() => expect(mockSessionManager.ensureSession).toHaveBeenCalledTimes(1));
 
     // Send command 2 (fast)
     const p2 = coordinator.applyPresentationCommand(mockWebContents, cmd2);
@@ -86,9 +93,10 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
 
     // Command 1 must report superseded and NOT activate p1!
     expect(res1.status).toBe('superseded');
-    expect(mockSessionManager.activateSession).toHaveBeenCalledTimes(1);
-    expect(mockSessionManager.activateSession).toHaveBeenCalledWith(
+    expect(mockSessionManager.activateSessionGuarded).toHaveBeenCalledTimes(1);
+    expect(mockSessionManager.activateSessionGuarded).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'p2' })
+      , expect.any(Function)
     );
   });
 
@@ -109,7 +117,41 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
     const res2 = await coordinator.applyPresentationCommand(mockWebContents, cmd);
     expect(res2.status).toBe('applied');
     // Ensure session was not called twice for the same idempotent command
-    expect(mockSessionManager.activateSession).toHaveBeenCalledTimes(1);
+    expect(mockSessionManager.activateSessionGuarded).toHaveBeenCalledTimes(1);
+  });
+
+  it('M02: identical retry joins the original pending result', async () => {
+    const reg = coordinator.registerClient(mockWebContents);
+    let resolveEnsure: (value: { sessionKey: string }) => void = () => {};
+    mockSessionManager.ensureSession = vi.fn(() => new Promise(resolve => { resolveEnsure = resolve; }));
+    const cmd: PresentationCommand = {
+      clientEpoch: reg.clientEpoch,
+      sequence: 1,
+      navigationId: 1,
+      target: { projectId: 'p1', workspaceId: 'w1', workspaceRevision: 1, laneId: 'collab' },
+      retained: [],
+    };
+    const first = coordinator.applyPresentationCommand(mockWebContents, cmd);
+    const retry = coordinator.applyPresentationCommand(mockWebContents, cmd);
+    await vi.waitFor(() => expect(mockSessionManager.ensureSession).toHaveBeenCalledTimes(1));
+    resolveEnsure({ sessionKey: 'p1::collab::w1' });
+    await expect(retry).resolves.toEqual(await first);
+    expect(mockSessionManager.activateSessionGuarded).toHaveBeenCalledTimes(1);
+  });
+
+  it('M05: rejects a stale workspace revision before ensuring a session', async () => {
+    (WorkbenchPresentationCoordinator as any).instance = null;
+    coordinator = WorkbenchPresentationCoordinator.getInstance(mockSessionManager, async target => target.workspaceRevision === 2);
+    const reg = coordinator.registerClient(mockWebContents);
+    const result = await coordinator.applyPresentationCommand(mockWebContents, {
+      clientEpoch: reg.clientEpoch,
+      sequence: 1,
+      navigationId: 1,
+      target: { projectId: 'p1', workspaceId: 'w1', workspaceRevision: 1, laneId: 'collab' },
+      retained: [],
+    });
+    expect(result.status).toBe('invalidated');
+    expect(mockSessionManager.ensureSession).not.toHaveBeenCalled();
   });
 
   it('M03: Same sequence with different payload or retired epoch is rejected without mutation', async () => {

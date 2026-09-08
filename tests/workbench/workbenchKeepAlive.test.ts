@@ -12,10 +12,12 @@ function session(
   overrides: Partial<WorkbenchKeepAliveSession> = {},
 ): WorkbenchKeepAliveSession {
   return {
+    instanceKey: `${scopeKey}:1`,
     scopeKey,
     projectId: scopeKey,
     activeLaneId: "collab",
     workspaceId: `${scopeKey}-ws`,
+    workspaceRevision: 1,
     projectRootPath: `/tmp/${scopeKey}`,
     gitRootPath: `/tmp/${scopeKey}`,
     projectName: scopeKey,
