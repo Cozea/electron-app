@@ -1,24 +1,25 @@
 import { localSettings } from '@/lib/settings/localSettings'
-import { settingsModules } from '@/lib/settings/settingsModules'
+import {
+  prewarmDestination,
+  warmCommonDestinations,
+} from '@/app/navigation/destinations'
 
-const warmed = new Set<string>()
-const destinations: Record<string, () => Promise<unknown>> = {
-  '/projects/store': () => import('@/features/devapps/pages/AppStorePage'),
-  '/projects/skills': () => import('@/features/projects/pages/AgentSkillsPage'),
-  '/projects/new': () => import('@/pages/NewProject'),
-  ...Object.fromEntries(Object.entries(settingsModules).map(([name, load]) => [`/projects/settings/${name}`, load])),
+export function resolveNavigationWarmDestination(pathname: string): string {
+  const pathOnly = pathname.split(/[?#]/, 1)[0] ?? pathname
+  if (
+    pathOnly === '/workbench' ||
+    /^\/projects\/(?:p\/)?[^/]+\/workbench(?:\/|$)/.test(pathOnly)
+  ) {
+    return 'workbench'
+  }
+  return pathname
 }
 
 export function warmNavigationDestination(pathname: string): void {
-  const load = destinations[pathname]
-  if (!load || warmed.has(pathname)) return
-  warmed.add(pathname)
-  void load().catch(() => warmed.delete(pathname))
+  void prewarmDestination(resolveNavigationWarmDestination(pathname))
 }
 
 export function warmCommonNavigation(): void {
-  for (const pathname of ['/projects/store', '/projects/skills', '/projects/settings/account', '/projects/settings/appearance']) {
-    warmNavigationDestination(pathname)
-  }
+  warmCommonDestinations()
   void localSettings.ensure().catch(() => undefined)
 }

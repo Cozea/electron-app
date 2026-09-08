@@ -1,0 +1,100 @@
+name: Navigation Runtime Validation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['apps/desktop/**', 'shared/**', 'tests/**', 'scripts/**', 'docs/perf/**', 'package.json', 'bun.lock', '.github/workflows/navigation-runtime-validation.yml']
+permissions:
+  contents: read
+concurrency:
+  group: navigation-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - name: Record candidate and materialize exact pinned T3 source
+        run: |
+          set -euo pipefail
+          mkdir -p build/navigation-validation .agent
+          git rev-parse HEAD | tee build/navigation-validation/candidate-sha.txt
+          pin="$(git ls-tree HEAD vendor/t3code | awk '{print $3}')"
+          test -n "$pin"
+          git init "$RUNNER_TEMP/navigation-t3-source"
+          git -C "$RUNNER_TEMP/navigation-t3-source" fetch --depth=1 https://github.com/Cozea/t3code.git "$pin"
+          test "$(git -C "$RUNNER_TEMP/navigation-t3-source" rev-parse FETCH_HEAD)" = "$pin"
+          mkdir -p vendor/t3code
+          git -C "$RUNNER_TEMP/navigation-t3-source" archive FETCH_HEAD | tar -x -C vendor/t3code
+          git ls-files '*AGENTS.md' | tee build/navigation-validation/agent-instructions.txt
+      - name: Install locked dependencies
+        id: dependencies
+        run: |
+          set -euo pipefail
+          {
+            bun install --frozen-lockfile --ignore-scripts
+            bun run postinstall
+            pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
+            bun x "$pm" --dir vendor/t3code install --frozen-lockfile --ignore-scripts
+            bun node_modules/electron/install.js
+          } > build/navigation-validation/dependencies.log 2>&1 || { tail -100 build/navigation-validation/dependencies.log; exit 1; }
+          tail -10 build/navigation-validation/dependencies.log
+      - name: Build actual pinned T3 bundle for integration tests
+        id: vendor_bundle
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          set -euo pipefail
+          pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
+          bun x "$pm" --dir vendor/t3code --filter t3 run build:bundle > build/navigation-validation/vendor-build.log 2>&1 || { tail -100 build/navigation-validation/vendor-build.log; exit 1; }
+          test -s vendor/t3code/apps/server/dist/bin.mjs
+          tail -15 build/navigation-validation/vendor-build.log
+      - name: Navigation unit tests
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          bunx vitest run tests/navigation tests/electron/navigation > build/navigation-validation/navigation-unit.log 2>&1 || { tail -120 build/navigation-validation/navigation-unit.log; exit 1; }
+          tail -20 build/navigation-validation/navigation-unit.log
+      - name: Typechecks
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          status=0
+          for command in typecheck typecheck:electron typecheck:tests; do
+            logfile="build/navigation-validation/${command//:/-}.log"
+            bun run "$command" > "$logfile" 2>&1 || status=1
+            tail -60 "$logfile"
+          done
+          exit "$status"
+      - name: Full unit suite
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          bun run test > build/navigation-validation/unit-suite.log 2>&1 || { tail -180 build/navigation-validation/unit-suite.log; exit 1; }
+          tail -20 build/navigation-validation/unit-suite.log
+      - name: Production compilation
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          bun run build > build/navigation-validation/build.log 2>&1 || { tail -100 build/navigation-validation/build.log; exit 1; }
+          tail -10 build/navigation-validation/build.log
+      - name: Build navigation test renderer
+        if: always() && steps.dependencies.outcome == 'success'
+        run: bun run build:navigation-test
+      - name: Real Electron navigation correctness
+        if: always() && steps.dependencies.outcome == 'success'
+        run: xvfb-run --auto-servernum bun run test:navigation:electron --evidence build/navigation-validation/electron-correctness.json
+      - name: Real Electron resident-warm performance
+        if: always() && steps.dependencies.outcome == 'success'
+        run: xvfb-run --auto-servernum bun run perf:navigation --samples 100 --evidence build/navigation-validation/electron-performance.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: navigation-runtime-validation-${{ github.run_id }}
+          path: build/navigation-validation/
+          if-no-files-found: error
+          retention-days: 7

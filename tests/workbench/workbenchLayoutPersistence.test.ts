@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { DesktopStatePersistenceWorkerCore } from '../../apps/desktop/electron/workers/desktopStatePersistenceWorkerCore'
+import type { DesktopStateNamespace, DesktopStateRecord } from '../../shared/desktopPersistenceTypes'
 
 class MemoryStorage {
   private readonly values = new Map<string, string>()
@@ -17,12 +22,41 @@ class MemoryStorage {
 }
 
 describe('workbench layout persistence', () => {
+  let root: string | undefined
+  let core: DesktopStatePersistenceWorkerCore | undefined
+  async function installDurableAPI(
+    localStorage: MemoryStorage,
+    waitBeforeLoad: Promise<void> = Promise.resolve(),
+  ): Promise<void> {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'cozea-layout-persistence-'))
+    core = new DesktopStatePersistenceWorkerCore({ userDataPath: root })
+    const backing = core
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage,
+      addEventListener: vi.fn(),
+      electronAPI: {
+        desktopPersistence: {
+          load: async ({ namespace, keys }: { namespace: DesktopStateNamespace; keys?: string[] }) => {
+            await waitBeforeLoad
+            return backing.load(namespace, keys)
+          },
+          commit: ({ records }: { records: DesktopStateRecord[] }) => backing.commit(records),
+          flush: () => backing.flush(),
+          migrateLegacy: ({ domain, rawPayload }: { domain: string; rawPayload: string }) => backing.migrateLegacyDomain(domain, rawPayload),
+        },
+      },
+    }
+  }
   beforeEach(() => {
     vi.resetModules()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     delete (globalThis as { window?: unknown }).window
+    if (core) await core.flush()
+    if (root) await fs.rm(root, { recursive: true, force: true })
+    core = undefined
+    root = undefined
   })
 
   it('migrates legacy workbench layouts into the dedicated layout store', async () => {
@@ -46,13 +80,13 @@ describe('workbench layout persistence', () => {
       }),
     )
 
-    ;(globalThis as { window?: unknown }).window = {
-      localStorage,
-      addEventListener: vi.fn(),
-    }
+    await installDurableAPI(localStorage)
 
     const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
-    persistence.ensureWorkbenchLayoutPersistenceReady()
+    expect(persistence.peekPersistedWorkbenchLayout('project-1::collab', 7)).toBeNull()
+    await persistence.ensureWorkbenchLayoutPersistenceReady()
+    // The original envelope is recoverable; migration does not erase it.
+    expect(localStorage.getItem('cozea:project-workbench')).not.toBeNull()
 
     expect(
       persistence.peekPersistedWorkbenchLayout('project-1::collab', 7),
@@ -77,6 +111,62 @@ describe('workbench layout persistence', () => {
     ).toBeNull()
   })
 
+  it('preserves the source binding revision when cloning a layout', async () => {
+    const localStorage = new MemoryStorage()
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage,
+      addEventListener: vi.fn(),
+    }
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
+    const layout = { grid: { root: 'root-grid' }, panels: {} } as never
+    persistence.writePersistedWorkbenchLayout('project-1::collab::source::v1', 3, layout, 7)
+
+    expect(
+      await persistence.clonePersistedWorkbenchLayout(
+        'project-1::collab::source::v1',
+        'project-1::collab::target::v1',
+        3,
+      ),
+    ).toBe(true)
+    expect(
+      persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 3, 7),
+    ).toEqual(layout)
+    expect(
+      persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 3, 8),
+    ).toBeNull()
+  })
+
+  it('hydrates a durable-only source before cloning it', async () => {
+    const localStorage = new MemoryStorage()
+    let releaseLoad: (() => void) | undefined
+    const loadBarrier = new Promise<void>((resolve) => { releaseLoad = resolve })
+    await installDurableAPI(localStorage, loadBarrier)
+    const layout = { grid: { root: 'durable-grid' }, panels: {} } as never
+    await core!.commit([{
+      schemaVersion: 1,
+      namespace: 'workbenchLayout',
+      key: 'project-1::collab::source::v1',
+      recordRevision: 1,
+      updatedAt: Date.now(),
+      bindingRevision: 4,
+      data: { layout, layoutResetKey: 2 },
+    }])
+    await core!.flush()
+
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
+    const clone = persistence.clonePersistedWorkbenchLayout(
+      'project-1::collab::source::v1',
+      'project-1::collab::target::v1',
+      2,
+    )
+    expect(persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 2, 4)).toBeNull()
+    releaseLoad?.()
+    await expect(clone).resolves.toBe(true)
+    expect(
+      persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 2, 4),
+    ).toEqual(layout)
+  })
+
   it('removes every workspace and lane layout for only the deleted project', async () => {
     const localStorage = new MemoryStorage()
     ;(globalThis as { window?: unknown }).window = {
@@ -90,7 +180,7 @@ describe('workbench layout persistence', () => {
     persistence.writePersistedWorkbenchLayout('project-1::feature::workspace-1', 1, layout)
     persistence.writePersistedWorkbenchLayout('project-2::collab', 1, layout)
 
-    persistence.clearPersistedWorkbenchLayoutsForProject('project-1')
+    await persistence.clearPersistedWorkbenchLayoutsForProject('project-1')
 
     expect(persistence.peekPersistedWorkbenchLayout('project-1::collab', 1)).toBeNull()
     expect(

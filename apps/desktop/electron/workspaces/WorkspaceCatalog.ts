@@ -1063,6 +1063,19 @@ export const WorkspaceCatalogLive = Layer.effect(
           }
         }
 
+        const repoIdentityResult = yield* Effect.result(
+          Effect.tryPromise({ try: () => readGitRepoIdentity(projectRootPath), catch: (e) => e }),
+        )
+        const repoIdentity: RepoIdentity | null =
+          repoIdentityResult._tag === "Success" ? ((repoIdentityResult.success as RepoIdentity | null) ?? null) : null
+
+        if (expectedRepo && repoIdentity && !repoIdentitiesMatch(repoIdentity, expectedRepo)) {
+          return {
+            success: false,
+            error: `Repo identity mismatch: expected ${expectedRepo.provider}, found ${repoIdentity.provider}`,
+          }
+        }
+
         // P1-05: Prevent marker overwrite on mismatches
         const existingMarkerResult = yield* Effect.result(
           Effect.tryPromise({ try: () => readWorkspaceMarker(projectRootPath), catch: (e) => e }),
@@ -1115,7 +1128,87 @@ export const WorkspaceCatalogLive = Layer.effect(
                 workspaceId = existingMarker.marker.workspaceId
               }
               yield* deleteMarkerAtProjectRoot(projectRootPath)
-            } else {
+            } else if (markerWorkspace) {
+              const oldPathIsMissing = yield* Effect.tryPromise({
+                try: async () => {
+                  try {
+                    await fs.access(markerWorkspace.projectRootPath)
+                    return false
+                  } catch (error) {
+                    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true
+                    throw error
+                  }
+                },
+                catch: (error) => error,
+              })
+
+              if (oldPathIsMissing) {
+                const ts = now()
+                let relocationStorageOwnership = markerWorkspace.storageOwnership
+                let relocationManagedRootId = markerWorkspace.managedRootId
+                if (relocationStorageOwnership === "managed") {
+                  const managedRootRows = relocationManagedRootId
+                    ? yield* sql`
+                        SELECT real_path FROM local_roots
+                        WHERE root_id = ${relocationManagedRootId}
+                        LIMIT 1
+                      `
+                    : []
+                  const managedRootRow = managedRootRows[0] as Record<string, unknown> | undefined
+                  const managedRootPath = normalizeOptionalString(
+                    managedRootRow?.real_path ?? managedRootRow?.realPath,
+                  )
+                  if (!managedRootPath || !isSameOrNestedDirectory(managedRootPath, projectRootPath)) {
+                    relocationStorageOwnership = "attached"
+                    relocationManagedRootId = null
+                  }
+                }
+                yield* sql.withTransaction(Effect.gen(function* () {
+                  yield* sql`
+                    UPDATE local_workspaces
+                    SET
+                      root_path = ${realPath},
+                      real_path = ${realPath},
+                      project_root_relative_path = ${projectRootRelativePath},
+                      project_root_path = ${projectRootPath},
+                      git_root_path = ${hasGit ? projectRootPath : null},
+                      git_dir_path = ${gitDirPath},
+                      git_origin_url = ${repoIdentity ? repoIdentity.url : null},
+                      git_repo_identity_json = ${repoIdentity ? JSON.stringify(repoIdentity) : null},
+                      filesystem_device = ${String(stat.dev)},
+                      filesystem_inode = ${String(stat.ino)},
+                      filesystem_birthtime_ms = ${Number.isFinite(stat.birthtimeMs) ? stat.birthtimeMs : null},
+                      filesystem_mtime_ms = ${Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : null},
+                      storage_ownership = ${relocationStorageOwnership},
+                      managed_root_id = ${relocationManagedRootId},
+                      verification_status = ${"untrusted"},
+                      verification_reason = ${null},
+                      workspace_revision = workspace_revision + 1,
+                      updated_at = ${ts}
+                    WHERE workspace_id = ${markerWorkspace.workspaceId}
+                  `
+                  yield* sql`
+                    UPDATE workspace_lanes
+                    SET
+                      project_root_relative_path = ${projectRootRelativePath},
+                      project_root_path = ${projectRootPath},
+                      git_root_path = ${hasGit ? projectRootPath : null},
+                      git_dir_path = ${gitDirPath},
+                      updated_at = ${ts}
+                    WHERE workspace_id = ${markerWorkspace.workspaceId}
+                  `
+                  if (setActive) {
+                    yield* doSetActive(markerWorkspace.workspaceId, projectId)
+                  }
+                }))
+                yield* emitEvent(markerWorkspace.workspaceId, projectId, "workspace.relinked", {
+                  previousProjectRootPath: markerWorkspace.projectRootPath,
+                  projectRootPath,
+                }).pipe(Effect.catch(() => Effect.void))
+                const rebound = yield* queryWorkspaceById(markerWorkspace.workspaceId)
+                return { success: true, workspace: rebound ? recordToDTO(rebound) : undefined }
+              }
+
               const conflictId = yield* recordConflict(
                 projectId,
                 null,
@@ -1142,21 +1235,6 @@ export const WorkspaceCatalogLive = Layer.effect(
               }
               return { success: false, conflicts: [conflict] }
             }
-          }
-        }
-
-        // Read repo identity (non-fatal)
-        const repoIdentityResult = yield* Effect.result(
-          Effect.tryPromise({ try: () => readGitRepoIdentity(projectRootPath), catch: (e) => e }),
-        )
-        const repoIdentity: RepoIdentity | null =
-          repoIdentityResult._tag === "Success" ? ((repoIdentityResult.success as RepoIdentity | null) ?? null) : null
-
-        // Repo mismatch check
-        if (expectedRepo && repoIdentity && !repoIdentitiesMatch(repoIdentity, expectedRepo)) {
-          return {
-            success: false,
-            error: `Repo identity mismatch: expected ${expectedRepo.provider}, found ${repoIdentity.provider}`,
           }
         }
 

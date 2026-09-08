@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 import { scheduleTask } from '@/lib/scheduler'
+import { desktopPersistenceClient } from '@/app/model/persistence/desktopPersistenceClient'
 
 interface QueryCacheState {
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -14,6 +14,7 @@ const DEFAULT_MAX_AGE = 5 * 60 * 1000 // 5 minutes
 const HARD_MAX_AGE = 24 * 60 * 60 * 1000 // 24 hours
 const MAX_CACHE_ENTRIES = 250
 const MIN_CACHE_REFRESH_INTERVAL_MS = 750
+let queryCacheClearGeneration = 0
 
 function pruneCache(
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -32,70 +33,107 @@ function pruneCache(
 }
 
 /**
- * Simple query cache for Convex data.
- * Shows cached data immediately while fresh data loads.
- *
- * Usage:
- * ```tsx
- * const cached = useQueryCache.getState().get<Project[]>('projects-list')
- * const fresh = useQuery(api.projects.list, args)
- * const data = fresh ?? cached
- *
- * useEffect(() => {
- *   if (fresh) useQueryCache.getState().set('projects-list', fresh)
- * }, [fresh])
- * ```
+ * Granular query cache for Convex data (Section 10.1, 10.3).
+ * In-memory store backed by desktopPersistenceClient dirty-entry queue;
+ * avoids whole-store serialization on every query update (F05).
  */
-export const useQueryCache = create<QueryCacheState>()(
-  persist(
-    (set, get) => ({
-      cache: {},
+export const useQueryCache = create<QueryCacheState>()((set, get) => ({
+  cache: {},
 
-      set: (key: string, data: unknown) => {
-        const existing = get().cache[key]
-        if (existing && existing.data === data) {
-          return
-        }
-
-        set((state) => ({
-          cache: pruneCache({
-            ...state.cache,
-            [key]: { data, timestamp: Date.now() },
-          }),
-        }))
-      },
-
-      get: <T>(key: string, maxAge = DEFAULT_MAX_AGE): T | undefined => {
-        const entry = get().cache[key]
-        if (!entry) return undefined
-
-        // Check if cache is still valid
-        const effectiveMaxAge = Math.min(maxAge, HARD_MAX_AGE)
-        if (Date.now() - entry.timestamp > effectiveMaxAge) {
-          return undefined
-        }
-
-        return entry.data as T
-      },
-
-      clear: (key?: string) => {
-        if (key) {
-          set((state) => {
-            const { [key]: _removed, ...rest } = state.cache
-            return { cache: rest }
-          })
-        } else {
-          set({ cache: {} })
-        }
-      },
-    }),
-    {
-      name: 'cozea-query-cache',
-      storage: createJSONStorage(() => localStorage), // Use localStorage to persist across restarts
-      partialize: (state) => ({ cache: state.cache }),
+  set: (key: string, data: unknown) => {
+    const existing = get().cache[key]
+    if (existing && existing.data === data) {
+      return
     }
+
+    const now = Date.now()
+    const previous = get().cache
+    const next = pruneCache({
+      ...previous,
+      [key]: { data, timestamp: now },
+    })
+    set({ cache: next })
+    for (const previousKey of Object.keys(previous)) {
+      if (!(previousKey in next)) desktopPersistenceClient.deleteRecord('queryCache', previousKey)
+    }
+
+    // Queue granular record for persistence rather than serializing all queries
+    desktopPersistenceClient.queueDirtyRecord('queryCache', key, { data, timestamp: now })
+  },
+
+  get: <T>(key: string, maxAge = DEFAULT_MAX_AGE): T | undefined => {
+    const entry = get().cache[key]
+    if (!entry) {
+      // Check in-memory desktop persistence mirror
+      const fromClient = desktopPersistenceClient.peekQuery(key) as { data: unknown; timestamp: number } | null
+      if (fromClient && Number.isFinite(fromClient.timestamp) && Date.now() - fromClient.timestamp <= Math.min(maxAge, HARD_MAX_AGE)) {
+        return fromClient.data as T
+      }
+      return undefined
+    }
+
+    const effectiveMaxAge = Math.min(maxAge, HARD_MAX_AGE)
+    if (Date.now() - entry.timestamp > effectiveMaxAge) {
+      return undefined
+    }
+
+    return entry.data as T
+  },
+
+  clear: (key?: string) => {
+    if (key) {
+      set((state) => {
+        const { [key]: _removed, ...rest } = state.cache
+        return { cache: rest }
+      })
+      desktopPersistenceClient.deleteRecord('queryCache', key)
+    } else {
+      queryCacheClearGeneration += 1
+      const keys = new Set([
+        ...Object.keys(get().cache),
+        ...desktopPersistenceClient.entries('queryCache').map(record => record.key),
+      ])
+      for (const cacheKey of keys) desktopPersistenceClient.deleteRecord('queryCache', cacheKey)
+      set({ cache: {} })
+    }
+  },
+}))
+
+let queryCacheHydration: Promise<void> | null = null
+
+export function initializeQueryCache(): Promise<void> {
+  if (queryCacheHydration) return queryCacheHydration
+  const attempt = (async () => {
+    const clearGenerationAtStart = queryCacheClearGeneration
+    await desktopPersistenceClient.hydrateNamespace('queryCache')
+    const current = useQueryCache.getState().cache
+    const clearedDuringHydration = queryCacheClearGeneration !== clearGenerationAtStart
+    const restored: Record<string, { data: unknown; timestamp: number }> = {}
+    for (const record of desktopPersistenceClient.entries('queryCache')) {
+      if (clearedDuringHydration && !(record.key in current)) {
+        desktopPersistenceClient.deleteRecord('queryCache', record.key)
+        continue
+      }
+      const entry = record.data as { data?: unknown; timestamp?: unknown } | null
+      if (!entry || typeof entry.timestamp !== 'number' || !Number.isFinite(entry.timestamp)) {
+        desktopPersistenceClient.deleteRecord('queryCache', record.key)
+        continue
+      }
+      restored[record.key] = { data: entry.data, timestamp: entry.timestamp }
+    }
+    const next = pruneCache({ ...restored, ...current })
+    for (const key of Object.keys(restored)) {
+      if (!(key in next)) desktopPersistenceClient.deleteRecord('queryCache', key)
+    }
+    useQueryCache.setState({ cache: next })
+  })()
+  queryCacheHydration = attempt
+  void attempt.then(
+    () => { if (queryCacheHydration === attempt) queryCacheHydration = null },
+    () => { if (queryCacheHydration === attempt) queryCacheHydration = null },
   )
-)
+  return attempt
+}
 
 export interface CachedQueryState<T> {
   data: T | undefined

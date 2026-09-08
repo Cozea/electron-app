@@ -1533,6 +1533,7 @@ export interface WorkbenchSessionSnapshot {
   projectId: string
   laneId: string
   workspaceId: string | null
+  workspaceRevision: number
   lifecycle: WorkbenchSessionLifecycle
   pinned: boolean
   openedAt: number
@@ -1948,46 +1949,46 @@ export interface ElectronAPI {
     }) => Promise<import('./devAppAuthoringTypes').DevAppAuthoringScaffoldResult>
   }
   workbenchSession: {
+    registerPresentationClient: () => Promise<import('./navigationRuntimeTypes').ClientPresentationRegistration>
+    setPresentation: (
+      command: import('./navigationRuntimeTypes').PresentationCommand
+    ) => Promise<import('./navigationRuntimeTypes').PresentationCommandResult>
     ensureSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<WorkbenchSessionSnapshot>
-    activateSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      workspaceId?: string | null
-    }) => Promise<WorkbenchSessionSnapshot>
-    backgroundSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      mode?: Exclude<WorkbenchSessionLifecycle, 'active' | 'closed'>
-    }) => Promise<WorkbenchSessionSnapshot | null>
     closeSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<{ success: boolean }>
     getSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<WorkbenchSessionSnapshot | null>
     listSessions: () => Promise<WorkbenchSessionSnapshot[]>
     setPinned: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       pinned: boolean
     }) => Promise<WorkbenchSessionSnapshot | null>
     getTerminalBinding: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       tileId: string
     }) => Promise<string | null>
     bindTerminal: (options: {
@@ -1997,11 +1998,14 @@ export interface ElectronAPI {
       tileId: string
       terminalId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<WorkbenchSessionSnapshot>
     releaseTerminal: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       tileId: string
       close?: boolean
     }) => Promise<{ success: boolean; terminalId?: string }>
@@ -2009,10 +2013,28 @@ export interface ElectronAPI {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       locator: import('./nativePreviewTypes').NativePreviewSessionLocator | null
       stopPrevious?: boolean
     }) => Promise<WorkbenchSessionSnapshot | null>
     onStateChanged: (callback: (session: WorkbenchSessionSnapshot) => void) => () => void
+  }
+  desktopPersistence: {
+    load: (options: {
+      namespace: import('./desktopPersistenceTypes').DesktopStateNamespace
+      keys?: string[]
+    }) => Promise<import('./desktopPersistenceTypes').PersistenceLoadResult>
+    commit: (options: {
+      records: import('./desktopPersistenceTypes').DesktopStateRecord[]
+    }) => Promise<import('./desktopPersistenceTypes').PersistenceCommitResult>
+    flush: (options?: {
+      targetRevision?: number
+    }) => Promise<import('./desktopPersistenceTypes').PersistenceFlushResult>
+    migrateLegacy: (options: {
+      domain: string
+      rawPayload: string
+    }) => Promise<import('./desktopPersistenceTypes').LegacyMigrationResult>
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>

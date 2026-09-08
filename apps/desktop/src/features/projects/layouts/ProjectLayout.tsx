@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useQuery } from "convex/react";
@@ -38,10 +38,6 @@ import {
 import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
 import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
-import {
-  ensureProjectSwitchStarted,
-  markProjectSwitchPhase,
-} from "@/lib/performance/projectSwitchMarks";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
@@ -52,6 +48,11 @@ const LazySettingsSidebar = lazy(() =>
 const LazyPresenceAvatarGroup = lazy(() =>
   import("@/components/presence/PresenceAvatarGroup").then((module) => ({
     default: module.PresenceAvatarGroup,
+  })),
+);
+const LazyProjectWorkbenchSurface = lazy(() =>
+  import("@/features/projects/pages/ProjectWorkbenchSurface").then((module) => ({
+    default: module.ProjectWorkbenchSurface,
   })),
 );
 
@@ -244,6 +245,12 @@ export function ProjectLayout({
   const runtimeWorkspaceId = activeWorkspaceId;
 
   const isWorkbenchView = pathname.endsWith("/workbench");
+  const [hasVisitedWorkbench, setHasVisitedWorkbench] = useState(isWorkbenchView);
+  useEffect(() => {
+    if (isWorkbenchView) {
+      setHasVisitedWorkbench(true);
+    }
+  }, [isWorkbenchView]);
   const isChangesView = pathname.endsWith("/changes");
   const isSettingsModeRoute =
     pathname.startsWith("/projects/settings/") ||
@@ -257,7 +264,6 @@ export function ProjectLayout({
     delayMs: 250,
     timeoutMs: 3_000,
   });
-  const projectSwitchKey = `${routeProjectId ?? routeSlug ?? "unknown"}:${runtimeWorkspaceId ?? "unbound"}`;
   const collabBranch = useMemo(
     () => resolveProjectSharedBranch(project),
     [project],
@@ -287,40 +293,6 @@ export function ProjectLayout({
 
     return `${routeProjectIdentity}:${buildBranchSessionLaneId(activeLane.branch, collabBranch)}`;
   }, [activeLane, collabBranch, routeProjectIdentity]);
-
-  useEffect(() => {
-    ensureProjectSwitchStarted({
-      projectId: routeProjectId ?? null,
-      projectSlug: routeSlug ?? null,
-      hasWorkspace: Boolean(runtimeWorkspaceId),
-    });
-    markProjectSwitchPhase("navigate", {
-      projectId: routeProjectId ?? null,
-      projectSlug: routeSlug ?? null,
-    });
-  }, [projectSwitchKey, routeProjectId, routeSlug, runtimeWorkspaceId]);
-
-  useEffect(() => {
-    if (!project?._id) return
-    markProjectSwitchPhase("project-query", {
-      projectId: String(project._id),
-    });
-  }, [project?._id]);
-
-  useEffect(() => {
-    if (workspaceResolution?.status !== "ready") return
-    markProjectSwitchPhase("workspace-resolve", {
-      workspaceId: runtimeWorkspaceId,
-    });
-  }, [runtimeWorkspaceId, workspaceResolution?.status]);
-
-  useEffect(() => {
-    if (!laneState) return
-    markProjectSwitchPhase("lane-settle", {
-      laneId: laneState.activeLaneId,
-    });
-  }, [laneState]);
-
 
   const isBuildsView = useLocation({
     select: (location) =>
@@ -497,7 +469,10 @@ export function ProjectLayout({
 
   const layoutContent = (
     <SidebarProvider>
-      <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
+      <div
+        className="h-screen w-screen bg-transparent flex flex-col overflow-hidden"
+        data-project-layout-shell="true"
+      >
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {/* Persistent shell: route-mode switches swap only the content. */}
@@ -532,6 +507,16 @@ export function ProjectLayout({
                     : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
+                {hasVisitedWorkbench ? (
+                  <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
+                    <LazyProjectWorkbenchSurface
+                      visible={
+                        isWorkbenchView &&
+                        (!featureFlags.localWorkspaceCatalog || workspaceResolution?.status === "ready")
+                      }
+                    />
+                  </Suspense>
+                ) : null}
                 {featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
                   <WorkspaceRepairScreen
                     result={workspaceResolution}
