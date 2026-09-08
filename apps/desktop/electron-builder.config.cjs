@@ -71,6 +71,8 @@ module.exports = {
   // Keep the JS SDK (`@anthropic-ai/claude-agent-sdk`) but drop the unused
   // per-platform native CLI binaries (~230 MB on darwin-arm64). Cozea always
   // passes pathToClaudeCodeExecutable (default: `claude` from PATH).
+  // A standalone Node worker entry, with no Electron or renderer imports.
+  asarUnpack: ['out/main/desktop-state-persistence.js'],
   files: [
     "out/**/*",
     "package.json",

@@ -1824,7 +1824,7 @@ registerDevAppAuthoringHandlers(ipcMain, {
   service: devAppAuthoringService,
 })
 
-registerDesktopPersistenceHandlers(ipcMain)
+registerDesktopPersistenceHandlers(ipcMain, { getMainWindow: () => win })
 
 registerWorkbenchSessionHandlers(ipcMain, {
   getMainWindow: () => win,

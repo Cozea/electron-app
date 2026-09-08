@@ -82,7 +82,12 @@ export function assertJsonData(value: unknown): void {
     }
     if (ancestors.has(current)) throw new Error('Desktop state contains a cycle.');
     ancestors.add(current);
-    for (const child of Array.isArray(current) ? current : Object.values(current)) visit(child, depth + 1);
+    if (Array.isArray(current)) {
+      for (const child of current) visit(child, depth + 1);
+    } else {
+      // Optional object fields have the same omission semantics as the old JSON store.
+      for (const child of Object.values(current)) if (child !== undefined) visit(child, depth + 1);
+    }
     ancestors.delete(current);
   }
   visit(value, 0);

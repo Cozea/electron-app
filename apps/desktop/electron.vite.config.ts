@@ -205,6 +205,23 @@ function sandboxedPreloadBundlesPlugin(): Plugin {
   }
 }
 
+function desktopStateWorkerBundlePlugin(): Plugin {
+  return {
+    name: 'cozea-desktop-state-worker',
+    async closeBundle() {
+      await viteBuild({
+        configFile: false, publicDir: false, logLevel: 'warn',
+        resolve: { alias: sharedAliases },
+        build: {
+          emptyOutDir: false, outDir: path.resolve(__dirname, 'out/main'), target: 'node22',
+          lib: { entry: path.resolve(__dirname, 'electron/workers/desktopStatePersistenceWorker.ts'), formats: ['cjs'], fileName: () => 'desktop-state-persistence.js' },
+          rollupOptions: { external: (id) => id.startsWith('node:'), output: { inlineDynamicImports: true } },
+        },
+      })
+    },
+  }
+}
+
 function normalizeModuleId(id: string): string {
   return id.split(path.sep).join('/')
 }
@@ -263,6 +280,7 @@ export default defineConfig({
       alias: [...mainBootAliases, ...sharedAliases],
     },
     plugins: [
+      desktopStateWorkerBundlePlugin(),
       {
         name: 'copy-oauth-callback-logo',
         closeBundle() {
@@ -292,6 +310,7 @@ export default defineConfig({
       lib: {
         entry: {
           index: 'electron/mainEntry.ts',
+          'desktop-state-persistence': 'electron/workers/desktopStatePersistenceWorker.ts',
           'workbench-runtime': 'electron/workbench-runtime/child.ts',
           'substrate-shadow-server': 'electron/substrate-shadow-server/child.ts',
         },
