@@ -1,0 +1,128 @@
+name: Navigation Runtime Validation
+
+on:
+  push:
+    branches: [perf/navigation-runtime-v2-repair]
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'shared/**'
+      - 'tests/navigation/**'
+      - 'tests/electron/navigation/**'
+      - 'scripts/perf/navigation/**'
+      - 'scripts/check-navigation-boundaries.mjs'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/navigation-runtime-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: navigation-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/perf/navigation-runtime-v2-repair'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      revision: ${{ steps.apply.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Apply explicitly staged repair changes
+        id: apply
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = refs/heads/perf/navigation-runtime-v2-repair
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          if test -f scripts/navigation-repair/apply.py; then
+            python3 scripts/navigation-repair/apply.py
+            rm scripts/navigation-repair/apply.py
+            git diff --check
+            git add -A
+            if ! git diff --cached --quiet; then
+              git -c user.name='Cozea Navigation Repair' -c user.email='navigation-repair@users.noreply.github.com' commit -m 'fix(navigation): apply tested-source repair changes'
+              git push origin HEAD:refs/heads/perf/navigation-runtime-v2-repair
+            fi
+          fi
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  validate:
+    needs: [prepare]
+    if: always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.revision || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - name: Record exact candidate
+        run: |
+          mkdir -p build/navigation-validation
+          git rev-parse HEAD | tee build/navigation-validation/candidate-sha.txt
+          node --version
+          bun --version
+      - name: Materialize exact pinned T3 source
+        run: |
+          pin="$(git ls-tree HEAD vendor/t3code | awk '{print $3}')"
+          test -n "$pin"
+          git init "$RUNNER_TEMP/navigation-t3-source"
+          git -C "$RUNNER_TEMP/navigation-t3-source" fetch --depth=1 https://github.com/Cozea/t3code.git "$pin"
+          test "$(git -C "$RUNNER_TEMP/navigation-t3-source" rev-parse FETCH_HEAD)" = "$pin"
+          mkdir -p vendor/t3code
+          git -C "$RUNNER_TEMP/navigation-t3-source" archive FETCH_HEAD | tar -x -C vendor/t3code
+      - name: Install locked dependencies
+        id: dependencies
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run postinstall
+      - name: Targeted navigation unit tests
+        if: steps.dependencies.outcome == 'success'
+        run: |
+          set -o pipefail
+          bunx vitest run tests/navigation tests/electron/navigation 2>&1 | tee build/navigation-validation/navigation-unit.log
+      - name: Renderer typecheck
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          set -o pipefail
+          bun run typecheck 2>&1 | tee build/navigation-validation/typecheck-renderer.log
+      - name: Electron typecheck
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          set -o pipefail
+          bun run typecheck:electron 2>&1 | tee build/navigation-validation/typecheck-electron.log
+      - name: Test typecheck
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          set -o pipefail
+          bun run typecheck:tests 2>&1 | tee build/navigation-validation/typecheck-tests.log
+      - name: Full unit suite
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          set -o pipefail
+          bun run test 2>&1 | tee build/navigation-validation/unit-suite.log
+      - name: Production compilation
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          set -o pipefail
+          bun run build 2>&1 | tee build/navigation-validation/build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: navigation-runtime-validation-${{ github.run_id }}
+          path: build/navigation-validation/
+          if-no-files-found: error
+          retention-days: 7
