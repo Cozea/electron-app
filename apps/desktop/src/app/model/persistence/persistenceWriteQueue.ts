@@ -55,7 +55,7 @@ export class PersistenceWriteQueue {
 
   queue(namespace: DesktopStateNamespace, key: string, data: unknown, bindingRevision?: number, deleted = false): void {
     if (this.stopped) throw new Error('The desktop persistence queue is stopped.');
-    if (namespace !== 'queryCache' && !this.options.mirror.isHydrated(namespace, key)) {
+    if (namespace !== 'queryCache' && namespace !== 'branchKnowledge' && !this.options.mirror.isHydrated(namespace, key)) {
       throw new Error(`Saved ${namespace} state is not hydrated; refusing to overwrite an unknown record.`);
     }
     const fullKey = desktopStateRecordKey(namespace, key);

@@ -51,6 +51,19 @@ export function decodeLegacyDesktopState(domain: LegacyDesktopDomain, rawPayload
         }
       }
     }
+  } else if (domain === 'cozea:project-branch-sessions:v1') {
+    const sessions = parsed.version === 2 && isPlainRecord(parsed.sessions) ? parsed.sessions
+      : parsed.version === 1 && isPlainRecord(parsed.projects) ? parsed.projects : null;
+    if (!sessions) throw new Error('Invalid legacy branch knowledge envelope.');
+    for (const entry of Object.values(sessions)) {
+      if (!isPlainRecord(entry)) { quarantinedCount++; continue; }
+      const workspaceId = entry.workspaceId ?? entry.projectPath;
+      if (!isPersistenceKey(workspaceId) || !isPersistenceKey(entry.projectId) || typeof entry.activeBranch !== 'string' || !entry.activeBranch.trim()) {
+        skippedCount++; continue;
+      }
+      const { projectPath: _legacyPath, ...data } = entry;
+      add('branchKnowledge', `${entry.projectId}::${workspaceId}`, { ...data, workspaceId });
+    }
   } else if (domain === 'cozea.lastWorkbenchRoute.v1') {
     if (!isPlainRecord(parsed.entriesByWorkspaceSelectionId)) throw new Error('Invalid last-workbench envelope.');
     for (const [identityKey, entry] of Object.entries(parsed.entriesByWorkspaceSelectionId)) {

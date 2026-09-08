@@ -2018,22 +2018,7 @@ export interface ElectronAPI {
     }) => Promise<WorkbenchSessionSnapshot | null>
     onStateChanged: (callback: (session: WorkbenchSessionSnapshot) => void) => () => void
   }
-  desktopPersistence: {
-    load: (options: {
-      namespace: import('./desktopPersistenceTypes').DesktopStateNamespace
-      keys?: string[]
-    }) => Promise<import('./desktopPersistenceTypes').PersistenceLoadResult>
-    commit: (options: {
-      records: import('./desktopPersistenceTypes').DesktopStateRecord[]
-    }) => Promise<import('./desktopPersistenceTypes').PersistenceCommitResult>
-    flush: (options?: {
-      targetRevision?: number
-    }) => Promise<import('./desktopPersistenceTypes').PersistenceFlushResult>
-    migrateLegacy: (options: {
-      domain: string
-      rawPayload: string
-    }) => Promise<import('./desktopPersistenceTypes').LegacyMigrationResult>
-  }
+  desktopPersistence: import('./desktopPersistenceTypes').DesktopPersistenceApi
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>
     probePort: (options: { port: number; timeoutMs?: number }) => Promise<PreviewProbePortResult>

@@ -5,6 +5,7 @@ const dependencies: Record<Exclude<DesktopStateNamespace, 'sessionRegistry'>, re
   workbenchModel: ['cozea:project-workbench-layouts', 'cozea:project-workbench'],
   queryCache: ['cozea-query-cache'],
   lastWorkbenchRoute: ['cozea.lastWorkbenchRoute.v1'],
+  branchKnowledge: ['cozea:project-branch-sessions:v1'],
 };
 const completed = new Set<LegacyDesktopDomain>();
 const pending = new Map<LegacyDesktopDomain, Promise<void>>();

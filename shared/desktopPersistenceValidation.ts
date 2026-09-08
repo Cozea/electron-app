@@ -121,6 +121,10 @@ export function validateDesktopStateData(record: DesktopStateRecord): void {
       if (!isPlainRecord(tile) || tile.id !== id || typeof tile.type !== 'string') throw new Error('Invalid workbench tile payload.');
     }
     if (data.order.some((id) => !Object.hasOwn(data.tiles as object, id))) throw new Error('Workbench order references a missing tile.');
+  } else if (record.namespace === 'branchKnowledge') {
+    if (!isPlainRecord(data) || !isPersistenceKey(data.projectId) || !isPersistenceKey(data.workspaceId) ||
+        typeof data.activeBranch !== 'string' || !data.activeBranch.trim() || typeof data.collabBranch !== 'string' ||
+        typeof data.updatedAt !== 'number' || !Number.isFinite(data.updatedAt)) throw new Error('Invalid branch knowledge payload.');
   } else if (record.namespace === 'lastWorkbenchRoute') {
     if (!isPlainRecord(data) || !isPersistenceKey(data.projectId) || !isPersistenceKey(data.laneId) ||
         !isPersistenceKey(data.workspaceSelectionId)) throw new Error('Invalid last workbench locator.');

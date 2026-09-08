@@ -19,7 +19,7 @@ export async function prefetchProjectWorkspaceResolution(input: {
     input.preferredWorkspaceId,
     input.projectSlug,
     null,
-    input.allowCandidateScan ?? false
+    false // Intent prefetch is bound-only; a foreground repair can request candidates.
   )
   return await resource.ensure('prefetch').catch(() => null)
 }

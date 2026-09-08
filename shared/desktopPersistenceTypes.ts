@@ -1,6 +1,6 @@
 /** Wire contracts for the single-writer desktop UI persistence service. */
 export const DESKTOP_STATE_NAMESPACES = [
-  'queryCache', 'workbenchModel', 'workbenchLayout', 'lastWorkbenchRoute', 'sessionRegistry',
+  'queryCache', 'workbenchModel', 'workbenchLayout', 'lastWorkbenchRoute', 'branchKnowledge', 'sessionRegistry',
 ] as const;
 export type DesktopStateNamespace = typeof DESKTOP_STATE_NAMESPACES[number];
 
@@ -9,6 +9,7 @@ export const LEGACY_DESKTOP_DOMAINS = [
   'cozea:project-workbench',
   'cozea-query-cache',
   'cozea.lastWorkbenchRoute.v1',
+  'cozea:project-branch-sessions:v1',
   'workbench-session-registry.json',
 ] as const;
 export type LegacyDesktopDomain = typeof LEGACY_DESKTOP_DOMAINS[number];

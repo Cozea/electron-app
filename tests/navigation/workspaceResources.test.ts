@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ResolveProjectWorkspaceResult, WorkspaceCatalogSnapshot } from '@shared/workspaceTypes';
+import type { ResolveProjectWorkspaceRequest, ResolveProjectWorkspaceResult, WorkspaceCatalogSnapshot } from '@shared/workspaceTypes';
 import { WorkspaceResourceManager, laneStatesEqual } from '../../apps/desktop/src/app/resources/workspaceResources';
 import { WorkspaceCatalogMirror } from '../../apps/desktop/src/app/resources/workspaceCatalogMirror';
 
@@ -23,7 +23,7 @@ function catalog(revision = 1): WorkspaceCatalogSnapshot {
 }
 function setup() {
   const dependencies = {
-    resolveProject: vi.fn(async () => ready() as ResolveProjectWorkspaceResult),
+    resolveProject: vi.fn(async (_request: ResolveProjectWorkspaceRequest) => ready() as ResolveProjectWorkspaceResult),
     gitStatus: vi.fn(async () => ({ success: true, isRepo: true, currentBranch: 'feature/a' })),
     ensureCatalog: vi.fn(async () => catalog()),
     hydrateBranch: vi.fn(async () => undefined),

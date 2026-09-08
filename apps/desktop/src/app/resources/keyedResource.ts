@@ -99,7 +99,10 @@ export class KeyedResource<T> implements ResourceHandle<T> {
       : { status: 'loading', generation };
     // Install the promise before notifying listeners or invoking the fetcher.
     // Synchronous subscribers cannot cause a second read through re-entry.
-    const request = Promise.resolve().then(() => this.options.fetcher({ signal: abort.signal, reason })).then((result) => {
+    const request = Promise.resolve().then(() => {
+      if (this.disposed || generation !== this.generation || abort.signal.aborted) throw new ResourceSupersededError();
+      return this.options.fetcher({ signal: abort.signal, reason });
+    }).then((result) => {
       if (this.disposed || generation !== this.generation) throw new ResourceSupersededError();
       const data = this.snapshot.status === 'ready' && this.options.equalityFn?.(this.snapshot.data, result)
         ? this.snapshot.data : result;
