@@ -52,6 +52,15 @@ export function useSharedWorkspaceResolution(
 
   const result = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
+  // Keep a foreground demand lease for the mounted project shell. Invalidation
+  // uses demand to decide whether it must immediately refresh the resource.
+  // Without this lease, a relink clears the cached workspace identity and the
+  // hook remains subscribed to an empty resource that nobody restarts.
+  useEffect(() => {
+    if (!resource) return;
+    return resource.acquireDemand('foreground');
+  }, [resource]);
+
   useEffect(() => {
     if (resource) {
       void resource.ensure('navigation').catch(() => {});

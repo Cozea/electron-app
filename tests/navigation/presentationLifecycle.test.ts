@@ -27,4 +27,9 @@ describe('production presentation lifecycle wiring', () => {
     expect(lifecycle).not.toContain('.activateSession(')
     expect(preload).not.toContain("ipcRenderer.invoke('workbenchSession:activateSession'")
   })
+
+  it('keeps mounted workspace resolution demanded so relinks refresh immediately', () => {
+    const hooks = read('apps/desktop/src/app/resources/useWorkspaceResources.ts')
+    expect(hooks).toContain("resource.acquireDemand('foreground')")
+  })
 })
