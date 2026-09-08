@@ -57,7 +57,9 @@ export class WorkspaceResourceManager {
   private schedulingEnabled = false;
   private generation = 0;
 
-  constructor(private readonly dependencies: WorkspaceResourceDependencies) {
+  private readonly dependencies: WorkspaceResourceDependencies;
+  constructor(dependencies: WorkspaceResourceDependencies) {
+    this.dependencies = dependencies;
     // Four independently typed pools have at most 32 idle entries apiece.
     const options = { maxIdle: 31, onDemandChange: () => this.updateScheduler() };
     this.resolution = new ResourcePool(options);
@@ -68,10 +70,12 @@ export class WorkspaceResourceManager {
 
   resolutionResource(input: ResolveProjectWorkspaceRequest, scan = false): KeyedResource<ResolveProjectWorkspaceResult> {
     const request: ResolveProjectWorkspaceRequest = { projectId: input.projectId.trim(), projectSlug: input.projectSlug ?? null,
-      preferredWorkspaceId: input.preferredWorkspaceId ?? null, expectedRepo: input.expectedRepo ?? null, allowCandidateScan: scan };
+      preferredWorkspaceId: input.preferredWorkspaceId ?? null, preferredLaneId: input.preferredLaneId ?? null,
+      expectedRepo: input.expectedRepo ?? null, allowCandidateScan: scan };
     const key = buildResourceKey(scan ? 'workspaceCandidates' : 'workspaceResolution', {
       projectId: request.projectId, preferredWorkspaceId: request.preferredWorkspaceId ?? null,
-      projectSlug: request.projectSlug ?? null, expectedRepo: repoKey(request.expectedRepo),
+      projectSlug: scan ? request.projectSlug ?? null : null, expectedRepo: repoKey(request.expectedRepo),
+      preferredLaneId: request.preferredLaneId ?? null,
     });
     const pool = scan ? this.candidates : this.resolution;
     return pool.get(key, { projectId: request.projectId, workspaceId: request.preferredWorkspaceId ?? undefined }, {
@@ -155,8 +159,10 @@ export class WorkspaceResourceManager {
 
   private learnBindings(snapshot: WorkspaceCatalogSnapshot): void {
     for (const entry of Object.values(snapshot.entries)) {
-      if (entry.status === 'ready') this.bindings.set(entry.workspace.workspaceId,
-        { projectId: entry.projectId, revision: entry.workspace.workspaceRevision });
+      const known = this.bindings.get(entry.workspace.workspaceId);
+      if (entry.status === 'ready' && (!known || known.revision <= entry.workspace.workspaceRevision)) {
+        this.bindings.set(entry.workspace.workspaceId, { projectId: entry.projectId, revision: entry.workspace.workspaceRevision });
+      }
     }
   }
   catalogChanged(previous: WorkspaceCatalogSnapshot | null, next: WorkspaceCatalogSnapshot): void {
@@ -187,7 +193,9 @@ export class WorkspaceResourceManager {
   }
   invalidateLanes(projectId: string, workspaceId?: string | null): void {
     this.lanes.invalidate((metadata) => metadata.projectId === projectId && (!workspaceId || metadata.workspaceId === workspaceId), 'branch changed');
-    this.git.invalidate((metadata) => !workspaceId || metadata.workspaceId === workspaceId, 'branch changed');
+    const affected = new Set(this.lanes.values().filter((entry) => entry.metadata.projectId === projectId &&
+      (!workspaceId || entry.metadata.workspaceId === workspaceId)).map((entry) => entry.metadata.workspaceId));
+    this.git.invalidate((metadata) => affected.has(metadata.workspaceId), 'branch changed');
     this.reconcile('refresh');
   }
   setVisible(visible: boolean): void {

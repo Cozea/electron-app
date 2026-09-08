@@ -39,7 +39,8 @@ export class PersistenceWriteQueue {
   private state: PersistenceQueueSnapshot = { pendingRecords: 0, flushing: false, error: null };
   private stopped = false;
 
-  constructor(private readonly options: QueueOptions) {}
+  private readonly options: QueueOptions;
+  constructor(options: QueueOptions) { this.options = options; }
   hasDirty(key: string): boolean { return this.dirty.has(key); }
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);

@@ -36,7 +36,9 @@ export class DesktopStatePersistenceWorkerCore {
   private serializeCount = 0;
   private writeCount = 0;
 
-  constructor(private readonly options: WorkerCoreOptions) {
+  private readonly options: WorkerCoreOptions;
+  constructor(options: WorkerCoreOptions) {
+    this.options = options;
     this.baseDir = path.join(options.userDataPath, 'desktop-state-v2');
     this.recordsDir = path.join(this.baseDir, 'records');
     this.backupsDir = path.join(this.baseDir, 'backups');
@@ -223,7 +225,7 @@ export class DesktopStatePersistenceWorkerCore {
   }
 
   private async pruneQueryCache(): Promise<void> {
-    const entries: Array<{ filePath: string; bytes: number; updatedAt: number }> = [];
+    const entries: Array<{ filePath: string; bytes: number; updatedAt: number; record: DesktopStateRecord }> = [];
     for (const file of await fs.readdir(this.recordsDir)) {
       if (!/^rec_[a-f0-9]{64}\.json$/.test(file)) continue;
       const filePath = path.join(this.recordsDir, file);
@@ -232,7 +234,9 @@ export class DesktopStatePersistenceWorkerCore {
         if (!raw) continue;
         const record: unknown = JSON.parse(raw);
         if (isDesktopStateRecord(record) && record.namespace === 'queryCache' && !record.deleted) {
-          entries.push({ filePath, bytes: Buffer.byteLength(raw, 'utf8'), updatedAt: record.updatedAt });
+          if (filePath === this.recordPath(record.namespace, record.key)) {
+            entries.push({ filePath, bytes: Buffer.byteLength(raw, 'utf8'), updatedAt: record.updatedAt, record });
+          }
         }
       } catch { /* A read diagnoses and preserves a corrupt record; pruning is not recovery. */ }
     }
@@ -241,7 +245,11 @@ export class DesktopStatePersistenceWorkerCore {
     for (let index = 0; index < entries.length; index++) {
       const entry = entries[index]!;
       bytes += entry.bytes;
-      if (index >= MAX_PERSISTED_QUERY_ENTRIES || bytes > QUERY_CACHE_PERSISTED_BUDGET) await fs.unlink(entry.filePath);
+      if (index >= MAX_PERSISTED_QUERY_ENTRIES || bytes > QUERY_CACHE_PERSISTED_BUDGET) {
+        // Keep the acknowledged version so a live renderer's next update does not
+        // conflict after cache eviction. This policy tombstone is not a user edit.
+        await this.replace({ ...entry.record, data: null, deleted: true });
+      }
     }
   }
 

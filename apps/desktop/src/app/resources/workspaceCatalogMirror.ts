@@ -12,7 +12,8 @@ export class WorkspaceCatalogMirror {
   private readonly listeners = new Set<() => void>();
   private readonly changes = new Set<(previous: WorkspaceCatalogSnapshot | null, next: WorkspaceCatalogSnapshot) => void>();
 
-  constructor(private readonly bridge: () => CatalogBridge | undefined) {}
+  private readonly bridge: () => CatalogBridge | undefined;
+  constructor(bridge: () => CatalogBridge | undefined) { this.bridge = bridge; }
   getSnapshot = (): WorkspaceCatalogSnapshot | null => this.snapshot;
   getEntry(projectId: string): WorkspaceCatalogSnapshotEntry | null { return this.snapshot?.entries[projectId] ?? null; }
   getWorkspace(workspaceId: string): WorkspaceCatalogSnapshotEntry | null {
@@ -65,5 +66,5 @@ export class WorkspaceCatalogMirror {
 
 export const workspaceCatalogMirror = new WorkspaceCatalogMirror(() => {
   const bridge = typeof window === 'undefined' ? undefined : window.electronAPI?.workspace;
-  return bridge?.getCatalogSnapshot && bridge.onCatalogSnapshotChanged ? bridge : undefined;
+  return bridge;
 });

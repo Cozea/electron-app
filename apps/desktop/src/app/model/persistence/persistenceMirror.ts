@@ -18,7 +18,8 @@ export class PersistenceMirror {
   private readonly versions = new Map<DesktopStateNamespace, number>();
   private readonly listeners = new Map<DesktopStateNamespace, Set<() => void>>();
 
-  constructor(private readonly options: MirrorOptions) {}
+  private readonly options: MirrorOptions;
+  constructor(options: MirrorOptions) { this.options = options; }
 
   subscribe(namespace: DesktopStateNamespace, listener: () => void): () => void {
     let listeners = this.listeners.get(namespace);

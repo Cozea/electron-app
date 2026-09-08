@@ -38,7 +38,7 @@ function fixture() {
       }
       return { status: 'committed', acknowledgements, committedRevisions: {}, operationWatermark, serviceEpoch: 'service' };
     }),
-    flush: vi.fn(async () => ({ status: 'flushed', flushedRevision: watermark, serviceEpoch: 'service' })),
+    flush: vi.fn(async () => ({ status: 'flushed' as const, flushedRevision: watermark, serviceEpoch: 'service' })),
     migrateLegacy: vi.fn(async ({ domain }) => ({ domain, importedCount: 0, quarantinedCount: 0, skippedCount: 0, backupPath: 'fixture', sourceChecksum: 'fixture' })),
   };
   const client = new DesktopPersistenceClient({ api: () => api, debounceMs: 60_000, maxDirtyAgeMs: 60_000 });

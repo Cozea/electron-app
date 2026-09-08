@@ -28,7 +28,7 @@ export function resolveDesktopPersistenceWorkerPath(mainDirectory: string, packa
 
 /** Main owns authorization and operation receipts; all record processing runs off-thread. */
 export class DesktopStatePersistenceService {
-  readonly serviceEpoch = randomUUID();
+  readonly serviceEpoch: string = randomUUID();
   private readonly userDataPath: string;
   private readonly workerPath: string;
   private readonly requestTimeoutMs: number;

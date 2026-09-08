@@ -3,7 +3,8 @@ import { KeyedResource, type KeyedResourceOptions } from './keyedResource';
 /** Bounds idle read-cache memory without evicting a mounted consumer or an in-flight request. */
 export class ResourcePool<T, M> {
   private readonly entries = new Map<string, { resource: KeyedResource<T>; metadata: M }>();
-  constructor(private readonly options: { maxIdle?: number; idleTtlMs?: number; onDemandChange?: () => void } = {}) {}
+  private readonly options: { maxIdle?: number; idleTtlMs?: number; onDemandChange?: () => void };
+  constructor(options: { maxIdle?: number; idleTtlMs?: number; onDemandChange?: () => void } = {}) { this.options = options; }
   get(key: string, metadata: M, options: Omit<KeyedResourceOptions<T>, 'key' | 'onDemandChange'>): KeyedResource<T> {
     const current = this.entries.get(key);
     if (current) return current.resource;

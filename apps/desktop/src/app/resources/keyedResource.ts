@@ -42,7 +42,8 @@ export class KeyedResource<T> implements ResourceHandle<T> {
   private readonly listeners = new Set<() => void>();
   private readonly demands: Record<DemandKind, number> = { foreground: 0, 'expanded-sidebar': 0, background: 0 };
 
-  constructor(private readonly options: KeyedResourceOptions<T>) { this.key = options.key; }
+  private readonly options: KeyedResourceOptions<T>;
+  constructor(options: KeyedResourceOptions<T>) { this.options = options; this.key = options.key; }
   read(): ResourceSnapshot<T> { return this.snapshot; }
   get lastTouchedAt(): number { return this.touchedAt; }
   get isIdle(): boolean { return !this.inflight && this.listeners.size === 0 && Object.values(this.demands).every((count) => count === 0); }
