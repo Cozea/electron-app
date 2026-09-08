@@ -135,9 +135,14 @@ export function patchT3ServerBundleProviderUpdates(source) {
   return { source: patchedSource, changed };
 }
 
-export function patchT3ComputerUseSource() {
-  const sourcePath = path.join(serverRoot, "src", "mcp", "toolkits", "computerUse.ts");
-  if (!fs.existsSync(sourcePath)) return false;
+export function patchT3ComputerUseSource({
+  checkOnly = false,
+  sourcePath = path.join(serverRoot, "src", "mcp", "toolkits", "computerUse.ts"),
+} = {}) {
+  if (!fs.existsSync(sourcePath)) {
+    if (checkOnly) fail("Computer Use source is missing; prepare the pinned T3 checkout first.");
+    return false;
+  }
   const originalCode = fs.readFileSync(sourcePath, "utf8");
   let code = patchComputerUseContract(originalCode).source;
 
@@ -154,6 +159,7 @@ export function patchT3ComputerUseSource() {
   );
 
   if (code === originalCode) return false;
+  if (checkOnly) fail("Computer Use source is stale; run preparation without --check to apply the v2 contract.");
   fs.writeFileSync(sourcePath, code);
   console.log("[prepare-t3-runtime] Patched Cozea Computer Use v2 contract and Effect compatibility.");
   return true;
@@ -542,7 +548,7 @@ export function main(argv = process.argv.slice(2)) {
 
   const expectedPin = expectedVendorPin();
   ensureVendorCheckout(expectedPin, options.checkOnly);
-  patchT3ComputerUseSource();
+  patchT3ComputerUseSource({ checkOnly: options.checkOnly });
   const sourceStamp = currentVendorSourceStamp(expectedPin);
   const pnpmVersion = readPnpmVersion();
   prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, options);

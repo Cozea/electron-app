@@ -29,8 +29,12 @@ final class AccessibilityRuntime: @unchecked Sendable {
                 windowBounds: window.bounds, focusedElement: focused,
                 textLimit: options.textLimit.map { SnapshotTextLimit(maxCount: $0) } ?? .max,
                 treeLimits: AccessibilityTreeLimits(maxNodeCount: options.maxNodes, maxDepth: options.maxDepth)))
-            renderer.render(window.element)
-            if let menu = AXAccess.element(window.application, kAXMenuBarAttribute) { renderer.render(menu) }
+            let readBudget = AXReadBudget(cancellation: control.cancellation, deadline: renderer.context.deadline)
+            readBudget.withScope {
+                renderer.render(window.element)
+                if let menu = AXAccess.element(window.application, kAXMenuBarAttribute) { renderer.render(menu) }
+            }
+            renderer.truncated = renderer.truncated || readBudget.exhausted
             try control.check()
             var lines = ["App=\(window.app.bundleID ?? window.app.name) (pid \(window.app.pid))", "Window: \(window.title)"] + renderer.lines
             if let focus = renderer.focusedSummary { lines.append("Focused element: \(focus)") }

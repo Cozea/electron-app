@@ -22,6 +22,19 @@ public struct ComputerResult: Codable, Sendable, Equatable {
         ])
         return Self(content: [.text((try? payload.jsonText()) ?? "Computer Use failed.")], isError: true)
     }
+    /// Keep only small text results for duplicate-request replay. Reject image
+    /// payloads before encoding; observations may contain megabytes of PNG/base64.
+    /// The size measurement is injectable to test the no-image-encoding invariant.
+    public func replayCacheEntry(
+        maximumBytes: Int = 8192,
+        measureEncodedBytes: (ComputerResult) throws -> Int = { try $0.jsonText().utf8.count }
+    ) -> ComputerResult? {
+        guard maximumBytes >= 0,
+              content.allSatisfy({ $0.type == "text" && $0.data == nil }),
+              let size = try? measureEncodedBytes(self), size >= 0, size <= maximumBytes else { return nil }
+        return self
+    }
+
     public func jsonText() throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]

@@ -90,7 +90,15 @@ public struct ToolRequest: Sendable, Equatable {
         case .click:
             let hasIndex = arguments["element_index"] != nil
             let hasPoint = arguments["x"] != nil || arguments["y"] != nil
-            guard hasIndex != hasPoint else { throw RuntimeFailure(.invalidArguments, "Use either element_index or x/y, not both.") }
+            guard hasIndex || hasPoint else {
+                throw RuntimeFailure(.invalidArguments, "Provide either element_index or both x and y.")
+            }
+            guard hasIndex != hasPoint else {
+                throw RuntimeFailure(.invalidArguments, "Use either element_index or x/y, not both.")
+            }
+            if hasPoint && (arguments["x"] == nil || arguments["y"] == nil) {
+                throw RuntimeFailure(.invalidArguments, "Coordinate targets require both x and y.")
+            }
             let target: ActionTarget = hasIndex ? .element(try a.index()) : .screenshot(try a.point(x: "x", y: "y"))
             guard let button = MouseButton(rawValue: try a.optionalString("mouse_button", max: 16) ?? "left"),
                   let strategy = ClickStrategy(rawValue: try a.optionalString("click_method", max: 32) ?? "auto") else {

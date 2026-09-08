@@ -1,5 +1,5 @@
 // Adapted from iFurySt/open-codex-computer-use, revision 41c5294cfe4735baca03f9c82b4de99d191a0b49.
-// AGPL-3.0-or-later; see native/computer-use-runtime/LICENSE.upstream.txt and docs/computer-use-v2.md.
+// MIT; see native/computer-use-runtime/LICENSE.upstream.txt and docs/computer-use-v2.md.
 
 @preconcurrency import AppKit
 @preconcurrency import ApplicationServices
@@ -535,43 +535,19 @@ private func valueTypeTrait(of element: AXUIElement) -> String? {
 }
 
 private func copyElement(_ element: AXUIElement, attribute: String) -> AXUIElement? {
-    var value: CFTypeRef?
-    let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
-    guard error == .success, let value else {
-        return nil
-    }
-
-    return (value as! AXUIElement)
+    AXAccess.element(element, attribute)
 }
 
 private func copyArray(_ element: AXUIElement, attribute: String) -> [AXUIElement]? {
-    var value: CFTypeRef?
-    let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
-    guard error == .success, let value else {
-        return nil
-    }
-
-    return value as? [AXUIElement]
+    AXAccess.value(element, attribute) as? [AXUIElement]
 }
 
 private func copyActions(_ element: AXUIElement) -> [String]? {
-    var actions: CFArray?
-    let error = AXUIElementCopyActionNames(element, &actions)
-    guard error == .success else {
-        return nil
-    }
-
-    return actions as? [String]
+    AXAccess.actions(element)
 }
 
 private func attributeValue(of element: AXUIElement, attribute: String) -> CFTypeRef? {
-    var value: CFTypeRef?
-    let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
-    guard error == .success else {
-        return nil
-    }
-
-    return value
+    AXAccess.value(element, attribute)
 }
 
 private func stringValue(of element: AXUIElement, attribute: String) -> String? {
@@ -614,9 +590,7 @@ private func pid(of element: AXUIElement) -> pid_t {
 }
 
 private func isSettable(of element: AXUIElement, attribute: String) -> Bool {
-    var settable = DarwinBoolean(false)
-    let error = AXUIElementIsAttributeSettable(element, attribute as CFString, &settable)
-    return error == .success && settable.boolValue
+    AXAccess.settable(element, attribute)
 }
 
 private func sanitizedValue(of element: AXUIElement, textLimit: SnapshotTextLimit = .defaults) -> String? {
@@ -905,15 +879,9 @@ private func displayIdentifierSegment(for element: AXUIElement, role: String, id
 }
 
 private func resolveLocalFrame(of element: AXUIElement, windowBounds: CGRect?) -> CGRect? {
-    var positionValue: CFTypeRef?
-    var sizeValue: CFTypeRef?
-    let positionError = AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue)
-    let sizeError = AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue)
     guard
-        positionError == .success,
-        sizeError == .success,
-        let positionValue,
-        let sizeValue
+        let positionValue = AXAccess.value(element, kAXPositionAttribute),
+        let sizeValue = AXAccess.value(element, kAXSizeAttribute)
     else {
         return nil
     }
