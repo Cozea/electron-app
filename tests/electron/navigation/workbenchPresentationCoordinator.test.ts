@@ -45,6 +45,47 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
     expect(reg.currentSnapshotRevision).toBeGreaterThan(0);
   });
 
+  it('accepts sequence zero because it is valid on the wire contract', async () => {
+    const reg = coordinator.registerClient(mockWebContents);
+    const result = await coordinator.applyPresentationCommand(mockWebContents, {
+      clientEpoch: reg.clientEpoch,
+      sequence: 0,
+      navigationId: 0,
+      target: { projectId: 'p1', workspaceId: 'w1', workspaceRevision: 1, laneId: 'collab' },
+      retained: [],
+    });
+    expect(result.status).toBe('applied');
+  });
+
+  it('tracks an activation that completes after a newer command so it can be backgrounded', async () => {
+    const reg = coordinator.registerClient(mockWebContents);
+    const newer: PresentationCommand = {
+      clientEpoch: reg.clientEpoch,
+      sequence: 2,
+      navigationId: 2,
+      target: null,
+      retained: [],
+    };
+    mockSessionManager.activateSessionGuarded = vi.fn(async (args, guard) => {
+      if (!(await guard())) return null;
+      await coordinator.applyPresentationCommand(mockWebContents, newer);
+      return { sessionKey: args.sessionKey };
+    });
+    const first = await coordinator.applyPresentationCommand(mockWebContents, {
+      clientEpoch: reg.clientEpoch,
+      sequence: 1,
+      navigationId: 1,
+      target: { projectId: 'p1', workspaceId: 'w1', workspaceRevision: 1, laneId: 'collab' },
+      retained: [],
+    });
+    expect(first.status).toBe('superseded');
+
+    await coordinator.applyPresentationCommand(mockWebContents, { ...newer, sequence: 3, navigationId: 3 });
+    expect(mockSessionManager.backgroundSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionKey: 'p1::collab::w1' }),
+    );
+  });
+
   it('M01: Sequence 2 overtakes sequence 1 while sequence 1 is delayed; sequence 1 is rejected as superseded', async () => {
     const reg = coordinator.registerClient(mockWebContents);
 

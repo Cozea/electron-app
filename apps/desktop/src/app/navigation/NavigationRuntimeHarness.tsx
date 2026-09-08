@@ -41,6 +41,7 @@ export function NavigationRuntimeHarness() {
       navigate: (next: Destination) => setDestination(next),
       snapshot: () => ({
         destination,
+        ordinarySurface: document.querySelector('[data-fixture-surface]')?.getAttribute('data-fixture-surface') ?? null,
         residents: Array.from(document.querySelectorAll('[data-fixture-session]')).map(node => node.getAttribute('data-fixture-session')),
         active: document.querySelector('[data-fixture-active="true"]')?.getAttribute('data-fixture-session') ?? null,
         mounts: Object.fromEntries(mounts),
@@ -54,10 +55,11 @@ export function NavigationRuntimeHarness() {
   return (
     <main data-testid="navigation-runtime-harness" className="h-screen w-screen bg-background">
       <div data-fixture-route={destination} />
+      {!current ? <div data-fixture-surface={destination}>{destination}</div> : null}
       <WorkbenchKeepAliveHost
         current={current}
         getWorkbenchSession={() => null}
-        fallback={<div data-fixture-surface={destination}>{destination}</div>}
+        fallback={null}
         renderSession={(session, active) => <InstrumentedWorkbench session={session} active={active} />}
       />
     </main>

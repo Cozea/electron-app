@@ -61,7 +61,7 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
             projectId,
             projectSlug: input.projectSlug ?? null,
             preferredWorkspaceId: input.workspaceId ?? null,
-            allowCandidateScan: false,
+            allowCandidateScan: true,
           }),
         )
       }

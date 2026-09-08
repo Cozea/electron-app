@@ -67,7 +67,7 @@ export class WorkbenchPresentationCoordinator {
 
     const state: ClientState = {
       clientEpoch,
-      highestSequence: 0,
+      highestSequence: -1,
       lastCommandPayload: null,
       activeTarget: null,
       activeSessionKey: null,
@@ -256,13 +256,18 @@ export class WorkbenchPresentationCoordinator {
       workspaceId: target.workspaceId,
     }, () => this.isCurrent(webContentsId, command) && this.targetValidator(target));
 
-    if (!activated || !this.isCurrent(webContentsId, command)) {
+    if (!activated) {
+      return { status: 'superseded', sequence: command.sequence };
+    }
+
+    client.activeSessionKey = sessionSnapshot.sessionKey;
+    client.activeTarget = target;
+
+    if (!this.isCurrent(webContentsId, command)) {
       return { status: 'superseded', sequence: command.sequence };
     }
 
     this.updateRetainedLeases(webContentsId, command);
-    client.activeSessionKey = sessionSnapshot.sessionKey;
-    client.activeTarget = target;
 
     return {
       status: 'applied',

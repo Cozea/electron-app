@@ -1,5 +1,5 @@
 import type { SerializedDockview } from 'dockview-react'
-import { buildWorkbenchScopeKey } from '@/lib/workbenchScopeKey'
+import { buildWorkbenchScopeKey, parseWorkbenchScopeKey } from '@/lib/workbenchScopeKey'
 import { desktopPersistenceClient } from '@/app/model/persistence/desktopPersistenceClient'
 
 interface LayoutData { layout: SerializedDockview | null; layoutResetKey: number }
@@ -28,9 +28,10 @@ export async function clearPersistedWorkbenchLayoutsForProject(projectId: string
   desktopPersistenceClient.clearLayoutsForProject(projectId.trim())
 }
 export function clonePersistedWorkbenchLayout(sourceScopeKey: string, targetScopeKey: string, resetKey: number): boolean {
-  const layout = peekPersistedWorkbenchLayout(sourceScopeKey, resetKey)
-  if (!layout) return false
-  writePersistedWorkbenchLayout(targetScopeKey, resetKey, layout)
+  const record = desktopPersistenceClient.entries('workbenchLayout').find(candidate => candidate.key === sourceScopeKey)
+  const data = record?.data as LayoutData | undefined
+  if (!record || !data || data.layoutResetKey !== resetKey || !isLayout(data.layout)) return false
+  writePersistedWorkbenchLayout(targetScopeKey, resetKey, data.layout, record.bindingRevision)
   return true
 }
 export function clonePersistedWorkbenchLayoutToWorkspace(projectId: string, laneId: string, sourceWorkspaceId: string | null | undefined, targetWorkspaceId: string, resetKey: number): boolean {
@@ -41,16 +42,13 @@ export async function clonePersistedWorkbenchLayoutsForWorkspace(args: { project
   if (!args.projectId || !target) return
   await ensureWorkbenchLayoutPersistenceReady()
   for (const record of desktopPersistenceClient.entries('workbenchLayout')) {
-    const parts = record.key.split('::')
-    if (parts.length < 4 || parts[0] !== args.projectId || !parts[parts.length - 1]?.startsWith('v')) continue
-    const laneId = parts[1]
-    const source = parts.slice(2, -1).join('::')
-    if (!laneId || !source || (args.fromWorkspace?.trim() && args.fromWorkspace.trim() !== source)) continue
+    const parsed = parseWorkbenchScopeKey(record.key, args.projectId)
+    if (!parsed || (args.fromWorkspace?.trim() && args.fromWorkspace.trim() !== parsed.workspaceId)) continue
     const data = record.data as LayoutData
     if (!data || !isLayout(data.layout) || !Number.isInteger(data.layoutResetKey)) continue
-    const targetKey = buildWorkbenchScopeKey(args.projectId, laneId, target)
+    const targetKey = buildWorkbenchScopeKey(args.projectId, parsed.laneId, target)
     if (desktopPersistenceClient.peek('workbenchLayout', targetKey) !== undefined) continue
-    writePersistedWorkbenchLayout(targetKey, data.layoutResetKey, data.layout)
+    writePersistedWorkbenchLayout(targetKey, data.layoutResetKey, data.layout, record.bindingRevision)
   }
 }
 export const clonePersistedWorkbenchLayoutsToWorkspace = clonePersistedWorkbenchLayoutsForWorkspace

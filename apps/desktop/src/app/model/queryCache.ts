@@ -46,12 +46,15 @@ export const useQueryCache = create<QueryCacheState>()((set, get) => ({
     }
 
     const now = Date.now()
-    set((state) => ({
-      cache: pruneCache({
-        ...state.cache,
-        [key]: { data, timestamp: now },
-      }),
-    }))
+    const previous = get().cache
+    const next = pruneCache({
+      ...previous,
+      [key]: { data, timestamp: now },
+    })
+    set({ cache: next })
+    for (const previousKey of Object.keys(previous)) {
+      if (!(previousKey in next)) desktopPersistenceClient.deleteRecord('queryCache', previousKey)
+    }
 
     // Queue granular record for persistence rather than serializing all queries
     desktopPersistenceClient.queueDirtyRecord('queryCache', key, { data, timestamp: now })
@@ -82,12 +85,47 @@ export const useQueryCache = create<QueryCacheState>()((set, get) => ({
         const { [key]: _removed, ...rest } = state.cache
         return { cache: rest }
       })
-      desktopPersistenceClient.queueDirtyRecord('queryCache', key, null)
+      desktopPersistenceClient.deleteRecord('queryCache', key)
     } else {
+      const keys = new Set([
+        ...Object.keys(get().cache),
+        ...desktopPersistenceClient.entries('queryCache').map(record => record.key),
+      ])
+      for (const cacheKey of keys) desktopPersistenceClient.deleteRecord('queryCache', cacheKey)
       set({ cache: {} })
     }
   },
 }))
+
+let queryCacheHydration: Promise<void> | null = null
+
+export function initializeQueryCache(): Promise<void> {
+  if (queryCacheHydration) return queryCacheHydration
+  const attempt = (async () => {
+    await desktopPersistenceClient.hydrateNamespace('queryCache')
+    const restored: Record<string, { data: unknown; timestamp: number }> = {}
+    for (const record of desktopPersistenceClient.entries('queryCache')) {
+      const entry = record.data as { data?: unknown; timestamp?: unknown } | null
+      if (!entry || typeof entry.timestamp !== 'number' || !Number.isFinite(entry.timestamp)) {
+        desktopPersistenceClient.deleteRecord('queryCache', record.key)
+        continue
+      }
+      restored[record.key] = { data: entry.data, timestamp: entry.timestamp }
+    }
+    const current = useQueryCache.getState().cache
+    const next = pruneCache({ ...restored, ...current })
+    for (const key of Object.keys(restored)) {
+      if (!(key in next)) desktopPersistenceClient.deleteRecord('queryCache', key)
+    }
+    useQueryCache.setState({ cache: next })
+  })()
+  queryCacheHydration = attempt
+  void attempt.then(
+    () => { if (queryCacheHydration === attempt) queryCacheHydration = null },
+    () => { if (queryCacheHydration === attempt) queryCacheHydration = null },
+  )
+  return attempt
+}
 
 export interface CachedQueryState<T> {
   data: T | undefined

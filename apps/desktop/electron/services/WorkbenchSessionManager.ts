@@ -237,6 +237,9 @@ export class WorkbenchSessionManager extends EventEmitter<{
   private readonly pendingStateEmits = new Map<string, WorkbenchSessionSnapshot>()
   private readonly presentationLeases = new Map<string, Set<string>>()
   private readonly registryHydration: Promise<void>
+  private registryHydrated = false
+  private readonly preHydrationMutatedSessionKeys = new Set<string>()
+  private readonly preHydrationDeletedSessionKeys = new Set<string>()
   private stateEmitFlushScheduled = false
 
   private logLifecycleTransition(
@@ -300,32 +303,69 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }, SESSION_POLICY_SWEEP_INTERVAL_MS)
     this.policySweepTimer.unref?.()
 
-    app.once('before-quit', () => {
+    app.once('before-quit', (event) => {
+      event.preventDefault()
       clearInterval(this.policySweepTimer)
-      void this.flushRegistry()
+      void this.registryHydration
+        .then(() => this.flushRegistry())
+        .catch((error) => {
+          console.warn('[WorkbenchSessionManager] Final registry flush failed:', error)
+        })
+        .finally(() => app.quit())
     })
   }
 
   private isRegistryDirty = false
   private registryFlushTimer: NodeJS.Timeout | null = null
+  private registryFlushInFlight: Promise<void> | null = null
+  private registryChangeSequence = 0
 
-  private persist(): void {
+  private persist(sessionKeys?: string | readonly string[]): void {
+    if (!this.registryHydrated) {
+      const keys = sessionKeys === undefined
+        ? Array.from(this.sessions.keys())
+        : (typeof sessionKeys === 'string' ? [sessionKeys] : sessionKeys)
+      for (const sessionKey of keys) {
+        if (this.sessions.has(sessionKey)) {
+          this.preHydrationMutatedSessionKeys.add(sessionKey)
+          this.preHydrationDeletedSessionKeys.delete(sessionKey)
+        } else {
+          this.preHydrationDeletedSessionKeys.add(sessionKey)
+          this.preHydrationMutatedSessionKeys.delete(sessionKey)
+        }
+      }
+    }
     this.markRegistryDirty()
   }
 
   public markRegistryDirty(): void {
     this.isRegistryDirty = true
-    if (this.registryFlushTimer) return
+    this.registryChangeSequence += 1
+    this.scheduleRegistryFlush()
+  }
+
+  private scheduleRegistryFlush(): void {
+    if (this.registryFlushTimer || this.registryFlushInFlight) return
     this.registryFlushTimer = setTimeout(() => {
-      void this.flushRegistry()
+      this.registryFlushTimer = null
+      void this.flushRegistry().catch((error) => {
+        console.warn('[WorkbenchSessionManager] Failed to persist session registry:', error)
+      })
     }, 500)
   }
 
   private replaceSessionsFromPersisted(state: PersistedWorkbenchSessionState): void {
-    this.sessions.clear()
+    const merged = new Map<string, LiveWorkbenchSessionRecord>()
+    for (const sessionKey of this.preHydrationMutatedSessionKeys) {
+      const live = this.sessions.get(sessionKey)
+      if (live) merged.set(sessionKey, live)
+    }
     for (const record of Object.values(state.sessions)) {
       const sessionKey = buildSessionKey(record.projectId, record.laneId, record.workspaceId)
-      this.sessions.set(sessionKey, {
+      if (this.preHydrationDeletedSessionKeys.has(sessionKey)) continue
+      const live = this.sessions.get(sessionKey)
+      if (this.preHydrationMutatedSessionKeys.has(sessionKey) && live) continue
+      merged.set(sessionKey, {
         ...record,
         workspaceId: normalizeWorkspaceId(record.workspaceId),
         lifecycle: record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
@@ -333,6 +373,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
         nativePreviewLocator: null,
       })
     }
+    this.sessions.clear()
+    for (const [sessionKey, record] of merged) this.sessions.set(sessionKey, record)
   }
 
   private async hydrateRegistry(legacy: PersistedWorkbenchSessionState): Promise<void> {
@@ -345,11 +387,15 @@ export class WorkbenchSessionManager extends EventEmitter<{
         repairPersistedSessionState(stored)
         this.replaceSessionsFromPersisted(stored)
       } else if (Object.keys(legacy.sessions).length > 0) {
-        this.isRegistryDirty = true
+        this.markRegistryDirty()
         await this.flushRegistry()
       }
     } catch (error) {
       console.warn('[WorkbenchSessionManager] Failed to hydrate session registry:', error)
+    } finally {
+      this.registryHydrated = true
+      this.preHydrationMutatedSessionKeys.clear()
+      this.preHydrationDeletedSessionKeys.clear()
     }
   }
 
@@ -358,8 +404,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
       clearTimeout(this.registryFlushTimer)
       this.registryFlushTimer = null
     }
+    if (this.registryFlushInFlight) {
+      await this.registryFlushInFlight
+      if (this.isRegistryDirty) await this.flushRegistry()
+      return
+    }
     if (!this.isRegistryDirty) return
-    this.isRegistryDirty = false
+    const targetSequence = this.registryChangeSequence
 
     const sessions = Object.fromEntries(
       Array.from(this.sessions.entries())
@@ -372,16 +423,25 @@ export class WorkbenchSessionManager extends EventEmitter<{
       sessions,
     } satisfies PersistedWorkbenchSessionState
 
-    await getDesktopStatePersistenceService().commit([{
+    const operation = getDesktopStatePersistenceService().commit([{
       schemaVersion: 1,
       namespace: 'sessionRegistry',
       key: 'registry',
       recordRevision: 1,
       updatedAt: Date.now(),
       data: state,
-    }], false).catch((err) => {
-      console.warn('[WorkbenchSessionManager] Failed to persist session registry:', err)
-    })
+    }], false).then(() => undefined)
+    this.registryFlushInFlight = operation
+    try {
+      await operation
+      if (this.registryChangeSequence === targetSequence) this.isRegistryDirty = false
+    } catch (error) {
+      this.isRegistryDirty = true
+      throw error
+    } finally {
+      if (this.registryFlushInFlight === operation) this.registryFlushInFlight = null
+      if (this.isRegistryDirty) this.scheduleRegistryFlush()
+    }
   }
 
   private createRecord(input: {
@@ -537,12 +597,19 @@ export class WorkbenchSessionManager extends EventEmitter<{
     )
     if (next.size === 0) this.presentationLeases.delete(ownerId)
     else this.presentationLeases.set(ownerId, next)
-    this.rebalanceBackgroundSessions(null)
+    this.rebalanceBackgroundSessions(this.findActiveSessionKey())
   }
 
   releasePresentationLeases(ownerId: string): void {
     if (!this.presentationLeases.delete(ownerId)) return
-    this.rebalanceBackgroundSessions(null)
+    this.rebalanceBackgroundSessions(this.findActiveSessionKey())
+  }
+
+  private findActiveSessionKey(): string | null {
+    for (const [sessionKey, record] of this.sessions) {
+      if (record.lifecycle === 'active') return sessionKey
+    }
+    return null
   }
 
   private isUnderMemoryPressure(): boolean {
@@ -809,7 +876,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     const sanitizedInput = this.sanitizeSessionInput(input)
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
     await this.reconcileSessionWorkspaceId(sessionKey, record, sanitizedInput.workspaceId)
-    this.persist()
+    this.persist(sessionKey)
     const snapshot = this.emitState(sessionKey, record)
     void this.runPolicySweep()
     return snapshot
@@ -845,7 +912,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     const snapshot = this.emitState(sessionKey, record)
     this.rebalanceBackgroundSessions(sessionKey)
-    this.persist()
+    this.persist(sessionKey)
     void this.runPolicySweep()
     return snapshot
   }
@@ -874,7 +941,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       void this.browserSurfaces.releaseSurfacesForWorkbenchSession(sessionKey)
     }
     this.rebalanceBackgroundSessions(null)
-    this.persist()
+    this.persist(sessionKey)
     void this.runPolicySweep()
     return snapshot
   }
@@ -947,7 +1014,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       await this.closeSessionByKey(sessionKey)
     }
 
-    this.persist()
+    this.persist(sessionKeys)
     return true
   }
 
@@ -985,7 +1052,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     record.pinned = input.pinned
     const snapshot = this.emitState(sessionKey, record)
     this.rebalanceBackgroundSessions(record.lifecycle === 'active' ? sessionKey : null)
-    this.persist()
+    this.persist(sessionKey)
     void this.runPolicySweep()
     return snapshot
   }
@@ -1016,7 +1083,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
         terminalExists: this.terminalService.hasTerminal(terminalId),
       })
       delete record.terminalBindings[input.tileId]
-      this.persist()
+      this.persist(sessionKey)
       this.emitState(sessionKey, record)
       return null
     }
@@ -1030,7 +1097,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
         actualWorkspaceId: snapshot.workspaceId,
       })
       delete record.terminalBindings[input.tileId]
-      this.persist()
+      this.persist(sessionKey)
       this.emitState(sessionKey, record)
       return null
     }
@@ -1061,7 +1128,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       return this.emitState(sessionKey, record)
     }
     record.terminalBindings[input.tileId] = input.terminalId
-    this.persist()
+    this.persist(sessionKey)
     return this.emitState(sessionKey, record)
   }
 
@@ -1090,7 +1157,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     if (input.close) {
       this.terminalService.killTerminal(terminalId)
     }
-    this.persist()
+    this.persist(sessionKey)
     this.emitState(sessionKey, record)
     return { success: true, terminalId }
   }
@@ -1124,7 +1191,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     }
 
     record.nativePreviewLocator = input.locator
-    this.persist()
+    this.persist(sessionKey)
     return this.emitState(sessionKey, record)
   }
 }

@@ -552,7 +552,7 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
         </div>
       </div>
 
-      {projectId ? (
+      {visible && projectId ? (
         <WorkbenchCommandPaletteHost
           projectId={projectId}
           laneId={activeLaneId}

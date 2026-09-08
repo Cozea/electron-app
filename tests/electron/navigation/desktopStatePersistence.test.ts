@@ -147,4 +147,15 @@ describe('DesktopStatePersistence (M10-M20, P03)', () => {
     const loadResult = await core.load('queryCache', ['huge-query']);
     expect(loadResult.records.length).toBe(0);
   });
+
+  it('rejects undefined record data before JSON encoding can omit it', async () => {
+    await expect(core.commit([{
+      schemaVersion: 1,
+      namespace: 'queryCache',
+      key: 'undefined-data',
+      recordRevision: 1,
+      updatedAt: Date.now(),
+      data: undefined,
+    }])).rejects.toThrow('Invalid record batch')
+  })
 });

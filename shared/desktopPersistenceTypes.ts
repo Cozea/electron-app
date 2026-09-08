@@ -41,5 +41,6 @@ export function validateDesktopStateRecord(value: unknown): value is DesktopStat
     !value.key.includes('\u0000') && Number.isSafeInteger(value.recordRevision) && Number(value.recordRevision) >= 1 &&
     typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt) &&
     (value.bindingRevision === undefined || (Number.isSafeInteger(value.bindingRevision) && Number(value.bindingRevision) >= 1)) &&
-    (value.deleted === undefined || typeof value.deleted === 'boolean') && Object.hasOwn(value, 'data')
+    (value.deleted === undefined || typeof value.deleted === 'boolean') &&
+    Object.hasOwn(value, 'data') && value.data !== undefined
 }

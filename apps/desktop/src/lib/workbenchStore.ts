@@ -60,6 +60,7 @@ export function flushWorkbenchStorageDurably(): Promise<void> {
   if (typeof window === "undefined" || !window.electronAPI?.desktopPersistence) {
     return Promise.resolve()
   }
+  flushPendingWorkbenchPersistence()
   return desktopPersistenceClient.flush()
 }
 
@@ -1494,6 +1495,34 @@ let workbenchHydration: Promise<void> | null = null
 let workbenchHydrated = false
 let workbenchEditSequence = 0
 const workbenchEdits = new Map<string, number>()
+const pendingWorkbenchPersistence = new Set<string>()
+let workbenchPersistenceScheduled = false
+
+function flushPendingWorkbenchPersistence(): void {
+  workbenchPersistenceScheduled = false
+  const state = useProjectWorkbenchStore.getState()
+  const keys = Array.from(pendingWorkbenchPersistence)
+  pendingWorkbenchPersistence.clear()
+  for (const pendingKey of keys) {
+    const model = state.workbenches[pendingKey]
+    if (!model) {
+      desktopPersistenceClient.deleteRecord('workbenchModel', pendingKey)
+      continue
+    }
+    const sanitized = sanitizeWorkbenchState(model)
+    // The independent layout namespace is the only layout persistence writer.
+    desktopPersistenceClient.queueDirtyRecord(
+      'workbenchModel', pendingKey, { ...sanitized, layout: null }, sanitized.workspaceRevision,
+    )
+  }
+}
+
+function scheduleWorkbenchPersistence(key: string): void {
+  pendingWorkbenchPersistence.add(key)
+  if (workbenchPersistenceScheduled) return
+  workbenchPersistenceScheduled = true
+  queueMicrotask(flushPendingWorkbenchPersistence)
+}
 
 // Immer preserves untouched record identities. Navigation-only changes therefore
 // perform zero persistence work; a tile edit queues exactly its model, never the
@@ -1505,15 +1534,7 @@ useProjectWorkbenchStore.subscribe((state, previous) => {
     const model = state.workbenches[key]
     if (model === previous.workbenches[key]) continue
     workbenchEdits.set(key, ++workbenchEditSequence)
-    if (!model) {
-      desktopPersistenceClient.deleteRecord('workbenchModel', key)
-    } else {
-      const sanitized = sanitizeWorkbenchState(model)
-      // The independent layout namespace is the only layout persistence writer.
-      desktopPersistenceClient.queueDirtyRecord(
-        'workbenchModel', key, { ...sanitized, layout: null }, sanitized.workspaceRevision,
-      )
-    }
+    scheduleWorkbenchPersistence(key)
   }
 })
 

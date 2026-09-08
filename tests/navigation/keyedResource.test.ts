@@ -82,18 +82,85 @@ describe('KeyedResource & Navigation Contracts (N01-N10, P02)', () => {
     // Start request 2 (generation 1)
     const p2 = resource.ensure('navigation');
 
-    // Resolve request 1 (old) last or first: it must be rejected as superseded
-    resolveFirst('stale result 1');
-    await expect(p1).rejects.toThrow(ResourceSupersededError);
-
-    // Resolve request 2 (new)
+    // Resolve the new request first, then the stale request last.
     resolveSecond('fresh result 2');
     const res2 = await p2;
     expect(res2).toBe('fresh result 2');
+    resolveFirst('stale result 1');
+    await expect(p1).rejects.toThrow(ResourceSupersededError);
     expect(resource.read().status).toBe('ready');
     if (resource.read().status === 'ready') {
       expect((resource.read() as any).data).toBe('fresh result 2');
     }
+  });
+
+  it('keeps demanded ready data visible and immediately refreshes after invalidation', async () => {
+    let value = 'first';
+    const resource = new KeyedResource({
+      key: 'test:demanded-invalidation',
+      fetcher: async () => value,
+    });
+    await resource.ensure('navigation');
+    const release = resource.acquireDemand('foreground');
+    value = 'second';
+    resource.invalidate('catalog changed');
+    const refreshing = resource.read();
+    expect(refreshing.status).toBe('ready');
+    if (refreshing.status === 'ready') {
+      expect(refreshing.data).toBe('first');
+      expect(refreshing.refreshing).toBe(true);
+    }
+    await vi.waitFor(() => {
+      const ready = resource.read();
+      expect(ready.status).toBe('ready');
+      if (ready.status === 'ready') expect(ready.data).toBe('second');
+    });
+    release();
+  });
+
+  it('restarts a demanded loading resource immediately after invalidation', async () => {
+    const resolvers: Array<(value: string) => void> = [];
+    const resource = new KeyedResource({
+      key: 'test:demanded-loading-invalidation',
+      fetcher: () => new Promise<string>(resolve => resolvers.push(resolve)),
+    });
+    const release = resource.acquireDemand('foreground');
+    const stale = resource.ensure('navigation');
+
+    resource.invalidate('workspace binding changed');
+    expect(resolvers).toHaveLength(2);
+    expect(resource.read().status).toBe('loading');
+
+    resolvers[1]?.('fresh');
+    await vi.waitFor(() => {
+      const snapshot = resource.read();
+      expect(snapshot.status).toBe('ready');
+      if (snapshot.status === 'ready') expect(snapshot.data).toBe('fresh');
+    });
+    resolvers[0]?.('stale');
+    await expect(stale).rejects.toThrow(ResourceSupersededError);
+    release();
+  });
+
+  it('supersedes an older navigation request for explicit refresh and shares that refresh', async () => {
+    const resolvers: Array<(value: string) => void> = [];
+    const reasons: string[] = [];
+    const resource = new KeyedResource({
+      key: 'test:explicit-refresh',
+      fetcher: reason => {
+        reasons.push(reason);
+        return new Promise<string>(resolve => resolvers.push(resolve));
+      },
+    });
+    const navigation = resource.ensure('navigation');
+    const refresh = resource.ensure('refresh');
+    const joinedRefresh = resource.ensure('refresh');
+    expect(reasons).toEqual(['navigation', 'refresh']);
+    resolvers[1]?.('fresh');
+    await expect(refresh).resolves.toBe('fresh');
+    await expect(joinedRefresh).resolves.toBe('fresh');
+    resolvers[0]?.('stale');
+    await expect(navigation).rejects.toThrow(ResourceSupersededError);
   });
 
   it('N04: Cached ready entry, background refresh fails -> cached display survives, error is visible as refresh state', async () => {

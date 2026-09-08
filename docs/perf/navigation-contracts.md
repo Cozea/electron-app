@@ -64,6 +64,7 @@ export interface PersistenceCommitRequest {
 export interface PersistenceCommitResult {
   status: 'committed' | 'error';
   committedRevisions: Record<string, number>;
+  watermark?: number;
   errorMessage?: string;
 }
 

@@ -177,6 +177,7 @@ export function useWorkbenchDockviewRuntime(
   const keyboardNavigationCleanupRef = useRef<(() => void) | null>(null);
   const layoutResetKeyRef = useRef(input.projectWorkbench?.layoutResetKey ?? 0);
   const workbenchScopeKeyRef = useRef(input.workbenchScopeKey);
+  const workspaceRevisionRef = useRef(input.workspaceRevision);
   const isActiveRef = useRef(input.isActive);
   const wasActiveRef = useRef(input.isActive);
   const captureAndPersistLayoutRef = useRef<() => void>(() => {});
@@ -240,7 +241,7 @@ export function useWorkbenchDockviewRuntime(
       scopeKey,
       layoutResetKeyRef.current,
       api.toJSON() as SerializedDockview,
-      input.workspaceRevision,
+      workspaceRevisionRef.current,
     );
   };
 
@@ -326,6 +327,7 @@ export function useWorkbenchDockviewRuntime(
     // describes the one on screen at *this* moment.
     const capturedScopeKey = workbenchScopeKeyRef.current;
     const capturedLayoutResetKey = layoutResetKeyRef.current;
+    const capturedBindingRevision = workspaceRevisionRef.current;
     if (!capturedScopeKey) return;
 
     if (layoutSaveFrameRef.current !== null) {
@@ -349,7 +351,7 @@ export function useWorkbenchDockviewRuntime(
       layoutSnapshotDebouncerRef.current?.maybeExecute({
         scopeKey: capturedScopeKey,
         layoutResetKey: capturedLayoutResetKey,
-        bindingRevision: input.workspaceRevision,
+        bindingRevision: capturedBindingRevision,
         layout: api.toJSON() as SerializedDockview,
       });
     });
@@ -358,8 +360,14 @@ export function useWorkbenchDockviewRuntime(
   useEffect(() => {
     layoutResetKeyRef.current = input.projectWorkbench?.layoutResetKey ?? 0;
     workbenchScopeKeyRef.current = input.workbenchScopeKey;
+    workspaceRevisionRef.current = input.workspaceRevision;
     isActiveRef.current = input.isActive;
-  }, [input.isActive, input.projectWorkbench?.layoutResetKey, input.workbenchScopeKey]);
+  }, [
+    input.isActive,
+    input.projectWorkbench?.layoutResetKey,
+    input.workbenchScopeKey,
+    input.workspaceRevision,
+  ]);
 
   useLayoutEffect(() => {
     const wasActive = wasActiveRef.current;

@@ -10,6 +10,12 @@ import {
   getWorkspaceResolutionResource,
   getProjectLaneResource,
 } from './workspaceResources';
+import type { ResourceSnapshot } from './keyedResource';
+
+const EMPTY_LANE_SNAPSHOT: ResourceSnapshot<ProjectLaneState | null> = {
+  status: 'empty',
+  generation: 0,
+};
 
 export function useSharedWorkspaceResolution(
   projectId: string | null | undefined,
@@ -95,13 +101,11 @@ export function useSharedProjectLaneState(
   );
 
   const getSnapshot = useCallback(() => {
-    if (!resource) return null;
-    const snap = resource.read();
-    if (snap.status === 'ready') return snap.data;
-    return null;
+    return resource?.read() ?? EMPTY_LANE_SNAPSHOT;
   }, [resource]);
 
-  const laneState = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const resourceSnapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const laneState = resourceSnapshot.status === 'ready' ? resourceSnapshot.data : null;
 
   useEffect(() => {
     if (resource && isDemanded) {
@@ -125,7 +129,9 @@ export function useSharedProjectLaneState(
     [laneState]
   );
 
-  const isLoading = resource ? resource.read().status === 'loading' : false;
+  const isLoading =
+    resourceSnapshot.status === 'loading' ||
+    (resourceSnapshot.status === 'ready' && resourceSnapshot.refreshing);
 
   return {
     laneState,

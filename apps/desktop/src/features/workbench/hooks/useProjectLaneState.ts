@@ -34,11 +34,11 @@ export async function prefetchProjectLaneState(input: {
 
 export function clearCachedProjectLaneState(
   projectId: string | null | undefined,
-  _workspaceId?: string | null,
+  workspaceId?: string | null,
 ): void {
   const trimmedProjectId = projectId?.trim()
   if (!trimmedProjectId) return
-  invalidateProjectLaneState(trimmedProjectId)
+  invalidateProjectLaneState(trimmedProjectId, workspaceId)
 }
 
 export function useProjectLaneState({

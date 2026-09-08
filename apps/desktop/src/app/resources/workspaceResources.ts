@@ -7,10 +7,10 @@
  * - Shared reconciliation scheduler: one interval per active demanded resource, NOT per component (F04, N07)
  * - Window focus/visibility pauses/resumes polling (N08)
  * - Strict non-mutating prefetch (Section 6.4, N15)
- * - Bounded LRU cache of up to 128 idle resource entries (Section 6.5)
+ * - Bounded LRU caches of up to 128 entries per resource type (Section 6.5)
  */
 
-import { KeyedResource } from './keyedResource';
+import { KeyedResource, type ResourceEnsureReason } from './keyedResource';
 import { buildResourceKey } from '@shared/navigationRuntimeTypes';
 import type {
   ResolveProjectWorkspaceRequest,
@@ -26,6 +26,43 @@ import {
 } from '@/features/source-control/model/projectBranchSessionStore';
 import { publishGitRemoteStatus } from '@/features/source-control/model/gitRemoteStatusCache';
 import { normalizeWorkspaceProjectPath } from '@/lib/workspaceIdentity';
+
+const MAX_RESOURCE_ENTRIES = 128;
+
+function readResourceParts(key: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(key) as unknown;
+    if (!Array.isArray(parsed) || !Array.isArray(parsed[1])) return null;
+    return Object.fromEntries(
+      parsed[1].filter(
+        (entry): entry is [string, unknown] =>
+          Array.isArray(entry) && entry.length === 2 && typeof entry[0] === 'string',
+      ),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getCachedResource<T>(
+  resources: Map<string, KeyedResource<T>>,
+  key: string,
+  create: () => KeyedResource<T>,
+): KeyedResource<T> {
+  const existing = resources.get(key);
+  if (existing) {
+    resources.delete(key);
+    resources.set(key, existing);
+    return existing;
+  }
+  const resource = create();
+  resources.set(key, resource);
+  for (const [candidateKey, candidate] of resources) {
+    if (resources.size <= MAX_RESOURCE_ENTRIES) break;
+    if (candidate.getTotalDemand() === 0) resources.delete(candidateKey);
+  }
+  return resource;
+}
 
 // 1. Workspace Resolution Resources
 const resolutionResources = new Map<string, KeyedResource<ResolveProjectWorkspaceResult>>();
@@ -45,9 +82,8 @@ export function getWorkspaceResolutionResource(
     allowCandidateScan,
   });
 
-  let resource = resolutionResources.get(key);
-  if (!resource) {
-    resource = new KeyedResource<ResolveProjectWorkspaceResult>({
+  return getCachedResource(resolutionResources, key, () =>
+    new KeyedResource<ResolveProjectWorkspaceResult>({
       key,
       ttlMs: 300_000, // 5 minutes cache
       fetcher: async () => {
@@ -65,15 +101,13 @@ export function getWorkspaceResolutionResource(
         return await workspaceApi.resolveProject(req);
       },
       equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b),
-    });
-    resolutionResources.set(key, resource);
-  }
-  return resource;
+    })
+  );
 }
 
 export function invalidateProjectWorkspaceResolution(projectId: string): void {
   for (const [key, res] of resolutionResources.entries()) {
-    if (key.includes(projectId)) {
+    if (readResourceParts(key)?.projectId === projectId) {
       res.invalidate('explicit invalidation');
     }
   }
@@ -92,12 +126,11 @@ const gitStatusResources = new Map<string, KeyedResource<GitStatusData>>();
 
 export function getGitStatusResource(workspaceId: string): KeyedResource<GitStatusData> {
   const key = buildResourceKey('gitStatus', { workspaceId });
-  let resource = gitStatusResources.get(key);
-  if (!resource) {
-    resource = new KeyedResource<GitStatusData>({
+  return getCachedResource(gitStatusResources, key, () =>
+    new KeyedResource<GitStatusData>({
       key,
       ttlMs: 5_000,
-      fetcher: async () => {
+      fetcher: async (reason) => {
         const syncApi = typeof window === 'undefined' ? undefined : window.electronAPI?.workspaceSync;
         if (!syncApi) {
           return { success: false, error: 'Sync API unavailable' };
@@ -106,7 +139,7 @@ export function getGitStatusResource(workspaceId: string): KeyedResource<GitStat
           success: false,
           error: e instanceof Error ? e.message : String(e),
         }));
-        if (res && res.success) {
+        if (res && res.success && reason !== 'prefetch') {
           publishGitRemoteStatus(workspaceId, {
             ahead: 'ahead' in res ? (res.ahead ?? 0) : 0,
             behind: 'behind' in res ? (res.behind ?? 0) : 0,
@@ -116,10 +149,8 @@ export function getGitStatusResource(workspaceId: string): KeyedResource<GitStat
         return res;
       },
       equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b),
-    });
-    gitStatusResources.set(key, resource);
-  }
-  return resource;
+    })
+  );
 }
 
 // 3. Project Lane State Resources
@@ -143,17 +174,16 @@ export function getProjectLaneResource(
     collabBranch: normalizedCollabBranch,
   });
 
-  let resource = laneResources.get(key);
-  if (!resource) {
-    resource = new KeyedResource<ProjectLaneState | null>({
+  return getCachedResource(laneResources, key, () =>
+    new KeyedResource<ProjectLaneState | null>({
       key,
       ttlMs: 5_000,
-      fetcher: async () => {
+      fetcher: async (reason: ResourceEnsureReason) => {
         const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId);
         if (!normalizedWorkspaceId) return null;
         let activeBranch: string;
 
-        const gitRes = await getGitStatusResource(normalizedWorkspaceId).ensure('refresh');
+        const gitRes = await getGitStatusResource(normalizedWorkspaceId).ensure(reason);
         const resolution = resolveLaneBranchKnowledge({
           statusResult: gitRes,
           storedBranch: storedSession?.activeBranch ?? null,
@@ -161,7 +191,7 @@ export function getProjectLaneResource(
         });
         if (resolution.kind !== 'resolved') return null;
         activeBranch = resolution.branch;
-        if (resolution.remember) {
+        if (resolution.remember && reason !== 'prefetch') {
           rememberProjectBranchSession({
             projectId,
             branch: resolution.branch,
@@ -182,15 +212,20 @@ export function getProjectLaneResource(
         if (!a || !b) return false;
         return JSON.stringify(a) === JSON.stringify(b);
       },
-    });
-    laneResources.set(key, resource);
-  }
-  return resource;
+    })
+  );
 }
 
-export function invalidateProjectLaneState(projectId: string): void {
+export function invalidateProjectLaneState(projectId: string, workspaceId?: string | null): void {
+  const normalizedWorkspaceId = workspaceId === undefined
+    ? undefined
+    : (normalizeWorkspaceProjectPath(workspaceId) ?? 'unbound');
   for (const [key, res] of laneResources.entries()) {
-    if (key.includes(projectId)) {
+    const parts = readResourceParts(key);
+    if (
+      parts?.projectId === projectId &&
+      (normalizedWorkspaceId === undefined || parts.workspaceId === normalizedWorkspaceId)
+    ) {
       res.invalidate('explicit invalidation');
     }
   }
@@ -236,5 +271,6 @@ export function stopReconciliationScheduler(): void {
   }
 }
 
-// Start shared timer automatically
-startReconciliationScheduler();
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  startReconciliationScheduler();
+}

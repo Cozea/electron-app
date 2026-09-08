@@ -34,7 +34,7 @@ const RETAINED_FILES = [
 
 const FORBIDDEN_ROUTER_PATTERNS = [
   {
-    pattern: /import\s+{[^}]*\b(useParams|useLocation|useSearchParams)\b[^}]*}\s+from\s+['"]@\/lib\/router['"]/,
+    pattern: /import\s+{[^}]*\b(useParams|useLocation|useSearchParams)\b[^}]*}\s+from\s+['"](?:@\/lib\/router|@tanstack\/react-router)['"]/,
     message: 'Retained presentation components must not consume ambient router hooks (Invariant I04, Section 7.3).',
   },
   {

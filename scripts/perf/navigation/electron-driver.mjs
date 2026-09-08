@@ -98,7 +98,8 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
     const first = await navigate(cdp, 'a')
     const a1 = findIdentity(first, 'a', 1)
     assert(a1, 'Workbench A did not mount')
-    await navigate(cdp, 'store')
+    const store = await navigate(cdp, 'store')
+    assert(store.destination === 'store' && store.ordinarySurface === 'store', 'Store route was not actually displayed')
     const returned = await navigate(cdp, 'a')
     assert(returned.mounts[a1] === 1 && !returned.unmounts[a1], 'A was recreated after Store navigation')
 

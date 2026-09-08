@@ -5,7 +5,7 @@ import {
 } from '@/app/navigation/destinations'
 
 export function warmNavigationDestination(pathname: string): void {
-  void prewarmDestination(pathname)
+  void prewarmDestination(pathname.startsWith('/workbench') ? 'workbench' : pathname)
 }
 
 export function warmCommonNavigation(): void {

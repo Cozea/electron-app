@@ -100,6 +100,9 @@ async function startRenderer(): Promise<void> {
   const bootstrapEndMark = markCozeaPerformance('renderer:desktop-bootstrap-ready')
   measureCozeaPerformance('renderer:desktop-bootstrap', bootstrapStartMark, bootstrapEndMark)
   applyDesktopBootstrapRoute(bootstrap)
+  void import('./app/model/queryCache')
+    .then(({ initializeQueryCache }) => initializeQueryCache())
+    .catch((error) => console.warn('[QueryCache] Failed to restore durable records', error))
   // Restore local tile models before any interactive route can create an
   // empty workbench over durable state. A failed read blocks renderer boot.
   if (window.electronAPI?.windowContext !== 'settings') {

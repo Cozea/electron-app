@@ -10,9 +10,9 @@
 
 ## 1. Environment & Preflight
 
-- **Commit:** `073df5230d2400684434ea6b7db27b0aafc72ddc` (HEAD of `main`)
-- **Working Tree:** Isolated on branch `perf/navigation-runtime-v2`. Preserved working tree edits (desktop typography harmonization and performance cleanup). Fixed 3 minor unused variable errors in `ChatMarkdown.tsx`, `DevAppSettings.tsx`, and `SettingsSidebar.tsx`.
-- **Preflight Verification:**
+- **Inspected commit:** `073df5230d2400684434ea6b7db27b0aafc72ddc` (then-HEAD of `main`)
+- **Tested tree:** Mixed working tree on `perf/navigation-runtime-v2`, including pre-existing typography/performance edits and three unused-variable fixes. The results below are preflight evidence for that mixed tree, not clean-baseline measurements attributable solely to the inspected SHA.
+- **Mixed-tree preflight verification:**
   - `bun run typecheck`: Passed (0 errors)
   - `bun run typecheck:electron`: Passed (0 errors)
   - `bun run typecheck:tests`: Passed (0 errors)

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
-import type { ResolvedWorkbenchIdentity } from "@shared/navigationRuntimeTypes"
+import {
+  buildPresentationInstanceKey,
+  type ResolvedWorkbenchIdentity,
+} from "@shared/navigationRuntimeTypes"
 import { navigationController } from "@/app/navigation/navigationController"
 
 interface UseWorkbenchSessionLifecycleArgs {
@@ -69,7 +72,17 @@ export function useWorkbenchSessionLifecycle({
   backgroundMode = "backgroundWarm",
   enabled = true,
 }: UseWorkbenchSessionLifecycleArgs): WorkbenchSessionSnapshot | null {
-  const [snapshot, setSnapshot] = useState<WorkbenchSessionSnapshot | null>(null)
+  const currentIdentity =
+    enabled && projectId && laneId && workspaceId && workspaceRevision
+      ? { projectId, laneId, workspaceId, workspaceRevision }
+      : null
+  const currentInstanceKey = currentIdentity
+    ? buildPresentationInstanceKey(currentIdentity)
+    : null
+  const [scopedSnapshot, setScopedSnapshot] = useState<{
+    instanceKey: string
+    snapshot: WorkbenchSessionSnapshot
+  } | null>(null)
   const activeSessionKeyRef = useRef<string | null>(null)
   const retainedRef = useRef(retained)
   retainedRef.current = retained
@@ -77,18 +90,26 @@ export function useWorkbenchSessionLifecycle({
   useEffect(() => {
     if (!enabled || !projectId || !laneId || !workspaceId || !workspaceRevision) {
       activeSessionKeyRef.current = null
-      setSnapshot(null)
+      setScopedSnapshot(null)
       void navigationController.setPresentation(null, retainedRef.current)
       return
     }
 
     let cancelled = false
+    const instanceKey = buildPresentationInstanceKey({
+      projectId,
+      laneId,
+      workspaceId,
+      workspaceRevision,
+    })
 
     const applySnapshot = (nextSnapshot: WorkbenchSessionSnapshot | null) => {
       if (cancelled || !nextSnapshot) return
       if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId, workspaceId)) return
-      setSnapshot((current) =>
-        current && isMeaningfullyEqual(current, nextSnapshot) ? current : nextSnapshot,
+      setScopedSnapshot((current) =>
+        current?.instanceKey === instanceKey && isMeaningfullyEqual(current.snapshot, nextSnapshot)
+          ? current
+          : { instanceKey, snapshot: nextSnapshot },
       )
     }
 
@@ -133,5 +154,7 @@ export function useWorkbenchSessionLifecycle({
     }
   }, [backgroundMode, enabled, laneId, projectId, workspaceId, workspaceRevision])
 
-  return snapshot
+  return scopedSnapshot?.instanceKey === currentInstanceKey
+    ? scopedSnapshot.snapshot
+    : null
 }

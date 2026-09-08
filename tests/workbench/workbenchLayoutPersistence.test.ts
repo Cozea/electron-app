@@ -105,6 +105,31 @@ describe('workbench layout persistence', () => {
     ).toBeNull()
   })
 
+  it('preserves the source binding revision when cloning a layout', async () => {
+    const localStorage = new MemoryStorage()
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage,
+      addEventListener: vi.fn(),
+    }
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
+    const layout = { grid: { root: 'root-grid' }, panels: {} } as never
+    persistence.writePersistedWorkbenchLayout('project-1::collab::source::v1', 3, layout, 7)
+
+    expect(
+      persistence.clonePersistedWorkbenchLayout(
+        'project-1::collab::source::v1',
+        'project-1::collab::target::v1',
+        3,
+      ),
+    ).toBe(true)
+    expect(
+      persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 3, 7),
+    ).toEqual(layout)
+    expect(
+      persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 3, 8),
+    ).toBeNull()
+  })
+
   it('removes every workspace and lane layout for only the deleted project', async () => {
     const localStorage = new MemoryStorage()
     ;(globalThis as { window?: unknown }).window = {
