@@ -1,0 +1,85 @@
+name: Collaboration v2 validation
+
+on:
+  push:
+    branches:
+      - integration/pr141-main-port
+      - refactor/collaboration-v2-end-to-end
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/desktop/electron/collaboration/**'
+      - 'apps/desktop/electron/main.ts'
+      - 'apps/desktop/electron/preload.ts'
+      - 'apps/desktop/electron/gitRuntime.ts'
+      - 'apps/desktop/electron/workspaces/WorkspaceCatalog.ts'
+      - 'apps/desktop/src/contexts/project/**'
+      - 'apps/desktop/src/contexts/YjsProjectContext*'
+      - 'apps/desktop/src/features/collaboration/**'
+      - 'apps/desktop/src/features/projects/layouts/ProjectLayout.tsx'
+      - 'apps/desktop/src/features/workspace/WorkspaceRuntimeHosts.tsx'
+      - 'apps/desktop/src/lib/collab/**'
+      - 'cloudflare/worker/src/durableObjects/CollabRoom.ts'
+      - 'cloudflare/worker/src/lib/collaboration*'
+      - 'cloudflare/worker/src/lib/githubApp.ts'
+      - 'cloudflare/worker/src/routes/collab*'
+      - 'cloudflare/worker/src/routes/collaboration*'
+      - 'cloudflare/worker/src/index.ts'
+      - 'cloudflare/worker/src/types.ts'
+      - 'convex/collaboration*'
+      - 'convex/projectRepositoryAuthorizations.ts'
+      - 'convex/schema/collaboration.ts'
+      - 'convex/schema/projectRepositoryAuthorizations.ts'
+      - 'convex/projects.ts'
+      - 'convex/schema.ts'
+      - 'shared/CollaborationTransport.ts'
+      - 'shared/SessionFileDocument.ts'
+      - 'shared/collaboration*'
+      - 'shared/durableQuit.ts'
+      - 'shared/electronApiTypes.ts'
+      - 'shared/gatewayUrl.ts'
+      - 'shared/nativeWorkspace*'
+      - 'tests/architecture/collaborationGeneration3Cutover.test.ts'
+      - '.github/workflows/collaboration-v2-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collaboration-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Bootstrap repository
+        run: bun run bootstrap
+      - name: Install Electron runtime for tests
+        run: node node_modules/electron/install.js
+      - name: Prepare deterministic test fixture
+        run: mkdir -p .agent
+      - name: Renderer TypeScript
+        run: bun run typecheck
+      - name: Electron TypeScript
+        run: bun run typecheck:electron
+      - name: Test TypeScript
+        run: bun run typecheck:tests
+      - name: Cloudflare TypeScript
+        run: bun run typecheck:cloudflare
+      - name: Lint
+        run: bun run lint
+      - name: Full test suite
+        run: bun run test
+      - name: Production build
+        run: bun run build
