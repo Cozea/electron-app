@@ -1,0 +1,35 @@
+name: AID Design Review
+on:
+  push:
+    branches: [feat/programmable-aids-runtime]
+    paths: ['docs/aid-system/**', 'docs/computer-use-aid-*.md', '.agent/CONTINUITY.md', '.github/workflows/aid-design-review.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Export exact documentation and source metadata
+        run: |
+          mkdir -p /tmp/aid-design-inputs
+          git archive --format=tar HEAD docs AGENTS.md .agent/CONTINUITY.md package.json .gitmodules native/computer-use-runtime apps/desktop/electron/services/ComputerUseRuntimeService.ts scripts/patch-computer-use-contract.mjs > /tmp/aid-design-inputs/source.tar
+          git rev-parse HEAD > /tmp/aid-design-inputs/commit.txt
+          git ls-tree -r HEAD docs/aid-system > /tmp/aid-design-inputs/tree.txt
+      - name: Run design validation when installed
+        run: |
+          if test -f docs/aid-system/validation/check_design.py; then
+            python3 docs/aid-system/validation/check_design.py
+          else
+            echo 'Input export only; complete design validation is not installed yet.'
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aid-design-inputs
+          path: /tmp/aid-design-inputs
+          retention-days: 7
