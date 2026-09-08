@@ -107,7 +107,9 @@ export class ComputerUseRuntimeService {
   private readonly token = randomBytes(32).toString('base64url')
   private readonly platform: NodeJS.Platform
   private readonly settings: () => ComputerUseAppSettings
-  constructor(private readonly dependencies: ComputerUseRuntimeDependencies = {}) {
+  private readonly dependencies: ComputerUseRuntimeDependencies
+  constructor(dependencies: ComputerUseRuntimeDependencies = {}) {
+    this.dependencies = dependencies
     this.platform = dependencies.platform ?? process.platform
     this.settings = dependencies.settings ?? readComputerUseAppSettings
   }
