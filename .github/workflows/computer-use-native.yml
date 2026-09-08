@@ -32,7 +32,7 @@ permissions:
   contents: read
 concurrency:
   group: computer-use-native-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   native:
     runs-on: macos-26
@@ -87,11 +87,20 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-          submodules: recursive
+      - name: Materialize exact pinned T3 source for contract tests
+        run: |
+          pin="$(git ls-tree HEAD vendor/t3code | awk '{print $3}')"
+          test -n "$pin"
+          git init "$RUNNER_TEMP/cu-t3-source"
+          git -C "$RUNNER_TEMP/cu-t3-source" fetch --depth=1 https://github.com/Cozea/t3code.git "$pin"
+          test "$(git -C "$RUNNER_TEMP/cu-t3-source" rev-parse FETCH_HEAD)" = "$pin"
+          mkdir -p vendor/t3code
+          git -C "$RUNNER_TEMP/cu-t3-source" archive FETCH_HEAD | tar -x -C vendor/t3code
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.0'
       - name: Install locked dependencies
+        id: dependencies
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Computer Use behavior and provider contract tests
         run: |
@@ -99,16 +108,19 @@ jobs:
           set -o pipefail
           bun run test:computer-use 2>&1 | tee build/cu-validation/host-tests.log
       - name: Electron typecheck
+        if: success() || (failure() && steps.dependencies.outcome == 'success')
         run: |
+          mkdir -p build/cu-validation
           set -o pipefail
           bun run typecheck:electron 2>&1 | tee build/cu-validation/typecheck-electron.log
       - name: Renderer typecheck
-        if: always()
+        if: success() || (failure() && steps.dependencies.outcome == 'success')
         run: |
           mkdir -p build/cu-validation
           set -o pipefail
           bun run typecheck 2>&1 | tee build/cu-validation/typecheck-renderer.log
       - name: Verify unsupported-platform packaging
+        if: success() || (failure() && steps.dependencies.outcome == 'success')
         run: |
           bun run scripts/prepare-computer-use-runtime.mjs
           bun run scripts/prepare-computer-use-runtime.mjs --check
