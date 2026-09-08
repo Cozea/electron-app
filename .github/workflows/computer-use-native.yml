@@ -16,6 +16,9 @@ on:
 permissions:
   contents: read
 
+env:
+  GIT_LFS_SKIP_SMUDGE: '1'
+
 concurrency:
   group: computer-use-native-${{ github.ref }}
   cancel-in-progress: true
