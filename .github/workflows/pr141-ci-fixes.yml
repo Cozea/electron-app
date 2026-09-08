@@ -1,0 +1,45 @@
+name: PR141 final CI fixes
+
+on:
+  push:
+    branches:
+      - integration/pr141-main-port
+    paths:
+      - scripts/pr141-ci-fixes.py
+      - .github/workflows/pr141-ci-fixes.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr141-final-ci-fixes-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Apply compatibility fixes
+        run: python3 scripts/pr141-ci-fixes.py
+      - name: Verify patch
+        run: |
+          git diff --check
+          git status --short
+      - name: Commit fixes
+        run: |
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'Cozea collaboration port'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'fix(collaboration): finish validation compatibility'
+          git push origin HEAD:integration/pr141-main-port
