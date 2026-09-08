@@ -1,38 +1,27 @@
-/**
- * Desktop State Persistence Node Worker Entry
- * Conforms to Section 10.2 of docs/perf/navigation-runtime-plan.md
- */
+import { isMainThread, parentPort, workerData } from 'node:worker_threads'
+import { DesktopStatePersistenceWorkerCore } from './desktopStatePersistenceWorkerCore'
+import type { DesktopStateNamespace, DesktopStateRecord } from '../../../../shared/desktopPersistenceTypes'
 
-import { parentPort, workerData } from 'node:worker_threads';
-import { DesktopStatePersistenceWorkerCore } from './desktopStatePersistenceWorkerCore';
-
-if (parentPort && workerData) {
-  const core = new DesktopStatePersistenceWorkerCore({
-    userDataPath: workerData.userDataPath,
-  });
-
-  parentPort.on('message', async (msg: { id: number; action: string; payload: any }) => {
+if (isMainThread || !parentPort) throw new Error('Desktop persistence entry requires a worker thread')
+const port = parentPort
+const core = new DesktopStatePersistenceWorkerCore(workerData as { userDataPath: string })
+interface WorkerRequest { id: number; action: 'load' | 'commit' | 'flush' | 'migrateLegacy'; payload: { namespace?: DesktopStateNamespace; keys?: string[]; records?: DesktopStateRecord[]; domain?: string; rawPayload?: string } }
+// FIFO command ordering gives flush a real barrier over every earlier accepted command.
+let tail: Promise<void> = Promise.resolve()
+port.on('message', (message: WorkerRequest) => {
+  tail = tail.catch(() => undefined).then(async () => {
     try {
-      let result: any;
-      if (msg.action === 'load') {
-        result = await core.load(msg.payload.namespace, msg.payload.keys);
-      } else if (msg.action === 'commit') {
-        result = await core.commit(msg.payload.records);
-      } else if (msg.action === 'flush') {
-        result = await core.flush(msg.payload?.targetRevision);
-      } else if (msg.action === 'migrateLegacy') {
-        result = await core.migrateLegacyDomain(msg.payload.domain, msg.payload.rawPayload);
-      } else {
-        throw new Error(`Unknown worker action: ${msg.action}`);
+      const { id, action, payload } = message
+      if (!Number.isSafeInteger(id) || id < 1) throw new Error('Invalid persistence request ID')
+      let result: unknown
+      switch (action) {
+        case 'load': result = await core.load(payload.namespace!, payload.keys); break
+        case 'commit': result = await core.commit(payload.records!); break
+        case 'flush': result = await core.flush(); break
+        case 'migrateLegacy': result = await core.migrateLegacyDomain(payload.domain!, payload.rawPayload!); break
+        default: throw new Error('Unknown persistence action')
       }
-
-      parentPort?.postMessage({ id: msg.id, success: true, result });
-    } catch (err) {
-      parentPort?.postMessage({
-        id: msg.id,
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  });
-}
+      port.postMessage({ id, success: true, result })
+    } catch (error) { port.postMessage({ id: message.id, success: false, error: error instanceof Error ? error.message : String(error) }) }
+  })
+})
