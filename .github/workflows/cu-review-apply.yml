@@ -1,0 +1,47 @@
+name: Apply Computer Use Review Corrections
+on:
+  push:
+    branches: [fix/computer-use-v2-review]
+    paths: ['.github/workflows/cu-review-apply.yml']
+permissions:
+  contents: read
+jobs:
+  apply:
+    if: github.repository == 'Cozea/electron-app' && github.ref == 'refs/heads/fix/computer-use-v2-review'
+    runs-on: macos-26
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Apply exact reviewed-source corrections
+        run: |
+          python3 scripts/apply-cu-review-fixes.py
+          git rm scripts/apply-cu-review-fixes.py .github/workflows/cu-review-apply.yml
+          git add AGENTS.md docs/computer-use-v2.md native/computer-use-runtime scripts/prepare-t3-runtime.mjs
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(computer-use): address reviewed AX bounds, contracts, exclusions and validation'
+          git push origin HEAD:fix/computer-use-v2-review
+      - name: Verify native regression tests
+        run: |
+          mkdir -p build/cu-review
+          set -o pipefail
+          xcrun swift test --package-path native/computer-use-runtime 2>&1 | tee build/cu-review/native-tests.log
+      - name: Preserve exact applied source and diff
+        if: always()
+        run: |
+          mkdir -p build/cu-review
+          git archive --format=tar HEAD > build/cu-review/source.tar
+          git diff e75818a9fc8e298c0ee5ef8c39e64c6d86ff39ad HEAD > build/cu-review/review-fixes.diff
+          git rev-parse HEAD > build/cu-review/commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: computer-use-review-source
+          path: build/cu-review/
+          retention-days: 3
