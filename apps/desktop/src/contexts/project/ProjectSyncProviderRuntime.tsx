@@ -78,7 +78,7 @@ export function ProjectSyncProviderRuntime({
   lastSyncAt: initialLastSyncAt,
   skipInitialSyncCheck: _skipInitialSyncCheck = false,
   onFilesChanged,
-  collaborationEnabled = true,
+  collaborationEnabled: _collaborationEnabled = true,
   activeBranch = null,
   sharedBranch = null,
   documentScopeId = null,

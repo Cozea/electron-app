@@ -201,9 +201,10 @@ export async function handleCollaborationCheckpoint(request: Request, env: Env):
   }))
   if (!response.ok) return response
   const result = await response.json() as { checkpoint?: { keyVersion: number; sequence: number } }
-  if (body.rotation === true && authority.previousKeyVersion && result.checkpoint?.keyVersion === authority.keyVersion) {
+  const checkpoint = result.checkpoint
+  if (body.rotation === true && authority.previousKeyVersion && checkpoint?.keyVersion === authority.keyVersion) {
     await client.mutation(makeFunctionReference<"mutation">("collaborationEncryption:activateRotationFromServer"),
-      { serverSecret: env.AI_GATEWAY_SECRET, sessionId, keyVersion: authority.keyVersion, sequence: result.checkpoint.sequence })
+      { serverSecret: env.AI_GATEWAY_SECRET, sessionId, keyVersion: authority.keyVersion, sequence: checkpoint.sequence })
   }
   return jsonResponse(result, { headers: { "cache-control": "no-store" } })
 }
