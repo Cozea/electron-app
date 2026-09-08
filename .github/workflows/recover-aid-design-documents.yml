@@ -1,0 +1,97 @@
+name: Recover AID design documents
+on:
+  push:
+    branches: [feat/programmable-aids-runtime]
+    paths: [.github/workflows/recover-aid-design-documents.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: aid-design-document-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/feat/programmable-aids-runtime'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Recover the already written documents and validate the documentation-only change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: python
+        run: |
+          import os, json, urllib.request, base64, hashlib, re, pathlib, datetime
+          repo = os.environ['REPOSITORY']
+          assert repo == 'Cozea/electron-app'
+          branch = 'feat/programmable-aids-runtime'
+          base = 'https://api.github.com/repos/' + repo
+          def api(method, path, data=None):
+              body = None if data is None else json.dumps(data).encode()
+              req = urllib.request.Request(base + path, data=body, method=method, headers={
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json',
+                  'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'Cozea-AID-Design-Recovery'})
+              with urllib.request.urlopen(req, timeout=40) as r: return json.load(r)
+          def tree(sha):
+              result = api('GET', '/git/trees/' + sha + '?recursive=1')
+              assert not result.get('truncated'), 'Tree listing is incomplete'
+              return {x['path']: x for x in result['tree'] if x['type'] in ('blob', 'commit')}
+          baseline = tree('a744dfda163871c4623822dec452c482b49f041f')
+          staged = tree('aee58b086421196d712e2edc9755637686cef738')
+          changes = {p:x for p,x in staged.items() if p not in baseline or baseline[p]['sha'] != x['sha']}
+          assert changes, 'No recovered document changes'
+          assert all(p.startswith('docs/') or p in ('AGENTS.md', '.agent/CONTINUITY.md') for p in changes), 'Recovery may only modify documentation'
+          head = api('GET', '/git/ref/heads/' + branch)['object']['sha']
+          head_commit = api('GET', '/git/commits/' + head)
+          current = tree(head_commit['tree']['sha'])
+          documents = {}
+          for path, entry in changes.items():
+              existing = current.get(path)
+              old = baseline.get(path)
+              assert existing is None or existing['sha'] == entry['sha'] or (old and existing['sha'] == old['sha']), 'Concurrent document edit: ' + path
+              blob = api('GET', '/git/blobs/' + entry['sha'])
+              raw = base64.b64decode(blob['content'])
+              assert hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest() == entry['sha'], 'Blob mismatch'
+              text = raw.decode('utf-8')
+              assert '\x00' not in text
+              if path.endswith('.md'): documents[path] = text
+          assert len(documents) >= 15, 'The expanded subsystem corpus was not recovered'
+          final_paths = set(current) | set(changes)
+          broken = []
+          for path, text in documents.items():
+              # Validate ordinary relative Markdown targets; anchors and external URLs are not local files.
+              no_code = re.sub(r'```.*?```', '', text, flags=re.S)
+              for target in re.findall(r'(?<!!)\[[^\]]+\]\(([^)]+)\)', no_code):
+                  target = target.split(' "',1)[0].strip('<>').split('#',1)[0]
+                  if not target or re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', target): continue
+                  normalized = os.path.normpath(os.path.join(os.path.dirname(path), target))
+                  if normalized not in final_paths and not any(p.startswith(normalized.rstrip('/') + '/') for p in final_paths): broken.append((path,target))
+          # Preserve evidence about link problems rather than silently rewriting a reference to an unknown target.
+          titles = {p: next((line[2:].strip() for line in text.splitlines() if line.startswith('# ')), pathlib.PurePosixPath(p).stem) for p,text in documents.items()}
+          index_path = 'docs/computer-use-aid-design-index.md'
+          index = '# Expanded AID design corpus\n\nBranch: `' + branch + '`. Recovered from the prior completed design-tree writes; this is documentation, not an implemented runtime.\n\n'
+          index += 'Start with the master/system specification in the table below, then shared contracts and the implementation sequence. Earlier reference documents remain historical context; subsystem qualification gates are not claims of working integration.\n\n'
+          index += '| Design document | Words |\n|---|---:|\n'
+          for p in sorted(documents):
+              if p.startswith('docs/'):
+                  index += '| [' + titles[p].replace('|','/') + '](' + os.path.relpath(p,'docs') + ') | ' + str(len(re.findall(r'\S+',documents[p]))) + ' |\n'
+          index += '\n## Verification boundary\n\nBlob hashes and the documentation-only delta were checked before publication. This recovery does not claim runtime compilation, macOS permissioned tests, provider compatibility, or measured latency. Published/draft protocol and OS feature support must pass the qualification gates in the design; an HTTP/source link alone is not proof of implementation support.\n'
+          index += '\nRelative-link findings: ' + str(len(broken)) + '. See [publication audit](computer-use-aid-design-publication.json).\n'
+          audit = {'status':'design-documents-recovered','staged_tree':'aee58b086421196d712e2edc9755637686cef738','base_design_commit':'b8852de1b7372269f2dd2ee0308be564c7fc00a6','publication_parent':head,'document_count':len(documents),'words':sum(len(re.findall(r'\S+',s)) for s in documents.values()),'paths':sorted(documents),'relative_link_findings':broken,'runtime_tests_run':False,'published_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}
+          entries = [{'path':p,'mode':x['mode'],'type':'blob','sha':x['sha']} for p,x in changes.items()]
+          entries += [{'path':index_path,'mode':'100644','type':'blob','content':index}, {'path':'docs/computer-use-aid-design-publication.json','mode':'100644','type':'blob','content':json.dumps(audit,indent=2)+'\n'}]
+          continuity = '# Continuity\n\n## Expanded programmable AID system design\n\nRead `docs/computer-use-aid-design-index.md` first. It links the recovered master and individual subsystem specifications. The product is programmable general-purpose visible AIDs, not native task macros. Persistent JavaScript, explicit control epochs, truthful cursor/gestures, scoped evidence, capture ownership, native revocation, journaled uncertainty and no effect-prefix replay are core requirements.\n\nState: design corpus published; runtime implementation and live qualification have not been performed by this documentation change. Use the subsystem work packages and qualification gates. Do not treat research opportunities or target budgets as demonstrated platform behavior. Main is unchanged.\n'
+          entries = [x for x in entries if x['path'] != '.agent/CONTINUITY.md']
+          entries.append({'path':'.agent/CONTINUITY.md','mode':'100644','type':'blob','content':continuity})
+          # This one-shot recovery workflow removes itself from the resulting design commit.
+          entries.append({'path':'.github/workflows/recover-aid-design-documents.yml','mode':'100644','type':'blob','sha':None})
+          new_tree = api('POST','/git/trees',{'base_tree':head_commit['tree']['sha'],'tree':entries})['sha']
+          now = api('GET','/git/ref/heads/'+branch)['object']['sha']
+          assert now == head, 'Branch changed while preparing publication; rerun instead of overwriting'
+          commit = api('POST','/git/commits',{'message':'docs(aids): publish researched master and subsystem implementation designs','tree':new_tree,'parents':[head]})['sha']
+          api('PATCH','/git/refs/heads/'+branch,{'sha':commit,'force':False})
+          assert api('GET','/git/ref/heads/'+branch)['object']['sha'] == commit
+          print(json.dumps({'commit':commit,'documents':len(documents),'words':audit['words'],'link_findings':len(broken)},indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## AID design publication\n\nCommit: `' + commit + '`\n\nDocuments: ' + str(len(documents)) + '\n\nWords: ' + str(audit['words']) + '\n\nRelative link findings: ' + str(len(broken)) + '\n\nRuntime/live desktop tests: not run (documentation-only change).\n')
