@@ -161,3 +161,7 @@ Cozea/t3code before publishing a parent ref. Keep the protocol and native-runtim
 qualification record in `shared/provider-compatibility.json` current. Live signed
 updater replacement and fresh/upgrade packaged profiles still require the release
 matrix; unit tests of the handshake do not qualify the updater itself.
+
+## Computer Use native runtime
+
+macOS builds must package the ABI 2 addon, `libCozeaComputerUseBridge.dylib`, the adjacent `CozeaComputerUseRuntime_CozeaComputerUseCore.bundle` tool resource, license and manifest. Use `bun run prepare:computer-use` and `bun run prepare:computer-use:check` before signing. Non-Mac builds contain an unsupported manifest, not a worker. Run the signed-app live validation matrix in `docs/computer-use-v2.md` before release; unit tests and headless CI do not establish TCC permission identity, private SkyLight compatibility, cursor smoothness or latency on a user's desktop.

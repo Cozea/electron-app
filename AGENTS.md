@@ -584,3 +584,7 @@ and `NODE_IMAGE` arguments matching the repository manifests. Mount an isolated
 checkout at `/workspace`, run `bun run bootstrap`, then the compatibility commands.
 Use the existing macOS toolchain for Electron/PTY and portable packaging. Docker
 was unavailable on the implementation host; container execution is unverified.
+
+## macOS Computer Use
+
+Read `docs/computer-use-v2.md` before changing Computer Use input, observations, cursor, policy, packaging, or release validation.
