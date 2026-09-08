@@ -45,9 +45,10 @@ describe('desktop-first loading architecture', () => {
 
   it('resolves local workspace identity from the stable route before cloud project data', () => {
     const source = read('apps/desktop/src/features/projects/layouts/ProjectLayout.tsx')
+    const compactSource = source.replace(/\s+/g, ' ')
     expect(source).toContain('const workspaceProjectId = project?._id ? String(project._id) : routeProjectId ?? null')
     expect(source).toContain('featureFlags.localWorkspaceCatalog ? workspaceProjectId : null')
-    expect(source).toContain('const collaborationEnabled = Boolean(shouldEnableProjectRuntime && runtimeWorkspaceId && project?._id && activeCollaborationBinding)')
+    expect(compactSource).toContain('const collaborationEnabled = Boolean( shouldEnableProjectRuntime && runtimeWorkspaceId && project?._id && activeCollaborationBinding, );')
     expect(source).not.toContain('activeBranch === collabBranch')
     expect(source).toContain('projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}')
   })
