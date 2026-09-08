@@ -519,7 +519,7 @@ export function SkillBuildsView() {
         type="button"
         variant="ghost"
         size="sm"
-        className="h-7 gap-1.5 rounded-full px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/15 [:hover,[data-pressed]]:bg-foreground/10 dark:[:hover,[data-pressed]]:bg-foreground/15 transition-colors"
+        className="h-7 gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/15 [:hover,[data-pressed]]:bg-foreground/10 dark:[:hover,[data-pressed]]:bg-foreground/15 transition-colors"
         onClick={() => {
           const next = new URLSearchParams(searchParams);
           next.delete("view");
@@ -560,7 +560,7 @@ export function SkillBuildsView() {
       <Button
         type="button"
         size="sm"
-        className="h-7 rounded-full text-xs font-medium"
+        className="h-7 rounded-full text-sm font-medium"
         onClick={() =>
           void runMutation(
             `apply:${selectedBuild.id}`,

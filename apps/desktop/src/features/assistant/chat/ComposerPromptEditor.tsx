@@ -1341,14 +1341,9 @@ function ComposerPromptEditorInner({
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
+              style={{ lineHeight: "var(--composer-line-height)" }}
               className={cn(
-                // No `leading-*` here on purpose: `text-[13px]` and `leading-*`
-                // collide in tailwind-merge's font-size group, so whichever
-                // lands last in a caller's className silently deletes the
-                // other. The app forces `--app-copy-line-height` onto
-                // `.text-[13px]` with `!important` anyway, so the line box is
-                // `--composer-line-height` and heights are derived from it.
-                "block min-h-[var(--composer-line-height)] max-h-[calc(var(--composer-line-height)*10)] w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[13px] text-foreground focus:outline-none",
+                "block min-h-[var(--composer-line-height)] max-h-[calc(var(--composer-line-height)*10)] w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-sm text-foreground focus:outline-none",
                 className,
               )}
               data-testid="composer-editor"
@@ -1359,7 +1354,10 @@ function ComposerPromptEditorInner({
           }
           placeholder={
             terminalContexts.length > 0 ? null : (
-              <div className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-muted-foreground/60 select-none">
+              <div
+                style={{ lineHeight: "var(--composer-line-height)" }}
+                className="pointer-events-none absolute inset-x-0 top-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-muted-foreground/60 select-none"
+              >
                 {placeholder}
               </div>
             )

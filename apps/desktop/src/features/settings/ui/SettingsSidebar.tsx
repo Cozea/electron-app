@@ -1,6 +1,5 @@
 import * as React from "react"
 
-import { NavUser } from "@/components/nav-user"
 import {
   SidebarContent,
   SidebarFooter,
@@ -58,7 +57,7 @@ function SettingsSidebarNavRow({
   )
 }
 
-export function SettingsSidebar({ user }: SettingsSidebarProps) {
+export function SettingsSidebar({ user: _user }: SettingsSidebarProps) {
   const navigate = useViewTransitionNavigate()
   const location = useLocation()
   const { t, language } = useTranslation()
@@ -116,23 +115,21 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
         ))}
       </SidebarContent>
 
-      <SidebarSeparator />
-      <SidebarFooter className="gap-3 p-3">
-        {isSubRoute && parentSectionRoute ? (
-          <button
-            type="button"
-            className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
-            onClick={() => navigate(parentSectionRoute)}
-          >
-            <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-            <span className="truncate">{t('common.back')}</span>
-          </button>
-        ) : (
-          <div>
-            <NavUser user={user} />
-          </div>
-        )}
-      </SidebarFooter>
+      {isSubRoute && parentSectionRoute ? (
+        <>
+          <SidebarSeparator />
+          <SidebarFooter className="gap-3 p-3">
+            <button
+              type="button"
+              className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
+              onClick={() => navigate(parentSectionRoute)}
+            >
+              <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
+              <span className="truncate">{t('common.back')}</span>
+            </button>
+          </SidebarFooter>
+        </>
+      ) : null}
     </>
   )
 }

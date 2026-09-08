@@ -14,8 +14,8 @@
 
 .cozea-workbench-dockview-theme {
   --dv-floating-box-shadow: none;
-  --dv-tabs-and-actions-container-font-size: 12px;
-  --dv-tab-font-size: 12px;
+  --dv-tabs-and-actions-container-font-size: 13px;
+  --dv-tab-font-size: 13px;
   --dv-spacing-padding: 8px;
   --dv-border-radius: 12px;
   --dv-overlay-z-index: var(--cozea-layer-dockview-float-base);

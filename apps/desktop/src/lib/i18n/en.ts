@@ -54,7 +54,7 @@ const en = {
   "settings.computerUse.enable": "Enable Computer Use",
   "settings.computerUse.enableDescription": "Enable native macOS Computer Use for AI assistants in your workbench.",
   "settings.computerUse.diagnosticsTitle": "System Diagnostics & Permissions",
-  "settings.computerUse.diagnosticsDescription": "Verify macOS security permissions required for automation.",
+  "settings.computerUse.diagnosticsDescription": "macOS permissions required for automation.",
   "settings.computerUse.cliStatus": "Open Computer Use CLI",
   "settings.computerUse.cliInstalled": "Installed",
   "settings.computerUse.cliMissing": "Not installed",
@@ -66,7 +66,7 @@ const en = {
   "settings.computerUse.openSettings": "Open System Settings",
   "settings.computerUse.refresh": "Check again",
   "settings.computerUse.toolsTitle": "Agent Capabilities",
-  "settings.computerUse.toolsDescription": "Choose which automated interaction tools are exposed to your AI assistants.",
+  "settings.computerUse.toolsDescription": "Automation capabilities available to agents.",
   "settings.devapps.title": "DevApps",
   "settings.devapps.description": "Manage installed DevApps, built-in surfaces, and AI assistants.",
   "settings.devapps.browseStore": "Browse Store",
@@ -140,6 +140,7 @@ const en = {
   "settings.appearance.reduceMotion": "Reduce motion",
   "settings.appearance.reduceMotionDesc":
     "Minimize animations for accessibility",
+  "settings.appearance.localization": "Localization",
   "settings.appearance.language": "Language",
   "settings.appearance.languageDesc": "Choose the display language for the app",
   "settings.appearance.themeLight": "Light",
@@ -170,7 +171,7 @@ const en = {
   "settings.organizations.inviteDevice": "Invite device",
   "settings.organizations.groupId": "Group ID",
   "settings.organizations.groupIdDescription":
-    "This is the public ID for this device group. It is safe to copy and share.",
+    "Public identifier for this organization.",
   "settings.organizations.deviceIdPlaceholder": "Device ID (czd_…)",
   "settings.organizations.addDevice": "Add device",
   "settings.organizations.role.admin": "Admin",
@@ -200,7 +201,7 @@ const en = {
   "settings.tooling.notAvailable": "Not available",
   "settings.tooling.projectsDirectory": "New projects and clones location",
   "settings.tooling.projectsDirectoryDesc":
-    "Cozea creates new projects and repository clones here. Existing folders stay where they are.",
+    "Default location for new projects and clones.",
   "settings.tooling.projectsDirectoryLoading": "Loading project location...",
   "settings.tooling.projectsDirectoryPickerTitle": "Choose where Cozea creates projects and clones",
   "settings.tooling.changeProjectsDirectory": "Change",
@@ -209,7 +210,7 @@ const en = {
     "Helps localhost previews load inside Cozea's embedded browser.",
   "settings.tooling.runtimeInventory": "Runtime Inventory",
   "settings.tooling.runtimeInventoryDesc":
-    "Cozea resolves developer toolchains from your system PATH or explicit runtime overrides. If a runtime is missing, install it on your machine and restart the app.",
+    "Detected developer toolchains on this machine.",
   "settings.tooling.colRuntime": "Runtime",
   "settings.tooling.colPath": "Path",
   "settings.tooling.colAction": "Action",

@@ -14,7 +14,6 @@ import { ToastProvider } from './features/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { applyStoredLanguage } from './lib/i18n'
 
-import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
 import { ElectronBrowserHostGate } from './features/browser/ElectronBrowserHostGate'
@@ -92,7 +91,6 @@ async function prewarmRestoredWorkbench(bootstrap: DesktopBootstrapSnapshot): Pr
   import.meta.env.VITE_FF_OFFSCREEN_SCREENSHOT
 
 async function startRenderer(): Promise<void> {
-  initJankDiagnostics()
   applyBootstrapRouteFromSearch()
 
   const bootstrapStartMark = markCozeaPerformance('renderer:desktop-bootstrap-start')

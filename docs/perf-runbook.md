@@ -17,14 +17,15 @@ This runbook is the canonical loop for keeping Cozea feeling like a fast desktop
 2. For baseline comparison:
    - `bun run dev:perf:baseline`
 3. Open renderer DevTools and keep the Performance panel ready.
-4. Keep console output visible for `[BootTiming]`, `[Jank][LoAF]`, and `[Jank][LongTask]` entries.
+4. Keep console output visible for `[BootTiming]` entries.
 5. Summarize saved Chrome traces with:
    - `bun run perf:trace-summary -- tmp/cozea-cold-boot-trace.json.json.gz`
 6. After production builds, summarize renderer chunk weight with:
    - `bun run perf:bundle-summary`
-7. For the LegendList agent timeline experiment, enable optional list diagnostics in DevTools:
-   - `localStorage.setItem("cozea:legend-list-agent-timeline:debug", "1")`
-   - Recycling is enabled by default and can be disabled with `localStorage.setItem("cozea:legend-list-agent-timeline:recycle", "0")`.
+7. LegendList timeline debug callbacks are removed. Recycling remains enabled by default and can be disabled with `localStorage.setItem("cozea:legend-list-agent-timeline:recycle", "0")`.
+
+Automatic jank logging is removed. Record renderer long tasks and frame timing
+through DevTools Performance.
 
 ## Capture Scenarios
 

@@ -277,11 +277,11 @@ export function HeaderProjectShareButton({
                   <div key={member._id} className="flex items-center gap-2.5 rounded-lg border border-border/50 px-2.5 py-2">
                     <Avatar className="size-7 rounded-lg">
                       {member.avatarUrl ? <AvatarImage src={member.avatarUrl} alt={member.displayName} /> : null}
-                      <AvatarFallback className="rounded-lg text-[9px]">{initials(member.displayName)}</AvatarFallback>
+                      <AvatarFallback className="rounded-lg text-xs font-medium">{initials(member.displayName)}</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium">{member.displayName}{self ? " · This device" : ""}</p>
-                      <p className="truncate font-mono text-[10px] text-muted-foreground">{member.identityKey}</p>
+                      <p className="truncate font-mono text-2xs text-muted-foreground">{member.identityKey}</p>
                     </div>
                     {canManage && !self ? (
                       <div className="flex items-center gap-1">

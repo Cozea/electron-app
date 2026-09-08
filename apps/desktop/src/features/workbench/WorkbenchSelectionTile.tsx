@@ -61,7 +61,7 @@ const LAUNCHER_CONFIG = {
   rowGap: 18,
   maxColumns: 6,
   maxRows: 2,
-  labelClassName: "text-[12px]",
+  labelClassName: "text-sm",
 } as const
 
 function isSpaciousSelectionSurface(width: number, height: number) {
@@ -148,26 +148,32 @@ function SelectionFilterBar({
         className="mx-auto flex w-full flex-col gap-2.5 pb-2"
         style={contentWidth ? { maxWidth: `${contentWidth}px` } : undefined}
       >
-        <div
-          className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        <ScrollArea
+          scrollFade
+          hideScrollbars
+          fadeSize="1.5rem"
+          className="relative w-full"
+          viewportClassName="overflow-x-auto"
         >
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => onCategoryChange(cat)}
-              className={cn(
-                "cursor-pointer rounded-full px-3 py-1 text-[11px] font-medium transition-colors inline-flex items-center gap-1.5 shrink-0",
-                activeCategory === cat
-                  ? "bg-secondary text-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
-            >
-              {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3" aria-hidden /> : null}
-              {cat === "Explore DevApps Store" ? t('workbench.selection.exploreStore') : ((t as any)(`devApp.category.${cat}`) ?? cat)}
-            </button>
-          ))}
-        </div>
+          <div className="flex w-max items-center gap-1.5 pb-0.5">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => onCategoryChange(cat)}
+                className={cn(
+                  "cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors inline-flex items-center gap-1.5 shrink-0",
+                  activeCategory === cat
+                    ? "bg-secondary text-foreground shadow-xs"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                )}
+              >
+                {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3" aria-hidden /> : null}
+                {cat === "Explore DevApps Store" ? t('workbench.selection.exploreStore') : ((t as any)(`devApp.category.${cat}`) ?? cat)}
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
 
         <label
           className={cn(
@@ -327,7 +333,7 @@ function SelectionLauncherButton({
       </div>
       <span
         className={cn(
-          "block w-full truncate font-medium leading-tight text-muted-foreground",
+          "block w-full truncate font-medium leading-tight text-foreground/90 transition-colors group-hover:text-foreground",
           LAUNCHER_CONFIG.labelClassName,
         )}
       >

@@ -358,7 +358,7 @@ function AgentStatusPill(props: { threadId?: string | null }) {
   if (!statusPill) return null
 
   return (
-    <span className={cn("inline-flex items-center gap-1 text-[10px]", statusPill.colorClass)} title={statusPill.label}>
+    <span className={cn("inline-flex items-center gap-1 text-2xs font-medium", statusPill.colorClass)} title={statusPill.label}>
       {statusPill.label === "Working" || statusPill.label === "Connecting" ? (
         <div className="loader" />
       ) : (
@@ -401,7 +401,7 @@ function AgentTimeLabel(props: { threadId?: string | null }) {
   return (
     <span
       className={cn(
-        "text-[10px] ml-auto shrink-0",
+        "text-[12px] ml-auto shrink-0",
         "text-muted-foreground/40 group-hover:text-foreground/72 dark:group-hover:text-foreground/82 transition-colors"
       )}
     >

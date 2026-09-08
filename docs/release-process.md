@@ -41,6 +41,12 @@ The GitHub Actions workflow lives at `.github/workflows/release.yml` and runs in
 3. `build`
    Packages signed desktop artifacts per platform and publishes only when the workflow is in publish mode.
 
+The macOS signing resolution step emits `signing=1` when certificate credentials
+are configured, otherwise `signing=0` (also used by forced-unsigned builds).
+Publish-secret validation, certificate import, and notarization consume this step
+output. The job starts with `COZEA_MAC_SIGNING=0`; resolution also exports the final
+value for build commands.
+
 ### CircleCI + Cloudflare R2
 
 The CircleCI workflow lives at `.circleci/config.yml` and runs in four stages:
