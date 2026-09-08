@@ -92,9 +92,12 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
     await navigate(cdp, 'b'); await navigate(cdp, 'a')
     const two = await evaluate(cdp, 'window.__navigationRuntimeHarness.snapshot()')
     assert(two.residents.length === 2, 'A/B retention did not preserve two instances')
+    const b1 = findIdentity(two, 'b', 1)
+    assert(b1, 'Workbench B did not mount')
     await navigate(cdp, 'c'); const four = await navigate(cdp, 'd')
     assert(four.residents.length === 3, 'Resident cap was not enforced')
-    assert(four.unmounts[a1] === 1, 'Evicted workbench A was not disposed exactly once')
+    assert(four.unmounts[b1] === 1, 'Least-recently-used workbench B was not disposed exactly once')
+    assert(!four.unmounts[a1], 'Recently revisited workbench A was evicted instead of B')
 
     const revised = await navigate(cdp, 'a2')
     const a2 = findIdentity(revised, 'a', 2)
