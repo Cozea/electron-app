@@ -48,7 +48,7 @@ jobs:
             git diff --check
             git add -A
             if ! git diff --cached --quiet; then
-              git -c user.name='Cozea Navigation Repair' -c user.email='navigation-repair@users.noreply.github.com' commit -m 'fix(navigation): apply tested-source repair changes'
+              git -c user.name='Cozea Navigation Repair' -c user.email='navigation-repair@users.noreply.github.com' commit -m 'fix(navigation): apply staged repair changes'
               git push origin HEAD:refs/heads/perf/navigation-runtime-v2-repair
             fi
           fi
@@ -62,6 +62,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.revision || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -84,11 +85,32 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/navigation-t3-source" rev-parse FETCH_HEAD)" = "$pin"
           mkdir -p vendor/t3code
           git -C "$RUNNER_TEMP/navigation-t3-source" archive FETCH_HEAD | tar -x -C vendor/t3code
-      - name: Install locked dependencies
+      - name: Install locked root and T3 dependencies
         id: dependencies
         run: |
           bun install --frozen-lockfile --ignore-scripts
           bun run postinstall
+          pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
+          bun x "$pm" --dir vendor/t3code install --frozen-lockfile --ignore-scripts
+          bun node_modules/electron/install.js
+      - name: Export reproducible source and toolchain snapshot
+        if: github.event_name == 'push' && github.ref == 'refs/heads/perf/navigation-runtime-v2-repair'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/navigation-snapshot"
+          git bundle create "$RUNNER_TEMP/navigation-snapshot/repository.bundle" HEAD refs/remotes/origin/main refs/remotes/origin/perf/navigation-runtime-v2-repair
+          tar -czf "$RUNNER_TEMP/navigation-snapshot/dependencies.tar.gz" node_modules vendor/t3code apps/desktop/node_modules apps/server/node_modules packages/*/node_modules
+          cp "$(command -v bun)" "$RUNNER_TEMP/navigation-snapshot/bun"
+          git rev-parse HEAD > "$RUNNER_TEMP/navigation-snapshot/HEAD.txt"
+          sha256sum "$RUNNER_TEMP/navigation-snapshot/"* > "$RUNNER_TEMP/navigation-snapshot/SHA256SUMS"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/perf/navigation-runtime-v2-repair'
+        with:
+          name: navigation-source-toolchain-${{ github.run_id }}
+          path: ${{ runner.temp }}/navigation-snapshot/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
       - name: Targeted navigation unit tests
         if: steps.dependencies.outcome == 'success'
         run: |
