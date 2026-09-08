@@ -94,11 +94,25 @@ export function useProjectWorkspaceActions() {
 
       invalidateProjectWorkspaceResolution(project.id)
       cloneWorkspaceState(project.id, currentWorkspaceId, nextWorkspaceId)
-      clonePersistedWorkbenchLayoutsForWorkspace({
-        projectId: project.id,
-        fromWorkspace: currentWorkspaceId,
-        toWorkspace: nextWorkspaceId,
-      })
+      try {
+        await clonePersistedWorkbenchLayoutsForWorkspace({
+          projectId: project.id,
+          fromWorkspace: currentWorkspaceId,
+          toWorkspace: nextWorkspaceId,
+        })
+      } catch (error) {
+        console.error("[ProjectWorkspaceActions] Failed to restore layouts before relink navigation:", error)
+        await window.electronAPI.dialog.showMessageBox({
+          type: "error",
+          buttons: ["OK"],
+          defaultId: 0,
+          title: "Workbench Restore Failed",
+          message: `${project.name} was relinked, but its workbench layout could not be restored.`,
+          detail: "Reopen the project after desktop storage is available. Navigation was stopped to protect the saved layout.",
+          noLink: true,
+        })
+        return null
+      }
 
       navigate(buildProjectPath(project.id, "workbench"), {
         replace: options?.replace,

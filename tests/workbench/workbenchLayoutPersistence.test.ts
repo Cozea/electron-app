@@ -24,7 +24,10 @@ class MemoryStorage {
 describe('workbench layout persistence', () => {
   let root: string | undefined
   let core: DesktopStatePersistenceWorkerCore | undefined
-  async function installDurableAPI(localStorage: MemoryStorage): Promise<void> {
+  async function installDurableAPI(
+    localStorage: MemoryStorage,
+    waitBeforeLoad: Promise<void> = Promise.resolve(),
+  ): Promise<void> {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'cozea-layout-persistence-'))
     core = new DesktopStatePersistenceWorkerCore({ userDataPath: root })
     const backing = core
@@ -33,7 +36,10 @@ describe('workbench layout persistence', () => {
       addEventListener: vi.fn(),
       electronAPI: {
         desktopPersistence: {
-          load: ({ namespace, keys }: { namespace: DesktopStateNamespace; keys?: string[] }) => backing.load(namespace, keys),
+          load: async ({ namespace, keys }: { namespace: DesktopStateNamespace; keys?: string[] }) => {
+            await waitBeforeLoad
+            return backing.load(namespace, keys)
+          },
           commit: ({ records }: { records: DesktopStateRecord[] }) => backing.commit(records),
           flush: () => backing.flush(),
           migrateLegacy: ({ domain, rawPayload }: { domain: string; rawPayload: string }) => backing.migrateLegacyDomain(domain, rawPayload),
@@ -132,7 +138,9 @@ describe('workbench layout persistence', () => {
 
   it('hydrates a durable-only source before cloning it', async () => {
     const localStorage = new MemoryStorage()
-    await installDurableAPI(localStorage)
+    let releaseLoad: (() => void) | undefined
+    const loadBarrier = new Promise<void>((resolve) => { releaseLoad = resolve })
+    await installDurableAPI(localStorage, loadBarrier)
     const layout = { grid: { root: 'durable-grid' }, panels: {} } as never
     await core!.commit([{
       schemaVersion: 1,
@@ -146,13 +154,14 @@ describe('workbench layout persistence', () => {
     await core!.flush()
 
     const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
-    expect(
-      await persistence.clonePersistedWorkbenchLayout(
-        'project-1::collab::source::v1',
-        'project-1::collab::target::v1',
-        2,
-      ),
-    ).toBe(true)
+    const clone = persistence.clonePersistedWorkbenchLayout(
+      'project-1::collab::source::v1',
+      'project-1::collab::target::v1',
+      2,
+    )
+    expect(persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 2, 4)).toBeNull()
+    releaseLoad?.()
+    await expect(clone).resolves.toBe(true)
     expect(
       persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 2, 4),
     ).toEqual(layout)
