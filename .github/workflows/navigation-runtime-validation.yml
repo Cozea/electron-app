@@ -82,8 +82,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.0'
-      - run: bun install --frozen-lockfile --ignore-scripts
-      - run: bun run postinstall
+      # The pinned direct T3 submodule contains type imports used by desktop code.
+      # Bootstrap prepares it without following unrelated broken nested gitlinks.
+      - run: bun run bootstrap
       - run: bun run ${{ matrix.command }}
 
   production-build:
@@ -101,8 +102,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.0'
-      # The repository's bootstrap initializes its direct T3 submodule only.
-      # Recursive checkout enters unrelated nested vendor links with no .gitmodules URL.
       - run: bun run bootstrap
       - run: bun run build
       - name: Verify the standalone worker is emitted
