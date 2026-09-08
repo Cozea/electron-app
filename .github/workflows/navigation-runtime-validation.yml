@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
   integrate-main:
-    if: github.event_name == 'push' && github.event.head_commit.message == 'ci(navigation): integrate current main and normalize validation'
+    if: >-
+      github.event_name == 'push' && github.event.head_commit.message == 'ci(navigation): integrate current main and normalize validation'
     permissions:
       contents: write
     runs-on: ubuntu-latest
