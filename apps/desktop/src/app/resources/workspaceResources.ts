@@ -311,7 +311,8 @@ workspaceCatalogResource.observe((next, previous) => {
     invalidateProjectLaneState(projectId);
     const ids = new Set([old?.workspace.workspaceId, entry?.workspace.workspaceId]);
     for (const [key, resource] of gitStatusResources) {
-      if (ids.has(resourceMetadata.get(key)?.workspaceId ?? undefined)) resource.invalidate('catalog binding changed');
+      const workspaceId = resourceMetadata.get(key)?.workspaceId;
+      if (workspaceId && ids.has(workspaceId)) resource.invalidate('catalog binding changed');
     }
   }
 });

@@ -1,46 +1,4 @@
-from pathlib import Path
-
-
-def replace(path, old, new):
-    p = Path(path)
-    source = p.read_text()
-    assert source.count(old) == 1, f'Expected exactly one anchor in {path}'
-    p.write_text(source.replace(old, new, 1))
-
-replace('apps/desktop/src/app/resources/workspaceResources.ts',
-    "      if (ids.has(resourceMetadata.get(key)?.workspaceId ?? undefined)) resource.invalidate('catalog binding changed');",
-    "      const workspaceId = resourceMetadata.get(key)?.workspaceId;\n      if (workspaceId && ids.has(workspaceId)) resource.invalidate('catalog binding changed');")
-replace('scripts/prepare-t3-runtime.d.mts',
-    'export function patchT3ComputerUseSource(): boolean;',
-    'export function patchT3ComputerUseSource(options?: { checkOnly?: boolean; sourcePath?: string }): boolean;')
-p = Path('scripts/patch-computer-use-contract.d.mts')
-assert not p.exists()
-p.write_text('''export interface ComputerUseToolDefinition {
-  name: string;
-  description: string;
-  annotations: {
-    readOnlyHint: boolean;
-    destructiveHint: boolean;
-    idempotentHint?: boolean;
-    openWorldHint: boolean;
-  };
-  inputSchema: {
-    type: string;
-    properties: Record<string, unknown>;
-    required?: string[];
-    additionalProperties: boolean;
-    [keyword: string]: unknown;
-  };
-}
-export const computerUseCatalogue: {
-  tools: ComputerUseToolDefinition[];
-  [key: string]: unknown;
-};
-export function patchComputerUseContract(source: string): { source: string; changed: boolean };
-''')
-p = Path('tests/navigation/workspaceResourceIntegration.test.ts')
-assert not p.exists()
-p.write_text('''import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResolveProjectWorkspaceResult } from '../../shared/workspaceTypes'
 
 describe('workspace resource integration', () => {
@@ -123,5 +81,3 @@ describe('workspace resource integration', () => {
     expect(resources.getWorkspaceResolutionResource('held')).not.toBe(held)
   })
 })
-''')
-print('Fixed nullable workspace lookup and upstream declaration gaps; added adapter-level negative and concurrency tests.')
