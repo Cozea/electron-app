@@ -59,6 +59,12 @@ describe('left sidebar theme tokens', () => {
     )
   })
 
+  it('disables Chromium CSS backdrop-filter blur on macOS to avoid compounding native vibrancy', () => {
+    const rule = readRule('html[data-platform="darwin"] .sidebar-glass [data-slot="sidebar-inner"]')
+    expect(readCustomProperty(rule, 'backdrop-filter')).toBe('none')
+    expect(readCustomProperty(rule, '-webkit-backdrop-filter')).toBe('none')
+  })
+
   it('omits the inner edge inset shadow in light mode while preserving it for dark and chromatic themes', () => {
     expect(readRule('.sidebar-glass [data-slot="sidebar-inner"]')).not.toContain('box-shadow')
     expect(stylesheet).toContain('box-shadow: inset -32px 0 36px -22px rgb(0 0 0 / 0.18);')

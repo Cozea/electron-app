@@ -371,6 +371,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('window:fullscreen-change', handler)
       return () => ipcRenderer.removeListener('window:fullscreen-change', handler)
     },
+    onInteractionChange: (callback: (event: import('../../../shared/desktopInteractionTypes').NativeDesktopInteractionChange) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        change: import('../../../shared/desktopInteractionTypes').NativeDesktopInteractionChange,
+      ) => callback(change)
+      ipcRenderer.on('window:interaction-change', handler)
+      return () => ipcRenderer.removeListener('window:interaction-change', handler)
+    },
     openSettings: (route = '/settings/account') => ipcRenderer.invoke('window:openSettings', { route }),
   },
   orgDevApp: {

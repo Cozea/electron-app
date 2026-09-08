@@ -2,6 +2,10 @@ import type { DockviewApi, DockviewPanelApi } from "dockview-react";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 
 import { APP_LAYERS } from "@/lib/appLayers";
+import {
+  beginDesktopInteraction,
+  type DesktopInteractionLease,
+} from "@/lib/desktopInteraction/interactionStore";
 
 const DOCKVIEW_TILE_RADIUS = "12px";
 
@@ -77,13 +81,41 @@ export function useDockviewBrowserSurfacePresentation(
   const [presentation, setPresentation] = useState(() => readPanelPresentation(panelApi));
   const subscribePositionChanges = useCallback(
     (listener: () => void) => {
+      let floatingLease: DesktopInteractionLease | null = null;
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const resetIdleTimer = () => {
+        if (!floatingLease) {
+          floatingLease = beginDesktopInteraction("dockview-floating");
+        }
+        if (idleTimer !== null) {
+          clearTimeout(idleTimer);
+        }
+        idleTimer = setTimeout(() => {
+          idleTimer = null;
+          floatingLease?.end();
+          floatingLease = null;
+        }, 80);
+      };
+
       const subscriptions = [
         containerApi.onDidFloatingGroupBoundsChange((event) => {
-          if (event.element.contains(panelApi.group.element)) listener();
+          if (event.element.contains(panelApi.group.element)) {
+            resetIdleTimer();
+            listener();
+          }
         }),
         containerApi.onDidLayoutChange(listener),
       ];
-      return () => subscriptions.forEach((subscription) => subscription.dispose());
+      return () => {
+        if (idleTimer !== null) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+        floatingLease?.end();
+        floatingLease = null;
+        subscriptions.forEach((subscription) => subscription.dispose());
+      };
     },
     [containerApi, panelApi],
   );

@@ -1,43 +1,16 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type RefCallback,
 } from "react"
-
-interface PointerClientPosition {
-  x: number
-  y: number
-}
-
-let lastPointerClientPosition: PointerClientPosition | null = null
-
-function recordPointerClientPosition(position: PointerClientPosition): void {
-  lastPointerClientPosition = position
-}
-
-function recordPointerEventPosition(event: PointerEvent | MouseEvent): void {
-  recordPointerClientPosition({
-    x: event.clientX,
-    y: event.clientY,
-  })
-}
-
-function isPointerInsideElement(
-  element: HTMLElement,
-  position: PointerClientPosition,
-): boolean {
-  const rect = element.getBoundingClientRect()
-  return (
-    position.x >= rect.left &&
-    position.x <= rect.right &&
-    position.y >= rect.top &&
-    position.y <= rect.bottom
-  )
-}
+import { registerGeometryTask } from "@/lib/desktopInteraction/geometryScheduler"
+import {
+  getGlobalPointerPosition,
+  isPointInsideRect,
+} from "@/lib/pointer/pointerPositionRuntime"
 
 interface UseElementPointerHoverOptions {
   enabled?: boolean
@@ -58,42 +31,13 @@ export function useElementPointerHover<TElement extends HTMLElement>({
   const [element, setElement] = useState<TElement | null>(null)
   const [isHovered, setIsHovered] = useState(false)
 
-  const syncHoverWithPointer = useCallback(() => {
-    if (!enabled) {
-      setIsHovered(false)
-      return false
-    }
-
-    const node = elementRef.current
-    const pointer = lastPointerClientPosition
-    if (!node || !pointer) {
-      return false
-    }
-
-    const nextIsHovered = isPointerInsideElement(node, pointer)
-    setIsHovered((current) => (current === nextIsHovered ? current : nextIsHovered))
-    return nextIsHovered
-  }, [enabled])
-
   const ref = useCallback<RefCallback<TElement>>((node) => {
     elementRef.current = node
     setElement(node)
   }, [])
 
-  const handleDocumentPointerUpdate = useCallback(
-    (event: PointerEvent | MouseEvent) => {
-      recordPointerEventPosition(event)
-      syncHoverWithPointer()
-    },
-    [syncHoverWithPointer],
-  )
-
   const handlePointerEnter = useCallback(
-    (event: ReactPointerEvent<TElement>) => {
-      recordPointerClientPosition({
-        x: event.clientX,
-        y: event.clientY,
-      })
+    (_event: ReactPointerEvent<TElement>) => {
       if (enabled) {
         setIsHovered(true)
       }
@@ -106,101 +50,45 @@ export function useElementPointerHover<TElement extends HTMLElement>({
   }, [])
 
   const handlePointerMove = useCallback(
-    (event: ReactPointerEvent<TElement>) => {
-      recordPointerClientPosition({
-        x: event.clientX,
-        y: event.clientY,
-      })
-      if (enabled) {
+    (_event: ReactPointerEvent<TElement>) => {
+      if (enabled && !isHovered) {
         setIsHovered(true)
       }
     },
-    [enabled],
+    [enabled, isHovered],
   )
 
-  useLayoutEffect(() => {
-    if (!enabled) {
-      setIsHovered(false)
-      return
-    }
-
-    syncHoverWithPointer()
-
-    if (typeof window === "undefined") {
-      return
-    }
-
-    const animationFrameId = window.requestAnimationFrame(syncHoverWithPointer)
-    return () => {
-      window.cancelAnimationFrame(animationFrameId)
-    }
-  }, [element, enabled, syncHoverWithPointer])
-
+  // Reconcile hover only when geometry changes underneath a stationary pointer
   useEffect(() => {
-    if (!enabled || typeof document === "undefined") {
+    if (!enabled || !element || typeof ResizeObserver === "undefined") {
+      if (!enabled) setIsHovered(false)
       return
     }
 
-    document.addEventListener("pointermove", handleDocumentPointerUpdate, {
-      capture: true,
-      passive: true,
+    const task = registerGeometryTask<boolean>({
+      name: "element-hover-reconcile",
+      read: () => {
+        const node = elementRef.current
+        if (!node) return null
+        const rect = node.getBoundingClientRect()
+        const pointer = getGlobalPointerPosition()
+        return isPointInsideRect(pointer.clientX, pointer.clientY, rect)
+      },
+      write: (isInside) => {
+        setIsHovered((current) => (current === isInside ? current : isInside))
+      },
     })
-    document.addEventListener("pointerdown", handleDocumentPointerUpdate, {
-      capture: true,
-      passive: true,
+
+    const ro = new ResizeObserver(() => {
+      task.invalidate()
     })
-    document.addEventListener("mousemove", handleDocumentPointerUpdate, {
-      capture: true,
-      passive: true,
-    })
-    document.addEventListener("mousedown", handleDocumentPointerUpdate, {
-      capture: true,
-      passive: true,
-    })
+    ro.observe(element)
 
     return () => {
-      document.removeEventListener("pointermove", handleDocumentPointerUpdate, true)
-      document.removeEventListener("pointerdown", handleDocumentPointerUpdate, true)
-      document.removeEventListener("mousemove", handleDocumentPointerUpdate, true)
-      document.removeEventListener("mousedown", handleDocumentPointerUpdate, true)
+      ro.disconnect()
+      task.dispose()
     }
-  }, [enabled, handleDocumentPointerUpdate])
-
-  useEffect(() => {
-    if (
-      !enabled ||
-      !element ||
-      typeof ResizeObserver === "undefined" ||
-      typeof window === "undefined"
-    ) {
-      return
-    }
-
-    let animationFrameId: number | null = null
-    const scheduleSync = () => {
-      if (animationFrameId !== null) {
-        return
-      }
-
-      animationFrameId = window.requestAnimationFrame(() => {
-        animationFrameId = null
-        syncHoverWithPointer()
-      })
-    }
-
-    const resizeObserver = new ResizeObserver(scheduleSync)
-    resizeObserver.observe(element)
-    if (element.parentElement) {
-      resizeObserver.observe(element.parentElement)
-    }
-
-    return () => {
-      if (animationFrameId !== null) {
-        window.cancelAnimationFrame(animationFrameId)
-      }
-      resizeObserver.disconnect()
-    }
-  }, [element, enabled, syncHoverWithPointer])
+  }, [element, enabled])
 
   return {
     ref,

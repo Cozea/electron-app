@@ -7,6 +7,7 @@ import {
   resolveBrowserSurfacePanelRect,
   useBrowserSurfaceStore,
 } from "@/features/browser/browserSurfaceStore";
+import { getBrowserSurfaceRect } from "@/features/browser/browserSurfaceGeometryRuntime";
 import {
   HIDDEN_BROWSER_WEBVIEW_OFFSET,
   resolveHostedBrowserWebviewWrapperStyle,
@@ -145,7 +146,7 @@ describe("pinned T3 browser host foundation", () => {
     expect(
       resolveHostedBrowserWebviewWrapperStyle({
         active: true,
-        rect: presentation?.rect ?? null,
+        rect: getBrowserSurfaceRect("tab"),
         borderRadius: presentation?.borderRadius,
         hiddenSize: { width: 393, height: 852 },
         stackingLayer: presentation?.stackingLayer,

@@ -1,28 +1,22 @@
 import { create } from "zustand";
 
 import { APP_LAYERS } from "@/lib/appLayers";
+import { recordInteractionCounter } from "@/lib/performance/interactionCounters";
+import {
+  clearBrowserSurfaceGeometryOwner,
+  getBrowserSurfaceContent,
+  getBrowserSurfaceRect,
+  registerBrowserSurfaceGeometryOwner,
+  setBrowserSurfaceContent,
+  setBrowserSurfaceRect,
+  type BrowserSurfaceContentPresentation,
+  type BrowserSurfaceRect,
+} from "./browserSurfaceGeometryRuntime";
 
-export interface BrowserSurfaceRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-export interface BrowserSurfaceContentPresentation {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly scale: number;
-  readonly scrollLeft: number;
-  readonly scrollTop: number;
-}
+export type { BrowserSurfaceContentPresentation, BrowserSurfaceRect };
 
 export interface BrowserSurfacePresentation {
-  readonly rect: BrowserSurfaceRect | null;
   readonly visible: boolean;
-  readonly content: BrowserSurfaceContentPresentation | null;
   readonly fittedSourceContent: BrowserSurfaceContentPresentation | null;
   readonly fitSourceContent: boolean;
   readonly borderRadius: string;
@@ -37,7 +31,6 @@ interface BrowserSurfaceStoreState {
   readonly present: (
     tabId: string,
     owner: symbol,
-    rect: BrowserSurfaceRect,
     visible: boolean,
     borderRadius: string,
     stackingLayer: number,
@@ -57,18 +50,11 @@ export interface BrowserSurfaceLease {
 }
 
 export function resolveBrowserSurfacePanelRect(
-  byTabId: Readonly<Record<string, BrowserSurfacePresentation>>,
+  _byTabId: Readonly<Record<string, BrowserSurfacePresentation>>,
   tabId: string,
 ): BrowserSurfaceRect | null {
-  return byTabId[tabId]?.rect ?? null;
+  return getBrowserSurfaceRect(tabId);
 }
-
-const rectEquals = (left: BrowserSurfaceRect | null, right: BrowserSurfaceRect): boolean =>
-  left !== null &&
-  left.x === right.x &&
-  left.y === right.y &&
-  left.width === right.width &&
-  left.height === right.height;
 
 export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) => ({
   byTabId: {},
@@ -76,14 +62,13 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
     set((state) => {
       const current = state.byTabId[tabId];
       if (current?.owner === owner) return state;
+      const content = getBrowserSurfaceContent(tabId);
       return {
         byTabId: {
           ...state.byTabId,
           [tabId]: {
-            rect: current?.rect ?? null,
             visible: false,
-            content: current?.content ?? null,
-            fittedSourceContent: fitSourceContent ? (current?.content ?? null) : null,
+            fittedSourceContent: fitSourceContent ? (current?.fittedSourceContent ?? content) : null,
             fitSourceContent,
             borderRadius: current?.borderRadius ?? "0",
             stackingLayer: current?.stackingLayer ?? APP_LAYERS.browserDocked,
@@ -93,15 +78,15 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
         },
       };
     }),
-  present: (tabId, owner, rect, visible, borderRadius, stackingLayer) =>
+  present: (tabId, owner, visible, borderRadius, stackingLayer) => {
+    recordInteractionCounter("browserPresentationStoreWrites");
     set((state) => {
       const current = state.byTabId[tabId];
       if (current?.owner !== owner) return state;
       if (
         current.visible === visible &&
         current.borderRadius === borderRadius &&
-        current.stackingLayer === stackingLayer &&
-        rectEquals(current.rect, rect)
+        current.stackingLayer === stackingLayer
       ) {
         return state;
       }
@@ -110,7 +95,6 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
           ...state.byTabId,
           [tabId]: {
             ...current,
-            rect,
             visible,
             borderRadius,
             stackingLayer,
@@ -118,8 +102,10 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
           },
         },
       };
-    }),
-  presentContent: (tabId, content) =>
+    });
+  },
+  presentContent: (tabId, content) => {
+    setBrowserSurfaceContent(tabId, content);
     set((state) => {
       const current = state.byTabId[tabId];
       if (!current) {
@@ -127,9 +113,7 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
           byTabId: {
             ...state.byTabId,
             [tabId]: {
-              rect: null,
               visible: false,
-              content,
               fittedSourceContent: null,
               fitSourceContent: false,
               borderRadius: "0",
@@ -140,34 +124,21 @@ export const useBrowserSurfaceStore = create<BrowserSurfaceStoreState>()((set) =
           },
         };
       }
-      const previous = current.content;
-      if (
-        previous &&
-        previous.x === content.x &&
-        previous.y === content.y &&
-        previous.width === content.width &&
-        previous.height === content.height &&
-        previous.scale === content.scale &&
-        previous.scrollLeft === content.scrollLeft &&
-        previous.scrollTop === content.scrollTop
-      ) {
-        return state;
-      }
-      return {
-        byTabId: {
-          ...state.byTabId,
-          [tabId]: {
-            ...current,
-            content,
-            fittedSourceContent:
-              current.fitSourceContent && current.fittedSourceContent === null
-                ? content
-                : current.fittedSourceContent,
-            updatedAt: Date.now(),
+      if (current.fitSourceContent && current.fittedSourceContent === null) {
+        return {
+          byTabId: {
+            ...state.byTabId,
+            [tabId]: {
+              ...current,
+              fittedSourceContent: content,
+              updatedAt: Date.now(),
+            },
           },
-        },
-      };
-    }),
+        };
+      }
+      return state;
+    });
+  },
   release: (tabId, owner) =>
     set((state) => {
       const current = state.byTabId[tabId];
@@ -195,6 +166,7 @@ export function acquireBrowserSurface(
   const owner = Symbol(`browser-surface:${tabId}`);
   let released = false;
   useBrowserSurfaceStore.getState().claim(tabId, owner, fitSourceContent);
+  registerBrowserSurfaceGeometryOwner(tabId, owner);
 
   return {
     present: (
@@ -205,14 +177,17 @@ export function acquireBrowserSurface(
     ) => {
       if (released) return false;
       if (useBrowserSurfaceStore.getState().byTabId[tabId]?.owner !== owner) return false;
+      const setSuccess = setBrowserSurfaceRect(tabId, owner, rect);
+      if (!setSuccess) return false;
       useBrowserSurfaceStore
         .getState()
-        .present(tabId, owner, rect, visible, borderRadius, stackingLayer);
+        .present(tabId, owner, visible, borderRadius, stackingLayer);
       return true;
     },
     release: () => {
       if (released) return;
       released = true;
+      clearBrowserSurfaceGeometryOwner(tabId, owner);
       useBrowserSurfaceStore.getState().release(tabId, owner);
     },
   };

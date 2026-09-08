@@ -14,6 +14,7 @@ import { extractTerminalLinks, isTerminalLinkActivation, splitPathAndPosition } 
 import { cn } from '@/lib/utils'
 
 import { useTerminalActions } from '@/features/terminal/model/terminalStore'
+import { createTerminalResizeCoordinator } from './terminalResizeCoordinator'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
   buildAnsiPalette,
@@ -133,7 +134,6 @@ export function TerminalInstance({
   const webglRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const syncWebglRendererRef = useRef<() => void>(() => {})
   const wantsGpuRendererRef = useRef(gpuActive)
-  const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastMeasuredContainerSizeRef = useRef<{ width: number; height: number } | null>(null)
   const hasInputErrorRef = useRef(false)
   const activeTerminalIdRef = useRef<string | null>(terminalId ?? null)
@@ -701,66 +701,55 @@ export function TerminalInstance({
     syncWebglRendererRef.current()
   }, [disposeWebglRenderer, shouldUseGpuRenderer])
 
-  const handleResize = useCallback(() => {
-    if (!fitAddonRef.current || !xtermRef.current || !containerRef.current) return
-
-    const rect = containerRef.current.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    const lastMeasuredSize = lastMeasuredContainerSizeRef.current
-    if (
-      lastMeasuredSize &&
-      Math.abs(lastMeasuredSize.width - rect.width) < 0.5 &&
-      Math.abs(lastMeasuredSize.height - rect.height) < 0.5
-    ) {
-      return
-    }
-
-    window.requestAnimationFrame(() => {
-      if (!fitAddonRef.current || !xtermRef.current) return
-
-      try {
-        const term = xtermRef.current
-        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY
-        fitAddonRef.current.fit()
-        if (wasAtBottom) {
-          term.scrollToBottom()
-        }
-        lastMeasuredContainerSizeRef.current = {
-          width: rect.width,
-          height: rect.height,
-        }
-        const { cols, rows } = term
-        const activeTerminalId = activeTerminalIdRef.current
-        if (activeTerminalId) {
-          void window.electronAPI.terminal.resize({ terminalId: activeTerminalId, cols, rows })
-        }
-      } catch (error) {
-        console.error('[Terminal] Resize failed:', error)
-      }
-    })
-  }, [])
-
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
-    const resizeObserver = new ResizeObserver(() => {
-      if (resizeTimeoutRef.current) {
-        clearTimeout(resizeTimeoutRef.current)
-      }
-      resizeTimeoutRef.current = setTimeout(handleResize, 50)
+    const coordinator = createTerminalResizeCoordinator({
+      name: `terminal-${terminalId ?? "instance"}`,
+      container,
+      fit: () => {
+        fitAddonRef.current?.fit()
+      },
+      getBufferState: () => {
+        const term = xtermRef.current
+        return {
+          wasAtBottom: term ? term.buffer.active.viewportY >= term.buffer.active.baseY : false,
+        }
+      },
+      scrollToBottom: () => {
+        xtermRef.current?.scrollToBottom()
+      },
+      getDimensions: () => {
+        const term = xtermRef.current
+        return {
+          cols: term?.cols ?? 80,
+          rows: term?.rows ?? 24,
+        }
+      },
+      onSendPtyResize: ({ cols, rows }) => {
+        const activeTerminalId = activeTerminalIdRef.current
+        if (activeTerminalId) {
+          void window.electronAPI.terminal.resize({ terminalId: activeTerminalId, cols, rows })
+        }
+      },
+    })
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      const contentRect = entry?.contentRect
+      coordinator.onContainerResize(
+        contentRect ? { width: contentRect.width, height: contentRect.height } : undefined,
+      )
     })
 
     resizeObserver.observe(container)
 
     return () => {
       resizeObserver.disconnect()
-      if (resizeTimeoutRef.current) {
-        clearTimeout(resizeTimeoutRef.current)
-        resizeTimeoutRef.current = null
-      }
+      coordinator.dispose()
     }
-  }, [handleResize])
+  }, [terminalId])
 
   const focus = useCallback(() => {
     xtermRef.current?.focus()

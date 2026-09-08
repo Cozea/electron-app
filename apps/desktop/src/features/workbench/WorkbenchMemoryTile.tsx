@@ -19,6 +19,7 @@ import { useMemoryControls } from "@/features/project-memory/useMemoryControls"
 import { useTheme } from "@/contexts/ThemeContext"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import { registerGeometryTask, type GeometryTask } from "@/lib/desktopInteraction/geometryScheduler"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -92,7 +93,9 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const canvasObserverRef = useRef<ResizeObserver | null>(null)
+  const canvasTaskRef = useRef<GeometryTask<boolean> | null>(null)
   const rootObserverRef = useRef<ResizeObserver | null>(null)
+  const rootTaskRef = useRef<GeometryTask<number> | null>(null)
   const [tileWidth, setTileWidth] = useState(0)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   /*
@@ -407,36 +410,75 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
   const attachRoot = useCallback((node: HTMLDivElement | null) => {
     rootObserverRef.current?.disconnect()
     rootObserverRef.current = null
+    rootTaskRef.current?.dispose()
+    rootTaskRef.current = null
     if (!node) return
 
-    const measure = () => {
-      const next = node.getBoundingClientRect().width
-      setTileWidth((current) => (Math.abs(current - next) > 1 ? next : current))
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
+    let pendingWidth: number | null = null
+    const task = registerGeometryTask<number>({
+      name: "memory-tile-root",
+      read: () => {
+        if (pendingWidth !== null) {
+          const w = pendingWidth
+          pendingWidth = null
+          return w
+        }
+        return node.getBoundingClientRect().width
+      },
+      write: (next) => {
+        setTileWidth((current) => (Math.abs(current - next) > 1 ? next : current))
+      },
+    })
+    rootTaskRef.current = task
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) {
+        pendingWidth = entry.contentRect.width
+      }
+      task.invalidate()
+    })
     observer.observe(node)
     rootObserverRef.current = observer
+    task.invalidate()
   }, [])
 
-  useEffect(() => () => rootObserverRef.current?.disconnect(), [])
+  useEffect(() => () => {
+    rootObserverRef.current?.disconnect()
+    rootTaskRef.current?.dispose()
+  }, [])
 
   // Same remount hazard as the root: this subtree is replaced by the empty
   // state whenever the graph goes away.
   const attachCanvasContainer = useCallback((node: HTMLDivElement | null) => {
     canvasObserverRef.current?.disconnect()
     canvasObserverRef.current = null
+    canvasTaskRef.current?.dispose()
+    canvasTaskRef.current = null
     if (!node) return
 
+    const task = registerGeometryTask<boolean>({
+      name: "memory-tile-canvas",
+      read: () => true,
+      write: () => {
+        if (!viewRef.current.initialized) fitToViewRef.current()
+        drawRef.current()
+      },
+    })
+    canvasTaskRef.current = task
+
     const observer = new ResizeObserver(() => {
-      if (!viewRef.current.initialized) fitToViewRef.current()
-      drawRef.current()
+      task.invalidate()
     })
     observer.observe(node)
     canvasObserverRef.current = observer
+    task.invalidate()
   }, [])
 
-  useEffect(() => () => canvasObserverRef.current?.disconnect(), [])
+  useEffect(() => () => {
+    canvasObserverRef.current?.disconnect()
+    canvasTaskRef.current?.dispose()
+  }, [])
 
   const toGraphSpace = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current

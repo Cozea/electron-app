@@ -9,6 +9,7 @@ import {
 } from "react"
 
 import { commitBrowserViewportChange } from "./browserViewportActions"
+import { beginDesktopInteraction } from "@/lib/desktopInteraction/interactionStore"
 import {
   browserViewportSettingKey,
   resizeBrowserViewportFromRail,
@@ -183,6 +184,15 @@ export function useBrowserViewportResize(options: {
       // Window listeners below keep the drag functional when capture is unavailable.
     }
 
+    const lease = beginDesktopInteraction("browser-viewport-resize")
+    let frameId: number | null = null
+    let latestPendingViewport: ViewportDrag | null = {
+      sourceKey: sourceViewportKey,
+      width: startWidth,
+      height: startHeight,
+      direction,
+    }
+
     const sourceChanged = () => sourceViewportKeyRef.current !== sourceViewportKey
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return
@@ -202,9 +212,22 @@ export function useBrowserViewportResize(options: {
         aspectRatio ?? undefined,
       )
       latest = { width, height }
-      setDragViewport({ sourceKey: sourceViewportKey, width, height, direction })
+      latestPendingViewport = { sourceKey: sourceViewportKey, width, height, direction }
+
+      if (frameId === null) {
+        frameId = requestAnimationFrame(() => {
+          frameId = null
+          if (latestPendingViewport) {
+            setDragViewport(latestPendingViewport)
+          }
+        })
+      }
     }
     function cleanup() {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId)
+        frameId = null
+      }
       window.removeEventListener("pointermove", move)
       window.removeEventListener("pointerup", finish)
       window.removeEventListener("pointercancel", cancel)
@@ -214,9 +237,17 @@ export function useBrowserViewportResize(options: {
       } catch {
         // The browser may already have released capture on pointerup.
       }
+      lease.end()
     }
     function finish(upEvent: PointerEvent) {
       if (upEvent.pointerId !== pointerId) return
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId)
+        frameId = null
+      }
+      if (latestPendingViewport) {
+        setDragViewport(latestPendingViewport)
+      }
       cleanup()
       if (sourceChanged() || (latest.width === startWidth && latest.height === startHeight)) {
         clearDrag()

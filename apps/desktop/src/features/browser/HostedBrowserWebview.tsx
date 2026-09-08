@@ -3,7 +3,7 @@ import type {
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
 } from "@shared/browserSurfaceTypes";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "@/lib/utils";
@@ -19,9 +19,18 @@ import {
 } from "./browserViewportLayout";
 import { subscribeBrowserViewportChange } from "./browserViewportActions";
 import { commitBrowserViewport, useBrowserViewportStore } from "./browserViewportStore";
-import { resolveBrowserSurfacePanelRect, useBrowserSurfaceStore } from "./browserSurfaceStore";
+import { useBrowserSurfaceStore } from "./browserSurfaceStore";
+import {
+  getBrowserSurfaceContent,
+  getBrowserSurfaceRect,
+  setBrowserSurfaceContent,
+  subscribeBrowserSurfaceRect,
+} from "./browserSurfaceGeometryRuntime";
 import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore";
-import { resolveHostedBrowserWebviewWrapperStyle } from "./hostedBrowserWebviewStyle";
+import {
+  HIDDEN_BROWSER_WEBVIEW_OFFSET,
+  resolveHostedBrowserWebviewWrapperStyle,
+} from "./hostedBrowserWebviewStyle";
 import { APP_LAYERS } from "@/lib/appLayers";
 import {
   INITIAL_WEBVIEW_CRASH_RECOVERY_STATE,
@@ -90,11 +99,9 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
     useShallow((state) => {
       const current = state.byTabId[runtimeTabId];
       return {
-        content: current?.content ?? null,
         borderRadius: current?.borderRadius ?? "0",
         fitSourceContent: current?.fitSourceContent ?? false,
         fittedSourceContent: current?.fittedSourceContent ?? null,
-        rect: resolveBrowserSurfacePanelRect(state.byTabId, runtimeTabId),
         stackingLayer: current?.stackingLayer ?? APP_LAYERS.browserDocked,
         visible: current?.visible ?? false,
       };
@@ -185,10 +192,59 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
     };
   }, [initialSrc, prepared, preview, runtimeTabId, webviewGeneration]);
 
-  const active = presentation.visible && presentation.rect !== null;
-  const lastRect = presentation.rect;
+  const fastFillMode = viewport._tag === "fill" && !presentation.fitSourceContent;
+
+  const nonFillRect = useSyncExternalStore(
+    (cb) => subscribeBrowserSurfaceRect(runtimeTabId, cb),
+    () => (fastFillMode ? null : getBrowserSurfaceRect(runtimeTabId)),
+  );
+  const lastRect = fastFillMode ? getBrowserSurfaceRect(runtimeTabId) : nonFillRect;
+  const active = presentation.visible && lastRect !== null;
   const zoomFactor = surfaceState?.zoomFactor ?? 1;
   const normalizedZoomFactor = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+
+  useLayoutEffect(() => {
+    if (!fastFillMode) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    const applyGeometry = () => {
+      const rect = getBrowserSurfaceRect(runtimeTabId);
+      const webview = webviewRef.current;
+      if (!rect) return;
+
+      if (presentation.visible) {
+        wrapper.style.left = `${rect.x}px`;
+        wrapper.style.top = `${rect.y}px`;
+        wrapper.style.width = `${rect.width}px`;
+        wrapper.style.height = `${rect.height}px`;
+
+        if (webview) {
+          const cssWidth = Math.max(1, Math.round(rect.width / normalizedZoomFactor));
+          const cssHeight = Math.max(1, Math.round(rect.height / normalizedZoomFactor));
+          webview.setAttribute("data-preview-css-width", String(cssWidth));
+          webview.setAttribute("data-preview-css-height", String(cssHeight));
+        }
+
+        setBrowserSurfaceContent(runtimeTabId, {
+          x: 0,
+          y: 0,
+          width: rect.width,
+          height: rect.height,
+          scale: 1,
+          scrollLeft: wrapper.scrollLeft,
+          scrollTop: wrapper.scrollTop,
+        });
+      }
+    };
+
+    applyGeometry();
+    const unsubscribe = subscribeBrowserSurfaceRect(runtimeTabId, applyGeometry);
+    return () => {
+      unsubscribe();
+    };
+  }, [fastFillMode, normalizedZoomFactor, presentation.visible, runtimeTabId]);
+
   const viewportWidth = viewport._tag === "fill" ? null : viewport.width;
   const viewportHeight = viewport._tag === "fill" ? null : viewport.height;
   const viewportAspectRatio =
@@ -198,10 +254,11 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   const handleAspectRatioChange = useCallback((aspectRatio: number | null) => {
     setAspectRatioLocked(aspectRatio !== null);
   }, []);
-  const hiddenContentSize = presentation.content
+  const currentContent = getBrowserSurfaceContent(runtimeTabId);
+  const hiddenContentSize = currentContent
     ? {
-        width: presentation.content.width / presentation.content.scale,
-        height: presentation.content.height / presentation.content.scale,
+        width: currentContent.width / currentContent.scale,
+        height: currentContent.height / currentContent.scale,
       }
     : null;
   const hiddenSize =
@@ -255,21 +312,36 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   const syncContentPresentation = useCallback(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-    useBrowserSurfaceStore.getState().presentContent(runtimeTabId, {
-      x: layout.viewportX,
-      y: layout.viewportY,
-      width: layout.viewportWidth,
-      height: layout.viewportHeight,
-      scale: layout.viewportScale,
-      scrollLeft: wrapper.scrollLeft,
-      scrollTop: wrapper.scrollTop,
-    });
-  }, [layout, runtimeTabId]);
+    if (fastFillMode) {
+      const rect = getBrowserSurfaceRect(runtimeTabId);
+      if (!rect) return;
+      setBrowserSurfaceContent(runtimeTabId, {
+        x: 0,
+        y: 0,
+        width: rect.width,
+        height: rect.height,
+        scale: 1,
+        scrollLeft: wrapper.scrollLeft,
+        scrollTop: wrapper.scrollTop,
+      });
+    } else {
+      setBrowserSurfaceContent(runtimeTabId, {
+        x: layout.viewportX,
+        y: layout.viewportY,
+        width: layout.viewportWidth,
+        height: layout.viewportHeight,
+        scale: layout.viewportScale,
+        scrollLeft: wrapper.scrollLeft,
+        scrollTop: wrapper.scrollTop,
+      });
+    }
+  }, [fastFillMode, layout, runtimeTabId]);
 
   useEffect(() => {
+    if (fastFillMode) return;
     const frameId = window.requestAnimationFrame(syncContentPresentation);
     return () => window.cancelAnimationFrame(frameId);
-  }, [syncContentPresentation]);
+  }, [fastFillMode, syncContentPresentation]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -278,23 +350,48 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
   }, [runtimeTabId, viewport._tag, viewportHeight, viewportWidth]);
 
   if (!prepared) return null;
-  const wrapperStyle = resolveHostedBrowserWebviewWrapperStyle({
-    active,
-    borderRadius: presentation.borderRadius,
-    stackingLayer: presentation.stackingLayer,
-    rect: lastRect,
-    hiddenSize,
-  });
+  const wrapperStyle: React.CSSProperties = fastFillMode
+    ? presentation.visible
+      ? {
+          zIndex: presentation.stackingLayer,
+          pointerEvents: "auto",
+          borderRadius: presentation.borderRadius !== "0" ? presentation.borderRadius : undefined,
+          overscrollBehavior: "contain",
+          visibility: "visible",
+        }
+      : {
+          left: `${HIDDEN_BROWSER_WEBVIEW_OFFSET}px`,
+          top: `${HIDDEN_BROWSER_WEBVIEW_OFFSET}px`,
+          width: `${hiddenSize.width}px`,
+          height: `${hiddenSize.height}px`,
+          zIndex: -1,
+          pointerEvents: "none",
+          visibility: "visible",
+          overscrollBehavior: "contain",
+        }
+    : {
+        ...resolveHostedBrowserWebviewWrapperStyle({
+          active,
+          borderRadius: presentation.borderRadius,
+          stackingLayer: presentation.stackingLayer,
+          rect: nonFillRect,
+          hiddenSize,
+        }),
+        overscrollBehavior: "contain",
+      };
 
   return (
     <div
       ref={wrapperRef}
       className="fixed overflow-hidden bg-muted/35"
-      style={{ ...wrapperStyle, overscrollBehavior: "contain" }}
+      style={wrapperStyle}
       onScroll={syncContentPresentation}
       data-preview-viewport={runtimeTabId}
     >
-      <div className="relative" style={{ width: layout.canvasWidth, height: layout.canvasHeight }}>
+      <div
+        className="relative"
+        style={fastFillMode ? { width: "100%", height: "100%" } : { width: layout.canvasWidth, height: layout.canvasHeight }}
+      >
         {deviceToolbarVisible && effectiveViewport._tag !== "fill" ? (
           <BrowserDeviceToolbar
             setting={effectiveViewport}
@@ -319,14 +416,14 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
             fittedSourceViewport
               ? fittedSourceViewport.width
               : effectiveViewport._tag === "fill"
-                ? Math.max(1, Math.round(layout.viewportWidth / normalizedZoomFactor))
+                ? Math.max(1, Math.round((fastFillMode ? (lastRect?.width ?? 1280) : layout.viewportWidth) / normalizedZoomFactor))
                 : effectiveViewport.width
           }
           data-preview-css-height={
             fittedSourceViewport
               ? fittedSourceViewport.height
               : effectiveViewport._tag === "fill"
-                ? Math.max(1, Math.round(layout.viewportHeight / normalizedZoomFactor))
+                ? Math.max(1, Math.round((fastFillMode ? (lastRect?.height ?? 800) : layout.viewportHeight) / normalizedZoomFactor))
                 : effectiveViewport.height
           }
           aria-hidden={active ? undefined : true}
@@ -334,14 +431,25 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
             "absolute flex overflow-hidden bg-background",
             active && !layout.fillsPanel && "ring-1 ring-border/70 shadow-sm",
           )}
-          style={{
-            left: layout.viewportX,
-            top: layout.viewportY,
-            width: layout.viewportWidth / layout.viewportScale,
-            height: layout.viewportHeight / layout.viewportScale,
-            transform: layout.viewportScale < 1 ? `scale(${layout.viewportScale})` : undefined,
-            transformOrigin: "top left",
-          }}
+          style={
+            fastFillMode
+              ? {
+                  left: 0,
+                  top: 0,
+                  width: "100%",
+                  height: "100%",
+                  transform: "none",
+                  transformOrigin: "top left",
+                }
+              : {
+                  left: layout.viewportX,
+                  top: layout.viewportY,
+                  width: layout.viewportWidth / layout.viewportScale,
+                  height: layout.viewportHeight / layout.viewportScale,
+                  transform: layout.viewportScale < 1 ? `scale(${layout.viewportScale})` : undefined,
+                  transformOrigin: "top left",
+                }
+          }
         />
         {active && effectiveViewport._tag !== "fill" && !fittedSourceViewport ? (
           <>

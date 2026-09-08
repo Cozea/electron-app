@@ -37,7 +37,6 @@ const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 const SIDEBAR_MAC_TOP_INSET_PX = 36
-const SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS = [0, 160, 320] as const
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -165,41 +164,6 @@ function SidebarProvider({
   // This makes it easier to style the sidebar with Tailwind classes.
   const state = open ? "expanded" : "collapsed"
 
-  const previousDesktopOpenRef = React.useRef<boolean | null>(null)
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-
-    const previousOpen = previousDesktopOpenRef.current
-    previousDesktopOpenRef.current = open
-
-    if (previousOpen === null || previousOpen === open) {
-      return
-    }
-
-    // Sidebar collapse is a CSS width transition, so many layout-sensitive children never
-    // see a native `window.resize`. Emit a few sync points across the transition instead.
-    const emitLayoutSync = () => {
-      window.dispatchEvent(new Event("resize"))
-      window.dispatchEvent(
-        new CustomEvent("cozea:sidebar-layout-change", {
-          detail: {
-            open,
-            state,
-          },
-        })
-      )
-    }
-
-    const timeoutIds = SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS.map((timeoutMs) =>
-      window.setTimeout(emitLayoutSync, timeoutMs)
-    )
-
-    return () => {
-      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId))
-    }
-  }, [open, state])
-
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
       state,
@@ -228,7 +192,7 @@ function SidebarProvider({
             } as React.CSSProperties
           }
           className={cn(
-            "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+            "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex h-full min-h-0 w-full",
             className
           )}
           {...props}
@@ -339,6 +303,7 @@ function Sidebar({
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      data-cozea-geometry-transition=""
       style={
         collapsible === "offcanvas"
           ? {
@@ -352,6 +317,7 @@ function Sidebar({
       {/* This is what handles the sidebar gap on desktop */}
       <div
         data-slot="sidebar-gap"
+        data-cozea-geometry-transition=""
         className={cn(
           "relative w-(--sidebar-width) bg-transparent transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
           "group-data-[collapsible=offcanvas]:w-0",
@@ -363,6 +329,7 @@ function Sidebar({
       />
       <div
         data-slot="sidebar-container"
+        data-cozea-geometry-transition=""
         className={cn(
           "absolute inset-y-0 z-10 flex h-full w-(--sidebar-width) transition-[left,right,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
           side === "left"

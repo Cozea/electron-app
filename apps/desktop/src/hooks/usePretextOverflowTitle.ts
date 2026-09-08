@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react"
 
 import { measureTextNaturalWidth } from "@/lib/text/pretextMeasure"
+import {
+  deferUntilDesktopInteractionIdle,
+  isDesktopInteractionActive,
+} from "@/lib/desktopInteraction/interactionStore"
 
 interface UsePretextOverflowTitleOptions {
   font: string
@@ -13,14 +17,26 @@ export function usePretextOverflowTitle(options: UsePretextOverflowTitleOptions)
   const { font } = options
   const containerRef = useRef<HTMLElement | null>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const idleKeyRef = useRef(Symbol("overflow-title-idle"))
+  const latestWidthRef = useRef(0)
 
   useEffect(() => {
     const element = containerRef.current
     if (!element) return
 
+    const key = idleKeyRef.current
+
     const observer = new ResizeObserver((entries) => {
       const nextWidth = entries[0]?.contentRect.width ?? 0
-      setContainerWidth(nextWidth)
+      latestWidthRef.current = nextWidth
+
+      if (!isDesktopInteractionActive()) {
+        setContainerWidth(nextWidth)
+      } else {
+        deferUntilDesktopInteractionIdle(key, () => {
+          setContainerWidth(latestWidthRef.current)
+        })
+      }
     })
 
     observer.observe(element)

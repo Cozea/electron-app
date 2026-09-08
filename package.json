@@ -43,6 +43,8 @@
     "typecheck:cloudflare": "bunx tsc --project cloudflare/worker/tsconfig.json",
     "lint": "bunx --bun oxlint apps/desktop/src apps/desktop/electron convex shared tests apps/desktop/electron.vite.config.ts vitest.config.ts",
     "test": "bunx vitest run",
+    "graph:generate": "bun run scripts/generate-memory-map.mjs",
+    "graph:score": "node scripts/score-memory-map.mjs graphify-out/graph.json",
     "models:sync": "bun run scripts/sync-model-picker.mjs",
     "devapp:generate": "bun run scripts/generate-devapp-authoring.ts",
     "devapp:check": "bun run scripts/generate-devapp-authoring.ts --check",

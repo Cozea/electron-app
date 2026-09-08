@@ -79,7 +79,7 @@ export function SettingsDrawer() {
       <SheetContent
         side="right"
         disableAnimation
-        className="inset-0 flex h-screen w-screen max-w-none flex-col gap-0 p-0 sm:max-w-none"
+        className="inset-0 flex h-full w-full max-w-none flex-col gap-0 p-0 sm:max-w-none"
         closeClassName="hidden"
       >
         <SheetHeader className="sr-only">

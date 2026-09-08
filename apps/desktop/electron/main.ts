@@ -13,6 +13,7 @@ import { Effect } from 'effect'
 import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '../../../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
+import { attachWindowInteractionLifecycle } from './windowInteractionLifecycle'
 
 // Services
 import { TerminalService } from './services/TerminalService'
@@ -1539,6 +1540,8 @@ function createWindow() {
     trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
   })
 
+  const detachWindowInteractionLifecycle = attachWindowInteractionLifecycle(win)
+
   if (!t3BrowserSurfaceService) {
     throw new Error('The T3 browser surface service was not initialized before window creation.')
   }
@@ -1690,6 +1693,7 @@ function createWindow() {
   // closed; without cleanup each run would stack another listener capturing
   // a stale useTransparency.
   win.once('closed', () => {
+    detachWindowInteractionLifecycle()
     nativeTheme.removeListener('updated', handleNativeThemeUpdated)
   })
 

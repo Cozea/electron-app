@@ -14,6 +14,10 @@ import { ToastProvider } from './features/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { applyStoredLanguage } from './lib/i18n'
 
+import { initNativeWindowInteractionBridge } from './lib/desktopInteraction/nativeWindowBridge'
+import { initGlobalPointerPositionTracking } from './lib/pointer/pointerPositionRuntime'
+import { initInteractionFrameDiagnostics } from './lib/performance/interactionFrameDiagnostics'
+import { initInteractionCounters } from './lib/performance/interactionCounters'
 import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
 import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
@@ -24,6 +28,10 @@ import {
 } from './app/bootstrap/desktopBootstrap'
 import { featureFlags } from './lib/featureFlags'
 import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as any).__appRouter = appRouter
+}
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -92,6 +100,8 @@ async function prewarmRestoredWorkbench(bootstrap: DesktopBootstrapSnapshot): Pr
 
 async function startRenderer(): Promise<void> {
   initJankDiagnostics()
+  initInteractionFrameDiagnostics()
+  initInteractionCounters()
   applyBootstrapRouteFromSearch()
 
   const bootstrapStartMark = markCozeaPerformance('renderer:desktop-bootstrap-start')
@@ -118,6 +128,9 @@ async function startRenderer(): Promise<void> {
 
   applyThemeClass(getStoredThemePreference())
   applyStoredLanguage()
+
+  initNativeWindowInteractionBridge()
+  initGlobalPointerPositionTracking()
 
   const rootRenderStartMark = markCozeaPerformance('renderer:root-render-start')
   createRoot(document.getElementById('root')!).render(

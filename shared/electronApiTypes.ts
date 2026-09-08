@@ -1,3 +1,4 @@
+import type { NativeDesktopInteractionChange } from './desktopInteractionTypes'
 import type { Session } from './types'
 import type {
   ScheduledTaskDraft,
@@ -1670,6 +1671,7 @@ export interface ElectronAPI {
   window: {
     isFullScreen: () => Promise<boolean>
     onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
+    onInteractionChange: (callback: (event: NativeDesktopInteractionChange) => void) => () => void
     openSettings: (route?: string) => Promise<{ success: boolean; error?: string }>
   }
   orgDevApp: {

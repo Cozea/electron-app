@@ -166,7 +166,7 @@ The branch adds architecture/unit coverage for:
 
 ## Packaged macOS acceptance QA
 
-This is the remaining operator verification before merge/release. CircleCI is not a gate for this PR.
+This is the remaining operator verification before merge/release. CI is not a gate for this PR.
 
 1. **Returning launch, online**
    - Open a project/workbench, quit Cozea, relaunch.

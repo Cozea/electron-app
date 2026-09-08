@@ -13,7 +13,7 @@ import { attachPreviewAnnotationToComposer } from "./previewAnnotationComposerRe
 import { commitBrowserViewportChange } from "./browserViewportActions"
 import { useBrowserViewportStore } from "./browserViewportStore"
 import { resolveResponsiveBrowserViewportSize } from "./browserViewportLayout"
-import { useBrowserSurfaceStore } from "./browserSurfaceStore"
+import { getBrowserSurfaceRect } from "./browserSurfaceGeometryRuntime"
 import { useBrowserSurfaceRegistry } from "./browserSurfaceRegistry"
 import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore"
 import { useBrowserArtifactStore } from "./browserArtifactStore"
@@ -52,7 +52,6 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
   const state = useBrowserSurfaceStateStore((store) => store.byTabId[runtimeTabId])
   const viewport =
     useBrowserViewportStore((store) => store.byTabId[runtimeTabId]) ?? FILL_PREVIEW_VIEWPORT
-  const panelRect = useBrowserSurfaceStore((store) => store.byTabId[runtimeTabId]?.rect ?? null)
   const recording = useBrowserRecordingStore((store) => store.activeTabIds.has(runtimeTabId))
   const screenshot = useBrowserArtifactStore((store) => store.screenshotByTabId[runtimeTabId])
   const recordingArtifact = useBrowserArtifactStore((store) => store.recordingByTabId[runtimeTabId])
@@ -82,12 +81,13 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
   }
 
   const toggleDeviceToolbar = () => {
-    if (!panelRect) return
+    const currentRect = getBrowserSurfaceRect(runtimeTabId)
+    if (!currentRect) return
     const next =
       viewport._tag === "fill"
         ? {
             _tag: "freeform" as const,
-            ...resolveResponsiveBrowserViewportSize(panelRect, state?.zoomFactor ?? 1),
+            ...resolveResponsiveBrowserViewportSize(currentRect, state?.zoomFactor ?? 1),
           }
         : ({ _tag: "fill" } as const)
     void commitBrowserViewportChange(runtimeTabId, next).catch((error) =>
@@ -261,7 +261,7 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
     items.push({
       id: "toggle-device-toolbar",
       label: viewport._tag === "fill" ? "Show device toolbar" : "Hide device toolbar",
-      enabled: Boolean(available && panelRect),
+      enabled: Boolean(available && getBrowserSurfaceRect(runtimeTabId)),
       icon: getNativeMenuIcon("smartphone"),
     })
 

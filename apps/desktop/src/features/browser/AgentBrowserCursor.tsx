@@ -1,8 +1,11 @@
 import type { DesktopPreviewPointerEvent } from "@cozea/contracts/t3/ipc"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 
 import { useBrowserPointerStore } from "./browserPointerStore"
-import { useBrowserSurfaceStore } from "./browserSurfaceStore"
+import {
+  getBrowserSurfaceContent,
+  subscribeBrowserSurfaceContent,
+} from "./browserSurfaceGeometryRuntime"
 import { agentBrowserCursorOpacity, type BrowserController } from "./agentBrowserCursorLogic"
 
 const CURSOR_ACTIVE_MS = 700
@@ -13,7 +16,10 @@ export function AgentBrowserCursor(props: {
   readonly controller: BrowserController
 }) {
   const event = useBrowserPointerStore((state) => state.byTabId[props.tabId] ?? null)
-  const content = useBrowserSurfaceStore((state) => state.byTabId[props.tabId]?.content ?? null)
+  const content = useSyncExternalStore(
+    (callback) => subscribeBrowserSurfaceContent(props.tabId, callback),
+    () => getBrowserSurfaceContent(props.tabId),
+  )
   if (!event) return null
   return (
     <AgentBrowserCursorEvent

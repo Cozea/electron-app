@@ -43,6 +43,7 @@ import {
   markProjectSwitchPhase,
 } from "@/lib/performance/projectSwitchMarks";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
+import { saveLastAppRoute } from "@/lib/settings/settingsReturnRoute";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/settings/ui/SettingsSidebar").then((module) => ({
@@ -249,6 +250,17 @@ export function ProjectLayout({
     pathname.startsWith("/projects/settings/") ||
     pathname.startsWith("/projects/workspace/") ||
     pathname.startsWith("/projects/teams");
+
+  useEffect(() => {
+    if (!isSettingsModeRoute) {
+      const fullPath =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+          : pathname;
+      saveLastAppRoute(fullPath);
+    }
+  }, [isSettingsModeRoute, pathname]);
+
   const isStickySearchPage =
     pathname.endsWith("/store") ||
     pathname.includes("/settings/devapps");
@@ -496,8 +508,8 @@ export function ProjectLayout({
   );
 
   const layoutContent = (
-    <SidebarProvider>
-      <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
+    <SidebarProvider className="h-full w-full">
+      <div className="h-full w-full bg-transparent flex flex-col overflow-hidden">
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {/* Persistent shell: route-mode switches swap only the content. */}

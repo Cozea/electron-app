@@ -68,3 +68,20 @@ For each run, include:
 - Largest LoAF and LongTask durations.
 - Notable `cozea:*` measures from the Performance panel.
 - Whether any visible loading fallback appeared during project switch or tile restore.
+
+## Continuous Interaction & Frame Pacing Metrics
+
+During continuous interactions (native window move/resize, sidebar resize, Dockview sash movements, Changes sidebar, browser viewport resizing), frame pacing diagnostics run automatically in development:
+
+- Inspect in DevTools console via `window.__cozeaInteractionPerf`:
+  - `window.__cozeaInteractionPerf.getLastSample()`: Most recent interaction metrics.
+  - `window.__cozeaInteractionPerf.getHistory()`: Rolling history of recent interaction samples.
+  - `window.__cozeaInteractionPerf.clear()`: Reset history.
+- Key pacing metrics captured per interaction:
+  - `durationMs`: Total duration of continuous interaction.
+  - `frameCount`: Rendered frames during the interaction.
+  - `estimatedRefreshIntervalMs`: Detected display refresh cadence (~8.33ms for 120Hz, ~16.67ms for 60Hz).
+  - `p50Ms`, `p95Ms`, `p99Ms`, `maximumMs`: Frame interval distribution percentiles.
+  - `intervalsOver16ms`, `intervalsOver25ms`, `intervalsOver33ms`, `intervalsOver50ms`: Bucketed frame jank counts.
+  - `estimatedMissedRefreshRatio`: Ratio of missed refresh cycles to total expected frames.
+  - `activeKinds`: Array of active interaction kinds during the sample.

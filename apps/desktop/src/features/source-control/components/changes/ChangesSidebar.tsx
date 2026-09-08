@@ -2,6 +2,8 @@ import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState, type Re
 
 import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore"
 import { cn } from "@/lib/utils"
+import { beginDesktopInteraction } from "@/lib/desktopInteraction/interactionStore"
+import { registerGeometryTask, scheduleAfterGeometryFrame } from "@/lib/desktopInteraction/geometryScheduler"
 
 const LazyChangesPage = lazy(() =>
   import("@/features/source-control/pages/ChangesPage").then((module) => ({
@@ -31,29 +33,66 @@ export const ChangesSidebar = memo(function ChangesSidebar(props: ChangesSidebar
   const handleResizePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault()
+      const sidebarElement = sidebarRef.current
+      if (!sidebarElement) return
+
+      const initialWidth = sidebarElement.getBoundingClientRect().width || width
+      let latestWidth = initialWidth
+      const initialRightEdge =
+        sidebarElement.getBoundingClientRect().right ?? event.clientX
+
+      const lease = beginDesktopInteraction("changes-sidebar-resize")
       setIsResizing(true)
 
-      const sidebarElement = sidebarRef.current
-      const initialRightEdge =
-        sidebarElement?.getBoundingClientRect().right ?? event.clientX
+      const geometryTask = registerGeometryTask<number>({
+        name: "changes-sidebar-width",
+        read: () => latestWidth,
+        write: (w) => {
+          if (sidebarRef.current) {
+            sidebarRef.current.style.width = `${w}px`
+          }
+        },
+      })
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
-        const nextWidth = initialRightEdge - moveEvent.clientX
-        sidebarActions.setWidth(nextWidth)
+        const rawWidth = initialRightEdge - moveEvent.clientX
+        const clamped = Math.min(Math.max(rawWidth, minWidth), 1200)
+        latestWidth = clamped
+        geometryTask.invalidate()
       }
 
-      const handlePointerUp = () => {
-        setIsResizing(false)
+      const finish = (commit: boolean) => {
         window.removeEventListener("pointermove", handlePointerMove)
         window.removeEventListener("pointerup", handlePointerUp)
-        window.removeEventListener("pointercancel", handlePointerUp)
+        window.removeEventListener("pointercancel", handlePointerCancel)
+
+        if (commit) {
+          const finalWidth = latestWidth
+          if (sidebarRef.current) {
+            sidebarRef.current.style.width = `${finalWidth}px`
+          }
+          sidebarActions.setWidth(finalWidth)
+        } else {
+          if (sidebarRef.current) {
+            sidebarRef.current.style.width = `${initialWidth}px`
+          }
+        }
+
+        setIsResizing(false)
+        scheduleAfterGeometryFrame(() => {
+          lease.end()
+          geometryTask.dispose()
+        })
       }
+
+      const handlePointerUp = () => finish(true)
+      const handlePointerCancel = () => finish(false)
 
       window.addEventListener("pointermove", handlePointerMove)
       window.addEventListener("pointerup", handlePointerUp)
-      window.addEventListener("pointercancel", handlePointerUp)
+      window.addEventListener("pointercancel", handlePointerCancel)
     },
-    [sidebarActions],
+    [minWidth, sidebarActions, width],
   )
 
   useEffect(() => {

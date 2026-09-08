@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
+import { recordInteractionCounter } from "@/lib/performance/interactionCounters"
 
 export const SIDEBAR_MIN_WIDTH_PX = 192 // 12rem — tree labels stay legible
 export const SIDEBAR_MAX_WIDTH_PX = 384 // 24rem — protects the workbench
@@ -19,7 +20,10 @@ export const useSidebarWidthStore = create<SidebarWidthState>()(
   persist(
     (set) => ({
       width: null,
-      setWidth: (width) => set({ width: clampSidebarWidth(width) }),
+      setWidth: (width) => {
+        recordInteractionCounter("sidebarWidthStoreWrites")
+        set({ width: clampSidebarWidth(width) })
+      },
     }),
     {
       name: "cozea-sidebar-widths",

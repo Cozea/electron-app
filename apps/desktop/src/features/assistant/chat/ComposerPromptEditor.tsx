@@ -1,4 +1,5 @@
 import type { ServerProviderSkill } from "@cozea/assistant-contracts";
+import { registerGeometryTask } from "@/lib/desktopInteraction/geometryScheduler";
 import { LexicalComposer, type InitialConfigType } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -1197,12 +1198,22 @@ function ComposerPromptEditorInner({
   useEffect(() => {
     const rootElement = editor.getRootElement();
     if (!rootElement) return;
-    measureLines();
+
+    const task = registerGeometryTask({
+      name: "composer-editor-lines",
+      read: () => rootElement.clientWidth,
+      write: () => measureLines(),
+    });
+
+    task.invalidate();
     const observer = new ResizeObserver(() => {
-      measureLines();
+      task.invalidate();
     });
     observer.observe(rootElement);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      task.dispose();
+    };
   }, [editor, measureLines]);
 
   const focusAt = useCallback(

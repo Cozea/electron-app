@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
+import { recordInteractionCounter } from "@/lib/performance/interactionCounters"
 
 import {
   CHANGES_TILE_MIN_WIDTH_COLLAPSED,
@@ -58,8 +59,10 @@ export const useChangesSidebarStore = create<ChangesSidebarState>()(
         open: () => set({ isOpen: true }),
         close: () => set({ isOpen: false }),
         toggle: () => set((state) => ({ isOpen: !state.isOpen })),
-        setWidth: (width) =>
-          set((state) => ({ width: clampWidth(width, state.minWidth) })),
+        setWidth: (width) => {
+          recordInteractionCounter("changesSidebarStoreWrites")
+          set((state) => ({ width: clampWidth(width, state.minWidth) }))
+        },
         setMinWidth: (minWidth) => {
           const normalized = Math.max(
             CHANGES_TILE_MIN_WIDTH_COLLAPSED,
@@ -92,3 +95,7 @@ export const useChangesSidebarStore = create<ChangesSidebarState>()(
     },
   ),
 )
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  ;(window as any).__changesSidebarStore = useChangesSidebarStore
+}

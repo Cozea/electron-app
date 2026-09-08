@@ -38,6 +38,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { registerGeometryTask } from "@/lib/desktopInteraction/geometryScheduler";
 import { AppOverlayPortal } from "@/components/ui/app-overlay-portal";
 import { ComposerPendingApprovalActions } from "@/features/assistant/chat/ComposerPendingApprovalActions";
 import { ComposerPendingApprovalPanel } from "@/features/assistant/chat/ComposerPendingApprovalPanel";
@@ -911,35 +912,40 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     const findDockContent = () =>
       frame.querySelector<HTMLElement>("[data-chat-composer-dock-content]");
 
-    const updateInset = () => {
-      const dockContent = findDockContent();
-      if (!dockContent) return;
-      // Nothing constrains the dock's height any more, so this reads the real
-      // laid-out composer. Never derive a height cap from this value and apply it
-      // back to `dockContent`: that closes a loop through a `min-h-0` flex column
-      // and ratchets the composer's interior shut.
-      const contentElement = dockContent.firstElementChild;
-      const contentElementHeight =
-        contentElement instanceof HTMLElement
-          ? Math.max(contentElement.scrollHeight, contentElement.getBoundingClientRect().height)
-          : 0;
-      const intrinsicContentHeight = Math.max(dockContent.scrollHeight, contentElementHeight);
-      const frameBottomPadding =
-        Number.parseFloat(window.getComputedStyle(frame).paddingBottom) || 0;
-      const nextInset = Math.ceil(
-        intrinsicContentHeight + frameBottomPadding + DOCKED_COMPOSER_SCROLL_CLEARANCE_PX,
-      );
-      setDockedComposerMeasuredInsetPx((currentInset) =>
-        Math.abs(currentInset - nextInset) < 1 ? currentInset : nextInset,
-      );
-    };
+    const task = registerGeometryTask<number>({
+      name: "chat-surface-dock-inset",
+      read: () => {
+        const dockContent = findDockContent();
+        if (!dockContent) return null;
+        // Nothing constrains the dock's height any more, so this reads the real
+        // laid-out composer. Never derive a height cap from this value and apply it
+        // back to `dockContent`: that closes a loop through a `min-h-0` flex column
+        // and ratchets the composer's interior shut.
+        const contentElement = dockContent.firstElementChild;
+        const contentElementHeight =
+          contentElement instanceof HTMLElement
+            ? Math.max(contentElement.scrollHeight, contentElement.getBoundingClientRect().height)
+            : 0;
+        const intrinsicContentHeight = Math.max(dockContent.scrollHeight, contentElementHeight);
+        const frameBottomPadding =
+          Number.parseFloat(window.getComputedStyle(frame).paddingBottom) || 0;
+        return Math.ceil(
+          intrinsicContentHeight + frameBottomPadding + DOCKED_COMPOSER_SCROLL_CLEARANCE_PX,
+        );
+      },
+      write: (nextInset) => {
+        setDockedComposerMeasuredInsetPx((currentInset) =>
+          Math.abs(currentInset - nextInset) < 1 ? currentInset : nextInset,
+        );
+      },
+    });
 
-    updateInset();
-    if (typeof ResizeObserver === "undefined") return;
+    task.invalidate();
+    if (typeof ResizeObserver === "undefined") return () => task.dispose();
 
     // Safe to observe the dock itself now that the reveal animates transform and
     // opacity rather than height: it no longer resizes during the transition.
-    const resizeObserver = new ResizeObserver(updateInset);
+    const resizeObserver = new ResizeObserver(() => task.invalidate());
     resizeObserver.observe(frame);
     const dockContent = findDockContent();
     if (dockContent) {
@@ -949,7 +955,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       }
     }
 
-    return () => resizeObserver.disconnect();
+    return () => {
+      resizeObserver.disconnect();
+      task.dispose();
+    };
   }, [dockComposerOnHover, reserveScrollSpaceForDockedComposer]);
 
   const dockedComposerScrollInsetPx = reserveScrollSpaceForDockedComposer
@@ -1019,13 +1028,24 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   useLayoutEffect(() => {
     const el = surfaceRef.current;
     if (!el) return;
-    const updateHeight = () => {
-      setSurfaceHeightPx(el.getBoundingClientRect().height);
-    };
-    updateHeight();
-    const ro = new ResizeObserver(updateHeight);
+
+    const task = registerGeometryTask<number>({
+      name: "chat-surface-height",
+      read: () => el.getBoundingClientRect().height,
+      write: (nextHeight) => {
+        setSurfaceHeightPx((current) =>
+          Math.abs(current - nextHeight) < 2 ? current : nextHeight,
+        );
+      },
+    });
+
+    task.invalidate();
+    const ro = new ResizeObserver(() => task.invalidate());
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      task.dispose();
+    };
   }, []);
 
   const maxModelPickerHeightPx = useMemo(() => {

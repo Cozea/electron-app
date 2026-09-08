@@ -29,6 +29,8 @@ import {
 import { useWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/lib/workbenchStore"
 import { cn } from "@/lib/utils"
+import { beginDesktopInteraction } from "@/lib/desktopInteraction/interactionStore"
+import { scheduleAfterGeometryFrame } from "@/lib/desktopInteraction/geometryScheduler"
 import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
@@ -344,8 +346,31 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
     [runtime],
   )
 
+  const handlePointerDownCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target as Element | null
+    if (!target?.closest(".dv-sash")) return
+
+    const pointerId = event.pointerId
+    const lease = beginDesktopInteraction("dockview-sash")
+
+    const handlePointerEnd = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId !== pointerId) return
+      window.removeEventListener("pointerup", handlePointerEnd)
+      window.removeEventListener("pointercancel", handlePointerEnd)
+      scheduleAfterGeometryFrame(() => {
+        lease.end()
+      })
+    }
+
+    window.addEventListener("pointerup", handlePointerEnd)
+    window.addEventListener("pointercancel", handlePointerEnd)
+  }, [])
+
   return (
-    <div className={cn("cozea-workbench-dockview-host h-full min-h-0 w-full min-w-0", className)}>
+    <div
+      className={cn("cozea-workbench-dockview-host h-full min-h-0 w-full min-w-0", className)}
+      onPointerDownCapture={handlePointerDownCapture}
+    >
       <DockviewReact
         key={dockviewKey}
         className="cozea-workbench-dockview h-full min-h-0 w-full min-w-0"

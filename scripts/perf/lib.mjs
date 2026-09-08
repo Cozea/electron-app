@@ -98,7 +98,11 @@ export async function evalJson(send, expression) {
     returnByValue: true,
   })
   if (result.exceptionDetails) {
-    throw new Error(`Page evaluation failed: ${result.exceptionDetails.text}`)
+    const desc =
+      result.exceptionDetails.exception?.description ||
+      result.exceptionDetails.text ||
+      JSON.stringify(result.exceptionDetails)
+    throw new Error(`Page evaluation failed: ${desc}`)
   }
   return JSON.parse(result.result.value)
 }
@@ -121,4 +125,44 @@ export function reportScenario(name, metrics, budget, violations) {
   if (failed.length > 0) {
     violations.push({ name, failed: failed.map(([key]) => key) })
   }
+}
+
+export async function dispatchMouseDrag(send, {
+  from,
+  to,
+  steps = 20,
+  durationMs = 500,
+  button = "left",
+}) {
+  const interval = durationMs / steps
+  await send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: Math.round(from.x),
+    y: Math.round(from.y),
+    button,
+    clickCount: 1,
+    buttons: 1,
+  })
+
+  for (let i = 1; i <= steps; i++) {
+    await new Promise((r) => setTimeout(r, interval))
+    const progress = i / steps
+    const curX = Math.round(from.x + (to.x - from.x) * progress)
+    const curY = Math.round(from.y + (to.y - from.y) * progress)
+    await send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: curX,
+      y: curY,
+      button,
+      buttons: 1,
+    })
+  }
+
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: Math.round(to.x),
+    y: Math.round(to.y),
+    button,
+    buttons: 0,
+  })
 }

@@ -23,6 +23,7 @@ import type { DevAppDevelopmentSource } from "@shared/devAppAuthoringTypes"
 import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
 import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
+import { registerGeometryTask } from "@/lib/desktopInteraction/geometryScheduler"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
@@ -247,49 +248,66 @@ function useLauncherGridLayout(
     }),
   )
 
-  const recalculate = useCallback(() => {
-    const container = containerRef?.current ?? ref.current
-    if (!container) return
-    const containerRect = container.getBoundingClientRect()
-    const width = containerRect.width
-    const overhead = isSingletonEmpty ? 220 : 132
-    const availableHeight = isSingletonEmpty
-      ? 2 * LAUNCHER_CONFIG.cellHeight + LAUNCHER_CONFIG.rowGap
-      : Math.max(0, containerRect.height - overhead)
-    const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
-    setLayout(
-      computeWorkbenchSelectionLauncherLayout({
-        width,
-        height: availableHeight,
-        itemCount,
-        cellWidth: LAUNCHER_CONFIG.cellWidth,
-        cellHeight: LAUNCHER_CONFIG.cellHeight,
-        columnGap: LAUNCHER_CONFIG.columnGap,
-        rowGap: LAUNCHER_CONFIG.rowGap,
-        maxColumns: LAUNCHER_CONFIG.maxColumns,
-        maxRows: effectiveMaxRows,
-      }),
-    )
-  }, [containerRef, isSingletonEmpty, itemCount])
-
-  useLayoutEffect(() => {
-    recalculate()
-  }, [recalculate])
-
   useEffect(() => {
     const target = containerRef?.current ?? ref.current
     if (!target) return
 
+    const task = registerGeometryTask<{ width: number; height: number }>({
+      name: "selection-launcher-grid",
+      read: () => {
+        const container = containerRef?.current ?? ref.current
+        if (!container) return null
+        const containerRect = container.getBoundingClientRect()
+        return { width: containerRect.width, height: containerRect.height }
+      },
+      write: ({ width, height }) => {
+        const overhead = isSingletonEmpty ? 220 : 132
+        const availableHeight = isSingletonEmpty
+          ? 2 * LAUNCHER_CONFIG.cellHeight + LAUNCHER_CONFIG.rowGap
+          : Math.max(0, height - overhead)
+        const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
+        const next = computeWorkbenchSelectionLauncherLayout({
+          width,
+          height: availableHeight,
+          itemCount,
+          cellWidth: LAUNCHER_CONFIG.cellWidth,
+          cellHeight: LAUNCHER_CONFIG.cellHeight,
+          columnGap: LAUNCHER_CONFIG.columnGap,
+          rowGap: LAUNCHER_CONFIG.rowGap,
+          maxColumns: LAUNCHER_CONFIG.maxColumns,
+          maxRows: effectiveMaxRows,
+        })
+        setLayout((current) => {
+          if (
+            current.columns === next.columns &&
+            current.rows === next.rows &&
+            current.fittingColumns === next.fittingColumns &&
+            current.fittingRows === next.fittingRows &&
+            current.itemsPerPage === next.itemsPerPage &&
+            current.pageCount === next.pageCount
+          ) {
+            return current
+          }
+          return next
+        })
+      },
+    })
+
     const ro = new ResizeObserver(() => {
-      recalculate()
+      task.invalidate()
     })
 
     ro.observe(target)
     if (ref.current && ref.current !== target) {
       ro.observe(ref.current)
     }
-    return () => ro.disconnect()
-  }, [containerRef, recalculate])
+    task.invalidate()
+
+    return () => {
+      ro.disconnect()
+      task.dispose()
+    }
+  }, [containerRef, isSingletonEmpty, itemCount])
 
   return [ref, layout]
 }

@@ -115,8 +115,8 @@ describe("application layer contract", () => {
     expect(presentation).toContain("containerApi.onDidFloatingGroupBoundsChange");
     expect(presentation).toContain("event.element.contains(panelApi.group.element)");
     expect(presentation).toContain("containerApi.onDidLayoutChange(listener)");
-    expect(slot).toContain("window.requestAnimationFrame");
-    expect(slot).toContain("subscribePositionChanges?.(scheduleUpdate)");
+    expect(slot).toContain("registerGeometryTask");
+    expect(slot).toContain("subscribePositionChanges?.(invalidate)");
   });
 
   it("lets consumers cancel a pointer drag before Dockview creates its ghost", () => {

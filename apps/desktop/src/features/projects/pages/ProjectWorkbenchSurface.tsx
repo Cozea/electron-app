@@ -458,7 +458,7 @@ export function ProjectWorkbenchSurface() {
           >
             <DialogContent
               showCloseButton={false}
-              className="inset-0 left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 gap-0 rounded-none border-0 bg-background p-0 sm:max-w-none"
+              className="inset-0 left-0 top-0 flex h-full w-full max-w-none translate-x-0 translate-y-0 gap-0 rounded-none border-0 bg-background p-0 sm:max-w-none"
               aria-label={t('workbench.surface.closeSettings')}
             >
               <aside className="flex min-h-0 w-full flex-1 flex-col bg-background">

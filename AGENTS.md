@@ -92,8 +92,7 @@ bun run build
 
 ## Desktop Releases
 
-Tagged releases are built by GitHub Actions and published as GitHub Releases in the **distribution repo**.
-Main-branch cloud releases can also be built by CircleCI and uploaded to Cloudflare R2 for Electron auto-updates.
+All desktop releases are built and published exclusively by GitHub Actions and distributed via GitHub Releases in the **distribution repo**. Application installers and in-app auto-updates are downloaded directly from GitHub Releases.
 The fast agent-facing summary lives here; the fuller operator guide is in `docs/release-process.md`.
 
 ### Source vs Distribution Repos
@@ -117,7 +116,6 @@ The fast agent-facing summary lives here; the fuller operator guide is in `docs/
   - Canary -> `alpha`
 
 Workflow file: `.github/workflows/release.yml`
-CircleCI workflow file: `.circleci/config.yml`
 
 ### How To Cut a Release (Example)
 
@@ -152,13 +150,6 @@ The release workflow expects these to be set in GitHub Actions for `Cozea/electr
 - macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD` (Developer ID Application certificate)
 - Vite build-time env: `VITE_CONVEX_URL` (provided via Actions Variables or Secrets; see workflow `env`)
 - Vite build-time env: `VITE_AI_API_URL` (provided via Actions Variables or Secrets; see workflow `env`)
-
-CircleCI expects a context named `cozea-release` with:
-
-- Vite build-time env: `VITE_CONVEX_URL`, `VITE_AI_API_URL`
-- Cloudflare R2 upload: `COZEA_UPDATE_BASE_URL`, `COZEA_UPDATE_BUCKET`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`
-- Apple notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
-- macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD`
 - Optional runtime metadata signing: `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH`
 
 ### Controlled-update conversation continuation

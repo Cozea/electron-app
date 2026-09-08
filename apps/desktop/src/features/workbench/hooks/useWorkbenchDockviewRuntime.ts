@@ -43,6 +43,10 @@ import {
   shouldSuppressNoOpSelfDropOverlay,
 } from "@/features/workbench/model/workbenchDropOverlay";
 import { CHANGES_TILE_MIN_WIDTH_COLLAPSED } from "@/features/source-control/model/changesTileSizing";
+import {
+  deferUntilDesktopInteractionIdle,
+  isDesktopInteractionActive,
+} from "@/lib/desktopInteraction/interactionStore";
 import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime";
 import { releaseProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntimeLifecycle";
 import {
@@ -370,6 +374,31 @@ export function useWorkbenchDockviewRuntime(
       ) {
         return;
       }
+
+      if (isDesktopInteractionActive()) {
+        deferUntilDesktopInteractionIdle(`dockview-layout-persist:${capturedScopeKey}`, () => {
+          const currentApi = dockviewApiRef.current;
+          if (!currentApi) return;
+          if (
+            !isWorkbenchLayoutWriteStillValid(
+              { scopeKey: capturedScopeKey, layoutResetKey: capturedLayoutResetKey },
+              {
+                scopeKey: workbenchScopeKeyRef.current,
+                layoutResetKey: layoutResetKeyRef.current,
+              },
+            )
+          ) {
+            return;
+          }
+          layoutSnapshotDebouncerRef.current?.maybeExecute({
+            scopeKey: capturedScopeKey,
+            layoutResetKey: capturedLayoutResetKey,
+            layout: currentApi.toJSON() as SerializedDockview,
+          });
+        });
+        return;
+      }
+
       layoutSnapshotDebouncerRef.current?.maybeExecute({
         scopeKey: capturedScopeKey,
         layoutResetKey: capturedLayoutResetKey,

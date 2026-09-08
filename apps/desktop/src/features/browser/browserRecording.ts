@@ -5,7 +5,10 @@ import type {
 import type { ScopedThreadRef } from "@cozea/contracts/t3/environment"
 import { create } from "zustand"
 
-import { useBrowserSurfaceStore } from "./browserSurfaceStore"
+import {
+  getBrowserSurfaceContent,
+  getBrowserSurfaceRect,
+} from "./browserSurfaceGeometryRuntime"
 
 export class BrowserRecordingUnavailableError extends Error {
   override readonly name = "BrowserRecordingUnavailableError"
@@ -319,8 +322,9 @@ export async function startBrowserRecording(
   if (activeLogicalRecording !== null) {
     throw new BrowserRecordingConflictError(tabId, activeLogicalRecording)
   }
-  const surface = useBrowserSurfaceStore.getState().byTabId[tabId]
-  const size = surface?.content ?? surface?.rect
+  const content = getBrowserSurfaceContent(tabId)
+  const rect = getBrowserSurfaceRect(tabId)
+  const size = content ?? rect
   const canvas = document.createElement("canvas")
   canvas.width = Math.max(1, size?.width ?? 1280)
   canvas.height = Math.max(1, size?.height ?? 800)

@@ -1,19 +1,12 @@
-import { useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
+import { registerGeometryTask } from "@/lib/desktopInteraction/geometryScheduler";
 
 export function AppOverlayPortal({ children }: { readonly children: ReactNode }) {
   if (typeof document === "undefined") return null;
   return createPortal(children, document.body);
-}
-
-interface AnchoredOverlayRect {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-  readonly borderRadius: CSSProperties["borderRadius"];
 }
 
 export interface AnchoredAppOverlayPortalProps {
@@ -34,50 +27,61 @@ export function AnchoredAppOverlayPortal({
   className,
   inset = 0,
 }: AnchoredAppOverlayPortalProps) {
-  const [rect, setRect] = useState<AnchoredOverlayRect | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
-    if (!anchor) {
-      setRect(null);
-      return;
-    }
+    if (!anchor) return;
 
-    let frameId: number | null = null;
-    const update = () => {
-      if (frameId !== null) return;
-      frameId = window.requestAnimationFrame(() => {
-        frameId = null;
+    const task = registerGeometryTask<{
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      borderRadius: string;
+    }>({
+      name: "anchored-app-overlay",
+      read: () => {
+        if (!anchor.isConnected) return null;
         const next = anchor.getBoundingClientRect();
-        setRect({
+        return {
           left: next.left + inset,
           top: next.top + inset,
           width: Math.max(0, next.width - inset * 2),
           height: Math.max(0, next.height - inset * 2),
           borderRadius: window.getComputedStyle(anchor).borderRadius || "12px",
-        });
-      });
-    };
+        };
+      },
+      write: (measurement) => {
+        const overlay = overlayRef.current;
+        if (!overlay) return;
+        overlay.style.left = `${measurement.left}px`;
+        overlay.style.top = `${measurement.top}px`;
+        overlay.style.width = `${measurement.width}px`;
+        overlay.style.height = `${measurement.height}px`;
+        overlay.style.borderRadius = measurement.borderRadius;
+      },
+    });
 
-    const observer = new ResizeObserver(update);
+    const invalidate = () => task.invalidate();
+    invalidate();
+
+    const observer = new ResizeObserver(invalidate);
     observer.observe(anchor);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
-    update();
+    window.addEventListener("scroll", invalidate, true);
 
     return () => {
-      if (frameId !== null) window.cancelAnimationFrame(frameId);
       observer.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("scroll", invalidate, true);
+      task.dispose();
     };
   }, [anchor, inset]);
 
-  if (!rect) return null;
+  if (!anchor) return null;
   return (
     <AppOverlayPortal>
       <div
+        ref={overlayRef}
         className={cn("fixed z-[var(--cozea-layer-dialog)]", className)}
-        style={rect}
         data-app-anchored-overlay
       >
         {children}
