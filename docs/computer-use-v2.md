@@ -18,7 +18,7 @@ A pointer operation resolves a retained observation lease, acquires an explicit 
 
 ## Observation and capture
 
-Each snapshot has an immutable `snapshot_id`, window PID/CGWindowID/generation, retained AX handles, screenshot coordinate transform and separate observed/command revisions. Actions accept an optional snapshot_id; omission selects the latest lease for that session/app. Coordinates always refer to the image returned with that lease, not global display coordinates. Coordinate reuse after any Cozea input requires re-observation. Element reuse requires current identity/label/geometry validation.
+Each snapshot has an immutable `snapshot_id`, window PID/CGWindowID/generation, retained AX handles, screenshot coordinate transform and separate observed/command revisions. Actions accept an optional snapshot_id; omission selects the latest lease for that session/app. Coordinates always refer to the image returned with that lease, not global display coordinates. Coordinate reuse after any Cozea input or observed UI change requires re-observation; coordinate leases also expire after 30 seconds. Screenshot-only observations attach AX notifications too. Element reuse requires current identity/label/geometry validation. These checks are conservative safeguards, not a claim that every third-party app emits complete notifications or that the desktop can be frozen atomically.
 
 AX notifications are scoped to the observed window. Command dispatch cannot satisfy a wait for observed UI change. An acknowledgement's `ok` means input submission succeeded; `state_changed` reports actual notification evidence, not invented application success. The model must observe navigation, menus, dialogs and other uncertain transitions.
 
@@ -42,8 +42,10 @@ Turn end/reset cancels and drains in-flight work before releasing leases/capture
 
 ## Building and checks
 
-```
-bun install --frozen-lockfile --ignore-scripts
+From a fresh checkout, prepare the pinned T3 workspace as well as root dependencies before the host tests/typechecks:
+
+```sh
+bun run bootstrap
 bun run prepare:computer-use
 bun run prepare:computer-use:check
 bun run test:computer-use
@@ -52,11 +54,13 @@ bun run typecheck:electron
 bun run typecheck
 ```
 
-Preparation builds the requested profile/architecture, validates Mach-O architectures, and ships the N-API addon, bridge dylib, tool-catalogue resource bundle, license notice and ABI/source/artifact-hashed manifest. Non-Mac preparation creates only an unsupported manifest/notice; no upstream npm worker is installed. A clean source build does not fetch upstream LFS research binaries.
+The bootstrap script invokes the package manager declared by the pinned T3 workspace through Bun; do not substitute Cozea's root Effect package for T3's separate dependency tree. CI materializes the exact T3 gitlink without recursively checking out unrelated research submodules, then installs both locked dependency trees.
+
+Preparation builds the requested profile/architecture, validates Mach-O architectures, and ships the N-API addon, bridge dylib, tool-catalogue resource bundle, license notice and ABI/source/artifact-hashed manifest. Non-Mac preparation creates only an unsupported manifest/notice; no upstream npm worker is installed. A clean native source build does not fetch upstream LFS research binaries.
 
 T3's source and cached bundle tool table are patched from the same `Resources/tools.json` through `scripts/patch-computer-use-contract.mjs`. The patch is idempotent and fails on a missing/ambiguous anchor. The provider runtime and contracts pin is unchanged. Changes to the nine-tool schema must update the canonical resource and its tests, not another provider-specific copy.
 
-The CI lane runs native tests, bridge build, Intel cross-build, scoped host tests, Rust formatting, addon preparation and a relocated-addon smoke test in Electron. The smoke test sends no desktop input and does not grant permissions. These checks are distinct from live usability/performance validation.
+The CI lane runs native tests and fixture builds in both debug and release, Intel bridge cross-builds, N-API preparation, artifact checks, and relocated-addon smoke tests in real Electron. Its host job runs the Computer Use behavior/contract suite, full Electron and renderer typechecks, a real T3 server bundle build and catalogue-patch validation, and unsupported-platform packaging checks. The ABI smoke test sends no desktop input and does not grant permissions. Intel cross-compilation is not an Intel hardware run. These checks are distinct from live usability/performance validation.
 
 ## Permissioned live validation (release gate)
 
@@ -66,7 +70,7 @@ For AppKit, WebKit, Electron, Finder and Safari, exercise click, double-click, c
 
 Capture 50+ comparable warmed samples for each operation in the signed app. Use Instruments Points of Interest for subsystem `com.cozea.desktop`, category `ComputerUse`, or export debug logs and summarize:
 
-```
+```sh
 log show --last 10m --debug --style ndjson \
   --predicate 'subsystem == "com.cozea.desktop" AND category == "ComputerUse"' > trace.ndjson
 node scripts/benchmark-computer-use.mjs trace.ndjson
