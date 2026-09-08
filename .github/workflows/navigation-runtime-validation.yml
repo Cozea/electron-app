@@ -8,8 +8,7 @@ on:
     paths:
       - 'apps/desktop/**'
       - 'shared/**'
-      - 'tests/navigation/**'
-      - 'tests/electron/navigation/**'
+      - 'tests/**'
       - 'scripts/**'
       - '.github/workflows/navigation-runtime-validation.yml'
 
@@ -61,9 +60,50 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.0'
-      - name: Install locked dependencies
-        run: bun install --frozen-lockfile --ignore-scripts
-      - name: Apply repository compatibility patches
-        run: bun run postinstall
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run postinstall
       - name: Navigation Node unit tests (not Electron integration)
         run: bun run test:navigation:unit
+
+  source-checks:
+    needs: source-edits
+    if: always() && (needs.source-edits.result == 'success' || needs.source-edits.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        command: [typecheck, 'typecheck:electron', 'typecheck:tests', lint]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source-edits.outputs.commit || github.sha }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run postinstall
+      - run: bun run ${{ matrix.command }}
+
+  production-build:
+    needs: source-edits
+    if: always() && (needs.source-edits.result == 'success' || needs.source-edits.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VITE_CONVEX_URL: https://navigation-validation.convex.cloud
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source-edits.outputs.commit || github.sha }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun run bootstrap
+      - run: bun run build
+      - name: Verify the standalone worker is emitted
+        run: test -s apps/desktop/out/main/desktop-state-persistence.js
