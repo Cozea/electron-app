@@ -177,6 +177,25 @@ describe('KeyedResource & Navigation Contracts (N01-N10, P02)', () => {
     expect(resource.hasInFlightRequest()).toBe(false);
   });
 
+  it('lets a superseded fetcher suppress stale external side effects', async () => {
+    let finish: (() => void) | undefined;
+    let requestIsCurrent: (() => boolean) | undefined;
+    const resource = new KeyedResource({
+      key: 'test:request-currentness',
+      fetcher: async (_reason, isCurrent) => {
+        requestIsCurrent = isCurrent;
+        await new Promise<void>(resolve => { finish = resolve; });
+        return 'stale';
+      },
+    });
+    const request = resource.ensure('navigation');
+    expect(requestIsCurrent?.()).toBe(true);
+    resource.invalidate('supersede');
+    expect(requestIsCurrent?.()).toBe(false);
+    finish?.();
+    await expect(request).rejects.toThrow(ResourceSupersededError);
+  });
+
   it('N04: Cached ready entry, background refresh fails -> cached display survives, error is visible as refresh state', async () => {
     let shouldFail = false;
     const resource = new KeyedResource({

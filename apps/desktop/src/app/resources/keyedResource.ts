@@ -46,14 +46,14 @@ export interface ResourceHandle<T> {
 
 export interface KeyedResourceOptions<T> {
   key: string;
-  fetcher: (reason: ResourceEnsureReason) => Promise<T>;
+  fetcher: (reason: ResourceEnsureReason, isCurrent: () => boolean) => Promise<T>;
   ttlMs?: number;
   equalityFn?: (a: T, b: T) => boolean;
 }
 
 export class KeyedResource<T> implements ResourceHandle<T> {
   public readonly key: string;
-  private readonly fetcher: (reason: ResourceEnsureReason) => Promise<T>;
+  private readonly fetcher: (reason: ResourceEnsureReason, isCurrent: () => boolean) => Promise<T>;
   private readonly ttlMs: number;
   private readonly equalityFn?: (a: T, b: T) => boolean;
 
@@ -190,7 +190,7 @@ export class KeyedResource<T> implements ResourceHandle<T> {
     this.activeRequestCount++;
     const promise = (async () => {
       try {
-        const result = await this.fetcher(reason);
+        const result = await this.fetcher(reason, () => this.generation === requestGen);
 
         // If generation changed while awaiting, reject with ResourceSupersededError (N03)
         if (this.generation !== requestGen) {

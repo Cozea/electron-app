@@ -132,7 +132,7 @@ export function getGitStatusResource(workspaceId: string): KeyedResource<GitStat
     new KeyedResource<GitStatusData>({
       key,
       ttlMs: 5_000,
-      fetcher: async (reason) => {
+      fetcher: async (reason, isCurrent) => {
         const syncApi = typeof window === 'undefined' ? undefined : window.electronAPI?.workspaceSync;
         if (!syncApi) {
           return { success: false, error: 'Sync API unavailable' };
@@ -141,7 +141,7 @@ export function getGitStatusResource(workspaceId: string): KeyedResource<GitStat
           success: false,
           error: e instanceof Error ? e.message : String(e),
         }));
-        if (res && res.success && reason !== 'prefetch') {
+        if (res && res.success && reason !== 'prefetch' && isCurrent()) {
           publishGitRemoteStatus(workspaceId, {
             ahead: 'ahead' in res ? (res.ahead ?? 0) : 0,
             behind: 'behind' in res ? (res.behind ?? 0) : 0,
@@ -180,7 +180,7 @@ export function getProjectLaneResource(
     new KeyedResource<ProjectLaneState | null>({
       key,
       ttlMs: 5_000,
-      fetcher: async (reason: ResourceEnsureReason) => {
+      fetcher: async (reason: ResourceEnsureReason, isCurrent) => {
         const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId);
         if (!normalizedWorkspaceId) return null;
         let activeBranch: string;
@@ -193,7 +193,7 @@ export function getProjectLaneResource(
         });
         if (resolution.kind !== 'resolved') return null;
         activeBranch = resolution.branch;
-        if (resolution.remember && reason !== 'prefetch') {
+        if (resolution.remember && reason !== 'prefetch' && isCurrent()) {
           rememberProjectBranchSession({
             projectId,
             branch: resolution.branch,
