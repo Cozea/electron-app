@@ -26,7 +26,6 @@
     "noUncheckedSideEffectImports": true,
 
     /* Paths */
-    "baseUrl": ".",
     "paths": {
       "@cozea/assistant-contracts": ["../../shared/assistant-contracts/index.ts"],
       "@cozea/assistant-contracts/*": ["../../shared/assistant-contracts/*"],

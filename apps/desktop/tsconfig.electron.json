@@ -22,7 +22,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "baseUrl": ".",
     "paths": {
       "@cozea/assistant-contracts": [
         "../../shared/assistant-contracts/index.ts"
