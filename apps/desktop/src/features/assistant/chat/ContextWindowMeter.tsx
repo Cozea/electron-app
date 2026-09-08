@@ -174,7 +174,7 @@ export function ContextWindowMeter(props: {
             {!hidePercentage ? (
               <span
                 className={cn(
-                  "min-w-0 text-[9px] font-medium tabular-nums text-muted-foreground",
+                  "min-w-0 text-2xs font-medium tabular-nums text-muted-foreground",
                   "leading-none",
                 )}
               >

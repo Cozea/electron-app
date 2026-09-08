@@ -13,7 +13,6 @@ import type { TranslationKey } from "@/lib/i18n/en";
 import { RouteLoading } from "@/router/RouteLoading";
 import { Outlet } from "@/lib/router";
 import { ProjectLayout } from "@/features/projects/layouts/ProjectLayout";
-import { LocalNavigationReady } from '@/lib/performance/localNavigation';
 
 function createLazyRouteComponent(
   loader: () => Promise<{ default: ComponentType }>,
@@ -25,7 +24,6 @@ function createLazyRouteComponent(
     return (
       <Suspense fallback={<RouteLoading labelKey={labelKey} />}>
         <LazyComponent />
-        <LocalNavigationReady destination={labelKey.replace('routeLoading.', '')} />
       </Suspense>
     );
   }

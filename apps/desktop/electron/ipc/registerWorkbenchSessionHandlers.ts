@@ -3,6 +3,7 @@ import type { BrowserWindow, IpcMain } from 'electron'
 import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
 import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
+import { WorkbenchPresentationCoordinator } from '../services/WorkbenchPresentationCoordinator'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
 
 interface RegisterWorkbenchSessionHandlersDeps {
@@ -23,6 +24,7 @@ export function registerWorkbenchSessionHandlers(
     nativePreviewManager: NativePreviewManager.getInstance(),
     browserSurfaces: deps.browserSurfaces,
   })
+  const coordinator = WorkbenchPresentationCoordinator.getInstance(service)
 
   const publishState = (snapshot: WorkbenchSessionSnapshot) => {
     deps.getMainWindow()?.webContents.send(
@@ -32,6 +34,14 @@ export function registerWorkbenchSessionHandlers(
   }
 
   service.on('stateChanged', publishState)
+
+  ipcMain.handle('workbenchSession:registerPresentationClient', (event) => {
+    return coordinator.registerClient(event.sender)
+  })
+
+  ipcMain.handle('workbenchSession:setPresentation', async (event, command: unknown) => {
+    return await coordinator.applyPresentationCommand(event.sender, command)
+  })
 
   ipcMain.handle(
     'workbenchSession:ensureSession',

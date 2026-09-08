@@ -14,8 +14,6 @@ import { ToastProvider } from './features/assistant/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { applyStoredLanguage } from './lib/i18n'
 
-import { initJankDiagnostics } from './lib/performance/jankDiagnostics'
-import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
 import { ElectronBrowserHostGate } from './features/browser/ElectronBrowserHostGate'
 import {
@@ -26,7 +24,6 @@ import { featureFlags } from './lib/featureFlags'
 import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
-const rendererEntryMark = markCozeaPerformance('renderer:entry')
 
 function applyBootstrapRouteFromSearch(): void {
   if (window.location.protocol !== 'file:') {
@@ -91,23 +88,16 @@ async function prewarmRestoredWorkbench(bootstrap: DesktopBootstrapSnapshot): Pr
   import.meta.env.VITE_FF_OFFSCREEN_SCREENSHOT
 
 async function startRenderer(): Promise<void> {
-  initJankDiagnostics()
   applyBootstrapRouteFromSearch()
 
-  const bootstrapStartMark = markCozeaPerformance('renderer:desktop-bootstrap-start')
   const bootstrap = await initializeDesktopBootstrap()
-  const bootstrapEndMark = markCozeaPerformance('renderer:desktop-bootstrap-ready')
-  measureCozeaPerformance('renderer:desktop-bootstrap', bootstrapStartMark, bootstrapEndMark)
   applyDesktopBootstrapRoute(bootstrap)
 
   if (
     featureFlags.commonRoutePrewarm &&
     window.location.pathname.endsWith('/workbench')
   ) {
-    const workbenchWarmStart = markCozeaPerformance('renderer:workbench-code-prewarm-start')
     await prewarmRestoredWorkbench(bootstrap)
-    const workbenchWarmEnd = markCozeaPerformance('renderer:workbench-code-prewarm-end')
-    measureCozeaPerformance('renderer:workbench-code-prewarm', workbenchWarmStart, workbenchWarmEnd)
   }
 
   const platform = window.electronAPI?.platform
@@ -119,7 +109,6 @@ async function startRenderer(): Promise<void> {
   applyThemeClass(getStoredThemePreference())
   applyStoredLanguage()
 
-  const rootRenderStartMark = markCozeaPerformance('renderer:root-render-start')
   createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <ConvexProvider>
@@ -130,14 +119,6 @@ async function startRenderer(): Promise<void> {
       </ConvexProvider>
     </React.StrictMode>,
   )
-
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      const firstFrameMark = markCozeaPerformance('renderer:first-frame')
-      measureCozeaPerformance('renderer:entry-to-root-render-start', rendererEntryMark, rootRenderStartMark)
-      measureCozeaPerformance('renderer:entry-to-first-frame', rendererEntryMark, firstFrameMark)
-    })
-  })
 }
 
 void startRenderer().catch((error) => {

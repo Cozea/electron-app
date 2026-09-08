@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { useLayoutEffect, useState, type ReactNode } from "react"
 
 import { WorkbenchActivity } from "@/features/workbench/WorkbenchActivity"
 import { WorkbenchDockviewSession } from "@/features/workbench/WorkbenchDockviewSession"
@@ -15,26 +15,29 @@ interface WorkbenchKeepAliveHostProps {
   fallback: ReactNode
 }
 
+let retainedSessionsCache: WorkbenchKeepAliveSession[] = []
+const globalFrozenSnapshots = new Map<string, WorkbenchSessionSnapshot | null>()
+const globalFrozenGetters = new Map<string, () => WorkbenchSessionSnapshot | null>()
+
 export function WorkbenchKeepAliveHost({
   current,
   getWorkbenchSession,
   fallback,
 }: WorkbenchKeepAliveHostProps) {
-  const [sessions, setSessions] = useState<WorkbenchKeepAliveSession[]>(() =>
-    current ? [current] : [],
-  )
-  const frozenSnapshotsRef = useRef(new Map<string, WorkbenchSessionSnapshot | null>())
-  const frozenGettersRef = useRef(new Map<string, () => WorkbenchSessionSnapshot | null>())
+  const [sessions, setSessions] = useState<WorkbenchKeepAliveSession[]>(() => {
+    if (retainedSessionsCache.length > 0) return retainedSessionsCache
+    return current ? [current] : []
+  })
 
   useLayoutEffect(() => {
     if (!current) {
       return
     }
 
-    frozenSnapshotsRef.current.set(current.scopeKey, getWorkbenchSession())
-    if (!frozenGettersRef.current.has(current.scopeKey)) {
+    globalFrozenSnapshots.set(current.scopeKey, getWorkbenchSession())
+    if (!globalFrozenGetters.has(current.scopeKey)) {
       const scopeKey = current.scopeKey
-      frozenGettersRef.current.set(scopeKey, () => frozenSnapshotsRef.current.get(scopeKey) ?? null)
+      globalFrozenGetters.set(scopeKey, () => globalFrozenSnapshots.get(scopeKey) ?? null)
     }
 
     setSessions((previous) => {
@@ -46,11 +49,13 @@ export function WorkbenchKeepAliveHost({
             : { ...session, themeScheme: current.themeScheme },
       )
       const next = selectWorkbenchKeepAliveSessions(current, themedPrevious)
+      retainedSessionsCache = next
+
       const kept = new Set(next.map((session) => session.scopeKey))
-      for (const scopeKey of Array.from(frozenSnapshotsRef.current.keys())) {
+      for (const scopeKey of Array.from(globalFrozenSnapshots.keys())) {
         if (!kept.has(scopeKey)) {
-          frozenSnapshotsRef.current.delete(scopeKey)
-          frozenGettersRef.current.delete(scopeKey)
+          globalFrozenSnapshots.delete(scopeKey)
+          globalFrozenGetters.delete(scopeKey)
         }
       }
       if (
@@ -86,7 +91,7 @@ export function WorkbenchKeepAliveHost({
             getWorkbenchSession={
               current?.scopeKey === session.scopeKey
                 ? getWorkbenchSession
-                : (frozenGettersRef.current.get(session.scopeKey) ?? getWorkbenchSession)
+                : (globalFrozenGetters.get(session.scopeKey) ?? getWorkbenchSession)
             }
           />
         </WorkbenchActivity>

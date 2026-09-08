@@ -713,7 +713,7 @@ export function ScheduledTasksView() {
       <Button
         type="button"
         size="sm"
-        className="h-7 gap-1 rounded-full text-xs"
+        className="h-7 gap-1 rounded-full text-sm font-medium"
         onClick={() => {
           setFormError(null);
           setDraft(emptyDraft());
@@ -803,7 +803,7 @@ export function ScheduledTasksView() {
                   aria-pressed={filter === option.id}
                   onClick={() => setFilter(option.id)}
                   className={cn(
-                    "cursor-pointer rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
+                    "cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors",
                     filter === option.id
                       ? "bg-secondary text-foreground shadow-xs"
                       : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

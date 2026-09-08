@@ -1159,7 +1159,7 @@ export function AgentSkillsPage() {
             aria-pressed={status === filter.id}
             onClick={() => setStatus(filter.id)}
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer",
+              "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
               status === filter.id
                 ? "bg-secondary text-foreground shadow-xs"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

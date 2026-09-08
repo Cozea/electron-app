@@ -15,14 +15,14 @@ export const SIDEBAR_PILL_HOVER_CLASS =
   "transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
 
 export const SIDEBAR_PILL_BASE_CLASS =
-  `${SIDEBAR_PILL_HOVER_CLASS} rounded-md px-2 text-xs font-normal`
+  `${SIDEBAR_PILL_HOVER_CLASS} rounded-md px-2 text-sm font-medium`
 
 export const SIDEBAR_PILL_ACTIVE_CLASS =
   "bg-[var(--sidebar-pill-hover-bg)] text-[var(--sidebar-pill-hover-fg)]"
 
 /** Section titles (Projects, Workspace, …) — one style everywhere */
 export const SIDEBAR_GROUP_LABEL_CLASS =
-  "px-2 text-[14px] font-normal tracking-[-0.01em] text-muted-foreground/70"
+  "px-2 text-sm font-medium text-muted-foreground/60"
 
 /**
  * Primary nav row: same height, gap, label + icon color rules as `SidebarMenuButton variant="pill"`.
@@ -30,7 +30,7 @@ export const SIDEBAR_GROUP_LABEL_CLASS =
  */
 export const SIDEBAR_NAV_ROW_LAYOUT_CLASS = "flex h-7 min-h-7 w-full items-center gap-2 text-left"
 export const SIDEBAR_NAV_ROW_TEXT_CLASS =
-  "text-xs font-normal text-sidebar-foreground/70 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground/75"
+  "text-sm font-medium text-sidebar-foreground/80 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground/75"
 
 export const SIDEBAR_NAV_ROW_BUTTON_CLASS = cn(
   SIDEBAR_PILL_BASE_CLASS,
@@ -50,7 +50,7 @@ export const SETTINGS_DRAWER_NAV_ROW_CLASS = cn(
  */
 export const SIDEBAR_PILL_NESTED_ROW_CLASS = cn(
   SIDEBAR_PILL_HOVER_CLASS,
-  "flex h-7 min-h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-normal text-sidebar-foreground",
+  "flex h-7 min-h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium text-sidebar-foreground",
 )
 
 /** Indented block inside a nested row (icon + primary label) — pill stays full width */

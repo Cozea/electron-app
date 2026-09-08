@@ -184,7 +184,6 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
     <SettingsPageBody surface={surface} className="space-y-6">
       <SettingsPageHeader
         title={t('settings.computerUse.title')}
-        description={t('settings.computerUse.description')}
       />
 
       <section>

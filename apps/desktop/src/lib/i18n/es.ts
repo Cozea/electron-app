@@ -146,6 +146,7 @@ const es: Record<TranslationKey, string> = {
   "settings.appearance.reduceMotion": "Reducir movimiento",
   "settings.appearance.reduceMotionDesc":
     "Minimizar animaciones para accesibilidad",
+  "settings.appearance.localization": "Localización",
   "settings.appearance.language": "Idioma",
   "settings.appearance.languageDesc":
     "Elige el idioma de la aplicación",

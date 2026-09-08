@@ -1945,6 +1945,10 @@ export interface ElectronAPI {
     }) => Promise<import('./devAppAuthoringTypes').DevAppAuthoringScaffoldResult>
   }
   workbenchSession: {
+    registerPresentationClient: () => Promise<import('./navigationRuntimeTypes').ClientPresentationRegistration>
+    setPresentation: (
+      command: import('./navigationRuntimeTypes').PresentationCommand
+    ) => Promise<import('./navigationRuntimeTypes').PresentationCommandResult>
     ensureSession: (options: {
       sessionKey?: string | null
       projectId: string
@@ -2010,6 +2014,22 @@ export interface ElectronAPI {
       stopPrevious?: boolean
     }) => Promise<WorkbenchSessionSnapshot | null>
     onStateChanged: (callback: (session: WorkbenchSessionSnapshot) => void) => () => void
+  }
+  desktopPersistence: {
+    load: (options: {
+      namespace: import('./desktopPersistenceTypes').DesktopStateNamespace
+      keys?: string[]
+    }) => Promise<import('./desktopPersistenceTypes').PersistenceLoadResult>
+    commit: (options: {
+      records: import('./desktopPersistenceTypes').DesktopStateRecord[]
+    }) => Promise<import('./desktopPersistenceTypes').PersistenceCommitResult>
+    flush: (options?: {
+      targetRevision?: number
+    }) => Promise<import('./desktopPersistenceTypes').PersistenceFlushResult>
+    migrateLegacy: (options: {
+      domain: string
+      rawPayload: string
+    }) => Promise<import('./desktopPersistenceTypes').LegacyMigrationResult>
   }
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => Promise<PreviewInjectBridgeResult>

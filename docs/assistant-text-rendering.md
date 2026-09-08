@@ -79,7 +79,6 @@ membership. `conversationRows` keeps expanded entries in chronological position,
 including trailing work after final text. Tasks that outlive their launching
 turn remain visible. A per-timeline incremental projector patches text and
 attachment replacements without rebuilding unchanged turn/tool structure.
-See `conversation-projection-performance.md` for measured scope and limitations.
 
 The legacy full-read-model event path uses the same canonical detail reducer as
 native thread streams. Finishing a commentary message or receiving a checkpoint

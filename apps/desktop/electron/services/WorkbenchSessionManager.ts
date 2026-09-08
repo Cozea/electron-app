@@ -307,10 +307,33 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
     app.once('before-quit', () => {
       clearInterval(this.policySweepTimer)
+      this.flushRegistrySync()
     })
   }
 
+  private isRegistryDirty = false
+  private registryFlushTimer: NodeJS.Timeout | null = null
+
   private persist(): void {
+    this.markRegistryDirty()
+  }
+
+  public markRegistryDirty(): void {
+    this.isRegistryDirty = true
+    if (this.registryFlushTimer) return
+    this.registryFlushTimer = setTimeout(() => {
+      this.flushRegistrySync()
+    }, 500)
+  }
+
+  public flushRegistrySync(): void {
+    if (this.registryFlushTimer) {
+      clearTimeout(this.registryFlushTimer)
+      this.registryFlushTimer = null
+    }
+    if (!this.isRegistryDirty) return
+    this.isRegistryDirty = false
+
     const sessions = Object.fromEntries(
       Array.from(this.sessions.entries())
         .filter(([, record]) => record.lifecycle !== 'closed')
@@ -322,7 +345,12 @@ export class WorkbenchSessionManager extends EventEmitter<{
       sessions,
     } satisfies PersistedWorkbenchSessionState
 
-    writeRegistryState(state)
+    const registryPath = getRegistryPath()
+    fs.promises.mkdir(path.dirname(registryPath), { recursive: true }).then(() => {
+      return fs.promises.writeFile(registryPath, JSON.stringify(state, null, 2), 'utf8')
+    }).catch((err) => {
+      console.warn('[WorkbenchSessionManager] Failed to persist session registry:', err)
+    })
   }
 
   private createRecord(input: {
@@ -385,9 +413,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
         sanitizedInput.laneId,
         sanitizedInput.workspaceId,
       )
-      if (this.sessions.has(exactSessionKey)) {
-        return exactSessionKey
-      }
+      return this.sessions.has(exactSessionKey) ? exactSessionKey : null
     }
 
     return this.findLatestSessionKey({

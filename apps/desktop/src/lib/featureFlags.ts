@@ -6,7 +6,6 @@ interface FeatureFlagDefinition {
 const DEFINITIONS = {
   viewTransitions: { key: 'VITE_FF_VIEW_TRANSITIONS', defaultValue: true },
   prioritizedScheduling: { key: 'VITE_FF_PRIORITIZED_SCHEDULING', defaultValue: true },
-  jankDiagnostics: { key: 'VITE_FF_JANK_DIAGNOSTICS', defaultValue: true },
   contentVisibility: { key: 'VITE_FF_CONTENT_VISIBILITY', defaultValue: true },
   localWorkspaceCatalog: { key: 'VITE_FF_LOCAL_WORKSPACE_CATALOG', defaultValue: true },
   projectDevApps: { key: 'VITE_FF_PROJECT_DEVAPPS', defaultValue: true },
@@ -40,10 +39,6 @@ export const featureFlags = {
   prioritizedScheduling: parseBoolean(
     import.meta.env[DEFINITIONS.prioritizedScheduling.key],
     DEFINITIONS.prioritizedScheduling.defaultValue
-  ),
-  jankDiagnostics: parseBoolean(
-    import.meta.env[DEFINITIONS.jankDiagnostics.key],
-    DEFINITIONS.jankDiagnostics.defaultValue
   ),
   contentVisibility: parseBoolean(
     import.meta.env[DEFINITIONS.contentVisibility.key],

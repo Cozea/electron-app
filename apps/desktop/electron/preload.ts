@@ -517,6 +517,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('devAppAuthoring:scaffold', options),
   },
   workbenchSession: {
+    registerPresentationClient: () =>
+      ipcRenderer.invoke('workbenchSession:registerPresentationClient'),
+    setPresentation: (command: import('@shared/navigationRuntimeTypes').PresentationCommand) =>
+      ipcRenderer.invoke('workbenchSession:setPresentation', command),
     ensureSession: (options: {
       sessionKey?: string | null
       projectId: string
@@ -580,6 +584,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
       return () => ipcRenderer.removeListener(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
     },
+  },
+  desktopPersistence: {
+    load: (options: {
+      namespace: import('../../../shared/desktopPersistenceTypes').DesktopStateNamespace
+      keys?: string[]
+    }) => ipcRenderer.invoke('desktopPersistence:load', options),
+    commit: (options: {
+      records: import('../../../shared/desktopPersistenceTypes').DesktopStateRecord[]
+    }) => ipcRenderer.invoke('desktopPersistence:commit', options),
+    flush: (options?: { targetRevision?: number }) =>
+      ipcRenderer.invoke('desktopPersistence:flush', options),
+    migrateLegacy: (options: { domain: string; rawPayload: string }) =>
+      ipcRenderer.invoke('desktopPersistence:migrateLegacy', options),
   },
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => ipcRenderer.invoke('preview:injectBridge', options),

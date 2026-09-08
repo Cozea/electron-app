@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 import { scheduleTask } from '@/lib/scheduler'
+import { desktopPersistenceClient } from '@/app/model/persistence/desktopPersistenceClient'
 
 interface QueryCacheState {
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -32,70 +32,62 @@ function pruneCache(
 }
 
 /**
- * Simple query cache for Convex data.
- * Shows cached data immediately while fresh data loads.
- *
- * Usage:
- * ```tsx
- * const cached = useQueryCache.getState().get<Project[]>('projects-list')
- * const fresh = useQuery(api.projects.list, args)
- * const data = fresh ?? cached
- *
- * useEffect(() => {
- *   if (fresh) useQueryCache.getState().set('projects-list', fresh)
- * }, [fresh])
- * ```
+ * Granular query cache for Convex data (Section 10.1, 10.3).
+ * In-memory store backed by desktopPersistenceClient dirty-entry queue;
+ * avoids whole-store serialization on every query update (F05).
  */
-export const useQueryCache = create<QueryCacheState>()(
-  persist(
-    (set, get) => ({
-      cache: {},
+export const useQueryCache = create<QueryCacheState>()((set, get) => ({
+  cache: {},
 
-      set: (key: string, data: unknown) => {
-        const existing = get().cache[key]
-        if (existing && existing.data === data) {
-          return
-        }
-
-        set((state) => ({
-          cache: pruneCache({
-            ...state.cache,
-            [key]: { data, timestamp: Date.now() },
-          }),
-        }))
-      },
-
-      get: <T>(key: string, maxAge = DEFAULT_MAX_AGE): T | undefined => {
-        const entry = get().cache[key]
-        if (!entry) return undefined
-
-        // Check if cache is still valid
-        const effectiveMaxAge = Math.min(maxAge, HARD_MAX_AGE)
-        if (Date.now() - entry.timestamp > effectiveMaxAge) {
-          return undefined
-        }
-
-        return entry.data as T
-      },
-
-      clear: (key?: string) => {
-        if (key) {
-          set((state) => {
-            const { [key]: _removed, ...rest } = state.cache
-            return { cache: rest }
-          })
-        } else {
-          set({ cache: {} })
-        }
-      },
-    }),
-    {
-      name: 'cozea-query-cache',
-      storage: createJSONStorage(() => localStorage), // Use localStorage to persist across restarts
-      partialize: (state) => ({ cache: state.cache }),
+  set: (key: string, data: unknown) => {
+    const existing = get().cache[key]
+    if (existing && existing.data === data) {
+      return
     }
-  )
-)
+
+    const now = Date.now()
+    set((state) => ({
+      cache: pruneCache({
+        ...state.cache,
+        [key]: { data, timestamp: now },
+      }),
+    }))
+
+    // Queue granular record for persistence rather than serializing all queries
+    desktopPersistenceClient.queueDirtyRecord('queryCache', key, { data, timestamp: now })
+  },
+
+  get: <T>(key: string, maxAge = DEFAULT_MAX_AGE): T | undefined => {
+    const entry = get().cache[key]
+    if (!entry) {
+      // Check in-memory desktop persistence mirror
+      const fromClient = desktopPersistenceClient.peekQuery(key) as { data: unknown; timestamp: number } | null
+      if (fromClient && Number.isFinite(fromClient.timestamp) && Date.now() - fromClient.timestamp <= Math.min(maxAge, HARD_MAX_AGE)) {
+        return fromClient.data as T
+      }
+      return undefined
+    }
+
+    const effectiveMaxAge = Math.min(maxAge, HARD_MAX_AGE)
+    if (Date.now() - entry.timestamp > effectiveMaxAge) {
+      return undefined
+    }
+
+    return entry.data as T
+  },
+
+  clear: (key?: string) => {
+    if (key) {
+      set((state) => {
+        const { [key]: _removed, ...rest } = state.cache
+        return { cache: rest }
+      })
+      desktopPersistenceClient.queueDirtyRecord('queryCache', key, null)
+    } else {
+      set({ cache: {} })
+    }
+  },
+}))
 
 export interface CachedQueryState<T> {
   data: T | undefined
