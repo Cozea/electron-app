@@ -126,8 +126,11 @@ export function ProductionNavigationRuntimeApp() {
         return result.workspace
       },
       async reattachProject(projectId: string, workspaceId: string, folderPath: string) {
-        await window.electronAPI.workspace?.forget(workspaceId)
-        return await api.attachProject(projectId, folderPath)
+        const rebound = await api.attachProject(projectId, folderPath)
+        if (rebound.workspaceId !== workspaceId) {
+          throw new Error('Workspace relocation changed its stable identity')
+        }
+        return rebound
       },
       async navigate(destination: Destination) {
         if (destination === 'store' || destination === 'inbox') {

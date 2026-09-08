@@ -135,11 +135,7 @@ describe('WorkspaceCatalog.bindExistingFolder', () => {
     expect(resolution.status).toBe('ready')
   })
 
-  // Divergence pending a product decision: this asserts the pre-existing
-  // "silently repoint the row to the folder's new path" behavior, while the
-  // current catalog reports a marker_mismatch conflict so the move surfaces in
-  // the conflicts UI instead. Unskip once we settle which one ships.
-  it.skip('repoints the existing row when the folder moved (marker adoption, revision bump)', async () => {
+  it('repoints the existing row when the folder moved (marker adoption, revision bump)', async () => {
     const dirA = await makeProjectDir('epsilon')
 
     const first = await call((c) => c.bindExistingFolder({ projectId: 'proj_a', folderPath: dirA }))

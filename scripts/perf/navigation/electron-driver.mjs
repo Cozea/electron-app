@@ -178,10 +178,12 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
     assert(await evaluate(cdp, `Boolean(document.querySelector('.cozea-workbench-dockview-host[data-navigation-sentinel="a1"]'))`), 'Recently revisited Dockview A was evicted')
 
     await navigate(cdp, 'store')
+    const reboundFolder = `${folders.a}-rebound`
+    await fs.rename(folders.a, reboundFolder)
     const rebound = await evaluate(cdp, `window.__navigationProductionRuntime.reattachProject(
       'project-a',
       ${JSON.stringify(attached.a.workspaceId)},
-      ${JSON.stringify(folders.a)}
+      ${JSON.stringify(reboundFolder)}
     )`)
     assert(rebound.workspaceId === attached.a.workspaceId, 'Revision fixture changed workspace identity')
     assert(rebound.workspaceRevision > attached.a.workspaceRevision, 'Revision fixture did not advance the binding revision')
