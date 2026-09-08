@@ -1,7 +1,7 @@
 # Navigation runtime completion report
 
 The persistent navigation runtime repair is accepted for merge at source candidate
-`c0738b5980a607b38f4aa8591b3cb4e0a25dbbfb`. It is based on the original audited
+`56b006d3418adea9c3f8d68b7dce6f3fe377d016`. It is based on the original audited
 baseline `073df5230d2400684434ea6b7db27b0aafc72ddc` and integrates with `main` at
 `8e65b729e47c0c1bdfdd8555f55f0338cc95223f`.
 
@@ -34,19 +34,19 @@ evidence.
 ## Exact-head validation
 
 GitHub Actions `Navigation Runtime Validation` run
-[`34246756206`](https://github.com/Cozea/electron-app/actions/runs/34246756206),
-attempt 2, tested the PR merge candidate containing source candidate `c0738b598…`.
+[`34248986212`](https://github.com/Cozea/electron-app/actions/runs/34248986212)
+tested the PR merge candidate containing source candidate `56b006d34…`.
 
 | Gate | Result |
 |---|---|
 | Locked dependencies and pinned T3 bundle | Passed |
-| Navigation unit suites | 12 files, 70 tests passed |
+| Navigation unit suites | 13 files, 75 tests passed |
 | Renderer, Electron, and test TypeScript checks | Passed |
-| Full unit suite | 350 files passed, 2 skipped; 2,635 tests passed, 12 skipped |
+| Full unit suite | 351 files passed, 2 skipped; 2,642 tests passed, 12 skipped |
 | Production application compilation | Passed |
 | Dedicated production-path renderer build | Passed |
 | Real Electron correctness under xvfb | Passed |
-| Real Electron resident-warm benchmark | 100 samples; p95 **46 ms**, budget 75 ms |
+| Real Electron resident-warm benchmark | 100 samples; p95 **36.9 ms**, budget 75 ms |
 
 The Electron correctness run launches the compiled application and drives the
 production project layout over CDP. It verifies an actual Store departure,
@@ -56,8 +56,10 @@ folder move, a higher binding revision, creation of the revision-qualified main
 session, disposal of the superseded session, and removal of its old Dockview.
 
 `Computer Use Native` run
-[`34246756268`](https://github.com/Cozea/electron-app/actions/runs/34246756268)
-also passed its host, release, and debug jobs at the same source candidate.
+[`34248986233`](https://github.com/Cozea/electron-app/actions/runs/34248986233)
+also passed its host, release, and debug jobs at the same source candidate. The
+release job passed on retry after GitHub's Electron release download returned a
+transient HTTP 500 during the first attempt.
 
 ## Correctness evidence added during repair
 
@@ -71,11 +73,13 @@ generation races, persistent-host ownership, and prohibited legacy boundaries.
 CodeRabbit's 20 inline findings were verified against current code, corrected
 where applicable, acknowledged by the bot, and resolved. Later top-level findings
 covering transactionality, activation ownership, and layout-clone ordering were
-also corrected before this candidate.
+also corrected before this candidate. The final follow-up corrected external
+managed-folder ownership, startup registry hydration ordering, project-prefixed
+workbench warming, and AST-complete navigation boundary enforcement.
 
 ## Interpretation
 
-The measured 46 ms value is the hosted Linux/xvfb production-path result, not a
+The measured 36.9 ms value is the hosted Linux/xvfb production-path result, not a
 universal hardware promise. Platform-specific native build and packaging checks
 are green; a physical-device performance survey remains normal release monitoring,
 not a substitute for or exception to the automated merge gate above.

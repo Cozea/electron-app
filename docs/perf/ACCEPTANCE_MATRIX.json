@@ -689,17 +689,18 @@
       "status": "not_run_on_repaired_candidate"
     }
   ],
-  "repair_status": "accepted at source candidate c0738b5980a607b38f4aa8591b3cb4e0a25dbbfb; earlier deb92d01 acceptance remains withdrawn",
+  "repair_status": "accepted at source candidate 56b006d3418adea9c3f8d68b7dce6f3fe377d016; earlier deb92d01 acceptance remains withdrawn",
   "execution_evidence": {
-    "navigation_workflow_run": 34246756206,
-    "navigation_workflow_attempt": 2,
-    "native_workflow_run": 34246756268,
-    "source_candidate": "c0738b5980a607b38f4aa8591b3cb4e0a25dbbfb",
-    "navigation_unit_tests_passed": 70,
-    "full_unit_tests_passed": 2635,
+    "navigation_workflow_run": 34248986212,
+    "navigation_workflow_attempt": 1,
+    "native_workflow_run": 34248986233,
+    "native_workflow_attempt": 2,
+    "source_candidate": "56b006d3418adea9c3f8d68b7dce6f3fe377d016",
+    "navigation_unit_tests_passed": 75,
+    "full_unit_tests_passed": 2642,
     "electron_correctness": "passed",
     "resident_warm_samples": 100,
-    "resident_warm_p95_ms": 46,
+    "resident_warm_p95_ms": 36.9,
     "resident_warm_budget_ms": 75
   }
 }
