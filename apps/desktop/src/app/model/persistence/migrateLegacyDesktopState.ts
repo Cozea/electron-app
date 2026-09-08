@@ -1,31 +1,42 @@
-/**
- * Client Migration Orchestrator for Legacy Desktop State
- * Conforms to Section 10.9 of docs/perf/navigation-runtime-plan.md
- */
+import type { DesktopPersistenceApi, DesktopStateNamespace, LegacyDesktopDomain } from '@shared/desktopPersistenceTypes';
 
-const LEGACY_DOMAINS = [
-  'cozea-query-cache',
-  'cozea:project-workbench',
-  'cozea:project-workbench-layouts',
-] as const;
+const dependencies: Record<Exclude<DesktopStateNamespace, 'sessionRegistry'>, readonly LegacyDesktopDomain[]> = {
+  workbenchLayout: ['cozea:project-workbench-layouts', 'cozea:project-workbench'],
+  workbenchModel: ['cozea:project-workbench-layouts', 'cozea:project-workbench'],
+  queryCache: ['cozea-query-cache'],
+  lastWorkbenchRoute: ['cozea.lastWorkbenchRoute.v1'],
+};
+const completed = new Set<LegacyDesktopDomain>();
+const pending = new Map<LegacyDesktopDomain, Promise<void>>();
+const legacyBytes = new Map<LegacyDesktopDomain, string | null>();
 
-let migrationStarted = false;
+function migrateDomain(domain: LegacyDesktopDomain): Promise<void> {
+  if (completed.has(domain)) return Promise.resolve();
+  const existing = pending.get(domain);
+  if (existing) return existing;
+  const operation = Promise.resolve().then(async () => {
+    if (typeof window === 'undefined') return;
+    const api = window.electronAPI?.desktopPersistence as DesktopPersistenceApi | undefined;
+    if (!api) throw new Error('The desktop persistence bridge is unavailable.');
+    // One intentional legacy read per domain; original bytes remain untouched.
+    if (!legacyBytes.has(domain)) legacyBytes.set(domain, window.localStorage.getItem(domain));
+    const rawPayload = legacyBytes.get(domain);
+    if (rawPayload?.trim()) await api.migrateLegacy({ domain, rawPayload });
+    completed.add(domain);
+  });
+  pending.set(domain, operation);
+  void operation.finally(() => { if (pending.get(domain) === operation) pending.delete(domain); }).catch(() => undefined);
+  return operation;
+}
+
+export async function ensureLegacyDesktopNamespace(namespace: DesktopStateNamespace): Promise<void> {
+  if (namespace === 'sessionRegistry') throw new Error('The session registry is main-process owned.');
+  // Dedicated layouts win over the older layout embedded in a workbench model.
+  for (const domain of dependencies[namespace]) await migrateDomain(domain);
+}
 
 export async function migrateLegacyDesktopState(): Promise<void> {
-  if (migrationStarted || typeof window === 'undefined') return;
-  migrationStarted = true;
-
-  const api = window.electronAPI?.desktopPersistence;
-  if (!api) return;
-
-  for (const domain of LEGACY_DOMAINS) {
-    try {
-      const rawPayload = window.localStorage.getItem(domain);
-      if (rawPayload && rawPayload.trim().length > 0) {
-        await api.migrateLegacy({ domain, rawPayload });
-      }
-    } catch (err) {
-      console.warn(`[LegacyMigration] Failed migrating domain ${domain}:`, err);
-    }
+  for (const namespace of ['workbenchLayout', 'workbenchModel', 'queryCache', 'lastWorkbenchRoute'] as const) {
+    await ensureLegacyDesktopNamespace(namespace);
   }
 }
