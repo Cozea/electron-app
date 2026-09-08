@@ -21,6 +21,9 @@ export function writePersistedWorkbenchLayout(scopeKey: string, layoutResetKey: 
 export function clearPersistedWorkbenchLayout(scopeKey: string): void { desktopPersistenceClient.deleteRecord('workbenchLayout', scopeKey) }
 export async function clearPersistedWorkbenchLayoutsForProject(projectId: string): Promise<void> {
   if (!projectId.trim()) return
+  // Hide known layouts immediately, then tombstone disk-only scopes too.
+  // Local tombstones cannot be replaced by the hydration result.
+  desktopPersistenceClient.clearLayoutsForProject(projectId.trim())
   await ensureWorkbenchLayoutPersistenceReady()
   desktopPersistenceClient.clearLayoutsForProject(projectId.trim())
 }

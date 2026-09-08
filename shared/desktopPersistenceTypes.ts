@@ -1,6 +1,6 @@
 export const DESKTOP_STATE_NAMESPACES = ['queryCache', 'workbenchModel', 'workbenchLayout', 'lastWorkbenchRoute', 'sessionRegistry'] as const
 export type DesktopStateNamespace = typeof DESKTOP_STATE_NAMESPACES[number]
-export const LEGACY_DESKTOP_DOMAINS = ['cozea-query-cache', 'cozea:project-workbench', 'cozea:project-workbench-layouts'] as const
+export const LEGACY_DESKTOP_DOMAINS = ['cozea-query-cache', 'cozea:project-workbench-layouts', 'cozea:project-workbench'] as const
 export type LegacyDesktopDomain = typeof LEGACY_DESKTOP_DOMAINS[number]
 export interface DesktopStateRecord<T = unknown> {
   schemaVersion: 1

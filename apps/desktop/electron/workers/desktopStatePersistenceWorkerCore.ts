@@ -148,8 +148,8 @@ export class DesktopStatePersistenceWorkerCore {
     await this.ready
     const sourceHash = createHash('sha256').update(rawPayload).digest('hex')
     const domainHash = createHash('sha256').update(domain).digest('hex')
-    // v2 intentionally ignores erroneous markers from the reviewed implementation.
-    const markerPath = path.join(this.baseDir, 'migration-markers', `v2-${domainHash}-${sourceHash}.json`)
+    // v3 also imports layouts embedded in older Zustand model envelopes.
+    const markerPath = path.join(this.baseDir, 'migration-markers', `v3-${domainHash}-${sourceHash}.json`)
     try { return JSON.parse(await fs.readFile(markerPath, 'utf8')) as LegacyMigrationResult } catch (error) { if (!missing(error)) throw error }
     const backupPath = path.join(this.baseDir, 'backups', `${domainHash}-${sourceHash}.json`)
     await this.atomicWrite(backupPath, rawPayload)
@@ -171,17 +171,24 @@ export class DesktopStatePersistenceWorkerCore {
     // Unscoped legacy cloud query data is backed up but never given a new principal.
     if (root && domain !== 'cozea-query-cache' && !collection) quarantinedCount++
     for (const [key, data] of Object.entries(collection ?? {})) {
-      const validLayout = namespace === 'workbenchLayout' && isPlainRecord(data) && isPlainRecord(data.layout) && 'grid' in data.layout && 'panels' in data.layout && Number.isInteger(data.layoutResetKey)
+      const hasLayout = isPlainRecord(data) && isPlainRecord(data.layout) && 'grid' in data.layout && 'panels' in data.layout && Number.isInteger(data.layoutResetKey)
       const validModel = namespace === 'workbenchModel' && isPlainRecord(data) && isPlainRecord(data.tiles) && Array.isArray(data.order) && typeof data.projectId === 'string'
-      if ((!validLayout && !validModel) || key.length > 8192 || !key.includes('::')) { quarantinedCount++; continue }
-      const existing = await this.readRecord(namespace, key)
-      if (existing) continue // a resumed import never overwrites a newer record, including a tombstone
-      const record: DesktopStateRecord = { schemaVersion: 1, namespace, key, recordRevision: 1, updatedAt: Date.now(), data }
-      const result = await this.commit([record])
-      if (result.status !== 'committed') throw new Error(result.errorMessage ?? 'Legacy import write failed')
-      const verified = await this.readRecord(namespace, key)
-      if (!verified || verified.recordRevision !== 1) throw new Error('Legacy import verification failed')
-      importedCount++
+      if ((!hasLayout && !validModel) || key.length > 8192 || !key.includes('::')) { quarantinedCount++; continue }
+      const candidates: Array<{ namespace: DesktopStateNamespace; data: unknown }> = []
+      if (validModel) candidates.push({ namespace: 'workbenchModel', data })
+      if (hasLayout) candidates.push({ namespace: 'workbenchLayout', data: { layout: data.layout, layoutResetKey: data.layoutResetKey } })
+      for (const candidate of candidates) {
+        const existing = await this.readRecord(candidate.namespace, key)
+        // Dedicated layout-domain migration runs first. Embedded legacy layouts
+        // only fill a missing record; neither can resurrect a durable tombstone.
+        if (existing) continue
+        const record: DesktopStateRecord = { schemaVersion: 1, namespace: candidate.namespace, key, recordRevision: 1, updatedAt: Date.now(), data: candidate.data }
+        const result = await this.commit([record])
+        if (result.status !== 'committed') throw new Error(result.errorMessage ?? 'Legacy import write failed')
+        const verified = await this.readRecord(candidate.namespace, key)
+        if (!verified || verified.recordRevision !== 1) throw new Error('Legacy import verification failed')
+        importedCount++
+      }
     }
     const result = { domain, importedCount, quarantinedCount, backupPath }
     await this.atomicWrite(markerPath, JSON.stringify(result))
