@@ -53,14 +53,8 @@ interface PinnedFeatureImport {
 const PINNED_FEATURE_IMPORTS: readonly PinnedFeatureImport[] = [
   {
     file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
-    specifier: "@/features/collaboration/hooks/useCollabSession",
-    because:
-      "The provider runtime composes the capabilities the sync context exposes rather than being ambient itself; it belongs in app composition, not here.",
-  },
-  {
-    file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
     specifier: "@/features/source-control/hooks/useProjectCheckpointCleanup",
-    because: "Same runtime, same reason.",
+    because: "The provider runtime composes checkpoint cleanup rather than ambient project state; it belongs in app composition, not neutral state.",
   },
   {
     file: "apps/desktop/src/contexts/project/projectSyncShared.ts",
