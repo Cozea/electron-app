@@ -17,35 +17,60 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
-      - name: Apply hash-verified integration patch
+      - name: Apply integrity-checked integration source
         run: |
           python3 - <<'PY'
-          import base64, hashlib, json, pathlib, subprocess, zlib
+          import base64, hashlib, json, lzma, pathlib, subprocess
           root = pathlib.Path.cwd()
           manifest = json.loads((root / '.cu-transfer/ready.json').read_text())
-          assert manifest['format'] == 'git-patch-v1'
+          assert manifest['format'] == 'source-edits-v2'
           assert 0 < manifest['parts'] <= 30
-          encoded = ''.join((root / f'.cu-transfer/integration-{i}.txt').read_text().strip() for i in range(manifest['parts']))
-          raw = zlib.decompress(base64.b64decode(encoded, validate=True))
-          assert len(raw) < 2_000_000
+          encoded = ''.join((root / f'.cu-transfer/edits-{i}.txt').read_text().strip() for i in range(manifest['parts']))
+          decoder = lzma.LZMADecompressor(memlimit=100_000_000)
+          raw = decoder.decompress(base64.b64decode(encoded, validate=True), max_length=2_000_001)
+          assert decoder.eof and not decoder.unused_data and len(raw) <= 2_000_000
           assert hashlib.sha256(raw).hexdigest() == manifest['sha256']
-          stats = subprocess.check_output(['git', 'apply', '--numstat', '-z', '-'], input=raw)
-          paths = [entry.split(b'\t', 2)[2].decode() for entry in stats.split(b'\0') if entry]
-          for name in paths:
+          def blob(data):
+              return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          pending = []
+          seen = set()
+          for entry in json.loads(raw):
+              name = entry['path']
               p = pathlib.PurePosixPath(name)
+              assert name not in seen
+              seen.add(name)
               assert not p.is_absolute() and '..' not in p.parts
               assert '.git' not in p.parts and '.build' not in p.parts
               assert name.startswith(('native/computer-use-runtime/', 'native/computer-use-bridge/', 'packages/computer-use-native/', 'tests/computer-use/', 'scripts/', 'docs/', 'apps/desktop/', 'shared/')) or name in ('package.json', 'bun.lock', 'AGENTS.md')
-          subprocess.run(['git', 'apply', '--check', '-'], input=raw, check=True)
-          subprocess.run(['git', 'apply', '--index', '-'], input=raw, check=True)
+              target = root / name
+              assert not target.is_symlink()
+              old = target.read_bytes() if target.exists() else b''
+              assert (blob(old) if target.exists() else None) == entry['baseBlob'], name
+              lines = old.decode('utf-8').splitlines(keepends=True)
+              previous_end = 0
+              for edit in entry['edits']:
+                  assert previous_end <= edit['start'] <= edit['end'] <= len(lines)
+                  previous_end = edit['end']
+              for edit in reversed(entry['edits']):
+                  lines[edit['start']:edit['end']] = edit['text'].splitlines(keepends=True)
+              new = ''.join(lines).encode('utf-8')
+              assert blob(new) == entry['resultBlob'], name
+              assert entry['mode'] in ('100644', '100755')
+              pending.append((target, new, entry['mode']))
+          for target, new, mode in pending:
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(new)
+              target.chmod(0o755 if mode == '100755' else 0o644)
+              subprocess.run(['git', 'add', '--', str(target.relative_to(root))], check=True)
           subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          print(f'Verified and staged {len(pending)} source files')
           PY
-      - name: Commit readable source on the implementation branch
+      - name: Commit readable source on implementation branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff --cached --quiet; then
-            git commit -m 'feat(computer-use): integrate ABI 2 policy, host lifecycle, fixtures and validation'
+            git commit -m 'feat(computer-use): integrate ABI 2 policy, lifecycle, fixtures and packaging'
             git push origin HEAD:feat/macos-computer-use-v2
           fi
       - name: Native unit tests and fixture build
