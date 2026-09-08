@@ -98,6 +98,8 @@ export class WorkbenchPresentationCoordinator {
           sessionKey: client.activeSessionKey,
           projectId: client.activeTarget.projectId,
           laneId: client.activeTarget.laneId,
+          workspaceId: client.activeTarget.workspaceId,
+          workspaceRevision: client.activeTarget.workspaceRevision,
         });
       } catch {}
     }
@@ -197,6 +199,8 @@ export class WorkbenchPresentationCoordinator {
           sessionKey: client.activeSessionKey,
           projectId: client.activeTarget.projectId,
           laneId: client.activeTarget.laneId,
+          workspaceId: client.activeTarget.workspaceId,
+          workspaceRevision: client.activeTarget.workspaceRevision,
         });
         client.activeSessionKey = null;
         client.activeTarget = null;
@@ -234,11 +238,19 @@ export class WorkbenchPresentationCoordinator {
       };
     }
 
+    // A catalog binding revision invalidates all runtime resources owned by
+    // the prior binding, even when the normalized workspace path is unchanged.
+    await this.sessionManager.closeSupersededBindingSessions(target);
+    if (!this.isCurrent(webContentsId, command)) {
+      return { status: 'superseded', sequence: command.sequence };
+    }
+
     // Await session preparation
     const sessionSnapshot = await this.sessionManager.ensureSession({
       projectId: target.projectId,
       laneId: target.laneId,
       workspaceId: target.workspaceId,
+      workspaceRevision: target.workspaceRevision,
     });
 
     // CRITICAL: Post-await recheck of epoch and sequence (Section 9.3, M01)
@@ -254,6 +266,7 @@ export class WorkbenchPresentationCoordinator {
       projectId: target.projectId,
       laneId: target.laneId,
       workspaceId: target.workspaceId,
+      workspaceRevision: target.workspaceRevision,
     }, () => this.isCurrent(webContentsId, command) && this.targetValidator(target));
 
     if (!activated) {

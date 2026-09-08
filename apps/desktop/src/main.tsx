@@ -24,7 +24,7 @@ import {
 } from './app/bootstrap/desktopBootstrap'
 import { featureFlags } from './lib/featureFlags'
 import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
-import { NavigationRuntimeHarness } from './app/navigation/NavigationRuntimeHarness'
+import { ProductionNavigationRuntimeApp } from './app/navigation/ProductionNavigationRuntimeApp'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -151,9 +151,15 @@ async function startRenderer(): Promise<void> {
 }
 
 const rendererStart = __COZEA_NAVIGATION_TEST__
-  ? Promise.resolve().then(() => {
+  ? Promise.resolve().then(async () => {
       applyThemeClass('dark')
-      createRoot(document.getElementById('root')!).render(<NavigationRuntimeHarness />)
+      window.history.replaceState(window.history.state, '', '/projects/store')
+      const [{ initializeQueryCache }, { initializeWorkbenchStorage }] = await Promise.all([
+        import('./app/model/queryCache'),
+        import('./lib/workbenchStore'),
+      ])
+      await Promise.all([initializeQueryCache(), initializeWorkbenchStorage()])
+      createRoot(document.getElementById('root')!).render(<ProductionNavigationRuntimeApp />)
     })
   : startRenderer()
 

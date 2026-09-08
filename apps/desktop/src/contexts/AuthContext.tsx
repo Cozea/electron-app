@@ -7,7 +7,7 @@ import { getDeviceSession, type DeviceSession } from '@/lib/deviceSession'
 import { getInitialDesktopBootstrap } from '@/app/bootstrap/desktopBootstrap'
 import { featureFlags } from '@/lib/featureFlags'
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null
   principalId: Id<"devicePrincipals"> | null
   accessToken: string | null
@@ -24,7 +24,7 @@ interface AuthContextType {
 
 export type RefreshTokenStatus = 'refreshed' | 'retryable' | 'expired'
 
-const AuthContext = createContext<AuthContextType | null>(null)
+export const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const bootstrapSession = featureFlags.shellFirstAuth

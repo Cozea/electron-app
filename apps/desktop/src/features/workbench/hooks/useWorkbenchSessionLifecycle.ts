@@ -34,6 +34,7 @@ function isMeaningfullyEqual(
     a.projectId === b.projectId &&
     a.laneId === b.laneId &&
     a.workspaceId === b.workspaceId &&
+    a.workspaceRevision === b.workspaceRevision &&
     a.lifecycle === b.lifecycle &&
     a.pinned === b.pinned &&
     a.hasBrowserSurface === b.hasBrowserSurface &&
@@ -49,6 +50,7 @@ function matchesSession(
   projectId: string | null,
   laneId: string | null,
   workspaceId: string | null,
+  workspaceRevision: number | null,
 ): boolean {
   if (sessionKey) {
     return snapshot.sessionKey === sessionKey
@@ -58,7 +60,10 @@ function matchesSession(
     return false
   }
   if (workspaceId) {
-    return snapshot.workspaceId === workspaceId
+    return (
+      snapshot.workspaceId === workspaceId &&
+      (!workspaceRevision || snapshot.workspaceRevision === workspaceRevision)
+    )
   }
   return true
 }
@@ -105,7 +110,14 @@ export function useWorkbenchSessionLifecycle({
 
     const applySnapshot = (nextSnapshot: WorkbenchSessionSnapshot | null) => {
       if (cancelled || !nextSnapshot) return
-      if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId, workspaceId)) return
+      if (!matchesSession(
+        nextSnapshot,
+        activeSessionKeyRef.current,
+        projectId,
+        laneId,
+        workspaceId,
+        workspaceRevision,
+      )) return
       setScopedSnapshot((current) =>
         current?.instanceKey === instanceKey && isMeaningfullyEqual(current.snapshot, nextSnapshot)
           ? current

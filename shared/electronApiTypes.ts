@@ -1533,6 +1533,7 @@ export interface WorkbenchSessionSnapshot {
   projectId: string
   laneId: string
   workspaceId: string | null
+  workspaceRevision: number
   lifecycle: WorkbenchSessionLifecycle
   pinned: boolean
   openedAt: number
@@ -1957,30 +1958,37 @@ export interface ElectronAPI {
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<WorkbenchSessionSnapshot>
     closeSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<{ success: boolean }>
     getSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<WorkbenchSessionSnapshot | null>
     listSessions: () => Promise<WorkbenchSessionSnapshot[]>
     setPinned: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       pinned: boolean
     }) => Promise<WorkbenchSessionSnapshot | null>
     getTerminalBinding: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       tileId: string
     }) => Promise<string | null>
     bindTerminal: (options: {
@@ -1990,11 +1998,14 @@ export interface ElectronAPI {
       tileId: string
       terminalId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => Promise<WorkbenchSessionSnapshot>
     releaseTerminal: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       tileId: string
       close?: boolean
     }) => Promise<{ success: boolean; terminalId?: string }>
@@ -2002,6 +2013,8 @@ export interface ElectronAPI {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       locator: import('./nativePreviewTypes').NativePreviewSessionLocator | null
       stopPrevious?: boolean
     }) => Promise<WorkbenchSessionSnapshot | null>

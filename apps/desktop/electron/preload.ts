@@ -526,19 +526,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => ipcRenderer.invoke('workbenchSession:ensureSession', options),
     closeSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => ipcRenderer.invoke('workbenchSession:closeSession', options),
-    getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) =>
+    getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number }) =>
       ipcRenderer.invoke('workbenchSession:getSession', options),
     listSessions: () => ipcRenderer.invoke('workbenchSession:listSessions'),
-    setPinned: (options: { sessionKey?: string | null; projectId: string; laneId: string; pinned: boolean }) =>
+    setPinned: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number; pinned: boolean }) =>
       ipcRenderer.invoke('workbenchSession:setPinned', options),
-    getTerminalBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) =>
+    getTerminalBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number; tileId: string }) =>
       ipcRenderer.invoke('workbenchSession:getTerminalBinding', options),
     bindTerminal: (options: {
       sessionKey?: string | null
@@ -547,11 +549,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       tileId: string
       terminalId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => ipcRenderer.invoke('workbenchSession:bindTerminal', options),
     releaseTerminal: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       tileId: string
       close?: boolean
     }) => ipcRenderer.invoke('workbenchSession:releaseTerminal', options),
@@ -559,6 +564,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       locator: import('../../../shared/nativePreviewTypes').NativePreviewSessionLocator | null
       stopPrevious?: boolean
     }) => ipcRenderer.invoke('workbenchSession:setNativePreviewSession', options),

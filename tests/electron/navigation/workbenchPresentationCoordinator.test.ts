@@ -9,8 +9,8 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
 
   beforeEach(() => {
     mockSessionManager = {
-      ensureSession: vi.fn(async ({ projectId, laneId, workspaceId }) => ({
-        sessionKey: `${projectId}::${laneId}::${workspaceId ?? 'default'}`,
+      ensureSession: vi.fn(async ({ projectId, laneId, workspaceId, workspaceRevision }) => ({
+        sessionKey: `${projectId}::${laneId}::${workspaceId ?? 'default'}::v${workspaceRevision ?? 1}`,
       })),
       activateSession: vi.fn(async () => ({})),
       activateSessionGuarded: vi.fn(async (args, guard) =>
@@ -20,6 +20,7 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
       getSession: vi.fn(() => null),
       setPresentationLeases: vi.fn(),
       releasePresentationLeases: vi.fn(),
+      closeSupersededBindingSessions: vi.fn(async () => []),
       closeSession: vi.fn(async () => ({ success: true })),
     };
 
@@ -82,7 +83,7 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
 
     await coordinator.applyPresentationCommand(mockWebContents, { ...newer, sequence: 3, navigationId: 3 });
     expect(mockSessionManager.backgroundSession).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionKey: 'p1::collab::w1' }),
+      expect.objectContaining({ sessionKey: 'p1::collab::w1::v1' }),
     );
   });
 
@@ -99,7 +100,7 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
           resolveSeq1Ensure = r;
         });
       }
-      return { sessionKey: `${args.projectId}::${args.laneId}::${args.workspaceId}` };
+      return { sessionKey: `${args.projectId}::${args.laneId}::${args.workspaceId}::v${args.workspaceRevision}` };
     });
 
     const cmd1: PresentationCommand = {
@@ -129,7 +130,7 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
     expect(res2.status).toBe('applied');
 
     // Resolve command 1 after command 2 already applied
-    resolveSeq1Ensure({ sessionKey: 'p1::collab::w1' });
+    resolveSeq1Ensure({ sessionKey: 'p1::collab::w1::v1' });
     const res1 = await p1;
 
     // Command 1 must report superseded and NOT activate p1!
@@ -175,7 +176,7 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
     const first = coordinator.applyPresentationCommand(mockWebContents, cmd);
     const retry = coordinator.applyPresentationCommand(mockWebContents, cmd);
     await vi.waitFor(() => expect(mockSessionManager.ensureSession).toHaveBeenCalledTimes(1));
-    resolveEnsure({ sessionKey: 'p1::collab::w1' });
+    resolveEnsure({ sessionKey: 'p1::collab::w1::v1' });
     await expect(retry).resolves.toEqual(await first);
     expect(mockSessionManager.activateSessionGuarded).toHaveBeenCalledTimes(1);
   });
@@ -193,6 +194,37 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
     });
     expect(result.status).toBe('invalidated');
     expect(mockSessionManager.ensureSession).not.toHaveBeenCalled();
+  });
+
+  it('M05: replaces the main-process session when only the binding revision changes', async () => {
+    const reg = coordinator.registerClient(mockWebContents);
+    const first = await coordinator.applyPresentationCommand(mockWebContents, {
+      clientEpoch: reg.clientEpoch,
+      sequence: 1,
+      navigationId: 1,
+      target: { projectId: 'p1', workspaceId: 'w1', workspaceRevision: 1, laneId: 'collab' },
+      retained: [],
+    });
+    const rebound = await coordinator.applyPresentationCommand(mockWebContents, {
+      clientEpoch: reg.clientEpoch,
+      sequence: 2,
+      navigationId: 2,
+      target: { projectId: 'p1', workspaceId: 'w1', workspaceRevision: 2, laneId: 'collab' },
+      retained: [],
+    });
+
+    expect(first).toEqual(expect.objectContaining({ status: 'applied', sessionKey: 'p1::collab::w1::v1' }));
+    expect(rebound).toEqual(expect.objectContaining({ status: 'applied', sessionKey: 'p1::collab::w1::v2' }));
+    expect(mockSessionManager.closeSupersededBindingSessions).toHaveBeenLastCalledWith({
+      projectId: 'p1',
+      workspaceId: 'w1',
+      workspaceRevision: 2,
+      laneId: 'collab',
+    });
+    expect(mockSessionManager.activateSessionGuarded).toHaveBeenLastCalledWith(
+      expect.objectContaining({ workspaceRevision: 2 }),
+      expect.any(Function),
+    );
   });
 
   it('M03: Same sequence with different payload or retired epoch is rejected without mutation', async () => {
@@ -250,7 +282,7 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
     // Trigger destruction
     mockWebContents.destroy();
     expect(mockSessionManager.backgroundSession).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionKey: 'p1::collab::w1' })
+      expect.objectContaining({ sessionKey: 'p1::collab::w1::v1' })
     );
 
     // Attempting to send command with old epoch now fails

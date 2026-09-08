@@ -14,7 +14,19 @@ describe("workbench session ownership", () => {
   it("builds session keys from opaque workspace ids without path hashing", () => {
     expect(
       __workbenchSessionTestUtils.buildSessionKey("project-a", "collab", " workspace-123 "),
-    ).toBe("project-a::collab::workspace-123");
+    ).toBe("project-a::collab::workspace-123::v1");
+  });
+
+  it("isolates the same workspace path across binding revisions", () => {
+    const first = __workbenchSessionTestUtils.buildSessionKey(
+      "project-a", "collab", "workspace-123", 1,
+    );
+    const rebound = __workbenchSessionTestUtils.buildSessionKey(
+      "project-a", "collab", "workspace-123", 2,
+    );
+
+    expect(rebound).not.toBe(first);
+    expect(rebound).toBe("project-a::collab::workspace-123::v2");
   });
 
   it("repairs persisted records into canonical opaque workspace keys", () => {
@@ -45,6 +57,7 @@ describe("workbench session ownership", () => {
     expect(changed).toBe(true);
     expect(Object.keys(state.sessions)).toEqual([canonicalKey]);
     expect(state.sessions[canonicalKey]?.workspaceId).toBe("workspace-a");
+    expect(state.sessions[canonicalKey]?.workspaceRevision).toBe(1);
   });
 
   it("collapses duplicate persisted workspace records by latest focus time", () => {

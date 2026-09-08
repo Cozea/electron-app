@@ -469,7 +469,10 @@ export function ProjectLayout({
 
   const layoutContent = (
     <SidebarProvider>
-      <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
+      <div
+        className="h-screen w-screen bg-transparent flex flex-col overflow-hidden"
+        data-project-layout-shell="true"
+      >
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {/* Persistent shell: route-mode switches swap only the content. */}

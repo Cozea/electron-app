@@ -17,6 +17,7 @@ interface PersistedWorkbenchSessionRecord {
   projectId: string
   laneId: string
   workspaceId: string | null
+  workspaceRevision?: number
   lifecycle: Exclude<WorkbenchSessionLifecycle, 'closed'>
   pinned: boolean
   openedAt: number
@@ -33,6 +34,7 @@ interface LiveWorkbenchSessionRecord {
   projectId: string
   laneId: string
   workspaceId: string | null
+  workspaceRevision: number
   lifecycle: WorkbenchSessionLifecycle
   pinned: boolean
   openedAt: number
@@ -66,8 +68,27 @@ function normalizeWorkspaceId(workspaceId?: string | null): string | null {
   return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
-function buildSessionKey(projectId: string, laneId: string, workspaceId?: string | null): string {
-  return `${projectId.trim()}::${laneId.trim() || 'collab'}::${normalizeWorkspaceId(workspaceId) ?? 'unbound'}`
+function normalizeWorkspaceRevision(workspaceRevision?: number): number {
+  if (workspaceRevision === undefined) return 1
+  if (!Number.isSafeInteger(workspaceRevision) || workspaceRevision < 1) {
+    throw new Error('Invalid workspace revision')
+  }
+  return workspaceRevision
+}
+
+function repairWorkspaceRevision(workspaceRevision?: number): number {
+  return Number.isSafeInteger(workspaceRevision) && Number(workspaceRevision) >= 1
+    ? Number(workspaceRevision)
+    : 1
+}
+
+function buildSessionKey(
+  projectId: string,
+  laneId: string,
+  workspaceId?: string | null,
+  workspaceRevision?: number,
+): string {
+  return `${projectId.trim()}::${laneId.trim() || 'collab'}::${normalizeWorkspaceId(workspaceId) ?? 'unbound'}::v${normalizeWorkspaceRevision(workspaceRevision)}`
 }
 
 function getRegistryPath(): string {
@@ -113,12 +134,17 @@ function sanitizeSessionInput<T extends {
   projectId: string
   laneId: string
   workspaceId?: string | null
+  workspaceRevision?: number
 }>(
   input: T,
   warn?: (event: string, details: Record<string, unknown>) => void,
 ): T {
   return {
     ...input,
+    workspaceRevision:
+      input.workspaceRevision === undefined
+        ? undefined
+        : normalizeWorkspaceRevision(input.workspaceRevision),
     workspaceId: resolveOwnedWorkspaceId({
       projectId: input.projectId,
       workspaceId: input.workspaceId,
@@ -151,11 +177,13 @@ function repairPersistedSessionState(state: PersistedWorkbenchSessionState): boo
     const repairedRecord: PersistedWorkbenchSessionRecord = {
       ...record,
       workspaceId: ownedWorkspaceId ?? null,
+      workspaceRevision: repairWorkspaceRevision(record.workspaceRevision),
     }
     const repairedSessionKey = buildSessionKey(
       repairedRecord.projectId,
       repairedRecord.laneId,
       repairedRecord.workspaceId,
+      repairedRecord.workspaceRevision,
     )
     const existingRecord = repairedSessions[repairedSessionKey]
 
@@ -170,6 +198,7 @@ function repairPersistedSessionState(state: PersistedWorkbenchSessionState): boo
     if (
       repairedSessionKey !== sessionKey ||
       repairedRecord.workspaceId !== record.workspaceId ||
+      repairedRecord.workspaceRevision !== record.workspaceRevision ||
       existingRecord
     ) {
       changed = true
@@ -196,6 +225,7 @@ function toPersistedRecord(record: LiveWorkbenchSessionRecord): PersistedWorkben
     projectId: record.projectId,
     laneId: record.laneId,
     workspaceId: record.workspaceId,
+    workspaceRevision: record.workspaceRevision,
     lifecycle:
       record.lifecycle === 'active' ||
       record.lifecycle === 'backgroundWarm' ||
@@ -266,6 +296,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }>(input: T): T {
     return sanitizeSessionInput(input, this.warnOwnershipMismatch.bind(this))
   }
@@ -279,10 +310,17 @@ export class WorkbenchSessionManager extends EventEmitter<{
     repairPersistedSessionState(persisted)
 
     for (const [, record] of Object.entries(persisted.sessions)) {
-      const derivedSessionKey = buildSessionKey(record.projectId, record.laneId, record.workspaceId)
+      const workspaceRevision = repairWorkspaceRevision(record.workspaceRevision)
+      const derivedSessionKey = buildSessionKey(
+        record.projectId,
+        record.laneId,
+        record.workspaceId,
+        workspaceRevision,
+      )
       const nextRecord: LiveWorkbenchSessionRecord = {
         ...record,
         workspaceId: normalizeWorkspaceId(record.workspaceId),
+        workspaceRevision,
         lifecycle:
           record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
         terminalBindings: {},
@@ -361,13 +399,20 @@ export class WorkbenchSessionManager extends EventEmitter<{
       if (live) merged.set(sessionKey, live)
     }
     for (const record of Object.values(state.sessions)) {
-      const sessionKey = buildSessionKey(record.projectId, record.laneId, record.workspaceId)
+      const workspaceRevision = repairWorkspaceRevision(record.workspaceRevision)
+      const sessionKey = buildSessionKey(
+        record.projectId,
+        record.laneId,
+        record.workspaceId,
+        workspaceRevision,
+      )
       if (this.preHydrationDeletedSessionKeys.has(sessionKey)) continue
       const live = this.sessions.get(sessionKey)
       if (this.preHydrationMutatedSessionKeys.has(sessionKey) && live) continue
       merged.set(sessionKey, {
         ...record,
         workspaceId: normalizeWorkspaceId(record.workspaceId),
+        workspaceRevision,
         lifecycle: record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
         terminalBindings: {},
         nativePreviewLocator: null,
@@ -448,12 +493,14 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): LiveWorkbenchSessionRecord {
     const now = Date.now()
     return {
       projectId: input.projectId.trim(),
       laneId: input.laneId.trim() || 'collab',
       workspaceId: normalizeWorkspaceId(input.workspaceId),
+      workspaceRevision: normalizeWorkspaceRevision(input.workspaceRevision),
       lifecycle: 'backgroundWarm',
       pinned: false,
       openedAt: now,
@@ -491,11 +538,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): string | null {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const explicitSessionKey = sanitizedInput.sessionKey?.trim()
     if (explicitSessionKey) {
-      return this.sessions.has(explicitSessionKey) ? explicitSessionKey : null
+      const record = this.sessions.get(explicitSessionKey)
+      return record && this.recordMatchesInput(record, sanitizedInput) ? explicitSessionKey : null
     }
 
     if (sanitizedInput.workspaceId !== undefined) {
@@ -503,6 +552,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
         sanitizedInput.projectId,
         sanitizedInput.laneId,
         sanitizedInput.workspaceId,
+        sanitizedInput.workspaceRevision,
       )
       return this.sessions.has(exactSessionKey) ? exactSessionKey : null
     }
@@ -511,6 +561,16 @@ export class WorkbenchSessionManager extends EventEmitter<{
       projectId: sanitizedInput.projectId,
       laneId: sanitizedInput.laneId,
     })
+  }
+
+  private recordMatchesInput(
+    record: LiveWorkbenchSessionRecord,
+    input: { projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number },
+  ): boolean {
+    if (record.projectId !== input.projectId.trim()) return false
+    if (record.laneId !== (input.laneId.trim() || 'collab')) return false
+    if (input.workspaceId !== undefined && record.workspaceId !== normalizeWorkspaceId(input.workspaceId)) return false
+    return input.workspaceRevision === undefined || record.workspaceRevision === input.workspaceRevision
   }
 
   private async reconcileSessionWorkspaceId(
@@ -576,7 +636,12 @@ export class WorkbenchSessionManager extends EventEmitter<{
   }
 
   private hasRetainedPreviewRuntime(record: LiveWorkbenchSessionRecord): boolean {
-    const sessionKey = buildSessionKey(record.projectId, record.laneId, record.workspaceId)
+    const sessionKey = buildSessionKey(
+      record.projectId,
+      record.laneId,
+      record.workspaceId,
+      record.workspaceRevision,
+    )
     return (
       this.hasRunningDevServer(record) ||
       this.hasRunningNativePreview(record) ||
@@ -707,12 +772,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): { sessionKey: string; record: LiveWorkbenchSessionRecord } {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const providedSessionKey = sanitizedInput.sessionKey?.trim()
     if (providedSessionKey) {
       const existingByExplicitKey = this.sessions.get(providedSessionKey)
-      if (existingByExplicitKey) {
+      if (existingByExplicitKey && this.recordMatchesInput(existingByExplicitKey, sanitizedInput)) {
         return { sessionKey: providedSessionKey, record: existingByExplicitKey }
       }
     }
@@ -721,6 +787,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       sanitizedInput.projectId,
       sanitizedInput.laneId,
       sanitizedInput.workspaceId,
+      sanitizedInput.workspaceRevision,
     )
     const existing = this.sessions.get(sessionKey)
     if (existing) {
@@ -748,6 +815,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
       projectId: record.projectId,
       laneId: record.laneId,
       workspaceId: record.workspaceId,
+      workspaceRevision: record.workspaceRevision,
       lifecycle: record.lifecycle,
       pinned: record.pinned,
       openedAt: record.openedAt,
@@ -871,6 +939,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): Promise<WorkbenchSessionSnapshot> {
     await this.registryHydration
     const sanitizedInput = this.sanitizeSessionInput(input)
@@ -887,6 +956,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): Promise<WorkbenchSessionSnapshot> {
     const snapshot = await this.activateSessionGuarded(input, () => true)
     if (!snapshot) throw new Error('Workbench session activation was cancelled')
@@ -898,6 +968,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }, mayActivate: () => boolean | Promise<boolean>): Promise<WorkbenchSessionSnapshot | null> {
     await this.registryHydration
     const sanitizedInput = this.sanitizeSessionInput(input)
@@ -921,6 +992,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
+    workspaceId?: string | null
+    workspaceRevision?: number
     mode?: BackgroundLifecycle
   }): WorkbenchSessionSnapshot | null {
     const sessionKey = this.resolveSessionKey(input)
@@ -951,10 +1024,12 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): string[] {
     const explicitSessionKey = input.sessionKey?.trim()
     if (explicitSessionKey) {
-      return this.sessions.has(explicitSessionKey) ? [explicitSessionKey] : []
+      const resolved = this.resolveSessionKey(input)
+      return resolved ? [resolved] : []
     }
 
     if (input.workspaceId !== undefined) {
@@ -1004,6 +1079,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     projectId: string
     laneId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): Promise<boolean> {
     const sessionKeys = this.resolveSessionKeysForClose(input)
     if (sessionKeys.length === 0) {
@@ -1018,12 +1094,37 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return true
   }
 
+  async closeSupersededBindingSessions(input: {
+    projectId: string
+    laneId: string
+    workspaceId: string
+    workspaceRevision: number
+  }): Promise<string[]> {
+    const projectId = input.projectId.trim()
+    const laneId = input.laneId.trim() || 'collab'
+    const workspaceId = normalizeWorkspaceId(input.workspaceId)
+    const workspaceRevision = normalizeWorkspaceRevision(input.workspaceRevision)
+    if (!workspaceId) return []
+
+    const staleKeys = Array.from(this.sessions.entries())
+      .filter(([, record]) =>
+        record.projectId === projectId &&
+        record.laneId === laneId &&
+        record.workspaceId === workspaceId &&
+        record.workspaceRevision !== workspaceRevision,
+      )
+      .map(([sessionKey]) => sessionKey)
+    for (const sessionKey of staleKeys) await this.closeSessionByKey(sessionKey)
+    if (staleKeys.length > 0) this.persist(staleKeys)
+    return staleKeys
+  }
+
   refreshBrowserSurfaceState(sessionKey: string): void {
     const record = this.sessions.get(sessionKey)
     if (record) this.emitState(sessionKey, record)
   }
 
-  getSession(input: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }): WorkbenchSessionSnapshot | null {
+  getSession(input: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number }): WorkbenchSessionSnapshot | null {
     const sessionKey = this.resolveSessionKey(input)
     if (!sessionKey) {
       return null
@@ -1042,6 +1143,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
+    workspaceId?: string | null
+    workspaceRevision?: number
     pinned: boolean
   }): WorkbenchSessionSnapshot | null {
     const sessionKey = this.resolveSessionKey(input)
@@ -1061,6 +1164,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
+    workspaceId?: string | null
+    workspaceRevision?: number
     tileId: string
   }): string | null {
     const sessionKey = this.resolveSessionKey(input)
@@ -1112,6 +1217,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     tileId: string
     terminalId: string
     workspaceId?: string | null
+    workspaceRevision?: number
   }): Promise<WorkbenchSessionSnapshot> {
     const sanitizedInput = this.sanitizeSessionInput(input)
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
@@ -1136,6 +1242,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
+    workspaceId?: string | null
+    workspaceRevision?: number
     tileId: string
     close?: boolean
   }): { success: boolean; terminalId?: string } {
@@ -1166,6 +1274,8 @@ export class WorkbenchSessionManager extends EventEmitter<{
     sessionKey?: string | null
     projectId: string
     laneId: string
+    workspaceId?: string | null
+    workspaceRevision?: number
     locator: NativePreviewSessionLocator | null
     stopPrevious?: boolean
   }): Promise<WorkbenchSessionSnapshot | null> {
