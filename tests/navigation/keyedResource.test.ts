@@ -163,6 +163,20 @@ describe('KeyedResource & Navigation Contracts (N01-N10, P02)', () => {
     await expect(navigation).rejects.toThrow(ResourceSupersededError);
   });
 
+  it('reports superseded requests as active until their fetchers settle', async () => {
+    const resolvers: Array<(value: string) => void> = [];
+    const resource = new KeyedResource({
+      key: 'test:active-request-lifetime',
+      fetcher: () => new Promise<string>(resolve => resolvers.push(resolve)),
+    });
+    const first = resource.ensure('navigation');
+    resource.invalidate('supersede');
+    expect(resource.hasInFlightRequest()).toBe(true);
+    resolvers[0]?.('stale');
+    await expect(first).rejects.toThrow(ResourceSupersededError);
+    expect(resource.hasInFlightRequest()).toBe(false);
+  });
+
   it('N04: Cached ready entry, background refresh fails -> cached display survives, error is visible as refresh state', async () => {
     let shouldFail = false;
     const resource = new KeyedResource({

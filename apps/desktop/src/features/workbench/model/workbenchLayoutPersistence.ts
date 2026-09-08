@@ -27,15 +27,16 @@ export async function clearPersistedWorkbenchLayoutsForProject(projectId: string
   await ensureWorkbenchLayoutPersistenceReady()
   desktopPersistenceClient.clearLayoutsForProject(projectId.trim())
 }
-export function clonePersistedWorkbenchLayout(sourceScopeKey: string, targetScopeKey: string, resetKey: number): boolean {
+export async function clonePersistedWorkbenchLayout(sourceScopeKey: string, targetScopeKey: string, resetKey: number): Promise<boolean> {
+  await ensureWorkbenchLayoutPersistenceReady(sourceScopeKey)
   const record = desktopPersistenceClient.entries('workbenchLayout').find(candidate => candidate.key === sourceScopeKey)
   const data = record?.data as LayoutData | undefined
   if (!record || !data || data.layoutResetKey !== resetKey || !isLayout(data.layout)) return false
   writePersistedWorkbenchLayout(targetScopeKey, resetKey, data.layout, record.bindingRevision)
   return true
 }
-export function clonePersistedWorkbenchLayoutToWorkspace(projectId: string, laneId: string, sourceWorkspaceId: string | null | undefined, targetWorkspaceId: string, resetKey: number): boolean {
-  return clonePersistedWorkbenchLayout(buildWorkbenchScopeKey(projectId, laneId, sourceWorkspaceId), buildWorkbenchScopeKey(projectId, laneId, targetWorkspaceId), resetKey)
+export async function clonePersistedWorkbenchLayoutToWorkspace(projectId: string, laneId: string, sourceWorkspaceId: string | null | undefined, targetWorkspaceId: string, resetKey: number): Promise<boolean> {
+  return await clonePersistedWorkbenchLayout(buildWorkbenchScopeKey(projectId, laneId, sourceWorkspaceId), buildWorkbenchScopeKey(projectId, laneId, targetWorkspaceId), resetKey)
 }
 export async function clonePersistedWorkbenchLayoutsForWorkspace(args: { projectId: string; fromWorkspace?: string | null; toWorkspace?: string | null }): Promise<void> {
   const target = args.toWorkspace?.trim()

@@ -1129,47 +1129,57 @@ export const WorkspaceCatalogLive = Layer.effect(
               }
               yield* deleteMarkerAtProjectRoot(projectRootPath)
             } else if (markerWorkspace) {
-              const oldPathStillExists = yield* Effect.tryPromise({
-                try: () => fs.access(markerWorkspace.projectRootPath).then(() => true),
-                catch: () => false as const,
-              }).pipe(Effect.orElseSucceed(() => false as const))
+              const oldPathIsMissing = yield* Effect.tryPromise({
+                try: async () => {
+                  try {
+                    await fs.access(markerWorkspace.projectRootPath)
+                    return false
+                  } catch (error) {
+                    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true
+                    throw error
+                  }
+                },
+                catch: (error) => error,
+              })
 
-              if (!oldPathStillExists) {
+              if (oldPathIsMissing) {
                 const ts = now()
-                yield* sql`
-                  UPDATE local_workspaces
-                  SET
-                    root_path = ${realPath},
-                    real_path = ${realPath},
-                    project_root_relative_path = ${projectRootRelativePath},
-                    project_root_path = ${projectRootPath},
-                    git_root_path = ${hasGit ? projectRootPath : null},
-                    git_dir_path = ${gitDirPath},
-                    git_origin_url = ${repoIdentity ? repoIdentity.url : null},
-                    git_repo_identity_json = ${repoIdentity ? JSON.stringify(repoIdentity) : null},
-                    filesystem_device = ${String(stat.dev)},
-                    filesystem_inode = ${String(stat.ino)},
-                    filesystem_birthtime_ms = ${Number.isFinite(stat.birthtimeMs) ? stat.birthtimeMs : null},
-                    filesystem_mtime_ms = ${Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : null},
-                    verification_status = ${"untrusted"},
-                    verification_reason = ${null},
-                    workspace_revision = workspace_revision + 1,
-                    updated_at = ${ts}
-                  WHERE workspace_id = ${markerWorkspace.workspaceId}
-                `
-                yield* sql`
-                  UPDATE workspace_lanes
-                  SET
-                    project_root_relative_path = ${projectRootRelativePath},
-                    project_root_path = ${projectRootPath},
-                    git_root_path = ${hasGit ? projectRootPath : null},
-                    git_dir_path = ${gitDirPath},
-                    updated_at = ${ts}
-                  WHERE workspace_id = ${markerWorkspace.workspaceId}
-                `
-                if (setActive) {
-                  yield* doSetActive(markerWorkspace.workspaceId, projectId)
-                }
+                yield* sql.withTransaction(Effect.gen(function* () {
+                  yield* sql`
+                    UPDATE local_workspaces
+                    SET
+                      root_path = ${realPath},
+                      real_path = ${realPath},
+                      project_root_relative_path = ${projectRootRelativePath},
+                      project_root_path = ${projectRootPath},
+                      git_root_path = ${hasGit ? projectRootPath : null},
+                      git_dir_path = ${gitDirPath},
+                      git_origin_url = ${repoIdentity ? repoIdentity.url : null},
+                      git_repo_identity_json = ${repoIdentity ? JSON.stringify(repoIdentity) : null},
+                      filesystem_device = ${String(stat.dev)},
+                      filesystem_inode = ${String(stat.ino)},
+                      filesystem_birthtime_ms = ${Number.isFinite(stat.birthtimeMs) ? stat.birthtimeMs : null},
+                      filesystem_mtime_ms = ${Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : null},
+                      verification_status = ${"untrusted"},
+                      verification_reason = ${null},
+                      workspace_revision = workspace_revision + 1,
+                      updated_at = ${ts}
+                    WHERE workspace_id = ${markerWorkspace.workspaceId}
+                  `
+                  yield* sql`
+                    UPDATE workspace_lanes
+                    SET
+                      project_root_relative_path = ${projectRootRelativePath},
+                      project_root_path = ${projectRootPath},
+                      git_root_path = ${hasGit ? projectRootPath : null},
+                      git_dir_path = ${gitDirPath},
+                      updated_at = ${ts}
+                    WHERE workspace_id = ${markerWorkspace.workspaceId}
+                  `
+                  if (setActive) {
+                    yield* doSetActive(markerWorkspace.workspaceId, projectId)
+                  }
+                }))
                 yield* emitEvent(markerWorkspace.workspaceId, projectId, "workspace.relinked", {
                   previousProjectRootPath: markerWorkspace.projectRootPath,
                   projectRootPath,

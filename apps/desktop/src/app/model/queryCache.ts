@@ -14,6 +14,7 @@ const DEFAULT_MAX_AGE = 5 * 60 * 1000 // 5 minutes
 const HARD_MAX_AGE = 24 * 60 * 60 * 1000 // 24 hours
 const MAX_CACHE_ENTRIES = 250
 const MIN_CACHE_REFRESH_INTERVAL_MS = 750
+let queryCacheClearGeneration = 0
 
 function pruneCache(
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -87,6 +88,7 @@ export const useQueryCache = create<QueryCacheState>()((set, get) => ({
       })
       desktopPersistenceClient.deleteRecord('queryCache', key)
     } else {
+      queryCacheClearGeneration += 1
       const keys = new Set([
         ...Object.keys(get().cache),
         ...desktopPersistenceClient.entries('queryCache').map(record => record.key),
@@ -102,9 +104,16 @@ let queryCacheHydration: Promise<void> | null = null
 export function initializeQueryCache(): Promise<void> {
   if (queryCacheHydration) return queryCacheHydration
   const attempt = (async () => {
+    const clearGenerationAtStart = queryCacheClearGeneration
     await desktopPersistenceClient.hydrateNamespace('queryCache')
+    const current = useQueryCache.getState().cache
+    const clearedDuringHydration = queryCacheClearGeneration !== clearGenerationAtStart
     const restored: Record<string, { data: unknown; timestamp: number }> = {}
     for (const record of desktopPersistenceClient.entries('queryCache')) {
+      if (clearedDuringHydration && !(record.key in current)) {
+        desktopPersistenceClient.deleteRecord('queryCache', record.key)
+        continue
+      }
       const entry = record.data as { data?: unknown; timestamp?: unknown } | null
       if (!entry || typeof entry.timestamp !== 'number' || !Number.isFinite(entry.timestamp)) {
         desktopPersistenceClient.deleteRecord('queryCache', record.key)
@@ -112,7 +121,6 @@ export function initializeQueryCache(): Promise<void> {
       }
       restored[record.key] = { data: entry.data, timestamp: entry.timestamp }
     }
-    const current = useQueryCache.getState().cache
     const next = pruneCache({ ...restored, ...current })
     for (const key of Object.keys(restored)) {
       if (!(key in next)) desktopPersistenceClient.deleteRecord('queryCache', key)

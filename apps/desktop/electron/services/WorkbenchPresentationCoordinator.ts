@@ -260,6 +260,12 @@ export class WorkbenchPresentationCoordinator {
       return { status: 'superseded', sequence: command.sequence };
     }
 
+    // Publish the pending foreground owner before activation. A newer ordinary
+    // route command can then background it even if it arrives after the
+    // session mutation but before this await resumes.
+    client.activeSessionKey = sessionSnapshot.sessionKey;
+    client.activeTarget = target;
+
     // Commit activation
     const activated = await this.sessionManager.activateSessionGuarded({
       sessionKey: sessionSnapshot.sessionKey,
@@ -267,16 +273,34 @@ export class WorkbenchPresentationCoordinator {
       laneId: target.laneId,
       workspaceId: target.workspaceId,
       workspaceRevision: target.workspaceRevision,
-    }, () => this.isCurrent(webContentsId, command) && this.targetValidator(target));
+    }, async () => {
+      if (!this.isCurrent(webContentsId, command)) return false;
+      if (!(await this.targetValidator(target))) return false;
+      return this.isCurrent(webContentsId, command);
+    });
 
     if (!activated) {
+      const currentClient = this.clients.get(webContentsId);
+      if (currentClient?.activeSessionKey === sessionSnapshot.sessionKey) {
+        currentClient.activeSessionKey = null;
+        currentClient.activeTarget = null;
+      }
       return { status: 'superseded', sequence: command.sequence };
     }
 
-    client.activeSessionKey = sessionSnapshot.sessionKey;
-    client.activeTarget = target;
-
     if (!this.isCurrent(webContentsId, command)) {
+      const currentClient = this.clients.get(webContentsId);
+      if (currentClient?.activeSessionKey === sessionSnapshot.sessionKey) {
+        this.sessionManager.backgroundSession({
+          sessionKey: sessionSnapshot.sessionKey,
+          projectId: target.projectId,
+          laneId: target.laneId,
+          workspaceId: target.workspaceId,
+          workspaceRevision: target.workspaceRevision,
+        });
+        currentClient.activeSessionKey = null;
+        currentClient.activeTarget = null;
+      }
       return { status: 'superseded', sequence: command.sequence };
     }
 

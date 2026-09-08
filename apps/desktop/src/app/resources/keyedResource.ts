@@ -41,6 +41,7 @@ export interface ResourceHandle<T> {
   acquireDemand(kind: DemandKind): () => void;
   getDemand(kind: DemandKind): number;
   getTotalDemand(): number;
+  hasInFlightRequest(): boolean;
 }
 
 export interface KeyedResourceOptions<T> {
@@ -61,6 +62,7 @@ export class KeyedResource<T> implements ResourceHandle<T> {
   private inflight: Promise<T> | null = null;
   private inflightGeneration = -1;
   private inflightReason: ResourceEnsureReason | null = null;
+  private activeRequestCount = 0;
   private lastSuccessfulReadAt = 0;
   private listeners = new Set<() => void>();
   private demandCounts: Record<DemandKind, number> = {
@@ -104,6 +106,10 @@ export class KeyedResource<T> implements ResourceHandle<T> {
 
   getTotalDemand(): number {
     return Object.values(this.demandCounts).reduce((total, count) => total + count, 0);
+  }
+
+  hasInFlightRequest(): boolean {
+    return this.activeRequestCount > 0;
   }
 
   invalidate(_reason: string): void {
@@ -181,6 +187,7 @@ export class KeyedResource<T> implements ResourceHandle<T> {
       this.notify();
     }
 
+    this.activeRequestCount++;
     const promise = (async () => {
       try {
         const result = await this.fetcher(reason);
@@ -233,6 +240,7 @@ export class KeyedResource<T> implements ResourceHandle<T> {
           throw error;
         }
       } finally {
+        this.activeRequestCount = Math.max(0, this.activeRequestCount - 1);
         // Clear in-flight reference only if it matches this request generation
         if (this.inflightGeneration === requestGen) {
           this.inflight = null;

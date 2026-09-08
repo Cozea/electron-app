@@ -62,6 +62,7 @@ const BACKGROUND_WARM_ACTIVE_PREVIEW_IDLE_MS = 10 * 60 * 1000
 const LOW_MEMORY_FREE_THRESHOLD_KB = 1_500_000
 const LOW_MEMORY_FREE_RATIO = 0.12
 const MEMORY_PRESSURE_CHECK_TTL_MS = 2_000
+const FINAL_REGISTRY_FLUSH_TIMEOUT_MS = 3_000
 
 function normalizeWorkspaceId(workspaceId?: string | null): string | null {
   const trimmed = workspaceId?.trim()
@@ -164,6 +165,27 @@ function findSessionKeysByProjectLane(
     .map(([sessionKey]) => sessionKey)
 }
 
+function findCurrentSessionRevision(
+  sessions: Iterable<[string, LiveWorkbenchSessionRecord]>,
+  input: { projectId: string; laneId: string; workspaceId?: string | null },
+): number | undefined {
+  const projectId = input.projectId.trim()
+  const laneId = input.laneId.trim() || 'collab'
+  const workspaceId = normalizeWorkspaceId(input.workspaceId)
+  const current = Array.from(sessions)
+    .map(([, record]) => record)
+    .filter((record) =>
+      record.projectId === projectId &&
+      record.laneId === laneId &&
+      (input.workspaceId === undefined || record.workspaceId === workspaceId),
+    )
+    .sort((left, right) =>
+      right.workspaceRevision - left.workspaceRevision ||
+      Math.max(right.lastFocusedAt, right.openedAt) - Math.max(left.lastFocusedAt, left.openedAt),
+    )[0]
+  return current?.workspaceRevision
+}
+
 function repairPersistedSessionState(state: PersistedWorkbenchSessionState): boolean {
   let changed = false
   const repairedSessions: Record<string, PersistedWorkbenchSessionRecord> = {}
@@ -215,6 +237,7 @@ function repairPersistedSessionState(state: PersistedWorkbenchSessionState): boo
 
 export const __workbenchSessionTestUtils = {
   buildSessionKey,
+  findCurrentSessionRevision,
   findSessionKeysByProjectLane,
   repairPersistedSessionState,
   resolveOwnedWorkspaceId,
@@ -344,12 +367,22 @@ export class WorkbenchSessionManager extends EventEmitter<{
     app.once('before-quit', (event) => {
       event.preventDefault()
       clearInterval(this.policySweepTimer)
-      void this.registryHydration
-        .then(() => this.flushRegistry())
+      let deadlineTimer: NodeJS.Timeout | null = null
+      const deadline = new Promise<void>((resolve) => {
+        deadlineTimer = setTimeout(resolve, FINAL_REGISTRY_FLUSH_TIMEOUT_MS)
+        deadlineTimer.unref?.()
+      })
+      void Promise.race([
+        this.registryHydration.then(() => this.flushRegistry()),
+        deadline,
+      ])
         .catch((error) => {
           console.warn('[WorkbenchSessionManager] Final registry flush failed:', error)
         })
-        .finally(() => app.quit())
+        .finally(() => {
+          if (deadlineTimer) clearTimeout(deadlineTimer)
+          app.quit()
+        })
     })
   }
 
@@ -1220,7 +1253,13 @@ export class WorkbenchSessionManager extends EventEmitter<{
     workspaceRevision?: number
   }): Promise<WorkbenchSessionSnapshot> {
     const sanitizedInput = this.sanitizeSessionInput(input)
-    const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
+    const resolvedInput = sanitizedInput.workspaceRevision === undefined
+      ? {
+          ...sanitizedInput,
+          workspaceRevision: findCurrentSessionRevision(this.sessions, sanitizedInput),
+        }
+      : sanitizedInput
+    const { sessionKey, record } = this.getOrCreateSession(resolvedInput)
     await this.reconcileSessionWorkspaceId(sessionKey, record, sanitizedInput.workspaceId)
     const snapshot = this.terminalService.getTerminalSnapshot(input.terminalId)
     if (record.workspaceId && snapshot?.workspaceId && snapshot.workspaceId !== record.workspaceId) {

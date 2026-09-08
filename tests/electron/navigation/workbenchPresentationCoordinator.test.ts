@@ -227,6 +227,34 @@ describe('WorkbenchPresentationCoordinator (M01-M09, P05)', () => {
     );
   });
 
+  it('backgrounds an activation superseded by an ordinary route at the commit boundary', async () => {
+    const reg = coordinator.registerClient(mockWebContents);
+    const ordinaryCommand: PresentationCommand = {
+      clientEpoch: reg.clientEpoch,
+      sequence: 2,
+      navigationId: 2,
+      target: null,
+      retained: [],
+    };
+    mockSessionManager.activateSessionGuarded = vi.fn(async (input) => {
+      await coordinator.applyPresentationCommand(mockWebContents, ordinaryCommand);
+      return { sessionKey: input.sessionKey! };
+    });
+
+    const result = await coordinator.applyPresentationCommand(mockWebContents, {
+      clientEpoch: reg.clientEpoch,
+      sequence: 1,
+      navigationId: 1,
+      target: { projectId: 'p1', workspaceId: 'w1', workspaceRevision: 1, laneId: 'collab' },
+      retained: [],
+    });
+
+    expect(result.status).toBe('superseded');
+    expect(mockSessionManager.backgroundSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionKey: 'p1::collab::w1::v1' }),
+    );
+  });
+
   it('M03: Same sequence with different payload or retired epoch is rejected without mutation', async () => {
     const reg = coordinator.registerClient(mockWebContents);
 

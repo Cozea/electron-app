@@ -59,7 +59,9 @@ function getCachedResource<T>(
   resources.set(key, resource);
   for (const [candidateKey, candidate] of resources) {
     if (resources.size <= MAX_RESOURCE_ENTRIES) break;
-    if (candidate.getTotalDemand() === 0) resources.delete(candidateKey);
+    if (candidate.getTotalDemand() === 0 && !candidate.hasInFlightRequest()) {
+      resources.delete(candidateKey);
+    }
   }
   return resource;
 }

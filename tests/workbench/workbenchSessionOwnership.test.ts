@@ -29,6 +29,34 @@ describe("workbench session ownership", () => {
     expect(rebound).toBe("project-a::collab::workspace-123::v2");
   });
 
+  it("resolves omitted revisions to the newest live workspace binding", () => {
+    const makeRecord = (workspaceRevision: number, lastFocusedAt: number) => ({
+      projectId: "project-a",
+      laneId: "collab",
+      workspaceId: "workspace-123",
+      workspaceRevision,
+      lifecycle: "backgroundWarm" as const,
+      pinned: false,
+      openedAt: lastFocusedAt,
+      lastFocusedAt,
+      lastBackgroundedAt: lastFocusedAt,
+      terminalBindings: {},
+      nativePreviewLocator: null,
+    });
+    const sessions = new Map([
+      ["project-a::collab::workspace-123::v1", makeRecord(1, 200)],
+      ["project-a::collab::workspace-123::v2", makeRecord(2, 100)],
+    ]);
+
+    expect(
+      __workbenchSessionTestUtils.findCurrentSessionRevision(sessions.entries(), {
+        projectId: "project-a",
+        laneId: "collab",
+        workspaceId: "workspace-123",
+      }),
+    ).toBe(2);
+  });
+
   it("repairs persisted records into canonical opaque workspace keys", () => {
     const canonicalKey = __workbenchSessionTestUtils.buildSessionKey(
       "repair-project",

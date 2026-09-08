@@ -36,4 +36,31 @@ describe('query cache durable invalidation', () => {
     expect(removedKey).toMatch(/^query-/)
     expect(removedKey && removedKey in useQueryCache.getState().cache).toBe(false)
   })
+
+  it('does not restore a durable-only record cleared during hydration', async () => {
+    const { desktopPersistenceClient } = await import('@/app/model/persistence/desktopPersistenceClient')
+    let hydrated = false
+    let finishHydration: (() => void) | undefined
+    vi.spyOn(desktopPersistenceClient, 'hydrateNamespace').mockImplementation(
+      () => new Promise<void>((resolve) => {
+        finishHydration = () => {
+          hydrated = true
+          resolve()
+        }
+      }),
+    )
+    vi.spyOn(desktopPersistenceClient, 'entries').mockImplementation(() => hydrated ? [
+      { schemaVersion: 1, namespace: 'queryCache', key: 'disk-only', recordRevision: 1, updatedAt: 1, data: { data: 1, timestamp: Date.now() } },
+    ] : [])
+    const remove = vi.spyOn(desktopPersistenceClient, 'deleteRecord').mockImplementation(() => undefined)
+    const { initializeQueryCache, useQueryCache } = await import('@/app/model/queryCache')
+
+    const hydration = initializeQueryCache()
+    useQueryCache.getState().clear()
+    finishHydration?.()
+    await hydration
+
+    expect(remove).toHaveBeenCalledWith('queryCache', 'disk-only')
+    expect(useQueryCache.getState().cache).toEqual({})
+  })
 })

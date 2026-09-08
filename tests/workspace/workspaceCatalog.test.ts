@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as Effect from 'effect/Effect'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
+import * as SqlClient from '@effect/sql/SqlClient'
 
 // gitRuntime imports `electron`; tests keep its effects deterministic.
 vi.mock('../../apps/desktop/electron/gitRuntime.ts', () => ({
@@ -24,7 +25,7 @@ import {
 } from '../../apps/desktop/electron/workspaces/WorkspaceCatalog.ts'
 import { WorkspaceCatalogMemoryLayer } from '../../apps/desktop/electron/workspaces/WorkspaceCatalogLayer.ts'
 
-type CatalogRuntime = ManagedRuntime.ManagedRuntime<WorkspaceCatalog, unknown>
+type CatalogRuntime = ManagedRuntime.ManagedRuntime<WorkspaceCatalog | SqlClient.SqlClient, unknown>
 
 let runtime: CatalogRuntime
 let tmpRoot: string
@@ -32,6 +33,12 @@ let tmpRoot: string
 function call<A>(f: (catalog: WorkspaceCatalogInterface) => Effect.Effect<A, unknown, never>): Promise<A> {
   return runtime.runPromise(
     Effect.flatMap(Effect.service(WorkspaceCatalog), f) as Effect.Effect<A, never, WorkspaceCatalog>,
+  )
+}
+
+function callSql<A>(f: (sql: SqlClient.SqlClient) => Effect.Effect<A, unknown, never>): Promise<A> {
+  return runtime.runPromise(
+    Effect.flatMap(Effect.service(SqlClient.SqlClient), f) as Effect.Effect<A, never, WorkspaceCatalog | SqlClient.SqlClient>,
   )
 }
 
@@ -153,6 +160,50 @@ describe('WorkspaceCatalog.bindExistingFolder', () => {
 
     const all = await call((c) => c.listForProject('proj_a'))
     expect(all).toHaveLength(1)
+  })
+
+  it('does not treat an inaccessible old path as proof that it moved', async () => {
+    const dirA = await makeProjectDir('epsilon-inaccessible')
+    const first = await call((c) => c.bindExistingFolder({ projectId: 'proj_a', folderPath: dirA }))
+    const dirB = path.join(tmpRoot, 'epsilon-inaccessible-moved')
+    await fs.rename(dirA, dirB)
+    const originalAccess = fs.access.bind(fs)
+    const access = vi.spyOn(fs, 'access').mockImplementation(async (candidate, mode) => {
+      if (String(candidate) === dirA) {
+        throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
+      }
+      return await originalAccess(candidate, mode)
+    })
+
+    const second = await call((c) => c.bindExistingFolder({ projectId: 'proj_a', folderPath: dirB }))
+    access.mockRestore()
+
+    expect(second.success).toBe(false)
+    const unchanged = await call((c) => c.getById(first.workspace!.workspaceId))
+    expect(unchanged?.projectRootPath).toBe(dirA)
+    expect(unchanged?.workspaceRevision).toBe(1)
+  })
+
+  it('rolls back the workspace row when the lane relocation update fails', async () => {
+    const dirA = await makeProjectDir('epsilon-rollback')
+    const first = await call((c) => c.bindExistingFolder({ projectId: 'proj_a', folderPath: dirA }))
+    await call((c) => c.resolveProject({ projectId: 'proj_a', projectSlug: null }))
+    const dirB = path.join(tmpRoot, 'epsilon-rollback-moved')
+    await fs.rename(dirA, dirB)
+    await callSql((sql) => sql`
+      CREATE TRIGGER fail_workspace_lane_relocation
+      BEFORE UPDATE ON workspace_lanes
+      BEGIN
+        SELECT RAISE(ABORT, 'injected lane relocation failure');
+      END
+    `)
+
+    const second = await call((c) => c.bindExistingFolder({ projectId: 'proj_a', folderPath: dirB }))
+
+    expect(second.success).toBe(false)
+    const unchanged = await call((c) => c.getById(first.workspace!.workspaceId))
+    expect(unchanged?.projectRootPath).toBe(dirA)
+    expect(unchanged?.workspaceRevision).toBe(1)
   })
 
   it('rejects binding a folder already bound to another project with a duplicate_path conflict', async () => {

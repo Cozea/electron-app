@@ -116,7 +116,7 @@ describe('workbench layout persistence', () => {
     persistence.writePersistedWorkbenchLayout('project-1::collab::source::v1', 3, layout, 7)
 
     expect(
-      persistence.clonePersistedWorkbenchLayout(
+      await persistence.clonePersistedWorkbenchLayout(
         'project-1::collab::source::v1',
         'project-1::collab::target::v1',
         3,
@@ -128,6 +128,34 @@ describe('workbench layout persistence', () => {
     expect(
       persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 3, 8),
     ).toBeNull()
+  })
+
+  it('hydrates a durable-only source before cloning it', async () => {
+    const localStorage = new MemoryStorage()
+    await installDurableAPI(localStorage)
+    const layout = { grid: { root: 'durable-grid' }, panels: {} } as never
+    await core!.commit([{
+      schemaVersion: 1,
+      namespace: 'workbenchLayout',
+      key: 'project-1::collab::source::v1',
+      recordRevision: 1,
+      updatedAt: Date.now(),
+      bindingRevision: 4,
+      data: { layout, layoutResetKey: 2 },
+    }])
+    await core!.flush()
+
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
+    expect(
+      await persistence.clonePersistedWorkbenchLayout(
+        'project-1::collab::source::v1',
+        'project-1::collab::target::v1',
+        2,
+      ),
+    ).toBe(true)
+    expect(
+      persistence.peekPersistedWorkbenchLayout('project-1::collab::target::v1', 2, 4),
+    ).toEqual(layout)
   })
 
   it('removes every workspace and lane layout for only the deleted project', async () => {
