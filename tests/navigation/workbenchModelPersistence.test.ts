@@ -5,7 +5,7 @@ describe('granular workbench model persistence', () => {
 
   it('queues only the changed model and never serializes the aggregate store', async () => {
     const { desktopPersistenceClient: persistence } = await import('@/app/model/persistence/desktopPersistenceClient')
-    const queue = vi.spyOn(persistence, 'queueDirtyRecord').mockImplementation(() => {})
+    const queue = vi.spyOn(persistence, 'queueDirtyRecord').mockReturnValue(1)
     const { useProjectWorkbenchStore: store } = await import('@/lib/workbenchStore')
     store.getState().actions.ensureWorkbench('project-a', 'collab', 'workspace-a')
     store.getState().actions.ensureWorkbench('project-b', 'collab', 'workspace-b')
@@ -23,7 +23,7 @@ describe('granular workbench model persistence', () => {
 
   it('does not persist navigation-only changes or a no-op ensure', async () => {
     const { desktopPersistenceClient: persistence } = await import('@/app/model/persistence/desktopPersistenceClient')
-    const queue = vi.spyOn(persistence, 'queueDirtyRecord').mockImplementation(() => {})
+    const queue = vi.spyOn(persistence, 'queueDirtyRecord').mockReturnValue(1)
     const { useProjectWorkbenchStore: store } = await import('@/lib/workbenchStore')
     store.getState().actions.ensureWorkbench('project-a', 'collab', 'workspace-a')
     store.getState().actions.ensureWorkbench('project-b', 'collab', 'workspace-b')
@@ -36,7 +36,7 @@ describe('granular workbench model persistence', () => {
 
   it('tombstones only the deleted project models', async () => {
     const { desktopPersistenceClient: persistence } = await import('@/app/model/persistence/desktopPersistenceClient')
-    const queue = vi.spyOn(persistence, 'queueDirtyRecord').mockImplementation(() => {})
+    const queue = vi.spyOn(persistence, 'queueDirtyRecord').mockReturnValue(1)
     const remove = vi.spyOn(persistence, 'deleteRecord').mockImplementation(() => {})
     const { useProjectWorkbenchStore: store } = await import('@/lib/workbenchStore')
     store.getState().actions.ensureWorkbench('project-a', 'collab', 'workspace-a')
