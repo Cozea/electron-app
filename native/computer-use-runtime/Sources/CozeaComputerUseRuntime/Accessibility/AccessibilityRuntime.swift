@@ -9,6 +9,13 @@ final class AccessibilityRuntime: @unchecked Sendable {
     init(windows: WindowRegistry, clock: StateClock) {
         self.windows = windows; observers = AccessibilityObservers(clock: clock)
     }
+    func watch(window: WindowHandle, control: ActionControl) async throws {
+        try await windows.worker.run { [self] in
+            try control.check()
+            try WindowRegistry.validateNow(window)
+            observers.attach(window, focused: AXAccess.element(window.application, kAXFocusedUIElementAttribute))
+        }
+    }
     func snapshot(window: WindowHandle, options: ObservationOptions, control: ActionControl) async throws -> TreeObservation {
         try await windows.worker.run { [self] in
             let span = NativeTelemetry.span("ax.snapshot")

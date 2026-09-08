@@ -176,6 +176,8 @@ private actor RuntimeCoordinator {
             try control.check()
             let app = try await AppDirectory.shared.resolve(query)
             let window = try await windows.resolve(app: app, control: control)
+            // Screenshot-only observations still need AX invalidation events.
+            try await accessibility.watch(window: window, control: control)
             let before = await clock.current(window.identity)
             let inputBefore = activity.status(window.identity)
             let minFrameTime = max(inputBefore.lastDispatchTime, CACurrentMediaTime() - 0.1)

@@ -6,6 +6,16 @@ private actor Trace {
     func append(_ value: String) { events.append(value) }
 }
 final class ActionSafetyTests: XCTestCase, @unchecked Sendable {
+    func testCoordinateObservationsRejectUIChangesAndExpiration() throws {
+        try CoordinateLeaseGuard.validate(observedVersion: 5, currentObservedVersion: 5,
+            inputVersion: 2, currentInputVersion: 2, age: .seconds(1))
+        XCTAssertThrowsError(try CoordinateLeaseGuard.validate(observedVersion: 5, currentObservedVersion: 6,
+            inputVersion: 2, currentInputVersion: 2, age: .seconds(1)))
+        XCTAssertThrowsError(try CoordinateLeaseGuard.validate(observedVersion: 5, currentObservedVersion: 5,
+            inputVersion: 2, currentInputVersion: 3, age: .seconds(1)))
+        XCTAssertThrowsError(try CoordinateLeaseGuard.validate(observedVersion: 5, currentObservedVersion: 5,
+            inputVersion: 2, currentInputVersion: 2, age: .seconds(31)))
+    }
     func testInputCannotPrecedeCursorArrivalAndRevalidation() async throws {
         let trace = Trace()
         let control = ActionControl()

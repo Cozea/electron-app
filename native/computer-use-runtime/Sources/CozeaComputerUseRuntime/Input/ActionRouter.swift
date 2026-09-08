@@ -156,9 +156,7 @@ final class ActionRouter: @unchecked Sendable {
             element = resolved; index = i
             point = CGPoint(x: resolved.bounds.midX, y: resolved.bounds.midY)
         case .screenshot(let pixel):
-            guard activity.status(lease.window.identity).revision == lease.inputRevision else {
-                throw RuntimeFailure(.staleObservation, "Input occurred after this screenshot. Observe before another coordinate action.")
-            }
+            try await validateCoordinates(lease)
             guard let geometry = lease.imageGeometry else { throw RuntimeFailure(.stateRequired, "Coordinate actions require a screenshot observation.") }
             point = try geometry.globalPoint(from: pixel).cgPoint; element = nil; index = nil
         }
@@ -174,9 +172,14 @@ final class ActionRouter: @unchecked Sendable {
             guard CFEqual(original.element, fresh.element), original.bounds.coreRectangle.approximatelyEquals(fresh.bounds.coreRectangle) else {
                 throw RuntimeFailure(.staleElement, "The target changed during cursor travel. Call get_app_state.")
             }
-        } else if activity.status(lease.window.identity).revision != lease.inputRevision {
-            throw RuntimeFailure(.staleObservation, "The screenshot became stale while the action was queued.")
-        }
+        } else { try await validateCoordinates(lease) }
+    }
+    private func validateCoordinates(_ lease: ObservationLease) async throws {
+        let current = await clock.current(lease.window.identity)
+        try CoordinateLeaseGuard.validate(observedVersion: lease.revision.observed,
+            currentObservedVersion: current.observed, inputVersion: lease.inputRevision,
+            currentInputVersion: activity.status(lease.window.identity).revision,
+            age: lease.createdAt.duration(to: .now))
     }
     private func indexedAction(_ index: Int, lease: ObservationLease, owner: String, control: ActionControl,
                                dispatch: @escaping @Sendable (PointerPlan) async throws -> String) async throws -> String {
