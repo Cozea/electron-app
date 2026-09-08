@@ -119,7 +119,7 @@ export function ProjectSettingsPage({
   const isManager = memberRole === 'project_manager'
   const collabSessionResult = useCollabSession({
     projectId: project?._id ? String(project._id) : null,
-    enabled: Boolean(project?._id),
+    enabled: false, // gen-3 owns session keys/recovery; settings must not bootstrap the legacy room
   })
   const collaborationDevices = useQuery(
     api.yjs.listCollabRoomDevices,

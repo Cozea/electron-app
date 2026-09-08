@@ -38,6 +38,12 @@ describe("generation-3 collaboration ownership", () => {
     expect(compatibilityHook).toContain("plaintext-era reconnect protocol has been retired")
   })
 
+  it("does not bootstrap the legacy room from Project Settings", () => {
+    const settings = read("apps/desktop/src/features/settings/pages/ProjectSettingsPage.tsx")
+    expect(settings).toContain("enabled: false, // gen-3 owns session keys/recovery")
+    expect(settings).not.toContain("enabled: Boolean(project?._id)")
+  })
+
   it("registers the full generation-3 gateway", () => {
     const worker = read("cloudflare/worker/src/index.ts")
     for (const route of [
