@@ -10,13 +10,6 @@ on:
       - 'apps/desktop/electron/services/ComputerUse*'
       - '.github/workflows/computer-use-native.yml'
   pull_request:
-    paths:
-      - 'native/computer-use-*/**'
-      - 'packages/computer-use-native/**'
-      - 'scripts/*computer-use*'
-      - 'tests/computer-use/**'
-      - 'apps/desktop/electron/services/ComputerUse*'
-      - '.github/workflows/computer-use-native.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,6 +24,22 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: Cozea/t3code
+          ref: be4668f7b439499f39a659055d0f6ec34ac666b2
+          path: build/t3-source
+          persist-credentials: false
+      - name: Preserve exact source inputs
+        run: |
+          mkdir -p build/cu-validation
+          git archive --format=tar HEAD > build/cu-validation/cozea-source.tar
+          git -C build/t3-source archive --format=tar HEAD > build/cu-validation/t3-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: computer-use-current-source
+          path: build/cu-validation/*.tar
+          retention-days: 3
       - name: Record toolchain
         run: |
           sw_vers
@@ -42,6 +51,7 @@ jobs:
           set -o pipefail
           xcrun swift test --package-path native/computer-use-runtime 2>&1 | tee build/cu-validation/swift-test.log
       - name: Build native bridge
+        if: always()
         run: |
           set -o pipefail
           xcrun swift build --package-path native/computer-use-bridge --configuration debug 2>&1 | tee build/cu-validation/swift-build.log
