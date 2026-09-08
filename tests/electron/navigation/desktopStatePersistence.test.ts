@@ -72,7 +72,7 @@ describe('DesktopStatePersistence (M10-M20, P03)', () => {
 
   it('M13: Migration is idempotent; rerunning does not overwrite newer v2 state', async () => {
     const legacyPayload = JSON.stringify({
-      'p1::collab': { orientation: 'LEGACY_VERTICAL' },
+      version: 1, layouts: { 'p1::collab': { layout: { grid: {}, panels: {} }, layoutResetKey: 0 } },
     });
 
     // First migration
@@ -125,7 +125,7 @@ describe('DesktopStatePersistence (M10-M20, P03)', () => {
     const flushResult = await core.flush(42);
 
     expect(flushResult.status).toBe('flushed');
-    expect(flushResult.flushedRevision).toBeGreaterThanOrEqual(42);
+    expect(flushResult.flushedRevision).toBe(1) // core counts completed commands, never maximum record version;
   });
 
   it('M20: Rejects oversized query cache entry exceeding 1 MiB cap', async () => {

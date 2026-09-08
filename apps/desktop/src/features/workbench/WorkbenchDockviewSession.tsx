@@ -65,7 +65,7 @@ export function WorkbenchDockviewSession({
       legacyWorkbenchScopeKey,
       projectWorkbench.layoutResetKey,
     )
-  }, [legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey])
+  }, [isLayoutPersistenceReady, legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey])
 
   const {
     dockviewHostRef,
@@ -88,8 +88,13 @@ export function WorkbenchDockviewSession({
   })
 
   useEffect(() => {
-    ensureWorkbenchLayoutPersistenceReady()
-    setIsLayoutPersistenceReady(true)
+    let cancelled = false
+    void ensureWorkbenchLayoutPersistenceReady(workbenchScopeKey).then(() => {
+      if (!cancelled) setIsLayoutPersistenceReady(true)
+    }).catch((error) => {
+      console.error('[Workbench] Layout restoration failed; refusing empty initialization', error)
+    })
+    return () => { cancelled = true }
   }, [])
 
   const onReady = useCallback(

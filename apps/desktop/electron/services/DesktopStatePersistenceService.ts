@@ -15,7 +15,7 @@ export class DesktopStatePersistenceService {
   private acceptedWatermark = 0
   private committedWatermark = 0
   private operations: Promise<unknown> = Promise.resolve()
-  private failed = new Map<number, string>()
+  private failed = new Map<string, { watermark: number; error: string }>()
   constructor(private readonly userDataPath = app.getPath('userData'), private readonly workerPath = path.join(__dirname, 'desktop-state-persistence.js')) {}
   private getWorker(): Worker {
     if (this.worker) return this.worker
@@ -80,11 +80,12 @@ export class DesktopStatePersistenceService {
         }
         const result = await this.request<PersistenceCommitResult>('commit', { records: assigned })
         if (result.status !== 'committed') throw new Error(result.errorMessage ?? 'Record commit failed')
+        for (const record of records) this.failed.delete(JSON.stringify([record.namespace, record.key]))
         this.committedWatermark = watermark
         return { ...result, watermark }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        this.failed.set(watermark, message)
+        for (const record of records) this.failed.set(JSON.stringify([record.namespace, record.key]), { watermark, error: message })
         throw error
       }
     })
@@ -94,8 +95,8 @@ export class DesktopStatePersistenceService {
   async flush(targetRevision = this.acceptedWatermark): Promise<PersistenceFlushResult> {
     if (!Number.isSafeInteger(targetRevision) || targetRevision < 0 || targetRevision > this.acceptedWatermark) throw new Error('Unknown persistence watermark')
     await this.operations.catch(() => undefined)
-    const failures = [...this.failed].filter(([revision]) => revision <= targetRevision)
-    if (failures.length) return { status: 'error', flushedRevision: this.committedWatermark, errorMessage: failures.map(([, error]) => error).join('; ') }
+    const failures = [...this.failed.values()].filter(failure => failure.watermark <= targetRevision)
+    if (failures.length) return { status: 'error', flushedRevision: this.committedWatermark, errorMessage: failures.map(failure => failure.error).join('; ') }
     const result = await this.request<PersistenceFlushResult>('flush', {})
     return { ...result, flushedRevision: this.committedWatermark }
   }
@@ -105,6 +106,7 @@ export class DesktopStatePersistenceService {
     this.operations = operation
     return operation
   }
+  getWorkerThreadId(): number | null { return this.worker?.threadId ?? null }
   async dispose(): Promise<void> { const worker = this.worker; if (worker) await worker.terminate() }
 }
 let instance: DesktopStatePersistenceService | null = null

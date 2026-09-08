@@ -94,13 +94,14 @@ export class DesktopStatePersistenceWorkerCore {
     await this.ready
     const committedRevisions: Record<string, number> = Object.create(null) as Record<string, number>
     // Validate and encode the entire batch before starting its first write.
-    const encoded = records.map(record => {
+    let encoded: { record: DesktopStateRecord; json: string }[]
+    try { encoded = records.map(record => {
       const json = JSON.stringify(record)
       const bytes = Buffer.byteLength(json)
       if (bytes > MAX_RECORD_BYTES) throw new Error(`Desktop state record exceeds supported transport size: ${record.namespace}`)
       if (record.namespace === 'queryCache' && bytes > MAX_QUERY_BYTES) throw new Error(`Query cache entry exceeds 1 MiB limit for key: ${record.key}`)
       return { record, json }
-    })
+    }) } catch (error) { return { status: 'error', committedRevisions, errorMessage: errorText(error) } }
     try {
       for (const { record, json } of encoded) {
         const hash = this.getRecordHash(record.namespace, record.key)
