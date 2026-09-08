@@ -1,0 +1,89 @@
+name: Computer Use Source Import
+on:
+  push:
+    branches: [feat/macos-computer-use-v2]
+    paths: ['.cu-transfer/ready.json']
+permissions:
+  contents: write
+concurrency:
+  group: cu-source-import
+  cancel-in-progress: false
+jobs:
+  import-and-build:
+    if: github.repository == 'Cozea/electron-app' && github.ref == 'refs/heads/feat/macos-computer-use-v2'
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      GIT_LFS_SKIP_SMUDGE: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/macos-computer-use-v2
+      - uses: actions/checkout@v6
+        with:
+          repository: iFurySt/open-codex-computer-use
+          ref: 41c5294cfe4735baca03f9c82b4de99d191a0b49
+          path: build/cu-import-upstream
+          persist-credentials: false
+      - name: Materialize verified source inputs
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, pathlib, subprocess, zlib
+          root = pathlib.Path.cwd()
+          manifest = json.loads((root / '.cu-transfer/ready.json').read_text())
+          encoded = ''.join((root / f'.cu-transfer/part-{i}.txt').read_text().strip() for i in range(manifest['parts']))
+          raw = zlib.decompress(base64.b64decode(encoded, validate=True))
+          assert len(raw) < 2_000_000
+          assert hashlib.sha256(raw).hexdigest() == manifest['sha256']
+          payload = json.loads(raw)
+          paths = []
+          def target(name):
+              path = pathlib.PurePosixPath(name)
+              assert not path.is_absolute() and '..' not in path.parts
+              assert name.startswith(('native/computer-use-runtime/', 'native/computer-use-bridge/', 'packages/computer-use-native/', 'tests/computer-use/', 'scripts/', 'docs/', 'apps/desktop/', 'shared/')) or name in ('package.json', 'bun.lock')
+              assert '.git' not in path.parts and '.build' not in path.parts
+              result = root / path
+              result.parent.mkdir(parents=True, exist_ok=True)
+              paths.append(name)
+              return result
+          for name, entry in payload.get('imports', {}).items():
+              source = pathlib.PurePosixPath(entry['source'])
+              assert not source.is_absolute() and '..' not in source.parts
+              original = (root / 'build/cu-import-upstream' / source).read_bytes()
+              assert hashlib.sha256(original).hexdigest() == entry['originalSHA256']
+              dest = target(name)
+              dest.write_bytes(original)
+              if entry['patch']:
+                  subprocess.run(['git', 'apply', '--whitespace=nowarn', '-'], input=entry['patch'].encode(), check=True)
+              assert hashlib.sha256(dest.read_bytes()).hexdigest() == entry['sha256']
+          for name, content in payload['files'].items():
+              target(name).write_text(content, encoding='utf-8')
+          subprocess.run(['git', 'add', '--', *paths], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          pathlib.Path('build/cu-import-paths.json').write_text(json.dumps(paths))
+          PY
+      - name: Commit readable source on the implementation branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(computer-use): implement repo-owned macOS runtime and typed native core'
+            git push origin HEAD:feat/macos-computer-use-v2
+          fi
+      - name: Native unit tests
+        run: |
+          mkdir -p build/cu-validation
+          set -o pipefail
+          xcrun swift test --package-path native/computer-use-runtime 2>&1 | tee build/cu-validation/native-test.log
+      - name: Build C ABI bridge
+        if: always()
+        run: |
+          mkdir -p build/cu-validation
+          set -o pipefail
+          xcrun swift build --package-path native/computer-use-bridge 2>&1 | tee build/cu-validation/native-bridge.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: computer-use-native-validation
+          path: build/cu-validation/*.log
+          retention-days: 7
