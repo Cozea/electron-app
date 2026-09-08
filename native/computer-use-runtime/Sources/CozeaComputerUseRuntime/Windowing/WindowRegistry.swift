@@ -31,8 +31,8 @@ final class WindowRegistry: @unchecked Sendable {
             let title = AXAccess.string(window, kAXTitleAttribute) ?? app.name
             let candidates = Self.windowInfo(pid: app.pid)
             let matches = candidates.filter { info in
-                guard let raw = info[kCGWindowBounds as String] as? CFDictionary,
-                      let cgBounds = CGRect(dictionaryRepresentation: raw) else { return false }
+                guard let raw = info[kCGWindowBounds as String] as? NSDictionary,
+                      let cgBounds = CGRect(dictionaryRepresentation: raw as CFDictionary) else { return false }
                 return bounds.coreRectangle.approximatelyEquals(cgBounds.coreRectangle, tolerance: 3)
             }
             let exactTitles = matches.filter { ($0[kCGWindowName as String] as? String) == title }
@@ -71,8 +71,8 @@ final class WindowRegistry: @unchecked Sendable {
     static func validateNow(_ window: WindowHandle) throws {
         guard let info = windowInfo(pid: window.app.pid).first(where: {
             ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == window.identity.windowID
-        }), let raw = info[kCGWindowBounds as String] as? CFDictionary,
-           let current = CGRect(dictionaryRepresentation: raw),
+        }), let raw = info[kCGWindowBounds as String] as? NSDictionary,
+           let current = CGRect(dictionaryRepresentation: raw as CFDictionary),
            current.coreRectangle.approximatelyEquals(window.bounds.coreRectangle),
            let axFrame = AXAccess.frame(window.element),
            axFrame.coreRectangle.approximatelyEquals(window.bounds.coreRectangle) else {
