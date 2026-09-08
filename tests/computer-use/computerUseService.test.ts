@@ -1,164 +1,166 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
+import {
+  ComputerUseRuntimeService, __computerUseRuntimeTesting,
+  type NativeComputerUseAddon,
+} from '../../apps/desktop/electron/services/ComputerUseRuntimeService'
+import type { ComputerUseAppSettings } from '../../apps/desktop/electron/services/computerUseSettings'
 
-const repositoryRoot: string = process.cwd()
-const read = (relativePath: string): string =>
-  fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8')
+vi.mock('electron', () => ({ app: { getPath: () => '/tmp', isPackaged: false } }))
+const read = (file: string): string => fs.readFileSync(path.join(process.cwd(), file), 'utf8')
+const ack = JSON.stringify({ content: [{ type: 'text', text: '{"ok":true,"delivery":"dispatched"}' }], isError: false })
+const settings = (): ComputerUseAppSettings => ({ projectsDirectory: '/tmp', previewHeaderCompatibilityEnabled: false,
+  computerUseEnabled: true, disabledComputerUseTools: [], computerUseAllowGlobalPointerFallbacks: false })
+function addon(): NativeComputerUseAddon {
+  return { abiVersion: vi.fn(() => 2), configureSession: vi.fn(() => true), revokeSession: vi.fn(), revokeAll: vi.fn(),
+    cancelRequest: vi.fn(), callTool: vi.fn(async () => ack), listTools: vi.fn(() => '{"tools":[]}'),
+    diagnostics: vi.fn(async () => '{"installed":true,"accessibility":false,"screenRecording":false}'),
+    requestPermission: vi.fn(() => false), turnEnded: vi.fn(async () => {}), resetSession: vi.fn(async () => {}), resetAll: vi.fn(async () => {}) }
+}
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
+function setup(options: { platform?: NodeJS.Platform; timeoutMs?: number } = {}) {
+  const native = addon(); const live = settings()
+  const runtime = new ComputerUseRuntimeService({ platform: options.platform ?? 'darwin', settings: () => live,
+    addon: () => native, timeoutMs: options.timeoutMs })
+  return { native, live, runtime }
+}
 
-const UPSTREAM_COMMIT = '41c5294cfe4735baca03f9c82b4de99d191a0b49'
-const COMPUTER_USE_TOOLS = [
-  'list_apps',
-  'get_app_state',
-  'click',
-  'perform_secondary_action',
-  'scroll',
-  'drag',
-  'type_text',
-  'press_key',
-  'set_value',
-] as const
-
-describe('Cozea-owned Computer Use runtime', () => {
-  it('pins OpenComputerUseKit and keeps macOS execution in the Cozea process', () => {
-    const packageSwift = read('native/computer-use-bridge/Package.swift')
-    expect(packageSwift).toContain(UPSTREAM_COMMIT)
-    expect(packageSwift).toContain('OpenComputerUseKit')
-    expect(packageSwift).toContain('type: .dynamic')
-
-    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
-    expect(runtime).toContain('loadNativeAddon')
-    expect(runtime).toContain('require(addonPath)')
-    expect(runtime).toContain('requestPermission')
-    expect(runtime).toContain('turnEnded')
+describe('Cozea-owned macOS Computer Use runtime', () => {
+  it('uses a repository-owned Swift package and rejects ABI 1 before FFI', async () => {
+    expect(read('native/computer-use-bridge/Package.swift')).toContain('../computer-use-runtime')
+    expect(read('native/computer-use-bridge/Package.swift')).not.toContain('https://github.com')
+    const { native, runtime } = setup()
+    vi.mocked(native.abiVersion).mockReturnValue(1)
+    expect((await runtime.callTool('t', 'list_apps', {})).isError).toBe(true)
+    expect(native.callTool).not.toHaveBeenCalled()
   })
-
-  it('owns and hard-gates the complete upstream nine-tool surface', () => {
-    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
-    for (const tool of COMPUTER_USE_TOOLS) {
-      expect(runtime).toContain(tool)
+  it('owns and hard-gates all nine tools and scheduled deny', async () => {
+    expect(__computerUseRuntimeTesting.COMPUTER_USE_TOOLS.size).toBe(9)
+    const { native, live, runtime } = setup()
+    runtime.setScheduledThreadPolicy('task', 't', 'deny')
+    expect((await runtime.callTool('t', 'list_apps', {})).isError).toBe(true)
+    runtime.clearScheduledTaskPolicy('task')
+    live.disabledComputerUseTools = ['list_apps']
+    expect((await runtime.callTool('t', 'list_apps', {})).isError).toBe(true)
+    live.disabledComputerUseTools = []; live.computerUseEnabled = false
+    expect((await runtime.callTool('t', 'list_apps', {})).isError).toBe(true)
+    expect(native.callTool).not.toHaveBeenCalled()
+  })
+  it('reports unsupported without loading or spawning a Windows/Linux worker', async () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      const { native, runtime } = setup({ platform })
+      expect((await runtime.getDiagnostics()).supported).toBe(false)
+      expect((await runtime.callTool('t', 'click', { app: 'Test', x: 1, y: 1 })).isError).toBe(true)
+      expect(runtime.requestPermission('accessibility')).toBe(false)
+      expect(native.callTool).not.toHaveBeenCalled()
     }
-    expect(runtime).toContain('validateActionPolicy')
-    expect(runtime).toContain('disabledComputerUseTools')
-    expect(runtime).toContain('computerUseEnabled')
-    expect(runtime).toContain('computerUseAllowGlobalPointerFallbacks')
-    expect(runtime).toContain('timingSafeEqual')
+    expect(read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')).not.toContain('WorkerMcpSession')
   })
-
-  it('contains worker failures instead of allowing process-level errors', () => {
-    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
-    expect(runtime).toContain("this.child.on('error'")
-    expect(runtime).toContain("this.child.stdin.on('error'")
-    expect(runtime).toContain('private failAll(error: Error)')
-    expect(runtime).toContain('interface WorkerRpcMessage')
-    expect(runtime).toContain('parseToolResult(JSON.stringify(message.result))')
-    expect(runtime).toContain('server.closeAllConnections()')
+  it('sanitizes settings before authorization', () => {
+    const code = read('apps/desktop/electron/services/computerUseSettings.ts')
+    expect(code).toContain('Array.isArray(raw.disabledComputerUseTools)')
+    expect(code).toContain('raw.computerUseEnabled === true')
+    expect(code).toContain('raw.computerUseAllowGlobalPointerFallbacks === true')
   })
-
-  it('sanitizes persisted Computer Use settings before policy evaluation', () => {
-    const settings = read('apps/desktop/electron/services/computerUseSettings.ts')
-    expect(settings).toContain('Array.isArray(raw.disabledComputerUseTools)')
-    expect(settings).toContain("typeof tool === 'string'")
-    expect(settings).toContain('raw.computerUseEnabled === true')
-    expect(settings).toContain('raw.computerUseAllowGlobalPointerFallbacks === true')
+  it('keeps observations independent of a pending input and passes ABI 2 context', async () => {
+    const { native, runtime } = setup(); const waiting = deferred<string>()
+    vi.mocked(native.callTool).mockImplementation(async (_session, tool) => tool === 'click' ? waiting.promise : ack)
+    const input = runtime.callTool('a', 'click', { app: 'Test', element_index: '1' })
+    await vi.waitFor(() => expect(native.callTool).toHaveBeenCalledTimes(1))
+    const readResult = await runtime.callTool('b', 'get_app_state', { app: 'Test' })
+    expect(readResult.isError).toBe(false)
+    expect(native.callTool).toHaveBeenCalledTimes(2)
+    const context = JSON.parse(vi.mocked(native.callTool).mock.calls[0]![3])
+    expect(context.requestID).toBeTypeOf('string'); expect(context.policyRevision).toBeTypeOf('string')
+    waiting.resolve(ack); await input
+    expect(read('packages/computer-use-native/src/lib.rs')).not.toContain('Mutex')
+    expect(read('native/computer-use-bridge/Sources/CozeaComputerUseBridge/Bridge.swift')).not.toContain('StdioMCPServer')
   })
-
-  it('serializes native tool and lifecycle access without blocking Electron JS', () => {
-    const rust = read('packages/computer-use-native/src/lib.rs')
-    expect(rust).toContain('fn lock_operations()')
-    expect(rust.match(/let _guard = lock_operations\(\)\?;/g)?.length).toBeGreaterThanOrEqual(5)
-    expect(rust).toContain('pub async fn turn_ended')
-    expect(rust).toContain('pub async fn reset_session')
-    expect(rust).toContain('pub async fn reset_all')
-    expect(rust.match(/tokio::task::spawn_blocking/g)?.length).toBeGreaterThanOrEqual(4)
-
-    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
-    expect(runtime).toContain('turnEnded(sessionId: string): Promise<void>')
-    expect(runtime).toContain('resetSession(sessionId: string): Promise<void>')
-    expect(runtime).toContain('resetAll(): Promise<void>')
-    expect(runtime).toContain('async turnEnded(sessionId: string): Promise<void>')
-    expect(runtime).toContain('await this.turnEnded(threadId)')
-    expect(runtime).toContain('await this.resetAll()')
-
-    const facade = read('apps/desktop/electron/services/ComputerUseService.ts')
-    expect(facade).toContain('await this.runtime.resetAll()')
-
-    const swift = read(
-      'native/computer-use-bridge/Sources/CozeaComputerUseBridge/Bridge.swift',
-    )
-    expect(swift).toContain('private final class LockedMCPServer')
-    expect(swift).toContain('return server.handle(line: line)')
-    expect(swift).toContain('private var servers: [String: LockedMCPServer]')
-    expect(swift).toContain('turnEndedDetached(server: LockedMCPServer)')
+  it('cancels the exact native request when the caller disconnects', async () => {
+    const { native, runtime } = setup(); const waiting = deferred<string>(); const abort = new AbortController()
+    vi.mocked(native.callTool).mockReturnValue(waiting.promise)
+    const result = runtime.callTool('t', 'click', { app: 'Test', element_index: '1' }, { requestId: 'req-1', signal: abort.signal })
+    await vi.waitFor(() => expect(native.callTool).toHaveBeenCalledOnce())
+    abort.abort()
+    expect((await result).isError).toBe(true)
+    expect(native.cancelRequest).toHaveBeenCalledWith('t', 'req-1')
+    waiting.resolve(ack)
   })
-
-  it('builds and packages the native bridge for the active macOS architecture', () => {
-    const nativePackage = JSON.parse(read('packages/computer-use-native/package.json')) as {
-      napi?: { triples?: { additional?: string[] } }
-      scripts?: Record<string, string>
+  it('enforces host timeout without silently replaying input', async () => {
+    const { native, runtime } = setup({ timeoutMs: 10 }); const waiting = deferred<string>()
+    vi.mocked(native.callTool).mockReturnValue(waiting.promise)
+    expect((await runtime.callTool('t', 'click', { app: 'Test', element_index: '1' })).isError).toBe(true)
+    expect(native.callTool).toHaveBeenCalledOnce(); expect(native.cancelRequest).toHaveBeenCalledOnce()
+    waiting.resolve(ack)
+  })
+  it('revokes synchronously when policy changes and never shares authority through process.env', async () => {
+    const { native, runtime } = setup()
+    runtime.setScheduledThreadPolicy('task', 't', 'allow')
+    await runtime.callTool('t', 'list_apps', {})
+    runtime.revokeScheduledTaskPolicy('task')
+    expect(native.revokeSession).toHaveBeenCalledWith('t')
+    expect((await runtime.callTool('t', 'list_apps', {})).isError).toBe(true)
+    expect(read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')).not.toContain('process.env.OPEN_COMPUTER_USE')
+  })
+  it('waits for native teardown before admitting a reused session', async () => {
+    const { native, runtime } = setup()
+    await runtime.callTool('t', 'list_apps', {})
+    const drain = deferred<void>(); vi.mocked(native.resetSession).mockReturnValue(drain.promise)
+    const end = runtime.turnEnded('t'); const next = runtime.callTool('t', 'list_apps', {})
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(native.callTool).toHaveBeenCalledTimes(1)
+    drain.resolve(undefined); await end; await next
+    expect(native.callTool).toHaveBeenCalledTimes(2)
+  })
+  it('keeps scheduled allow fail-closed across resetAll', async () => {
+    const { native, runtime } = setup()
+    runtime.setScheduledThreadPolicy('task', 't', 'allow')
+    await runtime.callTool('t', 'list_apps', {})
+    const reset = runtime.resetAll()
+    expect(native.revokeAll).toHaveBeenCalledOnce()
+    await reset
+    expect(__computerUseRuntimeTesting.threadPolicy(runtime, 't')).toBe('deny')
+    expect((await runtime.callTool('t', 'list_apps', {})).isError).toBe(true)
+  })
+  it('rejects malformed native result envelopes', () => {
+    for (const raw of ['null', '{}', 'false', '{"content":[],"isError":false}', '{"content":[{"type":"image","data":7}],"isError":false}']) {
+      expect(__computerUseRuntimeTesting.parseToolResult(raw).isError).toBe(true)
     }
-    expect(nativePackage.napi?.triples?.additional).toEqual([
-      'aarch64-apple-darwin',
-      'x86_64-apple-darwin',
-    ])
-    expect(nativePackage.scripts?.['build:arm64']).toContain('--target aarch64-apple-darwin')
-    expect(nativePackage.scripts?.['build:x64']).toContain('--target x86_64-apple-darwin')
-
-    const preparation = read('scripts/prepare-computer-use-runtime.mjs')
-    expect(preparation).toContain("['lipo', '-archs', candidate]")
-    expect(preparation).toContain('dylibs.find(dylibMatchesCurrentArchitecture)')
-    expect(preparation).toContain('`build:debug:${napiArch}`')
+    expect(__computerUseRuntimeTesting.parseToolResult(ack).isError).toBe(false)
   })
-
-  it('keeps the typed T3 pin compatible with contract synchronization', () => {
-    const constants = read('apps/desktop/electron/substrate/constants.ts')
-    expect(constants).toContain('SUBSTRATE_T3_PIN_SHA: string =')
-
-    const sync = read('scripts/vendor/sync-t3-contracts.mjs')
-    expect(sync).toContain('SUBSTRATE_T3_PIN_SHA\\s*(?::\\s*string)?\\s*=\\s*')
+  it('packages both Mac architectures with a versioned bridge and catalogue resource', () => {
+    const manifest = JSON.parse(read('packages/computer-use-native/package.json'))
+    expect(manifest.napi.triples.additional).toEqual(['aarch64-apple-darwin', 'x86_64-apple-darwin'])
+    const prepare = read('scripts/prepare-computer-use-runtime.mjs')
+    expect(prepare).toContain('sourceDigest'); expect(prepare).toContain('abiVersion: 2')
+    expect(prepare).toContain('CozeaComputerUseRuntime_CozeaComputerUseCore.bundle')
+    expect(prepare).not.toContain('prepareWorker')
+    expect(read('apps/desktop/electron-builder.config.cjs')).toContain('computer-use-runtime')
   })
-
-  it('never discovers an external CLI or mutates provider home configuration', () => {
-    const facade = read('apps/desktop/electron/services/ComputerUseService.ts')
-    expect(facade).toContain('return null')
-    expect(facade).toContain('Never')
-    expect(facade).not.toContain('writeFileSync')
-    expect(facade).not.toContain("path.join(home, '.claude")
-    expect(facade).not.toContain("path.join(home, '.codex")
-    expect(facade).not.toContain("path.join(home, '.cursor")
-    expect(facade).not.toContain("path.join(home, '.config', 'opencode")
+  it('retains the authenticated T3 broker without provider home mutation', async () => {
+    const { runtime } = setup()
+    const [a, b] = await Promise.all([runtime.startBroker(), runtime.startBroker()])
+    expect(a).toEqual(b)
+    try {
+      const denied = await fetch(`${a.endpoint}/v1/call`, { method: 'POST', body: '{}' })
+      expect(denied.status).toBe(401)
+      const allowed = await fetch(`${a.endpoint}/v1/call`, { method: 'POST', headers: { authorization: `Bearer ${a.token}` },
+        body: JSON.stringify({ threadId: 't', tool: 'list_apps', arguments: {} }) })
+      expect(allowed.status).toBe(200); expect((await allowed.json()).isError).toBe(false)
+      const end = await fetch(`${a.endpoint}/v1/turn-ended`, { method: 'POST', headers: { authorization: `Bearer ${a.token}` }, body: '{"threadId":"t"}' })
+      expect(end.status).toBe(200)
+    } finally { await runtime.stopBroker() }
+    expect(read('apps/desktop/electron/services/ComputerUseService.ts')).not.toContain('writeFileSync')
   })
-
-  it('packages the runtime and gives T3 only a private broker endpoint and token', () => {
-    const builder = read('apps/desktop/electron-builder.config.cjs')
-    expect(builder).toContain('computer-use-runtime')
-
-    const shadow = read('apps/desktop/electron/substrate/ShadowServerManager.ts')
-    expect(shadow).toContain('COZEA_COMPUTER_USE_ENDPOINT')
-    expect(shadow).toContain('COZEA_COMPUTER_USE_TOKEN')
-    expect(shadow).toContain('ComputerUseRuntimeService.getInstance().startBroker()')
-
-    const preparation = read('scripts/prepare-computer-use-runtime.mjs')
-    expect(preparation).toContain(UPSTREAM_COMMIT)
-    expect(preparation).toContain('computer-use-runtime')
-    expect(preparation).toContain('OPEN_COMPUTER_USE_LICENSE.txt')
-  })
-
-  it('accepts authenticated turn-end notifications from the managed T3 runtime', () => {
-    const runtime = read('apps/desktop/electron/services/ComputerUseRuntimeService.ts')
-    expect(runtime).toContain("request.url === '/v1/turn-ended'")
-    expect(runtime).toContain('await this.turnEnded(threadId)')
-    expect(runtime).toContain("'notifications/turn-ended'")
-  })
-
-  it('localizes and names the advanced physical-pointer control', () => {
-    const page = read('apps/desktop/src/features/settings/ComputerUse.tsx')
-    expect(page).toContain("t('settings.computerUse.advancedTitle')")
-    expect(page).toContain("t('settings.computerUse.advancedDescription')")
-    expect(page).toContain("aria-label={t('settings.computerUse.allowGlobalPointerFallback')}")
-
-    const translations = read('apps/desktop/src/lib/i18n/computerUse.ts')
-    expect(translations).toContain("'settings.computerUse.advancedTitle'")
-    expect(translations).toContain('Interacción avanzada')
+  it('localizes the unsupported platform and advanced pointer settings', () => {
+    const ui = read('apps/desktop/src/features/settings/ComputerUse.tsx')
+    expect(ui).toContain("t('settings.computerUse.macosOnly')")
+    expect(ui).toContain("aria-label={t('settings.computerUse.allowGlobalPointerFallback')}")
+    expect(read('apps/desktop/src/lib/i18n/computerUse.ts')).toContain('Interacción avanzada')
   })
 })

@@ -2,259 +2,95 @@
 import CoreGraphics
 import Darwin
 import Foundation
-import OpenComputerUseKit
+import CozeaComputerUseCore
+import CozeaComputerUseRuntime
 
-private let upstreamVersion = "0.3.3"
-private let upstreamRevision = "41c5294cfe4735baca03f9c82b4de99d191a0b49"
-
-private final class LockedMCPServer: @unchecked Sendable {
+private final class BlockingResult<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private let server = StdioMCPServer()
-
-    func handle(line: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return server.handle(line: line)
+    private var result: Result<Value, any Error>?
+    func put(_ value: Result<Value, any Error>) { lock.lock(); result = value; lock.unlock() }
+    func get() throws -> Value {
+        lock.lock(); defer { lock.unlock() }
+        guard let result else { throw RuntimeFailure(.internalError, "Native operation produced no result.") }
+        return try result.get()
     }
 }
 
-private final class ComputerUseRuntimeStore: @unchecked Sendable {
-    static let shared = ComputerUseRuntimeStore()
-
-    private let lock = NSLock()
-    private var servers: [String: LockedMCPServer] = [:]
-
-    private func server(for sessionID: String) -> LockedMCPServer {
-        lock.lock()
-        defer { lock.unlock() }
-        if let existing = servers[sessionID] {
-            return existing
-        }
-        let created = LockedMCPServer()
-        servers[sessionID] = created
-        return created
+/// Only the Rust blocking pool may call this helper. Main-thread blocking/nested
+/// run-loop pumping is forbidden: AppKit must keep presenting the causal cursor.
+private func wait<Value: Sendable>(_ body: @escaping @Sendable () async throws -> Value) throws -> Value {
+    guard !Thread.isMainThread else { throw RuntimeFailure(.internalError, "Async native operations require a worker thread.") }
+    let semaphore = DispatchSemaphore(value: 0)
+    let result = BlockingResult<Value>()
+    Task {
+        do { result.put(.success(try await body())) }
+        catch { result.put(.failure(error)) }
+        semaphore.signal()
     }
-
-    func call(sessionID: String, tool: String, argumentsJSON: String) throws -> String {
-        let argumentsData = Data(argumentsJSON.utf8)
-        let arguments = try JSONSerialization.jsonObject(with: argumentsData)
-        guard let argumentsObject = arguments as? [String: Any] else {
-            throw NSError(
-                domain: "CozeaComputerUseBridge",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Computer Use arguments must be a JSON object."]
-            )
-        }
-
-        let request: [String: Any] = [
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": [
-                "name": tool,
-                "arguments": argumentsObject,
-            ],
-        ]
-        let requestData = try JSONSerialization.data(withJSONObject: request, options: [.withoutEscapingSlashes])
-        guard let requestText = String(data: requestData, encoding: .utf8),
-              let responseText = server(for: sessionID).handle(line: requestText) else {
-            throw NSError(
-                domain: "CozeaComputerUseBridge",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "OpenComputerUseKit returned no tool response."]
-            )
-        }
-
-        let responseData = Data(responseText.utf8)
-        guard let response = try JSONSerialization.jsonObject(with: responseData) as? [String: Any] else {
-            throw NSError(
-                domain: "CozeaComputerUseBridge",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "OpenComputerUseKit returned invalid JSON-RPC."]
-            )
-        }
-        if let result = response["result"] as? [String: Any] {
-            return try encodeJSON(result)
-        }
-        if let error = response["error"] as? [String: Any] {
-            let message = error["message"] as? String ?? "OpenComputerUseKit tool call failed."
-            return try encodeJSON([
-                "content": [["type": "text", "text": message]],
-                "isError": true,
-            ])
-        }
-        throw NSError(
-            domain: "CozeaComputerUseBridge",
-            code: 4,
-            userInfo: [NSLocalizedDescriptionKey: "OpenComputerUseKit returned neither result nor error."]
-        )
-    }
-
-    func listTools() throws -> String {
-        try encodeJSON([
-            "tools": ToolDefinitions.all.map(\.asDictionary),
-            "upstreamVersion": upstreamVersion,
-            "upstreamRevision": upstreamRevision,
-        ])
-    }
-
-    func turnEnded(sessionID: String) {
-        let request: [String: Any] = [
-            "jsonrpc": "2.0",
-            "method": "notifications/turn-ended",
-            "params": [:],
-        ]
-        guard let requestData = try? JSONSerialization.data(withJSONObject: request),
-              let requestText = String(data: requestData, encoding: .utf8) else {
-            return
-        }
-        _ = server(for: sessionID).handle(line: requestText)
-    }
-
-    func reset(sessionID: String) {
-        lock.lock()
-        let server = servers.removeValue(forKey: sessionID)
-        lock.unlock()
-        if let server {
-            // The upstream MCP notification owns visual-cursor cleanup.
-            turnEndedDetached(server: server)
-        }
-    }
-
-    func resetAll() {
-        lock.lock()
-        let existing = Array(servers.values)
-        servers.removeAll()
-        lock.unlock()
-        for server in existing {
-            turnEndedDetached(server: server)
-        }
-    }
-
-    private func turnEndedDetached(server: LockedMCPServer) {
-        let request = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/turn-ended\",\"params\":{}}"
-        _ = server.handle(line: request)
-    }
+    semaphore.wait()
+    return try result.get()
+}
+private func string(_ pointer: UnsafePointer<CChar>?) -> String? { pointer.map { String(cString: $0) } }
+private func failure(_ error: any Error) -> UnsafeMutablePointer<CChar>? {
+    let error = error as? RuntimeFailure ?? RuntimeFailure(.internalError, "Native Computer Use failed.")
+    return strdup((try? ComputerResult.failure(error).jsonText()) ?? "{\"content\":[],\"isError\":true}")
 }
 
-private func encodeJSON(_ object: Any) throws -> String {
-    let data = try JSONSerialization.data(withJSONObject: object, options: [.withoutEscapingSlashes])
-    guard let text = String(data: data, encoding: .utf8) else {
-        throw NSError(
-            domain: "CozeaComputerUseBridge",
-            code: 5,
-            userInfo: [NSLocalizedDescriptionKey: "Failed to encode Computer Use JSON response."]
-        )
-    }
-    return text
-}
+@_cdecl("cozea_computer_use_abi_version")
+public func abiVersion() -> UInt32 { 2 }
 
-private func copyCString(_ text: String) -> UnsafeMutablePointer<CChar>? {
-    strdup(text)
+@_cdecl("cozea_computer_use_configure")
+public func configure(_ session: UnsafePointer<CChar>?, _ policy: UnsafePointer<CChar>?) -> Bool {
+    guard let session = string(session), let policy = string(policy) else { return false }
+    do { try MacComputerRuntime.shared.configure(session: session, policyJSON: policy); return true } catch { return false }
 }
-
-private func errorJSON(_ error: Error) -> String {
-    let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-    return (try? encodeJSON([
-        "content": [["type": "text", "text": message]],
-        "isError": true,
-    ])) ?? "{\"content\":[{\"type\":\"text\",\"text\":\"Computer Use failed.\"}],\"isError\":true}"
+@_cdecl("cozea_computer_use_revoke_session")
+public func revokeSession(_ session: UnsafePointer<CChar>?) {
+    if let session = string(session) { MacComputerRuntime.shared.revoke(session: session) }
 }
-
-private func string(_ pointer: UnsafePointer<CChar>?) -> String? {
-    guard let pointer else { return nil }
-    return String(cString: pointer)
+@_cdecl("cozea_computer_use_revoke_all")
+public func revokeAll() { MacComputerRuntime.shared.revokeAll() }
+@_cdecl("cozea_computer_use_cancel_request")
+public func cancelRequest(_ session: UnsafePointer<CChar>?, _ request: UnsafePointer<CChar>?) {
+    if let session = string(session), let request = string(request) { MacComputerRuntime.shared.cancelRequest(session: session, request: request) }
 }
-
 @_cdecl("cozea_computer_use_call")
-public func cozeaComputerUseCall(
-    _ sessionIDPointer: UnsafePointer<CChar>?,
-    _ toolPointer: UnsafePointer<CChar>?,
-    _ argumentsPointer: UnsafePointer<CChar>?
-) -> UnsafeMutablePointer<CChar>? {
-    guard let sessionID = string(sessionIDPointer), !sessionID.isEmpty,
-          let tool = string(toolPointer), !tool.isEmpty,
-          let argumentsJSON = string(argumentsPointer) else {
-        return copyCString("{\"content\":[{\"type\":\"text\",\"text\":\"Invalid Computer Use bridge arguments.\"}],\"isError\":true}")
+public func call(_ session: UnsafePointer<CChar>?, _ tool: UnsafePointer<CChar>?, _ arguments: UnsafePointer<CChar>?, _ context: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
+    guard let session = string(session), let tool = string(tool), let arguments = string(arguments), let context = string(context) else {
+        return failure(RuntimeFailure(.invalidArguments, "Invalid native bridge arguments."))
     }
-    do {
-        return copyCString(
-            try ComputerUseRuntimeStore.shared.call(
-                sessionID: sessionID,
-                tool: tool,
-                argumentsJSON: argumentsJSON
-            )
-        )
-    } catch {
-        return copyCString(errorJSON(error))
-    }
+    do { return strdup(try wait { await MacComputerRuntime.shared.call(session: session, tool: tool, argumentsJSON: arguments, contextJSON: context) }) }
+    catch { return failure(error) }
 }
-
 @_cdecl("cozea_computer_use_list_tools")
-public func cozeaComputerUseListTools() -> UnsafeMutablePointer<CChar>? {
-    do {
-        return copyCString(try ComputerUseRuntimeStore.shared.listTools())
-    } catch {
-        return copyCString(errorJSON(error))
-    }
+public func listTools() -> UnsafeMutablePointer<CChar>? {
+    do { return strdup(try ToolCatalogue.jsonText()) } catch { return failure(error) }
 }
-
-@_cdecl("cozea_computer_use_turn_ended")
-public func cozeaComputerUseTurnEnded(_ sessionIDPointer: UnsafePointer<CChar>?) {
-    guard let sessionID = string(sessionIDPointer), !sessionID.isEmpty else { return }
-    ComputerUseRuntimeStore.shared.turnEnded(sessionID: sessionID)
-}
-
-@_cdecl("cozea_computer_use_reset_session")
-public func cozeaComputerUseResetSession(_ sessionIDPointer: UnsafePointer<CChar>?) {
-    guard let sessionID = string(sessionIDPointer), !sessionID.isEmpty else { return }
-    ComputerUseRuntimeStore.shared.reset(sessionID: sessionID)
-}
-
-@_cdecl("cozea_computer_use_reset_all")
-public func cozeaComputerUseResetAll() {
-    ComputerUseRuntimeStore.shared.resetAll()
-}
-
 @_cdecl("cozea_computer_use_diagnostics")
-public func cozeaComputerUseDiagnostics() -> UnsafeMutablePointer<CChar>? {
-    let accessibility = AXIsProcessTrusted()
-    let screenRecording = CGPreflightScreenCaptureAccess()
-    do {
-        return copyCString(try encodeJSON([
-            "installed": true,
-            "version": upstreamVersion,
-            "upstreamRevision": upstreamRevision,
-            "backend": "OpenComputerUseKit",
-            "accessibility": accessibility,
-            "screenRecording": screenRecording,
-        ]))
-    } catch {
-        return copyCString(errorJSON(error))
-    }
+public func diagnostics() -> UnsafeMutablePointer<CChar>? {
+    do { return strdup(try wait { try await MacComputerRuntime.shared.diagnostics() }) } catch { return failure(error) }
 }
-
+@_cdecl("cozea_computer_use_turn_ended")
+public func turnEnded(_ session: UnsafePointer<CChar>?) {
+    guard let session = string(session) else { return }
+    MacComputerRuntime.shared.revoke(session: session)
+    _ = try? wait { await MacComputerRuntime.shared.end(session: session) }
+}
+@_cdecl("cozea_computer_use_reset_session")
+public func resetSession(_ session: UnsafePointer<CChar>?) { turnEnded(session) }
+@_cdecl("cozea_computer_use_reset_all")
+public func resetAll() {
+    MacComputerRuntime.shared.revokeAll()
+    _ = try? wait { await MacComputerRuntime.shared.resetAll() }
+}
 @_cdecl("cozea_computer_use_request_permission")
-public func cozeaComputerUseRequestPermission(_ targetPointer: UnsafePointer<CChar>?) -> Bool {
-    guard let target = string(targetPointer) else { return false }
+public func requestPermission(_ target: UnsafePointer<CChar>?) -> Bool {
+    guard Thread.isMainThread, let target = string(target) else { return false }
     switch target {
-    case "accessibility":
-        // `kAXTrustedCheckOptionPrompt` is imported as a global `var`, which
-        // Swift 6 rejects as shared mutable state. Its value is the documented,
-        // stable key string, so naming it directly keeps the same call without
-        // reaching through the global.
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
-    case "screenRecording":
-        if CGPreflightScreenCaptureAccess() { return true }
-        return CGRequestScreenCaptureAccess()
-    default:
-        return false
+    case "accessibility": return AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+    case "screenRecording": return CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess()
+    default: return false
     }
 }
-
 @_cdecl("cozea_computer_use_free")
-public func cozeaComputerUseFree(_ pointer: UnsafeMutablePointer<CChar>?) {
-    guard let pointer else { return }
-    free(pointer)
-}
+public func freeString(_ pointer: UnsafeMutablePointer<CChar>?) { if let pointer { free(pointer) } }

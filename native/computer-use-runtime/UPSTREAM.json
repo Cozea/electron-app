@@ -1,0 +1,37 @@
+{
+  "repository": "iFurySt/open-codex-computer-use",
+  "revision": "41c5294cfe4735baca03f9c82b4de99d191a0b49",
+  "license": "MIT",
+  "files": {
+    "Upstream/CursorMotionModel.swift": {
+      "upstreamFile": "CursorMotionModel.swift",
+      "upstreamSHA256": "dac9bb072f331f0e51f63846133d2dc3b0135f4fb56f001e58edd88b2bf58ad6",
+      "importedSHA256": "13b5f65637707012f4f8eacd8f315c59b497fafb4f616bbcc6b064232e8319dc"
+    },
+    "Upstream/SoftwareCursorGlyphRenderer.swift": {
+      "upstreamFile": "SoftwareCursorGlyphRenderer.swift",
+      "upstreamSHA256": "4718741802facf354e556c5bbe29c0f5d4b2f6040a8c2cda40890862d7ea5d86",
+      "importedSHA256": "6bfcf2c7a4a82e3067f894f43e1bc7a910a5063ff436b402a77fa8cf0b92ee7b"
+    },
+    "Upstream/KeyMapping.swift": {
+      "upstreamFile": "KeyMapping.swift",
+      "upstreamSHA256": "e73e8680ceb066d67d8fed73ca7d0a7d2205941df7b24e8512ed150d3c666673",
+      "importedSHA256": "bc03043a90e78e1457f2b6dcca8cb4851f895503fb6ace11dac8526914399030"
+    },
+    "Upstream/Errors.swift": {
+      "upstreamFile": "Errors.swift",
+      "upstreamSHA256": "1e3188f31ae9a9efd683b831fb2653ca58117649db7ff698658eb85738cf712c",
+      "importedSHA256": "c788c0a2eaf6325c94cf608cbf5df3fcfc853862e1bdcc4edd6b09e0d8fba651"
+    },
+    "Sky/SkySymbols.swift": {
+      "upstreamFile": "SkyLightSPI.swift",
+      "upstreamSHA256": "00585c598133dc32d288cde8b49ecdb17584f2b4d80c1563c2f29999c0402ea3",
+      "importedSHA256": "3f0e714604a58302f24b8b214d7142592a87f3b41ade7bd81328d481dce38666"
+    },
+    "Accessibility/AccessibilityTree.swift": {
+      "upstreamFile": "AccessibilitySnapshot.swift",
+      "upstreamSHA256": "b0eee5c09363be7ec763928a86070d6860f131fea89b15bc01bc1cde55b607d3",
+      "importedSHA256": "3138bc409602ea4e0b55e3c051d3fd0c445e872ecb0d72b2272106595ea769a0"
+    }
+  }
+}

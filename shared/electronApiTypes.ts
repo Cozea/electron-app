@@ -68,6 +68,9 @@ export interface AppSettings {
 }
 
 export interface ComputerUseDiagnostics {
+  supported?: boolean
+  abiVersion?: number
+  sky?: { available: boolean; missingSymbols?: string[]; osVersion?: string }
   installed: boolean
   version?: string
   path?: string
