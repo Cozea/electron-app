@@ -60,3 +60,17 @@ jobs:
         run: bun run postinstall
       - name: Existing navigation unit tests (not Electron integration)
         run: bun run test:navigation:unit
+      - name: Export installed dependencies for isolated offline validation
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p "${RUNNER_TEMP}/navigation-dependencies"
+          tar -czf "${RUNNER_TEMP}/navigation-dependencies/dependencies.tar.gz" node_modules
+          cp "$(command -v bun)" "${RUNNER_TEMP}/navigation-dependencies/bun"
+          du -sh node_modules "${RUNNER_TEMP}/navigation-dependencies/"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: navigation-dependencies-${{ github.sha }}
+          path: ${{ runner.temp }}/navigation-dependencies/
+          retention-days: 1
+          if-no-files-found: error
