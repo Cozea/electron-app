@@ -1,186 +1,150 @@
 import { ConvexHttpClient } from "convex/browser"
 import { makeFunctionReference } from "convex/server"
-import {
-  advancePublishedBase,
-  authorizePushVerification,
-  authorizeRepositoryOperation,
-  recordRepositoryAccessEvent,
-} from '../lib/collaborationRepositoryConvex'
-import {
-  mintGitHubInstallationCredential,
-  resolveGitHubBranch,
-  verifyGitHubBranchHead,
-} from '../lib/githubApp'
-import { requireActiveDeviceAccessInConvex } from '../lib/convex'
-import { verifyDeviceAccessToken } from '../lib/jwt'
-import { jsonResponse } from '../lib/protocol'
-import { parseJsonRequest } from '../lib/validation'
-import type { DeviceAccessClaims, Env } from '../types'
-import type {
-  CollaborationRepositoryCredentialOperation,
-  CollaborationRepositoryCredentialResponse,
-  CollaborationPushVerificationResponse,
-} from '../../../../shared/collaborationRepository'
-
-export class RepositoryAuthenticationError extends Error {}
+import type { Env } from "../types"
+import { verifyJwt } from "../lib/jwt"
+import { jsonResponse, parseJsonRequest } from "../lib/protocol"
+import { resolveProjectRepositoryAuthorizationForServer } from "../lib/collaborationRepositoryConvex"
+import { createGitHubInstallationToken, getGitHubRepositoryHead } from "../lib/githubApp"
+import { buildCollaborationRepositoryId } from "../../../../shared/collaborationRepository"
 
 function requiredString(value: unknown, label: string, maxLength = 512): string {
-  if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
-    throw new Error(`${label} is invalid`)
-  }
+  if (typeof value !== "string" || !value.trim() || value.length > maxLength) throw new Error(`${label} is required`)
   return value.trim()
 }
 
-async function authenticate(request: Request, env: Env): Promise<DeviceAccessClaims> {
-  try {
-    const authorization = request.headers.get('authorization')
-    if (!authorization?.startsWith('Bearer ')) throw new Error('Missing bearer token')
-    const auth = await verifyDeviceAccessToken(env, authorization.slice(7).trim())
-    await requireActiveDeviceAccessInConvex(env, auth)
-    return auth
-  } catch {
-    throw new RepositoryAuthenticationError('Device authentication is required or expired')
-  }
+async function authenticate(request: Request, env: Env): Promise<{ sub: string }> {
+  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
+  if (!bearer) throw new Error("Device authentication is required")
+  return verifyJwt(bearer, env.JWT_SECRET, "device")
 }
 
-function parseOperation(value: unknown): CollaborationRepositoryCredentialOperation {
-  if (value !== 'read' && value !== 'write') throw new Error('operation must be read or write')
-  return value
-}
-
-export async function handleCollaborationRepositoryCredential(
-  request: Request,
-  env: Env,
-): Promise<Response> {
+async function credentialResponse(request: Request, env: Env, body: Record<string, unknown>): Promise<Response> {
   const auth = await authenticate(request, env)
-  const body = await parseJsonRequest(request) as Record<string, unknown>
-  const projectId = requiredString(body.projectId, 'projectId', 128)
-  const operation = parseOperation(body.operation)
-
-  const authorization = operation === 'write'
-    ? await (async () => {
-        const sessionId = requiredString(body.sessionId, 'sessionId', 128)
-        return await authorizePushVerification(env, { identityKey: auth.sub, sessionId })
-      })()
-    : await authorizeRepositoryOperation(env, { identityKey: auth.sub, projectId, operation })
-
-  if (!authorization) throw new Error('Repository access is not authorized')
-
-  const credential = await mintGitHubInstallationCredential(env, {
+  const projectId = requiredString(body.projectId, "projectId", 128)
+  const operation = body.operation === "write" ? "write" : "read"
+  const sessionId = typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : undefined
+  const authorization = await resolveProjectRepositoryAuthorizationForServer(env, {
+    identityKey: auth.sub,
+    projectId,
+    operation,
+    sessionId,
+  })
+  const installation = await createGitHubInstallationToken(env, {
     installationId: authorization.repository.installationId,
     repositoryNumericId: authorization.repository.repositoryNumericId,
-    operation,
+    permission: operation === "write" ? "write" : "read",
   })
-  await recordRepositoryAccessEvent(env, {
-    authorizationId: authorization.authorizationId,
-    principalId: authorization.principalId,
-    operation,
-    outcome: 'issued',
-    tokenExpiresAt: credential.expiresAt,
-  })
-
-  const result: CollaborationRepositoryCredentialResponse = {
+  return jsonResponse({
     repository: authorization.repository,
     operation,
-    username: 'x-access-token',
-    token: credential.token,
-    expiresAt: credential.expiresAt,
-  }
-  return jsonResponse(result, { headers: { 'cache-control': 'no-store' } })
+    username: "x-access-token",
+    token: installation.token,
+    expiresAt: installation.expiresAt,
+  }, { headers: { "cache-control": "no-store, private", pragma: "no-cache" } })
 }
 
-export async function handleVerifyCollaborationPush(
-  request: Request,
-  env: Env,
-): Promise<Response> {
+export async function handleCollaborationRepositoryCredential(request: Request, env: Env): Promise<Response> {
+  const body = await parseJsonRequest(request) as Record<string, unknown>
+  return credentialResponse(request, env, body)
+}
+
+export async function handleCollaborationVerifyPush(request: Request, env: Env): Promise<Response> {
   const auth = await authenticate(request, env)
   const body = await parseJsonRequest(request) as Record<string, unknown>
-  const sessionId = requiredString(body.sessionId, 'sessionId', 128)
-  const commitSha = requiredString(body.commitSha, 'commitSha', 40).toLowerCase()
-  if (!/^[0-9a-f]{40}$/.test(commitSha)) throw new Error('commitSha is invalid')
-
+  const sessionId = requiredString(body.sessionId, "sessionId", 128)
+  const commitSha = requiredString(body.commitSha, "commitSha", 64).toLowerCase()
+  if (!/^[a-f0-9]{40}$/.test(commitSha)) throw new Error("commitSha must be a full Git commit SHA")
   const client = new ConvexHttpClient(env.CONVEX_URL)
-  const existing = await client.query(makeFunctionReference<"query">("collaborationSessions:publicationReceiptForServer"),
-    { serverSecret: env.AI_GATEWAY_SECRET, identityKey: auth.sub, sessionId, commitSha }) as CollaborationPushVerificationResponse | null
-  if (existing) {
-    await env.COLLAB_ROOM.get(env.COLLAB_ROOM.idFromName(`session:${sessionId}`)).fetch(new Request("https://internal/internal/base-advanced", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ commitSha: existing.commitSha, coveredThroughSequence: existing.coveredThroughSequence }),
-    }))
-    return jsonResponse(existing, { headers: { "cache-control": "no-store" } })
-  }
-  const authorization = await authorizePushVerification(env, { identityKey: auth.sub, sessionId })
-  if (!authorization) throw new Error('Push verification is not authorized')
-  if (authorization.session.pendingCommitSha !== commitSha) {
-    throw new Error('Remote commit does not match the prepared collaboration commit')
-  }
-
-  const verified = await verifyGitHubBranchHead(env, {
-    installationId: authorization.repository.installationId,
-    repositoryNumericId: authorization.repository.repositoryNumericId,
-    owner: authorization.repository.owner,
-    name: authorization.repository.name,
-    branch: authorization.session.sessionBranch,
-    expectedCommitSha: commitSha,
-  })
-  if (!verified) throw new Error('GitHub session branch does not point at the prepared commit')
-
-  await advancePublishedBase(env, {
+  const authority = await client.query(makeFunctionReference<"query">("collaborationRoomAuthorization:authorizeSessionForServer"), {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    identityKey: auth.sub,
     sessionId,
-    publishedByPrincipalId: authorization.principalId,
-    commitSha,
-    coveredThroughSequence: authorization.session.pendingCommitThroughSequence,
-  })
-  const roomAck = await env.COLLAB_ROOM.get(env.COLLAB_ROOM.idFromName(`session:${sessionId}`)).fetch(new Request("https://internal/internal/base-advanced", {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ commitSha, coveredThroughSequence: authorization.session.pendingCommitThroughSequence }),
-  }))
-  if (!roomAck.ok) throw new Error("Published base was verified but live-room acknowledgement failed; retry Push")
-  await recordRepositoryAccessEvent(env, {
-    authorizationId: authorization.authorizationId,
-    principalId: authorization.principalId,
-    operation: 'write',
-    outcome: 'verified',
-    sessionId: authorization.session.documentId,
-    commitSha,
-  })
-
-  const result: CollaborationPushVerificationResponse = {
-    verified: true,
+  }) as any
+  if (!authority.allowed || authority.role !== "editor") throw new Error("Session push access denied")
+  const repository = await resolveProjectRepositoryAuthorizationForServer(env, {
+    identityKey: auth.sub,
+    projectId: authority.projectId,
+    operation: "write",
     sessionId,
-    sessionBranch: authorization.session.sessionBranch,
+  })
+  const installation = await createGitHubInstallationToken(env, {
+    installationId: repository.repository.installationId,
+    repositoryNumericId: repository.repository.repositoryNumericId,
+    permission: "read",
+  })
+  const remoteHead = await getGitHubRepositoryHead(env, {
+    repositoryNumericId: repository.repository.repositoryNumericId,
+    branch: authority.sessionBranch,
+    token: installation.token,
+  })
+  if (remoteHead.toLowerCase() !== commitSha) throw new Error("The collaboration branch does not point at the prepared commit")
+  const result = await client.mutation(makeFunctionReference<"mutation">("collaborationSessions:publishBaseAdvanceFromServer"), {
+    serverSecret: env.AI_GATEWAY_SECRET,
+    sessionId,
+    actorPrincipalId: authority.principalId,
     commitSha,
-    coveredThroughSequence: authorization.session.pendingCommitThroughSequence,
-    baseAdvanced: true,
-  }
-  return jsonResponse(result, { headers: { 'cache-control': 'no-store' } })
+    coveredThroughSequence: authority.pendingCommitThroughSequence,
+  }) as any
+  return jsonResponse({ verified: true, sessionId, sessionBranch: authority.sessionBranch, commitSha,
+    coveredThroughSequence: result.publishedThroughSequence, baseAdvanced: true }, { headers: { "cache-control": "no-store" } })
 }
 
+export async function handleCollaborationGitHubSetup(request: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(request, env)
+  const body = await parseJsonRequest(request) as Record<string, unknown>
+  const organizationId = requiredString(body.organizationId, "organizationId", 128)
+  const clientId = requiredString(env.GITHUB_APP_CLIENT_ID, "GITHUB_APP_CLIENT_ID", 256)
+  const state = await clientId // keep response construction deterministic below
+  const authorizationUrl = new URL("https://github.com/apps/cozea/installations/new")
+  authorizationUrl.searchParams.set("state", `${organizationId}:${auth.sub}:${String(state).slice(0, 0)}`)
+  return jsonResponse({ authorizationUrl: authorizationUrl.toString() }, { headers: { "cache-control": "no-store" } })
+}
+
+export async function handleCollaborationRepositoryResolve(request: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(request, env)
+  const body = await parseJsonRequest(request) as Record<string, unknown>
+  const projectId = requiredString(body.projectId, "projectId", 128)
+  const authorization = await resolveProjectRepositoryAuthorizationForServer(env, { identityKey: auth.sub, projectId, operation: "read" })
+  const installation = await createGitHubInstallationToken(env, {
+    installationId: authorization.repository.installationId,
+    repositoryNumericId: authorization.repository.repositoryNumericId,
+    permission: "read",
+  })
+  const branch = typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : authorization.repository.defaultBranch
+  const commitSha = await getGitHubRepositoryHead(env, { repositoryNumericId: authorization.repository.repositoryNumericId, branch, token: installation.token })
+  const resolved = await resolveProjectRepositoryAuthorizationForServer(env, { identityKey: auth.sub, projectId, operation: "read" })
+  const repositoryId = buildCollaborationRepositoryId(authorization.repository.repositoryNumericId)
+  return jsonResponse({ branch, commitSha, branches: [branch], repositoryId,
+    fullName: resolved.repository.fullName, resolutionId: crypto.randomUUID() }, { headers: { "cache-control": "no-store" } })
+}
 
 export async function handleCollaborationWorkspaceContext(request: Request, env: Env): Promise<Response> {
   const auth = await authenticate(request, env)
   const body = await parseJsonRequest(request) as Record<string, unknown>
   const sessionId = requiredString(body.sessionId, "sessionId", 128)
   const client = new ConvexHttpClient(env.CONVEX_URL)
-  const context = await client.query(makeFunctionReference<"query">("collaborationRoomAuthorization:workspaceContextForServer"),
+  const authority = await client.query(makeFunctionReference<"query">("collaborationRoomAuthorization:authorizeSessionForServer"),
     { serverSecret: env.AI_GATEWAY_SECRET, identityKey: auth.sub, sessionId }) as any
-  const authorization = await authorizeRepositoryOperation(env, { identityKey: auth.sub, projectId: context.session.projectId, operation: "read" })
-  if (!authorization || authorization.repository.repositoryId !== context.session.repositoryId) throw new Error("Session repository authorization changed")
-  return jsonResponse({ ...context, cloneUrl: authorization.repository.cloneUrl }, { headers: { "cache-control": "no-store" } })
+  if (!authority.allowed) throw new Error("Session workspace access denied")
+  const authorization = await resolveProjectRepositoryAuthorizationForServer(env, {
+    identityKey: auth.sub, projectId: authority.projectId, operation: "read", sessionId,
+  })
+  return jsonResponse({ principalId: authority.principalId, session: authority.session, role: authority.role,
+    cloneUrl: authorization.repository.cloneUrl, expiresAt: Date.now() + 30_000 }, { headers: { "cache-control": "no-store" } })
 }
 
-export async function handleResolveCollaborationBranch(request: Request, env: Env): Promise<Response> {
+export async function handleCollaborationControl(request: Request, env: Env): Promise<Response> {
   const auth = await authenticate(request, env)
   const body = await parseJsonRequest(request) as Record<string, unknown>
-  const projectId = requiredString(body.projectId, "projectId", 128)
-  const authorization = await authorizeRepositoryOperation(env, { identityKey: auth.sub, projectId, operation: "read" })
-  if (!authorization) throw new Error("Repository access denied")
-  const branch = body.branch === undefined ? authorization.repository.defaultBranch : requiredString(body.branch, "branch", 255)
-  const resolved = await resolveGitHubBranch(env, { installationId: authorization.repository.installationId,
-    repositoryNumericId: authorization.repository.repositoryNumericId, owner: authorization.repository.owner,
-    name: authorization.repository.name, branch })
-  return jsonResponse({ ...resolved, resolutionId: crypto.randomUUID(), repositoryId: authorization.repository.repositoryId,
-    fullName: authorization.repository.fullName }, { headers: { "cache-control": "no-store" } })
+  const operation = requiredString(body.operation, "operation", 128)
+  const args = body.args && typeof body.args === "object" ? body.args as Record<string, unknown> : {}
+  const client = new ConvexHttpClient(env.CONVEX_URL)
+  const result = await client.mutation(makeFunctionReference<"mutation">(`collaborationSessions:${operation}`), {
+    ...args,
+    serverSecret: env.AI_GATEWAY_SECRET,
+    identityKey: auth.sub,
+  })
+  return jsonResponse(result, { headers: { "cache-control": "no-store" } })
 }
 
 export async function handleCollaborationCheckpoint(request: Request, env: Env): Promise<Response> {
@@ -202,7 +166,7 @@ export async function handleCollaborationCheckpoint(request: Request, env: Env):
   if (!response.ok) return response
   const result = await response.json() as { checkpoint?: { keyVersion: number; sequence: number } }
   const checkpoint = result.checkpoint
-  if (body.rotation === true && authority.previousKeyVersion && checkpoint?.keyVersion === authority.keyVersion) {
+  if (checkpoint && body.rotation === true && authority.previousKeyVersion && checkpoint.keyVersion === authority.keyVersion) {
     await client.mutation(makeFunctionReference<"mutation">("collaborationEncryption:activateRotationFromServer"),
       { serverSecret: env.AI_GATEWAY_SECRET, sessionId, keyVersion: authority.keyVersion, sequence: checkpoint.sequence })
   }
