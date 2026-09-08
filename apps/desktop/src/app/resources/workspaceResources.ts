@@ -11,11 +11,13 @@
  */
 
 import { KeyedResource } from './keyedResource';
+import { workspaceCatalogResource } from './workspaceCatalogResource';
 import { buildResourceKey } from '@shared/navigationRuntimeTypes';
 import type {
   ResolveProjectWorkspaceRequest,
   ResolveProjectWorkspaceResult,
   RepoIdentity,
+  WorkspaceCatalogSnapshotEntry,
 } from '@shared/workspaceTypes';
 import type { ProjectLaneState } from '@shared/electronApiTypes';
 import {
@@ -26,6 +28,38 @@ import {
 } from '@/features/source-control/model/projectBranchSessionStore';
 import { publishGitRemoteStatus } from '@/features/source-control/model/gitRemoteStatusCache';
 import { normalizeWorkspaceProjectPath } from '@/lib/workspaceIdentity';
+
+type ResourceMetadata = { projectId?: string; workspaceId?: string | null };
+const resourceMetadata = new Map<string, ResourceMetadata>();
+const MAX_IDLE_ENTRIES = 128;
+const MAX_IDLE_AGE_MS = 10 * 60_000;
+
+function repoKey(repo: RepoIdentity | null | undefined): string | null {
+  if (!repo) return null;
+  return JSON.stringify([repo.provider, repo.url, 'fullName' in repo ? repo.fullName : null, 'projectId' in repo ? repo.projectId : null]);
+}
+
+function catalogResolution(projectId: string, preferredWorkspaceId?: string | null, expectedRepo?: RepoIdentity | null): ResolveProjectWorkspaceResult | null {
+  const entry = workspaceCatalogResource.read()?.entries[projectId];
+  if (!entry || entry.status !== 'ready' || entry.workspace.verificationStatus !== 'verified' || !entry.lane || !entry.runtimeIdentity) return null;
+  if (preferredWorkspaceId && entry.workspace.workspaceId !== preferredWorkspaceId) return null;
+  if (expectedRepo && repoKey(expectedRepo) !== repoKey(entry.workspace.gitRepoIdentity)) return null;
+  if (entry.lane.workspaceId !== entry.workspace.workspaceId || entry.runtimeIdentity.workspaceRevision !== entry.workspace.workspaceRevision) return null;
+  return { status: 'ready', projectId, workspace: entry.workspace, lane: entry.lane, runtimeIdentity: entry.runtimeIdentity, collaborationScopeId: entry.collaborationScopeId };
+}
+
+/** Speculation can only read the shared catalog. Never call resolveProject here:
+ * that legacy endpoint can create a default lane and write verification/events. */
+export async function prefetchWorkspaceResolution(projectId: string, preferredWorkspaceId?: string | null, projectSlug?: string | null): Promise<ResolveProjectWorkspaceResult | null> {
+  await workspaceCatalogResource.ensure().catch(() => null);
+  const result = catalogResolution(projectId, preferredWorkspaceId);
+  if (result) {
+    for (const allowScan of [false, true]) {
+      getWorkspaceResolutionResource(projectId, preferredWorkspaceId, projectSlug, null, allowScan).prime(result);
+    }
+  }
+  return result;
+}
 
 // 1. Workspace Resolution Resources
 const resolutionResources = new Map<string, KeyedResource<ResolveProjectWorkspaceResult>>();
@@ -40,6 +74,9 @@ export function getWorkspaceResolutionResource(
   const key = buildResourceKey('workspaceResolution', {
     projectId,
     preferredWorkspaceId: preferredWorkspaceId ?? null,
+    projectSlug: projectSlug ?? null,
+    expectedRepo: repoKey(expectedRepo),
+    allowCandidateScan,
   });
 
   let resource = resolutionResources.get(key);
@@ -52,6 +89,9 @@ export function getWorkspaceResolutionResource(
         if (!workspaceApi) {
           throw new Error('Workspace API not available');
         }
+        await workspaceCatalogResource.ensure().catch(() => null);
+        const cached = catalogResolution(projectId, preferredWorkspaceId, expectedRepo);
+        if (cached) return cached;
         const req: ResolveProjectWorkspaceRequest = {
           projectId,
           projectSlug: projectSlug ?? null,
@@ -64,13 +104,18 @@ export function getWorkspaceResolutionResource(
       equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     });
     resolutionResources.set(key, resource);
+    resourceMetadata.set(key, { projectId, workspaceId: preferredWorkspaceId });
+    const cached = catalogResolution(projectId, preferredWorkspaceId, expectedRepo);
+    if (cached) resource.prime(cached);
   }
+  resource.touch();
+  pruneIdleWorkspaceResources();
   return resource;
 }
 
 export function invalidateProjectWorkspaceResolution(projectId: string): void {
   for (const [key, res] of resolutionResources.entries()) {
-    if (key.includes(projectId)) {
+    if (resourceMetadata.get(key)?.projectId === projectId) {
       res.invalidate('explicit invalidation');
     }
   }
@@ -80,6 +125,7 @@ export function invalidateProjectWorkspaceResolution(projectId: string): void {
 interface GitStatusData {
   success: boolean;
   currentBranch?: string | null;
+  isRepo?: boolean;
   ahead?: number;
   behind?: number;
   error?: string | null;
@@ -115,7 +161,10 @@ export function getGitStatusResource(workspaceId: string): KeyedResource<GitStat
       equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     });
     gitStatusResources.set(key, resource);
+    resourceMetadata.set(key, { workspaceId });
   }
+  resource.touch();
+  pruneIdleWorkspaceResources();
   return resource;
 }
 
@@ -145,12 +194,13 @@ export function getProjectLaneResource(
     resource = new KeyedResource<ProjectLaneState | null>({
       key,
       ttlMs: 5_000,
-      fetcher: async () => {
+      fetcher: async (reason) => {
+        if (!normalizedWorkspaceId) return null;
         const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId);
         let activeBranch: string;
 
         if (normalizedWorkspaceId) {
-          const gitRes = await getGitStatusResource(normalizedWorkspaceId).ensure('refresh');
+          const gitRes = await getGitStatusResource(normalizedWorkspaceId).ensure(reason);
           const resolution = resolveLaneBranchKnowledge({
             statusResult: gitRes,
             storedBranch: storedSession?.activeBranch ?? null,
@@ -167,10 +217,10 @@ export function getProjectLaneResource(
               });
             }
           } else {
-            activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch;
+            return null; // No fresh or previously verified branch knowledge.
           }
         } else {
-          activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch;
+          return null;
         }
 
         return buildProjectBranchLaneState({
@@ -187,13 +237,16 @@ export function getProjectLaneResource(
       },
     });
     laneResources.set(key, resource);
+    resourceMetadata.set(key, { projectId, workspaceId: normalizedWorkspaceId });
   }
+  resource.touch();
+  pruneIdleWorkspaceResources();
   return resource;
 }
 
 export function invalidateProjectLaneState(projectId: string): void {
   for (const [key, res] of laneResources.entries()) {
-    if (key.includes(projectId)) {
+    if (resourceMetadata.get(key)?.projectId === projectId) {
       res.invalidate('explicit invalidation');
     }
   }
@@ -202,7 +255,7 @@ export function invalidateProjectLaneState(projectId: string): void {
 // 4. Central Reconciliation Scheduler (Section 6.5)
 // One shared 5s timer for all demanded resources. Pauses on window blur/minimize.
 let reconciliationTimer: ReturnType<typeof setInterval> | null = null;
-let isWindowVisible = true;
+let isWindowVisible = typeof document === 'undefined' || !document.hidden;
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
@@ -215,7 +268,8 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 }
 
 function triggerDemandReconciliation(reason: 'refresh' | 'resume') {
-  if (!isWindowVisible && reason !== 'resume') return;
+  if (!isWindowVisible) return;
+  pruneIdleWorkspaceResources();
 
   // Refresh demanded lane resources
   for (const res of laneResources.values()) {
@@ -239,5 +293,42 @@ export function stopReconciliationScheduler(): void {
   }
 }
 
-// Start shared timer automatically
-startReconciliationScheduler();
+function bindingStamp(entry: WorkspaceCatalogSnapshotEntry | undefined): string {
+  return JSON.stringify(entry ? [entry.status, entry.workspace.workspaceId, entry.workspace.workspaceRevision, entry.workspace.verificationStatus, entry.workspace.projectRootPath, entry.workspace.gitRootPath, entry.lane?.laneId ?? null] : null);
+}
+
+// No I/O during module import. The first actual catalog demand initializes it.
+workspaceCatalogResource.observe((next, previous) => {
+  // Initial resolution requests may be waiting for this first snapshot. There
+  // is no previous binding to revoke, so do not supersede those very requests.
+  if (!previous) return;
+  const projectIds = new Set([...Object.keys(next.entries), ...Object.keys(previous?.entries ?? {})]);
+  for (const projectId of projectIds) {
+    const old = previous?.entries[projectId];
+    const entry = next.entries[projectId];
+    if (bindingStamp(old) === bindingStamp(entry)) continue;
+    invalidateProjectWorkspaceResolution(projectId);
+    invalidateProjectLaneState(projectId);
+    const ids = new Set([old?.workspace.workspaceId, entry?.workspace.workspaceId]);
+    for (const [key, resource] of gitStatusResources) {
+      if (ids.has(resourceMetadata.get(key)?.workspaceId ?? undefined)) resource.invalidate('catalog binding changed');
+    }
+  }
+});
+
+/** Evict only undemanded, unsubscribed, settled handles; never interrupt a read. */
+export function pruneIdleWorkspaceResources(now = Date.now()): void {
+  const maps = [resolutionResources, gitStatusResources, laneResources] as const;
+  const candidates = [...resolutionResources.values(), ...gitStatusResources.values(), ...laneResources.values()];
+  const idle = candidates.filter(resource => resource.idle);
+  idle.sort((a, b) => a.lastAccessTime - b.lastAccessTime);
+  let count = idle.length;
+  for (const resource of idle) {
+    if (count <= MAX_IDLE_ENTRIES && now - resource.lastAccessTime < MAX_IDLE_AGE_MS) continue;
+    for (const map of maps) map.delete(resource.key);
+    resourceMetadata.delete(resource.key);
+    count--;
+  }
+}
+
+// Only a browser runtime needs this timer. A shared demand starts it in the hook.

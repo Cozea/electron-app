@@ -9,6 +9,7 @@ import type { ProjectLaneDescriptor, ProjectLaneState } from '@shared/electronAp
 import {
   getWorkspaceResolutionResource,
   getProjectLaneResource,
+  startReconciliationScheduler,
 } from './workspaceResources';
 
 export function useSharedWorkspaceResolution(
@@ -82,7 +83,7 @@ export function useSharedProjectLaneState(
   // Acquire demand when demanded (F04, N07)
   useEffect(() => {
     if (!resource || !isDemanded) return;
-    const release = resource.acquireDemand('foreground');
+    const release = (startReconciliationScheduler(), resource.acquireDemand('foreground'));
     return release;
   }, [resource, isDemanded]);
 

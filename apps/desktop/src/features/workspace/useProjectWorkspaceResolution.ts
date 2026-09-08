@@ -3,7 +3,7 @@ import type {
   ResolveProjectWorkspaceResult,
 } from "@shared/workspaceTypes"
 import {
-  getWorkspaceResolutionResource,
+  prefetchWorkspaceResolution,
   invalidateProjectWorkspaceResolution as invalidateSharedResolution,
 } from "@/app/resources/workspaceResources"
 import { useSharedWorkspaceResolution } from "@/app/resources/useWorkspaceResources"
@@ -14,14 +14,7 @@ export async function prefetchProjectWorkspaceResolution(input: {
   preferredWorkspaceId?: string | null
   allowCandidateScan?: boolean
 }): Promise<ResolveProjectWorkspaceResult | null> {
-  const resource = getWorkspaceResolutionResource(
-    input.projectId,
-    input.preferredWorkspaceId,
-    input.projectSlug,
-    null,
-    input.allowCandidateScan ?? false
-  )
-  return await resource.ensure('prefetch').catch(() => null)
+  return prefetchWorkspaceResolution(input.projectId, input.preferredWorkspaceId, input.projectSlug)
 }
 
 /** Drops cached resolutions for a project after relink/close/repair actions. */
