@@ -92,6 +92,12 @@ async function startRenderer(): Promise<void> {
 
   const bootstrap = await initializeDesktopBootstrap()
   applyDesktopBootstrapRoute(bootstrap)
+  // Restore local tile models before any interactive route can ensure an empty
+  // workbench. A failed read rejects boot rather than overwriting stored work.
+  if (window.electronAPI?.windowContext !== 'settings') {
+    const { initializeWorkbenchStorage } = await import('./lib/workbenchStore')
+    await initializeWorkbenchStorage()
+  }
 
   if (
     featureFlags.commonRoutePrewarm &&

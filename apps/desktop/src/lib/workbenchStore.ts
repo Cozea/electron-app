@@ -23,7 +23,7 @@ import type { BrowserStorageScope } from "@shared/browserTileTypes"
 import type { SerializedDockview } from "dockview-react"
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
-import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
+import { desktopPersistenceClient } from "@/app/model/persistence/desktopPersistenceClient"
 
 import { normalizeWorkspaceId } from "@/lib/workspaceIdentity"
 import {
@@ -49,84 +49,19 @@ import type {
 
 export type { WorkbenchTileType } from "@/lib/workbenchTileContract"
 
-const PERSIST_DEBOUNCE_MS = 500
-
-function createDebouncedStorage(backing: Storage): StateStorage & { flush: () => void } {
-  let pending: string | null = null
-  let pendingKey: string | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
-
-  const flush = () => {
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
-    }
-    if (pending !== null && pendingKey !== null) {
-      backing.setItem(pendingKey, pending)
-      pending = null
-      pendingKey = null
-    }
-  }
-
-  if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", flush)
-  }
-
-  return {
-    getItem(name) {
-      return backing.getItem(name)
-    },
-    setItem(name, value) {
-      pendingKey = name
-      pending = value
-      if (timer !== null) clearTimeout(timer)
-      timer = setTimeout(() => {
-        flush()
-      }, PERSIST_DEBOUNCE_MS)
-    },
-    removeItem(name) {
-      if (timer !== null) {
-        clearTimeout(timer)
-        timer = null
-      }
-      pending = null
-      pendingKey = null
-      backing.removeItem(name)
-    },
-    flush,
-  }
-}
-
+/** Best-effort call sites use this; explicit shutdown uses flushWorkbenchStorageDurably. */
 export function flushWorkbenchStorage(): void {
-  if (typeof window !== "undefined" && window.electronAPI?.desktopPersistence) {
-    void import("@/app/model/persistence/desktopPersistenceClient")
-      .then(({ desktopPersistenceClient }) => desktopPersistenceClient.flush())
-      .catch(error => console.error("[Workbench] Persistence flush failed", error))
-  }
-  if (typeof workbenchStorage === "object" && "flush" in workbenchStorage) {
-    (workbenchStorage as { flush: () => void }).flush()
-  }
+  void flushWorkbenchStorageDurably().catch(error => {
+    console.error("[Workbench] Persistence flush failed; dirty records remain queued", error)
+  })
 }
 
-function createMemoryStorage(): StateStorage {
-  const items = new Map<string, string>()
-  return {
-    getItem(name) {
-      return items.get(name) ?? null
-    },
-    setItem(name, value) {
-      items.set(name, value)
-    },
-    removeItem(name) {
-      items.delete(name)
-    },
+export function flushWorkbenchStorageDurably(): Promise<void> {
+  if (typeof window === "undefined" || !window.electronAPI?.desktopPersistence) {
+    return Promise.resolve()
   }
+  return desktopPersistenceClient.flush()
 }
-
-const workbenchStorage =
-  typeof window === "undefined"
-    ? createMemoryStorage()
-    : createDebouncedStorage(window.localStorage)
 
 /**
  * Tile shapes live in `@/lib/workbenchTileContract` so a capability can describe
@@ -1196,8 +1131,7 @@ export function selectVisibleActiveWorkbenchTileId(
 }
 
 export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
-  persist(
-    immer((set) => ({
+  immer((set) => ({
       workbenches: {},
       lastActiveScopeKey: null,
       actions: {
@@ -1529,22 +1463,69 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
           })
         },
       },
-    })),
-    {
-      name: "cozea:project-workbench",
-      version: 5,
-      storage: createJSONStorage(() => workbenchStorage),
-      migrate: (persistedState) => migratePersistedWorkbenchState(persistedState),
-      partialize: (state) => ({
-        workbenches: sanitizePersistedWorkbenches(state.workbenches),
-      }),
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...migratePersistedWorkbenchState(persistedState),
-      }),
-    },
-  ),
+  })),
 )
+
+let applyingWorkbenchHydration = false
+let workbenchHydration: Promise<void> | null = null
+let workbenchHydrated = false
+let workbenchEditSequence = 0
+const workbenchEdits = new Map<string, number>()
+
+// Immer preserves untouched record identities. Navigation-only changes therefore
+// perform zero persistence work; a tile edit queues exactly its model, never the
+// complete workbenches collection. Encoding and disk I/O belong to the worker.
+useProjectWorkbenchStore.subscribe((state, previous) => {
+  if (applyingWorkbenchHydration || state.workbenches === previous.workbenches) return
+  const keys = new Set([...Object.keys(state.workbenches), ...Object.keys(previous.workbenches)])
+  for (const key of keys) {
+    const model = state.workbenches[key]
+    if (model === previous.workbenches[key]) continue
+    workbenchEdits.set(key, ++workbenchEditSequence)
+    if (!model) {
+      desktopPersistenceClient.deleteRecord('workbenchModel', key)
+    } else {
+      const sanitized = sanitizeWorkbenchState(model)
+      // The independent layout namespace is the only layout persistence writer.
+      desktopPersistenceClient.queueDirtyRecord('workbenchModel', key, { ...sanitized, layout: null })
+    }
+  }
+})
+
+/** Local boot barrier. It never starts a service or makes a cloud request. */
+export function initializeWorkbenchStorage(): Promise<void> {
+  if (workbenchHydrated) return Promise.resolve()
+  if (workbenchHydration) return workbenchHydration
+  if (typeof window === 'undefined' || !window.electronAPI?.desktopPersistence) return Promise.resolve()
+  const initialSequence = workbenchEditSequence
+  const attempt = (async () => {
+    await desktopPersistenceClient.hydrateNamespace('workbenchModel')
+    const restored = migratePersistedWorkbenchState({
+      workbenches: Object.fromEntries(desktopPersistenceClient.entries('workbenchModel').map(record => [record.key, record.data])),
+    })
+    applyingWorkbenchHydration = true
+    try {
+      useProjectWorkbenchStore.setState(state => {
+        const workbenches = { ...state.workbenches }
+        for (const [key, model] of Object.entries(restored.workbenches ?? {})) {
+          // A concurrent edit or deletion always wins over the boot snapshot.
+          if ((workbenchEdits.get(key) ?? 0) > initialSequence) continue
+          workbenches[key] = model as WorkbenchProjectState
+        }
+        return { workbenches }
+      })
+      workbenchHydrated = true
+    } finally {
+      applyingWorkbenchHydration = false
+    }
+  })()
+  workbenchHydration = attempt
+  void attempt.then(
+    () => { if (workbenchHydration === attempt) workbenchHydration = null },
+    () => { if (workbenchHydration === attempt) workbenchHydration = null },
+  )
+  return attempt
+}
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   // Exposed for render-performance diagnostics (store emission counting).
