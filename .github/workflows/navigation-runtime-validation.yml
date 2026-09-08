@@ -1,13 +1,12 @@
 name: Navigation Runtime Validation
 on:
-  push:
-    branches: [perf/navigation-runtime-v2-repair]
+  workflow_dispatch:
   pull_request:
     paths: ['apps/desktop/**', 'shared/**', 'tests/**', 'scripts/**', 'package.json', 'bun.lock', '.github/workflows/navigation-runtime-validation.yml']
 permissions:
   contents: read
 concurrency:
-  group: navigation-runtime-${{ github.ref }}
+  group: navigation-runtime-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   validate:

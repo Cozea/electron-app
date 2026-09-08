@@ -47,8 +47,25 @@ function connect(url) {
 
 async function evaluate(cdp, expression) {
   const result = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Renderer evaluation failed')
+  if (result.exceptionDetails) {
+    const description = result.exceptionDetails.exception?.description
+    throw new Error(description ?? result.exceptionDetails.text ?? 'Renderer evaluation failed')
+  }
   return result.result.value
+}
+
+async function waitForHarness(cdp, child) {
+  for (let attempt = 0; attempt < 120; attempt++) {
+    if (child.exitCode !== null) throw new Error(`Electron exited before the harness became ready (${child.exitCode})`)
+    try {
+      if (await evaluate(cdp, 'document.documentElement?.dataset.navigationHarnessReady === "true"')) return
+    } catch {
+      // The first page target can exist while its initial document is still being replaced.
+      // Treat transient evaluation/context errors as not-ready and keep polling.
+    }
+    await delay(100)
+  }
+  throw new Error('Navigation harness did not become ready')
 }
 
 async function navigate(cdp, destination) {
@@ -76,11 +93,7 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
   try {
     cdp = connect(await waitForTarget(port, child))
     await cdp.ready
-    for (let attempt = 0; attempt < 120; attempt++) {
-      if (await evaluate(cdp, 'document.documentElement.dataset.navigationHarnessReady === "true"')) break
-      if (attempt === 119) throw new Error('Navigation harness did not become ready')
-      await delay(100)
-    }
+    await waitForHarness(cdp, child)
 
     const first = await navigate(cdp, 'a')
     const a1 = findIdentity(first, 'a', 1)
