@@ -1,11 +1,13 @@
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
+import * as Effect from 'effect/Effect'
 
 import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
 import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
 import { WorkbenchPresentationCoordinator } from '../services/WorkbenchPresentationCoordinator'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
-import { getCatalogSnapshot } from '../workspaces/CatalogSnapshot'
+import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
+import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
 
 interface RegisterWorkbenchSessionHandlersDeps {
   getMainWindow: () => BrowserWindow | null
@@ -27,11 +29,18 @@ export function registerWorkbenchSessionHandlers(
     browserSurfaces: deps.browserSurfaces,
   })
   const coordinator = WorkbenchPresentationCoordinator.getInstance(service, async (target) => {
-    const entry = (await getCatalogSnapshot()).entries[target.projectId]
+    // Presentation authority must read the committed catalog row directly.
+    // The broadcast snapshot is deliberately debounced, so consulting it here
+    // can reject a valid revision immediately after a workspace relink.
+    const runtime = await waitForWorkspaceCatalogRuntime()
+    const workspace = await runtime.runPromise(
+      Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+        catalog.getActive(target.projectId),
+      ),
+    )
     return Boolean(
-        entry?.status === 'ready' &&
-        entry.workspace.workspaceId === target.workspaceId &&
-        entry.workspace.workspaceRevision === target.workspaceRevision,
+      workspace?.workspaceId === target.workspaceId &&
+      workspace.workspaceRevision === target.workspaceRevision,
     )
   })
 

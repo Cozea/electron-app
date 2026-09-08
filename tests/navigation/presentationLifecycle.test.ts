@@ -22,9 +22,12 @@ describe('production presentation lifecycle wiring', () => {
 
   it('routes activation exclusively through sequenced presentation commands', () => {
     const lifecycle = read('apps/desktop/src/features/workbench/hooks/useWorkbenchSessionLifecycle.ts')
+    const handlers = read('apps/desktop/electron/ipc/registerWorkbenchSessionHandlers.ts')
     const preload = read('apps/desktop/electron/preload.ts')
     expect(lifecycle).toContain('navigationController.setPresentation')
     expect(lifecycle).not.toContain('.activateSession(')
+    expect(handlers).toContain('catalog.getActive(target.projectId)')
+    expect(handlers).not.toContain('getCatalogSnapshot')
     expect(preload).not.toContain("ipcRenderer.invoke('workbenchSession:activateSession'")
   })
 
