@@ -74,12 +74,14 @@ async function navigate(cdp, destination) {
 }
 
 async function waitForSnapshot(cdp, predicate, message) {
+  let lastSnapshot = null
   for (let attempt = 0; attempt < 150; attempt++) {
     const snapshot = await evaluate(cdp, 'window.__navigationProductionRuntime.snapshot()')
+    lastSnapshot = snapshot
     if (predicate(snapshot)) return snapshot
     await delay(100)
   }
-  throw new Error(message)
+  throw new Error(`${message}; last snapshot: ${JSON.stringify(lastSnapshot)}`)
 }
 
 async function createGitFixture(root, name) {
@@ -169,11 +171,31 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
     assert(returned.residentCount === 1, 'Workbench A return changed the resident set')
     assert(await evaluate(cdp, `Boolean(document.querySelector('.cozea-workbench-dockview-host[data-navigation-sentinel="a1"]'))`), 'Dockview A was recreated after Store navigation')
 
-    await navigate(cdp, 'b'); await navigate(cdp, 'a')
-    const two = await waitForSnapshot(cdp, value => value.residentCount === 2, 'A/B retention did not preserve two instances')
+    await navigate(cdp, 'b')
+    await waitForSnapshot(
+      cdp,
+      value => value.residentCount === 2 && value.sessionKey?.includes('project-b'),
+      'Workbench B did not become resident',
+    )
+    await navigate(cdp, 'a')
+    const two = await waitForSnapshot(
+      cdp,
+      value => value.residentCount === 2 && value.sessionKey === a1,
+      'A/B retention did not preserve two instances',
+    )
     assert(two.sessionKey === a1, 'Returning to A selected a different main-process session')
-    await navigate(cdp, 'c'); await navigate(cdp, 'd')
-    const four = await waitForSnapshot(cdp, value => value.residentCount === 3, 'Resident cap was not enforced')
+    await navigate(cdp, 'c')
+    await waitForSnapshot(
+      cdp,
+      value => value.residentCount === 3 && value.sessionKey?.includes('project-c'),
+      'Workbench C did not become resident',
+    )
+    await navigate(cdp, 'd')
+    const four = await waitForSnapshot(
+      cdp,
+      value => value.residentCount === 3 && value.sessionKey?.includes('project-d'),
+      'Resident cap was not enforced',
+    )
     assert(four.dockviewCount === 3, 'Resident cap did not apply to real Dockview instances')
     assert(await evaluate(cdp, `Boolean(document.querySelector('.cozea-workbench-dockview-host[data-navigation-sentinel="a1"]'))`), 'Recently revisited Dockview A was evicted')
 
