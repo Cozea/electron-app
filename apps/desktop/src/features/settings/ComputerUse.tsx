@@ -98,6 +98,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
   )
 
   const [diagnostics, setDiagnostics] = React.useState<ComputerUseDiagnostics | null>(null)
+  const isSupported = diagnostics?.supported !== false
   const [isLoadingDiagnostics, setIsLoadingDiagnostics] = React.useState(false)
   const [isToggling, setIsToggling] = React.useState(false)
 
@@ -197,14 +198,16 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
               <Switch
                 checked={computerUseEnabled}
                 onCheckedChange={(checked) => void handleToggle(checked)}
-                disabled={isToggling}
+                disabled={isToggling || !isSupported}
               />
             </SettingsRowControl>
           </SettingsRow>
         </SettingsGroup>
       </section>
 
-      <section>
+      {!isSupported ? (
+        <p role="status" className="text-sm text-muted-foreground">{t('settings.computerUse.macosOnly')}</p>
+      ) : <section>
         <div className="flex items-center justify-between pb-1">
           <div>
             <SettingsSectionTitle>
@@ -297,7 +300,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
             </SettingsRowControl>
           </SettingsRow>
         </SettingsGroup>
-      </section>
+      </section>}
 
       <section>
         <SettingsSectionTitle>{t('settings.computerUse.toolsTitle')}</SettingsSectionTitle>
@@ -325,7 +328,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
                   </div>
                   <Switch
                     checked={isToolEnabled}
-                    disabled={!computerUseEnabled}
+                    disabled={!computerUseEnabled || !isSupported}
                     onCheckedChange={(checked) => void handleToggleTool(tool.name, checked)}
                   />
                 </div>
@@ -352,7 +355,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
               <Switch
                 aria-label={t('settings.computerUse.allowGlobalPointerFallback')}
                 checked={computerUseEnabled && allowGlobalPointerFallbacks}
-                disabled={!computerUseEnabled}
+                disabled={!computerUseEnabled || !isSupported}
                 onCheckedChange={(checked) => void handleGlobalPointerFallbackToggle(checked)}
               />
             </SettingsRowControl>

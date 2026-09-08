@@ -1,0 +1,161 @@
+name: Computer Use Native
+on:
+  push:
+    branches: [feat/macos-computer-use-v2]
+    paths:
+      - 'native/computer-use-*/**'
+      - 'packages/computer-use-native/**'
+      - 'scripts/*computer-use*'
+      - 'scripts/prepare-t3-runtime.mjs'
+      - 'tests/computer-use/**'
+      - 'apps/desktop/electron/services/ComputerUse*'
+      - 'apps/desktop/src/features/settings/ComputerUse.tsx'
+      - 'shared/electronApiTypes.ts'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/computer-use-native.yml'
+  pull_request:
+    paths:
+      - 'native/computer-use-*/**'
+      - 'packages/computer-use-native/**'
+      - 'scripts/*computer-use*'
+      - 'scripts/prepare-t3-runtime.mjs'
+      - 'tests/computer-use/**'
+      - 'apps/desktop/electron/services/ComputerUse*'
+      - 'apps/desktop/src/features/settings/ComputerUse.tsx'
+      - 'shared/electronApiTypes.ts'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/computer-use-native.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: computer-use-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [debug, release]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - name: Record toolchain
+        run: |
+          mkdir -p build/cu-validation
+          sw_vers
+          xcodebuild -version
+          xcrun swift --version
+          rustc --version
+          bun --version
+      - name: Native core, runtime tests and AppKit fixture build
+        run: |
+          set -o pipefail
+          xcrun swift test --package-path native/computer-use-runtime --configuration '${{ matrix.configuration }}' 2>&1 | tee build/cu-validation/swift-test.log
+      - name: Cross-build Intel bridge
+        run: |
+          set -o pipefail
+          xcrun swift build --package-path native/computer-use-bridge --configuration '${{ matrix.configuration }}' --triple x86_64-apple-macosx14.0 2>&1 | tee build/cu-validation/intel-build.log
+      - name: Install locked JavaScript dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build and validate packaged N-API runtime
+        run: |
+          set -o pipefail
+          flags=()
+          if [ '${{ matrix.configuration }}' = debug ]; then flags+=(--debug); fi
+          bun run scripts/prepare-computer-use-runtime.mjs "${flags[@]}" 2>&1 | tee build/cu-validation/napi-build.log
+          bun run scripts/prepare-computer-use-runtime.mjs "${flags[@]}" --check
+      - name: Relocated Electron ABI smoke without desktop input
+        run: |
+          bun node_modules/electron/install.js
+          unset ELECTRON_RUN_AS_NODE
+          set -o pipefail
+          node_modules/.bin/electron tests/computer-use/nativeSmoke.cjs 2>&1 | tee build/cu-validation/abi-smoke.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: computer-use-native-${{ matrix.configuration }}
+          path: build/cu-validation/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+  host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Materialize exact pinned T3 source without research submodules
+        run: |
+          pin="$(git ls-tree HEAD vendor/t3code | awk '{print $3}')"
+          test -n "$pin"
+          git init "$RUNNER_TEMP/cu-t3-source"
+          git -C "$RUNNER_TEMP/cu-t3-source" fetch --depth=1 https://github.com/Cozea/t3code.git "$pin"
+          test "$(git -C "$RUNNER_TEMP/cu-t3-source" rev-parse FETCH_HEAD)" = "$pin"
+          mkdir -p vendor/t3code
+          git -C "$RUNNER_TEMP/cu-t3-source" archive FETCH_HEAD | tar -x -C vendor/t3code
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - name: Install locked root and pinned T3 dependencies
+        id: dependencies
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run postinstall
+          pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
+          bun x "$pm" --dir vendor/t3code install --frozen-lockfile --ignore-scripts
+      - name: Computer Use behavior and provider contract tests
+        run: |
+          mkdir -p build/cu-validation
+          set -o pipefail
+          bun run test:computer-use 2>&1 | tee build/cu-validation/host-tests.log
+      - name: Electron typecheck
+        if: success() || (failure() && steps.dependencies.outcome == 'success')
+        run: |
+          mkdir -p build/cu-validation
+          set -o pipefail
+          bun run typecheck:electron 2>&1 | tee build/cu-validation/typecheck-electron.log
+      - name: Renderer typecheck
+        if: success() || (failure() && steps.dependencies.outcome == 'success')
+        run: |
+          mkdir -p build/cu-validation
+          set -o pipefail
+          bun run typecheck 2>&1 | tee build/cu-validation/typecheck-renderer.log
+      - name: Build and verify real T3 Computer Use tool catalogue
+        if: success() || (failure() && steps.dependencies.outcome == 'success')
+        run: |
+          mkdir -p build/cu-validation
+          set -o pipefail
+          node --input-type=module -e 'import { patchT3ComputerUseSource } from "./scripts/prepare-t3-runtime.mjs"; patchT3ComputerUseSource();'
+          pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
+          bun x "$pm" --dir vendor/t3code --filter t3 build:bundle 2>&1 | tee build/cu-validation/t3-build.log
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import { patchComputerUseContract } from './scripts/patch-computer-use-contract.mjs';
+          const result = patchComputerUseContract(fs.readFileSync('vendor/t3code/apps/server/dist/bin.mjs', 'utf8'));
+          assert.ok(result.source.includes('DELIVERY_UNKNOWN'));
+          assert.ok(result.source.includes('include_screenshot'));
+          assert.equal(patchComputerUseContract(result.source).changed, false);
+          console.log('Real T3 bundle accepts the canonical v2 tool catalogue; second application is unchanged.');
+          JS
+      - name: Verify unsupported-platform packaging
+        if: success() || (failure() && steps.dependencies.outcome == 'success')
+        run: |
+          bun run scripts/prepare-computer-use-runtime.mjs
+          bun run scripts/prepare-computer-use-runtime.mjs --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: computer-use-host-validation
+          path: build/cu-validation/*.log
+          if-no-files-found: ignore
+          retention-days: 7
