@@ -21,30 +21,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  source-snapshot:
+  integrate-main:
+    if: github.event_name == 'push' && github.event.head_commit.message == 'ci(navigation): integrate current main and normalize validation'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: fix/navigation-runtime-v2-completion
           fetch-depth: 0
-          persist-credentials: false
-      - name: Export tracked source for offline implementation review
+      - name: Preserve the independently merged computer-use changes
+        shell: bash
         run: |
-          mkdir -p "${RUNNER_TEMP}/navigation-source"
-          git archive --format=tar.gz HEAD > "${RUNNER_TEMP}/navigation-source/candidate.tar.gz"
-          git archive --format=tar.gz 073df5230d2400684434ea6b7db27b0aafc72ddc > "${RUNNER_TEMP}/navigation-source/baseline.tar.gz"
-          git archive --format=tar.gz origin/main > "${RUNNER_TEMP}/navigation-source/main.tar.gz"
-          git rev-parse HEAD origin/main > "${RUNNER_TEMP}/navigation-source/commits.txt"
-          git diff --stat 073df5230d2400684434ea6b7db27b0aafc72ddc...HEAD > "${RUNNER_TEMP}/navigation-source/diff-stat.txt"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: navigation-source-${{ github.sha }}
-          path: ${{ runner.temp }}/navigation-source/
-          retention-days: 3
-          if-no-files-found: error
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git merge --no-ff --no-commit origin/main; then
+            conflicts=$(git diff --name-only --diff-filter=U)
+            if [[ "$conflicts" != 'apps/desktop/src/lib/i18n/computerUse.ts' ]]; then
+              printf 'Unexpected conflicts; refusing automatic resolution:\n%s\n' "$conflicts"
+              exit 1
+            fi
+            git checkout --theirs -- apps/desktop/src/lib/i18n/computerUse.ts
+            git add apps/desktop/src/lib/i18n/computerUse.ts
+          fi
+          if [[ -f .git/MERGE_HEAD ]]; then
+            git commit -m 'merge: preserve current main computer-use runtime in navigation repair'
+            git push origin HEAD:fix/navigation-runtime-v2-completion
+          fi
+          git rev-parse HEAD
 
-  unit-baseline:
+  unit:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -58,19 +67,5 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Apply repository compatibility patches
         run: bun run postinstall
-      - name: Existing navigation unit tests (not Electron integration)
+      - name: Navigation Node unit tests (not Electron integration)
         run: bun run test:navigation:unit
-      - name: Export installed dependencies for isolated offline validation
-        if: github.event_name == 'push'
-        run: |
-          mkdir -p "${RUNNER_TEMP}/navigation-dependencies"
-          tar -czf "${RUNNER_TEMP}/navigation-dependencies/dependencies.tar.gz" node_modules
-          cp "$(command -v bun)" "${RUNNER_TEMP}/navigation-dependencies/bun"
-          du -sh node_modules "${RUNNER_TEMP}/navigation-dependencies/"
-      - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push'
-        with:
-          name: navigation-dependencies-${{ github.sha }}
-          path: ${{ runner.temp }}/navigation-dependencies/
-          retention-days: 1
-          if-no-files-found: error
