@@ -1,27 +1,14 @@
 name: Navigation Runtime Validation
-
 on:
   push:
     branches: [perf/navigation-runtime-v2-repair]
   pull_request:
-    paths:
-      - 'apps/desktop/**'
-      - 'shared/**'
-      - 'tests/navigation/**'
-      - 'tests/electron/navigation/**'
-      - 'scripts/perf/navigation/**'
-      - 'scripts/check-navigation-boundaries.mjs'
-      - 'package.json'
-      - 'bun.lock'
-      - '.github/workflows/navigation-runtime-validation.yml'
-
+    paths: ['apps/desktop/**', 'shared/**', 'tests/**', 'scripts/**', 'package.json', 'bun.lock', '.github/workflows/navigation-runtime-validation.yml']
 permissions:
   contents: read
-
 concurrency:
   group: navigation-runtime-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   prepare:
     if: github.event_name == 'push' && github.ref == 'refs/heads/perf/navigation-runtime-v2-repair'
@@ -35,7 +22,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Apply explicitly staged repair changes
+      - name: Apply assertion-guarded source edits on repair branch only
         id: apply
         shell: bash
         run: |
@@ -46,9 +33,13 @@ jobs:
             python3 scripts/navigation-repair/apply.py
             rm scripts/navigation-repair/apply.py
             git diff --check
+            if git diff --name-only | grep -q '^.github/workflows/'; then
+              echo 'Workflow edits must use the connector, not this source-only staging step.'
+              exit 1
+            fi
             git add -A
             if ! git diff --cached --quiet; then
-              git -c user.name='Cozea Navigation Repair' -c user.email='navigation-repair@users.noreply.github.com' commit -m 'fix(navigation): apply staged repair changes'
+              git -c user.name='Cozea Navigation Repair' -c user.email='navigation-repair@users.noreply.github.com' commit -m 'fix(navigation): integrate staged repair sources'
               git push origin HEAD:refs/heads/perf/navigation-runtime-v2-repair
             fi
           fi
@@ -70,14 +61,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.0'
-      - name: Record exact candidate
+      - name: Record candidate and materialize exact pinned T3 source
         run: |
           mkdir -p build/navigation-validation
           git rev-parse HEAD | tee build/navigation-validation/candidate-sha.txt
-          node --version
-          bun --version
-      - name: Materialize exact pinned T3 source
-        run: |
           pin="$(git ls-tree HEAD vendor/t3code | awk '{print $3}')"
           test -n "$pin"
           git init "$RUNNER_TEMP/navigation-t3-source"
@@ -85,7 +72,7 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/navigation-t3-source" rev-parse FETCH_HEAD)" = "$pin"
           mkdir -p vendor/t3code
           git -C "$RUNNER_TEMP/navigation-t3-source" archive FETCH_HEAD | tar -x -C vendor/t3code
-      - name: Install locked root and T3 dependencies
+      - name: Install locked dependencies
         id: dependencies
         run: |
           bun install --frozen-lockfile --ignore-scripts
@@ -93,44 +80,20 @@ jobs:
           pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
           bun x "$pm" --dir vendor/t3code install --frozen-lockfile --ignore-scripts
           bun node_modules/electron/install.js
-      - name: Export reproducible source and toolchain snapshot
-        if: github.event_name == 'push' && github.ref == 'refs/heads/perf/navigation-runtime-v2-repair'
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/navigation-snapshot"
-          git bundle create "$RUNNER_TEMP/navigation-snapshot/repository.bundle" HEAD refs/remotes/origin/main refs/remotes/origin/perf/navigation-runtime-v2-repair
-          tar -czf "$RUNNER_TEMP/navigation-snapshot/dependencies.tar.gz" node_modules vendor/t3code apps/desktop/node_modules apps/server/node_modules packages/*/node_modules
-          cp "$(command -v bun)" "$RUNNER_TEMP/navigation-snapshot/bun"
-          git rev-parse HEAD > "$RUNNER_TEMP/navigation-snapshot/HEAD.txt"
-          sha256sum "$RUNNER_TEMP/navigation-snapshot/"* > "$RUNNER_TEMP/navigation-snapshot/SHA256SUMS"
-      - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/perf/navigation-runtime-v2-repair'
-        with:
-          name: navigation-source-toolchain-${{ github.run_id }}
-          path: ${{ runner.temp }}/navigation-snapshot/
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-      - name: Targeted navigation unit tests
-        if: steps.dependencies.outcome == 'success'
+      - name: Navigation unit tests
+        if: always() && steps.dependencies.outcome == 'success'
         run: |
           set -o pipefail
           bunx vitest run tests/navigation tests/electron/navigation 2>&1 | tee build/navigation-validation/navigation-unit.log
-      - name: Renderer typecheck
+      - name: Typechecks
         if: always() && steps.dependencies.outcome == 'success'
         run: |
-          set -o pipefail
-          bun run typecheck 2>&1 | tee build/navigation-validation/typecheck-renderer.log
-      - name: Electron typecheck
-        if: always() && steps.dependencies.outcome == 'success'
-        run: |
-          set -o pipefail
-          bun run typecheck:electron 2>&1 | tee build/navigation-validation/typecheck-electron.log
-      - name: Test typecheck
-        if: always() && steps.dependencies.outcome == 'success'
-        run: |
-          set -o pipefail
-          bun run typecheck:tests 2>&1 | tee build/navigation-validation/typecheck-tests.log
+          status=0
+          for command in typecheck typecheck:electron typecheck:tests; do
+            set -o pipefail
+            bun run "$command" 2>&1 | tee "build/navigation-validation/${command//:/-}.log" || status=1
+          done
+          exit "$status"
       - name: Full unit suite
         if: always() && steps.dependencies.outcome == 'success'
         run: |

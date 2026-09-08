@@ -1,127 +1,53 @@
-import type { SerializedDockview } from "dockview-react"
-import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
-import { desktopPersistenceClient } from "@/app/model/persistence/desktopPersistenceClient"
+import type { SerializedDockview } from 'dockview-react'
+import { buildWorkbenchScopeKey } from '@/lib/workbenchScopeKey'
+import { desktopPersistenceClient } from '@/app/model/persistence/desktopPersistenceClient'
 
-function isSerializedDockview(value: unknown): value is SerializedDockview {
-  if (!value || typeof value !== "object") return false
-  return "grid" in value && "panels" in value
+interface LayoutData { layout: SerializedDockview | null; layoutResetKey: number }
+function isLayout(value: unknown): value is SerializedDockview { return value !== null && typeof value === 'object' && 'grid' in value && 'panels' in value }
+export function ensureWorkbenchLayoutPersistenceReady(scopeKey?: string): Promise<void> {
+  return desktopPersistenceClient.hydrateNamespace('workbenchLayout', scopeKey ? [scopeKey] : undefined)
 }
-
-export function ensureWorkbenchLayoutPersistenceReady(): void {
-  void desktopPersistenceClient.hydrateNamespace("workbenchLayout")
-
-  if (typeof window !== "undefined" && window.localStorage) {
-    try {
-      const rawLegacy = window.localStorage.getItem("cozea:project-workbench")
-      if (rawLegacy) {
-        const parsed = JSON.parse(rawLegacy)
-        const workbenches = parsed?.state?.workbenches ?? parsed?.workbenches
-        if (workbenches && typeof workbenches === "object") {
-          for (const [key, val] of Object.entries(workbenches as Record<string, any>)) {
-            if (val && isSerializedDockview(val.layout)) {
-              desktopPersistenceClient.setLayoutInMemory(
-                key,
-                typeof val.layoutResetKey === "number" ? val.layoutResetKey : 0,
-                val.layout
-              )
-            }
-          }
-        }
-      }
-    } catch {}
-  }
+export interface PendingWorkbenchLayoutWrite { scopeKey: string; layoutResetKey: number; layout: SerializedDockview }
+export function isWorkbenchLayoutWriteStillValid(pending: Pick<PendingWorkbenchLayoutWrite, 'scopeKey' | 'layoutResetKey'>, current: { scopeKey: string | null | undefined; layoutResetKey: number }): boolean {
+  return Boolean(pending.scopeKey) && pending.scopeKey === current.scopeKey && pending.layoutResetKey === current.layoutResetKey
 }
-
-export interface PendingWorkbenchLayoutWrite {
-  scopeKey: string
-  layoutResetKey: number
-  layout: SerializedDockview
+export function peekPersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number): SerializedDockview | null {
+  const value = desktopPersistenceClient.peekLayout(scopeKey, layoutResetKey)
+  return isLayout(value) ? value : null
 }
-
-export function isWorkbenchLayoutWriteStillValid(
-  pending: Pick<PendingWorkbenchLayoutWrite, "scopeKey" | "layoutResetKey">,
-  current: { scopeKey: string | null | undefined; layoutResetKey: number },
-): boolean {
-  return (
-    Boolean(pending.scopeKey) &&
-    pending.scopeKey === current.scopeKey &&
-    pending.layoutResetKey === current.layoutResetKey
-  )
+export function writePersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, layout: SerializedDockview): void {
+  desktopPersistenceClient.queueDirtyRecord('workbenchLayout', scopeKey, { layout, layoutResetKey })
 }
-
-/**
- * Pure synchronous in-memory layout peek (Invariant I08, Section 10.4).
- * Reads directly from hydrated desktopPersistenceClient without localStorage access or parsing.
- */
-export function peekPersistedWorkbenchLayout(
-  scopeKey: string,
-  layoutResetKey: number,
-): SerializedDockview | null {
-  const result = desktopPersistenceClient.peekLayout(scopeKey, layoutResetKey)
-  if (result && isSerializedDockview(result)) {
-    return result
-  }
-  return null
+export function clearPersistedWorkbenchLayout(scopeKey: string): void { desktopPersistenceClient.deleteRecord('workbenchLayout', scopeKey) }
+export async function clearPersistedWorkbenchLayoutsForProject(projectId: string): Promise<void> {
+  if (!projectId.trim()) return
+  await ensureWorkbenchLayoutPersistenceReady()
+  desktopPersistenceClient.clearLayoutsForProject(projectId.trim())
 }
-
-export function writePersistedWorkbenchLayout(
-  scopeKey: string,
-  layoutResetKey: number,
-  layout: SerializedDockview,
-): void {
-  desktopPersistenceClient.setLayoutInMemory(scopeKey, layoutResetKey, layout)
-  desktopPersistenceClient.queueDirtyRecord("workbenchLayout", scopeKey, {
-    layout,
-    layoutResetKey,
-  })
-}
-
-export function clearPersistedWorkbenchLayout(scopeKey: string): void {
-  desktopPersistenceClient.setLayoutInMemory(scopeKey, 0, null)
-  desktopPersistenceClient.queueDirtyRecord("workbenchLayout", scopeKey, {
-    layout: null,
-    layoutResetKey: 0,
-  })
-}
-
-export function clearPersistedWorkbenchLayoutsForProject(projectId: string): void {
-  const normalizedProjectId = projectId.trim()
-  if (!normalizedProjectId) return
-  desktopPersistenceClient.clearLayoutsForProject(normalizedProjectId)
-}
-
-export function clonePersistedWorkbenchLayout(
-  sourceScopeKey: string,
-  targetScopeKey: string,
-  resetKey: number,
-): boolean {
-  const existing = peekPersistedWorkbenchLayout(sourceScopeKey, resetKey)
-  if (!existing) {
-    return false
-  }
-
-  writePersistedWorkbenchLayout(targetScopeKey, resetKey, existing)
+export function clonePersistedWorkbenchLayout(sourceScopeKey: string, targetScopeKey: string, resetKey: number): boolean {
+  const layout = peekPersistedWorkbenchLayout(sourceScopeKey, resetKey)
+  if (!layout) return false
+  writePersistedWorkbenchLayout(targetScopeKey, resetKey, layout)
   return true
 }
-
-export function clonePersistedWorkbenchLayoutToWorkspace(
-  projectId: string,
-  laneId: string,
-  sourceWorkspaceId: string | null | undefined,
-  targetWorkspaceId: string,
-  resetKey: number,
-): boolean {
-  const sourceScopeKey = buildWorkbenchScopeKey(projectId, laneId, sourceWorkspaceId)
-  const targetScopeKey = buildWorkbenchScopeKey(projectId, laneId, targetWorkspaceId)
-  return clonePersistedWorkbenchLayout(sourceScopeKey, targetScopeKey, resetKey)
+export function clonePersistedWorkbenchLayoutToWorkspace(projectId: string, laneId: string, sourceWorkspaceId: string | null | undefined, targetWorkspaceId: string, resetKey: number): boolean {
+  return clonePersistedWorkbenchLayout(buildWorkbenchScopeKey(projectId, laneId, sourceWorkspaceId), buildWorkbenchScopeKey(projectId, laneId, targetWorkspaceId), resetKey)
 }
-
-export function clonePersistedWorkbenchLayoutsToWorkspace(args: {
-  projectId: string
-  fromWorkspace?: string | null
-  toWorkspace: string
-}): void {
-  if (!args.projectId || !args.toWorkspace) return
+export async function clonePersistedWorkbenchLayoutsForWorkspace(args: { projectId: string; fromWorkspace?: string | null; toWorkspace?: string | null }): Promise<void> {
+  const target = args.toWorkspace?.trim()
+  if (!args.projectId || !target) return
+  await ensureWorkbenchLayoutPersistenceReady()
+  for (const record of desktopPersistenceClient.entries('workbenchLayout')) {
+    const parts = record.key.split('::')
+    if (parts.length < 4 || parts[0] !== args.projectId || !parts[parts.length - 1]?.startsWith('v')) continue
+    const laneId = parts[1]
+    const source = parts.slice(2, -1).join('::')
+    if (!laneId || !source || (args.fromWorkspace?.trim() && args.fromWorkspace.trim() !== source)) continue
+    const data = record.data as LayoutData
+    if (!data || !isLayout(data.layout) || !Number.isInteger(data.layoutResetKey)) continue
+    const targetKey = buildWorkbenchScopeKey(args.projectId, laneId, target)
+    if (desktopPersistenceClient.peek('workbenchLayout', targetKey) !== undefined) continue
+    writePersistedWorkbenchLayout(targetKey, data.layoutResetKey, data.layout)
+  }
 }
-
-export const clonePersistedWorkbenchLayoutsForWorkspace = clonePersistedWorkbenchLayoutsToWorkspace
+export const clonePersistedWorkbenchLayoutsToWorkspace = clonePersistedWorkbenchLayoutsForWorkspace

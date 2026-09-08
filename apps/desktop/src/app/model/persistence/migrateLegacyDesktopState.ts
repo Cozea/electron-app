@@ -1,31 +1,20 @@
-/**
- * Client Migration Orchestrator for Legacy Desktop State
- * Conforms to Section 10.9 of docs/perf/navigation-runtime-plan.md
- */
-
-const LEGACY_DOMAINS = [
-  'cozea-query-cache',
-  'cozea:project-workbench',
-  'cozea:project-workbench-layouts',
-] as const;
-
-let migrationStarted = false;
-
-export async function migrateLegacyDesktopState(): Promise<void> {
-  if (migrationStarted || typeof window === 'undefined') return;
-  migrationStarted = true;
-
-  const api = window.electronAPI?.desktopPersistence;
-  if (!api) return;
-
-  for (const domain of LEGACY_DOMAINS) {
-    try {
-      const rawPayload = window.localStorage.getItem(domain);
-      if (rawPayload && rawPayload.trim().length > 0) {
-        await api.migrateLegacy({ domain, rawPayload });
-      }
-    } catch (err) {
-      console.warn(`[LegacyMigration] Failed migrating domain ${domain}:`, err);
+import { LEGACY_DESKTOP_DOMAINS } from '@shared/desktopPersistenceTypes'
+let pending: Promise<void> | null = null
+let completed = false
+/** Migration is a separate one-time barrier; ordinary peeks never read storage. */
+export function migrateLegacyDesktopState(): Promise<void> {
+  if (completed) return Promise.resolve()
+  if (pending) return pending
+  if (typeof window === 'undefined' || !window.electronAPI?.desktopPersistence) return Promise.resolve()
+  const api = window.electronAPI.desktopPersistence
+  const attempt = (async () => {
+    for (const domain of LEGACY_DESKTOP_DOMAINS) {
+      const rawPayload = window.localStorage.getItem(domain)
+      if (rawPayload?.trim()) await api.migrateLegacy({ domain, rawPayload })
     }
-  }
+    completed = true
+  })()
+  pending = attempt
+  void attempt.then(() => { if (pending === attempt) pending = null }, () => { if (pending === attempt) pending = null })
+  return attempt
 }

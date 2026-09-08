@@ -1,216 +1,148 @@
-/**
- * Renderer Desktop State Persistence Client
- * Conforms to Section 10.3 & 10.4 of docs/perf/navigation-runtime-plan.md
- * 
- * Rules:
- * - Pure in-memory reads (peekLayout, peekModel): zero synchronous localStorage calls on hot path (Invariant I08)
- * - Coalesces dirty records before serialization; dispatches in batches to Electron IPC (Section 10.3)
- * - Safe async flush-through-revision contract (Section 10.6, M18)
- * - Monotonic per-key revision tracking
- */
+import type { DesktopStateNamespace, DesktopStateRecord, PersistenceCommitResult, PersistenceLoadResult, PersistenceFlushResult } from '@shared/desktopPersistenceTypes'
+import { migrateLegacyDesktopState } from './migrateLegacyDesktopState'
 
-import type {
-  DesktopStateNamespace,
-  DesktopStateRecord,
-} from '@shared/desktopPersistenceTypes';
-import { navigationMetrics } from '@/lib/performance/navigationMetrics';
-
-interface LayoutRecordData {
-  layout: unknown;
-  layoutResetKey: number;
+export interface DesktopPersistenceAPI {
+  load(options: { namespace: DesktopStateNamespace; keys?: string[] }): Promise<PersistenceLoadResult>
+  commit(options: { records: DesktopStateRecord[] }): Promise<PersistenceCommitResult>
+  flush(options?: { targetRevision?: number }): Promise<PersistenceFlushResult>
 }
+interface DirtyRecord { record: DesktopStateRecord; change: number }
+interface LayoutRecordData { layout: unknown; layoutResetKey: number }
+const fullKey = (namespace: DesktopStateNamespace, key: string) => JSON.stringify([namespace, key])
+const yieldTask = () => new Promise<void>(resolve => setTimeout(resolve, 0))
 
-class DesktopPersistenceClient {
-  // In-memory hydrated mirrors
-  private layoutMirror = new Map<string, LayoutRecordData>();
-  private modelMirror = new Map<string, unknown>();
-  private queryCacheMirror = new Map<string, unknown>();
-  private routeMirror = new Map<string, string>();
-
-  // Dirty queues
-  private dirtyRecords = new Map<string, DesktopStateRecord>();
-  private keyRevisions = new Map<string, number>();
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private oldestDirtyAt = 0;
-  private isFlushing = false;
-
-  private DEBOUNCE_MS = 500;
-  private MAX_DIRTY_AGE_MS = 2000;
-
-  constructor() {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', () => {
-        void this.flush();
-      });
-    }
+export class DesktopPersistenceClient {
+  private records = new Map<string, DesktopStateRecord>()
+  private dirty = new Map<string, DirtyRecord>()
+  private localChanges = new Map<string, number>()
+  private loads = new Map<string, Promise<void>>()
+  private loaded = new Set<string>()
+  private listeners = new Set<() => void>()
+  private timer: ReturnType<typeof setTimeout> | null = null
+  private flushing: Promise<void> | null = null
+  private changeSequence = 0
+  private revision = 0
+  private retryDelay = 500
+  private lastError: Error | null = null
+  constructor(
+    private readonly getAPI: () => DesktopPersistenceAPI | null = () => typeof window === 'undefined' ? null : window.electronAPI?.desktopPersistence ?? null,
+    private readonly migrate: () => Promise<void> = migrateLegacyDesktopState,
+  ) {}
+  subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener) }
+  getRevision = (): number => this.revision
+  getError = (): Error | null => this.lastError
+  private notify(): void { this.revision++; for (const listener of this.listeners) listener() }
+  peek<T>(namespace: DesktopStateNamespace, key: string): T | undefined {
+    const record = this.records.get(fullKey(namespace, key))
+    return record && !record.deleted ? record.data as T : undefined
   }
-
-  // --- 1. Synchronous in-memory peeks (Section 10.4, F06) ---
-  peekLayout(scopeKey: string, layoutResetKey: number): unknown | null {
-    const entry = this.layoutMirror.get(scopeKey);
-    if (!entry || entry.layoutResetKey !== layoutResetKey) {
-      return null;
-    }
-    return entry.layout;
+  entries(namespace: DesktopStateNamespace): readonly DesktopStateRecord[] { return [...this.records.values()].filter(record => record.namespace === namespace && !record.deleted) }
+  peekLayout(key: string, reset: number): unknown | null { const data = this.peek<LayoutRecordData>('workbenchLayout', key); return data?.layoutResetKey === reset ? data.layout : null }
+  setLayoutInMemory(key: string, reset: number, layout: unknown): void { this.setInMemory('workbenchLayout', key, { layout, layoutResetKey: reset }) }
+  peekModel(key: string): unknown | null { return this.peek('workbenchModel', key) ?? null }
+  setModelInMemory(key: string, data: unknown): void { this.setInMemory('workbenchModel', key, data) }
+  peekQuery(key: string): unknown | null { return this.peek('queryCache', key) ?? null }
+  setQueryInMemory(key: string, data: unknown): void { this.setInMemory('queryCache', key, data) }
+  private setInMemory(namespace: DesktopStateNamespace, key: string, data: unknown): void {
+    const id = fullKey(namespace, key)
+    const old = this.records.get(id)
+    if (old?.data === data && !old.deleted) return
+    this.records.set(id, { schemaVersion: 1, namespace, key, recordRevision: old?.recordRevision ?? 1, updatedAt: Date.now(), data })
+    this.localChanges.set(id, ++this.changeSequence)
+    this.notify()
   }
-
-  setLayoutInMemory(scopeKey: string, layoutResetKey: number, layout: unknown): void {
-    this.layoutMirror.set(scopeKey, { layout, layoutResetKey });
+  isHydrated(namespace: DesktopStateNamespace, key: string): boolean {
+    return this.loaded.has(fullKey(namespace, key)) || this.loaded.has(fullKey(namespace, '*'))
   }
-
+  hydrateNamespace(namespace: DesktopStateNamespace, keys?: string[]): Promise<void> {
+    const sorted = keys ? [...new Set(keys)].sort() : undefined
+    const loadId = JSON.stringify([namespace, sorted ?? '*'])
+    if (sorted ? sorted.every(key => this.isHydrated(namespace, key)) : this.loaded.has(fullKey(namespace, '*'))) return Promise.resolve()
+    const oldLoad = this.loads.get(loadId)
+    if (oldLoad) return oldLoad
+    const startChange = this.changeSequence
+    const attempt = (async () => {
+      const api = this.getAPI()
+      if (!api) return // non-Electron unit consumers have no durable backing
+      await this.migrate()
+      const result = await api.load({ namespace, keys: sorted })
+      for (const record of result.records) {
+        const id = fullKey(namespace, record.key)
+        if ((this.localChanges.get(id) ?? 0) > startChange || this.dirty.has(id)) continue
+        const current = this.records.get(id)
+        if (!current || record.recordRevision >= current.recordRevision) this.records.set(id, record)
+      }
+      for (const key of sorted ?? ['*']) this.loaded.add(fullKey(namespace, key))
+      this.lastError = null
+      this.notify()
+    })()
+    this.loads.set(loadId, attempt)
+    void attempt.then(() => this.loads.delete(loadId), error => { this.loads.delete(loadId); this.lastError = error instanceof Error ? error : new Error(String(error)); this.notify() })
+    return attempt
+  }
+  queueDirtyRecord<T>(namespace: DesktopStateNamespace, key: string, data: T, bindingRevision?: number): number {
+    const id = fullKey(namespace, key)
+    const change = ++this.changeSequence
+    const record: DesktopStateRecord<T> = { schemaVersion: 1, namespace, key, recordRevision: change, updatedAt: Date.now(), bindingRevision, data }
+    this.records.set(id, record)
+    this.localChanges.set(id, change)
+    this.dirty.set(id, { record, change })
+    this.notify()
+    this.schedule()
+    return change
+  }
+  deleteRecord(namespace: DesktopStateNamespace, key: string): void {
+    this.queueDirtyRecord(namespace, key, null)
+    const id = fullKey(namespace, key)
+    const pending = this.dirty.get(id)!
+    pending.record = { ...pending.record, deleted: true }
+    this.records.set(id, pending.record)
+    this.notify()
+  }
   clearLayoutsForProject(projectId: string): void {
-    const prefix = `${projectId}::`;
-    for (const key of Array.from(this.layoutMirror.keys())) {
-      if (key.startsWith(prefix)) {
-        this.layoutMirror.delete(key);
-        this.queueDirtyRecord('workbenchLayout', key, { layout: null, layoutResetKey: 0 });
+    for (const record of this.entries('workbenchLayout')) if (record.key.startsWith(`${projectId}::`)) this.deleteRecord('workbenchLayout', record.key)
+  }
+  private schedule(delay = 500): void {
+    if (this.timer || !this.getAPI()) return
+    // Fixed deadline from first dirty record; ongoing activity cannot postpone it.
+    this.timer = setTimeout(() => {
+      this.timer = null
+      void this.flush().catch(error => {
+        this.lastError = error instanceof Error ? error : new Error(String(error))
+        this.notify()
+        this.retryDelay = Math.min(this.retryDelay * 2, 30_000)
+        if (this.dirty.size) this.schedule(this.retryDelay)
+      })
+    }, delay)
+  }
+  flush(): Promise<void> {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null }
+    if (this.flushing) return this.flushing
+    const attempt = this.drain()
+    this.flushing = attempt
+    void attempt.then(() => { if (this.flushing === attempt) this.flushing = null }, () => { if (this.flushing === attempt) this.flushing = null })
+    return attempt
+  }
+  private async drain(): Promise<void> {
+    const api = this.getAPI()
+    if (!api) { if (this.dirty.size) throw new Error('Desktop persistence transport unavailable'); return }
+    let watermark: number | undefined
+    do {
+      while (this.dirty.size) {
+        const batch = [...this.dirty.entries()].slice(0, 16)
+        const result = await api.commit({ records: batch.map(([, value]) => value.record) })
+        if (result.status !== 'committed') throw new Error(result.errorMessage ?? 'Desktop state was not committed')
+        watermark = result.watermark
+        for (const [id, value] of batch) if (this.dirty.get(id)?.change === value.change) this.dirty.delete(id)
+        if (this.dirty.size) await yieldTask()
       }
-    }
-  }
-
-  peekModel(scopeKey: string): unknown | null {
-    return this.modelMirror.get(scopeKey) ?? null;
-  }
-
-  setModelInMemory(scopeKey: string, model: unknown): void {
-    this.modelMirror.set(scopeKey, model);
-  }
-
-  peekQuery(key: string): unknown | null {
-    return this.queryCacheMirror.get(key) ?? null;
-  }
-
-  setQueryInMemory(key: string, data: unknown): void {
-    this.queryCacheMirror.set(key, data);
-  }
-
-  // --- 2. Asynchronous Hydration (Section 10.5) ---
-  async hydrateNamespace(namespace: DesktopStateNamespace, keys?: string[]): Promise<void> {
-    const api = typeof window !== 'undefined' ? window.electronAPI?.desktopPersistence : undefined;
-    if (!api) return;
-
-    try {
-      const result = await api.load({ namespace, keys });
-      for (const rec of result.records) {
-        this.keyRevisions.set(`${rec.namespace}::${rec.key}`, rec.recordRevision);
-        if (rec.namespace === 'workbenchLayout') {
-          const data = rec.data as LayoutRecordData;
-          this.layoutMirror.set(rec.key, data);
-        } else if (rec.namespace === 'workbenchModel') {
-          this.modelMirror.set(rec.key, rec.data);
-        } else if (rec.namespace === 'queryCache') {
-          this.queryCacheMirror.set(rec.key, rec.data);
-        } else if (rec.namespace === 'lastWorkbenchRoute') {
-          this.routeMirror.set(rec.key, String(rec.data));
-        }
-      }
-    } catch (err) {
-      console.warn(`[DesktopPersistenceClient] Hydration failed for ${namespace}:`, err);
-    }
-  }
-
-  // --- 3. Queue dirty changes (Section 10.3) ---
-  queueDirtyRecord<T>(
-    namespace: DesktopStateNamespace,
-    key: string,
-    data: T,
-    bindingRevision?: number
-  ): void {
-    const fullKey = `${namespace}::${key}`;
-    const nextRevision = (this.keyRevisions.get(fullKey) ?? 0) + 1;
-    this.keyRevisions.set(fullKey, nextRevision);
-
-    const record: DesktopStateRecord<T> = {
-      schemaVersion: 1,
-      namespace,
-      key,
-      recordRevision: nextRevision,
-      updatedAt: Date.now(),
-      bindingRevision,
-      data,
-    };
-
-    // Update in-memory mirror immediately
-    if (namespace === 'workbenchLayout') {
-      this.layoutMirror.set(key, data as unknown as LayoutRecordData);
-    } else if (namespace === 'workbenchModel') {
-      this.modelMirror.set(key, data);
-    } else if (namespace === 'queryCache') {
-      this.queryCacheMirror.set(key, data);
-    }
-
-    this.dirtyRecords.set(fullKey, record as DesktopStateRecord);
-    navigationMetrics.increment('dirtyRecordCount');
-
-    if (this.oldestDirtyAt === 0) {
-      this.oldestDirtyAt = Date.now();
-    }
-
-    this.scheduleFlush();
-  }
-
-  private scheduleFlush(): void {
-    if (this.debounceTimer) {
-      const age = Date.now() - this.oldestDirtyAt;
-      if (age < this.MAX_DIRTY_AGE_MS) {
-        return; // debounce window active
-      }
-      // Force flush if oldest dirty exceeds 2s
-      clearTimeout(this.debounceTimer);
-    }
-
-    this.debounceTimer = setTimeout(() => {
-      this.debounceTimer = null;
-      void this.flush();
-    }, this.DEBOUNCE_MS);
-  }
-
-  async flush(targetRevision?: number): Promise<void> {
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-    this.oldestDirtyAt = 0;
-
-    const api = typeof window !== 'undefined' ? window.electronAPI?.desktopPersistence : undefined;
-    if (!api) return;
-
-    if (this.dirtyRecords.size === 0) {
-      await api.flush({ targetRevision }).catch(() => {});
-      return;
-    }
-
-    if (this.isFlushing) return;
-    this.isFlushing = true;
-
-    try {
-      const recordsToCommit = Array.from(this.dirtyRecords.values());
-      const startTime = performance.now();
-
-      const result = await api.commit({ records: recordsToCommit });
-
-      const duration = performance.now() - startTime;
-      navigationMetrics.increment('rendererDispatchMs', duration);
-
-      if (result.status === 'committed') {
-        for (const rec of recordsToCommit) {
-          const fullKey = `${rec.namespace}::${rec.key}`;
-          // Only remove if not dirtied again with a newer revision while awaiting commit
-          const currentQueued = this.dirtyRecords.get(fullKey);
-          if (currentQueued && currentQueued.recordRevision <= rec.recordRevision) {
-            this.dirtyRecords.delete(fullKey);
-          }
-        }
-      }
-
-      await api.flush({ targetRevision });
-    } catch (err) {
-      console.warn('[DesktopPersistenceClient] Commit/flush failed:', err);
-      navigationMetrics.increment('persistenceFailures');
-    } finally {
-      this.isFlushing = false;
-    }
+      const result = await api.flush({ targetRevision: watermark })
+      if (result.status !== 'flushed') throw new Error(result.errorMessage ?? 'Desktop state flush failed')
+      // Writes queued while the barrier was pending belong to this same flush.
+    } while (this.dirty.size)
+    this.retryDelay = 500
+    this.lastError = null
+    this.notify()
   }
 }
-
-export const desktopPersistenceClient = new DesktopPersistenceClient();
+export const desktopPersistenceClient = new DesktopPersistenceClient()
