@@ -1,11 +1,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   ComputerUseRuntimeService,
   __computerUseRuntimeTesting,
 } from '../../apps/desktop/electron/services/ComputerUseRuntimeService'
+
+// Policy tests exercise the host service, not the Electron executable.
+vi.mock('electron', () => ({ app: { getPath: () => '/tmp', isPackaged: false } }))
 
 const repositoryRoot: string = process.cwd()
 const read = (relativePath: string): string =>

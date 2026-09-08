@@ -2,6 +2,7 @@
   "extends": "./apps/desktop/tsconfig.app.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tests.tsbuildinfo",
+    "baseUrl": "./apps/desktop",
     "types": ["vite/client", "node"]
   },
   /*

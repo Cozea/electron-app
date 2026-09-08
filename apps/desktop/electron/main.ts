@@ -1837,6 +1837,13 @@ registerDesktopPersistenceHandlers(ipcMain, {
 
 registerWorkbenchSessionHandlers(ipcMain, {
   getMainWindow: () => win,
+  isTrustedURL: (url) => {
+    try {
+      const parsed = new URL(url)
+      if (VITE_DEV_SERVER_URL) return parsed.origin === new URL(VITE_DEV_SERVER_URL).origin
+      return parsed.protocol === 'file:' && fileURLToPath(parsed) === path.join(RENDERER_DIST, 'index.html')
+    } catch { return false }
+  },
   browserSurfaces: {
     hasSurfaceForWorkbenchSession: (sessionKey) =>
       t3BrowserSurfaceService?.hasSurfaceForWorkbenchSession(sessionKey) ?? false,

@@ -20,11 +20,14 @@ import {
   type RefObject,
   type ReactNode,
   type SVGProps,
+  type SyntheticEvent,
 } from "react";
 import {
   LegendList,
+  type LegendListMetrics,
   type LegendListRef,
   type LegendListRenderItemProps,
+  type OnViewableItemsChangedInfo,
 } from "@legendapp/list/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -194,10 +197,12 @@ interface MessagesTimelineProps {
   onOpenArtifact?: (artifactId: string) => void;
 }
 
+const LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY = "cozea:legend-list-agent-timeline:debug";
 const LEGEND_LIST_AGENT_TIMELINE_RECYCLE_KEY = "cozea:legend-list-agent-timeline:recycle";
 const LEGEND_LIST_DRAW_DISTANCE_PX = 1_200;
 const LEGEND_LIST_DEFAULT_HEIGHT_PX = 640;
 const LEGEND_LIST_DEFAULT_WIDTH_PX = 720;
+const LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX = 48;
 const LEGEND_LIST_TAIL_PADDING_PX = 16;
 /** LegendList's `refScrollView` hands over an API object; dig out the scrolling element. */
 function resolveScrollViewElement(scrollView: unknown): HTMLElement | null {
@@ -220,6 +225,10 @@ function readLegendListBooleanPreference(key: string, fallback: boolean): boolea
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return fallback;
+}
+
+function shouldLogLegendListDiagnostics(): boolean {
+  return readLegendListBooleanPreference(LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY, false);
 }
 
 function shouldRecycleLegendListItems(): boolean {
@@ -628,6 +637,55 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
+  // LegendList types `onLoad` as an intersection with the DOM handler, so accept both shapes.
+  const onLegendListLoad = useCallback(
+    (info: { elapsedTimeInMs: number } | SyntheticEvent<HTMLDivElement>) => {
+      if (!shouldLogLegendListDiagnostics()) return;
+      if (!("elapsedTimeInMs" in info)) return;
+      console.info("[LegendList][AgentTimeline] load", {
+        elapsedTimeInMs: info.elapsedTimeInMs,
+      });
+    },
+    [],
+  );
+  const onLegendListMetricsChange = useCallback((metrics: LegendListMetrics) => {
+    if (!shouldLogLegendListDiagnostics()) return;
+    console.info("[LegendList][AgentTimeline] metrics", {
+      ...metrics,
+    });
+  }, []);
+  const onLegendListItemSizeChanged = useCallback(
+    (info: {
+      size: number;
+      previous: number;
+      index: number;
+      itemKey: string;
+      itemData: TimelineRow;
+    }) => {
+      if (!shouldLogLegendListDiagnostics()) return;
+      const delta = Math.abs(info.size - info.previous);
+      if (delta < LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX) return;
+      console.info("[LegendList][AgentTimeline] item-size", {
+        delta,
+        index: info.index,
+        itemKey: info.itemKey,
+        kind: info.itemData.kind,
+        previous: info.previous,
+        size: info.size,
+      });
+    },
+    [],
+  );
+  const onLegendListViewableItemsChanged = useCallback(
+    (info: OnViewableItemsChangedInfo<TimelineRow>) => {
+      if (!shouldLogLegendListDiagnostics()) return;
+      console.info("[LegendList][AgentTimeline] viewable", {
+        changed: info.changed.length,
+        viewable: info.viewableItems.length,
+      });
+    },
+    [],
+  );
   const onToggleAllDirectories = useCallback((turnId: TurnId) => {
     setAllDirectoriesExpandedByTurnId((current) => ({
       ...current,
@@ -870,7 +928,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             <p className="truncate text-xs font-medium text-foreground">
                               {annotation.comment || annotation.title}
                             </p>
-                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
                               {[
                                 annotation.targetSummary,
                                 annotation.styleChanges.length
@@ -930,7 +988,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
                     <div className="flex items-center justify-end gap-2 px-1 pt-0.5 text-xs text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
                       {row.message.createdAt ? (
-                        <span className="select-none text-xs tabular-nums">
+                        <span className="select-none text-[11px] tabular-nums">
                           {formatMessageRelativeTime(row.message.createdAt)}
                         </span>
                       ) : null}
@@ -1191,6 +1249,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             shouldRestorePosition: shouldRestoreVisiblePosition,
           }}
           recycleItems={recycleItems}
+          onEndReached={() => {
+            if (shouldLogLegendListDiagnostics()) {
+              console.info("[LegendList][AgentTimeline] end-reached");
+            }
+          }}
+          onEndReachedThreshold={0.2}
+          onItemSizeChanged={onLegendListItemSizeChanged}
+          onLoad={onLegendListLoad}
+          onMetricsChange={onLegendListMetricsChange}
+          onStartReached={() => {
+            if (shouldLogLegendListDiagnostics()) {
+              console.info("[LegendList][AgentTimeline] start-reached");
+            }
+          }}
+          onStartReachedThreshold={0.2}
+          onViewableItemsChanged={onLegendListViewableItemsChanged}
           className="app-scrollbar scroll-fade-y h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain [overflow-anchor:none] px-3 sm:px-5"
           contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
           contentContainerStyle={contentContainerStyle}
@@ -1878,7 +1952,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <p
             className={cn(
-              "truncate text-xs leading-5",
+              "truncate text-[11px] leading-5",
               workEntry.status === "failed" ? "text-destructive" : "text-muted-foreground/75",
               isCommand && "font-mono",
             )}
@@ -1902,7 +1976,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           {normalizedPresentation?.stat &&
           hasNonZeroStat(normalizedPresentation.stat) &&
           !isLive ? (
-            <span className="shrink-0 font-mono text-2xs tabular-nums">
+            <span className="shrink-0 font-mono text-[10px] tabular-nums">
               <DiffStatLabel
                 additions={normalizedPresentation.stat.additions}
                 deletions={normalizedPresentation.stat.deletions}
@@ -1928,7 +2002,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         {statusBadge ? (
           <span
             className={cn(
-              "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-2xs font-medium leading-none",
+              "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-[9px] font-medium leading-4",
               statusBadge.className,
             )}
           >
@@ -1948,7 +2022,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       ) : null}
       {expanded && expandedBody ? (
         <div className="mt-1 ml-7 border-l border-border/45 pl-3 pt-0.5">
-          <pre className="max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground/75 select-text">
+          <pre className="max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/75 select-text">
             {expandedBody}
           </pre>
         </div>
@@ -1970,7 +2044,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             const turnId = workEntry.turnId;
             const canOpenDiff = Boolean(onOpenTurnDiff && turnId);
             const chipClassName = cn(
-              "inline-flex max-w-48 items-center gap-1 rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-xs text-muted-foreground/75",
+              "inline-flex max-w-48 items-center gap-1 rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75",
               canOpenDiff &&
                 "cursor-pointer transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             );
@@ -2010,7 +2084,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             );
           })}
           {(workEntry.changedFiles?.length ?? 0) > CHANGED_FILES_PREVIEW_FILE_LIMIT && (
-            <span className="px-1 text-xs text-muted-foreground/55">
+            <span className="px-1 text-[10px] text-muted-foreground/55">
               +{(workEntry.changedFiles?.length ?? 0) - CHANGED_FILES_PREVIEW_FILE_LIMIT}
             </span>
           )}

@@ -27,23 +27,36 @@ interface ClientState {
   activeTarget: import('@shared/navigationRuntimeTypes').ResolvedWorkbenchIdentity | null;
   activeSessionKey: string | null;
   retainedSessionKeys: Set<string>;
+  pendingResults: Map<number, Promise<PresentationCommandResult>>;
 }
+
+type TargetValidator = (
+  target: import('@shared/navigationRuntimeTypes').ResolvedWorkbenchIdentity,
+) => Promise<boolean>;
 
 export class WorkbenchPresentationCoordinator {
   private static instance: WorkbenchPresentationCoordinator | null = null;
   private clients = new Map<number, ClientState>(); // webContentsId -> ClientState
   private sessionManager: WorkbenchSessionManager;
+  private targetValidator: TargetValidator;
 
-  private constructor(sessionManager: WorkbenchSessionManager) {
+  private constructor(sessionManager: WorkbenchSessionManager, targetValidator: TargetValidator) {
     this.sessionManager = sessionManager;
+    this.targetValidator = targetValidator;
   }
 
-  static getInstance(sessionManager?: WorkbenchSessionManager): WorkbenchPresentationCoordinator {
+  static getInstance(
+    sessionManager?: WorkbenchSessionManager,
+    targetValidator: TargetValidator = async () => true,
+  ): WorkbenchPresentationCoordinator {
     if (!WorkbenchPresentationCoordinator.instance) {
       if (!sessionManager) {
         throw new Error('WorkbenchPresentationCoordinator requires WorkbenchSessionManager on first initialization');
       }
-      WorkbenchPresentationCoordinator.instance = new WorkbenchPresentationCoordinator(sessionManager);
+      WorkbenchPresentationCoordinator.instance = new WorkbenchPresentationCoordinator(
+        sessionManager,
+        targetValidator,
+      );
     }
     return WorkbenchPresentationCoordinator.instance;
   }
@@ -59,6 +72,7 @@ export class WorkbenchPresentationCoordinator {
       activeTarget: null,
       activeSessionKey: null,
       retainedSessionKeys: new Set(),
+      pendingResults: new Map(),
     };
 
     this.clients.set(webContentsId, state);
@@ -88,7 +102,30 @@ export class WorkbenchPresentationCoordinator {
       } catch {}
     }
 
+    this.sessionManager.releasePresentationLeases(String(webContentsId));
+
     this.clients.delete(webContentsId);
+  }
+
+  private isCurrent(webContentsId: number, command: PresentationCommand): boolean {
+    const client = this.clients.get(webContentsId);
+    return Boolean(
+      client &&
+        client.clientEpoch === command.clientEpoch &&
+        client.highestSequence === command.sequence,
+    );
+  }
+
+  private updateRetainedLeases(webContentsId: number, command: PresentationCommand): void {
+    const client = this.clients.get(webContentsId);
+    if (!client) return;
+    const retainedSessionKeys = new Set<string>();
+    for (const retained of command.retained) {
+      const snapshot = this.sessionManager.getSession(retained);
+      if (snapshot) retainedSessionKeys.add(snapshot.sessionKey);
+    }
+    client.retainedSessionKeys = retainedSessionKeys;
+    this.sessionManager.setPresentationLeases(String(webContentsId), retainedSessionKeys);
   }
 
   async applyPresentationCommand(
@@ -118,10 +155,8 @@ export class WorkbenchPresentationCoordinator {
     if (command.sequence === client.highestSequence) {
       // Idempotent retry of identical command (M02)
       if (JSON.stringify(command) === JSON.stringify(client.lastCommandPayload)) {
-        return {
-          status: 'applied',
-          sequence: command.sequence,
-          sessionKey: client.activeSessionKey,
+        return client.pendingResults.get(command.sequence) ?? {
+          status: 'applied', sequence: command.sequence, sessionKey: client.activeSessionKey,
         };
       }
       // Conflicting equal-sequence payload -> reject (M03)
@@ -136,8 +171,27 @@ export class WorkbenchPresentationCoordinator {
     client.highestSequence = command.sequence;
     client.lastCommandPayload = command;
 
+    const result = this.executePresentationCommand(webContents.id, command);
+    client.pendingResults.set(command.sequence, result);
+    void result.finally(() => {
+      const currentClient = this.clients.get(webContents.id);
+      if (currentClient?.pendingResults.get(command.sequence) === result) {
+        currentClient.pendingResults.delete(command.sequence);
+      }
+    });
+    return result;
+  }
+
+  private async executePresentationCommand(
+    webContentsId: number,
+    command: PresentationCommand,
+  ): Promise<PresentationCommandResult> {
+    const client = this.clients.get(webContentsId);
+    if (!client) return { status: 'superseded', sequence: command.sequence };
+
     // 3. If target is null (navigating to an ordinary route or recovery view)
     if (command.target === null) {
+      this.updateRetainedLeases(webContentsId, command);
       if (client.activeSessionKey && client.activeTarget) {
         this.sessionManager.backgroundSession({
           sessionKey: client.activeSessionKey,
@@ -153,6 +207,33 @@ export class WorkbenchPresentationCoordinator {
     // 4. Concrete target resolution
     const target = command.target;
 
+    if (!(await this.targetValidator(target))) {
+      return {
+        status: 'invalidated',
+        sequence: command.sequence,
+        reason: 'Workspace binding is missing, stale, or no longer authoritative',
+      };
+    }
+    if (!this.isCurrent(webContentsId, command)) {
+      return { status: 'superseded', sequence: command.sequence };
+    }
+
+    if (
+      client.activeSessionKey &&
+      client.activeTarget &&
+      client.activeTarget.projectId === target.projectId &&
+      client.activeTarget.workspaceId === target.workspaceId &&
+      client.activeTarget.workspaceRevision === target.workspaceRevision &&
+      client.activeTarget.laneId === target.laneId
+    ) {
+      this.updateRetainedLeases(webContentsId, command);
+      return {
+        status: 'applied',
+        sequence: command.sequence,
+        sessionKey: client.activeSessionKey,
+      };
+    }
+
     // Await session preparation
     const sessionSnapshot = await this.sessionManager.ensureSession({
       projectId: target.projectId,
@@ -162,25 +243,24 @@ export class WorkbenchPresentationCoordinator {
 
     // CRITICAL: Post-await recheck of epoch and sequence (Section 9.3, M01)
     if (
-      this.clients.get(webContents.id)?.clientEpoch !== command.clientEpoch ||
-      this.clients.get(webContents.id)?.highestSequence !== command.sequence
+      !this.isCurrent(webContentsId, command)
     ) {
       return { status: 'superseded', sequence: command.sequence };
     }
 
     // Commit activation
-    await this.sessionManager.activateSession({
+    const activated = await this.sessionManager.activateSessionGuarded({
       sessionKey: sessionSnapshot.sessionKey,
       projectId: target.projectId,
       laneId: target.laneId,
       workspaceId: target.workspaceId,
-    });
+    }, () => this.isCurrent(webContentsId, command) && this.targetValidator(target));
 
-    // Post-await recheck
-    if (this.clients.get(webContents.id)?.highestSequence !== command.sequence) {
+    if (!activated || !this.isCurrent(webContentsId, command)) {
       return { status: 'superseded', sequence: command.sequence };
     }
 
+    this.updateRetainedLeases(webContentsId, command);
     client.activeSessionKey = sessionSnapshot.sessionKey;
     client.activeTarget = target;
 

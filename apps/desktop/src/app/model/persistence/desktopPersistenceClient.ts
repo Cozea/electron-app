@@ -42,7 +42,12 @@ export class DesktopPersistenceClient {
     return record && !record.deleted ? record.data as T : undefined
   }
   entries(namespace: DesktopStateNamespace): readonly DesktopStateRecord[] { return [...this.records.values()].filter(record => record.namespace === namespace && !record.deleted) }
-  peekLayout(key: string, reset: number): unknown | null { const data = this.peek<LayoutRecordData>('workbenchLayout', key); return data?.layoutResetKey === reset ? data.layout : null }
+  peekLayout(key: string, reset: number, bindingRevision?: number): unknown | null {
+    const record = this.records.get(fullKey('workbenchLayout', key))
+    if (!record || record.deleted || (bindingRevision && record.bindingRevision && record.bindingRevision !== bindingRevision)) return null
+    const data = record.data as LayoutRecordData
+    return data?.layoutResetKey === reset ? data.layout : null
+  }
   setLayoutInMemory(key: string, reset: number, layout: unknown): void { this.setInMemory('workbenchLayout', key, { layout, layoutResetKey: reset }) }
   peekModel(key: string): unknown | null { return this.peek('workbenchModel', key) ?? null }
   setModelInMemory(key: string, data: unknown): void { this.setInMemory('workbenchModel', key, data) }

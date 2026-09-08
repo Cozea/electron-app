@@ -1,5 +1,5 @@
-import { ProjectWorkbenchSurface } from '@/features/projects/pages/ProjectWorkbenchSurface'
-
 export function ProjectWorkbenchPage() {
-  return <ProjectWorkbenchSurface />
+  // The expensive workbench is owned by ProjectLayout so it survives child
+  // route changes. This route is intentionally only the router marker.
+  return null
 }

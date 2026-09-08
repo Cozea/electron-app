@@ -39,6 +39,9 @@ fn main() {
     let swift_package = repository_root.join("native/computer-use-bridge");
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH");
     let triple = swift_triple(&target_arch);
+    let configuration = if env::var("PROFILE").as_deref() == Ok("release") { "release" } else { "debug" };
+    println!("cargo:rerun-if-changed={}", repository_root.join("native/computer-use-runtime").display());
+    println!("cargo:rerun-if-changed={}", swift_package.join("Sources").display());
 
     println!("cargo:rerun-if-changed={}", swift_package.join("Package.swift").display());
     println!(
@@ -53,13 +56,13 @@ fn main() {
         "--package-path",
         swift_package.to_str().expect("swift package path"),
         "--configuration",
-        "release",
+        configuration,
         "--triple",
         triple,
         "--product",
         "CozeaComputerUseBridge",
     ]);
-    run(build, "Swift OpenComputerUseKit bridge build");
+    run(build, "Swift Cozea Computer Use bridge build");
 
     let mut bin_path = Command::new("/usr/bin/xcrun");
     bin_path.args([
@@ -68,7 +71,7 @@ fn main() {
         "--package-path",
         swift_package.to_str().expect("swift package path"),
         "--configuration",
-        "release",
+        configuration,
         "--triple",
         triple,
         "--show-bin-path",

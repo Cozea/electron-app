@@ -11,10 +11,12 @@ function read(relativePath: string): string {
 
 describe('desktop-first loading architecture', () => {
   it('does not reintroduce a nested visible workbench code-loading boundary', () => {
-    const source = read('apps/desktop/src/features/projects/pages/ProjectWorkbenchPage.tsx')
-    expect(source).not.toContain('lazy(')
-    expect(source).not.toContain('Loading workbench')
-    expect(source).toContain('<ProjectWorkbenchSurface />')
+    const page = read('apps/desktop/src/features/projects/pages/ProjectWorkbenchPage.tsx')
+    const layout = read('apps/desktop/src/features/projects/layouts/ProjectLayout.tsx')
+    expect(page).not.toContain('<ProjectWorkbenchSurface')
+    expect(page).not.toContain('Loading workbench')
+    expect(layout).toContain('<LazyProjectWorkbenchSurface')
+    expect(layout).toContain('hasVisitedWorkbench')
   })
 
   it('keeps heavyweight terminal and browser hosts behind demand-loading gates and prewarms restored needs', () => {

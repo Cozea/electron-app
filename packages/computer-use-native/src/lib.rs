@@ -1,117 +1,93 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::sync::{Mutex, OnceLock};
-
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 #[link(name = "CozeaComputerUseBridge")]
 extern "C" {
-    fn cozea_computer_use_call(
-        session_id: *const c_char,
-        tool: *const c_char,
-        arguments_json: *const c_char,
-    ) -> *mut c_char;
+    fn cozea_computer_use_abi_version() -> u32;
+    fn cozea_computer_use_configure(session: *const c_char, policy: *const c_char) -> bool;
+    fn cozea_computer_use_revoke_session(session: *const c_char);
+    fn cozea_computer_use_revoke_all();
+    fn cozea_computer_use_cancel_request(session: *const c_char, request: *const c_char);
+    fn cozea_computer_use_call(session: *const c_char, tool: *const c_char, arguments: *const c_char, context: *const c_char) -> *mut c_char;
     fn cozea_computer_use_list_tools() -> *mut c_char;
-    fn cozea_computer_use_turn_ended(session_id: *const c_char);
-    fn cozea_computer_use_reset_session(session_id: *const c_char);
+    fn cozea_computer_use_turn_ended(session: *const c_char);
+    fn cozea_computer_use_reset_session(session: *const c_char);
     fn cozea_computer_use_reset_all();
     fn cozea_computer_use_diagnostics() -> *mut c_char;
     fn cozea_computer_use_request_permission(target: *const c_char) -> bool;
     fn cozea_computer_use_free(pointer: *mut c_char);
 }
-
-fn operation_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+fn c_string(value: &str) -> Result<CString> {
+    CString::new(value).map_err(|_| Error::from_reason("Native argument contains an embedded NUL"))
 }
-
-fn lock_operations() -> Result<std::sync::MutexGuard<'static, ()>> {
-    operation_lock()
-        .lock()
-        .map_err(|_| Error::from_reason("Computer Use operation lock was poisoned"))
-}
-
-fn to_c_string(value: &str, label: &str) -> Result<CString> {
-    CString::new(value).map_err(|_| Error::from_reason(format!("{label} contains an embedded NUL byte")))
-}
-
-unsafe fn take_owned_string(pointer: *mut c_char) -> Result<String> {
-    if pointer.is_null() {
-        return Err(Error::from_reason("Computer Use native bridge returned a null response"));
-    }
-    let value = CStr::from_ptr(pointer).to_string_lossy().into_owned();
+unsafe fn take_string(pointer: *mut c_char) -> Result<String> {
+    if pointer.is_null() { return Err(Error::from_reason("Native bridge returned null")); }
+    let result = CStr::from_ptr(pointer).to_str().map(str::to_owned)
+        .map_err(|_| Error::from_reason("Native result is not UTF-8"));
     cozea_computer_use_free(pointer);
-    Ok(value)
+    result
 }
-
+fn join_error(error: tokio::task::JoinError) -> Error {
+    Error::from_reason(format!("Native Computer Use worker failed: {error}"))
+}
 #[napi]
-pub async fn call_tool(session_id: String, tool: String, arguments_json: String) -> Result<String> {
+pub fn abi_version() -> u32 { unsafe { cozea_computer_use_abi_version() } }
+
+// These functions are synchronous and nonblocking. Revocation must not queue
+// behind the worker that is currently awaiting visible cursor arrival.
+#[napi]
+pub fn configure_session(session: String, policy_json: String) -> Result<bool> {
+    let session = c_string(&session)?; let policy = c_string(&policy_json)?;
+    Ok(unsafe { cozea_computer_use_configure(session.as_ptr(), policy.as_ptr()) })
+}
+#[napi]
+pub fn revoke_session(session: String) -> Result<()> {
+    let session = c_string(&session)?;
+    unsafe { cozea_computer_use_revoke_session(session.as_ptr()) }; Ok(())
+}
+#[napi]
+pub fn revoke_all() { unsafe { cozea_computer_use_revoke_all() } }
+#[napi]
+pub fn cancel_request(session: String, request: String) -> Result<()> {
+    let session = c_string(&session)?; let request = c_string(&request)?;
+    unsafe { cozea_computer_use_cancel_request(session.as_ptr(), request.as_ptr()) }; Ok(())
+}
+#[napi]
+pub async fn call_tool(session: String, tool: String, arguments_json: String, context_json: String) -> Result<String> {
     tokio::task::spawn_blocking(move || {
-        let _guard = lock_operations()?;
-        let session_id = to_c_string(&session_id, "sessionId")?;
-        let tool = to_c_string(&tool, "tool")?;
-        let arguments_json = to_c_string(&arguments_json, "argumentsJson")?;
-        unsafe {
-            take_owned_string(cozea_computer_use_call(
-                session_id.as_ptr(),
-                tool.as_ptr(),
-                arguments_json.as_ptr(),
-            ))
-        }
-    })
-    .await
-    .map_err(|error| Error::from_reason(format!("Computer Use worker join failed: {error}")))?
+        let session = c_string(&session)?; let tool = c_string(&tool)?;
+        let arguments = c_string(&arguments_json)?; let context = c_string(&context_json)?;
+        unsafe { take_string(cozea_computer_use_call(session.as_ptr(), tool.as_ptr(), arguments.as_ptr(), context.as_ptr())) }
+    }).await.map_err(join_error)?
 }
-
 #[napi]
-pub fn list_tools() -> Result<String> {
-    let _guard = lock_operations()?;
-    unsafe { take_owned_string(cozea_computer_use_list_tools()) }
-}
-
+pub fn list_tools() -> Result<String> { unsafe { take_string(cozea_computer_use_list_tools()) } }
 #[napi]
-pub fn diagnostics() -> Result<String> {
-    unsafe { take_owned_string(cozea_computer_use_diagnostics()) }
+pub async fn diagnostics() -> Result<String> {
+    tokio::task::spawn_blocking(|| unsafe { take_string(cozea_computer_use_diagnostics()) }).await.map_err(join_error)?
 }
-
 #[napi]
 pub fn request_permission(target: String) -> Result<bool> {
-    let target = to_c_string(&target, "permission target")?;
+    let target = c_string(&target)?;
     Ok(unsafe { cozea_computer_use_request_permission(target.as_ptr()) })
 }
-
 #[napi]
-pub async fn turn_ended(session_id: String) -> Result<()> {
+pub async fn turn_ended(session: String) -> Result<()> {
     tokio::task::spawn_blocking(move || {
-        let _guard = lock_operations()?;
-        let session_id = to_c_string(&session_id, "sessionId")?;
-        unsafe { cozea_computer_use_turn_ended(session_id.as_ptr()) };
-        Ok(())
-    })
-    .await
-    .map_err(|error| Error::from_reason(format!("Computer Use worker join failed: {error}")))?
+        let session = c_string(&session)?;
+        unsafe { cozea_computer_use_turn_ended(session.as_ptr()) }; Ok(())
+    }).await.map_err(join_error)?
 }
-
 #[napi]
-pub async fn reset_session(session_id: String) -> Result<()> {
+pub async fn reset_session(session: String) -> Result<()> {
     tokio::task::spawn_blocking(move || {
-        let _guard = lock_operations()?;
-        let session_id = to_c_string(&session_id, "sessionId")?;
-        unsafe { cozea_computer_use_reset_session(session_id.as_ptr()) };
-        Ok(())
-    })
-    .await
-    .map_err(|error| Error::from_reason(format!("Computer Use worker join failed: {error}")))?
+        let session = c_string(&session)?;
+        unsafe { cozea_computer_use_reset_session(session.as_ptr()) }; Ok(())
+    }).await.map_err(join_error)?
 }
-
 #[napi]
 pub async fn reset_all() -> Result<()> {
-    tokio::task::spawn_blocking(move || {
-        let _guard = lock_operations()?;
-        unsafe { cozea_computer_use_reset_all() };
-        Ok(())
-    })
-    .await
-    .map_err(|error| Error::from_reason(format!("Computer Use worker join failed: {error}")))?
+    tokio::task::spawn_blocking(|| { unsafe { cozea_computer_use_reset_all() }; Ok(()) }).await.map_err(join_error)?
 }

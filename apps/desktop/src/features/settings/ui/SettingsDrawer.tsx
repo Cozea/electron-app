@@ -21,6 +21,7 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'
 import { useTranslation } from '@/lib/i18n'
+import { LocalNavigationReady } from '@/lib/performance/localNavigation'
 
 const Account = lazy(() => settingsModules.account().then((m) => ({ default: m.Account })))
 const Appearance = lazy(() => settingsModules.appearance().then((m) => ({ default: m.Appearance })))
@@ -151,6 +152,7 @@ export function SettingsDrawer() {
                 <div className={cn("h-full overflow-y-auto scrollbar-hide", key !== 'devapps' && "scroll-fade-y")}>
                   <Suspense fallback={<div className="p-8 text-sm text-muted-foreground" role="status">Opening settings…</div>}>
                     <SettingsDrawerBody section={key as SettingsDrawerSection} route={savedRoute} />
+                    <LocalNavigationReady destination={key} />
                   </Suspense>
                 </div>
               </Activity>

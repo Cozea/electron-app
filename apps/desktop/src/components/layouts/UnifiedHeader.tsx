@@ -109,14 +109,14 @@ export function UnifiedHeader({
     <div className="flex min-w-0 items-center gap-1.5">
       {(() => {
         const parts: ReactNode[] = [];
-        if (projectInviteContext.projectId) {
-          parts.push(
-            <HeaderProjectChangesButton key="changes" projectId={projectInviteContext.projectId} />,
-          );
-        }
         if (editorProjectPath) {
           parts.push(
             <WorkbenchHeaderEditorControl key="open-in-editor" workspaceId={editorProjectPath} />,
+          );
+        }
+        if (projectInviteContext.projectId) {
+          parts.push(
+            <HeaderProjectChangesButton key="changes" projectId={projectInviteContext.projectId} />,
           );
         }
         if (!hideShare) {

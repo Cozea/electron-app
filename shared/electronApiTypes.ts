@@ -68,6 +68,9 @@ export interface AppSettings {
 }
 
 export interface ComputerUseDiagnostics {
+  supported?: boolean
+  abiVersion?: number
+  sky?: { available: boolean; missingSymbols?: string[]; osVersion?: string }
   installed: boolean
   version?: string
   path?: string
@@ -1955,18 +1958,6 @@ export interface ElectronAPI {
       laneId: string
       workspaceId?: string | null
     }) => Promise<WorkbenchSessionSnapshot>
-    activateSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      workspaceId?: string | null
-    }) => Promise<WorkbenchSessionSnapshot>
-    backgroundSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      mode?: Exclude<WorkbenchSessionLifecycle, 'active' | 'closed'>
-    }) => Promise<WorkbenchSessionSnapshot | null>
     closeSession: (options: {
       sessionKey?: string | null
       projectId: string
@@ -1977,6 +1968,7 @@ export interface ElectronAPI {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
     }) => Promise<WorkbenchSessionSnapshot | null>
     listSessions: () => Promise<WorkbenchSessionSnapshot[]>
     setPinned: (options: {

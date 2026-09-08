@@ -333,6 +333,9 @@ export default defineConfig({
     },
   },
   renderer: {
+    define: {
+      __COZEA_NAVIGATION_TEST__: JSON.stringify(process.env.COZEA_NAVIGATION_TEST === '1'),
+    },
     root: '.',
     envDir: repoRoot,
     plugins: [

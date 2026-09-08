@@ -66,7 +66,7 @@ export function WorkbenchHeaderBranchControl({
           variant="ghost"
           size="sm"
           className={cn(
-            "h-7 gap-1 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60",
+            "h-6 gap-0.5 rounded-md border-0 bg-transparent px-1.5 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/60",
             triggerClassName,
           )}
           disabled={!branchCwd}

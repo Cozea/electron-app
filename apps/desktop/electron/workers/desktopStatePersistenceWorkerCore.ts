@@ -130,13 +130,14 @@ export class DesktopStatePersistenceWorkerCore {
   }
   async flush(_targetRevision?: number): Promise<PersistenceFlushResult> {
     await this.ready
-    while (this.writes.size) await Promise.allSettled([...this.writes])
+    while (this.writes.size) await Promise.allSettled(this.writes)
     if (this.failedKeys.size) return { status: 'error', flushedRevision: this.completedOperations, errorMessage: [...this.failedKeys.values()].join('; ') }
     return { status: 'flushed', flushedRevision: this.completedOperations }
   }
-  migrateLegacyDomain(domain: string, rawPayload: string): Promise<LegacyMigrationResult> {
-    if (!isLegacyDesktopDomain(domain)) return Promise.reject(new Error('Unsupported legacy migration domain'))
-    if (typeof rawPayload !== 'string' || Buffer.byteLength(rawPayload) > MAX_MIGRATION_BYTES) return Promise.reject(new Error('Legacy payload exceeds limit'))
+  async migrateLegacyDomain(domain: string, rawPayload: string): Promise<LegacyMigrationResult> {
+    await this.ready
+    if (!isLegacyDesktopDomain(domain)) throw new Error('Unsupported legacy migration domain')
+    if (typeof rawPayload !== 'string' || Buffer.byteLength(rawPayload) > MAX_MIGRATION_BYTES) throw new Error('Legacy payload exceeds limit')
     const pending = this.migrations.get(domain)
     if (pending) return pending
     const task = this.importLegacy(domain, rawPayload)

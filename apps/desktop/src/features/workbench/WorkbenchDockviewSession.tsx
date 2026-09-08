@@ -52,6 +52,7 @@ export function WorkbenchDockviewSession({
     const pathAwareLayout = peekPersistedWorkbenchLayout(
       workbenchScopeKey,
       projectWorkbench.layoutResetKey,
+      session.workspaceRevision,
     )
     if (
       pathAwareLayout ||
@@ -64,8 +65,9 @@ export function WorkbenchDockviewSession({
     return peekPersistedWorkbenchLayout(
       legacyWorkbenchScopeKey,
       projectWorkbench.layoutResetKey,
+      session.workspaceRevision,
     )
-  }, [isLayoutPersistenceReady, legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey])
+  }, [isLayoutPersistenceReady, legacyWorkbenchScopeKey, projectWorkbench, session.workspaceRevision, workbenchScopeKey])
 
   const {
     dockviewHostRef,
@@ -79,6 +81,7 @@ export function WorkbenchDockviewSession({
     projectId: session.projectId,
     activeLaneId: session.activeLaneId,
     workspaceId: session.workspaceId,
+    workspaceRevision: session.workspaceRevision,
     workbenchSessionKey: session.workbenchSessionKey,
     projectWorkbench,
     workbenchScopeKey,

@@ -132,7 +132,7 @@ function DialogTitle({
   return (
     <BaseDialog.Title
       data-slot="dialog-title"
-      className={cn("font-heading font-semibold text-lg leading-snug tracking-tight", className)}
+      className={cn("font-heading font-semibold text-xl leading-none", className)}
       {...props}
     />
   )
@@ -145,7 +145,7 @@ function DialogDescription({
   return (
     <BaseDialog.Description
       data-slot="dialog-description"
-      className={cn("text-muted-foreground text-xs leading-relaxed", className)}
+      className={cn("text-muted-foreground text-sm", className)}
       {...props}
     />
   )

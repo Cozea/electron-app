@@ -514,7 +514,7 @@ export function AppStorePage() {
                   aria-pressed={isActive}
                   onClick={() => setParam("scope", tab === "builtin" ? null : tab)}
                   className={cn(
-                    "cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors inline-flex items-center gap-1.5",
+                    "cursor-pointer rounded-full px-3 py-1 text-[11px] font-medium transition-colors inline-flex items-center gap-1.5",
                     isActive
                       ? "bg-secondary text-foreground shadow-xs"
                       : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

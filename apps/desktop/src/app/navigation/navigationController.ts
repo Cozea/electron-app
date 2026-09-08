@@ -6,6 +6,7 @@
 import type {
   ResolvedWorkbenchIdentity,
   PresentationCommand,
+  PresentationCommandResult,
 } from '@shared/navigationRuntimeTypes';
 import { navigationMetrics } from '@/lib/performance/navigationMetrics';
 
@@ -13,37 +14,46 @@ class NavigationController {
   private commandSequence = 0;
   private clientEpoch: string | null = null;
   private isRegistered = false;
+  private registration: Promise<void> | null = null;
 
   async init(): Promise<void> {
     if (this.isRegistered || typeof window === 'undefined') return;
+    if (this.registration) return this.registration;
     const api = window.electronAPI?.workbenchSession;
     if (!api?.registerPresentationClient) return;
 
-    try {
-      const reg = await api.registerPresentationClient();
+    const attempt = api.registerPresentationClient().then((reg) => {
       this.clientEpoch = reg.clientEpoch;
       this.isRegistered = true;
-    } catch (err) {
-      console.warn('[NavigationController] Client registration failed:', err);
-    }
+    }).finally(() => {
+      if (this.registration === attempt) this.registration = null;
+    });
+    this.registration = attempt;
+    return attempt;
   }
 
   async setPresentation(
     target: ResolvedWorkbenchIdentity | null,
     retained: readonly ResolvedWorkbenchIdentity[] = []
-  ): Promise<void> {
-    await this.init();
-    if (!this.clientEpoch) return;
+  ): Promise<PresentationCommandResult | null> {
+    // Reserve ordering before registration awaits so overlapping cleanup and
+    // activation calls retain renderer intent order.
+    const sequence = ++this.commandSequence;
+    try {
+      await this.init();
+    } catch (err) {
+      console.warn('[NavigationController] Client registration failed:', err);
+      return null;
+    }
+    if (!this.clientEpoch) return null;
 
     const api = window.electronAPI?.workbenchSession;
-    if (!api?.setPresentation) return;
+    if (!api?.setPresentation) return null;
 
     const navId = navigationMetrics.nextNavigationId();
-    this.commandSequence++;
-
     const command: PresentationCommand = {
       clientEpoch: this.clientEpoch,
-      sequence: this.commandSequence,
+      sequence,
       navigationId: navId,
       target,
       retained,
@@ -58,8 +68,10 @@ class NavigationController {
       } else if (result.status === 'superseded') {
         navigationMetrics.increment('presentationSuperseded');
       }
+      return result;
     } catch (err) {
       console.warn('[NavigationController] setPresentation failed:', err);
+      return null;
     }
   }
 }

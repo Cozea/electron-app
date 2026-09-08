@@ -67,7 +67,6 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   isStreaming?: boolean
-  className?: string
   /** Timeline assistant bubbles: match workbench sidebar body (`text-xs`). */
   variant?: "default" | "timeline"
 }
@@ -271,7 +270,7 @@ function ViewportCodeHighlighter({
   );
 }
 
-function ChatMarkdown({ text, cwd, isStreaming = false, className }: ChatMarkdownProps) {
+function ChatMarkdown({ text, cwd, isStreaming = false, variant = "default" }: ChatMarkdownProps) {
   const { theme } = useTheme();
   const appliedTheme = resolveAppliedTheme(theme);
   const diffThemeName = resolveDiffThemeName(appliedTheme === "light" ? "light" : "dark");
@@ -373,8 +372,8 @@ function ChatMarkdown({ text, cwd, isStreaming = false, className }: ChatMarkdow
   return (
     <div
       className={cn(
-        "chat-markdown w-full min-w-0 text-foreground/80 text-sm leading-relaxed",
-        className,
+        "chat-markdown w-full min-w-0 text-foreground/80",
+        variant === "timeline" ? "text-xs leading-normal" : "text-sm leading-relaxed",
       )}
     >
       <ReactMarkdown

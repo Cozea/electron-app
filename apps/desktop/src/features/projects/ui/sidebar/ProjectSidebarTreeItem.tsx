@@ -401,7 +401,7 @@ export const ProjectSidebarTreeItem = React.memo(
           <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
             <button
               type="button"
-              className="group flex min-h-7 min-w-0 max-w-full shrink cursor-pointer items-center gap-2 text-left text-sm font-medium text-sidebar-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
+              className="group flex min-h-7 min-w-0 max-w-full shrink cursor-pointer items-center gap-2 text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
               onClick={handleProjectOpenClick}
               aria-label={`Open ${project.name}`}
             >

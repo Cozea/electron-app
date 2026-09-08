@@ -302,7 +302,7 @@ export function AgentSkillCategoryCarousel({
                   }}
                   onClick={() => scrollToIndex(index)}
                   className={cn(
-                    "relative z-10 shrink-0 cursor-pointer whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                    "relative z-10 shrink-0 cursor-pointer whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
                     isActive
                       ? "text-foreground"
                       : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

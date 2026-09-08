@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react"
 
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { ResolvedWorkbenchIdentity } from "@shared/navigationRuntimeTypes"
+import { navigationController } from "@/app/navigation/navigationController"
 
 interface UseWorkbenchSessionLifecycleArgs {
   projectId: string | null
   laneId: string | null
   workspaceId: string | null
+  workspaceRevision: number | null
+  retained?: readonly ResolvedWorkbenchIdentity[]
   backgroundMode?: "backgroundWarm" | "backgroundFrozen"
   enabled?: boolean
 }
+
+const EMPTY_RETAINED_IDENTITIES: readonly ResolvedWorkbenchIdentity[] = []
 
 /**
  * Compares everything consumers actually render. The activity timestamps
@@ -58,16 +64,21 @@ export function useWorkbenchSessionLifecycle({
   projectId,
   laneId,
   workspaceId,
+  workspaceRevision,
+  retained = EMPTY_RETAINED_IDENTITIES,
   backgroundMode = "backgroundWarm",
   enabled = true,
 }: UseWorkbenchSessionLifecycleArgs): WorkbenchSessionSnapshot | null {
   const [snapshot, setSnapshot] = useState<WorkbenchSessionSnapshot | null>(null)
   const activeSessionKeyRef = useRef<string | null>(null)
+  const retainedRef = useRef(retained)
+  retainedRef.current = retained
 
   useEffect(() => {
-    if (!enabled || !projectId || !laneId) {
+    if (!enabled || !projectId || !laneId || !workspaceId || !workspaceRevision) {
       activeSessionKeyRef.current = null
       setSnapshot(null)
+      void navigationController.setPresentation(null, retainedRef.current)
       return
     }
 
@@ -81,17 +92,20 @@ export function useWorkbenchSessionLifecycle({
       )
     }
 
-    void window.electronAPI.workbenchSession
-      .ensureSession({
-        projectId,
-        laneId,
-        workspaceId,
-      })
-      .then((nextSnapshot) => {
-        activeSessionKeyRef.current = nextSnapshot.sessionKey
-        applySnapshot(nextSnapshot)
-        return window.electronAPI.workbenchSession.activateSession({
-          sessionKey: nextSnapshot.sessionKey,
+    const identity: ResolvedWorkbenchIdentity = {
+      projectId,
+      laneId,
+      workspaceId,
+      workspaceRevision,
+    }
+
+    void navigationController
+      .setPresentation(identity, retainedRef.current)
+      .then((result) => {
+        if (cancelled || result?.status !== "applied" || !result.sessionKey) return null
+        activeSessionKeyRef.current = result.sessionKey
+        return window.electronAPI.workbenchSession.getSession({
+          sessionKey: result.sessionKey,
           projectId,
           laneId,
           workspaceId,
@@ -113,21 +127,11 @@ export function useWorkbenchSessionLifecycle({
       activeSessionKeyRef.current = null
       cancelled = true
       unsubscribe()
-      if (!sessionKey) {
-        return
-      }
-      void window.electronAPI.workbenchSession
-        .backgroundSession({
-          sessionKey,
-          projectId,
-          laneId,
-          mode: backgroundMode,
-        })
-        .catch((error) => {
-          console.warn("[WorkbenchSession] Failed to background session", error)
-        })
+      void sessionKey
+      void backgroundMode
+      void navigationController.setPresentation(null, retainedRef.current)
     }
-  }, [backgroundMode, enabled, laneId, projectId, workspaceId])
+  }, [backgroundMode, enabled, laneId, projectId, workspaceId, workspaceRevision])
 
   return snapshot
 }

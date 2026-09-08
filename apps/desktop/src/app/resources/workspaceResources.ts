@@ -40,6 +40,9 @@ export function getWorkspaceResolutionResource(
   const key = buildResourceKey('workspaceResolution', {
     projectId,
     preferredWorkspaceId: preferredWorkspaceId ?? null,
+    projectSlug: projectSlug ?? null,
+    expectedRepo: expectedRepo ?? null,
+    allowCandidateScan,
   });
 
   let resource = resolutionResources.get(key);
@@ -147,30 +150,24 @@ export function getProjectLaneResource(
       ttlMs: 5_000,
       fetcher: async () => {
         const storedSession = readScopedProjectBranchSession(projectId, normalizedWorkspaceId);
+        if (!normalizedWorkspaceId) return null;
         let activeBranch: string;
 
-        if (normalizedWorkspaceId) {
-          const gitRes = await getGitStatusResource(normalizedWorkspaceId).ensure('refresh');
-          const resolution = resolveLaneBranchKnowledge({
-            statusResult: gitRes,
-            storedBranch: storedSession?.activeBranch ?? null,
+        const gitRes = await getGitStatusResource(normalizedWorkspaceId).ensure('refresh');
+        const resolution = resolveLaneBranchKnowledge({
+          statusResult: gitRes,
+          storedBranch: storedSession?.activeBranch ?? null,
+          collabBranch: normalizedCollabBranch,
+        });
+        if (resolution.kind !== 'resolved') return null;
+        activeBranch = resolution.branch;
+        if (resolution.remember) {
+          rememberProjectBranchSession({
+            projectId,
+            branch: resolution.branch,
             collabBranch: normalizedCollabBranch,
+            workspaceId: normalizedWorkspaceId,
           });
-          if (resolution.kind === 'resolved') {
-            activeBranch = resolution.branch;
-            if (resolution.remember) {
-              rememberProjectBranchSession({
-                projectId,
-                branch: resolution.branch,
-                collabBranch: normalizedCollabBranch,
-                workspaceId: normalizedWorkspaceId,
-              });
-            }
-          } else {
-            activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch;
-          }
-        } else {
-          activeBranch = storedSession?.activeBranch ?? normalizedCollabBranch;
         }
 
         return buildProjectBranchLaneState({

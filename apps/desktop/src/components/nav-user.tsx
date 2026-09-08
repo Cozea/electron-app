@@ -110,11 +110,11 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
         >
           <Avatar className="size-5 shrink-0 rounded-[5px]">
             {avatarUrl ? <AvatarImage src={avatarUrl} alt={menuTitle} /> : null}
-            <AvatarFallback className="rounded-[5px] text-2xs font-bold leading-none">
+            <AvatarFallback className="rounded-[5px] text-[9px] font-bold">
               {initials(menuTitle)}
             </AvatarFallback>
           </Avatar>
-          <div className="flex min-w-0 flex-1 items-center text-left text-sm leading-none group-data-[collapsible=icon]:hidden">
+          <div className="flex min-w-0 flex-1 items-center text-left text-xs leading-none group-data-[collapsible=icon]:hidden">
             <span className="block w-full truncate font-normal leading-none text-sidebar-foreground">{menuTitle}</span>
           </div>
         </SidebarMenuButton>

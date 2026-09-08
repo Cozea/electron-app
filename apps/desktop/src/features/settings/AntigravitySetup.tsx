@@ -87,7 +87,7 @@ export function AntigravitySetup() {
       </details>
       <SettingsSectionTitle>Antigravity</SettingsSectionTitle>
       <SettingsSectionDescription>
-        Configure local accounts and provider instances.
+        Set up a local Google account. Each account has its own provider instance and conversations.
       </SettingsSectionDescription>
       <SettingsGroup>
         {!api?.providerSetup ? (

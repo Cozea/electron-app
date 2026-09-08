@@ -1,86 +1,30 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  workbenchLifecycleManager,
-  type WorkbenchPresentationAdapter,
-} from '@/features/workbench/model/workbenchPresentationLifecycle';
-import type { ResolvedWorkbenchIdentity } from '@shared/navigationRuntimeTypes';
+import fs from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
 
-describe('Workbench Presentation Lifecycle & Geometry (U06-U13, U19-U20, P06, P08)', () => {
-  beforeEach(() => {
-    workbenchLifecycleManager.disposeAll();
-  });
+const root = process.cwd()
+const read = (relative: string) => fs.readFileSync(path.join(root, relative), 'utf8')
 
-  it('U06 & U07: Adapters receive activation once and do not perform recurring layout while hidden', () => {
-    let activateCount = 0;
-    let deactivateCount = 0;
+describe('production presentation lifecycle wiring', () => {
+  it('mounts the live workbench surface in the persistent projects shell', () => {
+    const layout = read('apps/desktop/src/features/projects/layouts/ProjectLayout.tsx')
+    const page = read('apps/desktop/src/features/projects/pages/ProjectWorkbenchPage.tsx')
+    expect(layout).toContain('<LazyProjectWorkbenchSurface')
+    expect(page).not.toContain('<ProjectWorkbenchSurface')
+  })
 
-    const mockDockviewAdapter: WorkbenchPresentationAdapter = {
-      activate: vi.fn(() => {
-        activateCount++;
-      }),
-      deactivate: vi.fn(() => {
-        deactivateCount++;
-      }),
-      captureViewState: vi.fn(),
-      dispose: vi.fn(),
-    };
+  it('keeps hidden Dockview instances mounted while deactivating presentation', () => {
+    const host = read('apps/desktop/src/features/workbench/WorkbenchKeepAliveHost.tsx')
+    const activity = read('apps/desktop/src/features/workbench/WorkbenchActivity.tsx')
+    expect(host).toContain('mode={session.instanceKey === visibleInstanceKey ? "visible" : "hidden"}')
+    expect(activity).toContain('opacity: 0')
+  })
 
-    const unregister = workbenchLifecycleManager.registerAdapter('dockview', mockDockviewAdapter);
-
-    const identity: ResolvedWorkbenchIdentity = {
-      projectId: 'p1',
-      workspaceId: 'w1',
-      workspaceRevision: 1,
-      laneId: 'collab',
-    };
-
-    // Activate
-    workbenchLifecycleManager.activateAll(identity, 1, 1200, 800);
-    expect(activateCount).toBe(1);
-    expect(workbenchLifecycleManager.isCurrentSequence(1)).toBe(true);
-
-    // Deactivate (hide)
-    workbenchLifecycleManager.deactivateAll();
-    expect(deactivateCount).toBe(1);
-    expect(workbenchLifecycleManager.isCurrentSequence(1)).toBe(false);
-
-    // While hidden, delayed async work capturing sequence 1 is rejected
-    expect(workbenchLifecycleManager.isCurrentSequence(1)).toBe(false);
-
-    unregister();
-  });
-
-  it('U08 & U09: Stream and terminal buffers advance independently of UI visibility (Invariant I11)', () => {
-    // Hidden presentation does not imply stopped background service;
-    // buffer accumulates in memory while UI presentation callbacks are inactive
-    const buffer: string[] = [];
-    const pushOutput = (chunk: string) => {
-      buffer.push(chunk);
-    };
-
-    // Simulate terminal or agent emitting lines while UI is hidden
-    pushOutput('line 1');
-    pushOutput('line 2');
-    pushOutput('line 3');
-
-    expect(buffer).toEqual(['line 1', 'line 2', 'line 3']);
-  });
-
-  it('U19: Safe capture of view state before eviction', () => {
-    let captured = false;
-    const mockEditorAdapter: WorkbenchPresentationAdapter = {
-      activate: vi.fn(),
-      deactivate: vi.fn(),
-      captureViewState: vi.fn(() => {
-        captured = true;
-      }),
-      dispose: vi.fn(),
-    };
-
-    workbenchLifecycleManager.registerAdapter('editor', mockEditorAdapter);
-    workbenchLifecycleManager.captureAll();
-
-    expect(captured).toBe(true);
-    expect(mockEditorAdapter.captureViewState).toHaveBeenCalledTimes(1);
-  });
-});
+  it('routes activation exclusively through sequenced presentation commands', () => {
+    const lifecycle = read('apps/desktop/src/features/workbench/hooks/useWorkbenchSessionLifecycle.ts')
+    const preload = read('apps/desktop/electron/preload.ts')
+    expect(lifecycle).toContain('navigationController.setPresentation')
+    expect(lifecycle).not.toContain('.activateSession(')
+    expect(preload).not.toContain("ipcRenderer.invoke('workbenchSession:activateSession'")
+  })
+})

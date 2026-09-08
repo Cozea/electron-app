@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useParams } from "@/lib/router";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useQuery } from "convex/react";
@@ -48,6 +48,11 @@ const LazySettingsSidebar = lazy(() =>
 const LazyPresenceAvatarGroup = lazy(() =>
   import("@/components/presence/PresenceAvatarGroup").then((module) => ({
     default: module.PresenceAvatarGroup,
+  })),
+);
+const LazyProjectWorkbenchSurface = lazy(() =>
+  import("@/features/projects/pages/ProjectWorkbenchSurface").then((module) => ({
+    default: module.ProjectWorkbenchSurface,
   })),
 );
 
@@ -240,6 +245,12 @@ export function ProjectLayout({
   const runtimeWorkspaceId = activeWorkspaceId;
 
   const isWorkbenchView = pathname.endsWith("/workbench");
+  const [hasVisitedWorkbench, setHasVisitedWorkbench] = useState(isWorkbenchView);
+  useEffect(() => {
+    if (isWorkbenchView) {
+      setHasVisitedWorkbench(true);
+    }
+  }, [isWorkbenchView]);
   const isChangesView = pathname.endsWith("/changes");
   const isSettingsModeRoute =
     pathname.startsWith("/projects/settings/") ||
@@ -493,6 +504,16 @@ export function ProjectLayout({
                     : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
+                {hasVisitedWorkbench ? (
+                  <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
+                    <LazyProjectWorkbenchSurface
+                      visible={
+                        isWorkbenchView &&
+                        (!featureFlags.localWorkspaceCatalog || workspaceResolution?.status === "ready")
+                      }
+                    />
+                  </Suspense>
+                ) : null}
                 {featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
                   <WorkspaceRepairScreen
                     result={workspaceResolution}

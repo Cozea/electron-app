@@ -298,7 +298,7 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
   return (
     <div
       className={cn(
-        "cozea-workbench-tab flex h-full w-full min-w-0 max-w-full items-center gap-1.5 px-2 text-sm font-medium overflow-hidden",
+        "cozea-workbench-tab flex h-full w-full min-w-0 max-w-full items-center gap-1.5 px-2 text-[12px] overflow-hidden",
         active ? "text-foreground" : "text-muted-foreground",
       )}
       title={title}

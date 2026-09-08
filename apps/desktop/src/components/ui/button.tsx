@@ -29,10 +29,10 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-8 px-[calc(--spacing(3)-1px)]",
-        sm: "h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)] text-xs",
-        lg: "h-9 px-[calc(--spacing(3.5)-1px)] text-base",
+        sm: "h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)]",
+        lg: "h-9 px-[calc(--spacing(3.5)-1px)]",
         xl: "h-10 px-[calc(--spacing(4)-1px)] text-lg [&_svg:not([class*='size-'])]:size-4.5",
-        xs: "h-6 gap-1 rounded-md px-[calc(--spacing(2)-1px)] text-2xs leading-none before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
+        xs: "h-6 gap-1 rounded-md px-[calc(--spacing(2)-1px)] text-sm before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
         icon: "size-8",
         "icon-sm": "size-7",
         "icon-lg": "size-9",

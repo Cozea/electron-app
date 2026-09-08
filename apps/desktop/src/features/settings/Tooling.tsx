@@ -219,6 +219,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
     <SettingsPageBody surface={surface} className="space-y-6">
       <SettingsPageHeader
         title={t('settings.tooling.title')}
+        description={t('settings.tooling.description')}
       />
 
       {error && (
@@ -242,7 +243,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
               title={projectsDirectory ?? ''}
             >
               <HugeiconsIcon icon={__FolderHugeIcon} className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
-              <span className="min-w-0 flex-1 truncate text-left font-mono text-xs">
+              <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px]">
                 {projectsDirectory ?? t('settings.tooling.projectsDirectoryLoading')}
               </span>
             </Button>
@@ -378,7 +379,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                               <span className="truncate font-medium text-foreground">{RUNTIME_LABELS[runtime.runtime]}</span>
                             </div>
                             <span
-                              className="truncate font-mono text-xs text-muted-foreground"
+                              className="truncate font-mono text-[11px] text-muted-foreground"
                               title={runtime.executablePath || runtime.error || ''}
                             >
                               {runtime.executablePath || runtime.error || '—'}
