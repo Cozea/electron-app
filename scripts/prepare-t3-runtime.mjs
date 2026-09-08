@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { patchComputerUseContract } from "./patch-computer-use-contract.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const repositoryRoot = path.resolve(scriptDirectory, "..");
@@ -134,11 +135,16 @@ export function patchT3ServerBundleProviderUpdates(source) {
   return { source: patchedSource, changed };
 }
 
-export function patchT3ComputerUseSource() {
-  const sourcePath = path.join(serverRoot, "src", "mcp", "toolkits", "computerUse.ts");
-  if (!fs.existsSync(sourcePath)) return false;
-  let code = fs.readFileSync(sourcePath, "utf8");
-  if (!code.includes("Effect.catchAll")) return false;
+export function patchT3ComputerUseSource({
+  checkOnly = false,
+  sourcePath = path.join(serverRoot, "src", "mcp", "toolkits", "computerUse.ts"),
+} = {}) {
+  if (!fs.existsSync(sourcePath)) {
+    if (checkOnly) fail("Computer Use source is missing; prepare the pinned T3 checkout first.");
+    return false;
+  }
+  const originalCode = fs.readFileSync(sourcePath, "utf8");
+  let code = patchComputerUseContract(originalCode).source;
 
   if (!code.includes('import * as Cause')) {
     code = 'import * as Cause from "effect/Cause";\n' + code;
@@ -152,8 +158,10 @@ export function patchT3ComputerUseSource() {
     'Effect.catchCause((cause) => {\n                const error = Cause.squash(cause);\n                const message = error instanceof Error ? error.message : String(error);\n                return Effect.succeed(backendFailure(message || "Computer Use failed."));\n              })',
   );
 
+  if (code === originalCode) return false;
+  if (checkOnly) fail("Computer Use source is stale; run preparation without --check to apply the v2 contract.");
   fs.writeFileSync(sourcePath, code);
-  console.log("[prepare-t3-runtime] Patched Effect.catchCause into computerUse.ts source.");
+  console.log("[prepare-t3-runtime] Patched Cozea Computer Use v2 contract and Effect compatibility.");
   return true;
 }
 
@@ -195,7 +203,9 @@ function applyCozeaT3RuntimePatches({ checkOnly }) {
   const providerDefaults = patchT3ServerBundleProviderDefaults(source);
   const providerUpdates = patchT3ServerBundleProviderUpdates(providerDefaults.source);
   const mediaContainment = patchT3ServerBundleMediaContainment(providerUpdates.source);
-  const computerUse = patchT3ServerBundleComputerUse(mediaContainment.source);
+  const compatibility = patchT3ServerBundleComputerUse(mediaContainment.source);
+  const contract = patchComputerUseContract(compatibility.source);
+  const computerUse = { source: contract.source, changed: compatibility.changed || contract.changed };
   const changed =
     providerDefaults.changed ||
     providerUpdates.changed ||
@@ -538,7 +548,7 @@ export function main(argv = process.argv.slice(2)) {
 
   const expectedPin = expectedVendorPin();
   ensureVendorCheckout(expectedPin, options.checkOnly);
-  patchT3ComputerUseSource();
+  patchT3ComputerUseSource({ checkOnly: options.checkOnly });
   const sourceStamp = currentVendorSourceStamp(expectedPin);
   const pnpmVersion = readPnpmVersion();
   prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, options);

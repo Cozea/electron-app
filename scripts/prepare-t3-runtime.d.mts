@@ -18,7 +18,10 @@ export function patchT3ServerBundleMediaContainment(source: string): {
   source: string;
   changed: boolean;
 };
-export function patchT3ComputerUseSource(): boolean;
+export function patchT3ComputerUseSource(options?: {
+  checkOnly?: boolean;
+  sourcePath?: string;
+}): boolean;
 export function patchT3ServerBundleComputerUse(source: string): {
   source: string;
   changed: boolean;

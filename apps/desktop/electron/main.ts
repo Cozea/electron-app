@@ -6,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
-import { performance } from 'node:perf_hooks'
 
 import { autoUpdater } from 'electron-updater'
 import { Effect } from 'effect'
@@ -58,6 +57,7 @@ import { PublishedDevAppRuntimeService } from './services/PublishedDevAppRuntime
 import { PublishedDevAppApprovalService } from './services/PublishedDevAppApprovalService'
 import { PublishedDevAppFolderGrantService } from './services/PublishedDevAppFolderGrantService'
 import { getBundledRuntimePublicKeyPath, resolveUnpackagedBuildDir } from './runtime/runtimeManifest'
+import { registerDesktopPersistenceHandlers } from './ipc/registerDesktopPersistenceHandlers'
 import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSessionHandlers'
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
@@ -165,32 +165,18 @@ const DEV_SERVER_ORIGIN = (() => {
     return null
   }
 })()
-const MAIN_BOOT_STARTED_AT = performance.now()
-
-function shouldLogBootTimings(): boolean {
-  return !app.isPackaged || process.env.COZEA_BOOT_TIMINGS === '1'
-}
-
-function logBootTiming(label: string, startedAt = MAIN_BOOT_STARTED_AT): void {
-  if (!shouldLogBootTimings()) return
-  console.info('[BootTiming]', label, {
-    elapsedMs: Number((performance.now() - startedAt).toFixed(1)),
-  })
-}
 
 function scheduleBootWork(label: string, work: () => void | Promise<void>, delayMs = 0): void {
   setTimeout(() => {
-    const startedAt = performance.now()
     try {
       const result = work()
-      if (result && typeof (result as Promise<void>).finally === 'function') {
-        void (result as Promise<void>).finally(() => logBootTiming(label, startedAt))
-        return
+      if (result && typeof (result as Promise<void>).catch === 'function') {
+        void (result as Promise<void>).catch((error) => {
+          console.warn(`[Boot] ${label} failed`, error)
+        })
       }
-      logBootTiming(label, startedAt)
     } catch (error) {
       console.warn(`[Boot] ${label} failed`, error)
-      logBootTiming(`${label}:failed`, startedAt)
     }
   }, delayMs)
 }
@@ -1670,7 +1656,6 @@ function createWindow() {
     win?.show()
     win?.focus()
     emitFullScreenChange()
-    logBootTiming('main-window-ready-to-show')
   })
 
   // Re-theme the window backing on system theme change. The vibrancy window
@@ -1842,8 +1827,26 @@ registerDevAppAuthoringHandlers(ipcMain, {
   service: devAppAuthoringService,
 })
 
+registerDesktopPersistenceHandlers(ipcMain, {
+  getMainWindow: () => win,
+  isTrustedURL: (url) => {
+    try {
+      const parsed = new URL(url)
+      if (VITE_DEV_SERVER_URL) return parsed.origin === new URL(VITE_DEV_SERVER_URL).origin
+      return parsed.protocol === 'file:' && fileURLToPath(parsed) === path.join(RENDERER_DIST, 'index.html')
+    } catch { return false }
+  },
+})
+
 registerWorkbenchSessionHandlers(ipcMain, {
   getMainWindow: () => win,
+  isTrustedURL: (url) => {
+    try {
+      const parsed = new URL(url)
+      if (VITE_DEV_SERVER_URL) return parsed.origin === new URL(VITE_DEV_SERVER_URL).origin
+      return parsed.protocol === 'file:' && fileURLToPath(parsed) === path.join(RENDERER_DIST, 'index.html')
+    } catch { return false }
+  },
   browserSurfaces: {
     hasSurfaceForWorkbenchSession: (sessionKey) =>
       t3BrowserSurfaceService?.hasSurfaceForWorkbenchSession(sessionKey) ?? false,
@@ -1942,7 +1945,6 @@ app.on('web-contents-created', (_event, contents) => {
 })
 
 app.whenReady().then(() => {
-  logBootTiming('app-ready')
   /*
    * Seeding must wait for app-ready. AgentSkillService resolves its data root
    * from app.getPath('userData') once ready and falls back to a home directory
@@ -1972,7 +1974,6 @@ app.whenReady().then(() => {
   })
   refreshGpuDiagnostics()
   loadSyncState()
-  logBootTiming('sync-state-loaded')
 
   // Register workspace IPC handlers synchronously so they're available as soon
   // as the renderer loads. Internally each handler awaits catalog readiness.
@@ -1984,7 +1985,6 @@ app.whenReady().then(() => {
     async () => {
       await initWorkspaceCatalogRuntime(app.getPath('userData'))
       await syncProjectsDirectoryToWorkspaceCatalog()
-      logBootTiming('workspace-catalog-initialized')
     },
     0,
   )
@@ -1994,7 +1994,6 @@ app.whenReady().then(() => {
   canCreateMainWindow = true
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
-    logBootTiming('main-window-created')
   }
 
   registerSubstrateRemoteHandlers({ wslSettingsPath: resolveSubstrateWslSettingsPath() })

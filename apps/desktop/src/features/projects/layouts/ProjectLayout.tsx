@@ -40,10 +40,6 @@ import { buildBranchSessionLaneId } from "@/features/source-control/model/projec
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import { downloadAuthorizedProjectRepository } from "@/features/collaboration/api/downloadAuthorizedProjectRepository";
 import { ProjectCollaborationControl } from "@/features/collaboration/ProjectCollaborationControl";
-import {
-  ensureProjectSwitchStarted,
-  markProjectSwitchPhase,
-} from "@/lib/performance/projectSwitchMarks";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 
 const LazySettingsSidebar = lazy(() =>
@@ -54,6 +50,11 @@ const LazySettingsSidebar = lazy(() =>
 const LazyPresenceAvatarGroup = lazy(() =>
   import("@/components/presence/PresenceAvatarGroup").then((module) => ({
     default: module.PresenceAvatarGroup,
+  })),
+);
+const LazyProjectWorkbenchSurface = lazy(() =>
+  import("@/features/projects/pages/ProjectWorkbenchSurface").then((module) => ({
+    default: module.ProjectWorkbenchSurface,
   })),
 );
 
@@ -244,18 +245,43 @@ export function ProjectLayout({
     ? (workspaceResolution.lane.gitRootPath ?? workspaceResolution.workspace.gitRootPath)
     : null;
   const runtimeWorkspaceId = activeWorkspaceId;
-  const [activeCollaborationBinding, setActiveCollaborationBinding] = useState<import("@shared/collaborationDesktop").SessionWorkspaceBinding | null>(null);
+  const [activeCollaborationBinding, setActiveCollaborationBinding] = useState<
+    import("@shared/collaborationDesktop").SessionWorkspaceBinding | null
+  >(null);
   useEffect(() => {
     let alive = true;
-    if (!activeWorkspaceId) { setActiveCollaborationBinding(null); return; }
-    const refresh = () => void window.electronAPI.collaboration.bindingForWorkspace(activeWorkspaceId)
-      .then(binding => { if (alive) setActiveCollaborationBinding(binding && ["active", "joining"].includes(binding.state) ? binding : null); })
-      .catch(() => { if (alive) setActiveCollaborationBinding(null); });
-    refresh(); const unsubscribe = window.electronAPI.collaboration.runtime.onChanged(refresh);
-    return () => { alive = false; unsubscribe(); };
+    if (!activeWorkspaceId) {
+      setActiveCollaborationBinding(null);
+      return;
+    }
+    const refresh = () => {
+      void window.electronAPI.collaboration.bindingForWorkspace(activeWorkspaceId)
+        .then((binding) => {
+          if (alive) {
+            setActiveCollaborationBinding(
+              binding && ["active", "joining"].includes(binding.state) ? binding : null,
+            );
+          }
+        })
+        .catch(() => {
+          if (alive) setActiveCollaborationBinding(null);
+        });
+    };
+    refresh();
+    const unsubscribe = window.electronAPI.collaboration.runtime.onChanged(refresh);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
   }, [activeWorkspaceId]);
 
   const isWorkbenchView = pathname.endsWith("/workbench");
+  const [hasVisitedWorkbench, setHasVisitedWorkbench] = useState(isWorkbenchView);
+  useEffect(() => {
+    if (isWorkbenchView) {
+      setHasVisitedWorkbench(true);
+    }
+  }, [isWorkbenchView]);
   const isChangesView = pathname.endsWith("/changes");
   const isSettingsModeRoute =
     pathname.startsWith("/projects/settings/") ||
@@ -269,7 +295,6 @@ export function ProjectLayout({
     delayMs: 250,
     timeoutMs: 3_000,
   });
-  const projectSwitchKey = `${routeProjectId ?? routeSlug ?? "unknown"}:${runtimeWorkspaceId ?? "unbound"}`;
   const collabBranch = useMemo(
     () => resolveProjectSharedBranch(project),
     [project],
@@ -285,14 +310,25 @@ export function ProjectLayout({
     workspaceId: activeWorkspaceId,
     collabBranch,
   });
-  const sessionLane = useMemo(() => activeCollaborationBinding ? ({
-    id: `session:${activeCollaborationBinding.sessionId}`, name: "Live", branch: activeCollaborationBinding.sessionBranch,
-    workspaceId: activeCollaborationBinding.workspaceId, isCollab: true, createdAt: activeCollaborationBinding.joinedAt,
-    updatedAt: activeCollaborationBinding.joinedAt,
-  }) : null, [activeCollaborationBinding]);
+  const sessionLane = useMemo(() =>
+    activeCollaborationBinding
+      ? {
+          id: `session:${activeCollaborationBinding.sessionId}`,
+          name: "Live",
+          branch: activeCollaborationBinding.sessionBranch,
+          workspaceId: activeCollaborationBinding.workspaceId,
+          isCollab: true,
+          createdAt: activeCollaborationBinding.joinedAt,
+          updatedAt: activeCollaborationBinding.joinedAt,
+        }
+      : null,
+    [activeCollaborationBinding],
+  );
   const effectiveActiveLane = sessionLane ?? activeLane;
   const activeBranch = effectiveActiveLane?.branch ?? collabBranch;
-  const collaborationEnabled = Boolean(shouldEnableProjectRuntime && runtimeWorkspaceId && project?._id && activeCollaborationBinding);
+  const collaborationEnabled = Boolean(
+    shouldEnableProjectRuntime && runtimeWorkspaceId && project?._id && activeCollaborationBinding,
+  );
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;
@@ -302,40 +338,6 @@ export function ProjectLayout({
     if (!activeLane || activeLane.isCollab) return routeProjectIdentity;
     return `${routeProjectIdentity}:${buildBranchSessionLaneId(activeLane.branch, collabBranch)}`;
   }, [activeCollaborationBinding, activeLane, collabBranch, routeProjectIdentity]);
-
-  useEffect(() => {
-    ensureProjectSwitchStarted({
-      projectId: routeProjectId ?? null,
-      projectSlug: routeSlug ?? null,
-      hasWorkspace: Boolean(runtimeWorkspaceId),
-    });
-    markProjectSwitchPhase("navigate", {
-      projectId: routeProjectId ?? null,
-      projectSlug: routeSlug ?? null,
-    });
-  }, [projectSwitchKey, routeProjectId, routeSlug, runtimeWorkspaceId]);
-
-  useEffect(() => {
-    if (!project?._id) return
-    markProjectSwitchPhase("project-query", {
-      projectId: String(project._id),
-    });
-  }, [project?._id]);
-
-  useEffect(() => {
-    if (workspaceResolution?.status !== "ready") return
-    markProjectSwitchPhase("workspace-resolve", {
-      workspaceId: runtimeWorkspaceId,
-    });
-  }, [runtimeWorkspaceId, workspaceResolution?.status]);
-
-  useEffect(() => {
-    if (!laneState) return
-    markProjectSwitchPhase("lane-settle", {
-      laneId: laneState.activeLaneId,
-    });
-  }, [laneState]);
-
 
   const isBuildsView = useLocation({
     select: (location) =>
@@ -356,10 +358,19 @@ export function ProjectLayout({
   const presenceHeaderAddon = useMemo(
     () => (
       <div className="flex items-center gap-1">
-        <ProjectPresenceHeaderAddon projectId={presenceGateOpen ? project?._id ?? null : null}
-          principalId={presenceGateOpen ? principalId ?? null : null} isWorkbenchView={isWorkbenchView} projectBasePath={projectBasePath} />
-        {project?._id && activeWorkspaceId ? <ProjectCollaborationControl projectId={String(project._id)}
-          sourceWorkspaceId={activeCollaborationBinding?.sourceWorkspaceId ?? activeWorkspaceId} defaultBranch={collabBranch} /> : null}
+        <ProjectPresenceHeaderAddon
+          projectId={presenceGateOpen ? project?._id ?? null : null}
+          principalId={presenceGateOpen ? principalId ?? null : null}
+          isWorkbenchView={isWorkbenchView}
+          projectBasePath={projectBasePath}
+        />
+        {project?._id && activeWorkspaceId ? (
+          <ProjectCollaborationControl
+            projectId={String(project._id)}
+            sourceWorkspaceId={activeCollaborationBinding?.sourceWorkspaceId ?? activeWorkspaceId}
+            defaultBranch={collabBranch}
+          />
+        ) : null}
       </div>
     ),
     [
@@ -409,13 +420,17 @@ export function ProjectLayout({
       if (!workspaceProjectId) return;
       const projectId = workspaceProjectId;
       const slug = project?.slug ?? routeSlug ?? projectId;
-      const canonicalRepo = (project as {
-        repo?: { provider?: string | null; url?: string | null; defaultBranch?: string | null } | null
-        sourceControl?: { provider?: string | null; repoUrl?: string | null; defaultBranch?: string | null } | null
-      } | null | undefined)?.repo ?? null;
-      const repoUrl = canonicalRepo?.url?.trim() || ((project as { sourceControl?: { repoUrl?: string | null } | null } | null | undefined)?.sourceControl?.repoUrl ?? null);
-      const branch = canonicalRepo?.defaultBranch?.trim() || ((project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ?? undefined);
-      const githubAuthorized = canonicalRepo?.provider?.trim().toLowerCase() === "github";
+      const repoSource = (project as {
+        repoSource?: { provider?: string | null; repoUrl?: string | null; branch?: string | null } | null;
+      } | null | undefined)?.repoSource ?? null;
+      const sourceControl = (project as {
+        sourceControl?: { provider?: string | null; repoUrl?: string | null; defaultBranch?: string | null } | null;
+      } | null | undefined)?.sourceControl ?? null;
+      const repoUrl = repoSource?.repoUrl ?? sourceControl?.repoUrl ?? null;
+      const branch = repoSource?.branch ?? sourceControl?.defaultBranch ?? undefined;
+      const githubAuthorized =
+        repoSource?.provider?.trim().toLowerCase() === "github" ||
+        sourceControl?.provider?.trim().toLowerCase() === "github";
 
       try {
         switch (action.kind) {
@@ -519,7 +534,10 @@ export function ProjectLayout({
 
   const layoutContent = (
     <SidebarProvider>
-      <div className="h-screen w-screen bg-transparent flex flex-col overflow-hidden">
+      <div
+        className="h-screen w-screen bg-transparent flex flex-col overflow-hidden"
+        data-project-layout-shell="true"
+      >
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {/* Persistent shell: route-mode switches swap only the content. */}
@@ -554,6 +572,16 @@ export function ProjectLayout({
                     : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
+                {hasVisitedWorkbench ? (
+                  <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
+                    <LazyProjectWorkbenchSurface
+                      visible={
+                        isWorkbenchView &&
+                        (!featureFlags.localWorkspaceCatalog || workspaceResolution?.status === "ready")
+                      }
+                    />
+                  </Suspense>
+                ) : null}
                 {featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
                   <WorkspaceRepairScreen
                     result={workspaceResolution}
@@ -604,13 +632,13 @@ export function ProjectLayout({
       projectName: effectiveProjectName,
       collabBranch,
       laneState,
-      activeLane,
+      activeLane: effectiveActiveLane,
       collabLane,
       collaborationEnabled,
       refreshLaneState,
     }),
     [
-      activeLane,
+      effectiveActiveLane,
       collabBranch,
       collabLane,
       collaborationEnabled,

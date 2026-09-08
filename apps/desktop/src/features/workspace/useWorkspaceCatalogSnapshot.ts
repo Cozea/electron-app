@@ -19,6 +19,7 @@ let snapshot: WorkspaceCatalogSnapshot | null = null
 // fetch rejection).
 let listenerAttached = false
 let initialFetchDone = false
+let initialFetchPromise: Promise<void> | null = null
 const listeners = new Set<() => void>()
 
 function emit(): void {
@@ -38,7 +39,7 @@ function applySnapshot(next: WorkspaceCatalogSnapshot): void {
 }
 
 function ensureInitialized(): void {
-  if (initialFetchDone) return
+  if (initialFetchDone || initialFetchPromise) return
   const workspaceApi = typeof window !== "undefined" ? window.electronAPI?.workspace : undefined
   if (!workspaceApi?.getCatalogSnapshot || !workspaceApi.onCatalogSnapshotChanged) {
     return
@@ -53,7 +54,7 @@ function ensureInitialized(): void {
     })
   }
 
-  void workspaceApi
+  initialFetchPromise = workspaceApi
     .getCatalogSnapshot()
     .then((next) => {
       initialFetchDone = true
@@ -63,6 +64,9 @@ function ensureInitialized(): void {
       // Leave initialFetchDone false so a later subscribe retries the fetch —
       // but the listener stays attached, so no duplicate registration.
       console.warn("[WorkspaceCatalogSnapshot] initial fetch failed:", error)
+    })
+    .finally(() => {
+      initialFetchPromise = null
     })
 }
 

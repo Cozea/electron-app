@@ -1,12 +1,17 @@
-import type { BrowserWindow, IpcMain } from 'electron'
+import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
+import * as Effect from 'effect/Effect'
 
 import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
 import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
+import { WorkbenchPresentationCoordinator } from '../services/WorkbenchPresentationCoordinator'
 import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
+import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
+import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
 
 interface RegisterWorkbenchSessionHandlersDeps {
   getMainWindow: () => BrowserWindow | null
+  isTrustedURL: (url: string) => boolean
   browserSurfaces: {
     hasSurfaceForWorkbenchSession: (sessionKey: string) => boolean
     releaseSurfacesForWorkbenchSession: (sessionKey: string) => Promise<void>
@@ -23,6 +28,30 @@ export function registerWorkbenchSessionHandlers(
     nativePreviewManager: NativePreviewManager.getInstance(),
     browserSurfaces: deps.browserSurfaces,
   })
+  const coordinator = WorkbenchPresentationCoordinator.getInstance(service, async (target) => {
+    // Presentation authority must read the committed catalog row directly.
+    // The broadcast snapshot is deliberately debounced, so consulting it here
+    // can reject a valid revision immediately after a workspace relink.
+    const runtime = await waitForWorkspaceCatalogRuntime()
+    const workspace = await runtime.runPromise(
+      Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+        catalog.getActive(target.projectId),
+      ),
+    )
+    return Boolean(
+      workspace?.workspaceId === target.workspaceId &&
+      workspace.workspaceRevision === target.workspaceRevision,
+    )
+  })
+
+  const trusted = (event: IpcMainInvokeEvent): void => {
+    const window = deps.getMainWindow()
+    if (
+      !window || window.isDestroyed() || event.sender !== window.webContents ||
+      !event.senderFrame || event.senderFrame !== event.sender.mainFrame ||
+      !deps.isTrustedURL(event.senderFrame.url)
+    ) throw new Error('Untrusted workbench session sender')
+  }
 
   const publishState = (snapshot: WorkbenchSessionSnapshot) => {
     deps.getMainWindow()?.webContents.send(
@@ -33,64 +62,57 @@ export function registerWorkbenchSessionHandlers(
 
   service.on('stateChanged', publishState)
 
+  ipcMain.handle('workbenchSession:registerPresentationClient', (event) => {
+    trusted(event)
+    return coordinator.registerClient(event.sender)
+  })
+
+  ipcMain.handle('workbenchSession:setPresentation', async (event, command: unknown) => {
+    trusted(event)
+    return await coordinator.applyPresentationCommand(event.sender, command)
+  })
+
   ipcMain.handle(
     'workbenchSession:ensureSession',
-    async (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) => {
+    async (event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number }) => {
+      trusted(event)
       return await service.ensureSession(options)
     },
   )
 
   ipcMain.handle(
-    'workbenchSession:activateSession',
-    async (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) => {
-      return await service.activateSession(options)
-    },
-  )
-
-  ipcMain.handle(
-    'workbenchSession:backgroundSession',
-    (
-      _event,
-      options: {
-        sessionKey?: string | null
-        projectId: string
-        laneId: string
-        workspaceId?: string | null
-        mode?: 'backgroundWarm' | 'backgroundFrozen'
-      },
-    ) => {
-      return service.backgroundSession(options)
-    },
-  )
-
-  ipcMain.handle(
     'workbenchSession:closeSession',
-    async (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) => {
+    async (event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number }) => {
+      trusted(event)
       return { success: await service.closeSession(options) }
     },
   )
 
   ipcMain.handle(
     'workbenchSession:getSession',
-    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null }) => {
+    (event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number }) => {
+      trusted(event)
       return service.getSession(options)
     },
   )
 
-  ipcMain.handle('workbenchSession:listSessions', () => {
+  ipcMain.handle('workbenchSession:listSessions', (event) => {
+    trusted(event)
     return service.listSessions()
   })
 
   ipcMain.handle(
     'workbenchSession:setPinned',
-    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; pinned: boolean }) => {
+    (event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number; pinned: boolean }) => {
+      trusted(event)
       return service.setPinned(options)
     },
   )
 
   ipcMain.handle(
     'workbenchSession:getTerminalBinding',
-    (_event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; tileId: string }) => {
+    (event, options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number; tileId: string }) => {
+      trusted(event)
       return service.getTerminalBinding(options)
     },
   )
@@ -98,7 +120,7 @@ export function registerWorkbenchSessionHandlers(
   ipcMain.handle(
     'workbenchSession:bindTerminal',
     async (
-      _event,
+      event,
       options: {
         sessionKey?: string | null
         projectId: string
@@ -106,8 +128,10 @@ export function registerWorkbenchSessionHandlers(
         tileId: string
         terminalId: string
         workspaceId?: string | null
+        workspaceRevision?: number
       },
     ) => {
+      trusted(event)
       return await service.bindTerminal(options)
     },
   )
@@ -115,16 +139,18 @@ export function registerWorkbenchSessionHandlers(
   ipcMain.handle(
     'workbenchSession:releaseTerminal',
     (
-      _event,
+      event,
       options: {
         sessionKey?: string | null
         projectId: string
         laneId: string
         workspaceId?: string | null
+        workspaceRevision?: number
         tileId: string
         close?: boolean
       },
     ) => {
+      trusted(event)
       return service.releaseTerminal(options)
     },
   )
@@ -132,16 +158,18 @@ export function registerWorkbenchSessionHandlers(
   ipcMain.handle(
     'workbenchSession:setNativePreviewSession',
     (
-      _event,
+      event,
       options: {
         sessionKey?: string | null
         projectId: string
         laneId: string
         workspaceId?: string | null
+        workspaceRevision?: number
         locator: NativePreviewSessionLocator | null
         stopPrevious?: boolean
       },
     ) => {
+      trusted(event)
       return service.setNativePreviewSession(options)
     },
   )

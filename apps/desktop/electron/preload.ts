@@ -573,36 +573,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('devAppAuthoring:scaffold', options),
   },
   workbenchSession: {
+    registerPresentationClient: () =>
+      ipcRenderer.invoke('workbenchSession:registerPresentationClient'),
+    setPresentation: (command: import('@shared/navigationRuntimeTypes').PresentationCommand) =>
+      ipcRenderer.invoke('workbenchSession:setPresentation', command),
     ensureSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => ipcRenderer.invoke('workbenchSession:ensureSession', options),
-    activateSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      workspaceId?: string | null
-    }) => ipcRenderer.invoke('workbenchSession:activateSession', options),
-    backgroundSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      mode?: 'backgroundWarm' | 'backgroundFrozen'
-    }) => ipcRenderer.invoke('workbenchSession:backgroundSession', options),
     closeSession: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => ipcRenderer.invoke('workbenchSession:closeSession', options),
-    getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string }) =>
+    getSession: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number }) =>
       ipcRenderer.invoke('workbenchSession:getSession', options),
     listSessions: () => ipcRenderer.invoke('workbenchSession:listSessions'),
-    setPinned: (options: { sessionKey?: string | null; projectId: string; laneId: string; pinned: boolean }) =>
+    setPinned: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number; pinned: boolean }) =>
       ipcRenderer.invoke('workbenchSession:setPinned', options),
-    getTerminalBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; tileId: string }) =>
+    getTerminalBinding: (options: { sessionKey?: string | null; projectId: string; laneId: string; workspaceId?: string | null; workspaceRevision?: number; tileId: string }) =>
       ipcRenderer.invoke('workbenchSession:getTerminalBinding', options),
     bindTerminal: (options: {
       sessionKey?: string | null
@@ -611,11 +605,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       tileId: string
       terminalId: string
       workspaceId?: string | null
+      workspaceRevision?: number
     }) => ipcRenderer.invoke('workbenchSession:bindTerminal', options),
     releaseTerminal: (options: {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       tileId: string
       close?: boolean
     }) => ipcRenderer.invoke('workbenchSession:releaseTerminal', options),
@@ -623,6 +620,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       sessionKey?: string | null
       projectId: string
       laneId: string
+      workspaceId?: string | null
+      workspaceRevision?: number
       locator: import('../../../shared/nativePreviewTypes').NativePreviewSessionLocator | null
       stopPrevious?: boolean
     }) => ipcRenderer.invoke('workbenchSession:setNativePreviewSession', options),
@@ -636,6 +635,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
       return () => ipcRenderer.removeListener(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
     },
+  },
+  desktopPersistence: {
+    load: (options: {
+      namespace: import('../../../shared/desktopPersistenceTypes').DesktopStateNamespace
+      keys?: string[]
+    }) => ipcRenderer.invoke('desktopPersistence:load', options),
+    commit: (options: {
+      records: import('../../../shared/desktopPersistenceTypes').DesktopStateRecord[]
+    }) => ipcRenderer.invoke('desktopPersistence:commit', options),
+    flush: (options?: { targetRevision?: number }) =>
+      ipcRenderer.invoke('desktopPersistence:flush', options),
+    migrateLegacy: (options: { domain: string; rawPayload: string }) =>
+      ipcRenderer.invoke('desktopPersistence:migrateLegacy', options),
   },
   preview: {
     injectBridge: (options: { url: string; frameName?: string }) => ipcRenderer.invoke('preview:injectBridge', options),

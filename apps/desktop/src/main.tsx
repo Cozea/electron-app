@@ -24,6 +24,7 @@ import {
 } from './app/bootstrap/desktopBootstrap'
 import { featureFlags } from './lib/featureFlags'
 import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
+import { ProductionNavigationRuntimeApp } from './app/navigation/ProductionNavigationRuntimeApp'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
 const rendererEntryMark = markCozeaPerformance('renderer:entry')
@@ -99,6 +100,15 @@ async function startRenderer(): Promise<void> {
   const bootstrapEndMark = markCozeaPerformance('renderer:desktop-bootstrap-ready')
   measureCozeaPerformance('renderer:desktop-bootstrap', bootstrapStartMark, bootstrapEndMark)
   applyDesktopBootstrapRoute(bootstrap)
+  void import('./app/model/queryCache')
+    .then(({ initializeQueryCache }) => initializeQueryCache())
+    .catch((error) => console.warn('[QueryCache] Failed to restore durable records', error))
+  // Restore local tile models before any interactive route can create an
+  // empty workbench over durable state. A failed read blocks renderer boot.
+  if (window.electronAPI?.windowContext !== 'settings') {
+    const { initializeWorkbenchStorage } = await import('./lib/workbenchStore')
+    await initializeWorkbenchStorage()
+  }
 
   if (
     featureFlags.commonRoutePrewarm &&
@@ -140,7 +150,19 @@ async function startRenderer(): Promise<void> {
   })
 }
 
-void startRenderer().catch((error) => {
+const rendererStart = __COZEA_NAVIGATION_TEST__
+  ? Promise.resolve().then(async () => {
+      applyThemeClass('dark')
+      const [{ initializeQueryCache }, { initializeWorkbenchStorage }] = await Promise.all([
+        import('./app/model/queryCache'),
+        import('./lib/workbenchStore'),
+      ])
+      await Promise.all([initializeQueryCache(), initializeWorkbenchStorage()])
+      createRoot(document.getElementById('root')!).render(<ProductionNavigationRuntimeApp />)
+    })
+  : startRenderer()
+
+void rendererStart.catch((error) => {
   console.error('[Renderer] Failed to initialize the desktop bootstrap.', error)
   const root = document.getElementById('root')
   if (root) {

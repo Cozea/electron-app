@@ -15,16 +15,14 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(
-            url: "https://github.com/iFurySt/open-codex-computer-use.git",
-            revision: "41c5294cfe4735baca03f9c82b4de99d191a0b49"
-        ),
+        .package(path: "../computer-use-runtime"),
     ],
     targets: [
         .target(
             name: "CozeaComputerUseBridge",
             dependencies: [
-                .product(name: "OpenComputerUseKit", package: "open-codex-computer-use"),
+                .product(name: "CozeaComputerUseRuntime", package: "computer-use-runtime"),
+                .product(name: "CozeaComputerUseCore", package: "computer-use-runtime"),
             ],
             path: "Sources/CozeaComputerUseBridge"
         ),

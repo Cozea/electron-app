@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react"
 
 import { WorkbenchDockRuntimeProvider } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { useWorkbenchDockviewRuntime } from "@/features/workbench/hooks/useWorkbenchDockviewRuntime"
@@ -11,10 +11,6 @@ import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/lib/workbenchStore"
-import {
-  endProjectSwitch,
-  markProjectSwitchPhase,
-} from "@/lib/performance/projectSwitchMarks"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 import type { WorkbenchKeepAliveSession } from "@/features/workbench/workbenchKeepAlive"
 
@@ -56,6 +52,7 @@ export function WorkbenchDockviewSession({
     const pathAwareLayout = peekPersistedWorkbenchLayout(
       workbenchScopeKey,
       projectWorkbench.layoutResetKey,
+      session.workspaceRevision,
     )
     if (
       pathAwareLayout ||
@@ -68,8 +65,9 @@ export function WorkbenchDockviewSession({
     return peekPersistedWorkbenchLayout(
       legacyWorkbenchScopeKey,
       projectWorkbench.layoutResetKey,
+      session.workspaceRevision,
     )
-  }, [legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey])
+  }, [isLayoutPersistenceReady, legacyWorkbenchScopeKey, projectWorkbench, session.workspaceRevision, workbenchScopeKey])
 
   const {
     dockviewHostRef,
@@ -83,6 +81,7 @@ export function WorkbenchDockviewSession({
     projectId: session.projectId,
     activeLaneId: session.activeLaneId,
     workspaceId: session.workspaceId,
+    workspaceRevision: session.workspaceRevision,
     workbenchSessionKey: session.workbenchSessionKey,
     projectWorkbench,
     workbenchScopeKey,
@@ -91,48 +90,22 @@ export function WorkbenchDockviewSession({
     isActive,
   })
 
-  const canvasReadyRef = useRef(false)
-
   useEffect(() => {
-    ensureWorkbenchLayoutPersistenceReady()
-    setIsLayoutPersistenceReady(true)
+    let cancelled = false
+    void ensureWorkbenchLayoutPersistenceReady(workbenchScopeKey).then(() => {
+      if (!cancelled) setIsLayoutPersistenceReady(true)
+    }).catch((error) => {
+      console.error('[Workbench] Layout restoration failed; refusing empty initialization', error)
+    })
+    return () => { cancelled = true }
   }, [])
-
-  const finishSwitchPaint = useCallback((keepAliveHit: boolean) => {
-    markProjectSwitchPhase("dockview-ready", {
-      scopeKey: workbenchScopeKey,
-      keepAliveHit,
-    })
-    const frameId = window.requestAnimationFrame(() => {
-      markProjectSwitchPhase("first-tile-paint", {
-        scopeKey: workbenchScopeKey,
-        keepAliveHit,
-      })
-      endProjectSwitch({
-        scopeKey: workbenchScopeKey,
-        keepAliveHit,
-      })
-    })
-    return () => window.cancelAnimationFrame(frameId)
-  }, [workbenchScopeKey])
 
   const onReady = useCallback(
     (event: Parameters<typeof handleDockviewReady>[0]) => {
-      canvasReadyRef.current = true
       handleDockviewReady(event)
-      if (isActive) {
-        finishSwitchPaint(false)
-      }
     },
-    [finishSwitchPaint, handleDockviewReady, isActive],
+    [handleDockviewReady],
   )
-
-  useEffect(() => {
-    if (!isActive || !canvasReadyRef.current) {
-      return
-    }
-    return finishSwitchPaint(true)
-  }, [finishSwitchPaint, isActive, workbenchScopeKey])
 
   return (
     <WorkbenchDockRuntimeProvider

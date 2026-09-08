@@ -294,6 +294,7 @@ export default defineConfig({
           index: 'electron/mainEntry.ts',
           'workbench-runtime': 'electron/workbench-runtime/child.ts',
           'substrate-shadow-server': 'electron/substrate-shadow-server/child.ts',
+          'desktop-state-persistence': 'electron/workers/desktopStatePersistenceWorker.ts',
         },
       },
       rollupOptions: {
@@ -332,6 +333,9 @@ export default defineConfig({
     },
   },
   renderer: {
+    define: {
+      __COZEA_NAVIGATION_TEST__: JSON.stringify(process.env.COZEA_NAVIGATION_TEST === '1'),
+    },
     root: '.',
     envDir: repoRoot,
     plugins: [

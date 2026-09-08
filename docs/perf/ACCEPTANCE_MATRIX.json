@@ -1,0 +1,706 @@
+{
+  "specification": "NAVIGATION_RUNTIME_IMPLEMENTATION_PLAN.md",
+  "repository": "Cozea/electron-app",
+  "baseline_commit": "073df5230d2400684434ea6b7db27b0aafc72ddc",
+  "date": "2026-09-08",
+  "kind": "implementation_acceptance_specification",
+  "note": "These remain the normative scenario definitions. Exact automated execution evidence for the accepted repair is recorded in navigation-completion.md; a scenario is not implied to have been executed merely because it appears in this specification. Phase IDs and test IDs are separate namespaces.",
+  "invariants": [
+    {
+      "id": "I01",
+      "invariant": "Exactly one persistent main shell and one workbench presentation host per main renderer epoch."
+    },
+    {
+      "id": "I02",
+      "invariant": "A route change is not a close-session, kill-terminal, stop-agent, or stop-server request."
+    },
+    {
+      "id": "I03",
+      "invariant": "Resident workbench component keys never include pathname, navigation ID, timestamps, display name, or mutable session snapshot objects."
+    },
+    {
+      "id": "I04",
+      "invariant": "Retained children cannot derive their identity from current router params or another session's active context."
+    },
+    {
+      "id": "I05",
+      "invariant": "Every mutation carries concrete validated project/workspace/lane identity and expected binding revision. No `unbound` or guessed-lane writes."
+    },
+    {
+      "id": "I06",
+      "invariant": "One in-flight request per renderer resource owner and key/generation, shared by prefetch and mounted consumers."
+    },
+    {
+      "id": "I07",
+      "invariant": "Superseded renderer epochs, navigation commands, invalidated resource generations, and old binding revisions cannot activate or overwrite current state."
+    },
+    {
+      "id": "I08",
+      "invariant": "No synchronous localStorage reads/writes or whole-collection JSON serialization on ordinary navigation/layout lookup/store-update paths covered by this plan. One-time migration is explicitly separate."
+    },
+    {
+      "id": "I09",
+      "invariant": "No synchronous session-registry filesystem operations on main-process activation paths."
+    },
+    {
+      "id": "I10",
+      "invariant": "Persisted `null`/not-found/denied outcomes are not replaced by stale successful cached data."
+    },
+    {
+      "id": "I11",
+      "invariant": "Hidden presentation does not imply stopped services; running services do not imply visible presentation."
+    },
+    {
+      "id": "I12",
+      "invariant": "Hidden workbenches receive no continuous presentation animation, layout, fit, focus, or DOM measurement work after deactivation settles."
+    },
+    {
+      "id": "I13",
+      "invariant": "A view eviction cannot destroy uncaptured drafts, local edits, or the state necessary to restore a supported widget."
+    },
+    {
+      "id": "I14",
+      "invariant": "Inactive session changes cannot replace the current header, open a global dialog, steal focus, or publish native overlay bounds."
+    },
+    {
+      "id": "I15",
+      "invariant": "Runtime service authority and presentation residency have distinct policies; neither silently overrides the other's explicit leases."
+    },
+    {
+      "id": "I16",
+      "invariant": "Metrics distinguish scheduled frame callbacks, content readiness, and trace-confirmed visual presentation."
+    },
+    {
+      "id": "I17",
+      "invariant": "Required tests fail or report blocked when their fixture/capability is missing; they never silently skip to a passing verdict."
+    },
+    {
+      "id": "I18",
+      "invariant": "Final default execution has no old/new dual writers, dual refresh loops, or dual activation paths."
+    }
+  ],
+  "phases": [
+    {
+      "id": "P00",
+      "title": "Establish baseline and protect state",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P01",
+      "title": "Add counters and correct regression scenarios",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P02",
+      "title": "Freeze shared contracts and the resource engine",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P03",
+      "title": "Implement worker persistence and migration infrastructure",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P04",
+      "title": "Consolidate workspace and branch reads",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P05",
+      "title": "Replace session activation and registry hot-path I/O",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P06",
+      "title": "Cut over renderer persistence and hydration",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P07",
+      "title": "Extract stable shell and retained session boundary",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P08",
+      "title": "Implement explicit widget presentation lifecycles",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P09",
+      "title": "Unify warming and startup staging",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P10",
+      "title": "Remove old paths and enforce boundaries",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P11",
+      "title": "Tune against measured production traces",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    },
+    {
+      "id": "P12",
+      "title": "Final handoff and merge-ready review",
+      "specification_section": 14,
+      "initial_status": "not_started"
+    }
+  ],
+  "tests": [
+    {
+      "id": "N01",
+      "category": "resource-controller",
+      "scenario": "Two subscribers and prefetch request same unresolved workspace key.",
+      "required_assertion": "Exactly one underlying resolve call; all receive the same current-generation outcome.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N02",
+      "category": "resource-controller",
+      "scenario": "Resolve prefetch after the destination mounts.",
+      "required_assertion": "No second mounted-hook request.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N03",
+      "category": "resource-controller",
+      "scenario": "Invalidate while old request runs; start new request; resolve old last.",
+      "required_assertion": "Old result cannot publish or clear the new in-flight promise.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N04",
+      "category": "resource-controller",
+      "scenario": "Cached ready entry, background refresh fails.",
+      "required_assertion": "Cached display survives; error is visible as refresh state, not empty data.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N05",
+      "category": "resource-controller",
+      "scenario": "Authoritative null/denied follows cached project.",
+      "required_assertion": "Cached success is no longer exposed as current authorized project.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N06",
+      "category": "resource-controller",
+      "scenario": "Change preferred workspace, repository expectation, or binding revision.",
+      "required_assertion": "Different correct key/invalidation; no incorrect cache hit.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N07",
+      "category": "resource-controller",
+      "scenario": "Expand sidebar and foreground workbench for same resource.",
+      "required_assertion": "One reconciliation operation per interval.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N08",
+      "category": "resource-controller",
+      "scenario": "Minimize then resume window.",
+      "required_assertion": "View-driven polling pauses; one shared resume refresh per stale key.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N09",
+      "category": "resource-controller",
+      "scenario": "Many catalog subscribers mount before initial fetch resolves.",
+      "required_assertion": "One listener and one initial request.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N10",
+      "category": "resource-controller",
+      "scenario": "Catalog push revision 12 precedes initial fetch revision 11.",
+      "required_assertion": "Revision 12 remains; unchanged entries retain stable references.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N11",
+      "category": "resource-controller",
+      "scenario": "A\u2192B\u2192C with deferred prerequisites resolved in reverse order.",
+      "required_assertion": "Only C foreground; A/B may populate only their still-valid resource entries.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N12",
+      "category": "resource-controller",
+      "scenario": "Same href with new create-tile intent vs no-op click.",
+      "required_assertion": "New command consumed once; no-op produces no transaction.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N13",
+      "category": "resource-controller",
+      "scenario": "Back/Forward/direct link/native menu.",
+      "required_assertion": "One accepted intent and one correct route outcome per interaction; no second history stack.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N14",
+      "category": "resource-controller",
+      "scenario": "Router transition cancelled/blocked.",
+      "required_assertion": "Pending feedback clears; previous accepted surface stays authoritative.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N15",
+      "category": "resource-controller",
+      "scenario": "Hover/focus over projects.",
+      "required_assertion": "No create/attach/checkout/activate/terminal/server/agent side effect.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "N16",
+      "category": "resource-controller",
+      "scenario": "Branch status unresolved with no trusted stored knowledge.",
+      "required_assertion": "No invented collab lane/model write; typed pending/error outcome.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U01",
+      "category": "presentation-ui",
+      "scenario": "A\u2192Store\u2192A through actual sidebar controls.",
+      "required_assertion": "Same shell/host/Dockview IDs; A's focus/scroll/layout retained; no new terminal instance.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U02",
+      "category": "presentation-ui",
+      "scenario": "A\u2192Inbox\u2192A and A\u2192Tasks\u2192A.",
+      "required_assertion": "Same retained instance guarantee; verify actual route/page visited.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U03",
+      "category": "presentation-ui",
+      "scenario": "A\u2192B\u2192A, distinct project text and workspaces.",
+      "required_assertion": "Correct project scope, header, editor, terminal, and native preview; no context leakage.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U04",
+      "category": "presentation-ui",
+      "scenario": "Same tile twice, then another tile in A.",
+      "required_assertion": "No router round trips or activation for same-workbench tile focus.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U05",
+      "category": "presentation-ui",
+      "scenario": "Hide A while B becomes visible.",
+      "required_assertion": "A inert; no hidden portal/dialog, keyboard handler, header publication, or focus steal.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U06",
+      "category": "presentation-ui",
+      "scenario": "Resize window while A hidden, then return.",
+      "required_assertion": "No hidden fit/layout; one necessary activation reconciliation; nonzero dimensions and preserved ratios.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U07",
+      "category": "presentation-ui",
+      "scenario": "Hide/show without resize.",
+      "required_assertion": "No unnecessary layout reconstruction or geometry drift.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U08",
+      "category": "presentation-ui",
+      "scenario": "Agent synthetic stream continues in hidden A.",
+      "required_assertion": "Canonical output advances; hidden animation/measurement does not; returning shows current output.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U09",
+      "category": "presentation-ui",
+      "scenario": "Terminal emits while hidden/evicted.",
+      "required_assertion": "Process/output semantics preserved; no unbounded detached listener growth.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U10",
+      "category": "presentation-ui",
+      "scenario": "Browser tile hidden under ordinary route/settings overlay.",
+      "required_assertion": "Native surface not visible/intercepting input; correct surface reappears on return.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U11",
+      "category": "presentation-ui",
+      "scenario": "Visit D with A/B/C resident.",
+      "required_assertion": "Oldest ordinary inactive unpinned view evicted; active view never selected for eviction.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U12",
+      "category": "presentation-ui",
+      "scenario": "Evict then reopen a view with edits/draft/selection/scroll.",
+      "required_assertion": "Data and supported view state recovered; runtime not closed by eviction.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U13",
+      "category": "presentation-ui",
+      "scenario": "Keep a popout from A open and navigate parent to B.",
+      "required_assertion": "Popout stays on A; parent does not steal it; explicit close releases pin.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U14",
+      "category": "presentation-ui",
+      "scenario": "Project settings and task overlay intent.",
+      "required_assertion": "Exactly one active overlay; hidden sessions do not consume it.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U15",
+      "category": "presentation-ui",
+      "scenario": "Cold initial scope hydrates persisted model slowly.",
+      "required_assertion": "No empty default persisted before hydration; queued tile intent executes once afterward.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U16",
+      "category": "presentation-ui",
+      "scenario": "Authoritative project removal during pending switch.",
+      "required_assertion": "Target cannot activate; private stale UI removed without deleting local files.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U17",
+      "category": "presentation-ui",
+      "scenario": "Settings-only window start/restart.",
+      "required_assertion": "No main host or main foreground lease created.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U18",
+      "category": "presentation-ui",
+      "scenario": "StrictMode/HMR mount-cleanup replay in development.",
+      "required_assertion": "No permanent duplicate bridge/listener/epoch/lease; production IDs stable across navigation.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U19",
+      "category": "presentation-ui",
+      "scenario": "Hold IME composition or unsaved editor state during eviction pressure.",
+      "required_assertion": "Capture safely or block eviction; no lost input.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "U20",
+      "category": "presentation-ui",
+      "scenario": "Hidden interval with theme change.",
+      "required_assertion": "At most necessary one-time update, no recurring fit/animation/poll loop afterward.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M01",
+      "category": "main-persistence-migration",
+      "scenario": "Main accepts sequence 2 while sequence 1 prerequisite is delayed.",
+      "required_assertion": "Sequence 1 cannot later activate or reveal native surfaces.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M02",
+      "category": "main-persistence-migration",
+      "scenario": "Retry same sequence/payload.",
+      "required_assertion": "Idempotent result, no duplicate activation/persistence.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M03",
+      "category": "main-persistence-migration",
+      "scenario": "Same sequence with different payload, retired epoch, wrong sender.",
+      "required_assertion": "Rejected without mutation.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M04",
+      "category": "main-persistence-migration",
+      "scenario": "Renderer reload/crash.",
+      "required_assertion": "Old epoch invalid; presentation leases released; no late focus/activation.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M05",
+      "category": "main-persistence-migration",
+      "scenario": "Explicit session key for another workspace.",
+      "required_assertion": "Rejected; no latest-project/lane fallback for concrete navigation identity.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M06",
+      "category": "main-persistence-migration",
+      "scenario": "Explicit close/delete races delayed activation.",
+      "required_assertion": "Closed/invalid generation cannot be revived by the delayed request.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M07",
+      "category": "main-persistence-migration",
+      "scenario": "Ordinary view evicted while terminal/dev server/agent work runs.",
+      "required_assertion": "No close/kill/stop from eviction.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M08",
+      "category": "main-persistence-migration",
+      "scenario": "Background policy sweep while UI/native surface held by lease.",
+      "required_assertion": "No silent release of a still-required presentation/service surface.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M09",
+      "category": "main-persistence-migration",
+      "scenario": "Main activation with synchronous fs methods instrumented to fail.",
+      "required_assertion": "Navigation/session persistence path performs no sync filesystem operation.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M10",
+      "category": "main-persistence-migration",
+      "scenario": "Many state changes inside debounce interval.",
+      "required_assertion": "Latest snapshot committed; serialization once per selected dirty record/flush, not each event.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M11",
+      "category": "main-persistence-migration",
+      "scenario": "Slow revision 5 write finishes after revision 6 is queued.",
+      "required_assertion": "File cannot end at revision 5 after revision 6 commits.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M12",
+      "category": "main-persistence-migration",
+      "scenario": "Storage write/rename/worker failure.",
+      "required_assertion": "Old valid record survives; flush reports failure; dirty state retained for retry.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M13",
+      "category": "main-persistence-migration",
+      "scenario": "Crash before migration marker, restart import.",
+      "required_assertion": "Idempotent import, no duplicate/reset/overwrite of newer v2 state.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M14",
+      "category": "main-persistence-migration",
+      "scenario": "Corrupt legacy record and valid neighboring record.",
+      "required_assertion": "Corrupt source preserved/quarantined; valid record imported; no destructive clear.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M15",
+      "category": "main-persistence-migration",
+      "scenario": "Layout reset races pending old layout write.",
+      "required_assertion": "Old reset-key snapshot cannot overwrite reset/new layout.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M16",
+      "category": "main-persistence-migration",
+      "scenario": "Hydration resolves after local/current-generation state changed.",
+      "required_assertion": "Older snapshot ignored; no stale replacement.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M17",
+      "category": "main-persistence-migration",
+      "scenario": "Scoped query cache across account/deployment change.",
+      "required_assertion": "No prior identity data leak; authoritative null wins.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M18",
+      "category": "main-persistence-migration",
+      "scenario": "Normal quit with pending writes.",
+      "required_assertion": "Close awaits actual commit revision or reports failure; enqueue alone is not success.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M19",
+      "category": "main-persistence-migration",
+      "scenario": "Settings/secondary writer attempts stale model overwrite.",
+      "required_assertion": "Rejected/routed through canonical owner; main model preserved.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "M20",
+      "category": "main-persistence-migration",
+      "scenario": "Oversized query entry and large legitimate workbench state.",
+      "required_assertion": "Query entry not persisted beyond cap; user state preserved via supported chunking/recovery path.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P01",
+      "category": "performance-longevity",
+      "scenario": "Resident A\u2194B 300 measured interactions.",
+      "required_assertion": "Warm budgets met; zero duplicate resolve/Git or widget recreation.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P02",
+      "category": "performance-longevity",
+      "scenario": "A\u2194Store and A\u2194Inbox real route returns.",
+      "required_assertion": "Warm retention/latency gates; test records actual non-workbench page.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P03",
+      "category": "performance-longevity",
+      "scenario": "No-hover cold project click and hover-immediate-click.",
+      "required_assertion": "Separate cache classes; cold shell remains responsive; in-flight dedup works.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P04",
+      "category": "performance-longevity",
+      "scenario": "Rapid alternating inputs with delayed IPC/filesystem/query completion.",
+      "required_assertion": "Latest destination correct and responsive; no stale main activation.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P05",
+      "category": "performance-longevity",
+      "scenario": "100 cycles across eight projects plus ordinary pages.",
+      "required_assertion": "Ordinary residents bounded; listener/observer/lease counts return to expected bounds.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P06",
+      "category": "performance-longevity",
+      "scenario": "Three populated retained views, one visible.",
+      "required_assertion": "Hidden steady-state counters meet budgets; active input does not depend on hidden presentation work.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P07",
+      "category": "performance-longevity",
+      "scenario": "Populated query/layout/model persistence workload while switching.",
+      "required_assertion": "No renderer serialization/storage spikes on hot path; worker dispatch slice budget recorded.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P08",
+      "category": "performance-longevity",
+      "scenario": "Packaged restart with migrated user-state fixture.",
+      "required_assertion": "Correct scoped restored layout/tiles; no terminal duplication or phantom workspace.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P09",
+      "category": "performance-longevity",
+      "scenario": "Baseline/candidate memory sample after warmup and after stress cycles.",
+      "required_assertion": "Explain retained vs leaked resources; no monotonically growing live instance/listener counts. Heap/RSS reported, not treated as exact per-view accounting.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    },
+    {
+      "id": "P10",
+      "category": "performance-longevity",
+      "scenario": "Optimized production build with diagnostic code disabled.",
+      "required_assertion": "No test hooks/security weakening; smoke navigation still works.",
+      "initial_status": "not_run",
+      "status": "not_run_on_repaired_candidate"
+    }
+  ],
+  "repair_status": "accepted at source candidate 56b006d3418adea9c3f8d68b7dce6f3fe377d016; earlier deb92d01 acceptance remains withdrawn",
+  "execution_evidence": {
+    "navigation_workflow_run": 34248986212,
+    "navigation_workflow_attempt": 1,
+    "native_workflow_run": 34248986233,
+    "native_workflow_attempt": 2,
+    "source_candidate": "56b006d3418adea9c3f8d68b7dce6f3fe377d016",
+    "navigation_unit_tests_passed": 75,
+    "full_unit_tests_passed": 2642,
+    "electron_correctness": "passed",
+    "resident_warm_samples": 100,
+    "resident_warm_p95_ms": 36.9,
+    "resident_warm_budget_ms": 75
+  }
+}

@@ -1,14 +1,23 @@
 import { useEffect, useRef, useState } from "react"
 
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import {
+  buildPresentationInstanceKey,
+  type ResolvedWorkbenchIdentity,
+} from "@shared/navigationRuntimeTypes"
+import { navigationController } from "@/app/navigation/navigationController"
 
 interface UseWorkbenchSessionLifecycleArgs {
   projectId: string | null
   laneId: string | null
   workspaceId: string | null
+  workspaceRevision: number | null
+  retained?: readonly ResolvedWorkbenchIdentity[]
   backgroundMode?: "backgroundWarm" | "backgroundFrozen"
   enabled?: boolean
 }
+
+const EMPTY_RETAINED_IDENTITIES: readonly ResolvedWorkbenchIdentity[] = []
 
 /**
  * Compares everything consumers actually render. The activity timestamps
@@ -25,6 +34,7 @@ function isMeaningfullyEqual(
     a.projectId === b.projectId &&
     a.laneId === b.laneId &&
     a.workspaceId === b.workspaceId &&
+    a.workspaceRevision === b.workspaceRevision &&
     a.lifecycle === b.lifecycle &&
     a.pinned === b.pinned &&
     a.hasBrowserSurface === b.hasBrowserSurface &&
@@ -40,58 +50,92 @@ function matchesSession(
   projectId: string | null,
   laneId: string | null,
   workspaceId: string | null,
+  workspaceRevision: number | null,
 ): boolean {
-  if (sessionKey) {
-    return snapshot.sessionKey === sessionKey
-  }
   if (!projectId || !laneId) return false
   if (snapshot.projectId !== projectId || snapshot.laneId !== laneId) {
     return false
   }
   if (workspaceId) {
-    return snapshot.workspaceId === workspaceId
+    if (!(
+      snapshot.workspaceId === workspaceId &&
+      (!workspaceRevision || snapshot.workspaceRevision === workspaceRevision)
+    )) return false
   }
-  return true
+  return !sessionKey || snapshot.sessionKey === sessionKey
 }
 
 export function useWorkbenchSessionLifecycle({
   projectId,
   laneId,
   workspaceId,
+  workspaceRevision,
+  retained = EMPTY_RETAINED_IDENTITIES,
   backgroundMode = "backgroundWarm",
   enabled = true,
 }: UseWorkbenchSessionLifecycleArgs): WorkbenchSessionSnapshot | null {
-  const [snapshot, setSnapshot] = useState<WorkbenchSessionSnapshot | null>(null)
+  const currentIdentity =
+    enabled && projectId && laneId && workspaceId && workspaceRevision
+      ? { projectId, laneId, workspaceId, workspaceRevision }
+      : null
+  const currentInstanceKey = currentIdentity
+    ? buildPresentationInstanceKey(currentIdentity)
+    : null
+  const [scopedSnapshot, setScopedSnapshot] = useState<{
+    instanceKey: string
+    snapshot: WorkbenchSessionSnapshot
+  } | null>(null)
   const activeSessionKeyRef = useRef<string | null>(null)
+  const retainedRef = useRef(retained)
+  retainedRef.current = retained
 
   useEffect(() => {
-    if (!enabled || !projectId || !laneId) {
+    if (!enabled || !projectId || !laneId || !workspaceId || !workspaceRevision) {
       activeSessionKeyRef.current = null
-      setSnapshot(null)
+      setScopedSnapshot(null)
+      void navigationController.setPresentation(null, retainedRef.current)
       return
     }
 
     let cancelled = false
+    const instanceKey = buildPresentationInstanceKey({
+      projectId,
+      laneId,
+      workspaceId,
+      workspaceRevision,
+    })
 
     const applySnapshot = (nextSnapshot: WorkbenchSessionSnapshot | null) => {
       if (cancelled || !nextSnapshot) return
-      if (!matchesSession(nextSnapshot, activeSessionKeyRef.current, projectId, laneId, workspaceId)) return
-      setSnapshot((current) =>
-        current && isMeaningfullyEqual(current, nextSnapshot) ? current : nextSnapshot,
-      )
-    }
-
-    void window.electronAPI.workbenchSession
-      .ensureSession({
+      if (!matchesSession(
+        nextSnapshot,
+        activeSessionKeyRef.current,
         projectId,
         laneId,
         workspaceId,
-      })
-      .then((nextSnapshot) => {
-        activeSessionKeyRef.current = nextSnapshot.sessionKey
-        applySnapshot(nextSnapshot)
-        return window.electronAPI.workbenchSession.activateSession({
-          sessionKey: nextSnapshot.sessionKey,
+        workspaceRevision,
+      )) return
+      setScopedSnapshot((current) =>
+        current?.instanceKey === instanceKey && isMeaningfullyEqual(current.snapshot, nextSnapshot)
+          ? current
+          : { instanceKey, snapshot: nextSnapshot },
+      )
+    }
+
+    const identity: ResolvedWorkbenchIdentity = {
+      projectId,
+      laneId,
+      workspaceId,
+      workspaceRevision,
+    }
+
+    void navigationController
+      .setPresentation(identity, retainedRef.current)
+      .then((result) => {
+        if (cancelled || result?.status !== "applied" || !result.sessionKey) return null
+        activeSessionKeyRef.current = result.sessionKey
+        return window.electronAPI.workbenchSession.getSession({
+          sessionKey: result.sessionKey,
           projectId,
           laneId,
           workspaceId,
@@ -113,21 +157,13 @@ export function useWorkbenchSessionLifecycle({
       activeSessionKeyRef.current = null
       cancelled = true
       unsubscribe()
-      if (!sessionKey) {
-        return
-      }
-      void window.electronAPI.workbenchSession
-        .backgroundSession({
-          sessionKey,
-          projectId,
-          laneId,
-          mode: backgroundMode,
-        })
-        .catch((error) => {
-          console.warn("[WorkbenchSession] Failed to background session", error)
-        })
+      void sessionKey
+      void backgroundMode
+      void navigationController.setPresentation(null, retainedRef.current)
     }
-  }, [backgroundMode, enabled, laneId, projectId, workspaceId])
+  }, [backgroundMode, enabled, laneId, projectId, workspaceId, workspaceRevision])
 
-  return snapshot
+  return scopedSnapshot?.instanceKey === currentInstanceKey
+    ? scopedSnapshot.snapshot
+    : null
 }

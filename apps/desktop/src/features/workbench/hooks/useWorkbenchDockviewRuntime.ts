@@ -124,6 +124,7 @@ interface UseWorkbenchDockviewRuntimeInput {
   projectId: string | null;
   activeLaneId: string;
   workspaceId: string | null;
+  workspaceRevision: number;
   workbenchSessionKey: string | null;
   projectWorkbench: WorkbenchProjectState | null;
   workbenchScopeKey: string | null;
@@ -146,32 +147,6 @@ interface UseWorkbenchDockviewRuntimeResult {
 }
 
 import { useTranslation } from "@/lib/i18n";
-
-/**
- * TEMPORARY diagnostics for the layout-on-restart bug.
- *
- * The layout is written under a workspace-qualified scope key, and
- * `buildWorkbenchScopeKey` falls back to the legacy key when no workspace is
- * known yet. If the workbench mounts before the workspace resolves, hydration
- * looks under a key nothing was saved to, finds nothing, and the reconcile
- * pass then rebuilds the grid flat. This records enough structure at each step
- * to tell that apart from the alternatives, instead of guessing again.
- *
- * Bounded to the last 40 steps and swallows its own errors. Remove once the
- * cause is known.
- */
-function recordLayoutTrace(entry: Record<string, unknown>): void {
-  if (typeof window === "undefined") return;
-  try {
-    const key = "cozea:layout-trace";
-    const raw = window.localStorage.getItem(key);
-    const list: unknown[] = raw ? JSON.parse(raw) : [];
-    list.push({ at: new Date().toISOString(), ...entry });
-    window.localStorage.setItem(key, JSON.stringify(list.slice(-40)));
-  } catch {
-    // Diagnostics must never break the workbench.
-  }
-}
 
 export function useWorkbenchDockviewRuntime(
   input: UseWorkbenchDockviewRuntimeInput,
@@ -202,6 +177,7 @@ export function useWorkbenchDockviewRuntime(
   const keyboardNavigationCleanupRef = useRef<(() => void) | null>(null);
   const layoutResetKeyRef = useRef(input.projectWorkbench?.layoutResetKey ?? 0);
   const workbenchScopeKeyRef = useRef(input.workbenchScopeKey);
+  const workspaceRevisionRef = useRef(input.workspaceRevision);
   const isActiveRef = useRef(input.isActive);
   const wasActiveRef = useRef(input.isActive);
   const captureAndPersistLayoutRef = useRef<() => void>(() => {});
@@ -265,6 +241,7 @@ export function useWorkbenchDockviewRuntime(
       scopeKey,
       layoutResetKeyRef.current,
       api.toJSON() as SerializedDockview,
+      workspaceRevisionRef.current,
     );
   };
 
@@ -350,6 +327,7 @@ export function useWorkbenchDockviewRuntime(
     // describes the one on screen at *this* moment.
     const capturedScopeKey = workbenchScopeKeyRef.current;
     const capturedLayoutResetKey = layoutResetKeyRef.current;
+    const capturedBindingRevision = workspaceRevisionRef.current;
     if (!capturedScopeKey) return;
 
     if (layoutSaveFrameRef.current !== null) {
@@ -373,6 +351,7 @@ export function useWorkbenchDockviewRuntime(
       layoutSnapshotDebouncerRef.current?.maybeExecute({
         scopeKey: capturedScopeKey,
         layoutResetKey: capturedLayoutResetKey,
+        bindingRevision: capturedBindingRevision,
         layout: api.toJSON() as SerializedDockview,
       });
     });
@@ -381,8 +360,14 @@ export function useWorkbenchDockviewRuntime(
   useEffect(() => {
     layoutResetKeyRef.current = input.projectWorkbench?.layoutResetKey ?? 0;
     workbenchScopeKeyRef.current = input.workbenchScopeKey;
+    workspaceRevisionRef.current = input.workspaceRevision;
     isActiveRef.current = input.isActive;
-  }, [input.isActive, input.projectWorkbench?.layoutResetKey, input.workbenchScopeKey]);
+  }, [
+    input.isActive,
+    input.projectWorkbench?.layoutResetKey,
+    input.workbenchScopeKey,
+    input.workspaceRevision,
+  ]);
 
   useLayoutEffect(() => {
     const wasActive = wasActiveRef.current;
@@ -428,6 +413,7 @@ export function useWorkbenchDockviewRuntime(
     const api = dockviewApiRef.current;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !input.projectWorkbench ||
       !input.isLayoutPersistenceReady ||
@@ -443,20 +429,11 @@ export function useWorkbenchDockviewRuntime(
 
     hydratedProjectKeyRef.current = hydrationKey;
 
-    const panelsBefore = api.totalPanels;
     hydrateDockviewPanels(api);
-    recordLayoutTrace({
-      step: "hydrate",
-      scopeKey: input.workbenchScopeKey,
-      hasPersistedLayout: Boolean(input.persistedLayout),
-      resetKey: input.projectWorkbench.layoutResetKey,
-      panelsBefore,
-      panelsAfter: api.totalPanels,
-      tilesWanted: input.projectWorkbench.order.length,
-    });
   }, [
     dockviewReadyScopeKey,
     input.activeLaneId,
+    input.isActive,
     input.isLayoutPersistenceReady,
     input.persistedLayout,
     input.projectId,
@@ -470,6 +447,7 @@ export function useWorkbenchDockviewRuntime(
     const projectWorkbench = input.projectWorkbench;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !projectWorkbench ||
       dockviewReadyScopeKey !== input.workbenchScopeKey
@@ -539,6 +517,7 @@ export function useWorkbenchDockviewRuntime(
     changesWidth,
     dockviewReadyScopeKey,
     input.activeLaneId,
+    input.isActive,
     input.projectId,
     input.projectWorkbench?.layoutResetKey,
     input.workbenchScopeKey,
@@ -549,6 +528,7 @@ export function useWorkbenchDockviewRuntime(
     const api = dockviewApiRef.current;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !input.projectWorkbench ||
       dockviewReadyScopeKey !== input.workbenchScopeKey
@@ -569,13 +549,6 @@ export function useWorkbenchDockviewRuntime(
       return;
     }
 
-    recordLayoutTrace({
-      step: "reconcile",
-      scopeKey: input.workbenchScopeKey,
-      panels: api.totalPanels,
-      tilesWanted: input.projectWorkbench.order.length,
-    });
-
     lastReconciledOrderRef.current = input.projectWorkbench.order;
     lastReconciledTilesRef.current = input.projectWorkbench.tiles;
 
@@ -594,6 +567,7 @@ export function useWorkbenchDockviewRuntime(
   }, [
     dockviewReadyScopeKey,
     input.activeLaneId,
+    input.isActive,
     input.projectId,
     input.projectWorkbench,
     input.workbenchScopeKey,
@@ -870,6 +844,7 @@ export function useWorkbenchDockviewRuntime(
     const api = dockviewApiRef.current;
     if (
       !api ||
+      !input.isActive ||
       !input.projectId ||
       !input.projectWorkbench ||
       dockviewReadyScopeKey !== input.workbenchScopeKey
@@ -891,6 +866,7 @@ export function useWorkbenchDockviewRuntime(
     dockviewReadyScopeKey,
     hydrateDockviewPanels,
     input.projectId,
+    input.isActive,
     input.projectWorkbench,
     input.workbenchScopeKey,
     previewTileIds,
@@ -1151,7 +1127,7 @@ export function useWorkbenchDockviewRuntime(
           // rather than whatever is current. This is flushed on scope change,
           // where the outgoing workbench's last layout is still worth saving —
           // to its own key, which is exactly what the snapshot carries.
-          writePersistedWorkbenchLayout(pending.scopeKey, pending.layoutResetKey, pending.layout);
+          writePersistedWorkbenchLayout(pending.scopeKey, pending.layoutResetKey, pending.layout, pending.bindingRevision);
         },
         { wait: 400 },
       );

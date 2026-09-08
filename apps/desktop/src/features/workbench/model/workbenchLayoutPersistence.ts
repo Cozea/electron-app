@@ -1,331 +1,55 @@
-import type { SerializedDockview } from "dockview-react"
-import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
+import type { SerializedDockview } from 'dockview-react'
+import { buildWorkbenchScopeKey, parseWorkbenchScopeKey } from '@/lib/workbenchScopeKey'
+import { desktopPersistenceClient } from '@/app/model/persistence/desktopPersistenceClient'
 
-const WORKBENCH_LAYOUTS_STORAGE_KEY = "cozea:project-workbench-layouts"
-const LEGACY_WORKBENCH_STORAGE_KEY = "cozea:project-workbench"
-
-interface PersistedWorkbenchLayoutEntry {
-  layout: SerializedDockview
-  layoutResetKey: number
+interface LayoutData { layout: SerializedDockview | null; layoutResetKey: number }
+function isLayout(value: unknown): value is SerializedDockview { return value !== null && typeof value === 'object' && 'grid' in value && 'panels' in value }
+export function ensureWorkbenchLayoutPersistenceReady(scopeKey?: string): Promise<void> {
+  return desktopPersistenceClient.hydrateNamespace('workbenchLayout', scopeKey ? [scopeKey] : undefined)
 }
-
-interface PersistedWorkbenchLayoutsState {
-  version: 1
-  migratedFromLegacy: boolean
-  layouts: Record<string, PersistedWorkbenchLayoutEntry>
+export interface PendingWorkbenchLayoutWrite { scopeKey: string; layoutResetKey: number; bindingRevision: number; layout: SerializedDockview }
+export function isWorkbenchLayoutWriteStillValid(pending: Pick<PendingWorkbenchLayoutWrite, 'scopeKey' | 'layoutResetKey'>, current: { scopeKey: string | null | undefined; layoutResetKey: number }): boolean {
+  return Boolean(pending.scopeKey) && pending.scopeKey === current.scopeKey && pending.layoutResetKey === current.layoutResetKey
 }
-
-interface LegacyPersistedWorkbenchState {
-  state?: {
-    workbenches?: Record<string, LegacyPersistedWorkbenchRecord>
-    projects?: Record<string, LegacyPersistedWorkbenchRecord>
-  }
-  workbenches?: Record<string, LegacyPersistedWorkbenchRecord>
-  projects?: Record<string, LegacyPersistedWorkbenchRecord>
+export function peekPersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, bindingRevision?: number): SerializedDockview | null {
+  const value = desktopPersistenceClient.peekLayout(scopeKey, layoutResetKey, bindingRevision)
+  return isLayout(value) ? value : null
 }
-
-interface LegacyPersistedWorkbenchRecord {
-  layout?: SerializedDockview | null
-  layoutResetKey?: number
+export function writePersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, layout: SerializedDockview, bindingRevision?: number): void {
+  desktopPersistenceClient.queueDirtyRecord('workbenchLayout', scopeKey, { layout, layoutResetKey }, bindingRevision)
 }
-
-let didAttemptLegacyMigration = false
-
-function isSerializedDockview(value: unknown): value is SerializedDockview {
-  if (!value || typeof value !== "object") return false
-  return "grid" in value && "panels" in value
+export function clearPersistedWorkbenchLayout(scopeKey: string): void { desktopPersistenceClient.deleteRecord('workbenchLayout', scopeKey) }
+export async function clearPersistedWorkbenchLayoutsForProject(projectId: string): Promise<void> {
+  if (!projectId.trim()) return
+  // Hide known layouts immediately, then tombstone disk-only scopes too.
+  // Local tombstones cannot be replaced by the hydration result.
+  desktopPersistenceClient.clearLayoutsForProject(projectId.trim())
+  await ensureWorkbenchLayoutPersistenceReady()
+  desktopPersistenceClient.clearLayoutsForProject(projectId.trim())
 }
-
-function isPersistedWorkbenchLayoutEntry(value: unknown): value is PersistedWorkbenchLayoutEntry {
-  if (!value || typeof value !== "object") return false
-
-  const typedValue = value as Partial<PersistedWorkbenchLayoutEntry>
-  return (
-    typeof typedValue.layoutResetKey === "number" &&
-    isSerializedDockview(typedValue.layout)
-  )
+export async function clonePersistedWorkbenchLayout(sourceScopeKey: string, targetScopeKey: string, resetKey: number): Promise<boolean> {
+  await ensureWorkbenchLayoutPersistenceReady(sourceScopeKey)
+  const record = desktopPersistenceClient.entries('workbenchLayout').find(candidate => candidate.key === sourceScopeKey)
+  const data = record?.data as LayoutData | undefined
+  if (!record || !data || data.layoutResetKey !== resetKey || !isLayout(data.layout)) return false
+  writePersistedWorkbenchLayout(targetScopeKey, resetKey, data.layout, record.bindingRevision)
+  return true
 }
-
-function getEmptyPersistedWorkbenchLayoutsState(): PersistedWorkbenchLayoutsState {
-  return {
-    version: 1,
-    migratedFromLegacy: false,
-    layouts: {},
-  }
+export async function clonePersistedWorkbenchLayoutToWorkspace(projectId: string, laneId: string, sourceWorkspaceId: string | null | undefined, targetWorkspaceId: string, resetKey: number): Promise<boolean> {
+  return await clonePersistedWorkbenchLayout(buildWorkbenchScopeKey(projectId, laneId, sourceWorkspaceId), buildWorkbenchScopeKey(projectId, laneId, targetWorkspaceId), resetKey)
 }
-
-function readPersistedWorkbenchLayoutsStateUnsafe(): PersistedWorkbenchLayoutsState {
-  if (typeof window === "undefined") {
-    return getEmptyPersistedWorkbenchLayoutsState()
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(WORKBENCH_LAYOUTS_STORAGE_KEY)
-    if (!rawValue) {
-      return getEmptyPersistedWorkbenchLayoutsState()
-    }
-
-    const parsedValue = JSON.parse(rawValue) as Partial<PersistedWorkbenchLayoutsState>
-    const nextLayouts = Object.fromEntries(
-      Object.entries(parsedValue.layouts ?? {}).filter(([, entry]) =>
-        isPersistedWorkbenchLayoutEntry(entry),
-      ),
-    )
-
-    return {
-      version: 1,
-      migratedFromLegacy: parsedValue.migratedFromLegacy === true,
-      layouts: nextLayouts,
-    }
-  } catch {
-    return getEmptyPersistedWorkbenchLayoutsState()
+export async function clonePersistedWorkbenchLayoutsForWorkspace(args: { projectId: string; fromWorkspace?: string | null; toWorkspace?: string | null }): Promise<void> {
+  const target = args.toWorkspace?.trim()
+  if (!args.projectId || !target) return
+  await ensureWorkbenchLayoutPersistenceReady()
+  for (const record of desktopPersistenceClient.entries('workbenchLayout')) {
+    const parsed = parseWorkbenchScopeKey(record.key, args.projectId)
+    if (!parsed || (args.fromWorkspace?.trim() && args.fromWorkspace.trim() !== parsed.workspaceId)) continue
+    const data = record.data as LayoutData
+    if (!data || !isLayout(data.layout) || !Number.isInteger(data.layoutResetKey)) continue
+    const targetKey = buildWorkbenchScopeKey(args.projectId, parsed.laneId, target)
+    if (desktopPersistenceClient.peek('workbenchLayout', targetKey) !== undefined) continue
+    writePersistedWorkbenchLayout(targetKey, data.layoutResetKey, data.layout, record.bindingRevision)
   }
 }
-
-function writePersistedWorkbenchLayoutsState(
-  state: PersistedWorkbenchLayoutsState,
-): void {
-  if (typeof window === "undefined") return
-
-  window.localStorage.setItem(
-    WORKBENCH_LAYOUTS_STORAGE_KEY,
-    JSON.stringify(state),
-  )
-}
-
-function resolveLegacyPersistedWorkbenches(
-  state: LegacyPersistedWorkbenchState,
-): Record<string, LegacyPersistedWorkbenchRecord> {
-  if (state.state?.workbenches && typeof state.state.workbenches === "object") {
-    return state.state.workbenches
-  }
-
-  if (state.workbenches && typeof state.workbenches === "object") {
-    return state.workbenches
-  }
-
-  if (state.state?.projects && typeof state.state.projects === "object") {
-    return state.state.projects
-  }
-
-  if (state.projects && typeof state.projects === "object") {
-    return state.projects
-  }
-
-  return {}
-}
-
-function ensureLegacyLayoutsMigrated(): void {
-  if (didAttemptLegacyMigration || typeof window === "undefined") return
-
-  didAttemptLegacyMigration = true
-
-  const currentState = readPersistedWorkbenchLayoutsStateUnsafe()
-  if (currentState.migratedFromLegacy) {
-    return
-  }
-
-  const nextLayouts = { ...currentState.layouts }
-
-  try {
-    const rawLegacyState = window.localStorage.getItem(LEGACY_WORKBENCH_STORAGE_KEY)
-    if (rawLegacyState) {
-      const parsedLegacyState = JSON.parse(rawLegacyState) as LegacyPersistedWorkbenchState
-      const legacyWorkbenches = resolveLegacyPersistedWorkbenches(parsedLegacyState)
-
-      for (const [scopeKey, legacyWorkbench] of Object.entries(legacyWorkbenches)) {
-        if (!isSerializedDockview(legacyWorkbench.layout) || nextLayouts[scopeKey]) {
-          continue
-        }
-
-        nextLayouts[scopeKey] = {
-          layout: legacyWorkbench.layout,
-          layoutResetKey:
-            typeof legacyWorkbench.layoutResetKey === "number"
-              ? legacyWorkbench.layoutResetKey
-              : 0,
-        }
-      }
-    }
-  } catch {
-    // Ignore malformed legacy persisted state and continue with a clean layout store.
-  }
-
-  writePersistedWorkbenchLayoutsState({
-    version: 1,
-    migratedFromLegacy: true,
-    layouts: nextLayouts,
-  })
-}
-
-export function ensureWorkbenchLayoutPersistenceReady(): void {
-  ensureLegacyLayoutsMigrated()
-}
-
-/**
- * A layout snapshot together with the scope and reset key it was taken under.
- *
- * Snapshots are queued (a frame, then a debounce) before they are written, and
- * the workbench scope can settle from a transient boot value to the real one in
- * between. Reading the scope at write time therefore files a snapshot of one
- * workbench under another's key. Carrying the identity with the snapshot is
- * what keeps a queued write from landing in the wrong place.
- */
-export interface PendingWorkbenchLayoutWrite {
-  scopeKey: string
-  layoutResetKey: number
-  layout: SerializedDockview
-}
-
-export function isWorkbenchLayoutWriteStillValid(
-  pending: Pick<PendingWorkbenchLayoutWrite, "scopeKey" | "layoutResetKey">,
-  current: { scopeKey: string | null | undefined; layoutResetKey: number },
-): boolean {
-  return (
-    Boolean(pending.scopeKey) &&
-    pending.scopeKey === current.scopeKey &&
-    pending.layoutResetKey === current.layoutResetKey
-  )
-}
-
-export function peekPersistedWorkbenchLayout(
-  scopeKey: string,
-  layoutResetKey: number,
-): SerializedDockview | null {
-  const state = readPersistedWorkbenchLayoutsStateUnsafe()
-  const entry = state.layouts[scopeKey]
-  if (!entry || entry.layoutResetKey !== layoutResetKey) {
-    return null
-  }
-
-  return entry.layout
-}
-
-export function writePersistedWorkbenchLayout(
-  scopeKey: string,
-  layoutResetKey: number,
-  layout: SerializedDockview,
-): void {
-  ensureLegacyLayoutsMigrated()
-
-  const state = readPersistedWorkbenchLayoutsStateUnsafe()
-  writePersistedWorkbenchLayoutsState({
-    ...state,
-    migratedFromLegacy: true,
-    layouts: {
-      ...state.layouts,
-      [scopeKey]: {
-        layout,
-        layoutResetKey,
-      },
-    },
-  })
-}
-
-export function clearPersistedWorkbenchLayout(scopeKey: string): void {
-  ensureLegacyLayoutsMigrated()
-
-  const state = readPersistedWorkbenchLayoutsStateUnsafe()
-  if (!(scopeKey in state.layouts)) {
-    return
-  }
-
-  const nextLayouts = { ...state.layouts }
-  delete nextLayouts[scopeKey]
-
-  writePersistedWorkbenchLayoutsState({
-    ...state,
-    migratedFromLegacy: true,
-    layouts: nextLayouts,
-  })
-}
-
-export function clearPersistedWorkbenchLayoutsForProject(projectId: string): void {
-  const normalizedProjectId = projectId.trim()
-  if (!normalizedProjectId) return
-
-  ensureLegacyLayoutsMigrated()
-
-  const state = readPersistedWorkbenchLayoutsStateUnsafe()
-  const projectScopePrefix = `${normalizedProjectId}::`
-  const nextLayouts = Object.fromEntries(
-    Object.entries(state.layouts).filter(([scopeKey]) => !scopeKey.startsWith(projectScopePrefix)),
-  )
-
-  if (Object.keys(nextLayouts).length === Object.keys(state.layouts).length) {
-    return
-  }
-
-  writePersistedWorkbenchLayoutsState({
-    ...state,
-    migratedFromLegacy: true,
-    layouts: nextLayouts,
-  })
-}
-
-export function clonePersistedWorkbenchLayoutsForWorkspace(args: {
-  projectId: string
-  fromWorkspace?: string | null
-  toWorkspace?: string | null
-}): void {
-  const normalizedTargetScopeWorkspace = args.toWorkspace?.trim()
-  if (!args.projectId || !normalizedTargetScopeWorkspace) {
-    return
-  }
-
-  ensureLegacyLayoutsMigrated()
-
-  const state = readPersistedWorkbenchLayoutsStateUnsafe()
-  const nextLayouts = { ...state.layouts }
-  let mutated = false
-
-  for (const [scopeKey, entry] of Object.entries(state.layouts)) {
-    const scopeKeyParts = scopeKey.split("::")
-    const [scopeProjectId, scopeLaneId] = scopeKeyParts
-    const revisionPart = scopeKeyParts[scopeKeyParts.length - 1]
-    if (
-      scopeProjectId !== args.projectId ||
-      !scopeLaneId ||
-      scopeKeyParts.length < 4 ||
-      !revisionPart?.startsWith("v")
-    ) {
-      continue
-    }
-
-    const scopeWorkspace = scopeKeyParts.slice(2, -1).join("::")
-    if (!scopeWorkspace) {
-      continue
-    }
-
-    const isSourceMatch = args.fromWorkspace?.trim()
-      ? scopeWorkspace === args.fromWorkspace.trim()
-      : true
-
-    if (!isSourceMatch) {
-      continue
-    }
-
-    const targetScopeKey = buildWorkbenchScopeKey(
-      args.projectId,
-      scopeLaneId,
-      normalizedTargetScopeWorkspace,
-    )
-
-    if (nextLayouts[targetScopeKey]) {
-      continue
-    }
-
-    nextLayouts[targetScopeKey] = entry
-    mutated = true
-  }
-
-  if (!mutated) {
-    return
-  }
-
-  writePersistedWorkbenchLayoutsState({
-    ...state,
-    migratedFromLegacy: true,
-    layouts: nextLayouts,
-  })
-}
+export const clonePersistedWorkbenchLayoutsToWorkspace = clonePersistedWorkbenchLayoutsForWorkspace

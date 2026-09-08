@@ -46,6 +46,8 @@ import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
 import { useTranslation } from "@/lib/i18n";
 import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { buildPresentationInstanceKey } from "@shared/navigationRuntimeTypes";
+import type { ResolvedWorkbenchIdentity } from "@shared/navigationRuntimeTypes";
 
 const LazyProjectSettingsPage = lazy(() =>
   import("@/features/settings/pages/ProjectSettingsPage").then((module) => ({
@@ -74,7 +76,11 @@ function getTaskOverlayKey(task: TaskOverlayPayload): string {
   return `${task.projectId}:${task.source}:${task.storageId}`;
 }
 
-export function ProjectWorkbenchSurface() {
+interface ProjectWorkbenchSurfaceProps {
+  visible?: boolean;
+}
+
+export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurfaceProps) {
   const { t } = useTranslation();
   const projectRouteContext = useOptionalProjectRouteContext();
   const { project } = useAccessibleProject();
@@ -133,15 +139,33 @@ export function ProjectWorkbenchSurface() {
       [currentWorkspaceRuntimeId],
     ),
   );
+  const [retainedIdentities, setRetainedIdentities] = useState<readonly ResolvedWorkbenchIdentity[]>([]);
+  const handleRetainedSessionsChange = useCallback((sessions: readonly WorkbenchKeepAliveSession[]) => {
+    const next = sessions.map((session) => ({
+      projectId: session.projectId,
+      workspaceId: session.workspaceId,
+      workspaceRevision: session.workspaceRevision,
+      laneId: session.activeLaneId,
+    })).filter((identity): identity is ResolvedWorkbenchIdentity => Boolean(identity.workspaceId));
+    setRetainedIdentities((current) => {
+      const currentKeys = current.map(buildPresentationInstanceKey);
+      const nextKeys = next.map(buildPresentationInstanceKey);
+      return currentKeys.length === nextKeys.length && currentKeys.every((key, index) => key === nextKeys[index])
+        ? current
+        : next;
+    });
+  }, []);
   const workbenchSession = useWorkbenchSessionLifecycle({
     projectId,
     laneId: activeLaneId,
     workspaceId: activeWorkbenchId,
+    workspaceRevision: activeWorkspace?.workspace.workspaceRevision ?? null,
+    retained: retainedIdentities,
     backgroundMode:
       workspaceRuntimeRecord?.lifecycle === "background-frozen"
         ? "backgroundFrozen"
         : "backgroundWarm",
-    enabled: Boolean(projectId),
+    enabled: visible && Boolean(projectId),
   });
   const bindWorkspaceSessionSnapshot = useWorkspaceRuntimeStore((state) => state.actions.bindSessionSnapshot);
   // The dock runtime context renders on sessionKey only; tiles read snapshot
@@ -168,17 +192,17 @@ export function ProjectWorkbenchSurface() {
     () => (
       <div className="flex min-w-0 items-center gap-2">
         <div
-          className="flex h-6 min-w-0 max-w-[min(320px,42vw)] items-center text-[11px] font-normal text-foreground"
+          className="flex h-7 min-w-0 max-w-[min(320px,42vw)] items-center text-sm font-medium text-foreground"
           title={projectName}
         >
           <span className="truncate">{projectName}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-          <div className="inline-flex h-6 items-center rounded-md bg-secondary px-0.5 text-muted-foreground/85 transition-colors hover:bg-accent/80">
+          <div className="inline-flex h-7 items-center rounded-md bg-secondary px-1 text-muted-foreground/85 transition-colors hover:bg-accent/80">
             {/* Lane/branch state is read from context inside the control so
                 this element stays identity-stable while lanes settle. */}
             <WorkbenchHeaderBranchControl
-              triggerClassName="h-6 min-h-6 gap-px rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
+              triggerClassName="h-7 min-h-7 gap-1 rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
               trailing={
                 project?._id ? (
                   <ProjectSyncIndicator
@@ -196,7 +220,7 @@ export function ProjectWorkbenchSurface() {
     [project?._id, projectName],
   );
 
-  useProjectHeader(headerWorkbench, null);
+  useProjectHeader(visible ? headerWorkbench : null, null);
 
   const replaceSearchParams = useCallback(
     (nextParams: URLSearchParams) => {
@@ -330,7 +354,11 @@ export function ProjectWorkbenchSurface() {
   useLayoutEffect(() => {
     if (!projectId || laneResolutionPending) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
-  }, [activeLaneId, activeWorkbenchId, laneResolutionPending, projectId, workbenchActions]);
+    const workspaceRevision = activeWorkspace?.workspace.workspaceRevision;
+    if (activeWorkbenchId && workspaceRevision) {
+      workbenchActions.bindWorkspaceRevision(projectId, activeLaneId, activeWorkbenchId, workspaceRevision);
+    }
+  }, [activeLaneId, activeWorkspace?.workspace.workspaceRevision, activeWorkbenchId, laneResolutionPending, projectId, workbenchActions]);
 
   useEffect(() => {
     if (!projectId || !workspaceSelectionId || laneResolutionPending) {
@@ -389,15 +417,32 @@ export function ProjectWorkbenchSurface() {
       : "light";
 
   const currentKeepAliveSession = useMemo<WorkbenchKeepAliveSession | null>(() => {
-    if (!projectId || !workbenchScopeKey || !activeWorkbenchId || laneResolutionPending) {
+    const workspaceRevision = activeWorkspace?.workspace.workspaceRevision;
+    if (
+      !visible ||
+      !projectId ||
+      !workbenchScopeKey ||
+      !activeWorkbenchId ||
+      !workspaceRevision ||
+      laneResolutionPending
+    ) {
       return null;
     }
 
+    const identity = {
+      projectId,
+      workspaceId: activeWorkbenchId,
+      workspaceRevision,
+      laneId: activeLaneId,
+    };
+
     return {
+      instanceKey: buildPresentationInstanceKey(identity),
       scopeKey: workbenchScopeKey,
       projectId,
       activeLaneId,
       workspaceId: activeWorkbenchId,
+      workspaceRevision,
       projectRootPath,
       gitRootPath,
       projectName,
@@ -410,6 +455,7 @@ export function ProjectWorkbenchSurface() {
     };
   }, [
     activeLaneId,
+    activeWorkspace?.workspace.workspaceRevision,
     activeWorkbenchId,
     gitRootPath,
     laneResolutionPending,
@@ -422,21 +468,19 @@ export function ProjectWorkbenchSurface() {
     resolvedDockviewThemeScheme,
     workbenchScopeKey,
     workbenchSessionKey,
+    visible,
   ]);
-
-  if (!projectId) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        {t('workbench.surface.loadingWorkbench')}
-      </div>
-    );
-  }
 
   return (
     <div
-      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent"
+      className="absolute inset-0 flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent"
+      data-workbench-persistent-surface="true"
+      data-workbench-visible={visible ? "true" : "false"}
       data-workbench-session-key={workbenchSession?.sessionKey ?? ""}
       data-workbench-lifecycle={workbenchSession?.lifecycle ?? "loading"}
+      aria-hidden={!visible}
+      inert={!visible || undefined}
+      style={visible ? { opacity: 1, zIndex: 10 } : { opacity: 0, pointerEvents: "none", zIndex: 0 }}
     >
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <div className="relative flex h-full min-h-0 min-w-0">
@@ -447,6 +491,7 @@ export function ProjectWorkbenchSurface() {
               current={currentKeepAliveSession}
               getWorkbenchSession={getWorkbenchSession}
               fallback={<WorkbenchOverlayLoading />}
+              onSessionsChange={handleRetainedSessionsChange}
             />
           </div>
 
@@ -507,15 +552,17 @@ export function ProjectWorkbenchSurface() {
         </div>
       </div>
 
-      <WorkbenchCommandPaletteHost
-        projectId={projectId}
-        laneId={activeLaneId}
-        workspaceId={activeWorkbenchId}
-        projectRootPath={projectRootPath}
-        openSettings={openSettingsOverlay}
-        closeSettings={closeSettingsOverlay}
-        isSettingsOpen={isSettingsOpen}
-      />
+      {visible && projectId ? (
+        <WorkbenchCommandPaletteHost
+          projectId={projectId}
+          laneId={activeLaneId}
+          workspaceId={activeWorkbenchId}
+          projectRootPath={projectRootPath}
+          openSettings={openSettingsOverlay}
+          closeSettings={closeSettingsOverlay}
+          isSettingsOpen={isSettingsOpen}
+        />
+      ) : null}
     </div>
   );
 }

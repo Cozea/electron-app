@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { ConvexProvider as ConvexReactProvider } from "convex/react"
+import { ConvexProvider as ConvexReactProvider, ConvexReactClient } from "convex/react"
 import { convex } from "@/lib/convex"
 import { cn } from "@/lib/utils"
 
@@ -7,10 +7,16 @@ interface ConvexProviderProps {
   children: ReactNode
 }
 
+const navigationTestClient =
+  typeof __COZEA_NAVIGATION_TEST__ !== "undefined" && __COZEA_NAVIGATION_TEST__
+    ? new ConvexReactClient("http://127.0.0.1:3210")
+    : null
+
 export function ConvexProvider({ children }: ConvexProviderProps) {
+  const client = convex ?? navigationTestClient
   // If Convex is not configured, do not render the app tree:
   // many components call `useQuery/useMutation`, which require `ConvexProvider`.
-  if (!convex) {
+  if (!client) {
     return (
       <div
         className={cn(
@@ -30,5 +36,5 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
     )
   }
 
-  return <ConvexReactProvider client={convex}>{children}</ConvexReactProvider>
+  return <ConvexReactProvider client={client}>{children}</ConvexReactProvider>
 }
