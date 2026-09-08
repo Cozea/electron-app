@@ -23,7 +23,13 @@ import type { BrowserStorageScope } from "@shared/browserTileTypes"
 import type { SerializedDockview } from "dockview-react"
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
-import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
+import { assertWorkbenchMutationIdentity, getWorkspaceBindingRevision, isWorkspaceBindingCurrent } from './workspaceBindingState'
+import {
+  ensureWorkbenchModelReady, isWorkbenchModelReady, registerWorkbenchModelAdapter,
+  persistChangedWorkbenchModels, hydrateWorkbenchModelsForProject, reportWorkbenchPersistenceError,
+} from './workbenchPersistence'
+import { flushWorkbenchStorage } from './workbenchPersistence'
+export { flushWorkbenchStorage, ensureWorkbenchModelReady } from './workbenchPersistence'
 
 import { normalizeWorkspaceId } from "@/lib/workspaceIdentity"
 import {
@@ -48,83 +54,6 @@ import type {
 } from "@/lib/workbenchTileContract"
 
 export type { WorkbenchTileType } from "@/lib/workbenchTileContract"
-
-const PERSIST_DEBOUNCE_MS = 500
-
-function createDebouncedStorage(backing: Storage): StateStorage & { flush: () => void } {
-  let pending: string | null = null
-  let pendingKey: string | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
-
-  const flush = () => {
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
-    }
-    if (pending !== null && pendingKey !== null) {
-      backing.setItem(pendingKey, pending)
-      pending = null
-      pendingKey = null
-    }
-  }
-
-  if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", flush)
-  }
-
-  return {
-    getItem(name) {
-      return backing.getItem(name)
-    },
-    setItem(name, value) {
-      pendingKey = name
-      pending = value
-      if (timer !== null) clearTimeout(timer)
-      timer = setTimeout(() => {
-        flush()
-      }, PERSIST_DEBOUNCE_MS)
-    },
-    removeItem(name) {
-      if (timer !== null) {
-        clearTimeout(timer)
-        timer = null
-      }
-      pending = null
-      pendingKey = null
-      backing.removeItem(name)
-    },
-    flush,
-  }
-}
-
-export function flushWorkbenchStorage(): void {
-  void import("@/app/model/persistence/desktopPersistenceClient").then(({ desktopPersistenceClient }) => {
-    void desktopPersistenceClient.flush()
-  })
-  if (typeof workbenchStorage === "object" && "flush" in workbenchStorage) {
-    (workbenchStorage as { flush: () => void }).flush()
-  }
-}
-
-function createMemoryStorage(): StateStorage {
-  const items = new Map<string, string>()
-  return {
-    getItem(name) {
-      return items.get(name) ?? null
-    },
-    setItem(name, value) {
-      items.set(name, value)
-    },
-    removeItem(name) {
-      items.delete(name)
-    },
-  }
-}
-
-const workbenchStorage =
-  typeof window === "undefined"
-    ? createMemoryStorage()
-    : createDebouncedStorage(window.localStorage)
 
 /**
  * Tile shapes live in `@/lib/workbenchTileContract` so a capability can describe
@@ -152,6 +81,8 @@ export type {
 } from "@/lib/workbenchTileContract"
 
 export interface WorkbenchProjectState {
+  /** Older saved records omit this and belong to their existing v1 scope only. */
+  workspaceRevision?: number
   projectId: string
   laneId: string
   workspaceId: string | null
@@ -453,14 +384,25 @@ function resolveMutableWorkbenchState(
 } {
   const normalizedLaneId = normalizeLaneId(laneId)
   const normalizedWorkspace = normalizeWorkspaceId(workspaceId)
+  let bindingRevision: number | null = null
+  if (typeof window !== 'undefined') {
+    if (!normalizedWorkspace) throw new Error('Workbench mutations require a resolved workspace.')
+    bindingRevision = assertWorkbenchMutationIdentity(projectId, normalizedLaneId, normalizedWorkspace)
+    if (!isWorkbenchModelReady(projectId, normalizedLaneId, normalizedWorkspace)) {
+      throw new Error('Saved workbench state is still loading. No empty replacement was created.')
+    }
+  }
   const scopeKey = normalizedWorkspace
-    ? promoteLegacyWorkbenchIfNeeded(workbenches, projectId, normalizedLaneId, normalizedWorkspace)
+    ? (typeof window === 'undefined'
+      ? promoteLegacyWorkbenchIfNeeded(workbenches, projectId, normalizedLaneId, normalizedWorkspace)
+      : buildWorkbenchScopeKey(projectId, normalizedLaneId, normalizedWorkspace, bindingRevision ?? undefined))
     : resolveWorkbenchScopeKey(workbenches, projectId, normalizedLaneId, null)
 
   let workbench = workbenches[scopeKey] ?? null
 
   if (!workbench && options?.createIfMissing !== false) {
     workbench = createDefaultWorkbenchState(projectId, normalizedLaneId, normalizedWorkspace)
+    if (bindingRevision) workbench.workspaceRevision = bindingRevision
     workbenches[scopeKey] = workbench
     return {
       scopeKey,
@@ -471,6 +413,8 @@ function resolveMutableWorkbenchState(
   }
 
   if (workbench) {
+    if (bindingRevision && (workbench.workspaceRevision ?? 1) !== bindingRevision) throw new Error('Stale workbench binding revision.')
+    if (bindingRevision) workbench.workspaceRevision = bindingRevision
     workbench.projectId = projectId
     workbench.laneId = normalizedLaneId
     if (normalizedWorkspace && workbench.workspaceId !== normalizedWorkspace) {
@@ -952,6 +896,7 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
 
   return {
     projectId: workbench.projectId,
+    workspaceRevision: workbench.workspaceRevision,
     laneId: normalizeLaneId(workbench.laneId),
     workspaceId,
     activeTileId: sanitizedActiveTileId,
@@ -1194,13 +1139,21 @@ export function selectVisibleActiveWorkbenchTileId(
 }
 
 export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
-  persist(
     immer((set) => ({
       workbenches: {},
       lastActiveScopeKey: null,
       actions: {
         ensureWorkbench: (projectId, laneId, workspaceId) => {
           if (!projectId) return
+          if (typeof window !== 'undefined' && !isWorkbenchModelReady(projectId, normalizeLaneId(laneId), workspaceId ?? null)) {
+            const revision = getWorkspaceBindingRevision(workspaceId)
+            if (!workspaceId || !revision) return
+            const identity = { projectId, laneId: normalizeLaneId(laneId), workspaceId, workspaceRevision: revision }
+            void ensureWorkbenchModelReady(identity).then(() => {
+              if (isWorkspaceBindingCurrent(identity)) useProjectWorkbenchStore.getState().actions.ensureWorkbench(projectId, laneId, workspaceId)
+            }).catch(reportWorkbenchPersistenceError)
+            return
+          }
 
           set((state) => {
             // resolveMutableWorkbenchState creates the workbench when missing,
@@ -1249,14 +1202,24 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
               }
             }
           })
-          flushWorkbenchStorage()
+          void flushWorkbenchStorage().catch(reportWorkbenchPersistenceError)
         },
-        cloneWorkspaceState: (projectId, fromWorkspace, toWorkspace) => {
+        cloneWorkspaceState: async (projectId, fromWorkspace, toWorkspace) => {
           const normalizedTargetWorkspace = normalizeWorkspaceId(toWorkspace)
           if (!projectId || !normalizedTargetWorkspace) {
             return
           }
 
+          if (typeof window !== 'undefined') {
+            await hydrateWorkbenchModelsForProject(projectId)
+            const revision = getWorkspaceBindingRevision(normalizedTargetWorkspace)
+            if (!revision) throw new Error('The relink target workspace has not been validated.')
+            const sourceModels = Object.values(useProjectWorkbenchStore.getState().workbenches).filter((model) =>
+              model.projectId === projectId && (!fromWorkspace || model.workspaceId === fromWorkspace))
+            await Promise.all(sourceModels.map((model) => ensureWorkbenchModelReady({
+              projectId, workspaceId: normalizedTargetWorkspace, workspaceRevision: revision, laneId: model.laneId,
+            })))
+          }
           set((state) => {
             const normalizedSourceWorkspace = normalizeWorkspaceId(fromWorkspace)
             const matchingWorkbenches = Object.values(state.workbenches).filter((workbench) => {
@@ -1285,10 +1248,8 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
                 continue
               }
 
-              state.workbenches[targetScopeKey] = cloneWorkbenchState(
-                workbench,
-                normalizedTargetWorkspace,
-              )
+              state.workbenches[targetScopeKey] = { ...cloneWorkbenchState(workbench, normalizedTargetWorkspace),
+                workspaceRevision: getWorkspaceBindingRevision(normalizedTargetWorkspace) ?? 1 }
             }
           })
         },
@@ -1528,21 +1489,22 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
         },
       },
     })),
-    {
-      name: "cozea:project-workbench",
-      version: 5,
-      storage: createJSONStorage(() => workbenchStorage),
-      migrate: (persistedState) => migratePersistedWorkbenchState(persistedState),
-      partialize: (state) => ({
-        workbenches: sanitizePersistedWorkbenches(state.workbenches),
-      }),
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...migratePersistedWorkbenchState(persistedState),
-      }),
-    },
-  ),
 )
+
+registerWorkbenchModelAdapter({
+  get: (scopeKey) => useProjectWorkbenchStore.getState().workbenches[scopeKey] ?? null,
+  install: (scopeKey, model) => useProjectWorkbenchStore.setState((state) => ({
+    workbenches: { ...state.workbenches, [scopeKey]: model },
+  })),
+  sanitize: sanitizeWorkbenchState,
+})
+
+useProjectWorkbenchStore.subscribe((state, previous) => {
+  if (state.workbenches === previous.workbenches) return
+  persistChangedWorkbenchModels(state.workbenches, previous.workbenches)
+})
+
+if (false) { /* The legacy localStorage persistence owner was removed. */ }
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   // Exposed for render-performance diagnostics (store emission counting).

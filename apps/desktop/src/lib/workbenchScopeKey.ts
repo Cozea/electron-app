@@ -1,3 +1,5 @@
+import { getWorkspaceBindingRevision } from './workspaceBindingState'
+
 import {
   buildLegacyWorkspaceIdentityKey,
   buildWorkspaceIdentityKey,
@@ -27,11 +29,13 @@ export function buildWorkbenchScopeKey(
   projectId: string,
   laneId?: string | null,
   workspaceId?: string | null,
+  workspaceRevision?: number,
 ): string {
   const normalizedWorkspace = normalizeWorkspaceId(workspaceId)
   if (!normalizedWorkspace) {
     return buildLegacyWorkbenchScopeKey(projectId, laneId)
   }
 
-  return buildWorkspaceIdentityKey(projectId, normalizedWorkspace, normalizeLaneId(laneId))!
+  return buildWorkspaceIdentityKey(projectId, normalizedWorkspace, normalizeLaneId(laneId),
+    workspaceRevision ?? getWorkspaceBindingRevision(normalizedWorkspace) ?? 1)!
 }

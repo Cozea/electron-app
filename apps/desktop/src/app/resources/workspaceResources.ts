@@ -4,6 +4,7 @@ import { buildResourceKey } from '@shared/navigationRuntimeTypes';
 import { KeyedResource, ResourceAccessError, type ResourceReason } from './keyedResource';
 import { ResourcePool } from './resourcePool';
 import { workspaceCatalogMirror } from './workspaceCatalogMirror';
+import { publishWorkspaceBinding, invalidateWorkspaceBinding } from '@/lib/workspaceBindingState';
 import {
   buildProjectBranchLaneState, ensureProjectBranchSessionReady, readScopedProjectBranchSession,
   rememberProjectBranchSession, resolveLaneBranchKnowledge,
@@ -97,6 +98,7 @@ export class WorkspaceResourceManager {
             throw new ResourceAccessError('Workspace resolution returned a different explicit binding.');
           }
           this.bindings.set(result.workspace.workspaceId, { projectId: request.projectId, revision: result.workspace.workspaceRevision });
+          publishWorkspaceBinding({ projectId: request.projectId, workspaceId: result.workspace.workspaceId, workspaceRevision: result.workspace.workspaceRevision });
         }
         return result;
       },
@@ -162,6 +164,7 @@ export class WorkspaceResourceManager {
       const known = this.bindings.get(entry.workspace.workspaceId);
       if (entry.status === 'ready' && (!known || known.revision <= entry.workspace.workspaceRevision)) {
         this.bindings.set(entry.workspace.workspaceId, { projectId: entry.projectId, revision: entry.workspace.workspaceRevision });
+        publishWorkspaceBinding({ projectId: entry.projectId, workspaceId: entry.workspace.workspaceId, workspaceRevision: entry.workspace.workspaceRevision });
       }
     }
   }
@@ -174,7 +177,10 @@ export class WorkspaceResourceManager {
       const current = next.entries[projectId];
       if (old?.workspace.workspaceId === current?.workspace.workspaceId && old?.workspace.workspaceRevision === current?.workspace.workspaceRevision &&
           old?.status === current?.status) continue;
-      if (old && (!current || current.workspace.workspaceId !== old.workspace.workspaceId || current.status !== 'ready')) this.bindings.delete(old.workspace.workspaceId);
+      if (old && (!current || current.workspace.workspaceId !== old.workspace.workspaceId || current.status !== 'ready')) {
+        this.bindings.delete(old.workspace.workspaceId);
+        invalidateWorkspaceBinding(old.workspace.workspaceId);
+      }
       this.invalidateProject(projectId);
     }
   }
