@@ -1,10 +1,13 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react"
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 
 import { WorkbenchDockRuntimeProvider } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { useWorkbenchDockviewRuntime } from "@/features/workbench/hooks/useWorkbenchDockviewRuntime"
 import {
   ensureWorkbenchLayoutPersistenceReady,
   peekPersistedWorkbenchLayout,
+  isWorkbenchLayoutPersistenceReady,
+  subscribeWorkbenchLayouts,
+  getWorkbenchLayoutsRevision,
 } from "@/features/workbench/model/workbenchLayoutPersistence"
 import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
@@ -31,8 +34,11 @@ export function WorkbenchDockviewSession({
   isActive,
   getWorkbenchSession,
 }: WorkbenchDockviewSessionProps) {
-  const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false)
   const workbenchScopeKey = session.scopeKey
+  const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(() => isWorkbenchLayoutPersistenceReady(workbenchScopeKey))
+  const [layoutHydrationError, setLayoutHydrationError] = useState<string | null>(null)
+  const [hydrationAttempt, setHydrationAttempt] = useState(0)
+  const layoutsRevision = useSyncExternalStore(subscribeWorkbenchLayouts, getWorkbenchLayoutsRevision, getWorkbenchLayoutsRevision)
   const legacyWorkbenchScopeKey = buildWorkbenchScopeKey(
     session.projectId,
     session.activeLaneId,
@@ -65,7 +71,7 @@ export function WorkbenchDockviewSession({
       legacyWorkbenchScopeKey,
       projectWorkbench.layoutResetKey,
     )
-  }, [legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey])
+  }, [legacyWorkbenchScopeKey, projectWorkbench, workbenchScopeKey, layoutsRevision])
 
   const {
     dockviewHostRef,
@@ -88,9 +94,16 @@ export function WorkbenchDockviewSession({
   })
 
   useEffect(() => {
-    ensureWorkbenchLayoutPersistenceReady()
-    setIsLayoutPersistenceReady(true)
-  }, [])
+    let cancelled = false
+    setLayoutHydrationError(null)
+    setIsLayoutPersistenceReady(isWorkbenchLayoutPersistenceReady(workbenchScopeKey))
+    void ensureWorkbenchLayoutPersistenceReady(workbenchScopeKey).then(() => {
+      if (!cancelled) setIsLayoutPersistenceReady(true)
+    }, (error: unknown) => {
+      if (!cancelled) setLayoutHydrationError(error instanceof Error ? error.message : String(error))
+    })
+    return () => { cancelled = true }
+  }, [workbenchScopeKey, hydrationAttempt])
 
   const onReady = useCallback(
     (event: Parameters<typeof handleDockviewReady>[0]) => {
@@ -98,6 +111,17 @@ export function WorkbenchDockviewSession({
     },
     [handleDockviewReady],
   )
+
+  if (layoutHydrationError) {
+    return <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6">
+      <p>Saved workbench state could not be loaded. No replacement layout was written.</p>
+      <p className="text-xs text-muted-foreground">{layoutHydrationError}</p>
+      <button type="button" onClick={() => setHydrationAttempt((attempt) => attempt + 1)}>Retry loading saved state</button>
+    </div>
+  }
+  if (!isLayoutPersistenceReady) {
+    return <div role="status" className="flex h-full items-center justify-center text-sm text-muted-foreground">Restoring saved workbench…</div>
+  }
 
   return (
     <WorkbenchDockRuntimeProvider
