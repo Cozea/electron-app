@@ -16,7 +16,12 @@ export class DesktopStatePersistenceService {
   private committedWatermark = 0
   private operations: Promise<unknown> = Promise.resolve()
   private failed = new Map<string, { watermark: number; error: string }>()
-  constructor(private readonly userDataPath = app.getPath('userData'), private readonly workerPath = path.join(__dirname, 'desktop-state-persistence.js')) {}
+  private readonly userDataPath: string
+  private readonly workerPath: string
+  constructor(userDataPath = app.getPath('userData'), workerPath = path.join(__dirname, 'desktop-state-persistence.js')) {
+    this.userDataPath = userDataPath
+    this.workerPath = workerPath
+  }
   private getWorker(): Worker {
     if (this.worker) return this.worker
     const worker = new Worker(this.workerPath, { workerData: { userDataPath: this.userDataPath }, execArgv: [] })

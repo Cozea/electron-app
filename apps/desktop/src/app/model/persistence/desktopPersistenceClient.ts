@@ -24,10 +24,15 @@ export class DesktopPersistenceClient {
   private revision = 0
   private retryDelay = 500
   private lastError: Error | null = null
+  private readonly getAPI: () => DesktopPersistenceAPI | null
+  private readonly migrate: () => Promise<void>
   constructor(
-    private readonly getAPI: () => DesktopPersistenceAPI | null = () => typeof window === 'undefined' ? null : window.electronAPI?.desktopPersistence ?? null,
-    private readonly migrate: () => Promise<void> = migrateLegacyDesktopState,
-  ) {}
+    getAPI: () => DesktopPersistenceAPI | null = () => typeof window === 'undefined' ? null : window.electronAPI?.desktopPersistence ?? null,
+    migrate: () => Promise<void> = migrateLegacyDesktopState,
+  ) {
+    this.getAPI = getAPI
+    this.migrate = migrate
+  }
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener) }
   getRevision = (): number => this.revision
   getError = (): Error | null => this.lastError
@@ -46,7 +51,7 @@ export class DesktopPersistenceClient {
   private setInMemory(namespace: DesktopStateNamespace, key: string, data: unknown): void {
     const id = fullKey(namespace, key)
     const old = this.records.get(id)
-    if (old?.data === data && !old.deleted) return
+    if (old && old.data === data && !old.deleted) return
     this.records.set(id, { schemaVersion: 1, namespace, key, recordRevision: old?.recordRevision ?? 1, updatedAt: Date.now(), data })
     this.localChanges.set(id, ++this.changeSequence)
     this.notify()

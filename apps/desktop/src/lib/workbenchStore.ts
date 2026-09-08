@@ -98,9 +98,11 @@ function createDebouncedStorage(backing: Storage): StateStorage & { flush: () =>
 }
 
 export function flushWorkbenchStorage(): void {
-  void import("@/app/model/persistence/desktopPersistenceClient").then(({ desktopPersistenceClient }) => {
-    void desktopPersistenceClient.flush()
-  })
+  if (typeof window !== "undefined" && window.electronAPI?.desktopPersistence) {
+    void import("@/app/model/persistence/desktopPersistenceClient")
+      .then(({ desktopPersistenceClient }) => desktopPersistenceClient.flush())
+      .catch(error => console.error("[Workbench] Persistence flush failed", error))
+  }
   if (typeof workbenchStorage === "object" && "flush" in workbenchStorage) {
     (workbenchStorage as { flush: () => void }).flush()
   }
