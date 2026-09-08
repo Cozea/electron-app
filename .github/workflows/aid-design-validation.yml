@@ -1,0 +1,101 @@
+name: AID Design Handoff Validation
+
+on:
+  push:
+    branches: [feat/programmable-aids-runtime]
+    paths:
+      - 'docs/aid-system/**'
+      - 'docs/computer-use-*.md'
+      - '.github/workflows/aid-design-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aid-design-handoff-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/programmable-aids-runtime
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2.22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated documentation-only validators
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/aid-typescript"
+          printf '%s\n' '{"private":true,"devDependencies":{"typescript":"5.6.3"}}' > "$RUNNER_TEMP/aid-typescript/package.json"
+          bun install --cwd "$RUNNER_TEMP/aid-typescript" --ignore-scripts
+          python -m pip install --disable-pip-version-check --only-binary=:all: --target "$RUNNER_TEMP/aid-python" jsonschema==4.23.0 attrs==24.2.0 referencing==0.35.1 rpds-py==0.20.0 jsonschema-specifications==2024.10.1
+          printf 'AID_TYPESCRIPT_PATH=%s\n' "$RUNNER_TEMP/aid-typescript/node_modules/typescript/lib/typescript.js" >> "$GITHUB_ENV"
+          printf 'PYTHONPATH=%s\n' "$RUNNER_TEMP/aid-python" >> "$GITHUB_ENV"
+      - name: Record exact source checkpoint
+        run: git rev-parse HEAD > "$RUNNER_TEMP/aid-design-parent"
+      - name: Assemble and validate documentation and contract examples
+        run: python docs/aid-system/tools/complete_handoff.py --root . --write --research --export-dir build/aid-design-handoff
+      - name: Verify read-only repeatability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('docs/aid-system')
+          before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and '__pycache__' not in p.parts}
+          Path('/tmp/aid-docs-before.json').write_text(json.dumps(before,sort_keys=True))
+          PY
+          python docs/aid-system/tools/complete_handoff.py --root . --check
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          before=json.loads(Path('/tmp/aid-docs-before.json').read_text())
+          after={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in Path('docs/aid-system').rglob('*') if p.is_file() and '__pycache__' not in p.parts}
+          assert before==after, 'Read-only validation changed the documentation'
+          PY
+      - name: Commit only verified documentation changes without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess
+          allowed=('docs/aid-system/','docs/computer-use-aid-design-index.md','docs/computer-use-aid-design-work-log.md','docs/computer-use-aid-environment-design.md','docs/computer-use-programmable-aids.md','docs/computer-use-current-platform-opportunities-2026-09.md','.agent/CONTINUITY.md','AGENTS.md')
+          tracked=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+          unexpected=[p for p in tracked if not p.startswith(allowed)]
+          assert not unexpected, f'Unexpected changes: {unexpected}'
+          PY
+          git add docs/aid-system docs/computer-use-aid-design-index.md docs/computer-use-aid-design-work-log.md docs/computer-use-aid-environment-design.md docs/computer-use-programmable-aids.md docs/computer-use-current-platform-opportunities-2026-09.md .agent/CONTINUITY.md AGENTS.md
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'docs(aids): publish validated revision 1.1 contracts and design handoff'
+            git push origin HEAD:refs/heads/feat/programmable-aids-runtime
+          fi
+          git rev-parse HEAD > build/aid-design-handoff/BRANCH-COMMIT.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aid-design-handoff-v1.1
+          path: |
+            build/aid-design-handoff/
+            docs/aid-system/design-validation.json
+            docs/aid-system/research/source-checks.json
+          if-no-files-found: error
+          retention-days: 14
