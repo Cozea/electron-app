@@ -10,7 +10,7 @@ on:
       - 'shared/**'
       - 'tests/navigation/**'
       - 'tests/electron/navigation/**'
-      - 'scripts/perf/navigation/**'
+      - 'scripts/**'
       - '.github/workflows/navigation-runtime-validation.yml'
 
 permissions:
@@ -21,45 +21,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  integrate-main:
+  source-edits:
     if: >-
-      github.event_name == 'push' && github.event.head_commit.message == 'ci(navigation): integrate current main and normalize validation'
+      github.event_name == 'push' && github.ref == 'refs/heads/fix/navigation-runtime-v2-completion' && startsWith(github.event.head_commit.message, 'chore(navigation): apply source edit batch')
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.apply.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/navigation-runtime-v2-completion
-          fetch-depth: 0
-      - name: Preserve the independently merged computer-use changes
+          ref: ${{ github.sha }}
+      - name: Apply exact source anchors on the isolated repair branch
+        id: apply
         shell: bash
         run: |
           set -euo pipefail
+          node scripts/navigation-repair/apply-source-edits.mjs
+          git diff --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if ! git merge --no-ff --no-commit origin/main; then
-            conflicts=$(git diff --name-only --diff-filter=U)
-            if [[ "$conflicts" != 'apps/desktop/src/lib/i18n/computerUse.ts' ]]; then
-              printf 'Unexpected conflicts; refusing automatic resolution:\n%s\n' "$conflicts"
-              exit 1
-            fi
-            git checkout --theirs -- apps/desktop/src/lib/i18n/computerUse.ts
-            git add apps/desktop/src/lib/i18n/computerUse.ts
-          fi
-          if [[ -f .git/MERGE_HEAD ]]; then
-            git commit -m 'merge: preserve current main computer-use runtime in navigation repair'
-            git push origin HEAD:fix/navigation-runtime-v2-completion
-          fi
-          git rev-parse HEAD
+          git add apps shared tests scripts docs
+          git commit -m 'refactor(navigation): apply verified source integration edits'
+          git push origin HEAD:fix/navigation-runtime-v2-completion
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   unit:
+    needs: source-edits
+    if: always() && (needs.source-edits.result == 'success' || needs.source-edits.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.source-edits.outputs.commit || github.sha }}
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:

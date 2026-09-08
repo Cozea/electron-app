@@ -1,356 +1,319 @@
-/**
- * Desktop State Persistence Worker Core
- * Conforms to Section 10 of docs/perf/navigation-runtime-plan.md
- *
- * Implements:
- * - Atomic file replacement (write to tmp -> fs.promises.rename) (Section 10.6, M12)
- * - Serial per-key write queues preventing out-of-order overwrite (Section 10.6, M11)
- * - Envelope validation and SHA-256 hash-addressed record paths (Section 10.2)
- * - Bounded query cache entries (1 MiB cap) (Section 10.3, M20)
- * - Legacy data backup, quarantine of corrupt records, and migration markers (Section 10.9, M13, M14)
- * - Flush-through-revision lifecycle guarantees (Section 10.6, M18)
- */
-
-import fs from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
-import crypto from 'node:crypto';
-import type {
-  DesktopStateNamespace,
-  DesktopStateRecord,
-  PersistenceCommitResult,
-  PersistenceLoadResult,
-  PersistenceFlushResult,
-  LegacyMigrationResult,
+import { createHash, randomUUID } from 'node:crypto';
+import { isMainThread, threadId } from 'node:worker_threads';
+import {
+  desktopStateRecordKey, type DesktopStateNamespace, type DesktopStateRecord,
+  type PersistenceAcknowledgement, type PersistenceCommitResult, type PersistenceLoadResult,
+  type PersistenceLoadIssue, type PersistenceFlushResult, type LegacyDesktopDomain, type LegacyMigrationResult,
 } from '@shared/desktopPersistenceTypes';
+import {
+  assertPersistenceBatch, assertPersistenceLoad, assertLegacyMigration, isDesktopStateRecord,
+  validateDesktopStateData, MAX_QUERY_PERSISTED_BYTES, MAX_PERSISTED_QUERY_ENTRIES, QUERY_CACHE_PERSISTED_BUDGET,
+} from '@shared/desktopPersistenceValidation';
+import { decodeLegacyDesktopState } from '@shared/legacyDesktopState';
 
-const MAX_QUERY_CACHE_ENTRY_BYTES = 1024 * 1024; // 1 MiB cap (Section 10.3, M20)
-
-export interface WorkerCoreOptions {
+interface WorkerCoreOptions {
   userDataPath: string;
+  /** Fault injection for Node tests; this function is never accepted over IPC. */
+  beforeReplace?: (record: DesktopStateRecord) => Promise<void>;
 }
+interface FailedWrite { watermark: number; revision: number; message: string }
+interface StoredRecord { record: DesktopStateRecord | null; issue: PersistenceLoadIssue | null }
 
+/** All parsing, serialization and filesystem work belongs to the dedicated Node worker. */
 export class DesktopStatePersistenceWorkerCore {
   private readonly baseDir: string;
   private readonly recordsDir: string;
-  private readonly tmpDir: string;
   private readonly backupsDir: string;
   private readonly quarantineDir: string;
   private readonly markersDir: string;
+  private readonly ready: Promise<void>;
+  private tail: Promise<void> = Promise.resolve();
+  private lastAcceptedOperation = 0;
+  private readonly failures = new Map<string, FailedWrite>();
+  private readonly migrations = new Map<LegacyDesktopDomain, Promise<LegacyMigrationResult>>();
+  private serializeCount = 0;
+  private writeCount = 0;
 
-  // Serial queue per key hash
-  private keyQueues = new Map<string, Promise<void>>();
-  private highestCommittedRevision = 0;
-  private inFlightWrites = new Set<Promise<void>>();
-
-  constructor(options: WorkerCoreOptions) {
+  constructor(private readonly options: WorkerCoreOptions) {
     this.baseDir = path.join(options.userDataPath, 'desktop-state-v2');
     this.recordsDir = path.join(this.baseDir, 'records');
-    this.tmpDir = path.join(this.baseDir, 'tmp');
     this.backupsDir = path.join(this.baseDir, 'backups');
     this.quarantineDir = path.join(this.baseDir, 'quarantine');
     this.markersDir = path.join(this.baseDir, 'migration-markers');
-
-    this.ensureDirectories();
+    this.ready = Promise.all([this.recordsDir, this.backupsDir, this.quarantineDir, this.markersDir]
+      .map((directory) => fs.mkdir(directory, { recursive: true, mode: 0o700 }))).then(() => undefined);
   }
 
-  private ensureDirectories(): void {
-    fs.mkdirSync(this.recordsDir, { recursive: true });
-    fs.mkdirSync(this.tmpDir, { recursive: true });
-    fs.mkdirSync(this.backupsDir, { recursive: true });
-    fs.mkdirSync(this.quarantineDir, { recursive: true });
-    fs.mkdirSync(this.markersDir, { recursive: true });
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(() => this.ready).then(operation);
+    // A failed write must not poison the queue for later recovery attempts.
+    this.tail = result.then(() => undefined, () => undefined);
+    return result;
   }
 
   getRecordHash(namespace: DesktopStateNamespace, key: string): string {
-    return crypto.createHash('sha256').update(`${namespace}::${key}`).digest('hex');
+    return createHash('sha256').update(desktopStateRecordKey(namespace, key)).digest('hex');
+  }
+  private recordPath(namespace: DesktopStateNamespace, key: string): string {
+    return path.join(this.recordsDir, `rec_${this.getRecordHash(namespace, key)}.json`);
+  }
+  private issuePath(namespace: DesktopStateNamespace, key: string): string {
+    return path.join(this.quarantineDir, `issue_${this.getRecordHash(namespace, key)}.json`);
+  }
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+  private async readText(filePath: string): Promise<string | null> {
+    try { return await fs.readFile(filePath, 'utf8'); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
   }
 
-  private getRecordPath(hash: string): string {
-    return path.join(this.recordsDir, `rec_${hash}.json`);
+  private async readRecord(namespace: DesktopStateNamespace, key: string): Promise<StoredRecord> {
+    const issueRaw = await this.readText(this.issuePath(namespace, key));
+    if (issueRaw) {
+      return { record: null, issue: { namespace, key, code: 'corrupt', message: 'Saved state requires recovery; its original bytes are preserved in quarantine.' } };
+    }
+    let filePath = this.recordPath(namespace, key);
+    let raw = await this.readText(filePath);
+    // Read valid records written by the incomplete v2 implementation. Canonical
+    // records (including tombstones) always win, so old copies cannot resurrect.
+    if (raw === null) {
+      const oldHash = createHash('sha256').update(`${namespace}::${key}`).digest('hex');
+      filePath = path.join(this.recordsDir, `rec_${oldHash}.json`);
+      raw = await this.readText(filePath);
+    }
+    if (raw === null) return { record: null, issue: null };
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!isDesktopStateRecord(parsed) || parsed.namespace !== namespace || parsed.key !== key) throw new Error('Invalid saved record envelope.');
+      validateDesktopStateData(parsed);
+      return { record: parsed, issue: null };
+    } catch (error) {
+      const issue: PersistenceLoadIssue = { namespace, key, code: 'corrupt', message: this.errorMessage(error) };
+      // Keep a durable issue marker: a second load must not reinterpret corruption as absence.
+      const backupPath = path.join(this.quarantineDir, `corrupt_${this.getRecordHash(namespace, key)}_${randomUUID()}.json`);
+      await fs.writeFile(backupPath, raw, { flag: 'wx', mode: 0o600 });
+      await fs.writeFile(this.issuePath(namespace, key), JSON.stringify({ ...issue, backupPath }), { mode: 0o600 });
+      return { record: null, issue };
+    }
   }
 
   async load(namespace: DesktopStateNamespace, keys?: string[]): Promise<PersistenceLoadResult> {
-    const results: DesktopStateRecord[] = [];
-
-    if (keys && keys.length > 0) {
-      for (const key of keys) {
-        const hash = this.getRecordHash(namespace, key);
-        const record = await this.readRecordFile(hash, namespace, key);
-        if (record) {
-          results.push(record);
+    assertPersistenceLoad(namespace, keys, false);
+    return this.enqueue(async () => {
+      const records: DesktopStateRecord[] = [];
+      const issues: PersistenceLoadIssue[] = [];
+      let selectedKeys = keys;
+      if (selectedKeys === undefined) {
+        const discovered = new Set<string>();
+        for (const file of await fs.readdir(this.recordsDir)) {
+          if (!/^rec_[a-f0-9]{64}\.json$/.test(file)) continue;
+          const raw = await this.readText(path.join(this.recordsDir, file));
+          if (!raw) continue;
+          try {
+            const parsed: unknown = JSON.parse(raw);
+            if (isDesktopStateRecord(parsed) && parsed.namespace === namespace) discovered.add(parsed.key);
+          } catch {
+            // A keyed load diagnoses a corrupt record precisely. An unkeyed scan
+            // must disclose unreadable files rather than report a complete empty namespace.
+            issues.push({ namespace, key: null, code: 'corrupt', message: `Unreadable saved record ${file}; no state was discarded.` });
+          }
         }
+        selectedKeys = [...discovered];
       }
-    } else {
-      // Load all records matching namespace
-      const files = await fs.promises.readdir(this.recordsDir);
-      for (const file of files) {
-        if (!file.startsWith('rec_') || !file.endsWith('.json')) continue;
-        const filePath = path.join(this.recordsDir, file);
+      for (const key of selectedKeys) {
         try {
-          const raw = await fs.promises.readFile(filePath, 'utf8');
-          const parsed = JSON.parse(raw) as DesktopStateRecord;
-          if (parsed && parsed.schemaVersion === 1 && parsed.namespace === namespace) {
-            results.push(parsed);
+          const stored = await this.readRecord(namespace, key);
+          if (stored.issue) issues.push(stored.issue);
+          else if (stored.record) records.push(stored.record);
+        } catch (error) {
+          issues.push({ namespace, key, code: 'unreadable', message: this.errorMessage(error) });
+        }
+      }
+      return { records, issues };
+    });
+  }
+
+  private async replace(record: DesktopStateRecord): Promise<void> {
+    const target = this.recordPath(record.namespace, record.key);
+    const temp = `${target}.${randomUUID()}.tmp`;
+    this.serializeCount++;
+    const serialized = JSON.stringify(record);
+    let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+    try {
+      handle = await fs.open(temp, 'wx', 0o600);
+      await handle.writeFile(serialized, 'utf8');
+      await handle.sync();
+      await handle.close();
+      handle = null;
+      await this.options.beforeReplace?.(record);
+      // Never unlink the committed target as a rename fallback.
+      await fs.rename(temp, target);
+      this.writeCount++;
+    } finally {
+      await handle?.close().catch(() => undefined);
+      await fs.unlink(temp).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
+    }
+  }
+
+  commit(input: DesktopStateRecord[]): Promise<PersistenceCommitResult> {
+    assertPersistenceBatch(input, false);
+    // This clone occurs in the worker in production, not on navigation's main thread.
+    const records = structuredClone(input);
+    const watermark = ++this.lastAcceptedOperation;
+    return this.enqueue(async () => {
+      const acknowledgements: PersistenceAcknowledgement[] = [];
+      const committedRevisions: Record<string, number> = {};
+      let status: PersistenceCommitResult['status'] = 'committed';
+      let errorMessage: string | undefined;
+      for (const proposed of records) {
+        const key = desktopStateRecordKey(proposed.namespace, proposed.key);
+        try {
+          validateDesktopStateData(proposed);
+          const stored = await this.readRecord(proposed.namespace, proposed.key);
+          if (stored.issue) throw new Error(stored.issue.message);
+          const existing = stored.record;
+          const currentRevision = existing?.recordRevision ?? 0;
+          const dataText = JSON.stringify(proposed.data);
+          const samePayload = existing && existing.deleted === proposed.deleted &&
+            existing.bindingRevision === proposed.bindingRevision && JSON.stringify(existing.data) === dataText;
+          if (existing && proposed.recordRevision === currentRevision && samePayload &&
+              existing.mutationId === proposed.mutationId) {
+            acknowledgements.push({ namespace: proposed.namespace, key: proposed.key, recordRevision: currentRevision,
+              mutationId: proposed.mutationId, disposition: 'unchanged' });
+            committedRevisions[key] = currentRevision;
+            const failure = this.failures.get(key);
+            if (failure && failure.revision <= currentRevision) this.failures.delete(key);
+            continue;
           }
-        } catch {
-          // Quarantine corrupt record
-          await this.quarantineFile(filePath, file);
+          if (proposed.recordRevision !== currentRevision + 1) {
+            status = 'conflict';
+            throw new Error(`Saved state version conflict for ${proposed.namespace}; reload this record before retrying.`);
+          }
+          let record = proposed;
+          let disposition: PersistenceAcknowledgement['disposition'] = 'committed';
+          if (record.namespace === 'queryCache' && Buffer.byteLength(dataText, 'utf8') > MAX_QUERY_PERSISTED_BYTES) {
+            // An oversized fresh result stays in renderer memory, and invalidates any
+            // older disk copy rather than silently resurrecting that copy next launch.
+            record = { ...record, data: null, deleted: true };
+            disposition = 'not-persisted';
+          }
+          await this.replace(record);
+          acknowledgements.push({ namespace: record.namespace, key: record.key, recordRevision: record.recordRevision,
+            mutationId: record.mutationId, disposition });
+          committedRevisions[key] = record.recordRevision;
+          this.failures.delete(key);
+        } catch (error) {
+          if (status !== 'conflict') status = 'error';
+          errorMessage ??= this.errorMessage(error);
+          this.failures.set(key, { watermark, revision: proposed.recordRevision, message: this.errorMessage(error) });
         }
       }
-    }
-
-    return { records: results };
-  }
-
-  private async readRecordFile(
-    hash: string,
-    expectedNamespace: DesktopStateNamespace,
-    expectedKey: string
-  ): Promise<DesktopStateRecord | null> {
-    const filePath = this.getRecordPath(hash);
-    if (!fs.existsSync(filePath)) return null;
-
-    try {
-      const raw = await fs.promises.readFile(filePath, 'utf8');
-      const parsed = JSON.parse(raw) as DesktopStateRecord;
-      if (
-        parsed &&
-        parsed.schemaVersion === 1 &&
-        parsed.namespace === expectedNamespace &&
-        parsed.key === expectedKey
-      ) {
-        return parsed;
+      if (records.some((record) => record.namespace === 'queryCache')) {
+        try { await this.pruneQueryCache(); }
+        catch (error) { status = 'error'; errorMessage ??= this.errorMessage(error); }
       }
-      return null;
-    } catch {
-      await this.quarantineFile(filePath, `rec_${hash}.json`);
-      return null;
-    }
+      return { status, acknowledgements, committedRevisions, operationWatermark: watermark, errorMessage };
+    });
   }
 
-  private async quarantineFile(filePath: string, fileName: string): Promise<void> {
-    try {
-      const dest = path.join(this.quarantineDir, `${Date.now()}_${fileName}`);
-      await fs.promises.rename(filePath, dest);
-    } catch (err) {
-      console.warn('[PersistenceWorker] Failed to quarantine corrupt file:', err);
-    }
-  }
-
-  async commit(records: DesktopStateRecord[]): Promise<PersistenceCommitResult> {
-    const committedRevisions: Record<string, number> = {};
-
-    for (const record of records) {
-      // Enforce namespace input limit (M20)
-      if (record.namespace === 'queryCache') {
-        const serialized = JSON.stringify(record.data);
-        if (Buffer.byteLength(serialized, 'utf8') > MAX_QUERY_CACHE_ENTRY_BYTES) {
-          return {
-            status: 'error',
-            committedRevisions,
-            errorMessage: `Query cache entry exceeds 1 MiB limit for key: ${record.key}`,
-          };
-        }
-      }
-
-      const hash = this.getRecordHash(record.namespace, record.key);
-      const queueKey = `${record.namespace}:${hash}`;
-
-      const previousTask = this.keyQueues.get(queueKey) ?? Promise.resolve();
-      const currentTask = previousTask.then(async () => {
-        await this.writeRecordWithAtomicReplacement(hash, record);
-        committedRevisions[record.key] = record.recordRevision;
-        if (record.recordRevision > this.highestCommittedRevision) {
-          this.highestCommittedRevision = record.recordRevision;
-        }
-      });
-
-      this.keyQueues.set(queueKey, currentTask);
-      this.inFlightWrites.add(currentTask);
-      currentTask.finally(() => {
-        this.inFlightWrites.delete(currentTask);
-      });
-
+  private async pruneQueryCache(): Promise<void> {
+    const entries: Array<{ filePath: string; bytes: number; updatedAt: number }> = [];
+    for (const file of await fs.readdir(this.recordsDir)) {
+      if (!/^rec_[a-f0-9]{64}\.json$/.test(file)) continue;
+      const filePath = path.join(this.recordsDir, file);
       try {
-        await currentTask;
-      } catch (err) {
-        return {
-          status: 'error',
-          committedRevisions,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }
-
-    return {
-      status: 'committed',
-      committedRevisions,
-    };
-  }
-
-  private async writeRecordWithAtomicReplacement(
-    hash: string,
-    newRecord: DesktopStateRecord
-  ): Promise<void> {
-    const targetPath = this.getRecordPath(hash);
-
-    // Enforce monotonic revision ordering (M11)
-    if (fs.existsSync(targetPath)) {
-      try {
-        const rawExisting = await fs.promises.readFile(targetPath, 'utf8');
-        const existing = JSON.parse(rawExisting) as DesktopStateRecord;
-        if (existing.recordRevision >= newRecord.recordRevision) {
-          // Newer or equal revision already committed; do not overwrite (M11)
-          return;
+        const raw = await this.readText(filePath);
+        if (!raw) continue;
+        const record: unknown = JSON.parse(raw);
+        if (isDesktopStateRecord(record) && record.namespace === 'queryCache' && !record.deleted) {
+          entries.push({ filePath, bytes: Buffer.byteLength(raw, 'utf8'), updatedAt: record.updatedAt });
         }
-      } catch {
-        // If existing is corrupt, we will overwrite it with the new valid record
-      }
+      } catch { /* A read diagnoses and preserves a corrupt record; pruning is not recovery. */ }
     }
+    entries.sort((a, b) => b.updatedAt - a.updatedAt || a.filePath.localeCompare(b.filePath));
+    let bytes = 0;
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index]!;
+      bytes += entry.bytes;
+      if (index >= MAX_PERSISTED_QUERY_ENTRIES || bytes > QUERY_CACHE_PERSISTED_BUDGET) await fs.unlink(entry.filePath);
+    }
+  }
 
-    // Write to temporary file in the same directory (or tmpDir on same filesystem)
-    const tmpFileName = `tmp_${hash}_${Date.now()}_${Math.random().toString(36).slice(2)}.tmp`;
-    const tmpFilePath = path.join(this.tmpDir, tmpFileName);
+  flush(targetRevision = this.lastAcceptedOperation): Promise<PersistenceFlushResult> {
+    const accepted = this.lastAcceptedOperation;
+    if (!Number.isSafeInteger(targetRevision) || targetRevision < 0 || targetRevision > accepted) {
+      return Promise.resolve({ status: 'error', flushedRevision: 0, errorMessage: 'Unknown persistence operation watermark.' });
+    }
+    return this.enqueue(async () => {
+      const failed = [...this.failures.values()].find((failure) => failure.watermark <= targetRevision);
+      return failed
+        ? { status: 'error', flushedRevision: 0, errorMessage: failed.message }
+        : { status: 'flushed', flushedRevision: targetRevision };
+    });
+  }
 
-    const serialized = JSON.stringify(newRecord, null, 2);
-    await fs.promises.writeFile(tmpFilePath, serialized, 'utf8');
+  migrateLegacyDomain(domain: LegacyDesktopDomain, rawPayload: string): Promise<LegacyMigrationResult> {
+    assertLegacyMigration(domain, rawPayload, false);
+    const pending = this.migrations.get(domain);
+    if (pending) return pending.then(() => this.migrateLegacyDomain(domain, rawPayload));
+    const task = this.importLegacy(domain, rawPayload);
+    this.migrations.set(domain, task);
+    void task.finally(() => { if (this.migrations.get(domain) === task) this.migrations.delete(domain); }).catch(() => undefined);
+    return task;
+  }
 
-    // Atomic replacement (fs.promises.rename) (M12)
-    try {
-      await fs.promises.rename(tmpFilePath, targetPath);
-    } catch (renameErr) {
-      // Clean up tmp file on failure, leaving target intact
+  private async importLegacy(domain: LegacyDesktopDomain, rawPayload: string): Promise<LegacyMigrationResult> {
+    await this.ready;
+    const domainHash = createHash('sha256').update(domain).digest('hex');
+    const sourceChecksum = createHash('sha256').update(rawPayload).digest('hex');
+    const markerPath = path.join(this.markersDir, `${domainHash}.json`);
+    const existingMarker = await this.readText(markerPath);
+    if (existingMarker) {
       try {
-        await fs.promises.unlink(tmpFilePath);
-      } catch {}
-      throw renameErr;
+        const marker = JSON.parse(existingMarker) as LegacyMigrationResult & { migrationVersion?: number };
+        if (marker.migrationVersion === 2 && marker.sourceChecksum === sourceChecksum && marker.domain === domain) return marker;
+      } catch { /* Preserve raw source and rebuild the marker only after validating imports. */ }
     }
-  }
-
-  async flush(targetRevision?: number): Promise<PersistenceFlushResult> {
-    try {
-      while (this.inFlightWrites.size > 0) {
-        await Promise.all(Array.from(this.inFlightWrites));
-      }
-
-      if (targetRevision !== undefined && this.highestCommittedRevision < targetRevision) {
-        return {
-          status: 'error',
-          flushedRevision: this.highestCommittedRevision,
-          errorMessage: `Flushed up to revision ${this.highestCommittedRevision}, requested ${targetRevision}`,
-        };
-      }
-
-      return {
-        status: 'flushed',
-        flushedRevision: this.highestCommittedRevision,
-      };
-    } catch (err) {
-      return {
-        status: 'error',
-        flushedRevision: this.highestCommittedRevision,
-        errorMessage: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
-
-  async migrateLegacyDomain(
-    domain: string,
-    rawPayload: string
-  ): Promise<LegacyMigrationResult> {
-    const markerPath = path.join(this.markersDir, `${domain}.json`);
-
-    // Check if migration marker already exists (M13 - idempotent restart)
-    if (fs.existsSync(markerPath)) {
-      const markerContent = await fs.promises.readFile(markerPath, 'utf8');
-      const parsed = JSON.parse(markerContent);
-      return {
-        domain,
-        importedCount: parsed.importedCount ?? 0,
-        quarantinedCount: parsed.quarantinedCount ?? 0,
-        backupPath: parsed.backupPath ?? '',
-      };
-    }
-
-    // 1. Create preserved backup first (Section 10.9)
-    const backupPath = path.join(this.backupsDir, `${domain}_${Date.now()}.json`);
-    await fs.promises.writeFile(backupPath, rawPayload, 'utf8');
-
+    const backupPath = path.join(this.backupsDir, `${domainHash}_${sourceChecksum}.json`);
+    await fs.writeFile(backupPath, rawPayload, { flag: 'wx', mode: 0o600 }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EEXIST') throw error;
+    });
+    // A malformed envelope is a failed migration, never an empty successful import.
+    const decoded = decodeLegacyDesktopState(domain, rawPayload);
     let importedCount = 0;
-    let quarantinedCount = 0;
-
-    try {
-      const parsed = JSON.parse(rawPayload);
-
-      if (domain === 'cozea:project-workbench-layouts' && typeof parsed === 'object' && parsed !== null) {
-        for (const [key, val] of Object.entries(parsed)) {
-          if (val && typeof val === 'object') {
-            await this.commit([
-              {
-                schemaVersion: 1,
-                namespace: 'workbenchLayout',
-                key,
-                recordRevision: 1,
-                updatedAt: Date.now(),
-                data: val,
-              },
-            ]);
-            importedCount++;
-          } else {
-            quarantinedCount++;
-          }
-        }
-      } else if (domain === 'cozea:project-workbench' && typeof parsed === 'object' && parsed !== null) {
-        for (const [key, val] of Object.entries(parsed)) {
-          if (val && typeof val === 'object') {
-            await this.commit([
-              {
-                schemaVersion: 1,
-                namespace: 'workbenchModel',
-                key,
-                recordRevision: 1,
-                updatedAt: Date.now(),
-                data: val,
-              },
-            ]);
-            importedCount++;
-          } else {
-            quarantinedCount++;
-          }
-        }
-      } else if (domain === 'cozea-query-cache' && typeof parsed === 'object' && parsed !== null) {
-        for (const [key, val] of Object.entries(parsed)) {
-          if (val) {
-            await this.commit([
-              {
-                schemaVersion: 1,
-                namespace: 'queryCache',
-                key,
-                recordRevision: 1,
-                updatedAt: Date.now(),
-                data: val,
-              },
-            ]);
-            importedCount++;
-          }
-        }
-      }
-    } catch {
-      quarantinedCount++;
+    let skippedCount = decoded.skippedCount;
+    for (const record of decoded.records) {
+      const existing = await this.load(record.namespace, [record.key]);
+      if (existing.issues.length > 0) throw new Error('Saved state requires explicit recovery before importing this scope.');
+      if (existing.records.length > 0) { skippedCount++; continue; }
+      const result = await this.commit([{ ...record, updatedAt: Date.now(), mutationId: `migration:${sourceChecksum}:${this.getRecordHash(record.namespace, record.key)}` }]);
+      if (result.status !== 'committed') throw new Error(result.errorMessage ?? 'Legacy import was not committed.');
+      importedCount++;
     }
+    const flush = await this.flush();
+    if (flush.status !== 'flushed') throw new Error(flush.errorMessage ?? 'Legacy import flush failed.');
+    const result: LegacyMigrationResult = { domain, importedCount, quarantinedCount: decoded.quarantinedCount,
+      skippedCount, backupPath, sourceChecksum };
+    // Quarantined user-state records require recovery; never mark their domain complete.
+    if (decoded.quarantinedCount > 0) throw new Error(`Legacy ${domain} has ${decoded.quarantinedCount} invalid records; valid neighbors were imported and the raw backup is preserved at ${backupPath}.`);
+    const temporaryMarker = `${markerPath}.${randomUUID()}.tmp`;
+    await fs.writeFile(temporaryMarker, JSON.stringify({ ...result, migrationVersion: 2 }), { mode: 0o600 });
+    await fs.rename(temporaryMarker, markerPath);
+    return result;
+  }
 
-    // Write migration complete marker LAST (Section 10.9)
-    await fs.promises.writeFile(
-      markerPath,
-      JSON.stringify({ domain, importedCount, quarantinedCount, backupPath, completedAt: Date.now() }, null, 2),
-      'utf8'
-    );
+  async importMainRegistry(): Promise<LegacyMigrationResult | null> {
+    const raw = await this.readText(path.join(this.options.userDataPath, 'workbench-session-registry.json'));
+    return raw === null ? null : this.migrateLegacyDomain('workbench-session-registry.json', raw);
+  }
 
-    return {
-      domain,
-      importedCount,
-      quarantinedCount,
-      backupPath,
-    };
+  diagnostics(): { isMainThread: boolean; threadId: number; serializeCount: number; writeCount: number } {
+    return { isMainThread, threadId, serializeCount: this.serializeCount, writeCount: this.writeCount };
   }
 }

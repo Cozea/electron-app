@@ -1,0 +1,42 @@
+{
+  "operations": [
+    {
+      "kind": "replace",
+      "path": "shared/desktopPersistenceValidation.ts",
+      "search": "    for (const child of Array.isArray(current) ? current : Object.values(current)) visit(child, depth + 1);",
+      "replacement": "    if (Array.isArray(current)) {\n      for (const child of current) visit(child, depth + 1);\n    } else {\n      // Optional object fields have the same omission semantics as the old JSON store.\n      for (const child of Object.values(current)) if (child !== undefined) visit(child, depth + 1);\n    }"
+    },
+    {
+      "kind": "replace",
+      "path": "apps/desktop/electron/main.ts",
+      "search": "registerDesktopPersistenceHandlers(ipcMain)",
+      "replacement": "registerDesktopPersistenceHandlers(ipcMain, { getMainWindow: () => win })"
+    },
+    {
+      "kind": "replace",
+      "path": "apps/desktop/electron.vite.config.ts",
+      "expectedSha": "631c605230df79460b3002fc425472c3aadbd2f4",
+      "search": "function normalizeModuleId(id: string): string {",
+      "replacement": "function desktopStateWorkerBundlePlugin(): Plugin {\n  return {\n    name: 'cozea-desktop-state-worker',\n    async closeBundle() {\n      await viteBuild({\n        configFile: false, publicDir: false, logLevel: 'warn',\n        resolve: { alias: sharedAliases },\n        build: {\n          emptyOutDir: false, outDir: path.resolve(__dirname, 'out/main'), target: 'node22',\n          lib: { entry: path.resolve(__dirname, 'electron/workers/desktopStatePersistenceWorker.ts'), formats: ['cjs'], fileName: () => 'desktop-state-persistence.js' },\n          rollupOptions: { external: (id) => id.startsWith('node:'), output: { inlineDynamicImports: true } },\n        },\n      })\n    },\n  }\n}\n\nfunction normalizeModuleId(id: string): string {"
+    },
+    {
+      "kind": "replace",
+      "path": "apps/desktop/electron.vite.config.ts",
+      "search": "    plugins: [\n      {\n        name: 'copy-oauth-callback-logo',",
+      "replacement": "    plugins: [\n      desktopStateWorkerBundlePlugin(),\n      {\n        name: 'copy-oauth-callback-logo',"
+    },
+    {
+      "kind": "replace",
+      "path": "apps/desktop/electron.vite.config.ts",
+      "search": "          index: 'electron/mainEntry.ts',",
+      "replacement": "          index: 'electron/mainEntry.ts',\n          'desktop-state-persistence': 'electron/workers/desktopStatePersistenceWorker.ts',"
+    },
+    {
+      "kind": "replace",
+      "path": "apps/desktop/electron-builder.config.cjs",
+      "expectedSha": "6ecb2c5f207fd447137f15dc76e6e9a0eb826466",
+      "search": "  files: [\n    \"out/**/*\",",
+      "replacement": "  // A standalone Node worker entry, with no Electron or renderer imports.\n  asarUnpack: ['out/main/desktop-state-persistence.js'],\n  files: [\n    \"out/**/*\","
+    }
+  ]
+}
