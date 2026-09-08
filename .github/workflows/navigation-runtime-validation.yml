@@ -1,0 +1,62 @@
+name: Navigation runtime validation
+
+on:
+  push:
+    branches: [fix/navigation-runtime-v2-completion]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - 'shared/**'
+      - 'tests/navigation/**'
+      - 'tests/electron/navigation/**'
+      - 'scripts/perf/navigation/**'
+      - '.github/workflows/navigation-runtime-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: navigation-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export tracked source for offline implementation review
+        run: |
+          mkdir -p "${RUNNER_TEMP}/navigation-source"
+          git archive --format=tar.gz HEAD > "${RUNNER_TEMP}/navigation-source/candidate.tar.gz"
+          git archive --format=tar.gz 073df5230d2400684434ea6b7db27b0aafc72ddc > "${RUNNER_TEMP}/navigation-source/baseline.tar.gz"
+          git archive --format=tar.gz origin/main > "${RUNNER_TEMP}/navigation-source/main.tar.gz"
+          git rev-parse HEAD origin/main > "${RUNNER_TEMP}/navigation-source/commits.txt"
+          git diff --stat 073df5230d2400684434ea6b7db27b0aafc72ddc...HEAD > "${RUNNER_TEMP}/navigation-source/diff-stat.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: navigation-source-${{ github.sha }}
+          path: ${{ runner.temp }}/navigation-source/
+          retention-days: 3
+          if-no-files-found: error
+
+  unit-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Apply repository compatibility patches
+        run: bun run postinstall
+      - name: Existing navigation unit tests (not Electron integration)
+        run: bun run test:navigation:unit
