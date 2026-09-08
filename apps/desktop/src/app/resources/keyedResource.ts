@@ -1,219 +1,131 @@
-/**
- * Minimal Keyed Resource State Machine
- * Conforms to Section 6.1 & 6.2 of docs/perf/navigation-runtime-plan.md
- * 
- * Rules:
- * - Pure TypeScript state machine; zero React / Router / Electron runtime dependencies
- * - Stable snapshots: getSnapshot() / read() returns the same reference until data or status actually changes
- * - Single in-flight promise per generation (N01, N02)
- * - Invalidation increments generation immediately; older in-flight requests cannot publish or overwrite (N03)
- * - Refresh failure retains cached data while exposing refresh state (N04)
- * - Authoritative null / error terminates valid status (N05)
- */
-
+export type ResourceReason = 'prefetch' | 'navigation' | 'refresh' | 'resume';
+export type DemandKind = 'foreground' | 'expanded-sidebar' | 'background';
 export type ResourceSnapshot<T> =
   | { status: 'empty'; generation: number }
   | { status: 'loading'; generation: number }
-  | {
-      status: 'ready';
-      generation: number;
-      data: T;
-      refreshing: boolean;
-      error: Error | null;
-    }
+  | { status: 'ready'; generation: number; data: T; refreshing: boolean; error: Error | null }
   | { status: 'error'; generation: number; error: Error };
 
 export class ResourceSupersededError extends Error {
-  constructor(message = 'Resource request superseded by a newer generation or invalidation') {
-    super(message);
-    this.name = 'ResourceSupersededError';
-  }
+  constructor() { super('Resource request superseded by invalidation or disposal'); this.name = 'ResourceSupersededError'; }
 }
-
-export type DemandKind = 'foreground' | 'expanded-sidebar' | 'background';
-
+export class ResourceAccessError extends Error {
+  constructor(message: string) { super(message); this.name = 'ResourceAccessError'; }
+}
 export interface ResourceHandle<T> {
   read(): ResourceSnapshot<T>;
   subscribe(listener: () => void): () => void;
-  ensure(reason: 'prefetch' | 'navigation' | 'refresh' | 'resume'): Promise<T>;
+  ensure(reason: ResourceReason): Promise<T>;
   invalidate(reason: string): void;
   acquireDemand(kind: DemandKind): () => void;
   getDemand(kind: DemandKind): number;
 }
-
 export interface KeyedResourceOptions<T> {
   key: string;
-  fetcher: () => Promise<T>;
+  fetcher: (context: { signal: AbortSignal; reason: ResourceReason }) => Promise<T>;
   ttlMs?: number;
   equalityFn?: (a: T, b: T) => boolean;
+  onDemandChange?: () => void;
+  retainOnError?: (error: Error) => boolean;
 }
 
+/** Shared reads only: no route activation, persistence or service ownership. */
 export class KeyedResource<T> implements ResourceHandle<T> {
-  public readonly key: string;
-  private readonly fetcher: () => Promise<T>;
-  private readonly ttlMs: number;
-  private readonly equalityFn?: (a: T, b: T) => boolean;
-
+  readonly key: string;
   private generation = 0;
-  private snapshot: ResourceSnapshot<T>;
+  private snapshot: ResourceSnapshot<T> = { status: 'empty', generation: 0 };
   private inflight: Promise<T> | null = null;
-  private inflightGeneration = -1;
-  private lastSuccessfulReadAt = 0;
-  private listeners = new Set<() => void>();
-  private demandCounts: Record<DemandKind, number> = {
-    foreground: 0,
-    'expanded-sidebar': 0,
-    background: 0,
-  };
+  private abort: AbortController | null = null;
+  private lastSuccessAt = 0;
+  private touchedAt = Date.now();
+  private disposed = false;
+  private readonly listeners = new Set<() => void>();
+  private readonly demands: Record<DemandKind, number> = { foreground: 0, 'expanded-sidebar': 0, background: 0 };
 
-  constructor(options: KeyedResourceOptions<T>) {
-    this.key = options.key;
-    this.fetcher = options.fetcher;
-    this.ttlMs = options.ttlMs ?? 60_000;
-    this.equalityFn = options.equalityFn;
-    this.snapshot = { status: 'empty', generation: 0 };
-  }
-
-  read(): ResourceSnapshot<T> {
-    return this.snapshot;
-  }
-
+  constructor(private readonly options: KeyedResourceOptions<T>) { this.key = options.key; }
+  read(): ResourceSnapshot<T> { return this.snapshot; }
+  get lastTouchedAt(): number { return this.touchedAt; }
+  get isIdle(): boolean { return !this.inflight && this.listeners.size === 0 && Object.values(this.demands).every((count) => count === 0); }
+  get isPending(): boolean { return this.inflight !== null; }
+  getDemand(kind: DemandKind): number { return this.demands[kind]; }
+  private touch(): void { this.touchedAt = Date.now(); }
   subscribe(listener: () => void): () => void {
+    if (this.disposed) throw new Error('A disposed resource cannot acquire subscribers.');
+    this.touch();
     this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return () => { this.listeners.delete(listener); this.touch(); this.options.onDemandChange?.(); };
   }
-
   acquireDemand(kind: DemandKind): () => void {
-    this.demandCounts[kind]++;
+    if (this.disposed) throw new Error('A disposed resource cannot acquire demand.');
+    this.touch();
+    this.demands[kind]++;
+    this.options.onDemandChange?.();
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      this.demandCounts[kind] = Math.max(0, this.demandCounts[kind] - 1);
+      this.demands[kind]--;
+      this.touch();
+      this.options.onDemandChange?.();
     };
   }
-
-  getDemand(kind: DemandKind): number {
-    return this.demandCounts[kind];
-  }
-
   invalidate(_reason: string): void {
     this.generation++;
-    // If we had an in-flight promise for the previous generation, decouple it
+    this.abort?.abort();
+    this.abort = null;
     this.inflight = null;
-    this.inflightGeneration = -1;
-
-    // Reset snapshot to empty or invalidate cached state
     this.snapshot = { status: 'empty', generation: this.generation };
     this.notify();
   }
+  dispose(): void {
+    if (!this.isIdle) throw new Error('Cannot dispose a resource with subscribers, requests or demand.');
+    this.disposed = true;
+    this.invalidate('dispose');
+  }
 
-  async ensure(reason: 'prefetch' | 'navigation' | 'refresh' | 'resume'): Promise<T> {
-    const now = Date.now();
-
-    // 1. If valid cached data exists and TTL has not expired, return cached data unless explicit refresh
-    if (
-      this.snapshot.status === 'ready' &&
-      reason !== 'refresh' &&
-      now - this.lastSuccessfulReadAt < this.ttlMs
-    ) {
-      return this.snapshot.data;
+  ensure(reason: ResourceReason): Promise<T> {
+    if (this.disposed) return Promise.reject(new ResourceSupersededError());
+    this.touch();
+    // Join before considering TTL: a navigation during a refresh shares the exact read.
+    if (this.inflight) return this.inflight;
+    if (this.snapshot.status === 'ready' && reason !== 'refresh' && Date.now() - this.lastSuccessAt < (this.options.ttlMs ?? 60_000)) {
+      return Promise.resolve(this.snapshot.data);
     }
-
-    // 2. If an in-flight operation exists for the current generation, share it (Invariants I06, N01, N02)
-    if (this.inflight !== null && this.inflightGeneration === this.generation) {
-      return this.inflight;
-    }
-
-    // 3. Start a new request for the current generation
-    const requestGen = this.generation;
-    this.inflightGeneration = requestGen;
-
-    // Update snapshot to loading or refreshing
-    if (this.snapshot.status === 'ready') {
-      this.snapshot = {
-        ...this.snapshot,
-        refreshing: true,
-      };
+    const generation = this.generation;
+    const abort = new AbortController();
+    this.abort = abort;
+    this.snapshot = this.snapshot.status === 'ready'
+      ? { ...this.snapshot, refreshing: true }
+      : { status: 'loading', generation };
+    // Install the promise before notifying listeners or invoking the fetcher.
+    // Synchronous subscribers cannot cause a second read through re-entry.
+    const request = Promise.resolve().then(() => this.options.fetcher({ signal: abort.signal, reason })).then((result) => {
+      if (this.disposed || generation !== this.generation) throw new ResourceSupersededError();
+      const data = this.snapshot.status === 'ready' && this.options.equalityFn?.(this.snapshot.data, result)
+        ? this.snapshot.data : result;
+      this.lastSuccessAt = Date.now();
+      this.snapshot = { status: 'ready', generation, data, refreshing: false, error: null };
       this.notify();
-    } else {
-      this.snapshot = { status: 'loading', generation: requestGen };
-      this.notify();
-    }
-
-    const promise = (async () => {
-      try {
-        const result = await this.fetcher();
-
-        // If generation changed while awaiting, reject with ResourceSupersededError (N03)
-        if (this.generation !== requestGen) {
-          throw new ResourceSupersededError();
-        }
-
-        this.lastSuccessfulReadAt = Date.now();
-
-        // Check equality to preserve object identity if unchanged (Section 6.2, N10)
-        let dataToSet: T = result as T;
-        if (this.snapshot.status === 'ready' && this.equalityFn && this.equalityFn(this.snapshot.data, result as T)) {
-          dataToSet = this.snapshot.data;
-        }
-
-        this.snapshot = {
-          status: 'ready',
-          generation: requestGen,
-          data: dataToSet,
-          refreshing: false,
-          error: null,
-        };
+      return data;
+    }, (reason: unknown) => {
+      if (this.disposed || generation !== this.generation) throw new ResourceSupersededError();
+      const error = reason instanceof Error ? reason : new Error(String(reason));
+      const retain = !(error instanceof ResourceAccessError) && (this.options.retainOnError?.(error) ?? true);
+      if (this.snapshot.status === 'ready' && retain) {
+        this.snapshot = { ...this.snapshot, refreshing: false, error };
         this.notify();
-        return dataToSet;
-      } catch (err) {
-        if (this.generation !== requestGen) {
-          throw new ResourceSupersededError();
-        }
-
-        const error = err instanceof Error ? err : new Error(String(err));
-
-        // Background refresh failure: cached display survives; error visible as refresh state (N04)
-        if (this.snapshot.status === 'ready') {
-          this.snapshot = {
-            ...this.snapshot,
-            refreshing: false,
-            error,
-          };
-          this.notify();
-          return this.snapshot.data;
-        } else {
-          this.snapshot = {
-            status: 'error',
-            generation: requestGen,
-            error,
-          };
-          this.notify();
-          throw error;
-        }
-      } finally {
-        // Clear in-flight reference only if it matches this request generation
-        if (this.inflightGeneration === requestGen) {
-          this.inflight = null;
-          this.inflightGeneration = -1;
-        }
+        return this.snapshot.data;
       }
-    })();
-
-    this.inflight = promise;
-    return promise;
+      this.snapshot = { status: 'error', generation, error };
+      this.notify();
+      throw error;
+    });
+    this.inflight = request;
+    void request.finally(() => {
+      if (this.inflight === request) { this.inflight = null; this.abort = null; }
+    }).catch(() => undefined);
+    this.notify();
+    return request;
   }
-
-  private notify(): void {
-    for (const listener of this.listeners) {
-      try {
-        listener();
-      } catch (e) {
-        console.error('[KeyedResource] Listener error:', e);
-      }
-    }
-  }
+  private notify(): void { for (const listener of this.listeners) listener(); }
 }

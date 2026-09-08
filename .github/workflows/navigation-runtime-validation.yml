@@ -78,7 +78,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.source-edits.outputs.commit || github.sha }}
-          submodules: recursive
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
@@ -98,11 +97,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.source-edits.outputs.commit || github.sha }}
-          submodules: recursive
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.0'
+      # The repository's bootstrap initializes its direct T3 submodule only.
+      # Recursive checkout enters unrelated nested vendor links with no .gitmodules URL.
       - run: bun run bootstrap
       - run: bun run build
       - name: Verify the standalone worker is emitted

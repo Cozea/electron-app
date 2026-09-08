@@ -1,137 +1,72 @@
-/**
- * Narrow React Subscription Hooks for Workspace & Lane Resources
- * Conforms to Section 6 of docs/perf/navigation-runtime-plan.md
- */
-
-import { useSyncExternalStore, useEffect, useCallback, useMemo } from 'react';
-import type { ResolveProjectWorkspaceResult, RepoIdentity } from '@shared/workspaceTypes';
-import type { ProjectLaneDescriptor, ProjectLaneState } from '@shared/electronApiTypes';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import type { RepoIdentity } from '@shared/workspaceTypes';
+import { type DemandKind, type KeyedResource } from './keyedResource';
 import {
-  getWorkspaceResolutionResource,
-  getProjectLaneResource,
+  getProjectLaneResource, getWorkspaceResolutionResource, invalidateProjectWorkspaceResolution,
+  startReconciliationScheduler,
 } from './workspaceResources';
+
+const emptySubscribe = () => () => undefined;
+function useResourceSnapshot<T>(resource: KeyedResource<T> | null) {
+  const subscribe = useCallback((listener: () => void) => resource ? resource.subscribe(listener) : emptySubscribe(), [resource]);
+  // Presentation subscribes to data and meaningful loading/error outcomes, not
+  // each background refreshing=true/false publication of unchanged data.
+  const data = useSyncExternalStore(subscribe, useCallback(() => {
+    const state = resource?.read();
+    return state?.status === 'ready' ? state.data : undefined;
+  }, [resource]), () => undefined);
+  const error = useSyncExternalStore(subscribe, useCallback(() => {
+    const state = resource?.read();
+    return state?.status === 'error' || state?.status === 'ready' ? state.error : null;
+  }, [resource]), () => null);
+  const isLoading = useSyncExternalStore(subscribe, useCallback(() => {
+    const state = resource?.read();
+    return state?.status === 'empty' || state?.status === 'loading';
+  }, [resource]), () => false);
+  return { data, error, isLoading };
+}
+function useResourceDemand<T>(resource: KeyedResource<T> | null, demand: DemandKind | null): void {
+  useEffect(() => {
+    if (!resource || !demand) return;
+    startReconciliationScheduler();
+    const release = resource.acquireDemand(demand);
+    void resource.ensure('navigation').catch(() => undefined);
+    return release;
+  }, [resource, demand]);
+}
 
 export function useSharedWorkspaceResolution(
   projectId: string | null | undefined,
   projectSlug?: string | null,
   expectedRepo?: RepoIdentity | null,
   preferredWorkspaceId?: string | null,
-  options?: { allowCandidateScan?: boolean }
-): { result: ResolveProjectWorkspaceResult | null; refresh: () => void } {
-  const resource = useMemo(() => {
-    if (!projectId) return null;
-    return getWorkspaceResolutionResource(
-      projectId,
-      preferredWorkspaceId,
-      projectSlug,
-      expectedRepo,
-      options?.allowCandidateScan ?? false
-    );
-  }, [projectId, preferredWorkspaceId, projectSlug, expectedRepo, options?.allowCandidateScan]);
-
-  const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      if (!resource) return () => {};
-      return resource.subscribe(onStoreChange);
-    },
-    [resource]
-  );
-
-  const getSnapshot = useCallback(() => {
-    if (!resource) return null;
-    const snap = resource.read();
-    if (snap.status === 'ready') return snap.data;
-    return null;
-  }, [resource]);
-
-  const result = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-  useEffect(() => {
-    if (resource) {
-      void resource.ensure('navigation').catch(() => {});
-    }
-  }, [resource]);
-
+  options?: { allowCandidateScan?: boolean; demand?: DemandKind | null },
+) {
+  const repoSignature = expectedRepo ? JSON.stringify(expectedRepo) : null;
+  const resource = useMemo(() => projectId ? getWorkspaceResolutionResource(projectId, preferredWorkspaceId,
+    projectSlug, expectedRepo, options?.allowCandidateScan ?? false) : null,
+  [projectId, preferredWorkspaceId, projectSlug, repoSignature, options?.allowCandidateScan]);
+  const { data, error, isLoading } = useResourceSnapshot(resource);
+  useResourceDemand(resource, options?.demand === undefined ? 'foreground' : options.demand);
   const refresh = useCallback(() => {
-    if (resource) {
-      resource.invalidate('manual refresh');
-      void resource.ensure('refresh').catch(() => {});
-    }
-  }, [resource]);
-
-  return { result, refresh };
+    if (!projectId || !resource) return;
+    invalidateProjectWorkspaceResolution(projectId);
+    void resource.ensure('navigation').catch(() => undefined);
+  }, [projectId, resource]);
+  return { result: data ?? null, refresh, error, isLoading };
 }
 
 export function useSharedProjectLaneState(
-  projectId: string | null,
-  workspaceId: string | null,
-  collabBranch: string | null,
-  isDemanded = true
-): {
-  laneState: ProjectLaneState | null;
-  activeLane: ProjectLaneDescriptor | null;
-  collabLane: ProjectLaneDescriptor | null;
-  isLoading: boolean;
-  refreshLaneState: () => Promise<void>;
-} {
-  const resource = useMemo(() => {
-    if (!projectId) return null;
-    return getProjectLaneResource(projectId, workspaceId, collabBranch);
-  }, [projectId, workspaceId, collabBranch]);
-
-  // Acquire demand when demanded (F04, N07)
-  useEffect(() => {
-    if (!resource || !isDemanded) return;
-    const release = resource.acquireDemand('foreground');
-    return release;
-  }, [resource, isDemanded]);
-
-  const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      if (!resource) return () => {};
-      return resource.subscribe(onStoreChange);
-    },
-    [resource]
-  );
-
-  const getSnapshot = useCallback(() => {
-    if (!resource) return null;
-    const snap = resource.read();
-    if (snap.status === 'ready') return snap.data;
-    return null;
-  }, [resource]);
-
-  const laneState = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-  useEffect(() => {
-    if (resource && isDemanded) {
-      void resource.ensure('navigation').catch(() => {});
-    }
-  }, [resource, isDemanded]);
-
-  const refreshLaneState = useCallback(async () => {
-    if (resource) {
-      await resource.ensure('refresh').catch(() => null);
-    }
-  }, [resource]);
-
-  const activeLane = useMemo(
-    () => laneState?.lanes.find((l) => l.id === laneState.activeLaneId) ?? null,
-    [laneState]
-  );
-
-  const collabLane = useMemo(
-    () => laneState?.lanes.find((l) => l.isCollab) ?? null,
-    [laneState]
-  );
-
-  const isLoading = resource ? resource.read().status === 'loading' : false;
-
-  return {
-    laneState,
-    activeLane,
-    collabLane,
-    isLoading,
-    refreshLaneState,
-  };
+  projectId: string | null, workspaceId: string | null, collabBranch: string | null,
+  isDemanded = true, demand: DemandKind = 'foreground',
+) {
+  const resource = useMemo(() => projectId && workspaceId ? getProjectLaneResource(projectId, workspaceId, collabBranch) : null,
+    [projectId, workspaceId, collabBranch]);
+  const { data, error, isLoading } = useResourceSnapshot(resource);
+  useResourceDemand(resource, isDemanded ? demand : null);
+  const laneState = data ?? null;
+  const activeLane = useMemo(() => laneState?.lanes.find((lane) => lane.id === laneState.activeLaneId) ?? null, [laneState]);
+  const collabLane = useMemo(() => laneState?.lanes.find((lane) => lane.id === laneState.collabLaneId) ?? null, [laneState]);
+  const refreshLaneState = useCallback(async () => { if (resource) await resource.ensure('refresh'); }, [resource]);
+  return { laneState, activeLane, collabLane, isLoading, error, refreshLaneState };
 }

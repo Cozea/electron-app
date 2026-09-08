@@ -1,274 +1,137 @@
-import { describe, it, expect, vi } from 'vitest';
-import { KeyedResource, ResourceSupersededError } from '@/app/resources/keyedResource';
-import {
-  buildPresentationInstanceKey,
-  buildResourceKey,
-  validatePresentationCommand,
-  type PresentationCommand,
-} from '@shared/navigationRuntimeTypes';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { KeyedResource, ResourceAccessError, ResourceSupersededError } from '@/app/resources/keyedResource';
+import { ResourcePool } from '@/app/resources/resourcePool';
+import { buildPresentationInstanceKey, buildResourceKey, validatePresentationCommand } from '@shared/navigationRuntimeTypes';
 
-describe('KeyedResource & Navigation Contracts (N01-N10, P02)', () => {
-  it('N01: Two subscribers and prefetch request same unresolved key -> exactly one underlying fetch call', async () => {
-    let callCount = 0;
-    const fetcher = vi.fn(async () => {
-      callCount++;
-      await new Promise((r) => setTimeout(r, 10));
-      return { id: 'ws-1', name: 'Workspace 1' };
-    });
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+afterEach(() => vi.useRealTimers());
 
-    const resource = new KeyedResource({ key: 'test:n01', fetcher });
-
-    // Simultaneous prefetch and subscriber ensures
-    const p1 = resource.ensure('prefetch');
-    const p2 = resource.ensure('navigation');
-    const p3 = resource.ensure('navigation');
-
-    const [res1, res2, res3] = await Promise.all([p1, p2, p3]);
-
-    expect(callCount).toBe(1);
-    expect(res1).toEqual({ id: 'ws-1', name: 'Workspace 1' });
-    expect(res2).toBe(res1);
-    expect(res3).toBe(res1);
+describe('Keyed resource ownership', () => {
+  it('N01/N02: prefetch and consumers share the same in-flight Promise and one underlying operation', async () => {
+    const response = deferred<{ id: string }>();
+    const fetcher = vi.fn(() => response.promise);
+    const resource = new KeyedResource({ key: 'workspace', fetcher });
+    const prefetch = resource.ensure('prefetch');
+    expect(resource.ensure('navigation')).toBe(prefetch);
+    expect(resource.ensure('refresh')).toBe(prefetch);
+    response.resolve({ id: 'workspace' });
+    await prefetch;
+    expect(fetcher).toHaveBeenCalledOnce();
+    const snapshot = resource.read();
+    expect(resource.read()).toBe(snapshot);
+    expect(await resource.ensure('navigation')).toBe(snapshot.status === 'ready' ? snapshot.data : undefined);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
-
-  it('N02: Resolve prefetch after destination mounts -> no second mounted request', async () => {
-    let callCount = 0;
-    const resource = new KeyedResource({
-      key: 'test:n02',
-      fetcher: async () => {
-        callCount++;
-        return { data: 'ready' };
-      },
-      ttlMs: 5000,
+  it('installs in-flight ownership before a synchronous subscriber can re-enter ensure', async () => {
+    const fetcher = vi.fn(async () => 'ready');
+    const resource = new KeyedResource({ key: 'reentrant', fetcher });
+    let joined: Promise<string> | null = null;
+    const unsubscribe = resource.subscribe(() => {
+      if (resource.read().status === 'loading') joined = resource.ensure('navigation');
     });
-
-    // Prefetch completes
-    await resource.ensure('prefetch');
-    expect(callCount).toBe(1);
-
-    // Later destination mount
-    const mountedResult = await resource.ensure('navigation');
-    expect(callCount).toBe(1);
-    expect(mountedResult).toEqual({ data: 'ready' });
+    const first = resource.ensure('prefetch');
+    expect(joined).toBe(first);
+    await first;
+    expect(fetcher).toHaveBeenCalledOnce();
+    unsubscribe();
   });
-
-  it('N03: Invalidate while old request runs; start new request; resolve old last -> old result cannot publish or clear new inflight', async () => {
-    let resolveFirst: (v: string) => void = () => {};
-    let resolveSecond: (v: string) => void = () => {};
-
-    let count = 0;
-    const resource = new KeyedResource({
-      key: 'test:n03',
-      fetcher: () => {
-        count++;
-        if (count === 1) {
-          return new Promise<string>((r) => {
-            resolveFirst = r;
-          });
-        } else {
-          return new Promise<string>((r) => {
-            resolveSecond = r;
-          });
-        }
-      },
-    });
-
-    // Start request 1 (generation 0)
-    const p1 = resource.ensure('navigation');
-
-    // Invalidate while request 1 is in-flight -> generation becomes 1
-    resource.invalidate('branch changed');
-
-    // Start request 2 (generation 1)
-    const p2 = resource.ensure('navigation');
-
-    // Resolve request 1 (old) last or first: it must be rejected as superseded
-    resolveFirst('stale result 1');
-    await expect(p1).rejects.toThrow(ResourceSupersededError);
-
-    // Resolve request 2 (new)
-    resolveSecond('fresh result 2');
-    const res2 = await p2;
-    expect(res2).toBe('fresh result 2');
-    expect(resource.read().status).toBe('ready');
-    if (resource.read().status === 'ready') {
-      expect((resource.read() as any).data).toBe('fresh result 2');
-    }
+  it('N03: a stale completion cannot publish or clear a newer generation request', async () => {
+    const old = deferred<string>();
+    const next = deferred<string>();
+    const fetcher = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+    const resource = new KeyedResource<string>({ key: 'generation', fetcher });
+    const first = resource.ensure('navigation');
+    await Promise.resolve();
+    resource.invalidate('binding revision changed');
+    const second = resource.ensure('navigation');
+    await Promise.resolve();
+    old.resolve('wrong workspace');
+    await expect(first).rejects.toThrow(ResourceSupersededError);
+    expect(resource.ensure('prefetch')).toBe(second);
+    next.resolve('correct workspace');
+    expect(await second).toBe('correct workspace');
+    expect(resource.read()).toMatchObject({ status: 'ready', generation: 1, data: 'correct workspace' });
   });
-
-  it('N04: Cached ready entry, background refresh fails -> cached display survives, error is visible as refresh state', async () => {
-    let shouldFail = false;
-    const resource = new KeyedResource({
-      key: 'test:n04',
-      fetcher: async () => {
-        if (shouldFail) throw new Error('Network timeout during background refresh');
-        return { count: 42 };
-      },
-    });
-
-    await resource.ensure('navigation');
-    expect(resource.read().status).toBe('ready');
-    if (resource.read().status === 'ready') {
-      expect((resource.read() as any).data).toEqual({ count: 42 });
-    }
-
-    // Now background refresh fails
-    shouldFail = true;
-    const cachedData = await resource.ensure('refresh');
-    expect(cachedData).toEqual({ count: 42 });
-
+  it('N04: transient refresh failure retains the last successful display value', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce({ value: 1 }).mockRejectedValueOnce(new Error('network timeout'));
+    const resource = new KeyedResource<{ value: number }>({ key: 'transient', fetcher });
+    const first = await resource.ensure('navigation');
+    expect(await resource.ensure('refresh')).toBe(first);
     const snapshot = resource.read();
     expect(snapshot.status).toBe('ready');
-    if (snapshot.status === 'ready') {
-      expect(snapshot.data).toEqual({ count: 42 });
-      expect(snapshot.refreshing).toBe(false);
-      expect(snapshot.error?.message).toContain('Network timeout');
-    }
+    if (snapshot.status === 'ready') expect(snapshot.error?.message).toBe('network timeout');
   });
-
-  it('N05: Invalidation resets cached state; authoritative null/denied terminates cached success', async () => {
-    const resource = new KeyedResource({
-      key: 'test:n05',
-      fetcher: async () => ({ authorized: true }),
-    });
-
+  it('N05: authoritative access failure discards stale successful data', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce('private state').mockRejectedValueOnce(new ResourceAccessError('access revoked'));
+    const resource = new KeyedResource<string>({ key: 'authority', fetcher });
     await resource.ensure('navigation');
-    expect(resource.read().status).toBe('ready');
-
-    resource.invalidate('access revoked');
-    expect(resource.read().status).toBe('empty');
+    await expect(resource.ensure('refresh')).rejects.toThrow('access revoked');
+    expect(resource.read().status).toBe('error');
   });
-
-  it('N06: Canonical key builders handle workspace revisions and parameter ordering deterministically', () => {
-    const key1 = buildPresentationInstanceKey({
-      projectId: 'p1',
-      workspaceId: 'w1',
-      workspaceRevision: 1,
-      laneId: 'collab',
-    });
-    const key2 = buildPresentationInstanceKey({
-      projectId: 'p1',
-      workspaceId: 'w1',
-      workspaceRevision: 2, // different revision
-      laneId: 'collab',
-    });
-    expect(key1).not.toBe(key2);
-
-    // Resource key sort invariance
-    const rKey1 = buildResourceKey('gitStatus', { b: 2, a: 1 });
-    const rKey2 = buildResourceKey('gitStatus', { a: 1, b: 2 });
-    expect(rKey1).toBe(rKey2);
+  it('N05: authoritative null replaces rather than falls back to stale success', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce({ value: 1 }).mockResolvedValueOnce(null);
+    const resource = new KeyedResource<{ value: number } | null>({ key: 'deleted', fetcher });
+    await resource.ensure('navigation');
+    expect(await resource.ensure('refresh')).toBeNull();
+    expect(resource.read()).toMatchObject({ status: 'ready', data: null });
   });
-
-  it('N07 & N08: Demand tracking for foreground and sidebar consumers', () => {
-    const resource = new KeyedResource({
-      key: 'test:demand',
-      fetcher: async () => 'data',
-    });
-
-    const release1 = resource.acquireDemand('foreground');
-    const release2 = resource.acquireDemand('expanded-sidebar');
-
-    expect(resource.getDemand('foreground')).toBe(1);
-    expect(resource.getDemand('expanded-sidebar')).toBe(1);
-
-    release1();
+  it('N07: demand releases are idempotent and independent by consumer kind', () => {
+    const resource = new KeyedResource({ key: 'demand', fetcher: async () => null });
+    const foreground = resource.acquireDemand('foreground');
+    const sidebar = resource.acquireDemand('expanded-sidebar');
+    foreground(); foreground();
     expect(resource.getDemand('foreground')).toBe(0);
     expect(resource.getDemand('expanded-sidebar')).toBe(1);
-
-    release2();
-    expect(resource.getDemand('expanded-sidebar')).toBe(0);
+    expect(resource.isIdle).toBe(false);
+    sidebar();
+    expect(resource.isIdle).toBe(true);
   });
-
-  it('N10: Stable reference preservation via equality function', async () => {
-    let call = 0;
-    const resource = new KeyedResource({
-      key: 'test:n10',
-      fetcher: async () => {
-        call++;
-        return { items: [1, 2, 3] }; // new object every call
-      },
-      equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b),
-    });
-
+  it('N10: equality preserves the data reference across fresh equivalent results', async () => {
+    const resource = new KeyedResource({ key: 'stable', fetcher: async () => ({ value: 42 }), equalityFn: (a, b) => a.value === b.value });
     const first = await resource.ensure('navigation');
-    const second = await resource.ensure('refresh');
-
-    expect(call).toBe(2);
-    expect(second).toBe(first); // Strict object equality preserved
+    expect(await resource.ensure('refresh')).toBe(first);
   });
+  it('idle eviction never disposes a demanded, subscribed or pending resource', async () => {
+    const pool = new ResourcePool<string, string>({ maxIdle: 1, idleTtlMs: 1 });
+    const pending = deferred<string>();
+    const a = pool.get('a', 'a', { fetcher: () => pending.promise });
+    const request = a.ensure('prefetch');
+    const b = pool.get('b', 'b', { fetcher: async () => 'b' });
+    const release = b.acquireDemand('foreground');
+    const c = pool.get('c', 'c', { fetcher: async () => 'c' });
+    const unsubscribe = c.subscribe(() => undefined);
+    pool.prune(Date.now() + 100_000);
+    expect(pool.size).toBe(3);
+    pending.resolve('a'); await request;
+    release(); unsubscribe();
+    pool.prune(Date.now() + 100_000);
+    expect(pool.size).toBe(0);
+  });
+  it('disposal rejects a stale retained handle rather than recreating an unmanaged request', async () => {
+    const resource = new KeyedResource({ key: 'disposed', fetcher: vi.fn(async () => 'data') });
+    resource.dispose();
+    await expect(resource.ensure('navigation')).rejects.toThrow(ResourceSupersededError);
+  });
+});
 
-  it('Validates presentation commands strictly against malformed payloads', () => {
-    const validCmd: PresentationCommand = {
-      clientEpoch: 'epoch-12345',
-      sequence: 1,
-      navigationId: 101,
-      target: {
-        projectId: 'p1',
-        workspaceId: 'w1',
-        workspaceRevision: 1,
-        laneId: 'collab',
-      },
-      retained: [],
-    };
-    expect(validatePresentationCommand(validCmd)).toBe(true);
-
+describe('Identity contracts', () => {
+  it('N06: binding revision participates in instance identity and resource parameters are ordered', () => {
+    const identity = { projectId: 'p', workspaceId: 'w', workspaceRevision: 1, laneId: 'collab' };
+    expect(buildPresentationInstanceKey(identity)).not.toBe(buildPresentationInstanceKey({ ...identity, workspaceRevision: 2 }));
+    expect(buildResourceKey('git', { b: 2, a: 1 })).toBe(buildResourceKey('git', { a: 1, b: 2 }));
+  });
+  it('validates wire commands rather than accepting arbitrary target objects', () => {
+    const command = { clientEpoch: 'epoch', sequence: 1, navigationId: 1,
+      target: { projectId: 'p', workspaceId: 'w', workspaceRevision: 1, laneId: 'collab' }, retained: [] };
+    expect(validatePresentationCommand(command)).toBe(true);
     expect(validatePresentationCommand(null)).toBe(false);
-    expect(validatePresentationCommand({ ...validCmd, clientEpoch: '' })).toBe(false);
-    expect(validatePresentationCommand({ ...validCmd, sequence: -1 })).toBe(false);
-    expect(validatePresentationCommand({ ...validCmd, target: { projectId: '' } })).toBe(false);
-  });
-
-  it('N11: A->B->C with deferred prerequisites in reverse order: latest accepted intent C wins', async () => {
-    let activeIntent = 0;
-    let foregroundDestination = '';
-
-    const navigate = (id: number, dest: string, delayMs: number) => {
-      activeIntent = id;
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          if (activeIntent === id) {
-            foregroundDestination = dest;
-          }
-          resolve();
-        }, delayMs);
-      });
-    };
-
-    // A arrives late (50ms), B arrives mid (30ms), C arrives early (10ms)
-    const pA = navigate(1, 'A', 50);
-    const pB = navigate(2, 'B', 30);
-    const pC = navigate(3, 'C', 10);
-
-    await Promise.all([pA, pB, pC]);
-
-    expect(activeIntent).toBe(3);
-    expect(foregroundDestination).toBe('C');
-  });
-
-  it('N15: Prefetching resolution or lane knowledge triggers zero side effects', async () => {
-    let sideEffectsCount = 0;
-    const readOnlyFetcher = async () => {
-      return { status: 'ok' };
-    };
-
-    const resource = new KeyedResource({
-      key: 'test:n15',
-      fetcher: readOnlyFetcher,
-    });
-
-    await resource.ensure('prefetch');
-    expect(sideEffectsCount).toBe(0);
-    expect(resource.read().status).toBe('ready');
-  });
-
-  it('N16: Unresolved branch status does not invent an arbitrary branch', async () => {
-    const resource = new KeyedResource<{ branch: string | null }>({
-      key: 'test:n16',
-      fetcher: async () => ({ branch: null }),
-    });
-
-    const result = await resource.ensure('navigation');
-    expect(result.branch).toBeNull();
+    expect(validatePresentationCommand({ ...command, clientEpoch: '' })).toBe(false);
+    expect(validatePresentationCommand({ ...command, sequence: -1 })).toBe(false);
+    expect(validatePresentationCommand({ ...command, target: { projectId: '' } })).toBe(false);
   });
 });
