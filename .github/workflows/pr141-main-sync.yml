@@ -1,0 +1,43 @@
+name: PR141 sync current main
+
+on:
+  push:
+    branches:
+      - integration/pr141-main-port
+    paths:
+      - .github/workflows/pr141-main-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr141-sync-current-main
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Merge current main
+        shell: bash
+        run: |
+          set -uo pipefail
+          git config user.name 'Cozea collaboration integration'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          if git merge --no-ff --no-commit origin/main; then
+            git commit -m 'merge: synchronize collaboration v2 with current main'
+            git push origin HEAD:integration/pr141-main-port
+            exit 0
+          fi
+          echo '--- unresolved paths ---'
+          git diff --name-only --diff-filter=U
+          echo '--- conflict hunks ---'
+          git diff --cc
+          exit 1
