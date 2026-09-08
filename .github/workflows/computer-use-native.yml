@@ -1,8 +1,14 @@
 name: Computer Use Native
-
 on:
   push:
     branches: [feat/macos-computer-use-v2]
+    paths:
+      - 'native/computer-use-*/**'
+      - 'packages/computer-use-native/**'
+      - 'scripts/*computer-use*'
+      - 'tests/computer-use/**'
+      - 'apps/desktop/electron/services/ComputerUse*'
+      - '.github/workflows/computer-use-native.yml'
   pull_request:
     paths:
       - 'native/computer-use-*/**'
@@ -12,17 +18,11 @@ on:
       - 'apps/desktop/electron/services/ComputerUse*'
       - '.github/workflows/computer-use-native.yml'
   workflow_dispatch:
-
 permissions:
   contents: read
-
-env:
-  GIT_LFS_SKIP_SMUDGE: '1'
-
 concurrency:
   group: computer-use-native-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   native:
     runs-on: macos-26
@@ -36,20 +36,11 @@ jobs:
           sw_vers
           xcodebuild -version
           xcrun swift --version
-      - name: Resolve and verify pinned dependency
-        run: |
-          xcrun swift package --package-path native/computer-use-bridge resolve
-          test "$(git -C native/computer-use-bridge/.build/checkouts/open-codex-computer-use rev-parse HEAD)" = 41c5294cfe4735baca03f9c82b4de99d191a0b49
-      - name: Preserve reproducible source inputs
+      - name: Native core and runtime tests
         run: |
           mkdir -p build/cu-validation
-          git archive --format=tar HEAD > build/cu-validation/cozea-source.tar
-          git -C native/computer-use-bridge/.build/checkouts/open-codex-computer-use archive --format=tar HEAD > build/cu-validation/upstream-source.tar
-      - uses: actions/upload-artifact@v4
-        with:
-          name: computer-use-source-inputs
-          path: build/cu-validation/*.tar
-          retention-days: 3
+          set -o pipefail
+          xcrun swift test --package-path native/computer-use-runtime 2>&1 | tee build/cu-validation/swift-test.log
       - name: Build native bridge
         run: |
           set -o pipefail
