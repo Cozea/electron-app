@@ -26,6 +26,11 @@ const LazyOnboarding = lazy(() =>
     default: module.Onboarding,
   })),
 )
+const LazyProductTour = lazy(() =>
+  import('@/features/tour/ProductTour').then((module) => ({
+    default: module.ProductTour,
+  })),
+)
 const LazyUpdateMenu = lazy(() =>
   import('./components/updates/UpdateMenu').then((module) => ({
     default: module.UpdateMenu,
@@ -305,6 +310,12 @@ function AppContent() {
       <CreateProjectDialogHost />
       {!isSettingsWindow && <SettingsDrawerUrlBridge />}
       <SettingsDrawerHost enabled={!isSettingsWindow} />
+      {/* First run tutorial. Silent unless this device has never finished it. */}
+      {!isSettingsWindow && (
+        <Suspense fallback={null}>
+          <LazyProductTour />
+        </Suspense>
+      )}
     </>
   )
 }

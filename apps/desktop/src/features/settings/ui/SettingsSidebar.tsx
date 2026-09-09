@@ -41,16 +41,19 @@ function SettingsSidebarNavRow({
   onClick,
   icon: Icon,
   label,
+  dataTour,
 }: {
   isActive: boolean
   onClick: () => void
   icon: React.ComponentType<{ className?: string }>
   label: string
+  dataTour?: string
 }) {
   return (
     <button
       type="button"
       className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, isActive && SIDEBAR_PILL_ACTIVE_CLASS)}
+      data-tour={dataTour}
       onClick={onClick}
     >
       <Icon />
@@ -91,6 +94,7 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
           <button
             type="button"
             className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
+            data-tour="settings-back"
             onClick={handleBack}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
@@ -113,6 +117,9 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
                     icon={item.surface.icon}
                     label={item.label}
                     isActive={isActive}
+                    // Matched on the route so the tour does not depend on a
+                    // surface id it cannot see from here.
+                    dataTour={href.endsWith("/organizations") ? "settings-organizations" : undefined}
                     onClick={() => navigate(href, { replace: true })}
                   />
                 )

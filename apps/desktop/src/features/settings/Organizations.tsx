@@ -162,6 +162,7 @@ export function OrganizationSettingsTabs({
                 tabRefs.current[tab.id] = element ?? undefined
               }}
               id={`organization-settings-tab-${tab.id}`}
+              data-tour={tab.id === "members" ? "org-members-tab" : undefined}
               type="button"
               role="tab"
               variant="ghost"
@@ -453,6 +454,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
             variant="ghost"
             size="sm"
             className="h-7 gap-1 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            data-tour="new-organization"
             onClick={() => setIsCreatingOrg((prev) => !prev)}
           >
             <HugeiconsIcon icon={__PlusHugeIcon} className="size-3.5" />
@@ -461,7 +463,8 @@ export function Organizations({ surface = "page", route: _route }: Organizations
         </div>
 
         {isCreatingOrg ? (
-          <SettingsGroup className="mb-3">
+          <div data-tour="new-organization-form">
+            <SettingsGroup className="mb-3">
             <SettingsRow isFirst>
               <div className="min-w-0 flex-1 pr-3">
                 <Input
@@ -514,7 +517,8 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                 </Button>
               </SettingsRowControl>
             </SettingsRow>
-          </SettingsGroup>
+            </SettingsGroup>
+          </div>
         ) : null}
 
         {(orgs ?? []).length === 0 ? (

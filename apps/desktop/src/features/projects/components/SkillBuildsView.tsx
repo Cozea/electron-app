@@ -346,6 +346,10 @@ export function SkillBuildsView() {
         type="button"
         size="sm"
         className="h-7 rounded-full text-sm font-medium"
+        data-tour="activate-build"
+        // Read by the tutorial, which waits for the build to actually go live
+        // rather than for the button to be clicked.
+        data-tour-state={isCurrentActive ? "active" : "inactive"}
         onClick={() =>
           void runMutation(
             `apply:${selectedBuild.id}`,
@@ -371,6 +375,7 @@ export function SkillBuildsView() {
 
   return (
     <div
+      data-tour="skill-builds"
       className={cn(
         "skill-builds-surface relative flex h-full min-h-0 flex-col",
         "bg-[radial-gradient(135%_110%_at_50%_40%,color-mix(in_oklch,var(--foreground)_8%,var(--background))_0%,color-mix(in_oklch,var(--foreground)_2.5%,var(--background))_55%,var(--background)_100%)]",

@@ -464,6 +464,7 @@ export function CreateProjectDialog({
       }}
     >
       <DialogContent
+        data-tour="create-project-dialog"
         showCloseButton={false}
         className="border-border/70 bg-popover p-4 shadow-xl sm:max-w-md"
       >

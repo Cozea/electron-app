@@ -833,6 +833,67 @@ const en = {
   "assistant.questions.sending": "Sending…",
   "assistant.questions.retry": "Retry answer",
   "assistant.questions.send": "Send answer",
+
+  // ── First-run product tour ──────────────────────────────────────────
+  "tour.progress": "{{current}} of {{total}}",
+  "tour.next": "Next",
+  "tour.done": "Finish",
+  "tour.skip": "Skip the tutorial",
+
+  "tour.project.title": "Start with a project",
+  "tour.project.description": "Everything in Cozea happens inside a project. Open this and choose an empty project.",
+  "tour.projectConfirm.title": "Create it",
+  "tour.projectConfirm.description": "Give the project a name and a folder, then create it.",
+  "tour.devapps.title": "DevApps",
+  "tour.devapps.description": "You can build your own, then publish it so everyone in your organization can install it.",
+  "tour.projectDevApps.title": "DevApps ready to use",
+  "tour.projectDevApps.description": "Every project starts with a set of DevApps. Open one and it runs beside your work.",
+  "tour.organizations.title": "Bring your team in",
+  "tour.organizations.description": "An organization lets you share DevApps and projects with the people you work with. Create one.",
+  "tour.organizationsConfirm.title": "Name it",
+  "tour.organizationsConfirm.description": "Give the organization a name, then create it.",
+  "tour.inbox.title": "Invites land here",
+  "tour.inbox.description": "Every invitation you receive arrives here, for an organization or a single project.",
+  "tour.store.title": "The DevApps Store",
+  "tour.store.description": "Every DevApp shared across your organization lives in the store.",
+  "tour.storePage.title": "Publish and install",
+  "tour.storePage.description": "Publish what you build here, and install what your teammates publish.",
+  "tour.defaultBuild.title": "Your default build",
+  "tour.defaultBuild.description": "A build is a named set of agent skills. Your default build is every skill you already have switched on.",
+  "tour.activateBuild.title": "Activate it",
+  "tour.activateBuild.description": "Activating a build turns its skills on and everything else off.",
+  "tour.providerBuilds.title": "A build for each provider",
+  "tour.providerBuilds.description": "Keep several builds with different skills, and choose which one each provider uses.",
+  "tour.schedules.title": "Scheduled tasks",
+  "tour.schedules.description": "Give an agent a task and a schedule, and Cozea runs it on its own.",
+
+  // Section openings.
+  "tour.section.projects.title": "Welcome to Cozea",
+  "tour.section.projects.description": "Glad you are here. Five minutes and you will know your way around. Everything starts with a project, so let us make yours.",
+  "tour.section.devapps.title": "DevApps",
+  "tour.section.devapps.description": "Small apps that run beside your work, and a store to share them. Take a look?",
+  "tour.section.organizations.title": "Your team",
+  "tour.section.organizations.description": "Organizations are how you share work with other people. Shall we set one up?",
+  "tour.section.builds.title": "Agent builds",
+  "tour.section.builds.description": "Builds decide which skills your agents have. Let us look at yours.",
+  "tour.section.schedules.title": "Scheduled tasks",
+  "tour.section.schedules.description": "Work that runs without you, on a schedule you set.",
+
+  // Steps added with the sectioned tour.
+  "tour.openSettings.title": "Open your settings",
+  "tour.openSettings.description": "Organizations live in your settings, behind this menu.",
+  "tour.settingsOrganizations.title": "Organizations",
+  "tour.settingsOrganizations.description": "This is where you create an organization and manage who belongs to it.",
+  "tour.leaveSettings.title": "Head back",
+  "tour.leaveSettings.description": "Back returns you to your projects and the main navigation.",
+
+  "tour.orgMembers.title": "People and permissions",
+  "tour.orgMembers.description": "Invite people to your organization here, and set what each member is allowed to do.",
+  "tour.schedulesPage.title": "How a schedule works",
+  "tour.schedulesPage.description": "Write the task, pick how often it runs, and an agent does it on its own. Results land in your inbox.",
+  "tour.section.done.title": "You are ready",
+  "tour.section.done.description": "That is everything. Go and build something. Have fun.",
+
 } as const
 
 export type TranslationKey = keyof typeof en

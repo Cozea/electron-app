@@ -463,7 +463,7 @@ export function AppStorePage() {
   const showEmptyState = sections.length === 0 && !orgLoading
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div data-tour="devapp-store" className="flex h-full min-h-0 flex-col">
       <div className="mx-auto w-full max-w-[960px] shrink-0 space-y-4 px-6 pt-4 pb-3">
         {installationError || installationsError ? (
           <div

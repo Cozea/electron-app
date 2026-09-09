@@ -126,6 +126,7 @@ export function UnifiedHeader({
     groups.push({ id: "page", label: "Page actions", priority: 100, content: rightAddon });
   }
 
+
   return (
     <div className={cn(headerLayoutClassName, "h-10 flex min-w-0 items-center titlebar-drag-region", shellHorizontalPadding, className)}>
       <ResponsiveHeaderRow

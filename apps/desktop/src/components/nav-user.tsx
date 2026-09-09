@@ -4,6 +4,7 @@ import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
 import { api } from "../../../../convex/_generated/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useProductTourStore } from "@/features/tour/productTourStore"
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -52,6 +53,8 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
   const avatarUrl = principal?.avatarUrl ?? user?.avatarUrl ?? null
   const menuSummarySublabel = t("nav.localComputer")
 
+  const isTourActive = useProductTourStore((state) => state.isActive)
+
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
       const rect = event.currentTarget.getBoundingClientRect()
@@ -69,9 +72,12 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
           icon: getNativeMenuIcon("settings"),
         },
         {
+          // The tutorial routes through settings. Changing theme mid-tour is
+          // harmless but leads nowhere it can follow, so it waits its turn.
           id: "theme-group",
           label: t("nav.theme"),
           icon: getNativeMenuIcon("theme"),
+          enabled: !isTourActive,
           submenu: NAV_USER_THEME_OPTIONS.map((option) => ({
             id: option.id,
             label: t(option.labelKey),
@@ -93,7 +99,7 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
       }
       if (action === "device-settings") navigate("/projects/settings/account")
     },
-    [menuSummarySublabel, menuTitle, navigate, setTheme, t, theme],
+    [isTourActive, menuSummarySublabel, menuTitle, navigate, setTheme, t, theme],
   )
 
   return (
@@ -104,6 +110,7 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
           size="default"
           type="button"
           className="[&_svg]:text-sidebar-foreground"
+          data-tour="user-menu"
           onClick={handleMenuClick}
           aria-label={t("nav.openUserMenu")}
           title={t("nav.openUserMenu")}
