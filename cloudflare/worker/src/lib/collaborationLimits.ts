@@ -3,6 +3,7 @@ export const COLLAB_MAX_FRAME_BYTES = 128 * 1024
 export const COLLAB_MAX_UPDATE_BYTES = 96 * 1024
 export const COLLAB_MAX_RETAINED_BYTES = 64 * 1024 * 1024
 export const COLLAB_MAX_RETAINED_UPDATES = 25_000
+export const COLLAB_MAX_SESSION_OPERATIONS = 1_000_000
 export const COLLAB_RATE_WINDOW_MS = 10_000
 export const COLLAB_MAX_WINDOW_UPDATES = 600
 export const COLLAB_MAX_WINDOW_BYTES = 8 * 1024 * 1024
@@ -32,7 +33,7 @@ export function reserveUpdateBudget(usage: RetainedUsage, rate: UpdateRate | und
   const window = rate && now >= rate.startedAt && now - rate.startedAt < COLLAB_RATE_WINDOW_MS
     ? rate : { startedAt: now, bytes: 0, count: 0 }
   if (usage.count + 1 > COLLAB_MAX_RETAINED_UPDATES || usage.bytes + bytes > COLLAB_MAX_RETAINED_BYTES) {
-    throw new Error('Collaboration retention quota reached; publish or preserve local work before continuing')
+    throw new Error('Collaboration replay quota reached; checkpoint synchronization or retain local work before continuing')
   }
   if (window.count + 1 > COLLAB_MAX_WINDOW_UPDATES || window.bytes + bytes > COLLAB_MAX_WINDOW_BYTES) {
     throw new Error('Collaboration update rate limit reached; retry after the rate window')

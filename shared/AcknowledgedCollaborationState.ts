@@ -6,12 +6,15 @@ export class AcknowledgedCollaborationState {
   private checkpoint: Uint8Array
   private checkpointSequence: number
   private sequence: number
+  private readonly pins = new Map<symbol, number>()
+  private requestedCompaction: number
   private readonly updates: Array<{ sequence: number; bytes: Uint8Array }> = []
 
   constructor(checkpoint: Uint8Array, sequence: number) {
     this.checkpoint = checkpoint.slice()
     this.checkpointSequence = sequence
     this.sequence = sequence
+    this.requestedCompaction = sequence
     Y.applyUpdate(this.document, checkpoint)
   }
 
@@ -41,7 +44,22 @@ export class AcknowledgedCollaborationState {
     }
   }
 
+  /** Preserve the earliest state an asynchronous barrier/capture may need. */
+  pin(sequence = this.sequence): () => void {
+    if (sequence < this.checkpointSequence || sequence > this.sequence) throw new Error("The requested collaboration snapshot is not available")
+    const token = Symbol("snapshot-pin")
+    this.pins.set(token, sequence)
+    return () => {
+      if (!this.pins.delete(token)) return
+      this.compact(this.requestedCompaction)
+    }
+  }
+
   compact(sequence: number): void {
+    if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > this.sequence) throw new Error("Invalid acknowledged compaction sequence")
+    this.requestedCompaction = Math.max(this.requestedCompaction, sequence)
+    sequence = Math.min(this.requestedCompaction, ...this.pins.values())
+    if (sequence <= this.checkpointSequence) return
     this.checkpoint = this.capture(sequence)
     this.checkpointSequence = sequence
     const firstRetained = this.updates.findIndex((entry) => entry.sequence > sequence)
@@ -51,5 +69,6 @@ export class AcknowledgedCollaborationState {
   destroy(): void {
     this.document.destroy()
     this.updates.length = 0
+    this.pins.clear()
   }
 }

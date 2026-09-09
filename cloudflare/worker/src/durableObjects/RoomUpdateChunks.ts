@@ -33,7 +33,8 @@ const MAX_INCOMING_CHARS = 16 * 1024 * 1024
 const INCOMING_TTL_MS = 120_000
 const identity = (authority: RoomAuthority, id: string) => `${authority.principalId}:${authority.keyVersion}:${protocolId(id, "update ID")}`
 const incomingPieceKey = (name: string, index: number) => `g3:incoming-piece:${name}:${index}`
-const acceptedPieceKey = (sequence: number, index: number) => `g3:update-piece:${String(sequence).padStart(16, "0")}:${index}`
+export const acceptedPieceKey = (sequence: number, index: number) => `g3:update-piece:${String(sequence).padStart(16, "0")}:${index}`
+export const legacyUpdateReceiptKey = (id: string): string => `g3:legacy-update-receipt:${protocolId(id, "update ID")}`
 export const updateReceiptKey = (authority: RoomAuthority, id: string): string => `g3:update-receipt:${identity(authority, id)}`
 
 /** Bounded durable assembly. Hibernation/re-instantiation preserves partial uploads.
@@ -119,4 +120,25 @@ export async function readStoredUpdate(storage: RoomStorage, update: StoredSessi
   const encoded = pieces.join("")
   if (encoded.length !== update.totalChars || await collaborationDigest(encoded) !== update.digest) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "Retained encrypted update failed checksum validation", 409, true)
   return encoded
+}
+
+/** Includes record and index overhead, matching the admission-time accounting. */
+export function retainedUpdateBytes(update: StoredSessionUpdate): number {
+  return update.retainedBytes ?? (update.updateBinary?.length ?? update.totalChars ?? 0) + update.idempotencyKey.length * 2 + 1024
+}
+
+export async function retainedRoomUsage(storage: RoomStorage): Promise<{ bytes: number; count: number }> {
+  const saved = await storage.get<{ bytes: number; count: number }>("retained-usage")
+  if (saved) return saved
+  // One migration census, never a recurring per-update inventory.
+  const usage = { bytes: 0, count: 0 }
+  let start = "update:"
+  while (true) {
+    const entries = await storage.list<StoredSessionUpdate>({ prefix: "update:", start, limit: 128 })
+    for (const update of entries.values()) { usage.bytes += retainedUpdateBytes(update); usage.count++ }
+    if (entries.size < 128) break
+    start = [...entries.keys()].at(-1)! + "\0"
+  }
+  await storage.put("retained-usage", usage)
+  return usage
 }

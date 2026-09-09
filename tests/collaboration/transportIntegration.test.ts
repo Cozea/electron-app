@@ -10,6 +10,7 @@ import { CollabWsProvider, type CollabSessionDescriptor } from "../../shared/Col
 import { SessionCheckpointClient } from "../../apps/desktop/electron/collaboration/SessionCheckpointClient"
 import { DurableSessionStore } from "../../apps/desktop/electron/collaboration/DurableSessionStore"
 import { CollabRoom } from "../../cloudflare/worker/src/durableObjects/CollabRoom"
+import { RoomCheckpointStore, ROOM_COMPACTION_FLOOR_KEY, CHECKPOINT_READ_RETENTION_MS } from "../../cloudflare/worker/src/durableObjects/RoomCheckpointStore"
 import { RoomUpdateChunks } from "../../cloudflare/worker/src/durableObjects/RoomUpdateChunks"
 import { signSessionToken } from "../../cloudflare/worker/src/lib/jwt"
 import type { RoomStorage } from "../../cloudflare/worker/src/durableObjects/RoomCheckpointStore"
@@ -31,6 +32,7 @@ vi.mock("convex/browser", () => ({ ConvexHttpClient: class {
 class MemoryStorage implements RoomStorage {
   readonly data = new Map<string, unknown>()
   maxValueBytes = 0
+  failNextReplayDelete = false
   async get<T>(key: string): Promise<T | undefined> { return structuredClone(this.data.get(key)) as T | undefined }
   async put<T>(key: string, value: T): Promise<void>
   async put(entries: Record<string, unknown>): Promise<void>
@@ -42,7 +44,12 @@ class MemoryStorage implements RoomStorage {
   }
   async delete(key: string): Promise<boolean>
   async delete(keys: string[]): Promise<number>
-  async delete(key: string | string[]): Promise<boolean | number> { return typeof key === "string" ? this.data.delete(key) : key.reduce((sum, name) => sum + Number(this.data.delete(name)), 0) }
+  async delete(key: string | string[]): Promise<boolean | number> {
+    const keys = typeof key === "string" ? [key] : key
+    if (keys.length > 128) throw new Error("Production KV deletion limit exceeded")
+    if (this.failNextReplayDelete && keys.some(name => name.startsWith("update:"))) { this.failNextReplayDelete = false; throw new Error("Injected crash during replay deletion") }
+    return typeof key === "string" ? this.data.delete(key) : key.reduce((sum, name) => sum + Number(this.data.delete(name)), 0)
+  }
   async list<T>(options: { prefix?: string; start?: string; end?: string; limit?: number } = {}): Promise<Map<string, T>> {
     return new Map([...this.data].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).filter(([key]) => (!options.prefix || key.startsWith(options.prefix)) && (!options.start || key >= options.start) && (!options.end || key < options.end)).slice(0, options.limit ?? Infinity).map(([key, value]) => [key, structuredClone(value) as T]))
   }
@@ -100,15 +107,15 @@ async function fixture() {
       token: await signSessionToken(env, { sub: id, principalId: id, projectId: "project_transport", sessionId: "session_transport", roomId: "session:session_transport", clientType: "electron", protocolVersion: "2.1" }),
       encryption: { roomId: "session:session_transport", encryptionRequired: true, status: "ready", activeKeyVersion: 1, wrappedRoomKey: null, wrapAlgorithm: null, senderPublicKeyJwk: null } }
   }
-  const client = async (id: string, hooks: { beforePersist?: () => Promise<void> } = {}) => {
+  const client = async (id: string, hooks: { beforePersist?: () => Promise<void>; deferCompaction?: boolean; afterCompaction?: () => Promise<void> } = {}) => {
     const session = await descriptor(id)
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-transport-"))
     cleanup.push(() => fs.rm(root, { recursive: true, force: true }))
     const store = new DurableSessionStore(root, session.roomId, 1)
-    const checkpoints = new SessionCheckpointClient({ sessionId: session.sessionId!, projectId: session.projectId, roomId: session.roomId, keyVersion: 1, roomKeyBase64: key, role: "editor", store,
+    const checkpoints = new SessionCheckpointClient({ sessionId: session.sessionId!, projectId: session.projectId, roomId: session.roomId, keyVersion: 1, roomKeyBase64: key, role: "editor", store, deferCompaction: hooks.deferCompaction,
       request: async body => {
         const response = await room.fetch(new Request("https://internal/internal/checkpoint", { method: "POST", headers: { authorization: "Bearer test-only-gateway", "content-type": "application/json" }, body: JSON.stringify({ authority: authority(id), request: body }) }))
-        const result: unknown = await response.json(); if (!response.ok) throw new Error(JSON.stringify(result)); return result
+        const result: unknown = await response.json(); if (!response.ok) throw new Error(JSON.stringify(result)); if (body.operation === "compact") await hooks.afterCompaction?.(); return result
       } })
     const initial = await checkpoints.bootstrap()
     if (!initial) throw new Error("Fixture checkpoint was not initialized")
@@ -120,7 +127,7 @@ async function fixture() {
     const stop = async () => { if (stopped) return; stopped = true; await provider.shutdown(); awareness.destroy(); doc.destroy() }
     cleanup.push(stop)
     provider.start(); await provider.waitForLocalRecovery(); await provider.waitForCatchUp()
-    return { root, session, store, initial, doc, awareness, provider, stop }
+    return { root, session, store, initial, doc, awareness, provider, checkpoints, stop }
   }
   const rawClient = async (id: string, role: "editor" | "observer" = "editor") => {
     const session = await descriptor(id, role)
@@ -240,5 +247,150 @@ describe("bounded durable chunk staging", () => {
     await expect(store.accept(authority("owner"), { ...chunks[0]!, data: "R" + chunks[0]!.data.slice(1) }, 100)).rejects.toThrow("changed during retry")
     const bad = await splitCollaborationUpdate("bad_digest", "QUJD")
     await expect(store.accept(authority("owner"), { ...bad[0]!, digest: await collaborationDigest("AAAA") }, 100)).rejects.toThrow("checksum")
+  })
+})
+
+
+describe("checkpoint-backed compaction over the actual transport", () => {
+  it("T10 retires chunk payloads but accepts delayed exact retries at the original sequence", async () => {
+    const f = await fixture(); const editor = await f.client("checkpoint_writer"); const raw = await f.rawClient("retry_writer")
+    const encoded = await ciphertext("retry_after_compaction", "durable retained contents\n".repeat(9000))
+    const chunks = await splitCollaborationUpdate("retry_after_compaction", encoded)
+    const send = () => { for (const chunk of chunks) raw.socket.send(JSON.stringify({ type: "update.chunk", payload: { roomId: raw.session.roomId, chunk, timestamp: 100 } })) }
+    send()
+    await until(() => raw.frames.some(frame => frame.type === "update.ack") && editor.provider.getKnownSeq() === 1)
+    expect([...f.storage.data.keys()].some(key => key.startsWith("g3:update-piece:"))).toBe(true)
+    const state = editor.provider.acknowledgedCheckpoint()
+    expect(await editor.checkpoints.checkpoint(state.sequence, state.update)).toBe(true)
+    expect(await f.storage.get(ROOM_COMPACTION_FLOOR_KEY)).toBe(1)
+    expect(await f.storage.list({ prefix: "update:" })).toHaveLength(0)
+    expect([...f.storage.data.keys()].some(key => key.startsWith("g3:update-piece:"))).toBe(false)
+    expect(await f.storage.get("retained-usage")).toEqual({ bytes: 0, count: 0 })
+    f.restartRoom()
+    send()
+    await until(() => raw.frames.filter(frame => frame.type === "update.ack").length === 2)
+    expect(raw.frames.filter(frame => frame.type === "update.ack").map(frame => frame.payload.seq)).toEqual([1, 1])
+    expect(await f.storage.get("head-sequence")).toBe(1)
+    const late = await f.client("late_after_compaction")
+    expect(late.provider.getKnownSeq()).toBe(1)
+    expect(late.doc.getText("fixture").toString()).toBe(editor.doc.getText("fixture").toString())
+  })
+
+  it("T11 gives a behind-floor client CHECKPOINT_REQUIRED rather than an empty replay loop", async () => {
+    const f = await fixture(); const editor = await f.client("floor_writer")
+    editor.doc.getText("fixture").insert(0, "checkpoint contents")
+    await until(() => editor.provider.getKnownSeq() === 1)
+    await editor.checkpoints.checkpoint(1, editor.provider.acknowledgedCheckpoint().update)
+    const late = await f.rawClient("old_checkpoint_reader")
+    late.socket.send(JSON.stringify({ type: "sync.request", payload: { roomId: late.session.roomId, knownSeq: 0 } }))
+    await until(() => late.frames.some(frame => frame.type === "error"))
+    expect(late.frames.find(frame => frame.type === "error")?.payload.code).toBe("CHECKPOINT_REQUIRED")
+    expect(late.frames.filter(frame => frame.type === "sync.delta")).toHaveLength(0)
+  })
+
+  it("T19 survives a crash after the floor advances but before replay deletion commits", async () => {
+    const f = await fixture(); const editor = await f.client("crash_writer")
+    editor.doc.getText("fixture").insert(0, "durability boundary")
+    await until(() => editor.provider.getKnownSeq() === 1)
+    const state = editor.provider.acknowledgedCheckpoint()
+    const before = await f.storage.get("retained-usage")
+    f.storage.failNextReplayDelete = true
+    await expect(editor.checkpoints.checkpoint(1, state.update)).rejects.toThrow("Injected crash")
+    expect(await f.storage.get(ROOM_COMPACTION_FLOOR_KEY)).toBe(1)
+    expect(await f.storage.list({ prefix: "update:" })).toHaveLength(1)
+    expect(await f.storage.get("retained-usage")).toEqual(before)
+    expect((await editor.store.recover()).checkpoint?.sequence).toBe(1)
+    f.restartRoom()
+    // Existing same-sequence checkpoint is reused; no second history or cipher
+    // is manufactured after the local replacement already became durable.
+    expect(await editor.checkpoints.checkpoint(1, state.update)).toBe(true)
+    expect(await f.storage.list({ prefix: "update:" })).toHaveLength(0)
+    expect(await f.storage.get("retained-usage")).toEqual({ bytes: 0, count: 0 })
+    const late = await f.client("crash_late_reader")
+    expect(late.doc.getText("fixture").toString()).toBe("durability boundary")
+  })
+
+  it("does not compact a partial upload or a corrupted finalized replacement", async () => {
+    const f = await fixture(); const editor = await f.client("integrity_writer")
+    editor.doc.getText("fixture").insert(0, "must remain recoverable")
+    await until(() => editor.provider.getKnownSeq() === 1)
+    const store = new RoomCheckpointStore(f.storage)
+    const claimed = await store.handle(authority("integrity_writer"), { operation: "claim", sequence: 1 }) as { lease: { id: string } }
+    await expect(store.handle(authority("integrity_writer"), { operation: "compact", id: claimed.lease.id })).rejects.toThrow("finalized checkpoint")
+    expect(await f.storage.get(ROOM_COMPACTION_FLOOR_KEY)).toBeUndefined()
+    const active = await store.current(1)
+    if (!active) throw new Error("Missing checkpoint fixture")
+    const pieceKey = `g3:checkpoint-piece:${active.id}:0000`
+    await f.storage.put(pieceKey, "AAAA")
+    await expect(store.handle(authority("integrity_writer"), { operation: "compact", id: active.id })).rejects.toThrow("checksum")
+    expect(await f.storage.get(ROOM_COMPACTION_FLOOR_KEY)).toBeUndefined()
+    expect(await f.storage.list({ prefix: "update:" })).toHaveLength(1)
+  })
+
+  it("keeps post-checkpoint edits in replay and rejects stale compaction requests", async () => {
+    const f = await fixture(); const editor = await f.client("suffix_writer")
+    editor.doc.getText("fixture").insert(0, "one")
+    await until(() => editor.provider.getKnownSeq() === 1)
+    const first = editor.provider.acknowledgedCheckpoint()
+    await editor.checkpoints.checkpoint(1, first.update)
+    const store = new RoomCheckpointStore(f.storage); const original = await store.current(1)
+    editor.doc.getText("fixture").insert(3, " two")
+    await until(() => editor.provider.getKnownSeq() === 2)
+    expect(await f.storage.list({ prefix: "update:" })).toHaveLength(1)
+    const late = await f.client("suffix_reader")
+    expect(late.doc.getText("fixture").toString()).toBe("one two")
+    await editor.checkpoints.checkpoint(2, editor.provider.acknowledgedCheckpoint().update)
+    await expect(store.handle(authority("suffix_writer"), { operation: "compact", id: original!.id })).rejects.toThrow("current finalized checkpoint")
+    expect(await f.storage.get(ROOM_COMPACTION_FLOOR_KEY)).toBe(2)
+  })
+
+  it("T25 retires only superseded same-key checkpoints after the reader grace window", async () => {
+    const f = await fixture(); const editor = await f.client("cleanup_writer")
+    const now = Date.now(); const store = new RoomCheckpointStore(f.storage, () => now)
+    const first = await store.current(1)
+    editor.doc.getText("fixture").insert(0, "still current")
+    await until(() => editor.provider.getKnownSeq() === 1)
+    await editor.checkpoints.checkpoint(1, editor.provider.acknowledgedCheckpoint().update)
+    expect(await f.storage.get(`g3:checkpoint-descriptor:${first!.id}`)).toBeDefined()
+    const afterGrace = new RoomCheckpointStore(f.storage, () => now + CHECKPOINT_READ_RETENTION_MS + 10_000)
+    const current = await afterGrace.current(1)
+    const allocatedBefore = await f.storage.get<number>("g3:checkpoint-allocated-chars")
+    await afterGrace.handle(authority("cleanup_writer"), { operation: "compact", id: current!.id })
+    expect(await f.storage.get(`g3:checkpoint-descriptor:${first!.id}`)).toBeUndefined()
+    expect(await f.storage.get(`g3:checkpoint-descriptor:${current!.id}`)).toBeDefined()
+    expect(await f.storage.get("g3:checkpoint-allocated-chars")).toBe(allocatedBefore! - first!.totalChars)
+    expect(await f.storage.get("g3:compaction-checkpoint")).toMatchObject({ id: current!.id })
+  })
+})
+
+
+describe("bounded and retryable compaction control", () => {
+  it("T19 retries a lost compaction response without creating another checkpoint or acknowledgement", async () => {
+    const f = await fixture(); let loseReply = true
+    const editor = await f.client("lost_reply_writer", { afterCompaction: async () => { if (loseReply) { loseReply = false; throw new Error("Lost compact response") } } })
+    editor.doc.getText("fixture").insert(0, "accepted before lost response")
+    await until(() => editor.provider.getKnownSeq() === 1)
+    const captured = editor.provider.acknowledgedCheckpoint()
+    await expect(editor.checkpoints.checkpoint(1, captured.update)).rejects.toThrow("Lost compact response")
+    expect(await f.storage.list({ prefix: "update:" })).toHaveLength(0)
+    const checkpoints = await f.storage.list({ prefix: "g3:checkpoint-descriptor:" })
+    expect(await editor.checkpoints.checkpoint(1, captured.update)).toBe(true)
+    expect(await f.storage.list({ prefix: "g3:checkpoint-descriptor:" })).toEqual(checkpoints)
+    expect(await f.storage.get("head-sequence")).toBe(1)
+  })
+
+  it("T12 bounds cleanup to 32 updates per request and resumes after room re-instantiation", async () => {
+    const f = await fixture(); const editor = await f.client("paged_writer", { deferCompaction: true })
+    for (let i = 0; i < 40; i++) editor.doc.getText("fixture").insert(i, "x")
+    await until(() => editor.provider.getKnownSeq() === 40)
+    await editor.checkpoints.checkpoint(40, editor.provider.acknowledgedCheckpoint().update)
+    expect(await f.storage.get(ROOM_COMPACTION_FLOOR_KEY)).toBeUndefined()
+    const store = new RoomCheckpointStore(f.storage); const current = await store.current(1)
+    const page = await store.handle(authority("paged_writer"), { operation: "compact", id: current!.id })
+    expect(page).toMatchObject({ compactionFloor: 40, removedUpdates: 32, hasMore: true })
+    const resumed = await new RoomCheckpointStore(f.storage).handle(authority("paged_writer"), { operation: "compact", id: current!.id })
+    expect(resumed).toMatchObject({ compactionFloor: 40, removedUpdates: 8, hasMore: false })
+    expect(await f.storage.get("retained-usage")).toEqual({ bytes: 0, count: 0 })
+    expect(await f.storage.list({ prefix: "g3:update-receipt:" })).toHaveLength(40)
   })
 })

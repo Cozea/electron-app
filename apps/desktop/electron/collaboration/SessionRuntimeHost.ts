@@ -174,7 +174,6 @@ export class SessionRuntimeHost {
               await runtime.projectFiles()
               await this.coordinator.adoptPublished(sessionId, await this.gateway.accessToken(), runtime.files.files().flatMap(file => [file.path, ...(file.originalPath ? [file.originalPath] : [])]))
             }
-            await runtime.checkpointPublished(liveAuthority.session.publishedThroughSequence)
           }
           if (authority.role === "editor") {
             const rotation = await this.keys.rotationStatus(sessionId)
@@ -185,13 +184,16 @@ export class SessionRuntimeHost {
               const inspected = await request({ operation: "inspect" }) as { headSequence: number }
               const frozen = await runtime.frozenCheckpoint(inspected.headSequence)
               const rotationClient = new SessionCheckpointClient({ sessionId, projectId: binding.projectId, roomId: next.session.roomId,
-                ...next, role: "editor", store: new DurableSessionStore(this.root, next.session.roomId, next.keyVersion), request: rotatedRequest })
+                ...next, role: "editor", deferCompaction: true, store: new DurableSessionStore(this.root, next.session.roomId, next.keyVersion), request: rotatedRequest })
               // Claim/finalize is idempotent if GitHub/Convex or the room reply is
               // lost. Activation happens only after the room checkpoint is durable.
               await rotationClient.checkpoint(frozen.sequence, frozen.update)
               const status = await this.keys.rotationStatus(sessionId)
               restart = !status.required && status.currentKeyVersion === next.keyVersion
-            } else await this.keys.supplyWaitingPrincipals(sessionId, material.roomKeyBase64, material.keyVersion)
+            } else {
+              await this.keys.supplyWaitingPrincipals(sessionId, material.roomKeyBase64, material.keyVersion)
+              await runtime.maintainCheckpoint()
+            }
           }
         })().finally(() => {
           hosted.maintenance = null

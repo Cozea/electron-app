@@ -57,6 +57,9 @@ export class CollaborationSessionRuntime {
   private stopping = false
   private stopPromise: Promise<void> | null = null
   private readonly checkpointOperations = new Set<Promise<void>>()
+  private checkpointTail: Promise<void> = Promise.resolve()
+  private lastCheckpointAt = Date.now()
+  private lastCheckpointSequence = 0
   private editorQueue: Promise<void> = Promise.resolve()
   private readonly pendingEditor = new Map<string, Uint8Array>()
   private startPromise: Promise<boolean> | null = null
@@ -598,15 +601,32 @@ export class CollaborationSessionRuntime {
     this.emit()
   }
 
+  /** Transport housekeeping is independent of Git publication. */
+  maintainCheckpoint(): Promise<void> {
+    const provider = this.provider
+    if (!provider || provider.getConnectionState() !== "connected" || this.stopping || this.stopped || this.options.role !== "editor") return Promise.resolve()
+    const sequence = provider.getKnownSeq()
+    if (sequence <= this.lastCheckpointSequence) return Promise.resolve()
+    const age = Date.now() - this.lastCheckpointAt
+    if (age < 60_000 || (sequence - this.lastCheckpointSequence < 256 && age < 120_000)) return Promise.resolve()
+    return this.checkpointPublished(sequence)
+  }
+
   checkpointPublished(sequence: number): Promise<void> {
     const provider = this.provider
     if (!provider || this.stopping || this.stopped || this.options.role !== "editor") return Promise.resolve()
-    const operation = (async () => {
-      if (((await this.options.store.recover()).checkpoint?.sequence ?? -1) >= sequence) return
+    const operation = this.checkpointTail.catch(() => {}).then(async () => {
       await provider.waitForSequence(sequence)
       const state = provider.acknowledgedCheckpoint()
-      if (await this.options.checkpoints.checkpoint(state.sequence, state.update)) provider.compactAcknowledged(sequence)
-    })().finally(() => this.checkpointOperations.delete(operation))
+      // Do not skip on local checkpoint.sequence: a lost compact reply must be
+      // retried even when loading the new local checkpoint already succeeded.
+      if (await this.options.checkpoints.checkpoint(state.sequence, state.update)) {
+        provider.compactAcknowledged(state.sequence)
+        this.lastCheckpointSequence = state.sequence
+        this.lastCheckpointAt = Date.now()
+      }
+    }).finally(() => this.checkpointOperations.delete(operation))
+    this.checkpointTail = operation
     this.checkpointOperations.add(operation)
     return operation
   }

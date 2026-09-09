@@ -1,4 +1,4 @@
-import { COLLABORATION_PROTOCOL_REVISION, validateCheckpointInspection } from "../../../../shared/collaborationProtocol"
+import { COLLABORATION_PROTOCOL_REVISION, validateCheckpointInspection, protocolRecord, protocolSequence, type CheckpointClaimResult } from "../../../../shared/collaborationProtocol"
 import * as Y from "yjs"
 import { bytesToEnvelope, decryptPayload, encryptPayload, envelopeToBytes } from "../../../../shared/collaborationCipher"
 import { collaborationDigest, COLLABORATION_CHUNK_CHARS, COLLABORATION_MAX_ENCODED_CHECKPOINT, validateEncryptedCollaborationEnvelope } from "../../../../shared/collaborationWire"
@@ -13,6 +13,7 @@ interface CheckpointClientOptions {
   roomKeyBase64: string
   role: "editor" | "observer"
   store: DurableSessionStore
+  deferCompaction?: boolean
   request: (body: Record<string, unknown>) => Promise<unknown>
 }
 
@@ -56,7 +57,10 @@ export class SessionCheckpointClient {
     const update = await this.decode(encoded, descriptor.sequence, "yjs_snapshot")
     // Parse Yjs before replacing the last known-good local recovery record.
     const document = new Y.Doc({ gc: false })
-    try { Y.applyUpdate(document, update) } finally { document.destroy() }
+    try {
+      Y.applyUpdate(document, update)
+      if (document.store.pendingStructs !== null || document.store.pendingDs !== null) throw new Error("Checkpoint has unresolved CRDT dependencies; previous recovery was retained")
+    } finally { document.destroy() }
     await this.options.store.saveCheckpoint({ generation: 3, roomId: this.options.roomId, sequence: descriptor.sequence, keyVersion: descriptor.keyVersion, snapshotBinary: encoded })
     return { sequence: descriptor.sequence, update }
   }
@@ -64,6 +68,7 @@ export class SessionCheckpointClient {
   async bootstrap(): Promise<{ sequence: number; update: Uint8Array } | null> {
     const local = await this.recoverLocal()
     const inspected = validateCheckpointInspection(await this.request({ operation: "inspect" }))
+    if (local && local.sequence > inspected.headSequence) throw new Error("The room head is behind retained canonical recovery; no local data was replaced")
     if (inspected.checkpoint) {
       this.validate(inspected.checkpoint)
       return local && local.sequence >= inspected.checkpoint.sequence ? local : this.load(inspected.checkpoint)
@@ -112,12 +117,33 @@ export class SessionCheckpointClient {
     } finally { document.destroy() }
   }
 
+  async compact(descriptor: EncryptedCheckpointDescriptor): Promise<void> {
+    this.validate(descriptor)
+    if (this.options.role !== "editor") throw new Error("Only an editor may compact canonical replay")
+    // A finalized remote blob alone is not enough: this exact replacement must
+    // already be a verified durable local checkpoint before asking for removal.
+    const recovered = await this.options.store.recover()
+    if (!recovered.checkpoint || recovered.checkpoint.sequence !== descriptor.sequence || await collaborationDigest(recovered.checkpoint.snapshotBinary) !== descriptor.digest) throw new Error("Save the verified checkpoint before compacting room history")
+    let previousRemoved = -1
+    for (let page = 0; page < 1024; page++) {
+      const result = protocolRecord(await this.request({ operation: "compact", id: descriptor.id }), "Checkpoint compaction")
+      const floor = protocolSequence(result.compactionFloor, "compactionFloor")
+      const removed = protocolSequence(result.removedUpdates, "removedUpdates")
+      if (result.checkpointId !== descriptor.id || floor !== descriptor.sequence || typeof result.hasMore !== "boolean") throw new Error("Compaction receipt does not match the verified checkpoint")
+      if (!result.hasMore) return
+      if (removed === 0 && previousRemoved === 0) throw new Error("Compaction made no progress; local recovery was retained")
+      previousRemoved = removed
+    }
+    throw new Error("Compaction exceeded its bounded batch limit; retry maintenance")
+  }
+
   async checkpoint(sequence: number, update: Uint8Array): Promise<boolean> {
     if (this.options.role !== "editor") return false
-    const result = await this.request({ operation: "claim", sequence }) as { lease?: CheckpointUploadLease }
-    if (!result.lease) return false
-    const descriptor = await this.upload(result.lease, update)
+    const result = await this.request({ operation: "claim", sequence }) as CheckpointClaimResult
+    if (!result.lease && !result.checkpoint) return false
+    const descriptor = result.checkpoint ?? await this.upload(result.lease!, update)
     await this.load(descriptor)
+    if (!this.options.deferCompaction) await this.compact(descriptor)
     return true
   }
 }

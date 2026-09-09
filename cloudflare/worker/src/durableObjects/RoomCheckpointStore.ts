@@ -1,6 +1,7 @@
+import { acceptedPieceKey, legacyUpdateReceiptKey, updateReceiptKey, readStoredUpdate, retainedRoomUsage, retainedUpdateBytes, type StoredSessionUpdate } from "./RoomUpdateChunks"
 import type { CheckpointUploadLease, EncryptedCheckpointDescriptor } from "../../../../shared/collaborationCheckpoint"
 import type { FileInitializationLease, FileInitializationOrigin } from "../../../../shared/collaborationFileInitialization"
-import { CHECKPOINT_LEASE_MS, CHECKPOINT_UPLOAD_LIFETIME_MS, FILE_INITIALIZATION_LEASE_MS, COLLABORATION_PROTOCOL_REVISION, CollaborationProtocolError, type CheckpointRequest, type RoomAuthority, type CheckpointInspection, type CheckpointClaimResult, type FileClaimResult } from "../../../../shared/collaborationProtocol"
+import { CHECKPOINT_LEASE_MS, CHECKPOINT_UPLOAD_LIFETIME_MS, FILE_INITIALIZATION_LEASE_MS, COLLABORATION_PROTOCOL_REVISION, CollaborationProtocolError, type CheckpointRequest, type RoomAuthority, type CheckpointInspection, type CheckpointClaimResult, type FileClaimResult, type CheckpointCompactionResult } from "../../../../shared/collaborationProtocol"
 import { COLLABORATION_CHUNK_CHARS, collaborationDigest, decodeCanonicalBase64, validateEncryptedCollaborationEnvelope } from "../../../../shared/collaborationWire"
 
 /** Structural subset shared by the real room storage and crash-test adapters. */
@@ -25,6 +26,10 @@ const ALLOCATED_KEY = "g3:checkpoint-allocated-chars"
 const MAX_ALLOCATED_CHARS = 128 * 1024 * 1024
 export const ROOM_BINDING_KEY = "g3:binding"
 export const ROOM_COMPACTION_FLOOR_KEY = "g3:compaction-floor"
+export const ROOM_COMPACTION_CHECKPOINT_KEY = "g3:compaction-checkpoint"
+// In-flight readers/finalization retries may still refer to a previous descriptor.
+export const CHECKPOINT_READ_RETENTION_MS = 30 * 60_000
+const COMPACTION_PAGE_SIZE = 32
 
 /** All methods are called through the room's single update/checkpoint queue.
  * A finalized descriptor is the commit point: partial uploads are never canonical.
@@ -65,6 +70,7 @@ export class RoomCheckpointStore {
     }
     if (request.operation === "file.claim") return this.claimFile(authority, request.fileId)
     this.requireWriter(authority)
+    if (request.operation === "compact") return this.compact(authority, request.id)
     if (request.operation === "claim") return this.claim(authority, request.sequence)
     if (request.operation === "upload") return this.upload(authority, request)
     return this.finalize(authority, request.id)
@@ -81,6 +87,8 @@ export class RoomCheckpointStore {
     const current = await this.current(authority.keyVersion)
     if (sequence > head || sequence < floor || (current && sequence < current.sequence)) throw new CollaborationProtocolError("INVALID_SEQUENCE", "Checkpoint sequence is outside canonical room history", 409, true)
     if (!current && head > 0 && !authority.previousKeyVersion) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "Room history has no canonical checkpoint; do not create a new history over retained updates", 409, true)
+    if (current?.sequence === sequence) return { checkpoint: current }
+    await this.retireObsolete(authority.keyVersion)
     const old = await this.storage.get<CheckpointUploadLease>(leaseKey(authority.keyVersion))
     if (old && old.expiresAt > this.now()) {
       if (old.principalId === authority.principalId && old.sequence === sequence) return { lease: old }
@@ -151,6 +159,89 @@ export class RoomCheckpointStore {
       await storage.delete([leaseKey(authority.keyVersion), uploadKey(id)])
     })
     return { checkpoint }
+  }
+
+  /** Called only after an editor has read/decrypted and durably saved this
+   * finalized canonical checkpoint. Floor + anchor commit before any deletion;
+   * every bounded deletion transaction retains the update's deduplication proof.
+   * Receipt metadata is session-lifetime state, not expiring replay payload.
+   */
+  private async compact(authority: RoomAuthority, id: string): Promise<CheckpointCompactionResult> {
+    if (authority.previousKeyVersion || authority.rotationRequired) throw new CollaborationProtocolError("KEY_ROTATION_REQUIRED", "Activate the replacement key before compacting history", 409, true)
+    const checkpoint = await this.current(authority.keyVersion)
+    if (!checkpoint || checkpoint.id !== id) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "Compaction requires the current finalized checkpoint; inspect again", 409, true)
+    const floor = await this.storage.get<number>(ROOM_COMPACTION_FLOOR_KEY) ?? 0
+    const anchor = await this.storage.get<EncryptedCheckpointDescriptor>(ROOM_COMPACTION_CHECKPOINT_KEY)
+    if (checkpoint.sequence < floor || checkpoint.sequence > (await this.storage.get<number>("head-sequence") ?? 0)) throw new CollaborationProtocolError("INVALID_SEQUENCE", "Compaction checkpoint is outside canonical history", 409)
+    if (!anchor || anchor.id !== id) {
+      // Do not advance a floor if its replacement has missing/corrupted chunks.
+      // Verification is once per immutable anchor, not once per deletion page.
+      const pieces: string[] = []
+      for (let index = 0; index < checkpoint.chunkCount; index++) {
+        const piece = await this.storage.get<string>(pieceKey(id, index))
+        if (piece === undefined) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "Compaction checkpoint has a missing chunk; all replay was retained", 409, true)
+        pieces.push(piece)
+      }
+      const encoded = pieces.join("")
+      if (encoded.length !== checkpoint.totalChars || await collaborationDigest(encoded) !== checkpoint.digest) throw new CollaborationProtocolError("CHECKSUM_MISMATCH", "Compaction checkpoint failed checksum validation; all replay was retained", 409)
+      await this.storage.put({ [ROOM_COMPACTION_FLOOR_KEY]: checkpoint.sequence, [ROOM_COMPACTION_CHECKPOINT_KEY]: checkpoint })
+    }
+    const entries = await this.storage.list<StoredSessionUpdate>({ prefix: "update:", limit: COMPACTION_PAGE_SIZE })
+    let removedUpdates = 0
+    for (const [key, update] of entries) {
+      if (update.seq > checkpoint.sequence) break
+      const digest = update.digest ?? await collaborationDigest(await readStoredUpdate(this.storage, update))
+      const receiptKey = update.principalId && update.keyVersion
+        ? updateReceiptKey({ ...authority, principalId: update.principalId, keyVersion: update.keyVersion }, update.idempotencyKey)
+        : legacyUpdateReceiptKey(update.idempotencyKey)
+      const pieceKeys = Array.from({ length: update.chunkCount ?? 0 }, (_, index) => acceptedPieceKey(update.seq, index))
+      if (pieceKeys.length > 64) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "Retained update metadata exceeds its chunk bound", 409, true)
+      await retainedRoomUsage(this.storage)
+      await this.storage.transaction(async storage => {
+        const present = await storage.get<StoredSessionUpdate>(key)
+        if (!present) return // An interrupted cleanup may already have committed.
+        if (present.seq !== update.seq || present.idempotencyKey !== update.idempotencyKey) throw new CollaborationProtocolError("IDEMPOTENCY_MISMATCH", "Retained update changed during compaction", 409)
+        const previous = await storage.get<{ sequence: number; digest: string }>(receiptKey)
+        if (previous && (previous.sequence !== update.seq || previous.digest !== digest)) throw new CollaborationProtocolError("IDEMPOTENCY_MISMATCH", "Retained acknowledgement conflicts with checkpoint history", 409)
+        const usage = await storage.get<{ bytes: number; count: number }>("retained-usage")
+        if (!usage || usage.count < 1 || usage.bytes < retainedUpdateBytes(update)) throw new CollaborationProtocolError("RETENTION_MISMATCH", "Replay accounting differs; retain remaining history for repair", 409)
+        await storage.put({ [receiptKey]: { sequence: update.seq, digest }, "retained-usage": { bytes: usage.bytes - retainedUpdateBytes(update), count: usage.count - 1 } })
+        const legacyIndex = `idempotency:${update.idempotencyKey}`
+        const keys = [key, ...pieceKeys]
+        if (await storage.get<number>(legacyIndex) === update.seq) keys.push(legacyIndex)
+        await storage.delete(keys)
+      })
+      removedUpdates++
+    }
+    const first = [...(await this.storage.list<StoredSessionUpdate>({ prefix: "update:", limit: 1 })).values()][0]
+    await this.retireObsolete(authority.keyVersion)
+    return { checkpointId: id, compactionFloor: checkpoint.sequence, removedUpdates, hasMore: Boolean(first && first.seq <= checkpoint.sequence) }
+  }
+
+  /** Only superseded checkpoints of this same key can expire. Keep every active
+   * key checkpoint, the compaction anchor, and a full reader/retry grace window.
+   * Transactions make allocated-byte release inseparable from actual removal.
+   */
+  private async retireObsolete(keyVersion: number): Promise<void> {
+    const current = await this.current(keyVersion)
+    if (!current) return
+    const anchor = await this.storage.get<EncryptedCheckpointDescriptor>(ROOM_COMPACTION_CHECKPOINT_KEY)
+    const cursorKey = `g3:checkpoint-cleanup-cursor:${keyVersion}`
+    const start = await this.storage.get<string>(cursorKey) ?? "g3:checkpoint-descriptor:"
+    const entries = await this.storage.list<EncryptedCheckpointDescriptor>({ prefix: "g3:checkpoint-descriptor:", start, limit: 16 })
+    for (const [key, descriptor] of entries) {
+      if (descriptor.keyVersion !== keyVersion || descriptor.id === current.id || descriptor.id === anchor?.id || descriptor.createdAt + CHECKPOINT_READ_RETENTION_MS > this.now()) continue
+      await this.storage.transaction(async storage => {
+        if (!await storage.get(key)) return
+        if ((await storage.get<EncryptedCheckpointDescriptor>(activeKey(keyVersion)))?.id === descriptor.id || (await storage.get<EncryptedCheckpointDescriptor>(ROOM_COMPACTION_CHECKPOINT_KEY))?.id === descriptor.id) return
+        const allocated = await storage.get<number>(ALLOCATED_KEY) ?? 0
+        if (allocated < descriptor.totalChars) throw new CollaborationProtocolError("RETENTION_MISMATCH", "Checkpoint accounting differs; retained data was not evicted", 409)
+        for (let index = 0; index < descriptor.chunkCount; index += 128) await storage.delete(Array.from({ length: Math.min(128, descriptor.chunkCount - index) }, (_, offset) => pieceKey(descriptor.id, index + offset)))
+        await storage.delete(key)
+        await storage.put(ALLOCATED_KEY, allocated - descriptor.totalChars)
+      })
+    }
+    await this.storage.put(cursorKey, entries.size < 16 ? "g3:checkpoint-descriptor:" : [...entries.keys()].at(-1)! + "\0")
   }
 
   private async claimFile(authority: RoomAuthority, fileId: string): Promise<FileClaimResult> {

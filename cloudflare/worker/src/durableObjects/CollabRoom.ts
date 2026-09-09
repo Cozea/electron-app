@@ -1,4 +1,4 @@
-import { RoomUpdateChunks, encodeStoredUpdate, readStoredUpdate, updateReceiptKey, type StoredSessionUpdate } from "./RoomUpdateChunks"
+import { RoomUpdateChunks, encodeStoredUpdate, readStoredUpdate, updateReceiptKey, legacyUpdateReceiptKey, retainedRoomUsage, type StoredSessionUpdate } from "./RoomUpdateChunks"
 import { COLLABORATION_PROTOCOL_REVISION, requireProtocolRevision } from "../../../../shared/collaborationProtocol"
 import { COLLABORATION_CHUNK_CHARS, collaborationDigest, splitCollaborationUpdate } from "../../../../shared/collaborationWire"
 import { RoomCheckpointStore, ROOM_COMPACTION_FLOOR_KEY } from "./RoomCheckpointStore"
@@ -7,7 +7,7 @@ import { CollaborationProtocolError, parseCheckpointRequest, parseRoomAuthority,
 import { decodeCanonicalBase64, validateEncryptedCollaborationEnvelope } from "../../../../shared/collaborationWire"
 import { fileInitializationOrigin } from "../../../../shared/collaborationFileInitialization"
 import type { Env } from '../types'
-import { COLLAB_MAX_FRAME_BYTES, reserveUpdateBudget, validateUpdateInput, type RetainedUsage, type UpdateRate } from '../lib/collaborationLimits'
+import { COLLAB_MAX_FRAME_BYTES, COLLAB_MAX_SESSION_OPERATIONS, reserveUpdateBudget, validateUpdateInput, type RetainedUsage, type UpdateRate } from '../lib/collaborationLimits'
 import {
   fetchActiveAwarenessFromConvex,
   fetchYjsDeltasFromConvex,
@@ -135,6 +135,9 @@ export class CollabRoom implements DurableObject {
           const commitSha = body.commitSha
           const operation = this.updateQueue.then(async () => {
             if (sequence > await this.getSessionHeadSequence()) throw new CollaborationProtocolError("INVALID_SEQUENCE", "Publication exceeds the canonical room head", 409)
+            const previous = await this.state.storage.get<{ commitSha: string; coveredThroughSequence: number }>("g3:publication")
+            if (previous && previous.coveredThroughSequence > sequence) return
+            if (previous?.coveredThroughSequence === sequence && previous.commitSha !== commitSha) throw new CollaborationProtocolError("PUBLICATION_MISMATCH", "Two Git publications claim the same captured boundary", 409)
             await this.state.storage.put("g3:publication", { commitSha, coveredThroughSequence: sequence })
             // Git publication is not CRDT compaction. Keep the replay history
             // until an independently finalized checkpoint permits retirement.
@@ -415,6 +418,7 @@ export class CollabRoom implements DurableObject {
         persisted: true,
       },
     }))
+    if (isV2Room(connection.roomId) && result.seq <= (await this.state.storage.get<number>(ROOM_COMPACTION_FLOOR_KEY) ?? 0)) return
     const headSeq = isV2Room(connection.roomId) ? await this.getSessionHeadSequence() : result.seq
     for (const peer of this.state.getWebSockets()) {
       if (peer === socket || attachmentOf(peer)?.roomId !== connection.roomId) continue
@@ -454,6 +458,11 @@ export class CollabRoom implements DurableObject {
       if (accepted.digest !== digest) throw new CollaborationProtocolError("IDEMPOTENCY_MISMATCH", "An accepted update ID was reused with different bytes", 409)
       return { seq: accepted.sequence }
     }
+    const legacyReceipt = await this.state.storage.get<{ sequence: number; digest: string }>(legacyUpdateReceiptKey(message.payload.idempotencyKey))
+    if (legacyReceipt) {
+      if (legacyReceipt.digest !== digest) throw new CollaborationProtocolError("IDEMPOTENCY_MISMATCH", "A retained legacy operation ID was reused with different bytes", 409)
+      return { seq: legacyReceipt.sequence }
+    }
     const idempotencyKey = `${IDEMPOTENCY_PREFIX}${message.payload.idempotencyKey}`
     const existing = await this.state.storage.get<number>(idempotencyKey)
     if (typeof existing === 'number') {
@@ -469,6 +478,9 @@ export class CollabRoom implements DurableObject {
     const rate = await this.state.storage.get<UpdateRate>(rateKey)
     const budget = reserveUpdateBudget(usage, rate, retainedBytes, Date.now())
     const seq = (await this.getSessionHeadSequence()) + 1
+    // Receipts never expire behind a disconnected writer. Bound the session
+    // explicitly instead of accepting a retired operation as a fresh edit.
+    if (seq > COLLAB_MAX_SESSION_OPERATIONS) throw new CollaborationProtocolError("RETENTION_LIMIT", "This session reached its operation-history capacity; retain local work and start a successor session", 507, true)
     const encodedEnvelope = JSON.parse(new TextDecoder().decode(decodeCanonicalBase64(message.payload.updateBinary, 4 * 1024 * 1024))) as { aad: string }
     const metadata = protocolRecord(JSON.parse(new TextDecoder().decode(decodeCanonicalBase64(encodedEnvelope.aad, 8192))), "Update metadata")
     const initialization = fileInitializationOrigin(metadata.initialization)
@@ -646,22 +658,8 @@ export class CollabRoom implements DurableObject {
     return Math.max(0, Math.floor((await this.state.storage.get<number>(HEAD_SEQUENCE_KEY)) ?? 0))
   }
 
-  private async getRetainedUsage(): Promise<RetainedUsage> {
-    const saved = await this.state.storage.get<RetainedUsage>(RETAINED_USAGE_KEY)
-    if (saved) return saved
-    // Upgrade existing rooms without resetting their storage budget to zero.
-    const usage = { bytes: 0, count: 0 }
-    let start = UPDATE_PREFIX
-    while (true) {
-      const entries = await this.state.storage.list<StoredSessionUpdate>({ prefix: UPDATE_PREFIX, start, limit: 256 })
-      for (const update of entries.values()) {
-        usage.bytes += update.retainedBytes ?? (update.updateBinary?.length ?? update.totalChars ?? 0) + update.idempotencyKey.length * 2 + 1024
-        usage.count += 1
-      }
-      if (entries.size < 256) break
-      start = [...entries.keys()].at(-1)! + '\0'
-    }
-    return usage
+  private getRetainedUsage(): Promise<RetainedUsage> {
+    return retainedRoomUsage(this.state.storage)
   }
 
   private async hydrateLegacyPresence(projectId: string): Promise<void> {

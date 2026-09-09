@@ -301,8 +301,11 @@ export class CollabWsProvider {
   }
 
   async captureCommitState(): Promise<{ sequence: number; update: Uint8Array }> {
-    const sequence = await this.requestBarrier()
-    return { sequence, update: this.acknowledged.capture(sequence) }
+    const release = this.acknowledged.pin()
+    try {
+      const sequence = await this.requestBarrier()
+      return { sequence, update: this.acknowledged.capture(sequence) }
+    } finally { release() }
   }
 
   retry(): void {
@@ -318,14 +321,17 @@ export class CollabWsProvider {
   }
 
   async frozenCheckpoint(sequence: number): Promise<{ sequence: number; update: Uint8Array }> {
-    this.outgoingSuspended = true
-    this.paused = false
-    await this.connect()
-    await this.waitForCatchUp()
-    this.targetHeadSeq = Math.max(this.targetHeadSeq, sequence)
-    this.requestSync()
-    await this.waitForSequence(sequence)
-    return { sequence, update: this.acknowledged.capture(sequence) }
+    const release = this.acknowledged.pin(Math.min(sequence, this.knownSeq))
+    try {
+      this.outgoingSuspended = true
+      this.paused = false
+      await this.connect()
+      await this.waitForCatchUp()
+      this.targetHeadSeq = Math.max(this.targetHeadSeq, sequence)
+      this.requestSync()
+      await this.waitForSequence(sequence)
+      return { sequence, update: this.acknowledged.capture(sequence) }
+    } finally { release() }
   }
 
   compactAcknowledged(sequence: number): void { this.acknowledged.compact(sequence) }

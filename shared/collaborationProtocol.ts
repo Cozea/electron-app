@@ -3,7 +3,7 @@ import type { FileInitializationLease } from "./collaborationFileInitialization"
 import { COLLABORATION_CHUNK_CHARS, COLLABORATION_MAX_ENCODED_CHECKPOINT } from "./collaborationWire"
 
 /** Wire revision is independent from the CRDT identity generation and local schema. */
-export const COLLABORATION_PROTOCOL_REVISION = 1
+export const COLLABORATION_PROTOCOL_REVISION = 2
 export const CHECKPOINT_LEASE_MS = 120_000
 export const CHECKPOINT_UPLOAD_LIFETIME_MS = 10 * 60_000
 export const FILE_INITIALIZATION_LEASE_MS = 60_000
@@ -38,6 +38,7 @@ export type CheckpointRequest =
   | { operation: "finalize"; id: string }
   | { operation: "read"; id: string; index: number }
   | { operation: "file.claim"; fileId: string }
+  | { operation: "compact"; id: string }
 
 export interface CheckpointInspection {
   generation: 3
@@ -46,7 +47,13 @@ export interface CheckpointInspection {
   compactionFloor: number
   checkpoint: EncryptedCheckpointDescriptor | null
 }
-export interface CheckpointClaimResult { lease?: CheckpointUploadLease; waiting?: boolean; retryAfterMs?: number }
+export interface CheckpointClaimResult { checkpoint?: EncryptedCheckpointDescriptor; lease?: CheckpointUploadLease; waiting?: boolean; retryAfterMs?: number }
+export interface CheckpointCompactionResult {
+  checkpointId: string
+  compactionFloor: number
+  removedUpdates: number
+  hasMore: boolean
+}
 export interface FileClaimResult { lease?: FileInitializationLease; sequence?: number; waiting?: boolean; retryAfterMs?: number }
 
 export function protocolRecord(value: unknown, label: string): Record<string, unknown> {
@@ -87,6 +94,7 @@ export function parseCheckpointRequest(value: unknown): CheckpointRequest {
   switch (request.operation) {
     case "inspect": return { operation: "inspect" }
     case "claim": return { operation: "claim", sequence: protocolSequence(request.sequence, "sequence") }
+    case "compact": return { operation: "compact", id: protocolId(request.id, "id") }
     case "finalize": return { operation: "finalize", id: protocolId(request.id, "id") }
     case "read": return { operation: "read", id: protocolId(request.id, "id"), index: protocolSequence(request.index, "index") }
     case "file.claim": return { operation: "file.claim", fileId: protocolId(request.fileId, "fileId") }
